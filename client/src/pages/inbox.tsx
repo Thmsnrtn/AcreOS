@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { ClearedEmpty, EmptyFilter } from "@/components/empty-states";
 import { ListSkeleton } from "@/components/list-skeleton";
+import { ContentReveal } from "@/components/ContentReveal";
 import {
   Search,
   Mail,
@@ -125,15 +126,35 @@ function EmailMessageRow({
       const res = await apiRequest("POST", `/api/inbox/${message.id}/star`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+    // Optimistic toggle: flip isStarred across every cached inbox list immediately.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["/api/inbox"] });
+      const snapshots: Array<[readonly unknown[], unknown]> = [];
+      const entries = queryClient.getQueriesData({ queryKey: ["/api/inbox"] });
+      for (const [key, value] of entries) {
+        snapshots.push([key, value]);
+        if (Array.isArray(value)) {
+          queryClient.setQueryData(key, value.map((m: any) =>
+            m?.id === message.id ? { ...m, isStarred: !m.isStarred } : m
+          ));
+        }
+      }
+      return { snapshots };
     },
-    onError: () => {
+    onError: (_err, _vars, context) => {
+      if (context?.snapshots) {
+        for (const [key, value] of context.snapshots) {
+          queryClient.setQueryData(key, value);
+        }
+      }
       toast({
         title: message.isStarred ? "Couldn't unstar message" : "Couldn't star message",
         description: "Please try again in a moment.",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
     },
   });
 
@@ -981,16 +1002,46 @@ export default function InboxPage() {
       const res = await apiRequest("POST", `/api/inbox/${id}/read`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
+    // Optimistic mark-as-read: flip isRead in every cached inbox list and
+    // decrement the unread badge count instantly.
+    onMutate: async (id: number) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/inbox"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/inbox/unread-count"] });
+      const snapshots: Array<[readonly unknown[], unknown]> = [];
+      const entries = queryClient.getQueriesData({ queryKey: ["/api/inbox"] });
+      for (const [key, value] of entries) {
+        snapshots.push([key, value]);
+        if (Array.isArray(value)) {
+          queryClient.setQueryData(key, value.map((m: any) =>
+            m?.id === id ? { ...m, isRead: true } : m
+          ));
+        }
+      }
+      const prevCount = queryClient.getQueryData<{ count: number }>(["/api/inbox/unread-count"]);
+      if (prevCount && typeof prevCount.count === "number") {
+        snapshots.push([["/api/inbox/unread-count"], prevCount]);
+        queryClient.setQueryData(["/api/inbox/unread-count"], {
+          ...prevCount,
+          count: Math.max(0, prevCount.count - 1),
+        });
+      }
+      return { snapshots };
     },
-    onError: () => {
+    onError: (_err, _id, context) => {
+      if (context?.snapshots) {
+        for (const [key, value] of context.snapshots) {
+          queryClient.setQueryData(key, value);
+        }
+      }
       toast({
         title: "Couldn't mark as read",
         description: "Please try again in a moment.",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
     },
   });
 
@@ -1140,9 +1191,11 @@ export default function InboxPage() {
 
         <div className="flex-1 flex overflow-hidden">
           <div className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
-            {isLoading ? (
-              <ListSkeleton count={5} />
-            ) : filteredItems.length === 0 ? (
+            <ContentReveal
+              ready={!isLoading}
+              skeleton={<ListSkeleton count={5} />}
+            >
+            {filteredItems.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-4 w-full">
                 {/* Filter/search returned nothing but there ARE messages → EmptyFilter */}
                 {searchQuery.trim() && unifiedItems.length > 0 ? (
@@ -1206,6 +1259,7 @@ export default function InboxPage() {
                 </ul>
               </ScrollArea>
             )}
+            </ContentReveal>
           </div>
 
           <div className={`${selectedItem ? "" : "hidden md:flex"} flex-1 flex flex-col`}>

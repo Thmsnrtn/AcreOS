@@ -9,6 +9,7 @@ import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
+import { ContentReveal } from "@/components/ContentReveal";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -873,25 +874,32 @@ export default function DealsPage() {
                           </div>
                         </div>
                         <div className="bg-muted/30 rounded-b-xl p-3 min-h-[300px] space-y-3">
-                          {isLoading ? (
-                            <div data-testid={`skeleton-deals-${stage.value}`}>
-                              <ListSkeleton count={2} variant="compact" />
-                            </div>
-                          ) : stageDeals.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm">
-                              No deals in {stage.label}
-                            </div>
-                          ) : (
-                            stageDeals.map((deal) => (
-                              <DealCard 
-                                key={deal.id} 
-                                deal={deal} 
-                                onSelect={() => setLocation(`/deals/${deal.id}`)}
-                                isSelected={selectedDealIds.has(deal.id)}
-                                onToggleSelect={toggleDealSelection}
-                              />
-                            ))
-                          )}
+                          <ContentReveal
+                            ready={!isLoading}
+                            skeleton={
+                              <div data-testid={`skeleton-deals-${stage.value}`}>
+                                <ListSkeleton count={2} variant="compact" />
+                              </div>
+                            }
+                          >
+                            {stageDeals.length === 0 ? (
+                              <div className="text-center py-8 text-muted-foreground text-sm">
+                                No deals in {stage.label}
+                              </div>
+                            ) : (
+                              <>
+                                {stageDeals.map((deal) => (
+                                  <DealCard
+                                    key={deal.id}
+                                    deal={deal}
+                                    onSelect={() => setLocation(`/deals/${deal.id}`)}
+                                    isSelected={selectedDealIds.has(deal.id)}
+                                    onToggleSelect={toggleDealSelection}
+                                  />
+                                ))}
+                              </>
+                            )}
+                          </ContentReveal>
                         </div>
                         <div
                           className="flex justify-center gap-1.5 mt-3"

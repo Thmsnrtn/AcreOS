@@ -28,7 +28,33 @@ export function useCreateNote() {
       if (!res.ok) throw new Error("Failed to create note");
       return api.notes.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
+    // Optimistic insert so the note appears instantly in any list view
+    // (lead/property/deal note tabs). We tag the optimistic row with a
+    // negative id so the real server id from the create response wins
+    // on the subsequent invalidation.
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: [api.notes.list.path] });
+      const previous = queryClient.getQueryData<any[]>([api.notes.list.path]);
+      const optimistic = {
+        ...data,
+        id: -Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        _optimistic: true,
+      };
+      if (Array.isArray(previous)) {
+        queryClient.setQueryData([api.notes.list.path], [optimistic, ...previous]);
+      } else {
+        queryClient.setQueryData([api.notes.list.path], [optimistic]);
+      }
+      return { previous };
+    },
+    onError: (_err, _data, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData([api.notes.list.path], context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
     },

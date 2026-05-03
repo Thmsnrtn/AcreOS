@@ -50,6 +50,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { ClearedEmpty } from "@/components/empty-states";
 import { GlossaryTerm } from "@/components/Glossary";
+import { ContentReveal } from "@/components/ContentReveal";
 import "./today.css";
 
 interface GoalWithProgress {
@@ -832,11 +833,15 @@ export default function TodayPage() {
           </Button>
         </div>
 
-        {prioritiesLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
-        ) : (todayPriorities?.priorities ?? []).length > 0 ? (
+        <ContentReveal
+          ready={!prioritiesLoading}
+          skeleton={
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          }
+        >
+        {(todayPriorities?.priorities ?? []).length > 0 ? (
           <div className="space-y-2">
             {(todayPriorities?.priorities ?? []).map((priority, idx) => (
               <Card key={priority.id} className={`rounded-card hover:shadow-md transition-shadow ${idx === 0 ? "border-[color:var(--acr-brand)]/30" : ""}`}>
@@ -868,6 +873,7 @@ export default function TodayPage() {
             </CardContent>
           </Card>
         )}
+        </ContentReveal>
       </div>
 
       {/* Section 1: Today's Actions (tasks due today or overdue) */}
