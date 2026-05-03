@@ -87,6 +87,7 @@ import cohortAnalysisRouter from "./routes-cohort-analysis";
 import propertyTaxRouter from "./routes-property-tax";
 import recordingFeesRouter from "./routes-recording-fees";
 import bookkeepingRouter from "./routes-bookkeeping";
+import accountingRouter from "./routes-accounting";
 import abTestsRouter from "./routes-ab-tests";
 import doddFrankRouter from "./routes-dodd-frank";
 import fieldScoutRouter from "./routes-field-scout";
@@ -1647,6 +1648,9 @@ export async function registerRoutes(
   app.use('/api/property-tax', isAuthenticated, getOrCreateOrg, propertyTaxRouter);
   app.use('/api/recording-fees', isAuthenticated, recordingFeesRouter);
   app.use('/api/bookkeeping', isAuthenticated, getOrCreateOrg, bookkeepingRouter);
+  // Lavender Week 10 — monthly-close + Olympia 1099 batch generator. Founder-
+  // gated inside the router until the role-based permission check ships.
+  app.use('/api/accounting', isAuthenticated, getOrCreateOrg, accountingRouter);
   app.use('/api/ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
   app.use('/api/dodd-frank', isAuthenticated, doddFrankRouter);
 

@@ -16249,6 +16249,85 @@ export type AccountType =
   | "contra_revenue";
 
 // ============================================================================
+// RECOGNITION WORKER + 1099 BATCHES — Lavender / Olympia Week 10
+// ----------------------------------------------------------------------------
+// Backed by migrations/0059_recognition_worker.sql. The recognition worker
+// drains `recognitionSchedules` on a monthly cadence and posts a
+// matched-pair into `accountLedgerEntries` (DR Deferred Revenue / CR
+// Subscription Revenue). `recognitionRuns` is an append-only audit trail
+// for the worker. `form1099Batches` powers Olympia's batch 1099-INT
+// generator — the route returns a jobId, the worker fills in result_blob.
+// ============================================================================
+
+export const recognitionSchedules = pgTable(
+  "recognition_schedules",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    sourceType: text("source_type").notNull(), // 'stripe_invoice' | 'manual'
+    sourceId: text("source_id").notNull(),
+    totalCents: bigint("total_cents", { mode: "number" }).notNull(),
+    balanceRemainingCents: bigint("balance_remaining_cents", { mode: "number" }).notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    monthsTotal: integer("months_total").notNull(),
+    monthsRecognised: integer("months_recognised").notNull().default(0),
+    status: text("status").notNull().default("active"), // active | completed | cancelled
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    sourceUnique: uniqueIndex("recognition_schedules_source_unique").on(
+      table.organizationId,
+      table.sourceType,
+      table.sourceId,
+    ),
+  }),
+);
+
+export const recognitionRuns = pgTable("recognition_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  runStartedAt: timestamp("run_started_at", { withTimezone: true }).defaultNow().notNull(),
+  runCompletedAt: timestamp("run_completed_at", { withTimezone: true }),
+  asOfDate: date("as_of_date").notNull(),
+  schedulesProcessed: integer("schedules_processed").notNull().default(0),
+  entriesPosted: integer("entries_posted").notNull().default(0),
+  centsRecognised: bigint("cents_recognised", { mode: "number" }).notNull().default(0),
+  status: text("status").notNull().default("running"),
+  errorMessage: text("error_message"),
+});
+
+export const form1099Batches = pgTable("form_1099_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  taxYear: integer("tax_year").notNull(),
+  status: text("status").notNull().default("queued"), // queued | running | success | failure
+  formCount: integer("form_count").notNull().default(0),
+  totalInterestCents: bigint("total_interest_cents", { mode: "number" }).notNull().default(0),
+  resultBlob: jsonb("result_blob").$type<{
+    forms?: Array<{ noteId: number; recipientName: string; box1Cents: number }>;
+    fireFile?: string;
+    pdfPaths?: string[];
+    summary?: string;
+  } | null>(),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type RecognitionSchedule = typeof recognitionSchedules.$inferSelect;
+export type InsertRecognitionSchedule = typeof recognitionSchedules.$inferInsert;
+export type RecognitionRun = typeof recognitionRuns.$inferSelect;
+export type Form1099Batch = typeof form1099Batches.$inferSelect;
+export type InsertForm1099Batch = typeof form1099Batches.$inferInsert;
+
+// ============================================================================
 // OUTBOX + DLQ + JOB RUNS — Phase 3 Week 7-8
 // ----------------------------------------------------------------------------
 // Backed by migrations/0046_outbox_jobs.sql. See server/jobs/scheduler.ts for
