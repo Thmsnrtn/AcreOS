@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -2538,6 +2538,9 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   properties: many(properties),
   notes: many(notes),
   campaigns: many(campaigns),
+  // Lavender §1 / Hilda §2 — accounting foundation
+  chartOfAccounts: many(chartOfAccounts),
+  ledgerEntries: many(accountLedgerEntries),
 }));
 
 export const propertiesRelations = relations(properties, ({ one, many }) => ({
@@ -15560,3 +15563,152 @@ export const integrationStatus = pgTable("integration_status", {
 export const insertIntegrationStatusSchema = createInsertSchema(integrationStatus).omit({ id: true, updatedAt: true });
 export type IntegrationStatus = typeof integrationStatus.$inferSelect;
 export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
+
+// ============================================
+// CHART OF ACCOUNTS / GENERAL LEDGER (Lavender §1, Hilda §2)
+// ============================================
+//
+// Foundation for AcreOS's monthly-close pipeline. This PR ships the schema
+// + seed only — recognition worker, trial-balance generator, GL-PDF, and
+// IIF/QBO export are scheduled for Lavender Week 10 (see
+// docs/exhaustive-completion/lavender-week10-todo.md).
+//
+//   * `chartOfAccounts`        — per-org tree of accounts. Customer-defined
+//                                accountNumber so orgs can mirror their CPA
+//                                or QBO chart. parentAccountId enables
+//                                hierarchy (e.g. 1500-Property → 1510-Land).
+//   * `accountLedgerEntries`   — single-leg double-entry rows: every
+//                                business event posts ≥2 rows (one debit,
+//                                one credit) referencing the same source.
+//                                The CHECK constraint enforces "exactly one
+//                                side > 0" so no row can be both sides at
+//                                once. Aggregating debits − credits per
+//                                account gives the running balance.
+//
+// All amounts are bigint cents — never floats. UUIDs (varchar +
+// gen_random_uuid()) follow the project convention used by email_events
+// and friends.
+
+export const chartOfAccounts = pgTable(
+  "chart_of_accounts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    accountNumber: text("account_number").notNull(), // e.g. "1000", "4000-CASH"
+    accountName: text("account_name").notNull(),
+    accountType: text("account_type").notNull(), // asset|liability|equity|revenue|expense|contra_asset|contra_revenue
+    parentAccountId: varchar("parent_account_id"),
+    isActive: boolean("is_active").default(true).notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    orgNumberUnique: uniqueIndex("chart_of_accounts_org_number_unique").on(
+      table.organizationId,
+      table.accountNumber,
+    ),
+    byOrgType: index("chart_of_accounts_org_type_idx").on(
+      table.organizationId,
+      table.accountType,
+    ),
+  }),
+);
+
+export const accountLedgerEntries = pgTable(
+  "account_ledger_entries",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    accountId: varchar("account_id")
+      .references(() => chartOfAccounts.id, { onDelete: "restrict" })
+      .notNull(),
+    // bigint mode "number" — JS numbers safely represent values up to
+    // 2^53 cents (~$90 trillion). We never expect a single ledger row
+    // to exceed that, and "number" keeps arithmetic (debit − credit
+    // aggregation) ergonomic without BigInt coercion.
+    debit: bigint("debit", { mode: "number" }).default(0).notNull(),
+    credit: bigint("credit", { mode: "number" }).default(0).notNull(),
+    description: text("description"),
+    referenceType: text("reference_type"), // invoice | payment | manual | stripe_charge | ...
+    referenceId: text("reference_id"),
+    bookingDate: date("booking_date").notNull(),
+    postedAt: timestamp("posted_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    // Database-level invariant: every row is exactly one side of the
+    // double-entry pair. Application code must always insert a matched
+    // pair (or n-tuple) inside a single transaction.
+    debitXorCredit: check(
+      "account_ledger_entries_debit_xor_credit",
+      sql`(${table.debit} > 0 AND ${table.credit} = 0) OR (${table.debit} = 0 AND ${table.credit} > 0)`,
+    ),
+    nonNegative: check(
+      "account_ledger_entries_non_negative",
+      sql`${table.debit} >= 0 AND ${table.credit} >= 0`,
+    ),
+    byOrgBookingDate: index("account_ledger_entries_org_booking_idx").on(
+      table.organizationId,
+      table.bookingDate,
+    ),
+    byAccountBookingDate: index("account_ledger_entries_account_booking_idx").on(
+      table.accountId,
+      table.bookingDate,
+    ),
+    byReference: index("account_ledger_entries_reference_idx").on(
+      table.referenceType,
+      table.referenceId,
+    ),
+  }),
+);
+
+export const chartOfAccountsRelations = relations(chartOfAccounts, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [chartOfAccounts.organizationId],
+    references: [organizations.id],
+  }),
+  parent: one(chartOfAccounts, {
+    fields: [chartOfAccounts.parentAccountId],
+    references: [chartOfAccounts.id],
+    relationName: "chart_of_accounts_parent",
+  }),
+  children: many(chartOfAccounts, { relationName: "chart_of_accounts_parent" }),
+  entries: many(accountLedgerEntries),
+}));
+
+export const accountLedgerEntriesRelations = relations(accountLedgerEntries, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [accountLedgerEntries.organizationId],
+    references: [organizations.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [accountLedgerEntries.accountId],
+    references: [chartOfAccounts.id],
+  }),
+}));
+
+export const insertChartOfAccountSchema = createInsertSchema(chartOfAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
+export type InsertChartOfAccount = z.infer<typeof insertChartOfAccountSchema>;
+
+export const insertAccountLedgerEntrySchema = createInsertSchema(accountLedgerEntries).omit({
+  id: true,
+  postedAt: true,
+});
+export type AccountLedgerEntry = typeof accountLedgerEntries.$inferSelect;
+export type InsertAccountLedgerEntry = z.infer<typeof insertAccountLedgerEntrySchema>;
+
+export type AccountType =
+  | "asset"
+  | "liability"
+  | "equity"
+  | "revenue"
+  | "expense"
+  | "contra_asset"
+  | "contra_revenue";

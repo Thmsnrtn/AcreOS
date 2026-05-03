@@ -1191,6 +1191,19 @@ export class DatabaseStorage implements IStorage {
           console.warn(`[onboarding] startJourney failed for org ${newOrg.id}: ${err?.message ?? err}`),
         );
     }
+    // Lavender §1 / Hilda §2 — every org gets a default 15-account chart
+    // of accounts so the monthly-close pipeline (recognition worker,
+    // trial-balance, GL-PDF — Week 10) has a non-empty target. Seed is
+    // idempotent so retries / re-imports are safe. Fire-and-forget; an
+    // org without a chart degrades gracefully (Week 10 reports show
+    // empty) but should never block org creation.
+    if (newOrg) {
+      import("./services/chartOfAccountsSeed")
+        .then(({ seedChartOfAccountsForOrg }) => seedChartOfAccountsForOrg(newOrg.id))
+        .catch((err) =>
+          console.warn(`[chartOfAccountsSeed] failed for org ${newOrg.id}: ${err?.message ?? err}`),
+        );
+    }
     return newOrg;
   }
   
