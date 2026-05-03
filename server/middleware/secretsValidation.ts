@@ -29,8 +29,13 @@ const SECRETS: SecretSpec[] = [
   { key: "FOUNDER_EMAIL", required: false, description: "Comma-separated founder email(s) for admin access" },
 
   // Task #21: Field encryption key — required in production (AES-256 key = 32 bytes = 64 hex chars)
-  // Generate: node -e "logger.info(require('crypto').randomBytes(32).toString('hex'))"
-  { key: "FIELD_ENCRYPTION_KEY", required: false, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
+  // R3 (skip-trace PII at-rest encryption) flipped this to required: the app
+  // refuses to boot in production without a stable key. Without it, every
+  // restart would either re-derive a new key from SESSION_SECRET (and silently
+  // make existing skip_traces / tax-id ciphertexts undecryptable) or run with
+  // a known-insecure dev fallback.
+  // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  { key: "FIELD_ENCRYPTION_KEY", required: true, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
 
   // AI — OpenRouter is the primary AI provider (routes to Claude, GPT-4o, DeepSeek)
   { key: "AI_INTEGRATIONS_OPENROUTER_API_KEY", required: false, description: "OpenRouter API key — primary AI provider (required for all AI features)", productionOnly: true },

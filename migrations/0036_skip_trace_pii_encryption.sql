@@ -1,0 +1,40 @@
+-- R3: Skip-trace PII at-rest encryption.
+--
+-- Background
+-- ----------
+-- `skip_traces.input_data` and `skip_traces.results` carry PII returned by
+-- the configured skip-trace provider — phone numbers, prior addresses,
+-- relatives, age range, last-4 SSN, and DOB hints. Until this fix landed
+-- they were stored as plaintext JSONB. Sam §1, Marguerite §2, and
+-- Caspian §1 flagged it as a P0 R3 issue.
+--
+-- Fix
+-- ---
+-- Application layer (server/storage.ts + server/services/skipTraceEncryption.ts)
+-- now writes both columns as an AES-256-GCM encryption envelope, using the
+-- same `configManager.encryptValue` primitive that protects
+-- `organizations.ein` (commit 1229826). The key is `FIELD_ENCRYPTION_KEY`,
+-- now `required: true` in `server/middleware/secretsValidation.ts`.
+--
+-- Envelope shape (stored in the existing JSONB columns):
+--     { "_enc": "<iv>:<tag>:<ct>", "_v": 1 }
+--
+-- This migration is a no-op at the schema level — both columns stay JSONB.
+-- It exists so the migration ledger records when the encryption boundary
+-- moved into place, and so a deployer reading the migrations folder sees
+-- the change.
+--
+-- Tolerant-read pattern
+-- ---------------------
+-- decryptSkipTracePayload tolerates legacy plaintext rows (returns them
+-- verbatim). New writes always emit the encrypted envelope. This mirrors
+-- `decryptStoredTin` in server/services/bookkeeping.ts and lets the fix
+-- ship without a destructive bulk re-encrypt of historical rows. If you
+-- want to re-encrypt at-rest for compliance attestation, the next time
+-- each trace is updated it will be rewritten in encrypted form — or write
+-- a one-shot script that loads each row, calls
+-- `storage.updateSkipTrace(id, { inputData, results })`, which will route
+-- the values through `encryptSkipTracePayload`.
+--
+-- No DDL.
+SELECT 1;
