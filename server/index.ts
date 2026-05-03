@@ -369,7 +369,9 @@ app.use("/api", apiLimiter);
           "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
           "email" text NOT NULL,
           "role" text NOT NULL DEFAULT 'member',
-          "token" text NOT NULL UNIQUE,
+          "token" text UNIQUE,
+          "invite_token_hash" text,
+          "invite_token_last4" text,
           "invited_by_user_id" text,
           "status" text NOT NULL DEFAULT 'pending',
           "created_at" timestamp DEFAULT now() NOT NULL,
@@ -377,12 +379,47 @@ app.use("/api", apiLimiter);
           "accepted_at" timestamp,
           "accepted_by_user_id" text
         );
+        ALTER TABLE "organization_invitations"
+          ADD COLUMN IF NOT EXISTS "invite_token_hash" text;
+        ALTER TABLE "organization_invitations"
+          ADD COLUMN IF NOT EXISTS "invite_token_last4" text;
+        ALTER TABLE "organization_invitations"
+          ALTER COLUMN "token" DROP NOT NULL;
         CREATE INDEX IF NOT EXISTS "idx_org_invitations_org_id"
           ON "organization_invitations" ("organization_id");
         CREATE INDEX IF NOT EXISTS "idx_org_invitations_email_status"
           ON "organization_invitations" ("email", "status");
         CREATE INDEX IF NOT EXISTS "idx_org_invitations_token"
           ON "organization_invitations" ("token");
+        CREATE INDEX IF NOT EXISTS "idx_org_invitations_token_hash"
+          ON "organization_invitations" ("invite_token_hash");
+
+        CREATE TABLE IF NOT EXISTS "email_events" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "email" text NOT NULL,
+          "event" text NOT NULL,
+          "sg_event_id" text UNIQUE,
+          "sg_message_id" text,
+          "timestamp" timestamptz,
+          "reason" text,
+          "status" text,
+          "response" text,
+          "metadata" jsonb,
+          "created_at" timestamptz DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "idx_email_events_email_created"
+          ON "email_events" ("email", "created_at" DESC);
+        CREATE INDEX IF NOT EXISTS "idx_email_events_sg_event_id"
+          ON "email_events" ("sg_event_id");
+
+        CREATE TABLE IF NOT EXISTS "email_suppressions" (
+          "email" text PRIMARY KEY,
+          "reason" text NOT NULL,
+          "suppressed_at" timestamptz DEFAULT now() NOT NULL,
+          "source" text
+        );
+        CREATE INDEX IF NOT EXISTS "idx_email_suppressions_source"
+          ON "email_suppressions" ("source");
       `);
     } catch (err: any) {
       log(`organization_invitations bootstrap: ${err.message}`, "db");

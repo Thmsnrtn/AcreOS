@@ -164,7 +164,19 @@ export const organizationInvitations = pgTable("organization_invitations", {
   organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   email: text("email").notNull(),
   role: text("role").notNull().default("member"), // owner, admin, member, viewer, acquisitions, marketing, finance
-  token: text("token").notNull().unique(), // opaque token included in the invite link
+  /**
+   * @deprecated Plaintext invite token. Retained ONLY for tolerant validation
+   * of legacy rows created before invite-token hashing landed (Pelle G/H/I).
+   * New rows leave this NULL and store SHA-256 in inviteTokenHash. The accept
+   * path lazy-migrates legacy rows on first hit (see routes-organization.ts).
+   * A follow-up migration will drop this column once telemetry confirms zero
+   * remaining plaintext rows.
+   */
+  token: text("token").unique(),
+  /** SHA-256 hex of the plaintext invite token. Plaintext lives in the email/URL only. */
+  inviteTokenHash: text("invite_token_hash"),
+  /** Last 4 chars of the plaintext token, safe to display in audit logs / support UI. */
+  inviteTokenLast4: text("invite_token_last4"),
   invitedByUserId: text("invited_by_user_id"),
   status: text("status").notNull().default("pending"), // pending, accepted, revoked, expired
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -172,6 +184,52 @@ export const organizationInvitations = pgTable("organization_invitations", {
   acceptedAt: timestamp("accepted_at"),
   acceptedByUserId: text("accepted_by_user_id"),
 });
+
+// ============================================
+// EMAIL EVENTS + SUPPRESSIONS (SendGrid event webhook)
+// ============================================
+// Hessam §2.3: every SendGrid event (delivered/open/click/bounce/dropped/
+// spamreport/unsubscribe/deferred) lands in email_events. Hard-bounce,
+// spamreport, and unsubscribe events also seed email_suppressions, which
+// every outbound send path consults before calling SES.
+export const emailEvents = pgTable(
+  "email_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    email: text("email").notNull(),
+    event: text("event").notNull(), // delivered | open | click | bounce | dropped | spamreport | unsubscribe | deferred | processed
+    sgEventId: text("sg_event_id").unique(), // SendGrid's per-event ID — used for idempotency
+    sgMessageId: text("sg_message_id"),
+    timestamp: timestamp("timestamp", { withTimezone: true }),
+    reason: text("reason"),
+    status: text("status"),
+    response: text("response"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    byEmailCreated: index("idx_email_events_email_created").on(table.email, table.createdAt),
+    bySgEventId: index("idx_email_events_sg_event_id").on(table.sgEventId),
+  })
+);
+
+export const emailSuppressions = pgTable(
+  "email_suppressions",
+  {
+    email: text("email").primaryKey(),
+    reason: text("reason").notNull(),
+    suppressedAt: timestamp("suppressed_at", { withTimezone: true }).defaultNow().notNull(),
+    source: text("source"), // "bounce" | "spam" | "unsubscribe" | "manual"
+  },
+  (table) => ({
+    bySource: index("idx_email_suppressions_source").on(table.source),
+  })
+);
+
+export type EmailEvent = typeof emailEvents.$inferSelect;
+export type InsertEmailEvent = typeof emailEvents.$inferInsert;
+export type EmailSuppression = typeof emailSuppressions.$inferSelect;
+export type InsertEmailSuppression = typeof emailSuppressions.$inferInsert;
 
 // ============================================
 // VERIFIED SENDERS (Email & SMS)
