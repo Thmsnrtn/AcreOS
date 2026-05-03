@@ -3,6 +3,21 @@ import { Users, Map, Handshake, CheckSquare, Megaphone, Banknote, FileSpreadshee
 import { useBrandName } from "@/hooks/use-white-label";
 
 // ---------------------------------------------------------------------------
+// Archetype re-exports
+// ---------------------------------------------------------------------------
+// The three reusable empty-state archetypes — prefer these over the
+// surface-specific components below for new code:
+//   - FirstHelloEmpty: new orgs with no data yet
+//   - ClearedEmpty:    inbox-zero / queue-cleared affirming state
+//   - EmptyFilter:     filters returned nothing, data exists overall
+export {
+  FirstHelloEmpty,
+  ClearedEmpty,
+  EmptyFilter,
+  type FirstHelloSurface,
+} from "@/components/empty-states/index";
+
+// ---------------------------------------------------------------------------
 // Leads
 // ---------------------------------------------------------------------------
 

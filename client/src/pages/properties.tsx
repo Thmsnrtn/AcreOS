@@ -112,8 +112,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EmptyState } from "@/components/empty-state";
-import { PropertiesEmptyState } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -700,26 +699,28 @@ export default function PropertiesPage() {
               ))}
               {filteredProperties.length === 0 && properties && properties.length > 0 && (
                 <div className="col-span-full">
-                  <EmptyState
-                    icon={FilterIcon}
-                    title="No properties match these filters"
-                    description={`${properties.length} ${properties.length === 1 ? "property is" : "properties are"} hidden by your current filters. Reset to see them again.`}
-                    actionLabel="Reset filters"
-                    actionIcon={null}
-                    onAction={() => {
+                  <EmptyFilter
+                    filterCount={
+                      (statusFilter !== "all" ? 1 : 0) +
+                      (distressFilter !== "any" ? 1 : 0) +
+                      countActiveGisFilters(gisFilters)
+                    }
+                    onClearFilters={() => {
                       resetGisFilters();
                       setStatusFilter("all");
                       setDistressFilter("any");
                     }}
-                    testId="empty-state-properties-filtered"
                   />
                 </div>
               )}
               {properties?.length === 0 && (
                 <div className="col-span-full">
-                  <PropertiesEmptyState
-                    onAddProperty={() => setIsCreateOpen(true)}
-                    onImportProperties={() => setIsImportOpen(true)}
+                  <FirstHelloEmpty
+                    surface="properties"
+                    cta={{
+                      primary: { label: "Add a property", onClick: () => setIsCreateOpen(true) },
+                      secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                    }}
                   />
                 </div>
               )}

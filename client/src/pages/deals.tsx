@@ -51,8 +51,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
-import { DealsEmptyState } from "@/components/empty-states";
+import { FirstHelloEmpty } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -696,8 +695,11 @@ export default function DealsPage() {
           )}
 
           {!isLoading && enrichedDeals.length === 0 ? (
-            <DealsEmptyState
-              onAddDeal={() => setIsCreateOpen(true)}
+            <FirstHelloEmpty
+              surface="deals"
+              cta={{
+                primary: { label: "Create a deal", onClick: () => setIsCreateOpen(true) },
+              }}
             />
           ) : (
             <>
