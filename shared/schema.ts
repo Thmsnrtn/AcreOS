@@ -713,6 +713,15 @@ export const properties = pgTable("properties", {
   // Entity ownership tracking
   owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
 
+  // Indian-Country / federal trust land status (Aniyah §2 — 25 USC §177, 25 CFR §152).
+  // Tribal trust, individual trust, and restricted-fee parcels are NOT alienable
+  // under standard fee-simple rules. Auto-AVM, blind-offer generation, and
+  // contract auto-doc must be blocked unless landStatus === 'fee'. The default
+  // is 'unknown' so existing rows safely block automation until a human verifies.
+  // TODO(LAR-overlay): Phase B will auto-set this from the BIA Land Area
+  // Representations shapefile overlay. For now this is a manual-verification field.
+  landStatus: text("land_status").notNull().default("unknown"),
+
   // Soft delete
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
@@ -2658,6 +2667,23 @@ export type NurturingStage = "hot" | "warm" | "cold" | "dead" | "new";
 // Properties
 export type Property = typeof properties.$inferSelect;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
+
+// Indian-Country land status (Aniyah §2 — 25 USC §177, 25 CFR §152).
+// Trust and restricted-fee parcels require BIA approval for any title transfer;
+// fee-simple parcels follow standard alienability rules. 'unknown' means the
+// status has not been verified by a human and auto-actions must be blocked.
+export const LAND_STATUS_VALUES = [
+  "fee",                    // Standard fee-simple — alienability rules apply normally
+  "tribal_trust",           // Held in trust by US for a tribe (25 USC §177)
+  "individual_trust",       // Held in trust by US for an individual Indian (allotment)
+  "restricted_fee",         // Owned by Indian individual/tribe, alienation restricted
+  "fee_within_reservation", // Fee-simple parcel inside reservation boundaries (still tribal-jurisdiction concerns)
+  "off_reservation_trust",  // Trust land outside reservation boundaries
+  "unknown",                // Not yet verified — auto-actions blocked
+] as const;
+export type LandStatus = (typeof LAND_STATUS_VALUES)[number];
+export const landStatusSchema = z.enum(LAND_STATUS_VALUES);
+
 
 // Deals
 export type Deal = typeof deals.$inferSelect;

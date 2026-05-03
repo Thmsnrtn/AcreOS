@@ -5,6 +5,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { logger } from "./utils/logger";
+import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -54,7 +55,13 @@ export function registerDocumentRoutes(app: Express): void {
     try {
       const { generateWarrantyDeed } = await import("./services/documents");
       const org = req.organization;
-      
+
+      // Aniyah §2 — block deed auto-doc on Indian-Country / federal trust
+      // parcels. Title transfers on these parcels require BIA approval
+      // (25 CFR §152) and a generic warranty deed would be federally void.
+      const parcelForDeed = await storage.getProperty(org.id, Number(req.params.id));
+      assertFeeSimpleOrThrow(parcelForDeed ?? null, "warranty-deed");
+
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
@@ -79,24 +86,29 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${req.params.id}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
+      res.status(err.message === "Property not found" ? 404 : 500).json({
+        message: err.message || "Failed to generate PDF"
       });
     }
   });
-  
+
   // Generate offer letter PDF
   api.post("/api/documents/offer-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateOfferLetter } = await import("./services/documents");
       const org = req.organization;
       const { leadId, propertyId, offerAmount, earnestMoney, closingDate, contingencies, additionalTerms } = req.body;
-      
+
       if (!leadId || !propertyId) {
         return res.status(400).json({ message: "leadId and propertyId are required" });
       }
-      
+
+      // Aniyah §2 — block offer-letter auto-doc on Indian-Country parcels.
+      const parcelForOffer = await storage.getProperty(org.id, Number(propertyId));
+      assertFeeSimpleOrThrow(parcelForOffer ?? null, "offer-letter");
+
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
@@ -108,29 +120,30 @@ export function registerDocumentRoutes(app: Express): void {
           balance: balance / 100,
         });
       }
-      
+
       const pdfBuffer = await generateOfferLetter(
         Number(leadId),
         Number(propertyId),
         org.id,
         { offerAmount, earnestMoney, closingDate, contingencies, additionalTerms }
       );
-      
+
       // Record usage after successful PDF generation
       await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
         documentType: "offer_letter",
         leadId: Number(leadId),
         propertyId: Number(propertyId),
       });
-      
+
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="offer-letter-${leadId}-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
       const notFound = err.message === "Lead not found" || err.message === "Property not found";
-      res.status(notFound ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
+      res.status(notFound ? 404 : 500).json({
+        message: err.message || "Failed to generate PDF"
       });
     }
   });
@@ -141,11 +154,15 @@ export function registerDocumentRoutes(app: Express): void {
       const { generateSettlementStatement } = await import("./services/documents");
       const org = req.organization;
       const { propertyId, purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts } = req.body;
-      
+
       if (!propertyId) {
         return res.status(400).json({ message: "propertyId is required" });
       }
-      
+
+      // Aniyah §2 — block settlement-statement auto-doc on Indian-Country parcels.
+      const parcelForSettlement = await storage.getProperty(org.id, Number(propertyId));
+      assertFeeSimpleOrThrow(parcelForSettlement ?? null, "settlement-statement");
+
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
@@ -157,26 +174,27 @@ export function registerDocumentRoutes(app: Express): void {
           balance: balance / 100,
         });
       }
-      
+
       const pdfBuffer = await generateSettlementStatement(
         Number(propertyId),
         org.id,
         { purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts }
       );
-      
+
       // Record usage after successful PDF generation
       await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
         documentType: "settlement_statement",
         propertyId: Number(propertyId),
       });
-      
+
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="settlement-statement-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
+      res.status(err.message === "Property not found" ? 404 : 500).json({
+        message: err.message || "Failed to generate PDF"
       });
     }
   });
@@ -275,11 +293,15 @@ export function registerDocumentRoutes(app: Express): void {
       const { generateWarrantyDeed } = await import("./services/documents");
       const org = req.organization;
       const { propertyId } = req.body;
-      
+
       if (!propertyId) {
         return res.status(400).json({ message: "propertyId is required" });
       }
-      
+
+      // Aniyah §2 — block deed auto-doc on Indian-Country parcels.
+      const parcelForDeedPost = await storage.getProperty(org.id, Number(propertyId));
+      assertFeeSimpleOrThrow(parcelForDeedPost ?? null, "warranty-deed");
+
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
@@ -291,22 +313,23 @@ export function registerDocumentRoutes(app: Express): void {
           balance: balance / 100,
         });
       }
-      
+
       const pdfBuffer = await generateWarrantyDeed(Number(propertyId), org.id);
-      
+
       // Record usage after successful PDF generation
       await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
         documentType: "warranty_deed",
         propertyId: Number(propertyId),
       });
-      
+
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
+      res.status(err.message === "Property not found" ? 404 : 500).json({
+        message: err.message || "Failed to generate PDF"
       });
     }
   });
@@ -490,11 +513,21 @@ Seller Signature (if applicable)
     try {
       const { generateDeedOfTrust } = await import("./services/documents");
       const org = req.organization;
+
+      // Aniyah §2 — block deed-of-trust auto-doc on Indian-Country parcels.
+      // Caller may pass propertyId in the body to bind the deed to a specific
+      // parcel; if so we look up its landStatus and require 'fee'.
+      if (req.body?.propertyId) {
+        const parcelForDot = await storage.getProperty(org.id, Number(req.body.propertyId));
+        assertFeeSimpleOrThrow(parcelForDot ?? null, "deed-of-trust");
+      }
+
       const pdfBuffer = await generateDeedOfTrust({ ...req.body, orgName: org.name });
       res.set("Content-Type", "application/pdf");
       res.set("Content-Disposition", `attachment; filename="deed-of-trust.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       res.status(500).json({ message: err.message });
     }
   });
@@ -504,11 +537,21 @@ Seller Signature (if applicable)
     try {
       const { generateLandContract } = await import("./services/documents");
       const org = req.organization;
+
+      // Aniyah §2 — block land-contract (contract for deed) auto-doc on
+      // Indian-Country parcels. Trust-land transfers require BIA approval
+      // (25 CFR §152) and a generic land contract would be federally void.
+      if (req.body?.propertyId) {
+        const parcelForLc = await storage.getProperty(org.id, Number(req.body.propertyId));
+        assertFeeSimpleOrThrow(parcelForLc ?? null, "land-contract");
+      }
+
       const pdfBuffer = await generateLandContract({ ...req.body, orgName: org.name });
       res.set("Content-Type", "application/pdf");
       res.set("Content-Disposition", `attachment; filename="land-contract.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
+      if (handleLandStatusError(res, err)) return;
       res.status(500).json({ message: err.message });
     }
   });
