@@ -211,6 +211,38 @@ export function CommandPalette() {
   const { data: propertiesData } = useQuery<Property[]>({ queryKey: ["/api/properties"], enabled: open });
   const { data: dealsData } = useQuery<Deal[]>({ queryKey: ["/api/deals"], enabled: open });
 
+  // Phase 3 Week 14 (Anaïs §2): server-side fuzzy/hybrid search.
+  // The local `leadsData.filter(...)` paths above are kept as a hot
+  // cache for instant typing feedback; this query overlays the
+  // tsvector + unaccent + phone-normalized matches once the server
+  // responds. Debounced via React Query's intrinsic dedup + 200ms
+  // staleTime so a fast typist doesn't flood the server.
+  type ServerSearchResult = {
+    type: "lead" | "property" | "deal";
+    id: number;
+    title: string;
+    subtitle: string;
+    rank: number;
+    url: string;
+  };
+  const { data: serverSearchData } = useQuery<{
+    results: Record<string, ServerSearchResult[]>;
+    query: string;
+    total: number;
+  }>({
+    queryKey: ["/api/search", search],
+    enabled: open && search.trim().length >= 2,
+    staleTime: 200,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/search?q=${encodeURIComponent(search.trim())}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return { results: {}, query: search, total: 0 };
+      return res.json();
+    },
+  });
+
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
       const res = await apiRequest("POST", "/api/realtime/ask", { message: question });
@@ -573,21 +605,52 @@ export function CommandPalette() {
                   <>
                     <CommandEmpty>No results found. Start with "?" to ask AI.</CommandEmpty>
 
-                    {/* Search Results (leads, properties, deals) */}
+                    {/* Search Results (leads, properties, deals).
+                        Prefer server-side fuzzy/hybrid results when the
+                        /api/search query has resolved (Anaïs §2 wiring).
+                        Fall back to client-side filter for instant
+                        feedback while the server round-trip is in
+                        flight. */}
                     {query.trim().length > 0 && (
                       <CommandGroup heading="Search results">
                         {(() => {
-                          const q = query.trim().toLowerCase();
-                          const leadMatches = (leadsData || []).filter(l =>
-                            (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q)
-                          ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
-                          const propertyMatches = (propertiesData || []).filter(p =>
-                            (p.county+" "+p.state).toLowerCase().includes(q) || String(p.apn||'').toLowerCase().includes(q)
-                          ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
-                          const dealMatches = (dealsData || []).filter(d =>
-                            String(d.id).includes(q)
-                          ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
-                          const results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
+                          const serverResults = serverSearchData?.results;
+                          const serverFlat: Array<{ name: string; path: string; rank: number }> = [];
+                          if (serverResults && Object.keys(serverResults).length) {
+                            for (const [type, items] of Object.entries(serverResults)) {
+                              for (const r of items) {
+                                const label =
+                                  type === "lead" ? `Lead: ${r.title}` :
+                                  type === "property" ? `Property: ${r.title}` :
+                                  type === "deal" ? `Deal: ${r.title}` :
+                                  r.title;
+                                serverFlat.push({
+                                  name: label,
+                                  path: r.url,
+                                  rank: r.rank ?? 0,
+                                });
+                              }
+                            }
+                            serverFlat.sort((a, b) => b.rank - a.rank);
+                          }
+
+                          let results: Array<{ name: string; path: string }>;
+                          if (serverFlat.length) {
+                            results = serverFlat.slice(0, 8);
+                          } else {
+                            // Client-side fallback while server is in flight.
+                            const q = query.trim().toLowerCase();
+                            const leadMatches = (leadsData || []).filter(l =>
+                              (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q)
+                            ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
+                            const propertyMatches = (propertiesData || []).filter(p =>
+                              (p.county+" "+p.state).toLowerCase().includes(q) || String(p.apn||'').toLowerCase().includes(q)
+                            ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
+                            const dealMatches = (dealsData || []).filter(d =>
+                              String(d.id).includes(q)
+                            ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
+                            results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
+                          }
                           return results.length ? results.map(r => (
                             <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
                               <Search className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />

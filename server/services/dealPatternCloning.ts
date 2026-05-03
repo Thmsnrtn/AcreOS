@@ -594,6 +594,14 @@ class DealPatternCloningService {
 
     const embedding = await this.generateEmbedding(fingerprint);
 
+    // Only persist embeddings that match the 1536-dim pgvector column
+    // (migration 0052). The simpleEmbedding fallback returns ~17 dims,
+    // which would crash the insert. We accept the loss — the pattern
+    // row is still searchable by ts_rank/keyword arm and the embedding
+    // refresh job will re-attempt next cycle once OpenAI is available.
+    const persistedEmbedding =
+      embedding && embedding.length === 1536 ? embedding : undefined;
+
     const insertData: InsertDealPattern = {
       organizationId,
       dealId,
@@ -602,7 +610,12 @@ class DealPatternCloningService {
       profitAmount: profitAmount.toString(),
       roiPercent: roiPercent.toString(),
       daysToComplete,
-      embeddingVector: embedding,
+      ...(persistedEmbedding
+        ? {
+            embeddingVector: persistedEmbedding,
+            embeddingRefreshedAt: new Date(),
+          }
+        : {}),
     };
 
     const [insertedPattern] = await db.insert(dealPatterns).values(insertData).returning();
