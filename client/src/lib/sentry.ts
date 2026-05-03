@@ -19,6 +19,20 @@ function getRelease(): string {
 }
 
 /**
+ * Read a numeric env var with a default. Falls back to `__ENV__` (runtime
+ * injected) so the founder can re-tune sampling without rebuilding.
+ */
+function readRate(envKey: string, fallback: number): number {
+  const raw =
+    (import.meta.env[envKey] as string | undefined) ||
+    ((window as any).__ENV__?.[envKey] as string | undefined);
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
+  return parsed;
+}
+
+/**
  * Capture Core Web Vitals as Sentry custom events. Each metric is
  * attached as a measurement on a transaction-shaped breadcrumb so it
  * shows up alongside performance data in the Sentry UI.
@@ -45,6 +59,64 @@ function installWebVitalsReporter(): void {
 }
 
 /**
+ * List of error patterns we never want to send to Sentry — high-volume,
+ * low-signal noise that blows past the free tier without ever pointing
+ * at a real bug.
+ */
+const NOISE_MESSAGE_PATTERNS = [
+  /ResizeObserver loop limit exceeded/i,
+  /ResizeObserver loop completed with undelivered notifications/i,
+  /Non-Error promise rejection captured/i,
+  /Network request failed/i,
+  /Load failed/i,
+  /The operation was aborted/i,
+];
+
+const NOISE_ERROR_NAMES = new Set([
+  "AbortError",
+  "CanceledError",
+  "TypeError: Failed to fetch", // some browsers serialize this as the name
+]);
+
+function isExtensionFrame(filename?: string): boolean {
+  if (!filename) return false;
+  return (
+    filename.startsWith("chrome-extension://") ||
+    filename.startsWith("moz-extension://") ||
+    filename.startsWith("safari-web-extension://") ||
+    filename.includes("extensionId=") ||
+    filename.includes("/extension/")
+  );
+}
+
+/**
+ * Drop common noise — abort errors during navigation, ResizeObserver
+ * loops, browser-extension errors. These are the top cost contributors
+ * on the free tier and never represent app bugs.
+ */
+function isNoiseEvent(event: Sentry.ErrorEvent, hint?: Sentry.EventHint): boolean {
+  // Match by error name (AbortError, CanceledError…)
+  const original = (hint?.originalException ?? null) as unknown;
+  if (original && typeof original === "object") {
+    const name = (original as { name?: string }).name;
+    if (name && NOISE_ERROR_NAMES.has(name)) return true;
+  }
+
+  // Match by message
+  const msg =
+    event.message ||
+    event.exception?.values?.[0]?.value ||
+    "";
+  if (msg && NOISE_MESSAGE_PATTERNS.some((re) => re.test(msg))) return true;
+
+  // Match by stack: any frame from a browser extension
+  const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+  if (frames.some((f) => isExtensionFrame(f.filename))) return true;
+
+  return false;
+}
+
+/**
  * Actually perform the Sentry.init call.
  * Guarded so it can only run once per page load.
  */
@@ -53,6 +125,30 @@ function doSentryInit(): void {
 
   const dsn = (import.meta.env.VITE_SENTRY_DSN || (window as any).__ENV__?.VITE_SENTRY_DSN) as string | undefined;
   if (!dsn) return;
+
+  const isProd = import.meta.env.MODE === "production";
+
+  // Sampling rates — env-driven so the founder can re-tune without redeploy.
+  // Defaults are tuned for Sentry's free tier (5k errors / 10k perf units / 50 replays per month).
+  // Replay session sampling: 1% in prod (down from 10%) — we still capture
+  // 100% of replays around an actual error via replaysOnErrorSampleRate.
+  const replaySession = readRate(
+    "VITE_SENTRY_REPLAY_SESSION_RATE",
+    isProd ? 0.01 : 0.0,
+  );
+  // On-error replay: keep at 1.0 — that's the high-value data.
+  const replayOnError = readRate("VITE_SENTRY_REPLAY_ON_ERROR_RATE", 1.0);
+  // Traces: 5% in prod, 0 in dev/local.
+  const tracesRate = readRate(
+    "VITE_SENTRY_TRACES_RATE",
+    isProd ? 0.05 : 0.0,
+  );
+  // Profiles: 0 in prod for now (TODO: founder may want perf profiles —
+  // bump to 0.05 if/when we sign up for the paid Profiling SKU).
+  const profilesRate = readRate(
+    "VITE_SENTRY_PROFILES_RATE",
+    0.0,
+  );
 
   Sentry.init({
     dsn,
@@ -69,12 +165,14 @@ function doSentryInit(): void {
         blockAllMedia: true,
       }),
     ],
-    // 10% of sessions get full replay — useful for debugging UX issues
-    replaysSessionSampleRate: 0.1,
-    // 100% of sessions with an error get a replay
-    replaysOnErrorSampleRate: 1.0,
-    tracesSampleRate: parseFloat((import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE as string) ?? "0.1"),
-    beforeSend(event) {
+    replaysSessionSampleRate: replaySession,
+    replaysOnErrorSampleRate: replayOnError,
+    tracesSampleRate: tracesRate,
+    profilesSampleRate: profilesRate,
+    beforeSend(event, hint) {
+      // Drop known-noise events before they count against the quota.
+      if (isNoiseEvent(event, hint)) return null;
+
       // Never send auth tokens or session cookies to Sentry
       if (event.request?.headers) {
         delete event.request.headers["Authorization"];
@@ -94,6 +192,11 @@ function doSentryInit(): void {
  * Initialize Sentry for the React client, but only if cookie consent
  * has already been given. No-op when VITE_SENTRY_DSN is not set (local dev)
  * or when the user has not yet accepted cookies (GDPR/ePrivacy).
+ *
+ * Note: replay specifically requires consent — replay records DOM
+ * interactions which qualify as personal data under GDPR/ePrivacy. We
+ * gate the entire init (including non-replay tracing) on consent for
+ * simplicity and to avoid splitting the DSN by category.
  */
 export function initClientSentry(): void {
   const consent = localStorage.getItem(COOKIE_CONSENT_KEY);
