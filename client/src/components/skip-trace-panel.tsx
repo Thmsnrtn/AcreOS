@@ -18,6 +18,7 @@ import {
   DollarSign,
   RefreshCw
 } from "lucide-react";
+import { GlossaryTerm } from "@/components/Glossary";
 import type { Lead } from "@shared/schema";
 
 type SkipTraceResult = {
@@ -106,7 +107,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">
-            <Search className="w-4 h-4" /> Skip Trace
+            <Search className="w-4 h-4" /> <GlossaryTerm slug="skip_trace">Skip Trace</GlossaryTerm>
           </span>
           {skipTrace && getStatusBadge(skipTrace.status)}
         </CardTitle>

@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { GlossaryTerm } from '@/components/Glossary';
 
 function formatDollar(n: number) {
   // Compact display for KPI cards + chart axes. M/K bands round
@@ -408,7 +409,7 @@ export default function AVMPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <TrendingUp className="w-8 h-8 text-primary" aria-hidden="true" />
-            Valuation model (AVM)
+            Valuation model (<GlossaryTerm slug="AVM">AVM</GlossaryTerm>)
           </h1>
           <p className="text-muted-foreground mt-1">
             Proprietary ML valuation model trained on land transactions — instant estimates with confidence intervals.

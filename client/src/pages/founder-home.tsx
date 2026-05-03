@@ -25,7 +25,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { relative, usd } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { GlossaryTerm } from "@/components/Glossary";
 
 interface ExecutiveMetrics {
   mrr: number;
@@ -376,24 +377,51 @@ function MetricCards({ metrics }: { metrics: ExecutiveMetrics }) {
     : metrics.churnRate > 0
       ? { up: false, text: `${metrics.churnRate}% backward 30d` }
       : null;
-  const cards = [
-    { icon: DollarSign, label: "Monthly revenue", value: usd(metrics.mrr, { noCents: true }), iconColor: "text-acr-pos",
-      trend: null as { up: boolean; text: string } | null },
-    { icon: Users, label: "Active customers", value: metrics.activeOrganizations.toLocaleString(), iconColor: "text-acr-info",
-      trend: metrics.newOrgsLast30Days > 0 ? { up: true, text: `+${metrics.newOrgsLast30Days} this month` } : null },
+  const cards: Array<{
+    icon: typeof DollarSign;
+    label: ReactNode;
+    labelKey: string;
+    value: string;
+    iconColor: string;
+    trend: { up: boolean; text: string } | null;
+  }> = [
+    {
+      icon: DollarSign,
+      label: <GlossaryTerm slug="MRR">Monthly revenue</GlossaryTerm>,
+      labelKey: "monthly-revenue",
+      value: usd(metrics.mrr, { noCents: true }),
+      iconColor: "text-acr-pos",
+      trend: null,
+    },
+    {
+      icon: Users,
+      label: "Active customers",
+      labelKey: "active-customers",
+      value: metrics.activeOrganizations.toLocaleString(),
+      iconColor: "text-acr-info",
+      trend: metrics.newOrgsLast30Days > 0 ? { up: true, text: `+${metrics.newOrgsLast30Days} this month` } : null,
+    },
     {
       icon: NpsIcon,
       label: "Customer satisfaction",
+      labelKey: "customer-satisfaction",
       value: npsResponses === 0 ? "No responses yet" : `${nps}`,
       iconColor: npsColor,
       trend: npsResponses > 0 ? { up: nps >= 0, text: `${npsResponses} response${npsResponses === 1 ? "" : "s"} · last 90d` } : null,
     },
-    { icon: AlertTriangle, label: "Churn risk", value: churnPrimaryValue, iconColor: churnIconColor, trend: churnTrend },
+    {
+      icon: AlertTriangle,
+      label: <GlossaryTerm slug="churn_risk">Churn risk</GlossaryTerm>,
+      labelKey: "churn-risk",
+      value: churnPrimaryValue,
+      iconColor: churnIconColor,
+      trend: churnTrend,
+    },
   ];
   return (
     <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((c) => (
-        <motion.div key={c.label} variants={staggerItem}>
+        <motion.div key={c.labelKey} variants={staggerItem}>
           <Card className="h-full">
             <CardContent className="p-5">
               <c.icon className={`h-5 w-5 mb-3 ${c.iconColor}`} aria-hidden="true" />

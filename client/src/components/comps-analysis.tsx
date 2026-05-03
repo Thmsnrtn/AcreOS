@@ -10,6 +10,7 @@ import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, Refr
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
+import { GlossaryTerm } from "@/components/Glossary";
 import type { Property } from "@shared/schema";
 
 interface ComparableProperty {
@@ -493,7 +494,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center justify-between gap-2">
-              <span>Comparable properties (<span className="tabular-nums">{comps.length}</span>)</span>
+              <span><GlossaryTerm slug="comp">Comparable properties</GlossaryTerm> (<span className="tabular-nums">{comps.length}</span>)</span>
               <Badge variant="secondary" aria-label={`Within ${radius} miles`}>
                 Within <span className="tabular-nums mx-1">{radius}</span> miles
               </Badge>

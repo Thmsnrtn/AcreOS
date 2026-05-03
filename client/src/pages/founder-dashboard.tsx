@@ -148,6 +148,7 @@ import { FounderWellbeingCard } from "@/components/founder/FounderWellbeingCard"
 import { SynergyMap } from "@/components/founder/SynergyMap";
 import { CompanyChronicle } from "@/components/founder/CompanyChronicle";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
+import { GlossaryTerm } from "@/components/Glossary";
 
 interface AdminDashboardData {
   revenue: {
@@ -2284,7 +2285,7 @@ export default function FounderDashboard() {
                     {formatCurrency(dashboardData?.revenue.mrr || 0)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    ARR: <span className="font-semibold text-foreground">{formatCurrency((dashboardData?.revenue.mrr || 0) * 12)}</span>
+                    <GlossaryTerm slug="ARR">ARR</GlossaryTerm>: <span className="font-semibold text-foreground">{formatCurrency((dashboardData?.revenue.mrr || 0) * 12)}</span>
                   </p>
                 </div>
                 <div className="space-y-2.5">
@@ -4217,7 +4218,7 @@ export default function FounderDashboard() {
                         <tr className="border-b">
                           <th scope="col" className="text-left py-2">Tier</th>
                           <th scope="col" className="text-right py-2">Count</th>
-                          <th scope="col" className="text-right py-2">MRR</th>
+                          <th scope="col" className="text-right py-2"><GlossaryTerm slug="MRR">MRR</GlossaryTerm></th>
                         </tr>
                       </thead>
                       <tbody>
