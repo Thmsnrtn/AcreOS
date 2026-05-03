@@ -145,6 +145,13 @@ export const organizations = pgTable("organizations", {
   autopayFrozenAt: timestamp("autopay_frozen_at"),
   autopayFrozenReason: text("autopay_frozen_reason"),
   autopayFrozenUntil: timestamp("autopay_frozen_until"),
+  // ─── AI cost ceiling (Phase 3 Week 9) ───────────────────────────────────────
+  // Per-org daily USD cap on AI spend. Enforced in routeAITask: if
+  // sum(ai_usage_daily.totalUsd WHERE org=this AND date=today) >= this cap,
+  // the call is rejected with 429 (AIQuotaExceeded). Default $50/day.
+  // Set to 0 to disable enforcement (treats org as unlimited — used for
+  // founder/internal orgs). Founder orgs already bypass via req.isFounder.
+  orgAiQuotaDailyUsd: numeric("org_ai_quota_daily_usd", { precision: 10, scale: 2 }).notNull().default("50.00"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -216,6 +223,9 @@ export const emailEvents = pgTable(
   (table) => ({
     byEmailCreated: index("idx_email_events_email_created").on(table.email, table.createdAt),
     bySgEventId: index("idx_email_events_sg_event_id").on(table.sgEventId),
+    // P1-15 (Phase 3 Week 7-8) — funnel/aggregation queries filter by event
+    // type and order by created_at DESC. Migration: 0045_index_audit.sql.
+    byEventCreated: index("email_events_event_created_idx").on(table.event, table.createdAt),
   })
 );
 
@@ -492,6 +502,10 @@ export const leads = pgTable("leads", {
   index("leads_source_campaign_idx").on(table.sourceCampaignId),
   index("leads_org_updated_idx").on(table.organizationId, table.updatedAt),
   index("leads_score_idx").on(table.score),
+  // P1-15 (Phase 3 Week 7-8) — composite indexes matching real call-sites.
+  // Migration: 0045_index_audit.sql.
+  index("leads_org_status_created_idx").on(table.organizationId, table.status, table.createdAt),
+  index("leads_org_assigned_status_idx").on(table.organizationId, table.assignedTo, table.status),
 ]);
 
 // Lead activity/interactions log
@@ -809,6 +823,10 @@ export const properties = pgTable("properties", {
   index("properties_status_idx").on(table.status),
   index("properties_apn_idx").on(table.apn),
   index("properties_created_at_idx").on(table.createdAt),
+  // P1-15 (Phase 3 Week 7-8) — composite indexes matching real call-sites.
+  // Migration: 0045_index_audit.sql.
+  index("properties_org_land_status_idx").on(table.organizationId, table.landStatus),
+  index("properties_org_status_created_idx").on(table.organizationId, table.status, table.createdAt),
 ]);
 
 // Deals/Transactions (acquisition or disposition)
@@ -1597,6 +1615,13 @@ export const messages = pgTable("messages", {
   uniqueIndex("messages_external_id_unique")
     .on(table.externalId)
     .where(sql`${table.externalId} IS NOT NULL`),
+  // P1-15 (Phase 3 Week 7-8) — thread reads always filter org → conversation
+  // and order by createdAt DESC. Migration: 0045_index_audit.sql.
+  index("messages_org_conversation_created_idx").on(
+    table.organizationId,
+    table.conversationId,
+    table.createdAt,
+  ),
 ]);
 
 // ============================================
@@ -3651,11 +3676,15 @@ export const dunningEvents = pgTable("dunning_events", {
   // Resolution
   resolvedAt: timestamp("resolved_at"),
   resolutionType: text("resolution_type"), // auto_recovered, manual_payment, subscription_cancelled, escalated
-  
+
+  // Phase 3 W10 — SMS leg throttle. Set the first time a dunning SMS is
+  // dispatched in a sequence; checked before sending again so we never spam.
+  smsSentAt: timestamp("sms_sent_at"),
+
   // Metadata
   metadata: jsonb("metadata").$type<Record<string, any>>(),
   errorMessage: text("error_message"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4357,10 +4386,78 @@ export const auditEvents = pgTable("audit_events", {
   index("idx_audit_events_target").on(table.targetType, table.targetId),
   index("idx_audit_events_action").on(table.action),
   index("idx_audit_events_created_at").on(table.createdAt),
+  // P1-15 (Phase 3 Week 7-8) — Coriander recovery-console views filter by
+  // action and order by created_at DESC. Migration: 0045_index_audit.sql.
+  index("audit_events_action_created_idx").on(table.action, table.createdAt),
 ]);
 
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type InsertAuditEvent = typeof auditEvents.$inferInsert;
+
+// ─── Phase 3 Week 11: GDPR/CCPA Data Subject Access Requests ──────────────
+// Public DSAR intake; rows are operator-driven post-receipt. Customers can
+// request access, erasure, portability, or rectification. Founder reviews
+// each request, runs identity verification (email-loop), and either fulfils
+// (data fan-out) or denies (with documented reason).
+export const dsarRequests = pgTable("dsar_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestType: text("request_type").notNull(), // access | erasure | portability | rectification
+  email: text("email").notNull(),
+  fullName: text("full_name").notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  organization: text("organization"),
+  justification: text("justification"),
+  status: text("status").notNull().default("pending"), // pending | verified | fulfilling | completed | denied
+  verificationToken: text("verification_token"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  deniedReason: text("denied_reason"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_dsar_requests_email").on(table.email),
+  index("idx_dsar_requests_status").on(table.status),
+  index("idx_dsar_requests_created_at").on(table.createdAt),
+  index("idx_dsar_requests_org").on(table.organizationId),
+]);
+
+export type DsarRequest = typeof dsarRequests.$inferSelect;
+export type InsertDsarRequest = typeof dsarRequests.$inferInsert;
+
+export const DSAR_REQUEST_TYPES = ["access", "erasure", "portability", "rectification"] as const;
+export type DsarRequestType = typeof DSAR_REQUEST_TYPES[number];
+
+export const DSAR_STATUSES = ["pending", "verified", "fulfilling", "completed", "denied"] as const;
+export type DsarStatus = typeof DSAR_STATUSES[number];
+
+// ─── Phase 3 Week 11: Data Processing Agreements (sub-processor registry) ──
+// Every external vendor that ever touches customer data lives here. The
+// founder maintains negotiation status; vendor outreach is a manual
+// workstream tracked in the /founder/sub-processors UI.
+export const dataProcessingAgreements = pgTable("data_processing_agreements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorName: text("vendor_name").notNull().unique(),
+  status: text("status").notNull().default("pending"), // pending | negotiating | signed | expired
+  signedDate: date("signed_date"),
+  expiresAt: date("expires_at"),
+  contactEmail: text("contact_email"),
+  scope: text("scope"),
+  evidenceUrl: text("evidence_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_dpa_status").on(table.status),
+]);
+
+export type DataProcessingAgreement = typeof dataProcessingAgreements.$inferSelect;
+export type InsertDataProcessingAgreement = typeof dataProcessingAgreements.$inferInsert;
+
+export const DPA_STATUSES = ["pending", "negotiating", "signed", "expired"] as const;
+export type DpaStatus = typeof DPA_STATUSES[number];
 
 // Audit action types
 export const AUDIT_ACTIONS = [
@@ -5717,6 +5814,83 @@ export const insertSubscriptionHistorySchema = createInsertSchema(subscriptionHi
 });
 export type InsertSubscriptionHistory = z.infer<typeof insertSubscriptionHistorySchema>;
 export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
+
+// ============================================
+// CUSTOMER CONCENTRATION (Phase 3 Week 10)
+// ============================================
+// Daily snapshots of MRR concentration so the founder can spot single-
+// customer or top-3 risk over time. Computed by jobs/customerConcentration.ts.
+// alert_triggered/alert_severity carry the policy result so the surface
+// can render historical bands without re-applying thresholds.
+
+export const customerConcentration = pgTable("customer_concentration", {
+  id: serial("id").primaryKey(),
+  computedAt: timestamp("computed_at").defaultNow().notNull(),
+  topMrrPctSingle: numeric("top_mrr_pct_single", { precision: 5, scale: 2 }).notNull().default("0"),
+  topMrrPctTop3: numeric("top_mrr_pct_top3", { precision: 5, scale: 2 }).notNull().default("0"),
+  totalMrrCents: bigint("total_mrr_cents", { mode: "number" }).notNull().default(0),
+  activeOrgCount: integer("active_org_count").notNull().default(0),
+  snapshot: jsonb("snapshot").$type<{
+    topOrgs: Array<{
+      organizationId: number;
+      name: string;
+      tier: string;
+      billingInterval: string;
+      mrrCents: number;
+      pctOfTotal: number;
+    }>;
+  }>().notNull().default({ topOrgs: [] }),
+  alertTriggered: boolean("alert_triggered").notNull().default(false),
+  alertSeverity: text("alert_severity"), // null | 'warning' | 'critical'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCustomerConcentrationSchema = createInsertSchema(customerConcentration).omit({
+  id: true,
+  computedAt: true,
+  createdAt: true,
+});
+export type InsertCustomerConcentration = z.infer<typeof insertCustomerConcentrationSchema>;
+export type CustomerConcentrationRow = typeof customerConcentration.$inferSelect;
+
+// Concentration alert thresholds — kept here so the job and dashboard share
+// the same numbers. Adjust both via this constant only.
+export const CONCENTRATION_THRESHOLDS = {
+  singleCustomerCriticalPct: 20, // > 20% in one customer is critical
+  top3CustomersWarningPct: 40,   // > 40% in top three is a warning
+} as const;
+
+// ============================================
+// DEFERRED REVENUE (Phase 3 Week 10)
+// ============================================
+// Period-by-period accrual rows. The recognition worker (Week 10+, out of
+// scope here) will increment recognized_cents over time. One row per
+// (organization, invoice/subscription period). Currency tracked for future
+// multi-currency support; defaults to USD.
+
+export const deferredRevenue = pgTable("deferred_revenue", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  subscriptionId: text("subscription_id"), // sub_xxx; null for one-time invoices
+  invoiceId: text("invoice_id"),           // in_xxx; useful for recon
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  recognizedCents: bigint("recognized_cents", { mode: "number" }).notNull().default(0),
+  asOfDate: timestamp("as_of_date").defaultNow().notNull(),
+  currency: text("currency").notNull().default("usd"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDeferredRevenueSchema = createInsertSchema(deferredRevenue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDeferredRevenue = z.infer<typeof insertDeferredRevenueSchema>;
+export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 
 // ============================================
 // CANCELLATION SURVEYS & REFUND REQUESTS
@@ -10338,6 +10512,29 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);
+
+// ─── AI Daily Usage (Phase 3 Week 9) ─────────────────────────────────────────
+// Per-org per-day rollup of AI spend. Written from routeAITask after every
+// successful (or failed-after-tokens) call. The quota check sums
+// totalUsd for (org, today UTC) and compares to organizations.org_ai_quota_daily_usd.
+//
+// byFeature is a jsonb breakdown of {<taskType>: {usd, calls}} so the founder
+// dashboard can show cost-by-feature without re-aggregating telemetry events.
+export const aiUsageDaily = pgTable("ai_usage_daily", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  date: date("date").notNull(), // UTC date (YYYY-MM-DD)
+  totalUsd: numeric("total_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  callCount: integer("call_count").notNull().default(0),
+  byFeature: jsonb("by_feature").$type<Record<string, { usd: number; calls: number }>>().default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("ai_usage_daily_org_date_uniq").on(table.organizationId, table.date),
+  index("ai_usage_daily_date_idx").on(table.date),
+]);
+
+export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
+export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
 // ─── User Map Layer Preferences ──────────────────────────────────────────────
 // Persists per-user map layer toggle/opacity settings across devices.

@@ -1,11 +1,26 @@
 /**
  * T2 — DB Connection Pool Tuning + Slow Query Monitoring
  *
- * Pool is tuned for production multi-instance deployments:
- *   max: 20 connections (enough for 2-3 Fly.io instances)
- *   idleTimeoutMillis: 30s (release unused connections quickly)
- *   connectionTimeoutMillis: 5s (fail fast rather than queue)
+ * App-side pool sits BEHIND pgBouncer (transaction pooling mode). pgBouncer
+ * fronts Postgres and multiplexes our many short-lived app connections onto
+ * a much smaller set of real Postgres backends. Because pgBouncer holds the
+ * upstream pool (default_pool_size = 25, max_client_conn = 1000), each app
+ * instance only needs a handful of client connections — all of them target
+ * the same pgBouncer port and are themselves cheap.
+ *
+ * Pool sizing (P1-15, Phase 3 Week 7-8):
+ *   max: 5  connections per app process (down from 20). With 2+ Fly machines
+ *           and pgBouncer multiplexing, 5×N still gives plenty of headroom
+ *           and avoids exhausting pgBouncer's reserve_pool_size when traffic
+ *           spikes.
+ *   idleTimeoutMillis: 60s (release unused connections quickly)
+ *   connectionTimeoutMillis: 10s (cloud DBs can be slow to acquire)
  *   statement_timeout: 30s (kill runaway queries at the DB level)
+ *
+ * NOTE: with pool_mode = transaction, prepared statements at the app layer
+ * are NOT safe across queries. node-postgres does not enable server-side
+ * prepared statements unless you ask for them, and Drizzle's query builder
+ * stays compatible. Avoid `pg.Client.prepare()` in this codebase.
  *
  * Slow query logging: any query exceeding SLOW_QUERY_THRESHOLD_MS is
  * logged with its duration so Sentry/logs can surface bottlenecks.
@@ -24,11 +39,14 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// DB_POOL_MAX defaults to 5 because we sit behind pgBouncer (transaction mode).
+// Override to 20 in environments where DATABASE_URL points directly at
+// Postgres (local dev without pgBouncer, smoke tests, etc.).
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,
+  max: parseInt(process.env.DB_POOL_MAX ?? "5", 10),
   idleTimeoutMillis: 60_000,
-  connectionTimeoutMillis: 10_000, // increased from 3s — cloud DBs can be slow to acquire
+  connectionTimeoutMillis: 10_000, // cloud DBs can be slow to acquire
   statement_timeout: 30_000, // Kill runaway queries after 30s (SRE-03)
   idle_in_transaction_session_timeout: 60_000, // Kill idle-in-transaction after 60s
 });
