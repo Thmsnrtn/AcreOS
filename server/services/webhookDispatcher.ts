@@ -21,6 +21,7 @@ import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
 import { logger } from "../utils/logger";
+import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
 
 export type WebhookEventType =
   // Lead lifecycle
@@ -212,6 +213,21 @@ export async function dispatchWebhook(
       }
 
       try {
+        // F1 SSRF: validate per-delivery, since DNS may rebind between configuration
+        // and delivery. SSRFBlockedError is logged and skipped (counted as failed).
+        try {
+          await validateUrl(endpoint.url);
+        } catch (validationErr: any) {
+          if (validationErr instanceof SSRFBlockedError) {
+            failed++;
+            logger.warn(
+              `[Webhook] ${event} → ${endpoint.url} blocked by SSRF guard: ${validationErr.message}`
+            );
+            return;
+          }
+          throw validationErr;
+        }
+
         const response = await fetchWithRetry(endpoint.url, {
           method: 'POST',
           headers,

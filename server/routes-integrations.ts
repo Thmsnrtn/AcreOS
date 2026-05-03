@@ -1708,6 +1708,21 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "url is required");
       }
 
+      // F1 SSRF: validate user-supplied webhook URL before contacting the network.
+      const { validateUrl, SSRFBlockedError } = await import("./middleware/fileUploadSecurity");
+      try {
+        await validateUrl(url);
+      } catch (err: any) {
+        if (err instanceof SSRFBlockedError) {
+          return res.status(422).json({
+            error: "ssrf_blocked",
+            message: err.message,
+            statusCode: 422,
+          });
+        }
+        throw err;
+      }
+
       const { signPayload } = await import("./services/webhookDispatcher");
       const payload = JSON.stringify({
         event: "webhook.test",
