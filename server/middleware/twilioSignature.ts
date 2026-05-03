@@ -17,14 +17,14 @@ import { logger } from '../utils/logger';
 export function verifyTwilioSignature(req: Request, res: Response, next: NextFunction) {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   if (!authToken) {
-    // In development/test without a configured auth token, log a warning
-    // but allow the request through so local development isn't blocked.
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('[TwilioSignature] TWILIO_AUTH_TOKEN is not set in production — rejecting request');
-      return res.status(500).json({ error: 'Server misconfiguration' });
-    }
-    logger.warn('[TwilioSignature] TWILIO_AUTH_TOKEN not set — skipping signature verification (non-production)');
-    return next();
+    // FAIL CLOSED (Hessam §2.4): a missing auth token means we cannot verify
+    // the signature, so we MUST reject the request rather than silently
+    // accept it. The previous behavior of letting unsigned requests through
+    // in non-production was a webhook-forgery vector if NODE_ENV was ever
+    // misconfigured. Local development that actually needs to test inbound
+    // webhooks must export TWILIO_AUTH_TOKEN (use a sandbox token if needed).
+    logger.error('[TwilioSignature] TWILIO_AUTH_TOKEN is not set — rejecting webhook (fail-closed)');
+    return res.status(401).json({ error: 'Twilio signature verification unavailable' });
   }
 
   const twilioSignature = req.headers['x-twilio-signature'] as string;
@@ -32,7 +32,7 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
     logger.warn('[TwilioSignature] Request missing X-Twilio-Signature header', {
       metadata: { detail: { path: req.originalUrl } },
     });
-    return res.status(403).json({ error: 'Missing Twilio signature' });
+    return res.status(401).json({ error: 'Missing Twilio signature' });
   }
 
   // Build the canonical URL that Twilio signed against.
@@ -64,7 +64,7 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
       logger.warn('[TwilioSignature] Invalid signature', {
         metadata: { detail: { path: req.originalUrl } },
       });
-      return res.status(403).json({ error: 'Invalid Twilio signature' });
+      return res.status(401).json({ error: 'Invalid Twilio signature' });
     }
   } catch {
     // timingSafeEqual throws if buffer lengths differ — treat as invalid
