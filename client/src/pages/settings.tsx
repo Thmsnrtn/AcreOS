@@ -92,25 +92,67 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-// Order matters — VALID_TABS controls left-to-right reading flow on desktop
-// and top-to-bottom in the mobile Select. Tabs are grouped into six clusters
-// (Profile / Workspace / Notifications / Team & Billing / Data / AI) so
-// related settings sit next to each other instead of being scattered.
+// ─────────────────────────────────────────────────────────────────────────
+// IA collapse — Phase 2 Week 4 (P1-26 / Reyna §2). 17 tabs → 7 canonical
+// buckets so settings stops feeling like a federation of unrelated files.
+//
+// Old tab          →  New canonical bucket
+// ──────────────────────────────────────────
+// general          →  account            (profile + org details overview)
+// security         →  security           (Clerk MFA + sessions + audit)
+// privacy          →  account            (data rights, export, delete)
+// referral         →  account            (refer & earn — personal action)
+// appearance       →  account            (theme + language + accessibility)
+// autonomy         →  integrations       (per-agent autonomy lives w/ AI)
+// goals            →  organization       (org-scoped goals)
+// notifications    →  notifications      (channel matrix)
+// communications   →  notifications      (email/SMS/mail provider config)
+// team             →  organization       (members + roles + ownership)
+// payments         →  billing            (Stripe Connect + plan)
+// data             →  tax-compliance     (compliance settings live here +
+//                                         custom fields + import/export)
+// integrations     →  integrations       (BYOK + provider connections)
+// automations      →  integrations       (workflow rules)
+// developer        →  integrations       (API keys + audit log)
+// ai               →  integrations       (AI cost + provider settings)
+// ai-tasks         →  integrations       (Pax tasks)
+//
+// Legacy `?tab=` query params auto-rewrite to the canonical bucket via
+// LEGACY_TO_CANONICAL below — every old deep link still lands somewhere
+// sensible.
+//
+// Tax & Compliance is a NEW bucket (no legacy 1:1) because the
+// onboarding-tax-identity merge added /settings/tax-identity but never
+// surfaced an entry point in the main settings tabs (Reyna §2 gap).
+// ─────────────────────────────────────────────────────────────────────────
 const VALID_TABS = [
-  // Profile
-  "general", "security", "privacy", "referral",
-  // Workspace
-  "appearance", "autonomy", "goals",
-  // Notifications
-  "notifications", "communications",
-  // Team & Billing
-  "team", "payments",
-  // Data
-  "data", "integrations", "automations", "developer",
-  // AI
-  "ai", "ai-tasks",
+  "account",
+  "security",
+  "organization",
+  "billing",
+  "tax-compliance",
+  "notifications",
+  "integrations",
 ] as const;
 type TabValue = typeof VALID_TABS[number];
+
+const LEGACY_TO_CANONICAL: Record<string, TabValue> = {
+  // legacy → canonical
+  general: "account",
+  privacy: "account",
+  referral: "account",
+  appearance: "account",
+  autonomy: "integrations",
+  goals: "organization",
+  communications: "notifications",
+  team: "organization",
+  payments: "billing",
+  data: "tax-compliance",
+  automations: "integrations",
+  developer: "integrations",
+  ai: "integrations",
+  "ai-tasks": "integrations",
+};
 
 interface StripeConnectStatusResponse {
   isConnected: boolean;
@@ -623,20 +665,23 @@ export default function Settings() {
 
   const getTabFromHash = (): TabValue => {
     const hash = window.location.hash.replace("#", "");
-    // Map "billing" alias to "payments" tab
-    if (hash === "billing") return "payments";
+    // Legacy hashes from the 17-tab era — rewrite to canonical bucket.
+    if (hash in LEGACY_TO_CANONICAL) {
+      return LEGACY_TO_CANONICAL[hash];
+    }
     if (VALID_TABS.includes(hash as TabValue)) {
       return hash as TabValue;
     }
-    return "general";
+    return "account";
   };
 
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   useEffect(() => {
-    // Auto-show plan comparison when arriving via #billing (from upgrade toast)
+    // Auto-show plan comparison when arriving via #billing (from upgrade toast).
+    // Note: "billing" is now itself a canonical tab (no more "payments" alias).
     const hash = window.location.hash.replace("#", "");
-    if (hash === "billing") {
+    if (hash === "billing" || hash === "payments") {
       setShowPlanComparison(true);
     }
   }, []);
@@ -645,7 +690,7 @@ export default function Settings() {
     const handleHashChange = () => {
       const hash = window.location.hash.replace("#", "");
       setActiveTab(getTabFromHash());
-      if (hash === "billing") {
+      if (hash === "billing" || hash === "payments") {
         setShowPlanComparison(true);
       }
     };
@@ -817,137 +862,57 @@ export default function Settings() {
                 <SelectValue placeholder="Choose a section" />
               </SelectTrigger>
               <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Profile</SelectLabel>
-                  <SelectItem value="general">General</SelectItem>
-                  <SelectItem value="security">Security</SelectItem>
-                  <SelectItem value="privacy">Privacy</SelectItem>
-                  <SelectItem value="referral">Refer &amp; earn</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Workspace</SelectLabel>
-                  <SelectItem value="appearance">Appearance</SelectItem>
-                  {autonomyFlag && <SelectItem value="autonomy">Autonomy</SelectItem>}
-                  <SelectItem value="goals">Goals</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Notifications</SelectLabel>
-                  <SelectItem value="notifications">Notifications</SelectItem>
-                  <SelectItem value="communications">Communications</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Team &amp; Billing</SelectLabel>
-                  <SelectItem value="team">Team</SelectItem>
-                  <SelectItem value="payments">Payments</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Data</SelectLabel>
-                  <SelectItem value="data">Data</SelectItem>
-                  <SelectItem value="integrations">Integrations</SelectItem>
-                  <SelectItem value="automations">Automations</SelectItem>
-                  <SelectItem value="developer">Developer</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>AI</SelectLabel>
-                  <SelectItem value="ai">AI</SelectItem>
-                  <SelectItem value="ai-tasks">AI tasks</SelectItem>
-                </SelectGroup>
+                {/* IA collapse — 7 canonical buckets. Legacy values
+                    auto-rewrite via LEGACY_TO_CANONICAL. */}
+                <SelectItem value="account">Account</SelectItem>
+                <SelectItem value="security">Security</SelectItem>
+                <SelectItem value="organization">Organization</SelectItem>
+                <SelectItem value="billing">Billing</SelectItem>
+                <SelectItem value="tax-compliance">Tax &amp; Compliance</SelectItem>
+                <SelectItem value="notifications">Notifications</SelectItem>
+                <SelectItem value="integrations">Integrations</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 hidden md:block">
-              {/* Tabs are grouped into six clusters (Profile / Workspace /
-                  Notifications / Team & Billing / Data / AI). Subtle right-
-                  margin spacers between clusters create scannable rhythm
-                  without forcing a sub-tab re-architecture. */}
+              {/* IA collapse — 17 tabs → 7 canonical buckets (P1-26 / Reyna §2).
+                  See LEGACY_TO_CANONICAL above for the migration map; old
+                  hashes auto-rewrite so deep links keep working. */}
               <TabsList className="inline-flex w-auto min-w-full md:min-w-0" data-testid="tabs-settings">
-                {/* Profile cluster */}
-                <TabsTrigger value="general" data-testid="tab-general" className="gap-1">
+                <TabsTrigger value="account" data-testid="tab-account" className="gap-1">
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  General
+                  Account
                 </TabsTrigger>
                 <TabsTrigger value="security" data-testid="tab-security" className="gap-1">
                   <Shield className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Security
                 </TabsTrigger>
-                <TabsTrigger value="privacy" data-testid="tab-privacy" className="gap-1">
-                  <Lock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Privacy
+                <TabsTrigger value="organization" data-testid="tab-organization" className="gap-1">
+                  <Users className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Organization
                 </TabsTrigger>
-                <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1 mr-3">
-                  <Gift className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Refer &amp; earn
+                <TabsTrigger value="billing" data-testid="tab-billing" className="gap-1">
+                  <Wallet className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Billing
                 </TabsTrigger>
-
-                {/* Workspace cluster */}
-                <TabsTrigger value="appearance" data-testid="tab-appearance" className="gap-1">
-                  <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Appearance
+                <TabsTrigger value="tax-compliance" data-testid="tab-tax-compliance" className="gap-1">
+                  <FileText className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Tax &amp; Compliance
                 </TabsTrigger>
-                {autonomyFlag && (
-                  <TabsTrigger value="autonomy" data-testid="tab-autonomy" className="gap-1">
-                    <Bot className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                    Autonomy
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="goals" data-testid="tab-goals" className="gap-1 mr-3">
-                  <Target className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Goals
-                </TabsTrigger>
-
-                {/* Notifications cluster */}
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="gap-1">
                   <Bell className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Notifications
-                </TabsTrigger>
-                <TabsTrigger value="communications" data-testid="tab-communications" className="gap-1 mr-3">
-                  <Mail className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Communications
-                </TabsTrigger>
-
-                {/* Team & Billing cluster */}
-                <TabsTrigger value="team" data-testid="tab-team" className="gap-1">
-                  <Users className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Team
-                </TabsTrigger>
-                <TabsTrigger value="payments" data-testid="tab-payments" className="gap-1 mr-3">
-                  <Wallet className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Payments
-                </TabsTrigger>
-
-                {/* Data cluster */}
-                <TabsTrigger value="data" data-testid="tab-data" className="gap-1">
-                  <FileText className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Data
                 </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Integrations
                 </TabsTrigger>
-                <TabsTrigger value="automations" data-testid="tab-automations" className="gap-1">
-                  <Zap className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Automations
-                </TabsTrigger>
-                <TabsTrigger value="developer" data-testid="tab-developer" className="gap-1 mr-3">
-                  <Code className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Developer
-                </TabsTrigger>
-
-                {/* AI cluster */}
-                <TabsTrigger value="ai" data-testid="tab-ai" className="gap-1">
-                  <Sparkles className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  AI
-                </TabsTrigger>
-                <TabsTrigger value="ai-tasks" data-testid="tab-ai-tasks" className="gap-1">
-                  <Clock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  AI tasks
-                </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="general" className="space-y-8 mt-6" data-testid="tab-content-general">
+            <TabsContent value="account" className="space-y-8 mt-6" data-testid="tab-content-account">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -1412,7 +1377,7 @@ export default function Settings() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="team" className="space-y-8 mt-6" data-testid="tab-content-team">
+            <TabsContent value="organization" className="space-y-8 mt-6" data-testid="tab-content-organization">
               <TeamInviteCard />
               <Card>
                 <CardHeader>
@@ -1532,11 +1497,11 @@ export default function Settings() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="payments" className="space-y-8 mt-6" data-testid="tab-content-payments">
+            <TabsContent value="billing" className="space-y-8 mt-6" data-testid="tab-content-billing">
               <StripeConnectSettings />
             </TabsContent>
 
-            <TabsContent value="communications" className="space-y-8 mt-6" data-testid="tab-content-communications">
+            <TabsContent value="notifications" className="space-y-8 mt-6" data-testid="tab-content-notifications-comms">
               <div className="space-y-4" data-testid="section-email-settings">
                 <div>
                   <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -1593,7 +1558,7 @@ export default function Settings() {
               <NotificationPreferences />
             </TabsContent>
 
-            <TabsContent value="ai" className="space-y-8 mt-6" data-testid="tab-content-ai">
+            <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-ai">
               <AICostDashboard />
               <AISettings />
               <div className="pt-4 border-t">
@@ -1602,7 +1567,36 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="data" className="space-y-8 mt-6" data-testid="tab-content-data">
+            <TabsContent value="tax-compliance" className="space-y-8 mt-6" data-testid="tab-content-tax-compliance">
+              {/* Tax identity link card — surfaces /settings/tax-identity
+                  (shipped during the onboarding-tax-identity merge but
+                  never discoverably wired from this bucket). Reyna §2 gap.
+                  Distinct testid from the legacy card under the Account
+                  bucket so both can coexist while we sunset the old home. */}
+              <Card data-testid="card-tax-compliance-identity">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" aria-hidden="true" />
+                    Tax identity (W-9)
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your W-9 tax identity and TIN for 1099 reporting. Required
+                    for borrowers and any seller you pay {">"} $600 in a tax year.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/settings/tax-identity")}
+                    data-testid="button-tax-compliance-open-tax-identity"
+                  >
+                    <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Open tax identity settings
+                    <ExternalLink className="w-3 h-3 ml-2" aria-hidden="true" />
+                  </Button>
+                </CardContent>
+              </Card>
+
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -1640,7 +1634,7 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="appearance" className="space-y-8 mt-6" data-testid="tab-content-appearance">
+            <TabsContent value="account" className="space-y-8 mt-6" data-testid="tab-content-account-appearance">
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -1662,12 +1656,12 @@ export default function Settings() {
             </TabsContent>
 
             {autonomyFlag && (
-              <TabsContent value="autonomy" className="space-y-8 mt-6" data-testid="tab-content-autonomy">
+              <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-autonomy">
                 <AutonomyPanel />
               </TabsContent>
             )}
 
-            <TabsContent value="developer" className="space-y-8 mt-6" data-testid="tab-content-developer">
+            <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-developer">
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -1725,7 +1719,7 @@ export default function Settings() {
             </TabsContent>
 
             {/* ── Goals Tab ─────────────────────────────────────────────── */}
-            <TabsContent value="goals" className="space-y-6 mt-6" data-testid="tab-content-goals">
+            <TabsContent value="organization" className="space-y-6 mt-6" data-testid="tab-content-organization-goals">
               <GoalsSettings />
             </TabsContent>
 
@@ -1736,19 +1730,19 @@ export default function Settings() {
             </TabsContent>
 
             {/* ── Privacy Tab ──────────────────────────────────────────── */}
-            <TabsContent value="privacy" className="space-y-6 mt-6" data-testid="tab-content-privacy">
+            <TabsContent value="account" className="space-y-6 mt-6" data-testid="tab-content-account-privacy">
               <PrivacyDataSettings />
             </TabsContent>
 
-            <TabsContent value="referral" className="space-y-6 mt-6" data-testid="tab-content-referral">
+            <TabsContent value="account" className="space-y-6 mt-6" data-testid="tab-content-account-referral">
               <ReferralSettings />
             </TabsContent>
 
-            <TabsContent value="automations" className="space-y-6 mt-6" data-testid="tab-content-automations">
+            <TabsContent value="integrations" className="space-y-6 mt-6" data-testid="tab-content-integrations-automations">
               <WorkflowsSettingsTab />
             </TabsContent>
 
-            <TabsContent value="ai-tasks" className="space-y-6 mt-6" data-testid="tab-content-ai-tasks">
+            <TabsContent value="integrations" className="space-y-6 mt-6" data-testid="tab-content-integrations-ai-tasks">
               <PaxTasksSettingsTab />
             </TabsContent>
           </Tabs>

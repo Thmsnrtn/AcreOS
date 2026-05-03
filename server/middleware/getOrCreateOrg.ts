@@ -1,9 +1,25 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction, CookieOptions } from "express";
 import { storage, db } from "../storage";
 import { withTransaction } from "../db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { organizations, teamMembers } from "@shared/schema";
 import { logger } from "../utils/logger";
+
+/**
+ * Cookie name + options for the per-session "active organization" override.
+ * Set by POST /api/auth/switch-organization (Reyna §2 — VA workflow).
+ * httpOnly so JS can't read it; sameSite=lax so it survives in-app navigation
+ * but won't leak on cross-site POSTs; 30-day TTL so the user's choice
+ * survives logout cycles.
+ */
+export const ACTIVE_ORG_COOKIE = "acreos_active_org";
+export const ACTIVE_ORG_COOKIE_OPTS: CookieOptions = {
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 30 * 24 * 60 * 60 * 1000,
+};
 
 /**
  * Founder email — gets enterprise tier and unlimited access.
@@ -44,7 +60,47 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   const isFounder = isFounderEmail(userEmail);
 
-  let org = await storage.getOrganizationByOwner(userId);
+  let org: any = undefined;
+
+  // Reyna §2 — honor the active-org cookie set by /api/auth/switch-organization,
+  // but only if the user is still a verified active member of that org.
+  // A revoked seat cannot keep operating in someone else's org by holding
+  // onto a stale cookie.
+  const activeOrgCookieRaw = (req as any).cookies?.[ACTIVE_ORG_COOKIE];
+  const activeOrgCookieId = activeOrgCookieRaw ? Number(activeOrgCookieRaw) : NaN;
+  if (Number.isFinite(activeOrgCookieId) && activeOrgCookieId > 0) {
+    try {
+      const [candidate] = await db
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, activeOrgCookieId))
+        .limit(1);
+      if (candidate) {
+        if (candidate.ownerId === userId) {
+          org = candidate;
+        } else {
+          const [member] = await db
+            .select()
+            .from(teamMembers)
+            .where(
+              and(
+                eq(teamMembers.organizationId, candidate.id),
+                eq(teamMembers.userId, userId),
+                eq(teamMembers.isActive, true),
+              ),
+            )
+            .limit(1);
+          if (member) org = candidate;
+        }
+      }
+    } catch {
+      /* non-fatal — fall through to default resolution. */
+    }
+  }
+
+  if (!org) {
+    org = await storage.getOrganizationByOwner(userId);
+  }
 
   // Cycle 14: if the user doesn't own any org but is an active team
   // member of one (invited seat user), use that org instead of
