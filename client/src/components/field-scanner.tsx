@@ -264,7 +264,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
               Photo {directionIndex + 1} of {DIRECTIONS.length} — {currentDirection}
             </span>
             <Button variant="ghost" size="sm" onClick={toggleRecording} aria-label={isRecording ? "Stop recording" : "Record voice note"}>
-              {isRecording ? <MicOff className="w-4 h-4 text-red-500" /> : <Mic className="w-4 h-4" />}
+              {isRecording ? <MicOff className="w-4 h-4 text-acr-neg" /> : <Mic className="w-4 h-4" />}
             </Button>
           </div>
 
@@ -325,7 +325,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
         <Card>
           <CardContent className="p-4 space-y-4">
             <motion.div variants={fadeInUp} className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              <CheckCircle className="w-5 h-5 text-acr-pos" />
               <p className="text-sm font-semibold">Field Scan Complete</p>
             </motion.div>
 
@@ -394,7 +394,7 @@ export function FieldScanCard({
     <Card>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-500" />
+          <CheckCircle className="w-4 h-4 text-acr-pos" />
           <p className="text-xs font-semibold">Field Scan Data</p>
         </div>
         <div className="grid grid-cols-2 gap-1.5">

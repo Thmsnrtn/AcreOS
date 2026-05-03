@@ -46,9 +46,9 @@ interface AdminFlag {
 }
 
 const STATE_BADGE_TONE: Record<string, string> = {
-  on: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30",
-  "founder-only": "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30",
-  beta: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30",
+  on: "bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-acr-pos/30",
+  "founder-only": "bg-acr-brand/10 text-acr-brand dark:text-acr-brand border-acr-brand/30",
+  beta: "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/30",
   off: "bg-muted text-muted-foreground border-border",
 };
 

@@ -52,13 +52,13 @@ interface ProviderSettingsCardsProps {
 
 const statusConfig = {
   healthy: {
-    color: "bg-emerald-500",
+    color: "bg-acr-pos",
     label: "Healthy",
     icon: Wifi,
     badgeVariant: "default" as const,
   },
   degraded: {
-    color: "bg-amber-500",
+    color: "bg-acr-warn",
     label: "Degraded",
     icon: AlertTriangle,
     badgeVariant: "secondary" as const,
@@ -176,7 +176,7 @@ export function ProviderSettingsCards({
                 className={cn(
                   "flex items-center gap-2 rounded-lg border p-3 text-sm",
                   testResult.success
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    ? "border-acr-pos/30 bg-acr-pos/10 text-acr-pos dark:text-acr-pos"
                     : "border-destructive/30 bg-destructive/10 text-destructive"
                 )}
               >
@@ -298,7 +298,7 @@ function ProviderCard({
                 usagePercent > 90 && "[&>div]:bg-destructive",
                 usagePercent > 75 &&
                   usagePercent <= 90 &&
-                  "[&>div]:bg-amber-500"
+                  "[&>div]:bg-acr-warn"
               )}
             />
           </div>

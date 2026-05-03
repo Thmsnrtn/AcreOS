@@ -148,9 +148,9 @@ const KEYS_BY_STEP: Record<string, string[]> = {
 
 function StatusDot({ status }: { status: "ok" | "error" | "warn" | "missing" | null }) {
   if (!status || status === "missing") return <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />;
-  if (status === "ok") return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-  if (status === "error") return <XCircle className="w-4 h-4 text-red-500" />;
-  return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+  if (status === "ok") return <CheckCircle2 className="w-4 h-4 text-acr-pos" />;
+  if (status === "error") return <XCircle className="w-4 h-4 text-acr-neg" />;
+  return <AlertCircle className="w-4 h-4 text-acr-warn" />;
 }
 
 function CredentialField({
@@ -184,7 +184,7 @@ function CredentialField({
       <div className="flex items-center justify-between">
         <Label htmlFor={inputId} className="text-sm font-medium flex items-center gap-1.5">
           {credential?.label || credKey}
-          {isRequired && <span className="text-red-400 text-xs" aria-hidden="true">*</span>}
+          {isRequired && <span className="text-acr-neg text-xs" aria-hidden="true">*</span>}
         </Label>
         <div className="flex items-center gap-2">
           {docLink && (
@@ -216,8 +216,8 @@ function CredentialField({
           aria-required={isRequired}
           className={cn(
             "pr-10 font-mono text-sm",
-            validationResult?.status === "ok" && "border-green-500/50",
-            validationResult?.status === "error" && "border-red-500/50",
+            validationResult?.status === "ok" && "border-acr-pos/50",
+            validationResult?.status === "error" && "border-acr-neg/50",
           )}
         />
         {isSecret && (
@@ -231,8 +231,8 @@ function CredentialField({
       </div>
       {validationResult && (
         <p className={cn("text-xs flex items-center gap-1",
-          validationResult.status === "ok" ? "text-green-600" :
-          validationResult.status === "warn" ? "text-yellow-600" : "text-red-500")}>
+          validationResult.status === "ok" ? "text-acr-pos" :
+          validationResult.status === "warn" ? "text-acr-warn" : "text-acr-neg")}>
           {validationResult.status === "ok" ? <CheckCircle2 className="w-3 h-3" /> :
            validationResult.status === "warn" ? <AlertCircle className="w-3 h-3" /> :
            <XCircle className="w-3 h-3" />}
@@ -241,7 +241,7 @@ function CredentialField({
       )}
       {hasExistingValue && !value && !validationResult && (
         <p className="text-xs text-muted-foreground flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3 text-green-500" />
+          <CheckCircle2 className="w-3 h-3 text-acr-pos" />
           Already configured — leave blank to keep current value
         </p>
       )}
@@ -253,8 +253,8 @@ function ServiceBadge({ service, configured, total }: { service: string; configu
   const pct = total > 0 ? configured / total : 0;
   return (
     <div className={cn("text-xs px-2 py-0.5 rounded-full border",
-      pct === 1 ? "bg-green-500/10 text-green-600 border-green-500/20" :
-      pct > 0 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" :
+      pct === 1 ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20" :
+      pct > 0 ? "bg-acr-warn/10 text-acr-warn border-acr-warn/20" :
       "bg-muted text-muted-foreground border-border")}>
       {configured}/{total}
     </div>
@@ -433,7 +433,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
         )}
         {!isLoading && !status && (
           <div className="flex flex-col items-center justify-center p-12 gap-3">
-            <AlertCircle className="w-8 h-8 text-amber-500" />
+            <AlertCircle className="w-8 h-8 text-acr-warn" />
             <p className="text-sm text-muted-foreground text-center">
               Could not load platform configuration. You can set API keys directly in the System API Keys section below.
             </p>
@@ -446,7 +446,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                <Shield className="h-5 w-5 text-purple-500" />
+                <Shield className="h-5 w-5 text-acr-brand" />
                 Platform Setup
               </DialogTitle>
               <DialogDescription className="text-sm mt-0.5">
@@ -471,8 +471,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 onClick={() => setStep(i)}
                 className={cn(
                   "flex-1 h-1.5 rounded-full transition-colors",
-                  i < step ? "bg-green-500" :
-                  i === step ? "bg-purple-500" :
+                  i < step ? "bg-acr-pos" :
+                  i === step ? "bg-acr-brand" :
                   "bg-muted"
                 )}
               />
@@ -517,21 +517,21 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                         <div key={sg.service}
                           className={cn(
                             "flex items-center gap-3 rounded-lg border p-3",
-                            sg.allConfigured ? "border-green-500/30 bg-green-500/5" :
-                            sg.required ? "border-red-500/20 bg-red-500/5" :
+                            sg.allConfigured ? "border-acr-pos/30 bg-acr-pos/5" :
+                            sg.required ? "border-acr-neg/20 bg-acr-neg/5" :
                             "border-border bg-muted/30"
                           )}>
                           <Icon className={cn("w-4 h-4 shrink-0",
-                            sg.allConfigured ? "text-green-500" :
-                            sg.required ? "text-red-400" :
+                            sg.allConfigured ? "text-acr-pos" :
+                            sg.required ? "text-acr-neg" :
                             "text-muted-foreground")} />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium truncate">{sg.label}</div>
                             <div className="text-xs text-muted-foreground">{sg.description}</div>
                           </div>
                           <div className={cn("text-xs font-bold shrink-0",
-                            sg.allConfigured ? "text-green-500" :
-                            sg.required ? "text-red-400" : "text-muted-foreground")}>
+                            sg.allConfigured ? "text-acr-pos" :
+                            sg.required ? "text-acr-neg" : "text-muted-foreground")}>
                             {sg.configured}/{sg.total}
                           </div>
                         </div>
@@ -540,11 +540,11 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                   </div>
 
                   {(status?.summary?.missingRequired?.length ?? 0) > 0 && (
-                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
-                      <p className="text-xs font-semibold text-red-500 mb-1.5">Required credentials missing:</p>
+                    <div className="rounded-lg border border-acr-neg/20 bg-acr-neg/5 p-3">
+                      <p className="text-xs font-semibold text-acr-neg mb-1.5">Required credentials missing:</p>
                       <div className="flex flex-wrap gap-1">
                         {(status?.summary?.missingRequired ?? []).map(k => (
-                          <Badge key={k} variant="outline" className="text-xs font-mono bg-red-500/10 text-red-500 border-red-500/20">
+                          <Badge key={k} variant="outline" className="text-xs font-mono bg-acr-neg/10 text-acr-neg border-acr-neg/20">
                             {k}
                           </Badge>
                         ))}
@@ -559,7 +559,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Core Platform"
                   description="Essential settings that the platform cannot run without."
-                  icon={<Server className="w-4 h-4 text-purple-500" />}
+                  icon={<Server className="w-4 h-4 text-acr-brand" />}
                   service="core"
                   stepKeys={KEYS_BY_STEP.core}
                   credMap={credMap}
@@ -568,8 +568,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                   validations={validations}
                   onGenerate={handleGenerate}
                   extras={
-                    <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-                      <p className="text-xs text-blue-600 flex items-start gap-1.5">
+                    <div className="rounded-lg border border-acr-accent/20 bg-acr-accent/5 p-3">
+                      <p className="text-xs text-acr-accent flex items-start gap-1.5">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>
                           <strong>SESSION_SECRET</strong> and <strong>FIELD_ENCRYPTION_KEY</strong> should be
@@ -586,7 +586,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="AI Provider"
                   description="Powers land valuations, offer generation, lead scoring, and every AI-driven insight."
-                  icon={<Bot className="w-4 h-4 text-purple-500" />}
+                  icon={<Bot className="w-4 h-4 text-acr-brand" />}
                   service="openrouter"
                   stepKeys={KEYS_BY_STEP.openrouter}
                   credMap={credMap}
@@ -604,8 +604,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                     />
                   }
                   extras={
-                    <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 space-y-1">
-                      <p className="text-xs text-purple-600 font-semibold">Why OpenRouter?</p>
+                    <div className="rounded-lg border border-acr-brand/20 bg-acr-brand/5 p-3 space-y-1">
+                      <p className="text-xs text-acr-brand font-semibold">Why OpenRouter?</p>
                       <p className="text-xs text-muted-foreground">
                         One key gives access to Claude, GPT-4o, DeepSeek, and Gemini.
                         AcreOS automatically routes each task to the cheapest capable model —
@@ -621,7 +621,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Stripe Payments"
                   description="Subscription billing, credit purchases, and revenue collection."
-                  icon={<CreditCard className="w-4 h-4 text-purple-500" />}
+                  icon={<CreditCard className="w-4 h-4 text-acr-brand" />}
                   service="stripe"
                   stepKeys={KEYS_BY_STEP.stripe}
                   credMap={credMap}
@@ -647,8 +647,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                     </Button>
                   }
                   extras={
-                    <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-                      <p className="text-xs text-blue-600 flex items-start gap-1.5">
+                    <div className="rounded-lg border border-acr-accent/20 bg-acr-accent/5 p-3">
+                      <p className="text-xs text-acr-accent flex items-start gap-1.5">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         Click <strong>"Auto-wire Webhook"</strong> after saving your Stripe keys —
                         it creates the webhook in your Stripe dashboard and saves the signing secret automatically.
@@ -664,7 +664,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Email Delivery (AWS SES)"
                   description="Sends transactional emails — signup confirmations, password resets, and campaign outreach."
-                  icon={<Mail className="w-4 h-4 text-purple-500" />}
+                  icon={<Mail className="w-4 h-4 text-acr-brand" />}
                   service="aws"
                   stepKeys={KEYS_BY_STEP.aws}
                   credMap={credMap}
@@ -682,8 +682,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                     />
                   }
                   extras={
-                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                      <p className="text-xs text-amber-600 flex items-start gap-1.5">
+                    <div className="rounded-lg border border-acr-warn/20 bg-acr-warn/5 p-3">
+                      <p className="text-xs text-acr-warn flex items-start gap-1.5">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         SES requires domain verification before sending. Verify your domain in the
                         AWS SES console before going live, otherwise emails will land in spam.
@@ -698,7 +698,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Maps (Mapbox)"
                   description="Parcel overlay maps, county heat maps, and geographic lead visualization."
-                  icon={<LucideMap className="w-4 h-4 text-purple-500" />}
+                  icon={<LucideMap className="w-4 h-4 text-acr-brand" />}
                   service="mapbox"
                   stepKeys={KEYS_BY_STEP.mapbox}
                   credMap={credMap}
@@ -724,7 +724,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Direct Mail (Lob)"
                   description="Physical mailers — postcards, letters, and offer packets to land sellers."
-                  icon={<FileText className="w-4 h-4 text-purple-500" />}
+                  icon={<FileText className="w-4 h-4 text-acr-brand" />}
                   service="lob"
                   stepKeys={KEYS_BY_STEP.lob}
                   credMap={credMap}
@@ -750,7 +750,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="SMS & Phone (Twilio)"
                   description="Text message campaigns and call routing for seller outreach."
-                  icon={<Phone className="w-4 h-4 text-purple-500" />}
+                  icon={<Phone className="w-4 h-4 text-acr-brand" />}
                   service="twilio"
                   stepKeys={KEYS_BY_STEP.twilio}
                   credMap={credMap}
@@ -796,26 +796,26 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                         <div key={sg.service}
                           className={cn(
                             "flex items-center gap-3 rounded-lg border px-4 py-2.5",
-                            sg.allConfigured ? "border-green-500/30 bg-green-500/5" :
-                            sg.required ? "border-red-500/20 bg-red-500/5" :
+                            sg.allConfigured ? "border-acr-pos/30 bg-acr-pos/5" :
+                            sg.required ? "border-acr-neg/20 bg-acr-neg/5" :
                             "border-border"
                           )}>
                           <Icon className={cn("w-4 h-4 shrink-0",
-                            sg.allConfigured ? "text-green-500" :
-                            sg.required ? "text-red-400" : "text-muted-foreground")} />
+                            sg.allConfigured ? "text-acr-pos" :
+                            sg.required ? "text-acr-neg" : "text-muted-foreground")} />
                           <div className="flex-1">
                             <span className="text-sm font-medium">{sg.label}</span>
                             {!sg.allConfigured && sg.required && (
-                              <span className="text-xs text-red-400 ml-2">Required — missing credentials</span>
+                              <span className="text-xs text-acr-neg ml-2">Required — missing credentials</span>
                             )}
                             {!sg.allConfigured && !sg.required && (
                               <span className="text-xs text-muted-foreground ml-2">Optional — can configure later</span>
                             )}
                           </div>
                           {sg.allConfigured ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            <CheckCircle2 className="w-4 h-4 text-acr-pos" />
                           ) : sg.required ? (
-                            <XCircle className="w-4 h-4 text-red-400" />
+                            <XCircle className="w-4 h-4 text-acr-neg" />
                           ) : (
                             <AlertCircle className="w-4 h-4 text-muted-foreground" />
                           )}
@@ -825,9 +825,9 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                   </div>
 
                   {isLaunchReady && (
-                    <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 text-center">
-                      <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-green-700">Platform is configured and ready.</p>
+                    <div className="rounded-lg border border-acr-pos/30 bg-acr-pos/5 p-4 text-center">
+                      <CheckCircle2 className="w-8 h-8 text-acr-pos mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-acr-pos">Platform is configured and ready.</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         You can re-open this wizard anytime from the Founder Dashboard to update credentials.
                       </p>
@@ -852,11 +852,11 @@ export function FounderSetupWizard({ open, onClose }: Props) {
               </Button>
             )}
             {step < STEPS.length - 1 ? (
-              <Button onClick={handleNext} disabled={saving} className="gap-1 bg-purple-600 hover:bg-purple-700">
+              <Button onClick={handleNext} disabled={saving} className="gap-1 bg-acr-brand hover:bg-acr-brand">
                 Next <ChevronRight className="w-4 h-4" />
               </Button>
             ) : (
-              <Button onClick={onClose} className="gap-1 bg-green-600 hover:bg-green-700">
+              <Button onClick={onClose} className="gap-1 bg-acr-pos hover:bg-acr-pos">
                 Done <CheckCircle2 className="w-4 h-4" />
               </Button>
             )}
@@ -933,8 +933,8 @@ function StepSection({
           {wireButton}
           {serviceValidation && (
             <span className={cn("text-xs flex items-center gap-1",
-              serviceValidation.status === "ok" ? "text-green-600" :
-              serviceValidation.status === "warn" ? "text-yellow-600" : "text-red-500")}>
+              serviceValidation.status === "ok" ? "text-acr-pos" :
+              serviceValidation.status === "warn" ? "text-acr-warn" : "text-acr-neg")}>
               {serviceValidation.status === "ok" ? <CheckCircle2 className="w-3 h-3" /> :
                serviceValidation.status === "warn" ? <AlertCircle className="w-3 h-3" /> :
                <XCircle className="w-3 h-3" />}
@@ -987,16 +987,16 @@ export function SetupReadinessBanner({ onOpenWizard }: { onOpenWizard: () => voi
   return (
     <div className={cn(
       "rounded-xl border p-4 flex items-center gap-4",
-      missingCount > 0 ? "border-red-500/30 bg-red-500/5" : "border-amber-500/30 bg-amber-500/5"
+      missingCount > 0 ? "border-acr-neg/30 bg-acr-neg/5" : "border-acr-warn/30 bg-acr-warn/5"
     )}>
       <div className="shrink-0">
         {missingCount > 0
-          ? <XCircle className="w-8 h-8 text-red-400" />
-          : <AlertCircle className="w-8 h-8 text-amber-400" />}
+          ? <XCircle className="w-8 h-8 text-acr-neg" />
+          : <AlertCircle className="w-8 h-8 text-acr-warn" />}
       </div>
       <div className="flex-1 min-w-0">
         <p className={cn("font-semibold text-sm",
-          missingCount > 0 ? "text-red-600" : "text-amber-600")}>
+          missingCount > 0 ? "text-acr-neg" : "text-acr-warn")}>
           {missingCount > 0
             ? `${missingCount} required credential${missingCount > 1 ? "s" : ""} missing — platform incomplete`
             : `Platform ${score}% configured — optional services can unlock more automation`}
@@ -1004,7 +1004,7 @@ export function SetupReadinessBanner({ onOpenWizard }: { onOpenWizard: () => voi
         {missingCount > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {missingRequired.slice(0, 4).map(k => (
-              <Badge key={k} variant="outline" className="text-xs font-mono bg-red-500/10 text-red-500 border-red-500/20">
+              <Badge key={k} variant="outline" className="text-xs font-mono bg-acr-neg/10 text-acr-neg border-acr-neg/20">
                 {k}
               </Badge>
             ))}
@@ -1018,7 +1018,7 @@ export function SetupReadinessBanner({ onOpenWizard }: { onOpenWizard: () => voi
       </div>
       <Button size="sm" onClick={onOpenWizard}
         className={cn("gap-1.5 shrink-0",
-          missingCount > 0 ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700")}>
+          missingCount > 0 ? "bg-acr-neg hover:bg-acr-neg" : "bg-acr-warn hover:bg-acr-warn")}>
         <Shield className="w-3.5 h-3.5" />
         {missingCount > 0 ? "Fix Now" : "Complete Setup"}
       </Button>

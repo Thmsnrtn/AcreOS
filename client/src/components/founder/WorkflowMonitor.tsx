@@ -63,9 +63,9 @@ interface Workflow {
 
 const STEP_STATUS_STYLES: Record<string, { icon: any; color: string; bg: string }> = {
   pending: { icon: Clock, color: "text-muted-foreground", bg: "bg-muted/50" },
-  running: { icon: Loader2, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30" },
-  completed: { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
-  failed: { icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/30" },
+  running: { icon: Loader2, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/30" },
+  completed: { icon: CheckCircle2, color: "text-acr-pos", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30" },
+  failed: { icon: AlertCircle, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30" },
   skipped: { icon: SkipForward, color: "text-muted-foreground", bg: "bg-muted/30" },
 };
 
@@ -97,9 +97,9 @@ function StepPill({ step }: { step: WorkflowStep }) {
 
 function RunCard({ run, workflowName }: { run: WorkflowRun; workflowName?: string }) {
   const steps = (run.stepResults || []) as WorkflowStep[];
-  const statusColor = run.status === "completed" ? "bg-emerald-100 text-emerald-800"
-    : run.status === "failed" ? "bg-red-100 text-red-800"
-    : run.status === "running" ? "bg-blue-100 text-blue-800"
+  const statusColor = run.status === "completed" ? "bg-acr-pos-soft text-acr-pos"
+    : run.status === "failed" ? "bg-acr-neg-soft text-acr-neg"
+    : run.status === "running" ? "bg-acr-accent text-acr-accent"
     : "bg-muted text-muted-foreground";
 
   return (
@@ -175,7 +175,7 @@ export function WorkflowMonitor() {
             Agent pipelines
           </CardTitle>
           {activeRuns.length > 0 && (
-            <Badge variant="outline" className="bg-blue-100 text-blue-800 tabular-nums" aria-label={`${activeRuns.length} running`}>
+            <Badge variant="outline" className="bg-acr-accent text-acr-accent tabular-nums" aria-label={`${activeRuns.length} running`}>
               {activeRuns.length} running
             </Badge>
           )}

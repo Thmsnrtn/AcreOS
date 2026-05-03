@@ -28,13 +28,13 @@ function BeforeAfterSlider({ before, after, label }: { before: string; after: st
         aria-label="Before-and-after satellite imagery comparison; drag the slider below to reveal more or less of the older snapshot"
       >
         <div
-          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-green-100 to-green-200"
+          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-acr-pos to-acr-pos"
           style={{ backgroundImage: after ? `url(${after})` : undefined, backgroundSize: 'cover' }}
         >
           {!after && <span>After</span>}
         </div>
         <div
-          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-orange-100 to-orange-200 overflow-hidden"
+          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-acr-warn to-acr-warn overflow-hidden"
           style={{ width: `${sliderPos}%`, backgroundImage: before ? `url(${before})` : undefined, backgroundSize: 'cover', backgroundPosition: 'left center' }}
         >
           {!before && <span>Before</span>}
@@ -85,7 +85,7 @@ function ChangeDetectionDisplay({ snapshots }: { snapshots: any[] }) {
       <div className="flex items-center gap-3">
         <p className="text-sm font-medium">Change detection results</p>
         <div
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${changeScore > 40 ? 'bg-red-100 text-red-700' : changeScore > 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${changeScore > 40 ? 'bg-acr-neg-soft text-acr-neg' : changeScore > 15 ? 'bg-acr-warn-soft text-acr-warn' : 'bg-acr-pos-soft text-acr-pos'}`}
           role="status"
           aria-label={`Change score ${changeScore} of 100 (${severity} change detected)`}
         >
@@ -99,19 +99,19 @@ function ChangeDetectionDisplay({ snapshots }: { snapshots: any[] }) {
             <li
               key={i}
               role="alert"
-              className="flex items-center gap-2 text-xs p-2 bg-red-50 rounded border border-red-200"
+              className="flex items-center gap-2 text-xs p-2 bg-acr-neg-soft rounded border border-acr-neg-soft"
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" aria-hidden="true" />
+              <AlertTriangle className="w-3.5 h-3.5 text-acr-neg shrink-0" aria-hidden="true" />
               <span>Change detected on {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : '—'} · zoom {snap.zoom ?? '—'}</span>
             </li>
           ))}
         </ul>
       ) : (
         <div
-          className="flex items-center gap-2 text-xs p-2 bg-green-50 rounded border border-green-200"
+          className="flex items-center gap-2 text-xs p-2 bg-acr-pos-soft rounded border border-acr-pos-soft"
           role="status"
         >
-          <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-hidden="true" />
+          <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
           <span>No significant changes detected across {snapshots.length} snapshots</span>
         </div>
       )}
@@ -133,12 +133,12 @@ function FeaturePill({ label }: { label: string }) {
 
 function QualityBadge({ quality }: { quality: string }) {
   const map: Record<string, string> = {
-    excellent: "bg-green-100 text-green-800",
-    good: "bg-blue-100 text-blue-800",
-    fair: "bg-yellow-100 text-yellow-800",
-    poor: "bg-red-100 text-red-800",
+    excellent: "bg-acr-pos-soft text-acr-pos",
+    good: "bg-acr-accent text-acr-accent",
+    fair: "bg-acr-warn-soft text-acr-warn",
+    poor: "bg-acr-neg-soft text-acr-neg",
   };
-  return <Badge className={map[quality] ?? "bg-gray-100 text-gray-600"} aria-label={`Photo quality: ${quality}`}>{quality}</Badge>;
+  return <Badge className={map[quality] ?? "bg-muted text-muted-foreground"} aria-label={`Photo quality: ${quality}`}>{quality}</Badge>;
 }
 
 export default function VisionAIPage() {
@@ -303,7 +303,7 @@ export default function VisionAIPage() {
                             <dl className="grid grid-cols-3 gap-2 text-xs">
                               <div className="flex items-center gap-1">
                                 <CheckCircle
-                                  className={`w-3 h-3 ${photo.analysis.buildingDetected ? "text-orange-500" : "text-green-500"}`}
+                                  className={`w-3 h-3 ${photo.analysis.buildingDetected ? "text-acr-warn" : "text-acr-pos"}`}
                                   aria-hidden="true"
                                 />
                                 <dt className="sr-only">Buildings</dt>
@@ -311,14 +311,14 @@ export default function VisionAIPage() {
                               </div>
                               <div className="flex items-center gap-1">
                                 {photo.analysis.waterDetected
-                                  ? <CheckCircle className="w-3 h-3 text-blue-500" aria-hidden="true" />
+                                  ? <CheckCircle className="w-3 h-3 text-acr-accent" aria-hidden="true" />
                                   : <span className="w-3 h-3 inline-block" aria-hidden="true" />}
                                 <dt className="sr-only">Water</dt>
                                 <dd>{photo.analysis.waterDetected ? "Water visible" : "No water"}</dd>
                               </div>
                               <div className="flex items-center gap-1">
                                 {photo.analysis.roadDetected
-                                  ? <CheckCircle className="w-3 h-3 text-gray-500" aria-hidden="true" />
+                                  ? <CheckCircle className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                                   : <span className="w-3 h-3 inline-block" aria-hidden="true" />}
                                 <dt className="sr-only">Roads</dt>
                                 <dd>{photo.analysis.roadDetected ? "Road access" : "No roads"}</dd>
@@ -343,8 +343,8 @@ export default function VisionAIPage() {
 
                             <div className="flex items-center gap-1 text-xs" role="status">
                               {photo.analysis.isUsableForMarketing
-                                ? <><CheckCircle className="w-3 h-3 text-green-500" aria-hidden="true" /><span className="text-green-600">Marketing-ready</span></>
-                                : <><AlertTriangle className="w-3 h-3 text-yellow-500" aria-hidden="true" /><span className="text-yellow-600">Not for marketing</span></>}
+                                ? <><CheckCircle className="w-3 h-3 text-acr-pos" aria-hidden="true" /><span className="text-acr-pos">Marketing-ready</span></>
+                                : <><AlertTriangle className="w-3 h-3 text-acr-warn" aria-hidden="true" /><span className="text-acr-warn">Not for marketing</span></>}
                             </div>
                           </>
                         )}
@@ -424,7 +424,7 @@ export default function VisionAIPage() {
               <Card>
                 <CardContent className="p-4">
                   <dt className="text-sm text-muted-foreground mb-1">Marketing-ready photos</dt>
-                  <dd className="text-2xl font-bold text-green-600 tabular-nums">
+                  <dd className="text-2xl font-bold text-acr-pos tabular-nums">
                     {summary.photos?.filter((p: any) => p.analysis?.isUsableForMarketing).length ?? 0}
                   </dd>
                 </CardContent>

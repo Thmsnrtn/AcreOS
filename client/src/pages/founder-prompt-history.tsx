@@ -192,7 +192,7 @@ function VersionRow({
                   v{v.versionNumber}
                 </Badge>
                 {v.isActive && v.canaryWeight === 100 && (
-                  <Badge className="text-xs bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                  <Badge className="text-xs bg-acr-pos/15 text-acr-pos dark:text-acr-pos border-acr-pos/30">
                     Live
                   </Badge>
                 )}
@@ -202,7 +202,7 @@ function VersionRow({
                   </Badge>
                 )}
                 {v.rolledBackAt && (
-                  <Badge variant="outline" className="text-xs text-rose-600 border-rose-500/30">
+                  <Badge variant="outline" className="text-xs text-acr-neg border-acr-neg/30">
                     Rolled back
                   </Badge>
                 )}

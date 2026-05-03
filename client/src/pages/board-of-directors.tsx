@@ -206,11 +206,11 @@ export default function BoardOfDirectors() {
         </div>
 
         {escalated.length > 0 && (
-          <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950" role="alert">
+          <Card className="border-acr-neg-soft bg-acr-neg-soft dark:border-acr-neg-soft dark:bg-acr-neg-soft" role="alert">
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
-                <p className="font-medium text-sm text-red-700 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
+                <p className="font-medium text-sm text-acr-neg dark:text-acr-neg">
                   <span className="tabular-nums">{escalated.length}</span> negotiation{escalated.length > 1 ? "s" : ""} require{escalated.length === 1 ? "s" : ""} your attention.
                 </p>
               </div>
@@ -301,11 +301,11 @@ export default function BoardOfDirectors() {
                         <li key={entry.id ?? i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 gap-3 flex-wrap">
                           <div className="flex items-center gap-2 min-w-0">
                             {isAllowed ? (
-                              <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-label={actionLabel} />
+                              <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-label={actionLabel} />
                             ) : isBlocked ? (
-                              <XCircle className="w-3.5 h-3.5 text-red-500" aria-label={actionLabel} />
+                              <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-label={actionLabel} />
                             ) : (
-                              <Clock className="w-3.5 h-3.5 text-yellow-500" aria-label={actionLabel} />
+                              <Clock className="w-3.5 h-3.5 text-acr-warn" aria-label={actionLabel} />
                             )}
                             <div className="min-w-0">
                               <span className="font-medium">{entry.agent ?? entry.subject}</span>
@@ -351,7 +351,7 @@ export default function BoardOfDirectors() {
                           {override.createdAt && relative(override.createdAt)}
                         </p>
                         {override.learningApplied && (
-                          <p className="text-xs text-green-600 mt-1">Learning applied to future decisions.</p>
+                          <p className="text-xs text-acr-pos mt-1">Learning applied to future decisions.</p>
                         )}
                       </li>
                     ))}

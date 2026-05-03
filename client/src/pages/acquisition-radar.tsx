@@ -35,10 +35,10 @@ import {
 } from 'lucide-react';
 
 const OPPORTUNITY_LABELS: Record<string, { label: string; color: string }> = {
-  undervalued: { label: 'Undervalued', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-  motivated_seller: { label: 'Motivated seller', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
-  market_shift: { label: 'Market shift', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' },
-  off_market: { label: 'Off market', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  undervalued: { label: 'Undervalued', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent' },
+  motivated_seller: { label: 'Motivated seller', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn' },
+  market_shift: { label: 'Market shift', color: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand' },
+  off_market: { label: 'Off market', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' },
 };
 
 const SCORE_COLOR = (score: number) => {
@@ -50,10 +50,10 @@ const SCORE_COLOR = (score: number) => {
 
 function ScoreBadge({ score }: { score: number }) {
   const tier = score >= 80 ? 'hot' : score >= 60 ? 'warm' : score >= 40 ? 'moderate' : 'cold';
-  const bg = score >= 80 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-    : score >= 60 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
-    : score >= 40 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+  const bg = score >= 80 ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg'
+    : score >= 60 ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn'
+    : score >= 40 ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn'
+    : 'bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground';
 
   return (
     <span
@@ -67,7 +67,7 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function OpportunityCard({ opp, onView }: { opp: any; onView: (o: any) => void }) {
-  const typeInfo = OPPORTUNITY_LABELS[opp.opportunityType] || { label: opp.opportunityType, color: 'bg-gray-100 text-gray-700' };
+  const typeInfo = OPPORTUNITY_LABELS[opp.opportunityType] || { label: opp.opportunityType, color: 'bg-muted text-foreground' };
   const label = opp.apn ? `APN: ${opp.apn}` : `Parcel #${opp.id}`;
 
   return (
@@ -250,7 +250,7 @@ export default function AcquisitionRadarPage() {
           <Card>
             <CardContent className="pt-4 flex flex-col-reverse">
               <dt className="text-sm text-muted-foreground">Hot (80+ score)</dt>
-              <dd className="text-2xl font-bold text-red-500 flex items-center gap-1 tabular-nums">
+              <dd className="text-2xl font-bold text-acr-neg flex items-center gap-1 tabular-nums">
                 <Flame className="w-5 h-5" aria-hidden="true" />
                 {stats.hotOpportunities}
               </dd>

@@ -27,20 +27,20 @@ interface HealthResponse {
 const STATUS_CONFIG = {
   operational: {
     icon: CheckCircle2,
-    color: "text-green-600",
-    badge: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+    color: "text-acr-pos",
+    badge: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
     label: "Operational",
   },
   degraded: {
     icon: AlertTriangle,
-    color: "text-amber-600",
-    badge: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    color: "text-acr-warn",
+    badge: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
     label: "Degraded",
   },
   outage: {
     icon: XCircle,
-    color: "text-red-600",
-    badge: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+    color: "text-acr-neg",
+    badge: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg",
     label: "Outage",
   },
   unknown: {
@@ -95,10 +95,10 @@ export default function IntegrationsHealth() {
       {data && (
         <Card className={`border-2 ${
           data.overall === "operational"
-            ? "border-green-200 dark:border-green-800"
+            ? "border-acr-pos-soft dark:border-acr-pos-soft"
             : data.overall === "degraded"
-            ? "border-amber-200 dark:border-amber-800"
-            : "border-red-200 dark:border-red-800"
+            ? "border-acr-warn-soft dark:border-acr-warn-soft"
+            : "border-acr-neg-soft dark:border-acr-neg-soft"
         }`}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">

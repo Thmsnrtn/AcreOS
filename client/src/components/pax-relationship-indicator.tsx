@@ -27,10 +27,10 @@ const STAGE_CONFIG: Record<Stage, {
   color: string;
   bgColor: string;
 }> = {
-  onboarding: { label: "Getting Started", icon: Sprout, color: "text-emerald-600", bgColor: "bg-emerald-50" },
-  building: { label: "Building Trust", icon: Bot, color: "text-blue-600", bgColor: "bg-blue-50" },
-  trusted: { label: "Trusted Advisor", icon: Handshake, color: "text-violet-600", bgColor: "bg-violet-50" },
-  partner: { label: "Strategic Partner", icon: Crown, color: "text-amber-600", bgColor: "bg-amber-50" },
+  onboarding: { label: "Getting Started", icon: Sprout, color: "text-acr-pos", bgColor: "bg-acr-pos-soft" },
+  building: { label: "Building Trust", icon: Bot, color: "text-acr-accent", bgColor: "bg-acr-accent" },
+  trusted: { label: "Trusted Advisor", icon: Handshake, color: "text-acr-brand", bgColor: "bg-acr-brand-soft" },
+  partner: { label: "Strategic Partner", icon: Crown, color: "text-acr-warn", bgColor: "bg-acr-warn-soft" },
 };
 
 interface PaxRelationshipIndicatorProps {
@@ -107,7 +107,7 @@ export function PaxRelationshipIndicator({ compact, className }: PaxRelationship
         </div>
       )}
       {data.stage === "partner" && (
-        <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 bg-amber-50">
+        <Badge variant="outline" className="text-xs text-acr-warn border-acr-warn-soft bg-acr-warn-soft">
           Highest level reached
         </Badge>
       )}

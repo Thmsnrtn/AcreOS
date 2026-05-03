@@ -93,12 +93,12 @@ export function LegalIntelligenceCard({
       <CardContent className="space-y-3">
         {/* Adverse Possession Warning */}
         {hasAdversePossessionWarning && data.adversePossession && (
-          <Alert className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
-            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="text-amber-800 dark:text-amber-300 text-sm font-medium">
+          <Alert className="border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/30">
+            <AlertTriangle className="h-4 w-4 text-acr-warn dark:text-acr-warn" />
+            <AlertTitle className="text-acr-warn dark:text-acr-warn text-sm font-medium">
               Adverse Possession Awareness
             </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-400 text-xs">
+            <AlertDescription className="text-acr-warn dark:text-acr-warn text-xs">
               This property has been held for approximately{" "}
               {yearsHeld != null ? Math.round(yearsHeld) : "?"} years. The
               adverse possession period in this state is{" "}
@@ -111,18 +111,18 @@ export function LegalIntelligenceCard({
 
         {/* Partition Risk */}
         {hasPartitionRisk && data.partition && (
-          <Alert className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
-            <Users className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="text-amber-800 dark:text-amber-300 text-sm font-medium">
+          <Alert className="border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/30">
+            <Users className="h-4 w-4 text-acr-warn dark:text-acr-warn" />
+            <AlertTitle className="text-acr-warn dark:text-acr-warn text-sm font-medium">
               Multiple Owners Detected
               <Badge
                 variant="outline"
-                className="ml-2 text-[10px] border-amber-400 text-amber-700 dark:text-amber-300"
+                className="ml-2 text-[10px] border-acr-warn text-acr-warn dark:text-acr-warn"
               >
                 {data.partition.ownerCount} owners
               </Badge>
             </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-400 text-xs">
+            <AlertDescription className="text-acr-warn dark:text-acr-warn text-xs">
               Properties with multiple owners carry partition action risk. Any
               co-owner can petition the court to force a sale. Verify ownership
               structure and consider partition risk in your acquisition
@@ -133,20 +133,20 @@ export function LegalIntelligenceCard({
 
         {/* Tax Lien / Redemption Period */}
         {hasTaxLienInfo && data.taxLien && (
-          <Alert className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
-            <FileWarning className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="text-amber-800 dark:text-amber-300 text-sm font-medium">
+          <Alert className="border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/30">
+            <FileWarning className="h-4 w-4 text-acr-warn dark:text-acr-warn" />
+            <AlertTitle className="text-acr-warn dark:text-acr-warn text-sm font-medium">
               Tax Delinquent Property
               {data.taxLien.redemptionMonths > 0 && (
                 <Badge
                   variant="outline"
-                  className="ml-2 text-[10px] border-amber-400 text-amber-700 dark:text-amber-300"
+                  className="ml-2 text-[10px] border-acr-warn text-acr-warn dark:text-acr-warn"
                 >
                   {data.taxLien.redemptionMonths} mo redemption
                 </Badge>
               )}
             </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-400 text-xs">
+            <AlertDescription className="text-acr-warn dark:text-acr-warn text-xs">
               This property has delinquent taxes
               {data.taxLien.delinquentAmount != null &&
                 ` (${usd(data.taxLien.delinquentAmount)})`}
@@ -159,12 +159,12 @@ export function LegalIntelligenceCard({
 
         {/* RESPA Informational Banner */}
         {showRespaContext && (
-          <Alert className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
-            <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="text-amber-800 dark:text-amber-300 text-sm font-medium">
+          <Alert className="border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/30">
+            <Shield className="h-4 w-4 text-acr-warn dark:text-acr-warn" />
+            <AlertTitle className="text-acr-warn dark:text-acr-warn text-sm font-medium">
               RESPA Awareness
             </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-400 text-xs">
+            <AlertDescription className="text-acr-warn dark:text-acr-warn text-xs">
               The Real Estate Settlement Procedures Act (RESPA) prohibits
               kickbacks and unearned fees in real estate transactions. Ensure
               all commission splits and referral fees comply with Section 8 of

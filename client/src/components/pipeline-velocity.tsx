@@ -117,7 +117,7 @@ export function PipelineVelocity() {
       <CardHeader className="pb-3 flex-row items-start justify-between">
         <div>
           <CardTitle className="text-base flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-600" /> Pipeline Velocity
+            <Clock className="w-4 h-4 text-acr-accent" /> Pipeline Velocity
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
             Average days deals spend in each stage
@@ -180,7 +180,7 @@ export function PipelineVelocity() {
                   <div className="font-medium flex items-center justify-between">
                     <span>{v.label}</span>
                     {v.stalledCount > 0 && (
-                      <span className="text-red-500 flex items-center gap-0.5">
+                      <span className="text-acr-neg flex items-center gap-0.5">
                         <AlertCircle className="w-3 h-3" /> {v.stalledCount}
                       </span>
                     )}

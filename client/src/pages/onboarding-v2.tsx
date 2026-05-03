@@ -157,11 +157,11 @@ function InstantDealHunt({
       <div className="text-center">
         {isLoading ? (
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mx-auto" />
-            <p className="text-gray-400">
+            <div className="w-12 h-12 rounded-full border-4 border-acr-pos border-t-transparent animate-spin mx-auto" />
+            <p className="text-muted-foreground">
               Scanning {targetCounty} County, {targetState} for motivated sellers…
             </p>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-muted-foreground">
               Checking tax delinquency records · Scoring seller motivation · Finding opportunities
             </p>
           </div>
@@ -170,12 +170,12 @@ function InstantDealHunt({
             <div className="text-2xl font-bold text-white">
               Found <span className="tabular-nums">{opportunities.length}</span> opportunities
               {totalScanned > 0 && (
-                <span className="text-gray-400 text-base font-normal ml-2">
+                <span className="text-muted-foreground text-base font-normal ml-2">
                   (<span className="tabular-nums">{totalScanned.toLocaleString()}</span> properties scanned)
                 </span>
               )}
             </div>
-            <p className="text-gray-400 text-sm">
+            <p className="text-muted-foreground text-sm">
               in {targetCounty} County, {targetState} — ranked by seller motivation.
             </p>
           </div>
@@ -205,7 +205,7 @@ function InstantDealHunt({
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <div className="font-semibold text-white">{opp.ownerName}</div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     {opp.acreage} acres · {opp.county}, {opp.state}
                   </div>
                 </div>
@@ -222,38 +222,38 @@ function InstantDealHunt({
                   >
                     {opp.motivationGrade} · {opp.motivationScore}
                   </div>
-                  <div className="text-xs text-gray-500">Motivation score</div>
+                  <div className="text-xs text-muted-foreground">Motivation score</div>
                 </div>
               </div>
 
-              <div className="text-xs text-gray-400 mb-3">
-                📍 Top signal: <span className="text-gray-300">{opp.topSignal}</span>
+              <div className="text-xs text-muted-foreground mb-3">
+                📍 Top signal: <span className="text-muted-foreground">{opp.topSignal}</span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
+                <div className="bg-acr-bg-sunken/60 rounded-lg p-2 min-w-0">
                   <div className="text-sm font-semibold text-white truncate tabular-nums">
                     {usd(opp.estimatedOfferPrice, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Offer price</div>
+                  <div className="text-xs text-muted-foreground">Offer price</div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
+                <div className="bg-acr-bg-sunken/60 rounded-lg p-2 min-w-0">
                   <div className="text-sm font-semibold text-white truncate tabular-nums">
                     {usd(opp.estimatedResaleValue, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Resale value</div>
+                  <div className="text-xs text-muted-foreground">Resale value</div>
                 </div>
-                <div className="bg-emerald-900/40 rounded-lg p-2">
+                <div className="bg-acr-pos-soft/40 rounded-lg p-2">
                   <div className="text-sm font-semibold text-acr-pos tabular-nums">
                     {usd(opp.potentialProfit, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Potential profit</div>
+                  <div className="text-xs text-muted-foreground">Potential profit</div>
                 </div>
               </div>
             </div>
           ))}
 
-          <p className="text-xs text-gray-600 text-center">
+          <p className="text-xs text-muted-foreground text-center">
             These are real data points from public records in {targetCounty} County.
             AcreOS finds new opportunities like these every night automatically.
           </p>
@@ -262,8 +262,8 @@ function InstantDealHunt({
 
       {!isLoading && opportunities.length === 0 && (
         <div className="text-center py-6">
-          <div className="text-gray-500 mb-2">No high-motivation leads found in this county yet.</div>
-          <div className="text-sm text-gray-600">
+          <div className="text-muted-foreground mb-2">No high-motivation leads found in this county yet.</div>
+          <div className="text-sm text-muted-foreground">
             AcreOS will monitor {targetCounty} County and alert you when opportunities emerge.
           </div>
         </div>
@@ -368,11 +368,11 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
               fileInputRef.current?.click();
             }
           }}
-          className="border-2 border-dashed border-gray-700 rounded-xl p-10 text-center cursor-pointer hover:border-blue-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-acr-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-accent"
         >
-          <Upload className="w-10 h-10 text-gray-500 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-gray-300 font-medium">Drop your CSV or XLSX file here</p>
-          <p className="text-gray-500 text-sm mt-1">or click to browse</p>
+          <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
+          <p className="text-muted-foreground font-medium">Drop your CSV or XLSX file here</p>
+          <p className="text-muted-foreground text-sm mt-1">or click to browse</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -384,16 +384,16 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-blue-950/30 border border-blue-700/30 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-acr-accent/30 border border-acr-accent/30 rounded-lg">
             <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-blue-400" aria-hidden="true" />
+              <FileSpreadsheet className="w-5 h-5 text-acr-accent" aria-hidden="true" />
               <span className="text-white text-sm font-medium">{file.name}</span>
             </div>
             {!importComplete && (
               <button
                 type="button"
                 onClick={() => { setFile(null); setPreview([]); }}
-                className="text-gray-500 hover:text-gray-300 text-xs min-h-11 px-2"
+                className="text-muted-foreground hover:text-muted-foreground text-xs min-h-11 px-2"
                 aria-label={`Remove ${file.name} and choose a different file`}
               >
                 Change file
@@ -402,12 +402,12 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           </div>
 
           {preview.length > 0 && !importComplete && (
-            <div className="overflow-x-auto rounded-lg border border-gray-800" role="region" tabIndex={0} aria-label="Portfolio file preview">
-              <table className="w-full text-xs text-gray-300">
+            <div className="overflow-x-auto rounded-lg border border-border" role="region" tabIndex={0} aria-label="Portfolio file preview">
+              <table className="w-full text-xs text-muted-foreground">
                 <thead>
-                  <tr className="bg-gray-900/80">
+                  <tr className="bg-acr-bg-sunken/80">
                     {preview[0]?.map((header, i) => (
-                      <th key={i} scope="col" className="px-3 py-2 text-left font-medium text-gray-400">
+                      <th key={i} scope="col" className="px-3 py-2 text-left font-medium text-muted-foreground">
                         {header}
                       </th>
                     ))}
@@ -415,7 +415,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
                 </thead>
                 <tbody>
                   {preview.slice(1, 6).map((row, ri) => (
-                    <tr key={ri} className="border-t border-gray-800/50">
+                    <tr key={ri} className="border-t border-border/50">
                       {row.map((cell, ci) => (
                         <td key={ci} className="px-3 py-1.5 truncate max-w-[120px]">
                           {cell}
@@ -425,7 +425,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
                   ))}
                 </tbody>
               </table>
-              <div className="px-3 py-1.5 text-xs text-gray-600 bg-gray-900/50">
+              <div className="px-3 py-1.5 text-xs text-muted-foreground bg-acr-bg-sunken/50">
                 Showing first <span className="tabular-nums">{Math.min(preview.length - 1, 5)}</span> rows
               </div>
             </div>
@@ -433,7 +433,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
 
           {importComplete && (
             <div
-              className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
+              className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
               role="status"
               aria-live="polite"
             >
@@ -449,7 +449,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           <Button
             onClick={handleUpload}
             disabled={isUploading}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 min-h-11"
+            className="flex-1 bg-acr-accent hover:bg-acr-accent py-3 min-h-11"
           >
             {isUploading ? (
               <>
@@ -529,7 +529,7 @@ function TargetCountiesStep({
               spellCheck={false}
               value={c.state}
               onChange={(e) => updateCounty(i, "state", e.target.value)}
-              className="bg-gray-900 border-gray-700 text-white text-center uppercase"
+              className="bg-acr-bg-sunken border-border text-white text-center uppercase"
             />
           </div>
           <div className="flex-1">
@@ -541,7 +541,7 @@ function TargetCountiesStep({
               autoComplete="address-level2"
               value={c.county}
               onChange={(e) => updateCounty(i, "county", e.target.value)}
-              className="bg-gray-900 border-gray-700 text-white"
+              className="bg-acr-bg-sunken border-border text-white"
             />
           </div>
         </div>
@@ -551,15 +551,15 @@ function TargetCountiesStep({
         <button
           type="button"
           onClick={addCounty}
-          className="text-sm text-blue-400 hover:text-blue-300 min-h-11 px-2"
+          className="text-sm text-acr-accent hover:text-acr-accent min-h-11 px-2"
         >
           + Add another county (up to <span className="tabular-nums">5</span>)
         </button>
       )}
 
-      <div className="p-3 bg-gray-900 border border-gray-800 rounded-lg">
-        <p className="text-xs text-gray-500 mb-1">Pro tip</p>
-        <p className="text-xs text-gray-400">
+      <div className="p-3 bg-acr-bg-sunken border border-border rounded-lg">
+        <p className="text-xs text-muted-foreground mb-1">Pro tip</p>
+        <p className="text-xs text-muted-foreground">
           Running deals in 3–5 counties gives you enough deal flow while keeping focus.
           The Deal Hunter scans each county every night.
         </p>
@@ -598,12 +598,12 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-blue-950/20 border border-blue-700/30 rounded-xl">
+      <div className="p-4 bg-acr-accent/20 border border-acr-accent/30 rounded-xl">
         <div className="flex items-center gap-3 mb-3">
-          <Zap className="w-5 h-5 text-blue-400" aria-hidden="true" />
+          <Zap className="w-5 h-5 text-acr-accent" aria-hidden="true" />
           <span className="font-medium text-white">Autonomous deal machine</span>
         </div>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-muted-foreground mb-4">
           AcreOS runs these processes automatically every night. Toggle what you want active.
         </p>
         <div className="space-y-3" role="group" aria-label="Autonomous deal machine settings">
@@ -637,20 +637,20 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
               className={cn(
                 "w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3 min-h-11",
                 settings[key]
-                  ? "border-blue-500/50 bg-blue-950/30"
-                  : "border-gray-700 bg-gray-900/50"
+                  ? "border-acr-accent/50 bg-acr-accent/30"
+                  : "border-border bg-acr-bg-sunken/50"
               )}
             >
-              <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", settings[key] ? "text-blue-400" : "text-gray-500")} aria-hidden="true" />
+              <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", settings[key] ? "text-acr-accent" : "text-muted-foreground")} aria-hidden="true" />
               <div className="flex-1">
                 <div className="text-sm font-medium text-white">{label}</div>
-                <div className="text-xs text-gray-500">{desc}</div>
+                <div className="text-xs text-muted-foreground">{desc}</div>
               </div>
               <div
                 aria-hidden="true"
                 className={cn(
                   "w-8 h-5 rounded-full transition-colors flex items-center px-0.5 flex-shrink-0 mt-0.5",
-                  settings[key] ? "bg-blue-500 justify-end" : "bg-gray-700 justify-start"
+                  settings[key] ? "bg-acr-accent justify-end" : "bg-acr-bg-sunken justify-start"
                 )}
               >
                 <div className="w-4 h-4 bg-white rounded-full" />
@@ -706,7 +706,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
 
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-purple-950/20 border border-purple-700/30 rounded-xl">
+      <div className="p-4 bg-acr-brand-soft/20 border border-acr-brand/30 rounded-xl">
         <ul className="space-y-3" aria-label="Team roles you can invite">
           {[
             { icon: UserPlus, role: "Deal analysts", desc: "Find and evaluate acquisition targets" },
@@ -714,12 +714,12 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
             { icon: Briefcase, role: "Closing coordinators", desc: "Manage contracts and transactions" },
           ].map(({ icon: Icon, role, desc }) => (
             <li key={role} className="flex items-center gap-3 p-2">
-              <div className="w-8 h-8 bg-purple-900/50 rounded-lg flex items-center justify-center flex-shrink-0" aria-hidden="true">
-                <Icon className="w-4 h-4 text-purple-400" />
+              <div className="w-8 h-8 bg-acr-brand-soft/50 rounded-lg flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                <Icon className="w-4 h-4 text-acr-brand" />
               </div>
               <div>
                 <div className="text-sm font-medium text-white">{role}</div>
-                <div className="text-xs text-gray-500">{desc}</div>
+                <div className="text-xs text-muted-foreground">{desc}</div>
               </div>
             </li>
           ))}
@@ -727,27 +727,27 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
       </div>
 
       <div>
-        <Label htmlFor="team-invite-emails" className="text-gray-300 mb-2 block">Invite team members</Label>
+        <Label htmlFor="team-invite-emails" className="text-muted-foreground mb-2 block">Invite team members</Label>
         <Textarea
           id="team-invite-emails"
           placeholder="Enter email addresses (one per line or comma-separated)"
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
-          className="bg-gray-900 border-gray-700 text-white min-h-[80px]"
+          className="bg-acr-bg-sunken border-border text-white min-h-[80px]"
           disabled={invitesSent}
           aria-describedby="team-invite-emails-hint"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
         />
-        <p id="team-invite-emails-hint" className="text-xs text-gray-600 mt-1">
+        <p id="team-invite-emails-hint" className="text-xs text-muted-foreground mt-1">
           Each person receives an email with a sign-in link. You can add more later in Settings.
         </p>
       </div>
 
       {invitesSent && (
         <div
-          className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
+          className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
           role="status"
           aria-live="polite"
         >
@@ -850,18 +850,18 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
             className={cn(
               "p-4 rounded-xl border flex items-start gap-3",
               status === "connected"
-                ? "border-emerald-700/40 bg-emerald-950/20"
-                : "border-gray-700 bg-gray-900/50"
+                ? "border-acr-pos/40 bg-acr-pos-soft/20"
+                : "border-border bg-acr-bg-sunken/50"
             )}
           >
             <div
               aria-hidden="true"
               className={cn(
                 "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
-                status === "connected" ? "bg-emerald-900/50" : "bg-gray-800"
+                status === "connected" ? "bg-acr-pos-soft/50" : "bg-acr-bg-sunken"
               )}
             >
-              <Icon className={cn("w-5 h-5", status === "connected" ? "text-acr-pos" : "text-gray-400")} />
+              <Icon className={cn("w-5 h-5", status === "connected" ? "text-acr-pos" : "text-muted-foreground")} />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
@@ -871,20 +871,20 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
                   className={cn(
                     "text-[10px] px-1.5",
                     status === "connected"
-                      ? "bg-emerald-900/60 text-acr-pos border-emerald-700/30"
-                      : "bg-gray-800 text-gray-400 border-gray-700"
+                      ? "bg-acr-pos-soft/60 text-acr-pos border-acr-pos/30"
+                      : "bg-acr-bg-sunken text-muted-foreground border-border"
                   )}
                 >
                   {status === "connected" ? "Connected" : "Not configured"}
                 </Badge>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
             </div>
           </li>
         ))}
       </ul>
 
-      <p className="text-xs text-gray-600 text-center">
+      <p className="text-xs text-muted-foreground text-center">
         You can configure all integrations later in Settings.
       </p>
 
@@ -948,16 +948,16 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
               className={cn(
                 "w-full text-left p-4 rounded-xl border-2 transition-all min-h-11",
                 checked
-                  ? "border-purple-500 bg-purple-950/20"
-                  : "border-gray-700 bg-gray-900 hover:border-gray-600"
+                  ? "border-acr-brand bg-acr-brand-soft/20"
+                  : "border-border bg-acr-bg-sunken hover:border-border"
               )}
             >
               <div className="flex items-center gap-3">
-                <Icon className={cn("w-5 h-5 flex-shrink-0", checked ? "text-purple-400" : "text-gray-500")} aria-hidden="true" />
+                <Icon className={cn("w-5 h-5 flex-shrink-0", checked ? "text-acr-brand" : "text-muted-foreground")} aria-hidden="true" />
                 <div>
                   <div className="font-semibold text-white text-sm">{title}</div>
-                  <div className="text-xs text-gray-400">{desc}</div>
-                  <div className="text-xs text-gray-600 mt-1"><span className="tabular-nums">{stages}</span> stages</div>
+                  <div className="text-xs text-muted-foreground">{desc}</div>
+                  <div className="text-xs text-muted-foreground mt-1"><span className="tabular-nums">{stages}</span> stages</div>
                 </div>
               </div>
             </button>
@@ -965,7 +965,7 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
         })}
       </div>
 
-      <p className="text-xs text-gray-600 text-center">
+      <p className="text-xs text-muted-foreground text-center">
         Custom pipeline stages can be added in Settings after setup.
       </p>
 
@@ -1063,12 +1063,12 @@ export default function OnboardingV2() {
   // PATH SELECTION screen (before step flow starts)
   if (!selectedPath) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-acr-bg-sunken flex items-center justify-center p-4">
         <div className="max-w-2xl w-full space-y-8">
           {/* Logo + headline */}
           <div className="text-center space-y-3">
             <h1 className="text-4xl font-bold text-white">Welcome to AcreOS</h1>
-            <p className="text-gray-400 text-lg">
+            <p className="text-muted-foreground text-lg">
               Tell us where you are in your land investing journey — we'll configure everything for you.
             </p>
           </div>
@@ -1085,8 +1085,8 @@ export default function OnboardingV2() {
                 title: "Just getting started",
                 subtitle: "I'm new to land investing and want to learn the ropes",
                 benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Pax coaching tips"],
-                cardClasses: "border-emerald-700/40 bg-emerald-950/20 hover:border-emerald-500",
-                iconBg: "bg-emerald-900/60",
+                cardClasses: "border-acr-pos/40 bg-acr-pos-soft/20 hover:border-acr-pos",
+                iconBg: "bg-acr-pos-soft/60",
                 iconColor: "text-acr-pos",
               },
               {
@@ -1095,9 +1095,9 @@ export default function OnboardingV2() {
                 title: "Active land investor",
                 subtitle: "I'm already doing deals and need better tools",
                 benefits: ["Import existing portfolio", "Configure Deal Hunter for your markets", "Activate Autonomous Deal Machine", "Advanced analytics"],
-                cardClasses: "border-blue-700/40 bg-blue-950/20 hover:border-blue-500",
-                iconBg: "bg-blue-900/60",
-                iconColor: "text-blue-400",
+                cardClasses: "border-acr-accent/40 bg-acr-accent/20 hover:border-acr-accent",
+                iconBg: "bg-acr-accent/60",
+                iconColor: "text-acr-accent",
               },
               {
                 path: "enterprise" as InvestorPath,
@@ -1105,9 +1105,9 @@ export default function OnboardingV2() {
                 title: "Team or enterprise",
                 subtitle: "I run a land investing operation with a team",
                 benefits: ["Multi-user deal pipeline", "VA and team management", "White-label options", "API access for integrations"],
-                cardClasses: "border-purple-700/40 bg-purple-950/20 hover:border-purple-500",
-                iconBg: "bg-purple-900/60",
-                iconColor: "text-purple-400",
+                cardClasses: "border-acr-brand/40 bg-acr-brand-soft/20 hover:border-acr-brand",
+                iconBg: "bg-acr-brand-soft/60",
+                iconColor: "text-acr-brand",
               },
             ] as const).map(({ path, icon: Icon, title, subtitle, benefits, cardClasses, iconBg, iconColor }) => (
               <button
@@ -1127,10 +1127,10 @@ export default function OnboardingV2() {
                   </div>
                   <div className="flex-1">
                     <div className="font-bold text-white text-lg">{title}</div>
-                    <div className="text-gray-400 text-sm mb-3">{subtitle}</div>
+                    <div className="text-muted-foreground text-sm mb-3">{subtitle}</div>
                     <div className="flex flex-wrap gap-2">
                       {benefits.map((b) => (
-                        <span key={b} className="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded-full">
+                        <span key={b} className="text-xs bg-acr-bg-sunken text-muted-foreground px-2 py-1 rounded-full">
                           ✓ {b}
                         </span>
                       ))}
@@ -1142,7 +1142,7 @@ export default function OnboardingV2() {
             ))}
           </div>
 
-          <p className="text-center text-xs text-gray-600">
+          <p className="text-center text-xs text-muted-foreground">
             You can change your path at any time in Settings · No credit card required to start
           </p>
         </div>
@@ -1151,9 +1151,9 @@ export default function OnboardingV2() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-acr-bg-sunken flex flex-col">
       {/* Progress bar */}
-      <div className="h-1 bg-gray-900">
+      <div className="h-1 bg-acr-bg-sunken">
         <div
           className="h-1 bg-acr-pos transition-all duration-500"
           style={{ width: `${progress}%` }}
@@ -1161,15 +1161,15 @@ export default function OnboardingV2() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-900">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="text-sm font-medium text-primary">AcreOS</div>
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-muted-foreground">
           Step {currentStepIndex + 1} of {steps.length}
         </div>
         {currentStepIndex > 0 && (
           <button
             onClick={() => navigate("/dashboard")}
-            className="text-xs text-gray-600 hover:text-gray-400"
+            className="text-xs text-muted-foreground hover:text-muted-foreground"
           >
             Skip setup →
           </button>
@@ -1187,18 +1187,18 @@ export default function OnboardingV2() {
           {/* Step header */}
           <div className="text-center space-y-2">
             <h2 className="text-3xl font-bold text-white">{currentStep.title}</h2>
-            <p className="text-gray-400">{currentStep.subtitle}</p>
+            <p className="text-muted-foreground">{currentStep.subtitle}</p>
           </div>
 
           {/* Step content */}
           {currentStep.id === "path" && selectedPath && (
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-900/20 border border-emerald-700/30 rounded-xl">
+              <div className="p-4 bg-acr-pos-soft/20 border border-acr-pos/30 rounded-xl">
                 <div className="flex items-center gap-3 mb-3">
                   <Brain className="w-5 h-5 text-acr-pos" />
                   <span className="font-medium text-white">Pax is ready to help</span>
                 </div>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   {selectedPath === "beginner"
                     ? "I'll guide you through finding your first land deal step by step. Land investing is simpler than most real estate — no tenants, no repairs, just buying cheap and selling for a profit."
                     : selectedPath === "active"
@@ -1218,7 +1218,7 @@ export default function OnboardingV2() {
           {currentStep.id === "target_county" && (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="onb-target-state" className="text-gray-300 mb-2 block">Target state</Label>
+                <Label htmlFor="onb-target-state" className="text-muted-foreground mb-2 block">Target state</Label>
                 <Input
                   id="onb-target-state"
                   placeholder="e.g., TX"
@@ -1230,11 +1230,11 @@ export default function OnboardingV2() {
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, targetState: e.target.value.toUpperCase() }))
                   }
-                  className="bg-gray-900 border-gray-700 text-white text-lg py-3"
+                  className="bg-acr-bg-sunken border-border text-white text-lg py-3"
                 />
               </div>
               <div>
-                <Label htmlFor="onb-target-county" className="text-gray-300 mb-2 block">Target county</Label>
+                <Label htmlFor="onb-target-county" className="text-muted-foreground mb-2 block">Target county</Label>
                 <Input
                   id="onb-target-county"
                   placeholder="e.g., Hudspeth"
@@ -1243,12 +1243,12 @@ export default function OnboardingV2() {
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, targetCounty: e.target.value }))
                   }
-                  className="bg-gray-900 border-gray-700 text-white text-lg py-3"
+                  className="bg-acr-bg-sunken border-border text-white text-lg py-3"
                 />
               </div>
-              <div className="p-3 bg-gray-900 border border-gray-800 rounded-lg">
-                <div className="text-xs text-gray-500 mb-2">💡 Not sure which county to pick?</div>
-                <div className="text-xs text-gray-400">
+              <div className="p-3 bg-acr-bg-sunken border border-border rounded-lg">
+                <div className="text-xs text-muted-foreground mb-2">💡 Not sure which county to pick?</div>
+                <div className="text-xs text-muted-foreground">
                   Expert tip: Start with rural counties in TX, AZ, NM, or CO. Look for counties with
                   low competition (fewer mailers being sent) and active land sales. The Deal Hunter will
                   show you opportunity scores for any county you choose.
@@ -1316,7 +1316,7 @@ export default function OnboardingV2() {
                 },
               ].map(({ group, types }) => (
                 <div key={group} className="space-y-2">
-                  <div className="text-xs font-medium uppercase tracking-wider text-gray-500 px-1">{group}</div>
+                  <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-1">{group}</div>
                   {types.map(({ value, icon: Icon, title, desc }) => (
                     <button
                       key={value}
@@ -1324,17 +1324,17 @@ export default function OnboardingV2() {
                       className={cn(
                         "w-full text-left p-4 rounded-xl border-2 transition-all",
                         formData.strategy === value
-                          ? "border-emerald-500 bg-emerald-900/20"
-                          : "border-gray-700 bg-gray-900 hover:border-gray-600"
+                          ? "border-acr-pos bg-acr-pos-soft/20"
+                          : "border-border bg-acr-bg-sunken hover:border-border"
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-900/50 flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-acr-pos-soft/50 flex items-center justify-center flex-shrink-0">
                           <Icon className="w-5 h-5 text-acr-pos" />
                         </div>
                         <div>
                           <div className="font-semibold text-white">{title}</div>
-                          <div className="text-sm text-gray-400">{desc}</div>
+                          <div className="text-sm text-muted-foreground">{desc}</div>
                         </div>
                       </div>
                     </button>
@@ -1346,14 +1346,14 @@ export default function OnboardingV2() {
 
           {currentStep.id === "pax_tour" && (
             <div className="space-y-4">
-              <div className="p-5 bg-purple-950/30 border border-purple-700/30 rounded-xl">
+              <div className="p-5 bg-acr-brand-soft/30 border border-acr-brand/30 rounded-xl">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-purple-700/50 rounded-full flex items-center justify-center">
-                    <Brain className="w-5 h-5 text-purple-300" />
+                  <div className="w-10 h-10 bg-acr-brand/50 rounded-full flex items-center justify-center">
+                    <Brain className="w-5 h-5 text-acr-brand" />
                   </div>
                   <div>
                     <div className="font-bold text-white">Pax</div>
-                    <div className="text-xs text-gray-500">Your autonomous deal partner</div>
+                    <div className="text-xs text-muted-foreground">Your autonomous deal partner</div>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -1364,8 +1364,8 @@ export default function OnboardingV2() {
                     { icon: Zap, text: "Sends your Morning Briefing at 7 AM daily" },
                   ].map(({ icon: Icon, text }) => (
                     <div key={text} className="flex items-center gap-3">
-                      <Icon className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-300">{text}</span>
+                      <Icon className="w-4 h-4 text-acr-brand flex-shrink-0" />
+                      <span className="text-sm text-muted-foreground">{text}</span>
                     </div>
                   ))}
                 </div>
@@ -1383,13 +1383,13 @@ export default function OnboardingV2() {
             <div className="space-y-6 text-center">
               <div className="relative w-20 h-20 mx-auto">
                 <div className="absolute inset-0 bg-acr-pos/20 rounded-full animate-ping" />
-                <div className="relative w-20 h-20 bg-emerald-900/50 rounded-full flex items-center justify-center">
+                <div className="relative w-20 h-20 bg-acr-pos-soft/50 rounded-full flex items-center justify-center">
                   <CheckCircle className="w-10 h-10 text-acr-pos" />
                 </div>
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white mb-2">You're all set!</h3>
-                <p className="text-gray-400">
+                <p className="text-muted-foreground">
                   {selectedPath === "beginner"
                     ? "Your first target county is configured. AcreOS found opportunities while we talked — let's look at them."
                     : selectedPath === "active"
@@ -1418,17 +1418,17 @@ export default function OnboardingV2() {
                       { label: "Workflows", value: "Active", sub: "customized" },
                     ]
                 ).map(({ label, value, sub }) => (
-                  <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
+                  <div key={label} className="bg-acr-bg-sunken border border-border rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-acr-pos">{value}</div>
                     <div className="text-xs text-white">{label}</div>
-                    <div className="text-xs text-gray-600">{sub}</div>
+                    <div className="text-xs text-muted-foreground">{sub}</div>
                   </div>
                 ))}
               </div>
 
               {/* What to do first */}
-              <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl text-left">
-                <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">What to do first</p>
+              <div className="p-4 bg-acr-bg-sunken border border-border rounded-xl text-left">
+                <p className="text-xs text-muted-foreground mb-3 font-medium uppercase tracking-wide">What to do first</p>
                 <div className="space-y-2">
                   {(selectedPath === "beginner"
                     ? [
@@ -1450,7 +1450,7 @@ export default function OnboardingV2() {
                   ).map(({ label, href }) => (
                     <div
                       key={label}
-                      className="flex items-center gap-2 text-sm text-gray-300 p-2 rounded hover:bg-gray-800/50"
+                      className="flex items-center gap-2 text-sm text-muted-foreground p-2 rounded hover:bg-acr-bg-sunken/50"
                     >
                       <ArrowRight className="w-3 h-3 text-acr-pos flex-shrink-0" />
                       <span>{label}</span>
@@ -1468,7 +1468,7 @@ export default function OnboardingV2() {
                 <ArrowRight className="w-5 h-5 ml-2" aria-hidden="true" />
               </Button>
 
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-muted-foreground">
                 AcreOS will run its first deal scan tonight. Check your email at 7 AM for your Morning Briefing.
               </p>
             </div>
@@ -1520,8 +1520,8 @@ export default function OnboardingV2() {
               i < currentStepIndex
                 ? "w-6 bg-acr-pos"
                 : i === currentStepIndex
-                ? "w-8 bg-emerald-400"
-                : "w-2 bg-gray-800"
+                ? "w-8 bg-acr-pos"
+                : "w-2 bg-acr-bg-sunken"
             )}
           />
         ))}

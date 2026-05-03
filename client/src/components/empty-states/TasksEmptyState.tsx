@@ -28,9 +28,9 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center"
+          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
         >
-          <Clock className="w-5 h-5 text-green-500" />
+          <Clock className="w-5 h-5 text-acr-pos" />
         </motion.div>
       </div>
 

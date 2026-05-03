@@ -50,9 +50,9 @@ function MessageBubble({ message }: { message: any }) {
         isFounder
           ? "bg-primary text-primary-foreground"
           : isDelegation
-          ? "bg-yellow-50 border border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800"
+          ? "bg-acr-warn-soft border border-acr-warn-soft dark:bg-acr-warn-soft dark:border-acr-warn-soft"
           : isConsensus
-          ? "bg-purple-50 border border-purple-200 dark:bg-purple-950 dark:border-purple-800"
+          ? "bg-acr-brand-soft border border-acr-brand-soft dark:bg-acr-brand-soft dark:border-acr-brand-soft"
           : "bg-muted"
       }`}>
         <div className="flex items-center gap-2 mb-1 flex-wrap">

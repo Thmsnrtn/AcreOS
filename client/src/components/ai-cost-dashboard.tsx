@@ -138,15 +138,15 @@ export function AICostDashboard() {
             <div className="text-xs text-muted-foreground">Without smart routing</div>
           </div>
 
-          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm mb-1">
+          <div className="p-4 rounded-lg bg-acr-pos/10 border border-acr-pos/20">
+            <div className="flex items-center gap-2 text-acr-pos dark:text-acr-pos text-sm mb-1">
               <PiggyBank className="w-4 h-4" />
               Total Savings
             </div>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-savings">
+            <div className="text-2xl font-bold text-acr-pos dark:text-acr-pos" data-testid="text-savings">
               ${data.totalSavings.toFixed(4)}
             </div>
-            <Badge variant="secondary" className="mt-1 bg-green-500/20 text-green-600 dark:text-green-400">
+            <Badge variant="secondary" className="mt-1 bg-acr-pos/20 text-acr-pos dark:text-acr-pos">
               {data.savingsPercent.toFixed(1)}% saved
             </Badge>
           </div>
@@ -219,7 +219,7 @@ export function AICostDashboard() {
                     <div className="text-right">
                       <div className="font-medium">${provider.actualCost.toFixed(4)}</div>
                       {provider.savings > 0 && (
-                        <div className="text-sm text-green-600 dark:text-green-400">
+                        <div className="text-sm text-acr-pos dark:text-acr-pos">
                           Saved ${provider.savings.toFixed(4)}
                         </div>
                       )}

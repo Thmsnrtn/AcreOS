@@ -54,11 +54,11 @@ interface Review {
 }
 
 const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  B: "bg-blue-100 text-blue-800 border-blue-200",
-  C: "bg-amber-100 text-amber-800 border-amber-200",
-  D: "bg-orange-100 text-orange-800 border-orange-200",
-  F: "bg-red-100 text-red-800 border-red-200",
+  A: "bg-acr-pos-soft text-acr-pos border-acr-pos-soft",
+  B: "bg-acr-accent text-acr-accent border-acr-accent",
+  C: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft",
+  D: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft",
+  F: "bg-acr-neg-soft text-acr-neg border-acr-neg-soft",
 };
 
 function ReviewCard({ review }: { review: Review }) {
@@ -103,8 +103,8 @@ function ReviewCard({ review }: { review: Review }) {
         <div className="text-center p-2 rounded-lg bg-muted/50">
           <dd className="text-lg font-bold flex items-center justify-center gap-0.5 m-0" aria-label={`Trust ${m.trustScoreEnd}, ${m.trustDelta > 0 ? "up" : m.trustDelta < 0 ? "down" : "flat"}`}>
             <span className="tabular-nums">{m.trustScoreEnd}</span>
-            {m.trustDelta > 0 ? <ArrowUp className="h-3 w-3 text-emerald-500" aria-hidden="true" /> :
-             m.trustDelta < 0 ? <ArrowDown className="h-3 w-3 text-red-500" aria-hidden="true" /> :
+            {m.trustDelta > 0 ? <ArrowUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> :
+             m.trustDelta < 0 ? <ArrowDown className="h-3 w-3 text-acr-neg" aria-hidden="true" /> :
              <Minus className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
           </dd>
           <dt className="text-[10px] text-muted-foreground">Trust</dt>
@@ -119,11 +119,11 @@ function ReviewCard({ review }: { review: Review }) {
       <div className="grid grid-cols-2 gap-3">
         {review.strengths.length > 0 && (
           <section aria-labelledby={`${reviewId}-strengths`}>
-            <p id={`${reviewId}-strengths`} className="text-xs font-medium text-emerald-600 mb-1">Strengths</p>
+            <p id={`${reviewId}-strengths`} className="text-xs font-medium text-acr-pos mb-1">Strengths</p>
             <ul aria-labelledby={`${reviewId}-strengths`} className="list-none p-0 m-0">
               {review.strengths.map((s, i) => (
                 <li key={i} className="text-xs text-muted-foreground flex items-start gap-1 mb-0.5">
-                  <Star className="h-2.5 w-2.5 text-emerald-500 mt-0.5 shrink-0" aria-hidden="true" />
+                  <Star className="h-2.5 w-2.5 text-acr-pos mt-0.5 shrink-0" aria-hidden="true" />
                   {s}
                 </li>
               ))}
@@ -132,11 +132,11 @@ function ReviewCard({ review }: { review: Review }) {
         )}
         {review.improvements.length > 0 && (
           <section aria-labelledby={`${reviewId}-improvements`}>
-            <p id={`${reviewId}-improvements`} className="text-xs font-medium text-amber-600 mb-1">To improve</p>
+            <p id={`${reviewId}-improvements`} className="text-xs font-medium text-acr-warn mb-1">To improve</p>
             <ul aria-labelledby={`${reviewId}-improvements`} className="list-none p-0 m-0">
               {review.improvements.map((s, i) => (
                 <li key={i} className="text-xs text-muted-foreground flex items-start gap-1 mb-0.5">
-                  <TrendingUp className="h-2.5 w-2.5 text-amber-500 mt-0.5 shrink-0" aria-hidden="true" />
+                  <TrendingUp className="h-2.5 w-2.5 text-acr-warn mt-0.5 shrink-0" aria-hidden="true" />
                   {s}
                 </li>
               ))}
@@ -162,7 +162,7 @@ function ReviewCard({ review }: { review: Review }) {
 
       {/* Overrides */}
       {m.overridesReceived > 0 && (
-        <p className="text-xs text-amber-600">
+        <p className="text-xs text-acr-warn">
           CEO overrode <span className="tabular-nums">{m.overridesReceived}</span> decision{m.overridesReceived !== 1 ? "s" : ""} this period
         </p>
       )}

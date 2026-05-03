@@ -46,7 +46,7 @@ const TIER_CONFIG: TierRequirement[] = [
     tier: "Bronze",
     minCertifications: 1,
     minPoints: 100,
-    color: "text-amber-700",
+    color: "text-acr-warn",
     icon: Medal,
     perks: ["Access to basic course library", "Community forum access"],
   },
@@ -54,7 +54,7 @@ const TIER_CONFIG: TierRequirement[] = [
     tier: "Silver",
     minCertifications: 3,
     minPoints: 500,
-    color: "text-gray-400",
+    color: "text-muted-foreground",
     icon: Medal,
     perks: ["Verified badge on profile", "Priority support", "Advanced courses unlocked"],
   },
@@ -62,7 +62,7 @@ const TIER_CONFIG: TierRequirement[] = [
     tier: "Gold",
     minCertifications: 7,
     minPoints: 1500,
-    color: "text-yellow-500",
+    color: "text-acr-warn",
     icon: Award,
     perks: ["Gold badge", "Referral bonus 10%", "Exclusive webinars", "Deal network access"],
   },
@@ -70,7 +70,7 @@ const TIER_CONFIG: TierRequirement[] = [
     tier: "Platinum",
     minCertifications: 15,
     minPoints: 4000,
-    color: "text-cyan-400",
+    color: "text-acr-accent",
     icon: Star,
     perks: ["Platinum badge", "Referral bonus 20%", "1:1 coaching session", "Early feature access"],
   },
@@ -78,7 +78,7 @@ const TIER_CONFIG: TierRequirement[] = [
     tier: "Elite",
     minCertifications: 25,
     minPoints: 10000,
-    color: "text-purple-500",
+    color: "text-acr-brand",
     icon: Crown,
     perks: ["Elite badge", "Referral bonus 30%", "Revenue share program", "Co-marketing opportunities"],
   },
@@ -95,11 +95,11 @@ function Skeleton({ className = "" }: { className?: string }) {
 function TierBadge({ tier }: { tier: Tier }) {
   const config = TIER_CONFIG.find(t => t.tier === tier);
   const colorMap: Record<Tier, string> = {
-    Bronze: "bg-amber-100 text-amber-800",
-    Silver: "bg-gray-100 text-gray-700",
-    Gold: "bg-yellow-100 text-yellow-800",
-    Platinum: "bg-cyan-100 text-cyan-800",
-    Elite: "bg-purple-100 text-purple-800",
+    Bronze: "bg-acr-warn-soft text-acr-warn",
+    Silver: "bg-muted text-foreground",
+    Gold: "bg-acr-warn-soft text-acr-warn",
+    Platinum: "bg-acr-accent text-acr-accent",
+    Elite: "bg-acr-brand-soft text-acr-brand",
   };
   return (
     <span
@@ -149,7 +149,7 @@ function TopAchieversRow({ entries }: { entries: LeaderboardEntry[] }) {
             <p className="text-sm font-semibold text-center max-w-[100px] truncate">{entry.name}</p>
             <TierBadge tier={entry.tier} />
             <p className="text-xs text-muted-foreground tabular-nums">{entry.points.toLocaleString()} pts</p>
-            <div className={`h-1.5 w-1.5 rounded-full ${isCenter ? "bg-yellow-400" : "bg-muted-foreground"}`} aria-hidden="true" />
+            <div className={`h-1.5 w-1.5 rounded-full ${isCenter ? "bg-acr-warn" : "bg-muted-foreground"}`} aria-hidden="true" />
             <RankDisplay rank={entry.rank} />
           </li>
         );
@@ -270,7 +270,7 @@ function LeaderboardTab() {
               {entries.map(entry => {
                 const isCurrentUser = entry.userId === currentUserId || entry.rank === Math.ceil(entries.length / 2);
                 return (
-                <TableRow key={entry.userId} className={`${entry.rank <= 3 ? "bg-yellow-50/30 dark:bg-yellow-900/10" : ""} ${isCurrentUser ? "bg-blue-50/50 dark:bg-blue-900/10 ring-1 ring-inset ring-blue-300 dark:ring-blue-700" : ""}`}>
+                <TableRow key={entry.userId} className={`${entry.rank <= 3 ? "bg-acr-warn-soft/30 dark:bg-acr-warn-soft/10" : ""} ${isCurrentUser ? "bg-acr-accent/50 dark:bg-acr-accent/10 ring-1 ring-inset ring-acr-accent dark:ring-acr-accent" : ""}`}>
                   <TableCell scope="row">
                     <RankDisplay rank={entry.rank} />
                   </TableCell>
@@ -282,7 +282,7 @@ function LeaderboardTab() {
                       <div>
                         <span className="font-medium text-sm">{entry.name}</span>
                         {isCurrentUser && (
-                          <span className="ml-1.5 text-xs font-medium text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 px-1 py-0.5 rounded" aria-label="This is you">You</span>
+                          <span className="ml-1.5 text-xs font-medium text-acr-accent bg-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent px-1 py-0.5 rounded" aria-label="This is you">You</span>
                         )}
                       </div>
                     </div>
@@ -335,7 +335,7 @@ function LeaderboardTab() {
                           onClick={() => handleShareLinkedIn(entry)}
                           aria-label="Share your rank on LinkedIn"
                         >
-                          <TrendingUp className="w-3.5 h-3.5 text-blue-600" aria-hidden="true" />
+                          <TrendingUp className="w-3.5 h-3.5 text-acr-accent" aria-hidden="true" />
                         </Button>
                       )}
                     </div>
@@ -469,7 +469,7 @@ function MyProgressTab() {
               <ul className="space-y-1">
                 {nextTier.perks.map((perk, i) => (
                   <li key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" aria-hidden="true" /> {perk}
+                    <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos shrink-0" aria-hidden="true" /> {perk}
                   </li>
                 ))}
               </ul>
@@ -491,11 +491,11 @@ function TierRequirementsTab() {
             <Card className="relative overflow-hidden">
               <div
                 className={`absolute top-0 left-0 right-0 h-1 ${
-                  tier.tier === "Bronze" ? "bg-amber-700" :
-                  tier.tier === "Silver" ? "bg-gray-400" :
-                  tier.tier === "Gold" ? "bg-yellow-500" :
-                  tier.tier === "Platinum" ? "bg-cyan-400" :
-                  "bg-purple-500"
+                  tier.tier === "Bronze" ? "bg-acr-warn" :
+                  tier.tier === "Silver" ? "bg-muted" :
+                  tier.tier === "Gold" ? "bg-acr-warn" :
+                  tier.tier === "Platinum" ? "bg-acr-accent" :
+                  "bg-acr-brand"
                 }`}
                 aria-hidden="true"
               />
@@ -519,7 +519,7 @@ function TierRequirementsTab() {
                   <ul className="space-y-1">
                     {tier.perks.map((perk, j) => (
                       <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                        <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5 shrink-0" aria-hidden="true" /> {perk}
+                        <CheckCircle2 className="w-3 h-3 text-acr-pos mt-0.5 shrink-0" aria-hidden="true" /> {perk}
                       </li>
                     ))}
                   </ul>

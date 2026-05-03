@@ -28,9 +28,9 @@ export function CampaignsEmptyState({ onCreateCampaign }: CampaignsEmptyStatePro
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center"
+          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-acr-warn/10 flex items-center justify-center"
         >
-          <Target className="w-5 h-5 text-amber-500" />
+          <Target className="w-5 h-5 text-acr-warn" />
         </motion.div>
       </div>
 

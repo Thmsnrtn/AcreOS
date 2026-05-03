@@ -221,7 +221,7 @@ function EmailMessageRow({
           starMutation.mutate();
         }}
         disabled={starMutation.isPending}
-        className={message.isStarred ? "text-yellow-500" : "text-muted-foreground"}
+        className={message.isStarred ? "text-acr-warn" : "text-muted-foreground"}
         aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
       >
         <Star className={`h-4 w-4 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
@@ -483,7 +483,7 @@ function EmailMessageDetail({
             disabled={starMutation.isPending}
             data-testid="button-star-message"
             aria-pressed={!!message.isStarred}
-            className={message.isStarred ? "text-yellow-500" : ""}
+            className={message.isStarred ? "text-acr-warn" : ""}
           >
             <Star className={`h-4 w-4 mr-1 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
             {message.isStarred ? "Unstar" : "Star"}

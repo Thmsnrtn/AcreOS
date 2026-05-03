@@ -90,10 +90,10 @@ interface BetaFeedback {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  waiting: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  invited: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  declined: "bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400",
+  waiting: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  invited: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  active: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
+  declined: "bg-muted text-muted-foreground dark:bg-acr-bg-sunken/30 dark:text-muted-foreground",
 };
 
 const FEEDBACK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -167,10 +167,10 @@ export default function BetaDashboardPage() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Waitlist", value: stats?.total ?? 0, icon: Users, color: "text-blue-600" },
-          { label: "Waiting", value: stats?.waiting ?? 0, icon: UserPlus, color: "text-yellow-600" },
-          { label: "Active Beta", value: stats?.active ?? 0, icon: UserCheck, color: "text-green-600" },
-          { label: "Avg NPS", value: stats?.avgNPS != null ? stats.avgNPS.toFixed(1) : "—", icon: Star, color: "text-amber-600" },
+          { label: "Total Waitlist", value: stats?.total ?? 0, icon: Users, color: "text-acr-accent" },
+          { label: "Waiting", value: stats?.waiting ?? 0, icon: UserPlus, color: "text-acr-warn" },
+          { label: "Active Beta", value: stats?.active ?? 0, icon: UserCheck, color: "text-acr-pos" },
+          { label: "Avg NPS", value: stats?.avgNPS != null ? stats.avgNPS.toFixed(1) : "—", icon: Star, color: "text-acr-warn" },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
@@ -316,7 +316,7 @@ export default function BetaDashboardPage() {
                               </Button>
                             )}
                             {entry.status === "active" && (
-                              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                              <span className="text-xs text-acr-pos font-medium flex items-center gap-1">
                                 <ThumbsUp className="w-3 h-3" /> Live
                               </span>
                             )}
@@ -393,7 +393,7 @@ export default function BetaDashboardPage() {
                         <Badge variant="outline" className="text-xs">{fb.type.replace(/_/g, " ")}</Badge>
                         {fb.feature && <Badge variant="secondary" className="text-xs">{fb.feature}</Badge>}
                         {fb.rating != null && (
-                          <span className="text-xs font-medium text-amber-600 flex items-center gap-0.5">
+                          <span className="text-xs font-medium text-acr-warn flex items-center gap-0.5">
                             <Star className="w-3 h-3" /> {fb.rating}/10
                           </span>
                         )}

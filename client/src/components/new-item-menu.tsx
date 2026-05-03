@@ -21,7 +21,7 @@ const newItemOptions: NewItemOption[] = [
     label: "New Lead",
     description: "Add a new contact or seller lead",
     href: "/leads?action=new",
-    color: "bg-blue-500",
+    color: "bg-acr-accent",
     testId: "new-item-lead",
   },
   {
@@ -29,7 +29,7 @@ const newItemOptions: NewItemOption[] = [
     label: "New Property",
     description: "Add a property to your inventory",
     href: "/properties?action=new",
-    color: "bg-green-500",
+    color: "bg-acr-pos",
     testId: "new-item-property",
   },
   {
@@ -37,7 +37,7 @@ const newItemOptions: NewItemOption[] = [
     label: "New Deal",
     description: "Start a new acquisition or sale",
     href: "/deals?action=new",
-    color: "bg-purple-500",
+    color: "bg-acr-brand",
     testId: "new-item-deal",
   },
   {
@@ -45,7 +45,7 @@ const newItemOptions: NewItemOption[] = [
     label: "New Document",
     description: "Create a document from template",
     href: "/documents?action=new",
-    color: "bg-amber-500",
+    color: "bg-acr-warn",
     testId: "new-item-document",
   },
   {
@@ -53,7 +53,7 @@ const newItemOptions: NewItemOption[] = [
     label: "New Note",
     description: "Create a seller financing note",
     href: "/finance?action=new",
-    color: "bg-emerald-500",
+    color: "bg-acr-pos",
     testId: "new-item-note",
   },
 ];

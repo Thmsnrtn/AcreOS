@@ -52,8 +52,8 @@ function Stats({ ops }: { ops: Op[] }) {
   const removed = ops.filter((o) => o.kind === "del").length;
   return (
     <div className="flex items-center gap-3 text-[11px] font-mono">
-      <span className="text-emerald-600 dark:text-emerald-400">+{added}</span>
-      <span className="text-rose-600 dark:text-rose-400">−{removed}</span>
+      <span className="text-acr-pos dark:text-acr-pos">+{added}</span>
+      <span className="text-acr-neg dark:text-acr-neg">−{removed}</span>
       <span className="text-muted-foreground">lines</span>
     </div>
   );
@@ -106,8 +106,8 @@ export function PromptDiffViewer({
               key={idx}
               className={cn(
                 "px-3 whitespace-pre-wrap",
-                op.kind === "add" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                op.kind === "del" && "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+                op.kind === "add" && "bg-acr-pos/10 text-acr-pos dark:text-acr-pos",
+                op.kind === "del" && "bg-acr-neg/10 text-acr-neg dark:text-acr-neg",
               )}
             >
               <span className="inline-block w-4 select-none text-muted-foreground">
@@ -145,9 +145,9 @@ function SplitColumn({ ops, side, label }: { ops: Op[]; side: "left" | "right"; 
               className={cn(
                 "px-3 whitespace-pre-wrap",
                 side === "left" && op.kind === "del" &&
-                  "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+                  "bg-acr-neg/10 text-acr-neg dark:text-acr-neg",
                 side === "right" && op.kind === "add" &&
-                  "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                  "bg-acr-pos/10 text-acr-pos dark:text-acr-pos",
                 isGap && "opacity-40",
               )}
             >

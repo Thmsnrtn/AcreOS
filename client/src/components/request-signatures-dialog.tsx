@@ -145,8 +145,8 @@ export function RequestSignaturesDialog({
 
         {links ? (
           <div className="space-y-3">
-            <div role="status" aria-live="polite" className="flex items-start gap-2 rounded-md bg-emerald-500/5 border border-emerald-500/20 p-3 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" aria-hidden="true" />
+            <div role="status" aria-live="polite" className="flex items-start gap-2 rounded-md bg-acr-pos/5 border border-acr-pos/20 p-3 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-acr-pos mt-0.5 shrink-0" aria-hidden="true" />
               <div>
                 <p className="font-medium text-foreground">Signing links ready</p>
                 <p className="text-xs text-muted-foreground">

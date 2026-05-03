@@ -105,20 +105,20 @@ const reassurance = "The commission record is unchanged — try again.";
 function StatusBadge({ status }: { status: CommissionRecord["status"] }) {
   if (status === "paid")
     return (
-      <Badge className="bg-green-100 text-green-800 hover:bg-green-100" aria-label="Status: paid in full">
+      <Badge className="bg-acr-pos-soft text-acr-pos hover:bg-acr-pos-soft" aria-label="Status: paid in full">
         <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
         Paid
       </Badge>
     );
   if (status === "partial")
     return (
-      <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100" aria-label="Status: partially paid">
+      <Badge className="bg-acr-warn-soft text-acr-warn hover:bg-acr-warn-soft" aria-label="Status: partially paid">
         <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
         Partial
       </Badge>
     );
   return (
-    <Badge className="bg-red-100 text-red-800 hover:bg-red-100" aria-label="Status: owed, not yet paid">
+    <Badge className="bg-acr-neg-soft text-acr-neg hover:bg-acr-neg-soft" aria-label="Status: owed, not yet paid">
       <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
       Owed
     </Badge>
@@ -147,7 +147,7 @@ function AgentCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0"
+              className="w-10 h-10 rounded-full bg-acr-accent flex items-center justify-center text-white text-sm font-bold shrink-0"
               aria-hidden="true"
             >
               {initials}
@@ -183,7 +183,7 @@ function AgentCard({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Commission owed</dt>
-            <dd className="text-xl font-bold text-amber-600 tabular-nums">
+            <dd className="text-xl font-bold text-acr-warn tabular-nums">
               {moneyKpi(summary.ytdOwedCents)}
             </dd>
           </div>
@@ -192,8 +192,8 @@ function AgentCard({
             <dd
               className={`text-xl font-bold tabular-nums ${
                 summary.ytdOutstandingCents > 0
-                  ? "text-red-600"
-                  : "text-green-600"
+                  ? "text-acr-neg"
+                  : "text-acr-pos"
               }`}
             >
               {moneyKpi(summary.ytdOutstandingCents)}
@@ -400,7 +400,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <Users className="w-8 h-8 text-blue-500" aria-hidden="true" />
+                <Users className="w-8 h-8 text-acr-accent" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{summaries.length}</dd>
                   <dt className="text-sm text-muted-foreground">Agents</dt>
@@ -411,7 +411,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-green-500" aria-hidden="true" />
+                <TrendingUp className="w-8 h-8 text-acr-pos" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{totalDeals}</dd>
                   <dt className="text-sm text-muted-foreground">Deals closed</dt>
@@ -422,7 +422,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <DollarSign className="w-8 h-8 text-amber-500" aria-hidden="true" />
+                <DollarSign className="w-8 h-8 text-acr-warn" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{moneyKpi(totalOwed)}</dd>
                   <dt className="text-sm text-muted-foreground">Total commissions</dt>
@@ -435,7 +435,7 @@ export default function CommissionsPage() {
               <div className="flex items-center gap-3">
                 <AlertCircle
                   className={`w-8 h-8 ${
-                    totalOutstanding > 0 ? "text-red-500" : "text-green-500"
+                    totalOutstanding > 0 ? "text-acr-neg" : "text-acr-pos"
                   }`}
                   aria-hidden="true"
                 />

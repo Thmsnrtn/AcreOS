@@ -147,7 +147,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-green-600 flex-shrink-0" />
+          <Sparkles className="h-4 w-4 text-acr-pos flex-shrink-0" />
           <h3 className="font-semibold text-sm">{step.title}</h3>
         </div>
         <button type="button" onClick={onSkip} aria-label="Skip product tour" className="text-muted-foreground hover:text-foreground transition-colors ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
@@ -179,7 +179,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
             <div
               key={i}
               className={`h-1.5 rounded-full transition-all duration-200 ${
-                i === stepIndex ? "w-4 bg-green-600" : "w-1.5 bg-muted-foreground/30"
+                i === stepIndex ? "w-4 bg-acr-pos" : "w-1.5 bg-muted-foreground/30"
               }`}
             />
           ))}
@@ -193,7 +193,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
           )}
           <Button
             size="sm"
-            className="h-8 px-4 bg-green-700 hover:bg-green-800 text-white"
+            className="h-8 px-4 bg-acr-pos hover:bg-acr-pos-soft text-white"
             onClick={onNext}
           >
             {isLast ? "Done" : "Next"}
@@ -219,7 +219,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
       {/* Highlight box around target */}
       {targetRect && (
         <div
-          className="absolute rounded-lg ring-2 ring-green-500 ring-offset-0 bg-green-500/10"
+          className="absolute rounded-lg ring-2 ring-acr-pos ring-offset-0 bg-acr-pos/10"
           style={{
             top: targetRect.top - 4,
             left: targetRect.left - 4,

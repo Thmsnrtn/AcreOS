@@ -65,7 +65,7 @@ export function ApiKeySetup({
       <CardContent className="space-y-4">
         {currentKeyMasked && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="w-4 h-4 text-green-500" aria-hidden="true" />
+            <Check className="w-4 h-4 text-acr-pos" aria-hidden="true" />
             Current key: {currentKeyMasked}
           </div>
         )}
@@ -108,7 +108,7 @@ export function ApiKeySetup({
           </div>
         </form>
         {isValid === false && (
-          <div id={errorId} role="alert" className="flex items-center gap-2 text-sm text-red-500">
+          <div id={errorId} role="alert" className="flex items-center gap-2 text-sm text-acr-neg">
             <AlertCircle className="w-4 h-4" aria-hidden="true" />
             Invalid API key
           </div>

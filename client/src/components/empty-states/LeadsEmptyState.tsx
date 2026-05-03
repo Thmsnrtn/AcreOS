@@ -30,18 +30,18 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center"
+          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
         >
-          <Target className="w-5 h-5 text-green-500" />
+          <Target className="w-5 h-5 text-acr-pos" />
         </motion.div>
 
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="absolute -bottom-1 -left-3 w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center"
+          className="absolute -bottom-1 -left-3 w-8 h-8 rounded-full bg-acr-warn/10 flex items-center justify-center"
         >
-          <TrendingUp className="w-4 h-4 text-amber-500" />
+          <TrendingUp className="w-4 h-4 text-acr-warn" />
         </motion.div>
       </div>
       

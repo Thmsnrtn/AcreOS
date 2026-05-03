@@ -73,18 +73,18 @@ interface TodoResponse {
 }
 
 const TYPE_META: Record<TodoType, { label: string; icon: any; color: string }> = {
-  decision: { label: "Decision", icon: ListChecks, color: "text-amber-600 dark:text-amber-400" },
-  prompt_evolution: { label: "Prompt revision", icon: Brain, color: "text-purple-600 dark:text-purple-400" },
-  strategic_move: { label: "Strategic move", icon: Lightbulb, color: "text-blue-600 dark:text-blue-400" },
+  decision: { label: "Decision", icon: ListChecks, color: "text-acr-warn dark:text-acr-warn" },
+  prompt_evolution: { label: "Prompt revision", icon: Brain, color: "text-acr-brand dark:text-acr-brand" },
+  strategic_move: { label: "Strategic move", icon: Lightbulb, color: "text-acr-accent dark:text-acr-accent" },
   tool_proposal: { label: "Tool proposal", icon: Wrench, color: "text-muted-foreground" },
-  expansion_candidate: { label: "Expansion", icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400" },
-  onboarding_rescue: { label: "Onboarding rescue", icon: Rocket, color: "text-red-600 dark:text-red-400" },
-  experiment_promotion: { label: "Experiment winner", icon: FlaskConical, color: "text-blue-600 dark:text-blue-400" },
+  expansion_candidate: { label: "Expansion", icon: TrendingUp, color: "text-acr-pos dark:text-acr-pos" },
+  onboarding_rescue: { label: "Onboarding rescue", icon: Rocket, color: "text-acr-neg dark:text-acr-neg" },
+  experiment_promotion: { label: "Experiment winner", icon: FlaskConical, color: "text-acr-accent dark:text-acr-accent" },
 };
 
 function urgencyClass(u: number): string {
-  if (u >= 70) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-  if (u >= 50) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+  if (u >= 70) return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
+  if (u >= 50) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
   return "bg-muted text-muted-foreground";
 }
 
@@ -217,7 +217,7 @@ export default function FounderTodoPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load the todo feed. Outstanding items are unchanged —{" "}
               <button
                 type="button"

@@ -19,10 +19,10 @@ interface KPIMetric {
 }
 
 const CATEGORY_CONFIG = {
-  revenue: { label: "Revenue", icon: DollarSign, color: "text-green-600" },
-  pipeline: { label: "Pipeline", icon: Activity, color: "text-blue-600" },
-  acquisition: { label: "Acquisition", icon: Target, color: "text-purple-600" },
-  efficiency: { label: "Efficiency", icon: Zap, color: "text-yellow-600" },
+  revenue: { label: "Revenue", icon: DollarSign, color: "text-acr-pos" },
+  pipeline: { label: "Pipeline", icon: Activity, color: "text-acr-accent" },
+  acquisition: { label: "Acquisition", icon: Target, color: "text-acr-brand" },
+  efficiency: { label: "Efficiency", icon: Zap, color: "text-acr-warn" },
 };
 
 function formatValue(value: number, format: string, unit: string): string {
@@ -39,8 +39,8 @@ function formatValue(value: number, format: string, unit: string): string {
 }
 
 function getTrendIcon(trend: string, label: string) {
-  if (trend === "up") return <TrendingUp className="w-3.5 h-3.5 text-green-600" aria-label={`${label} trending up`} />;
-  if (trend === "down") return <TrendingDown className="w-3.5 h-3.5 text-red-600" aria-label={`${label} trending down`} />;
+  if (trend === "up") return <TrendingUp className="w-3.5 h-3.5 text-acr-pos" aria-label={`${label} trending up`} />;
+  if (trend === "down") return <TrendingDown className="w-3.5 h-3.5 text-acr-neg" aria-label={`${label} trending down`} />;
   return <Minus className="w-3.5 h-3.5 text-muted-foreground" aria-label={`${label} flat`} />;
 }
 
@@ -121,7 +121,7 @@ export default function KPIDashboardPage() {
                       </div>
                       <dd className="text-xl font-bold tabular-nums">{formattedValue}</dd>
                       {kpi.previousPeriod !== undefined && (
-                        <p className={`text-xs tabular-nums ${kpi.trend === "up" ? "text-green-600" : kpi.trend === "down" ? "text-red-600" : "text-muted-foreground"}`}>
+                        <p className={`text-xs tabular-nums ${kpi.trend === "up" ? "text-acr-pos" : kpi.trend === "down" ? "text-acr-neg" : "text-muted-foreground"}`}>
                           {getChangePercent(kpi.value, kpi.previousPeriod)} vs last period
                         </p>
                       )}
@@ -134,7 +134,7 @@ export default function KPIDashboardPage() {
                           <Progress
                             value={targetPct}
                             aria-label={`${kpi.label} target progress: ${targetPct}%`}
-                            className={`h-1 ${targetPct >= 100 ? "[&>div]:bg-green-500" : targetPct >= 75 ? "" : "[&>div]:bg-yellow-500"}`}
+                            className={`h-1 ${targetPct >= 100 ? "[&>div]:bg-acr-pos" : targetPct >= 75 ? "" : "[&>div]:bg-acr-warn"}`}
                           />
                         </div>
                       )}

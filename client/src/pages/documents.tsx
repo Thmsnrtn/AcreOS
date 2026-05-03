@@ -742,7 +742,7 @@ export default function DocumentsPage() {
                     </Button>
                   )}
                   {doc.status === "pending_signature" && (
-                    <Badge variant="outline" className="text-yellow-600 dark:text-yellow-400">
+                    <Badge variant="outline" className="text-acr-warn dark:text-acr-warn">
                       <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                       Awaiting signatures
                     </Badge>
@@ -1454,7 +1454,7 @@ export default function DocumentsPage() {
                             </div>
                             <Badge
                               variant="outline"
-                              className={isGenerated ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}
+                              className={isGenerated ? "text-acr-pos dark:text-acr-pos" : "text-muted-foreground"}
                             >
                               {isGenerated ? (
                                 <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />

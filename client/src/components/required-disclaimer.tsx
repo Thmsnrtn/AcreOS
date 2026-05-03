@@ -30,12 +30,12 @@ export function RequiredDisclaimer({ type, className }: RequiredDisclaimerProps)
     <div
       data-testid={`required-disclaimer-${type}`}
       className={cn(
-        "flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 dark:border-amber-700 dark:bg-amber-950/30",
+        "flex items-center gap-2 rounded-md border border-acr-warn bg-acr-warn-soft px-4 py-2 dark:border-acr-warn dark:bg-acr-warn-soft/30",
         className
       )}
     >
-      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-      <p className="text-xs text-amber-800 dark:text-amber-200 flex-1">{text}</p>
+      <AlertTriangle className="w-4 h-4 text-acr-warn dark:text-acr-warn flex-shrink-0" />
+      <p className="text-xs text-acr-warn dark:text-acr-warn flex-1">{text}</p>
       <ReadAloudButton
         text={text}
         data-testid={`required-disclaimer-${type}-read-aloud`}

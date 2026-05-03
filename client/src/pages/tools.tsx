@@ -59,12 +59,12 @@ export default function ToolsPage() {
 
             {/* New Feature Tools */}
             {[
-              { href: "/tax-optimizer", icon: Receipt, title: "Tax optimizer", desc: "Capital gains analysis, 1031 exchanges, and year-end tax planning.", color: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600" },
-              { href: "/goals", icon: Target, title: "Goals & OKRs", desc: "Track revenue targets, deal counts, and organizational KPIs.", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-600" },
-              { href: "/syndication", icon: Share2, title: "Listing syndication", desc: "Publish properties to Land.com, LandWatch, LandFlip, and more.", color: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600" },
-              { href: "/model-training", icon: Brain, title: "Valuation model", desc: "AcreOS Market Value™ training data, accuracy metrics, and predictions.", color: "bg-amber-50 dark:bg-amber-900/20 text-amber-600" },
-              { href: "/webhooks", icon: Webhook, title: "Webhooks", desc: "HMAC-signed webhooks for Zapier, Make, and custom integrations.", color: "bg-gray-50 dark:bg-gray-900/20 text-gray-600" },
-              { href: "/investor-network", icon: UserCheck, title: "Investor network", desc: "Browse verified investors and manage your investor profile.", color: "bg-pink-50 dark:bg-pink-900/20 text-pink-600" },
+              { href: "/tax-optimizer", icon: Receipt, title: "Tax optimizer", desc: "Capital gains analysis, 1031 exchanges, and year-end tax planning.", color: "bg-acr-pos-soft dark:bg-acr-pos-soft/20 text-acr-pos" },
+              { href: "/goals", icon: Target, title: "Goals & OKRs", desc: "Track revenue targets, deal counts, and organizational KPIs.", color: "bg-acr-accent dark:bg-acr-accent/20 text-acr-accent" },
+              { href: "/syndication", icon: Share2, title: "Listing syndication", desc: "Publish properties to Land.com, LandWatch, LandFlip, and more.", color: "bg-acr-accent dark:bg-acr-accent/20 text-acr-accent" },
+              { href: "/model-training", icon: Brain, title: "Valuation model", desc: "AcreOS Market Value™ training data, accuracy metrics, and predictions.", color: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 text-acr-warn" },
+              { href: "/webhooks", icon: Webhook, title: "Webhooks", desc: "HMAC-signed webhooks for Zapier, Make, and custom integrations.", color: "bg-muted dark:bg-acr-bg-sunken/20 text-muted-foreground" },
+              { href: "/investor-network", icon: UserCheck, title: "Investor network", desc: "Browse verified investors and manage your investor profile.", color: "bg-acr-brand-soft dark:bg-acr-brand-soft/20 text-acr-brand" },
             ].map(({ href, icon: Icon, title, desc, color }) => (
               <li key={href}>
                 <Link href={href}>

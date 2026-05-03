@@ -227,7 +227,7 @@ export default function ClosingCostsPage() {
                   {feeInfo.specialNotes.map((note, i) => (
                     <li
                       key={i}
-                      className="flex items-start gap-2 text-xs text-amber-600 bg-amber-50 rounded p-2"
+                      className="flex items-start gap-2 text-xs text-acr-warn bg-acr-warn-soft rounded p-2"
                       role="note"
                     >
                       <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" aria-hidden="true" />

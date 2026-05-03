@@ -75,7 +75,7 @@ function DraftCard({ draft }: { draft: Draft }) {
         </div>
         <Badge
           variant="outline"
-          className={`capitalize ${draft.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-muted"}`}
+          className={`capitalize ${draft.status === "approved" ? "bg-acr-pos-soft text-acr-pos" : "bg-muted"}`}
           aria-label={`Status: ${draft.status}`}
         >
           {draft.status}

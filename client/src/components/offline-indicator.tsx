@@ -36,7 +36,7 @@ export function OfflineIndicator() {
   if (showReconnecting) {
     return (
       <div 
-        className="fixed top-0 left-0 right-0 z-[100] bg-emerald-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
+        className="fixed top-0 left-0 right-0 z-[100] bg-acr-pos text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
         data-testid="reconnecting-indicator"
       >
         <RefreshCw className="w-4 h-4 animate-spin" />
@@ -47,7 +47,7 @@ export function OfflineIndicator() {
 
   return (
     <div 
-      className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-amber-950 px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
+      className="fixed top-0 left-0 right-0 z-[100] bg-acr-warn text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
       data-testid="offline-indicator"
     >
       <WifiOff className="w-4 h-4" />
@@ -55,7 +55,7 @@ export function OfflineIndicator() {
       <Button
         size="sm"
         variant="ghost"
-        className="ml-2 text-amber-950"
+        className="ml-2 text-acr-warn"
         onClick={() => setDismissed(true)}
         data-testid="button-dismiss-offline"
       >

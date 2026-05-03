@@ -420,7 +420,7 @@ export default function BuyerNetwork() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1" aria-label={`Activity score ${b.activityScore || 0}`}>
-                            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />
+                            <Star className="h-3 w-3 text-acr-warn fill-acr-warn" aria-hidden="true" />
                             <span className="text-sm tabular-nums">{b.activityScore || 0}</span>
                           </div>
                         </TableCell>

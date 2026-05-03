@@ -98,7 +98,7 @@ export default function FounderPreviewPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <Clock className="h-4 w-4 text-acr-warn dark:text-acr-warn" aria-hidden="true" />
               Pending (<span className="tabular-nums">{pending.length}</span>)
             </CardTitle>
           </CardHeader>
@@ -109,7 +109,7 @@ export default function FounderPreviewPage() {
                 <Skeleton className="h-16 w-full" />
               </div>
             ) : isError ? (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-acr-neg" role="alert">
                 Couldn't load previews. Pending actions are still queued —{" "}
                 <button
                   type="button"
@@ -189,7 +189,7 @@ function PendingPreviewRow({
   const secondsLeft = Math.max(0, (commitAtMs - now) / 1000);
 
   return (
-    <div className="border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg p-4">
+    <div className="border border-acr-warn-soft dark:border-acr-warn-soft/40 bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20 rounded-lg p-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -219,7 +219,7 @@ function PendingPreviewRow({
         </div>
         <div className="flex flex-col items-end gap-2">
           <span
-            className="text-xs font-mono text-amber-700 dark:text-amber-400 tabular-nums"
+            className="text-xs font-mono text-acr-warn dark:text-acr-warn tabular-nums"
             aria-live="polite"
             aria-label={secondsLeft > 0 ? `${secondsLeft.toFixed(1)} seconds until commit` : "Committing now"}
           >
@@ -245,12 +245,12 @@ function PendingPreviewRow({
 function RecentPreviewRow({ row }: { row: PreviewRow }) {
   const statusMeta =
     row.status === "committed"
-      ? { icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400", label: "committed" }
+      ? { icon: CheckCircle2, color: "text-acr-pos dark:text-acr-pos", label: "committed" }
       : row.status === "cancelled"
         ? { icon: X, color: "text-muted-foreground", label: "cancelled" }
         : row.status === "failed"
-          ? { icon: AlertCircle, color: "text-red-600 dark:text-red-400", label: "failed" }
-          : { icon: Clock, color: "text-amber-600 dark:text-amber-400", label: "pending" };
+          ? { icon: AlertCircle, color: "text-acr-neg dark:text-acr-neg", label: "failed" }
+          : { icon: Clock, color: "text-acr-warn dark:text-acr-warn", label: "pending" };
   return (
     <div className="flex items-center gap-3 py-2 px-3 rounded hover:bg-muted/40">
       <statusMeta.icon

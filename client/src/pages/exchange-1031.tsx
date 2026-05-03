@@ -78,19 +78,19 @@ function BootMortgagePanel({ salePriceCents, replacementPriceCents }: { salePric
         </div>
         <div>
           <dt className="text-muted-foreground">Boot amount</dt>
-          <dd className={`font-semibold tabular-nums ${bootAmount > 0 ? "text-red-600" : "text-green-600"}`}>
+          <dd className={`font-semibold tabular-nums ${bootAmount > 0 ? "text-acr-neg" : "text-acr-pos"}`}>
             {bootAmount > 0 ? usd(bootAmount / 100) : `${usd(0)} (fully deferred)`}
           </dd>
         </div>
         <div>
           <dt className="text-muted-foreground">Est. tax on boot (20%)</dt>
-          <dd className={`font-semibold tabular-nums ${taxOwed > 0 ? "text-red-600" : "text-green-600"}`}>
+          <dd className={`font-semibold tabular-nums ${taxOwed > 0 ? "text-acr-neg" : "text-acr-pos"}`}>
             {taxOwed > 0 ? usd(taxOwed / 100) : usd(0)}
           </dd>
         </div>
       </dl>
       {fullyDeferred && (
-        <div className="flex items-center gap-1 text-green-700">
+        <div className="flex items-center gap-1 text-acr-pos">
           <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Full tax deferral achieved.
         </div>
       )}
@@ -243,7 +243,7 @@ export default function Exchange1031Page() {
 
             return (
               <li key={ex.id}>
-                <Card className={isUrgent && ex.status === "open" ? "border-yellow-400" : ""}>
+                <Card className={isUrgent && ex.status === "open" ? "border-acr-warn" : ""}>
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div className="min-w-0">
@@ -284,26 +284,26 @@ export default function Exchange1031Page() {
 
                     {(ex.status === "open" || ex.status === "identified") && (
                       <dl className="grid grid-cols-2 gap-3">
-                        <div className={`p-2 rounded-md ${idDaysLeft <= 7 ? "bg-red-50 border border-red-200" : idDaysLeft <= 10 ? "bg-red-50" : "bg-muted"}`}>
+                        <div className={`p-2 rounded-md ${idDaysLeft <= 7 ? "bg-acr-neg-soft border border-acr-neg-soft" : idDaysLeft <= 10 ? "bg-acr-neg-soft" : "bg-muted"}`}>
                           <dt className="flex items-center gap-1.5 text-xs mb-1">
-                            <Clock className={`w-3 h-3 ${idDaysLeft <= 7 ? "text-red-700" : idDaysLeft <= 10 ? "text-red-600" : "text-muted-foreground"}`} aria-hidden="true" />
+                            <Clock className={`w-3 h-3 ${idDaysLeft <= 7 ? "text-acr-neg" : idDaysLeft <= 10 ? "text-acr-neg" : "text-muted-foreground"}`} aria-hidden="true" />
                             <span className="font-medium">Identification (45-day)</span>
-                            {idAlertNear && <AlertTriangle className="w-3 h-3 text-red-600 ml-auto" aria-hidden="true" />}
+                            {idAlertNear && <AlertTriangle className="w-3 h-3 text-acr-neg ml-auto" aria-hidden="true" />}
                           </dt>
-                          <dd className={`text-sm font-bold tabular-nums ${idDaysLeft <= 7 ? "text-red-700" : ""}`}>
+                          <dd className={`text-sm font-bold tabular-nums ${idDaysLeft <= 7 ? "text-acr-neg" : ""}`}>
                             {idDaysLeft} days left
                           </dd>
                           <p className="text-xs text-muted-foreground tabular-nums">
                             {new Date(ex.identificationDeadline).toLocaleDateString()}
                           </p>
                         </div>
-                        <div className={`p-2 rounded-md ${exchDaysLeft <= 7 ? "bg-orange-50 border border-orange-200" : exchDaysLeft <= 20 ? "bg-yellow-50" : "bg-muted"}`}>
+                        <div className={`p-2 rounded-md ${exchDaysLeft <= 7 ? "bg-acr-warn-soft border border-acr-warn-soft" : exchDaysLeft <= 20 ? "bg-acr-warn-soft" : "bg-muted"}`}>
                           <dt className="flex items-center gap-1.5 text-xs mb-1">
-                            <Calendar className={`w-3 h-3 ${exchDaysLeft <= 7 ? "text-orange-700" : exchDaysLeft <= 20 ? "text-yellow-600" : "text-muted-foreground"}`} aria-hidden="true" />
+                            <Calendar className={`w-3 h-3 ${exchDaysLeft <= 7 ? "text-acr-warn" : exchDaysLeft <= 20 ? "text-acr-warn" : "text-muted-foreground"}`} aria-hidden="true" />
                             <span className="font-medium">Exchange (180-day)</span>
-                            {exchAlertNear && <AlertTriangle className="w-3 h-3 text-orange-600 ml-auto" aria-hidden="true" />}
+                            {exchAlertNear && <AlertTriangle className="w-3 h-3 text-acr-warn ml-auto" aria-hidden="true" />}
                           </dt>
-                          <dd className={`text-sm font-bold tabular-nums ${exchDaysLeft <= 7 ? "text-orange-700" : ""}`}>
+                          <dd className={`text-sm font-bold tabular-nums ${exchDaysLeft <= 7 ? "text-acr-warn" : ""}`}>
                             {exchDaysLeft} days left
                           </dd>
                           <p className="text-xs text-muted-foreground tabular-nums">
@@ -314,7 +314,7 @@ export default function Exchange1031Page() {
                     )}
 
                     {ex.taxDeferralEstimateCents && (
-                      <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-2 rounded">
+                      <div className="flex items-center gap-2 text-sm text-acr-pos bg-acr-pos-soft p-2 rounded">
                         <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                         Est. tax deferral: <strong className="tabular-nums">{usd(ex.taxDeferralEstimateCents / 100)}</strong>
                       </div>
@@ -327,7 +327,7 @@ export default function Exchange1031Page() {
                           {scoredRPs.map((rp, idx) => (
                             <li key={rp.id} className="flex items-center justify-between text-xs py-1.5 px-2 border rounded-md bg-muted/30 gap-2">
                               <div className="flex items-center gap-2 min-w-0">
-                                {idx === 0 && <Star className="w-3 h-3 text-yellow-500 shrink-0" aria-label="Best match" />}
+                                {idx === 0 && <Star className="w-3 h-3 text-acr-warn shrink-0" aria-label="Best match" />}
                                 <span className="truncate">{rp.address}</span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0 flex-wrap">

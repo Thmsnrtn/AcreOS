@@ -184,9 +184,9 @@ export function SafeBulkDeleteDialog({
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
-                <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
-                <p className="text-sm text-amber-800 dark:text-amber-200">
+              <div className="flex items-start gap-2 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/30 border border-acr-warn-soft dark:border-acr-warn-soft rounded-md">
+                <Info className="w-4 h-4 text-acr-warn dark:text-acr-warn mt-0.5 shrink-0" aria-hidden="true" />
+                <p className="text-sm text-acr-warn dark:text-acr-warn">
                   These leads will be moved to trash and can be restored within 30 days.
                 </p>
               </div>

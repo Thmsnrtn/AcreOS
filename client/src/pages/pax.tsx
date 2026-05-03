@@ -99,7 +99,7 @@ const SEVERITY_BORDER: Record<string, string> = {
   high: "border-acr-neg",
   medium: "border-acr-warn",
   low: "border-acr-brand",
-  info: "border-gray-300",
+  info: "border-border",
 };
 
 const SEVERITY_BADGE: Record<

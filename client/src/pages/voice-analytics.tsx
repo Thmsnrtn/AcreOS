@@ -209,15 +209,15 @@ export default function VoiceAnalyticsPage() {
         </div>
         {activeCalls.length > 0 && (
           <div
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg"
+            className="flex items-center gap-2 px-4 py-2 bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg"
             role="status"
             aria-label={`${activeCalls.length} active call${activeCalls.length === 1 ? '' : 's'} right now`}
           >
             <span className="relative flex h-3 w-3" aria-hidden="true">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-acr-pos opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-acr-pos" />
             </span>
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+            <span className="text-sm font-medium text-acr-pos dark:text-acr-pos tabular-nums">
               {activeCalls.length} active call{activeCalls.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -401,10 +401,10 @@ export default function VoiceAnalyticsPage() {
                   <div
                     className={`w-3 h-3 rounded-full ${
                       label === 'positive'
-                        ? 'bg-emerald-500'
+                        ? 'bg-acr-pos'
                         : label === 'negative'
-                        ? 'bg-red-500'
-                        : 'bg-gray-400'
+                        ? 'bg-acr-neg'
+                        : 'bg-muted'
                     }`}
                     aria-hidden="true"
                   />
@@ -464,7 +464,7 @@ export default function VoiceAnalyticsPage() {
                       .split(new RegExp(`(${searchQuery})`, 'gi'))
                       .map((part: string, j: number) =>
                         part.toLowerCase() === searchQuery.toLowerCase() ? (
-                          <mark key={j} className="bg-yellow-200 dark:bg-yellow-800 text-foreground">
+                          <mark key={j} className="bg-acr-warn-soft dark:bg-acr-warn-soft text-foreground">
                             {part}
                           </mark>
                         ) : (

@@ -45,23 +45,23 @@ function formatDollar(n: number) {
 }
 
 const URGENCY_STYLES: Record<string, string> = {
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  low: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  critical: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
+  high: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  medium: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  low: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
 };
 
 const IMPACT_STYLES: Record<string, string> = {
-  high: 'text-red-600 dark:text-red-400',
-  medium: 'text-orange-600 dark:text-orange-400',
-  low: 'text-yellow-600 dark:text-yellow-400',
+  high: 'text-acr-neg dark:text-acr-neg',
+  medium: 'text-acr-warn dark:text-acr-warn',
+  low: 'text-acr-warn dark:text-acr-warn',
 };
 
 const PATTERN_STYLES: Record<string, { label: string; color: string; icon: JSX.Element }> = {
-  consistent: { label: 'Consistent', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
-  improving: { label: 'Improving', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
-  declining: { label: 'Declining', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
-  erratic: { label: 'Erratic', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
+  consistent: { label: 'Consistent', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
+  improving: { label: 'Improving', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
+  declining: { label: 'Declining', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
+  erratic: { label: 'Erratic', color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
 };
 
 function humanize(s: string): string {
@@ -218,12 +218,12 @@ export default function CashFlowPage() {
         <section
           role="status"
           aria-live="polite"
-          className={`rounded-xl border p-4 ${monthlyNetCashFlow >= 0 ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800" : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"}`}
+          className={`rounded-xl border p-4 ${monthlyNetCashFlow >= 0 ? "bg-acr-pos-soft border-acr-pos-soft dark:bg-acr-pos-soft/20 dark:border-acr-pos-soft" : "bg-acr-neg-soft border-acr-neg-soft dark:bg-acr-neg-soft/20 dark:border-acr-neg-soft"}`}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Shield
-                className={`w-4 h-4 ${monthlyNetCashFlow >= 0 ? "text-emerald-600" : "text-red-500"}`}
+                className={`w-4 h-4 ${monthlyNetCashFlow >= 0 ? "text-acr-pos" : "text-acr-neg"}`}
                 aria-hidden="true"
               />
               <span className="font-semibold text-sm">Portfolio cash flow health</span>
@@ -250,7 +250,7 @@ export default function CashFlowPage() {
             aria-valuemax={100}
           >
             <div
-              className={`h-full rounded-full transition-all duration-700 ${monthlyNetCashFlow >= 0 ? "bg-emerald-500" : "bg-red-500"}`}
+              className={`h-full rounded-full transition-all duration-700 ${monthlyNetCashFlow >= 0 ? "bg-acr-pos" : "bg-acr-neg"}`}
               style={{ width: `${cashFlowHealthPct}%` }}
             />
           </div>
@@ -268,20 +268,20 @@ export default function CashFlowPage() {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                 <dt className="text-sm text-muted-foreground">Projected income</dt>
               </div>
-              <dd className="text-2xl font-bold text-emerald-600 tabular-nums">{formatDollar(summary.totalProjectedIncome)}</dd>
+              <dd className="text-2xl font-bold text-acr-pos tabular-nums">{formatDollar(summary.totalProjectedIncome)}</dd>
               <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
+                <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />
                 <dt className="text-sm text-muted-foreground">Projected expenses</dt>
               </div>
-              <dd className="text-2xl font-bold text-red-500 tabular-nums">{formatDollar(summary.totalProjectedExpenses)}</dd>
+              <dd className="text-2xl font-bold text-acr-neg tabular-nums">{formatDollar(summary.totalProjectedExpenses)}</dd>
               <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
             </CardContent>
           </Card>
@@ -291,7 +291,7 @@ export default function CashFlowPage() {
                 <DollarSign className="w-4 h-4 text-primary" aria-hidden="true" />
                 <dt className="text-sm text-muted-foreground">Net cash flow</dt>
               </div>
-              <dd className={`text-2xl font-bold tabular-nums ${summary.netCashFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              <dd className={`text-2xl font-bold tabular-nums ${summary.netCashFlow >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                 {formatDollar(summary.netCashFlow)}
               </dd>
               <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
@@ -300,10 +300,10 @@ export default function CashFlowPage() {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                 <dt className="text-sm text-muted-foreground">High-risk notes</dt>
               </div>
-              <dd className="text-2xl font-bold text-orange-500 tabular-nums">{summary.highRiskNoteCount}</dd>
+              <dd className="text-2xl font-bold text-acr-warn tabular-nums">{summary.highRiskNoteCount}</dd>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Avg risk score: <span className="tabular-nums">{Math.round(summary.averagePaymentRiskScore * 100)}%</span>
               </p>
@@ -517,7 +517,7 @@ export default function CashFlowPage() {
                         <li key={cat} className="space-y-1">
                           <div className="flex justify-between text-sm">
                             <span>{label}</span>
-                            <span className="font-medium text-red-500 tabular-nums">{formatDollar(amt)}</span>
+                            <span className="font-medium text-acr-neg tabular-nums">{formatDollar(amt)}</span>
                           </div>
                           <Progress
                             value={pct}
@@ -548,14 +548,14 @@ export default function CashFlowPage() {
               <ul className="space-y-4" aria-label="High-risk notes">
                 {highRisk.map(({ note, riskScore, riskFactors }: any) => (
                   <li key={note.id}>
-                    <Card className="border-orange-200 dark:border-orange-800">
+                    <Card className="border-acr-warn-soft dark:border-acr-warn-soft">
                       <CardContent className="pt-4 pb-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium">Note <span className="tabular-nums">#{note.id}</span></p>
                               <Badge
-                                className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+                                className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
                                 aria-label={`Risk score ${(riskScore * 100).toFixed(0)} percent`}
                               >
                                 Risk: <span className="tabular-nums ml-1">{(riskScore * 100).toFixed(0)}%</span>
@@ -583,7 +583,7 @@ export default function CashFlowPage() {
                                 </span>
                                 <span className="text-muted-foreground">{f.factor}</span>
                                 {f.mitigation && (
-                                  <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-1">
+                                  <span className="text-xs text-acr-pos dark:text-acr-pos ml-1">
                                     → {f.mitigation}
                                   </span>
                                 )}
@@ -610,9 +610,9 @@ export default function CashFlowPage() {
                         <div className="flex items-start gap-3">
                           <div
                             aria-hidden="true"
-                            className={`p-1.5 rounded ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'bg-red-100' : 'bg-blue-100'}`}
+                            className={`p-1.5 rounded ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'bg-acr-neg-soft' : 'bg-acr-accent'}`}
                           >
-                            <Zap className={`w-4 h-4 ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'text-red-600' : 'text-blue-600'}`} />
+                            <Zap className={`w-4 h-4 ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'text-acr-neg' : 'text-acr-accent'}`} />
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
@@ -649,7 +649,7 @@ export default function CashFlowPage() {
                         <li key={f.forecastId} className="space-y-2 pb-4 border-b last:border-b-0">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Forecast <span className="tabular-nums">#{f.forecastId}</span></span>
-                            <span className={`tabular-nums ${Math.abs(f.variancePercent) < 10 ? 'text-emerald-600' : 'text-orange-500'}`}>
+                            <span className={`tabular-nums ${Math.abs(f.variancePercent) < 10 ? 'text-acr-pos' : 'text-acr-warn'}`}>
                               Income variance: {f.variancePercent.toFixed(1)}%
                             </span>
                           </div>

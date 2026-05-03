@@ -117,13 +117,13 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
             {getCategoryLabel(template.category)}
           </Badge>
           {isCompleted && (
-            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+            <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-acr-pos/20">
               <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
               Completed
             </Badge>
           )}
           {isInProgress && (
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+            <Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-acr-warn/20">
               In progress
             </Badge>
           )}

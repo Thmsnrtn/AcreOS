@@ -50,13 +50,13 @@ export function ConfidenceInterval({
             {/* Confidence band */}
             <div
               aria-hidden="true"
-              className="absolute h-full bg-blue-200 rounded-full"
+              className="absolute h-full bg-acr-accent rounded-full"
               style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(100 - leftPct, widthPct)}%` }}
             />
             {/* Point estimate */}
             <div
               aria-hidden="true"
-              className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-600 rounded-full border border-white"
+              className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-acr-accent rounded-full border border-white"
               style={{ left: `${Math.max(1, Math.min(99, valuePct))}%` }}
             />
           </div>
@@ -90,10 +90,10 @@ interface DecisionScoreProps {
 }
 
 const DECISION_CONFIG = {
-  strong_buy: { label: "Strong opportunity", color: "text-green-700", bg: "bg-green-50", border: "border-green-200" },
-  buy: { label: "Good opportunity", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
-  hold: { label: "Evaluate further", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
-  pass: { label: "Below threshold", color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+  strong_buy: { label: "Strong opportunity", color: "text-acr-pos", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
+  buy: { label: "Good opportunity", color: "text-acr-pos", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
+  hold: { label: "Evaluate further", color: "text-acr-warn", bg: "bg-acr-warn-soft", border: "border-acr-warn-soft" },
+  pass: { label: "Below threshold", color: "text-acr-neg", bg: "bg-acr-neg-soft", border: "border-acr-neg-soft" },
 };
 
 export function DecisionScore({ score, maxScore = 100, decision, reasoning, className }: DecisionScoreProps) {
@@ -146,7 +146,7 @@ export function LossFrame({ potentialLoss, timeframe, className }: LossFrameProp
     <div
       role="status"
       aria-label={`Without action, potential loss of ${potentialLoss} within ${timeframe}`}
-      className={cn("text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5", className)}
+      className={cn("text-xs text-acr-warn bg-acr-warn-soft border border-acr-warn-soft rounded-md px-2.5 py-1.5", className)}
     >
       <span aria-hidden="true">Without action: <span className="font-medium">{potentialLoss}</span> within {timeframe}</span>
     </div>

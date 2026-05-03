@@ -136,47 +136,47 @@ function formatMs(ms: number): string {
 
 function complexityColor(c: string) {
   switch (c) {
-    case "simple":   return "bg-green-500/10 text-green-600 border-green-500/20";
-    case "moderate": return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
-    case "complex":  return "bg-red-500/10 text-red-600 border-red-500/20";
+    case "simple":   return "bg-acr-pos/10 text-acr-pos border-acr-pos/20";
+    case "moderate": return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
+    case "complex":  return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
     default:         return "bg-muted text-muted-foreground border-border";
   }
 }
 
 function statusColor(s: string) {
   switch (s) {
-    case "success": return "bg-green-500/10 text-green-700 border-green-500/20";
-    case "failed":  return "bg-red-500/10 text-red-700 border-red-500/20";
-    case "partial": return "bg-yellow-500/10 text-yellow-700 border-yellow-500/20";
+    case "success": return "bg-acr-pos/10 text-acr-pos border-acr-pos/20";
+    case "failed":  return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
+    case "partial": return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
     default:        return "bg-muted text-muted-foreground border-border";
   }
 }
 
 function impactColor(impact: string) {
   switch (impact) {
-    case "critical": return "bg-red-500/10 text-red-700 border-red-500/20";
-    case "high":     return "bg-orange-500/10 text-orange-700 border-orange-500/20";
-    case "medium":   return "bg-yellow-500/10 text-yellow-700 border-yellow-500/20";
-    case "low":      return "bg-green-500/10 text-green-700 border-green-500/20";
+    case "critical": return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
+    case "high":     return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
+    case "medium":   return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
+    case "low":      return "bg-acr-pos/10 text-acr-pos border-acr-pos/20";
     default:         return "bg-muted text-muted-foreground border-border";
   }
 }
 
 function proposalStatusColor(s: string) {
   switch (s) {
-    case "pending":  return "bg-blue-500/10 text-blue-700 border-blue-500/20";
-    case "approved": return "bg-green-500/10 text-green-700 border-green-500/20";
-    case "rejected": return "bg-red-500/10 text-red-700 border-red-500/20";
-    case "applied":  return "bg-purple-500/10 text-purple-700 border-purple-500/20";
+    case "pending":  return "bg-acr-accent/10 text-acr-accent border-acr-accent/20";
+    case "approved": return "bg-acr-pos/10 text-acr-pos border-acr-pos/20";
+    case "rejected": return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
+    case "applied":  return "bg-acr-brand/10 text-acr-brand border-acr-brand/20";
     default:         return "bg-muted text-muted-foreground border-border";
   }
 }
 
 function modelStatusColor(s: string) {
   switch (s) {
-    case "active":       return "bg-green-500/10 text-green-700 border-green-500/20";
-    case "deprecated":   return "bg-red-500/10 text-red-700 border-red-500/20";
-    case "experimental": return "bg-yellow-500/10 text-yellow-700 border-yellow-500/20";
+    case "active":       return "bg-acr-pos/10 text-acr-pos border-acr-pos/20";
+    case "deprecated":   return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
+    case "experimental": return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
     default:             return "bg-muted text-muted-foreground border-border";
   }
 }
@@ -292,33 +292,33 @@ const OUTCOME_DISPLAY: Record<DecisionOutcome, { icon: React.ReactNode; label: s
   "auto-executed": {
     icon: <CheckCircle2 className="w-3.5 h-3.5" />,
     label: "Auto-executed",
-    className: "bg-green-500/10 text-green-700 border-green-500/20",
+    className: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
   escalated: {
     icon: <ArrowUpCircle className="w-3.5 h-3.5" />,
     label: "Escalated",
-    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    className: "bg-acr-warn/10 text-acr-warn border-acr-warn/20",
   },
   denied: {
     icon: <XCircle className="w-3.5 h-3.5" />,
     label: "Denied",
-    className: "bg-red-500/10 text-red-700 border-red-500/20",
+    className: "bg-acr-neg/10 text-acr-neg border-acr-neg/20",
   },
 };
 
 function confidenceColor(confidence: number): string {
-  if (confidence >= 85) return "bg-green-500";
-  if (confidence >= 70) return "bg-yellow-500";
-  return "bg-orange-500";
+  if (confidence >= 85) return "bg-acr-pos";
+  if (confidence >= 70) return "bg-acr-warn";
+  return "bg-acr-warn";
 }
 
 function categoryColor(cat: DecisionCategory): string {
   switch (cat) {
-    case "pricing":     return "bg-blue-500/10 text-blue-700 border-blue-500/20";
-    case "lease":       return "bg-purple-500/10 text-purple-700 border-purple-500/20";
-    case "maintenance": return "bg-orange-500/10 text-orange-700 border-orange-500/20";
-    case "compliance":  return "bg-red-500/10 text-red-700 border-red-500/20";
-    case "tenant":      return "bg-teal-500/10 text-teal-700 border-teal-500/20";
+    case "pricing":     return "bg-acr-accent/10 text-acr-accent border-acr-accent/20";
+    case "lease":       return "bg-acr-brand/10 text-acr-brand border-acr-brand/20";
+    case "maintenance": return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
+    case "compliance":  return "bg-acr-neg/10 text-acr-neg border-acr-neg/20";
+    case "tenant":      return "bg-acr-accent/10 text-acr-accent border-acr-accent/20";
     default:            return "bg-muted text-muted-foreground border-border";
   }
 }
@@ -781,7 +781,7 @@ export default function AiObservatory() {
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <BrainCircuit className="w-6 h-6 text-violet-500" aria-hidden="true" />
+            <BrainCircuit className="w-6 h-6 text-acr-brand" aria-hidden="true" />
             <h1 className="text-2xl font-bold text-foreground">AI observatory</h1>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -835,7 +835,7 @@ export default function AiObservatory() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <BrainCircuit className="w-4 h-4 text-violet-500" />
+                  <BrainCircuit className="w-4 h-4 text-acr-brand" />
                   Decision Feed
                 </CardTitle>
                 <span className="text-xs text-muted-foreground">

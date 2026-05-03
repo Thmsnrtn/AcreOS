@@ -62,11 +62,11 @@ export function FocusCard() {
   }
 
   return (
-    <Card className="border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50/50 to-background dark:from-indigo-950/20">
+    <Card className="border-acr-accent dark:border-acr-accent bg-gradient-to-br from-acr-accent/50 to-background dark:from-acr-accent/20">
       <CardContent className="py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <Crosshair className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" aria-hidden="true" />
+            <Crosshair className="h-4 w-4 text-acr-accent mt-0.5 shrink-0" aria-hidden="true" />
             <div className="text-sm whitespace-pre-wrap leading-relaxed">{focusCard}</div>
           </div>
           <Button

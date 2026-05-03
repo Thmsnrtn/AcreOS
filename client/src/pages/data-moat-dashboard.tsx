@@ -99,7 +99,7 @@ export default function DataMoatDashboard() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Database className="h-8 w-8 text-blue-500" aria-hidden="true" />
+              <Database className="h-8 w-8 text-acr-accent" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{(stats.totalTransactions || 0).toLocaleString()}</dd>
                 <dt className="text-sm text-muted-foreground">Training transactions</dt>
@@ -110,7 +110,7 @@ export default function DataMoatDashboard() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Globe className="h-8 w-8 text-green-500" aria-hidden="true" />
+              <Globe className="h-8 w-8 text-acr-pos" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{stats.statesCovered || 0}</dd>
                 <dt className="text-sm text-muted-foreground">States covered</dt>
@@ -121,7 +121,7 @@ export default function DataMoatDashboard() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <TrendingUp className="h-8 w-8 text-purple-500" aria-hidden="true" />
+              <TrendingUp className="h-8 w-8 text-acr-brand" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{stats.modelMape || 0}%</dd>
                 <dt className="text-sm text-muted-foreground">Model MAPE</dt>
@@ -132,7 +132,7 @@ export default function DataMoatDashboard() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Key className="h-8 w-8 text-orange-500" aria-hidden="true" />
+              <Key className="h-8 w-8 text-acr-warn" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{keys.filter((k: any) => k.isActive).length}</dd>
                 <dt className="text-sm text-muted-foreground">Active API partners</dt>

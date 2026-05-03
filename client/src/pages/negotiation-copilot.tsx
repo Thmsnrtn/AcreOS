@@ -41,19 +41,19 @@ import {
 } from 'lucide-react';
 
 const STRATEGY_INFO: Record<string, { label: string; color: string; description: string }> = {
-  empathy: { label: 'Empathy', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', description: 'Validate feelings and build connection' },
-  logic: { label: 'Logic', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300', description: 'Use facts and market data' },
-  urgency: { label: 'Urgency', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', description: 'Time-limited framing' },
-  anchor: { label: 'Anchor', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300', description: 'Reinforce original offer as fair' },
-  silence: { label: 'Silence', color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300', description: 'Give space and wait' },
+  empathy: { label: 'Empathy', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', description: 'Validate feelings and build connection' },
+  logic: { label: 'Logic', color: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand', description: 'Use facts and market data' },
+  urgency: { label: 'Urgency', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn', description: 'Time-limited framing' },
+  anchor: { label: 'Anchor', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn', description: 'Reinforce original offer as fair' },
+  silence: { label: 'Silence', color: 'bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground', description: 'Give space and wait' },
 };
 
 const OBJECTION_COLORS: Record<string, string> = {
-  price: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  timing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  trust: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  emotional: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
-  competitive: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  price: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
+  timing: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+  trust: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  emotional: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand',
+  competitive: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand',
 };
 
 // P1 money-precision: K/M compact bands intentionally kept for the copilot's hero
@@ -67,8 +67,8 @@ function formatDollar(n: number) {
 }
 
 function SentimentIndicator({ score }: { score: number }) {
-  if (score > 0.3) return <span className="flex items-center gap-1 text-emerald-600 text-sm"><TrendingUp className="w-3 h-3" /> Positive ({(score * 100).toFixed(0)}%)</span>;
-  if (score < -0.3) return <span className="flex items-center gap-1 text-red-500 text-sm"><TrendingDown className="w-3 h-3" /> Negative ({(Math.abs(score) * 100).toFixed(0)}%)</span>;
+  if (score > 0.3) return <span className="flex items-center gap-1 text-acr-pos text-sm"><TrendingUp className="w-3 h-3" /> Positive ({(score * 100).toFixed(0)}%)</span>;
+  if (score < -0.3) return <span className="flex items-center gap-1 text-acr-neg text-sm"><TrendingDown className="w-3 h-3" /> Negative ({(Math.abs(score) * 100).toFixed(0)}%)</span>;
   return <span className="flex items-center gap-1 text-muted-foreground text-sm">Neutral</span>;
 }
 
@@ -96,7 +96,7 @@ function SessionReplayPanel({ session }: { session: any }) {
             </div>
             <div className="flex items-center gap-2 mb-1">
               {move.strategy && (
-                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-gray-100 text-gray-800'}`} aria-label={`Strategy: ${STRATEGY_INFO[move.strategy]?.label ?? move.strategy}`}>
+                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-muted text-foreground'}`} aria-label={`Strategy: ${STRATEGY_INFO[move.strategy]?.label ?? move.strategy}`}>
                   {STRATEGY_INFO[move.strategy]?.label ?? move.strategy}
                 </span>
               )}
@@ -147,7 +147,7 @@ function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }
         )}
         {strategyResult.successRate != null && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <TrendingUp className="w-3 h-3 text-emerald-500" />
+            <TrendingUp className="w-3 h-3 text-acr-pos" />
             Historical success rate for this strategy: <strong className="text-foreground">{(strategyResult.successRate * 100).toFixed(0)}%</strong>
           </div>
         )}
@@ -160,7 +160,7 @@ function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }
 
 function LearningLoopIndicator() {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md text-xs text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" role="status" aria-live="polite">
+    <div className="flex items-center gap-2 px-3 py-2 bg-acr-pos-soft dark:bg-acr-pos-soft/20 rounded-md text-xs text-acr-pos dark:text-acr-pos border border-acr-pos-soft dark:border-acr-pos-soft" role="status" aria-live="polite">
       <Activity className="w-3.5 h-3.5 animate-pulse" aria-hidden="true" />
       <span><strong>Learning loop active</strong> — strategy effectiveness is being tracked and will improve recommendations over time.</span>
     </div>
@@ -199,9 +199,9 @@ function BATNACalculator() {
     ? offer <= maxAllowable ? "viable" : offer <= maxAllowable * 1.1 ? "tight" : "unfavorable"
     : "unknown";
 
-  const viabilityColor = dealViability === "viable" ? "text-emerald-600 bg-emerald-50 border-emerald-200" :
-                         dealViability === "tight" ? "text-amber-600 bg-amber-50 border-amber-200" :
-                         dealViability === "unfavorable" ? "text-red-600 bg-red-50 border-red-200" :
+  const viabilityColor = dealViability === "viable" ? "text-acr-pos bg-acr-pos-soft border-acr-pos-soft" :
+                         dealViability === "tight" ? "text-acr-warn bg-acr-warn-soft border-acr-warn-soft" :
+                         dealViability === "unfavorable" ? "text-acr-neg bg-acr-neg-soft border-acr-neg-soft" :
                          "text-muted-foreground bg-muted/50 border-border";
 
   return (
@@ -290,7 +290,7 @@ function BATNACalculator() {
                   aria-valuemax={100}
                 >
                   <div
-                    className={`h-full rounded-full ${sellerFlexibility > 30 ? "bg-emerald-500" : sellerFlexibility > 15 ? "bg-amber-500" : "bg-red-500"}`}
+                    className={`h-full rounded-full ${sellerFlexibility > 30 ? "bg-acr-pos" : sellerFlexibility > 15 ? "bg-acr-warn" : "bg-acr-neg"}`}
                     style={{ width: `${Math.min(sellerFlexibility, 100)}%` }}
                   />
                 </div>
@@ -404,15 +404,15 @@ function PsychologicalPressureGauge({
           <p className="text-sm font-semibold mt-1" style={{ color: pressureColor }}>{pressureLabel}</p>
           <dl className="grid grid-cols-3 gap-2 mt-3 w-full text-center m-0">
             <div>
-              <dd className="text-lg font-bold tabular-nums text-amber-500 m-0">{urgencySignals}</dd>
+              <dd className="text-lg font-bold tabular-nums text-acr-warn m-0">{urgencySignals}</dd>
               <dt className="text-[10px] text-muted-foreground">Urgency signals</dt>
             </div>
             <div>
-              <dd className="text-lg font-bold tabular-nums text-emerald-500 m-0">{motivationSignals}</dd>
+              <dd className="text-lg font-bold tabular-nums text-acr-pos m-0">{motivationSignals}</dd>
               <dt className="text-[10px] text-muted-foreground">Motivation cues</dt>
             </div>
             <div>
-              <dd className="text-lg font-bold tabular-nums text-slate-400 m-0">{hesitationSignals}</dd>
+              <dd className="text-lg font-bold tabular-nums text-muted-foreground m-0">{hesitationSignals}</dd>
               <dt className="text-[10px] text-muted-foreground">Hesitation signs</dt>
             </div>
           </dl>
@@ -635,7 +635,7 @@ export default function NegotiationCopilotPage() {
             </Card>
           ) : (
             <div className="flex items-center gap-3" role="status" aria-live="polite">
-              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" aria-label={`Session ${activeSessionId} is active`}>
+              <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos" aria-label={`Session ${activeSessionId} is active`}>
                 Session #<span className="tabular-nums">{activeSessionId}</span> active
               </Badge>
               <Button variant="ghost" size="sm" onClick={() => setPendingEndSession(true)} aria-label={`End negotiation session ${activeSessionId}`}>
@@ -736,7 +736,7 @@ export default function NegotiationCopilotPage() {
                     <CardTitle className="text-sm">Detected objection</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <Badge className={OBJECTION_COLORS[objectionResult.category] || 'bg-gray-100'} aria-label={`${objectionResult.category} objection`}>
+                    <Badge className={OBJECTION_COLORS[objectionResult.category] || 'bg-muted'} aria-label={`${objectionResult.category} objection`}>
                       {objectionResult.category?.toUpperCase()} objection
                     </Badge>
                     <p className="text-sm">{objectionResult.text}</p>
@@ -785,7 +785,7 @@ export default function NegotiationCopilotPage() {
                       <ul className="space-y-1 list-none p-0 m-0" aria-label="Suggested actions">
                         {strategyResult.suggestedActions.map((a: string, i: number) => (
                           <li key={i} className="text-xs flex items-start gap-1">
-                            <Check className="w-3 h-3 mt-0.5 text-emerald-500 shrink-0" aria-hidden="true" /> {a}
+                            <Check className="w-3 h-3 mt-0.5 text-acr-pos shrink-0" aria-hidden="true" /> {a}
                           </li>
                         ))}
                       </ul>
@@ -909,11 +909,11 @@ export default function NegotiationCopilotPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {s.outcome ? (
-                            <Badge className={s.outcome === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'} aria-label={`Outcome: ${s.outcome}`}>
+                            <Badge className={s.outcome === 'accepted' ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-foreground'} aria-label={`Outcome: ${s.outcome}`}>
                               {s.outcome}
                             </Badge>
                           ) : (
-                            <Badge className="bg-blue-100 text-blue-800">Active</Badge>
+                            <Badge className="bg-acr-accent text-acr-accent">Active</Badge>
                           )}
                           <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                         </div>

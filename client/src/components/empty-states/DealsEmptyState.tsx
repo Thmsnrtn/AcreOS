@@ -20,18 +20,18 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-          className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500/20 to-amber-500/5 flex items-center justify-center"
+          className="w-24 h-24 rounded-full bg-gradient-to-br from-acr-warn/20 to-acr-warn/5 flex items-center justify-center"
         >
-          <Handshake className="w-12 h-12 text-amber-600" />
+          <Handshake className="w-12 h-12 text-acr-warn" />
         </motion.div>
         
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="absolute -top-1 -right-3 w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center"
+          className="absolute -top-1 -right-3 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
         >
-          <DollarSign className="w-5 h-5 text-green-600" />
+          <DollarSign className="w-5 h-5 text-acr-pos" />
         </motion.div>
         
         <motion.div
@@ -74,7 +74,7 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
           className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <Sparkles className="w-5 h-5 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">

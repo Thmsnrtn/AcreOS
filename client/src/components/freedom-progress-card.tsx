@@ -23,9 +23,9 @@ function ProgressRing({ percentage }: { percentage: number }) {
   const offset = circumference - (Math.min(100, percentage) / 100) * circumference;
 
   const color =
-    percentage >= 100 ? "stroke-emerald-500" :
-    percentage >= 75 ? "stroke-blue-500" :
-    percentage >= 50 ? "stroke-amber-500" :
+    percentage >= 100 ? "stroke-acr-pos" :
+    percentage >= 75 ? "stroke-acr-accent" :
+    percentage >= 50 ? "stroke-acr-warn" :
     "stroke-primary";
 
   return (
@@ -124,10 +124,10 @@ export function FreedomProgressCard() {
   // Current income > target
   if (data.freedomPercentage >= 100) {
     return (
-      <Card className="floating-window border-emerald-200 dark:border-emerald-800">
+      <Card className="floating-window border-acr-pos-soft dark:border-acr-pos-soft">
         <CardContent className="p-6 flex flex-col items-center gap-4">
           <ProgressRing percentage={100} />
-          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+          <p className="text-lg font-bold text-acr-pos dark:text-acr-pos">
             You've reached financial freedom!
           </p>
           <p className="text-sm text-muted-foreground">
@@ -157,14 +157,14 @@ export function FreedomProgressCard() {
 
           {/* Loss-aversion contextual messaging */}
           {data.previousMonthIncome != null && data.monthlyPassiveIncome > data.previousMonthIncome ? (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+            <p className="text-xs text-acr-pos dark:text-acr-pos">
               Your passive income grew {formatCurrency(data.monthlyPassiveIncome - data.previousMonthIncome)} this month.
               {data.projectedFreedomDate && (
                 <> On track for {new Date(data.projectedFreedomDate + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}.</>
               )}
             </p>
           ) : data.previousMonthIncome != null && data.monthlyPassiveIncome < data.previousMonthIncome ? (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-acr-warn dark:text-acr-warn">
               Your passive income dropped {formatCurrency(data.previousMonthIncome - data.monthlyPassiveIncome)} this month. Acquiring 1 note at your average terms would recover that and add $150.
             </p>
           ) : (

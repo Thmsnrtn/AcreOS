@@ -192,7 +192,7 @@ export default function AvmBulk() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <dd className="text-2xl font-bold text-green-600 flex items-center gap-1 tabular-nums">
+              <dd className="text-2xl font-bold text-acr-pos flex items-center gap-1 tabular-nums">
                 <CheckCircle className="h-5 w-5" aria-hidden="true" /> {successCount}
               </dd>
               <dt className="text-sm text-muted-foreground">Successful</dt>
@@ -200,7 +200,7 @@ export default function AvmBulk() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <dd className="text-2xl font-bold text-red-600 flex items-center gap-1 tabular-nums">
+              <dd className="text-2xl font-bold text-acr-neg flex items-center gap-1 tabular-nums">
                 <AlertCircle className="h-5 w-5" aria-hidden="true" /> {errorCount}
               </dd>
               <dt className="text-sm text-muted-foreground">Failed</dt>
@@ -297,8 +297,8 @@ export default function AvmBulk() {
                       </TableCell>
                       <TableCell>
                         {r.status === "success"
-                          ? <CheckCircle className="h-4 w-4 text-green-500" aria-label="Success" />
-                          : <span className="text-xs text-red-500" role="alert">{r.error || "Failed"}</span>}
+                          ? <CheckCircle className="h-4 w-4 text-acr-pos" aria-label="Success" />
+                          : <span className="text-xs text-acr-neg" role="alert">{r.error || "Failed"}</span>}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
 
           {sent ? (
             <div className="flex flex-col items-center gap-3 py-4" role="status" aria-live="polite">
-              <CheckCircle className="w-12 h-12 text-emerald-500" aria-hidden="true" />
+              <CheckCircle className="w-12 h-12 text-acr-pos" aria-hidden="true" />
               <p className="text-center text-sm text-muted-foreground">
                 If an account exists for <strong>{email}</strong>, you'll receive a
                 reset link within a few minutes.

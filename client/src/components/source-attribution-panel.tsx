@@ -86,7 +86,7 @@ function StalenessIndicator({
     <span
       className={cn(
         "inline-flex items-center gap-1 text-xs font-medium",
-        isAmber ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"
+        isAmber ? "text-acr-warn dark:text-acr-warn" : "text-acr-neg dark:text-acr-neg"
       )}
       title={
         isAmber
@@ -180,9 +180,9 @@ export function SourceAttributionPanel({
                     className={cn(
                       "flex items-center justify-between gap-4 px-3 py-2.5",
                       staleness === "amber" &&
-                        "bg-amber-50/50 dark:bg-amber-950/20",
+                        "bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20",
                       staleness === "red" &&
-                        "bg-red-50/50 dark:bg-red-950/20"
+                        "bg-acr-neg-soft/50 dark:bg-acr-neg-soft/20"
                     )}
                   >
                     <div className="flex flex-col gap-0.5 min-w-0 flex-1">

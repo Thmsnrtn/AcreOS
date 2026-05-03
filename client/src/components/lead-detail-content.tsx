@@ -40,10 +40,10 @@ import { ScoreBreakdownCard, TcpaConsentBadge, TcpaConsentToggle } from "@/pages
 import type { Lead } from "@shared/schema";
 
 const STATUS_COLORS: Record<string, string> = {
-  new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  contacting: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400",
-  negotiation: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  closed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+  new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  contacting: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  negotiation: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  closed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
   dead: "bg-muted text-muted-foreground",
 };
 

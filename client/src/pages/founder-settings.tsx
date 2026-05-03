@@ -48,9 +48,9 @@ const CATEGORY_META: Record<
   SettingRow["definition"]["category"],
   { label: string; icon: any; colorClass: string }
 > = {
-  safety: { label: "Safety rails", icon: Shield, colorClass: "text-red-600 dark:text-red-400" },
-  learning: { label: "Learning & thresholds", icon: Brain, colorClass: "text-amber-600 dark:text-amber-400" },
-  scheduling: { label: "Scheduling", icon: Clock, colorClass: "text-blue-600 dark:text-blue-400" },
+  safety: { label: "Safety rails", icon: Shield, colorClass: "text-acr-neg dark:text-acr-neg" },
+  learning: { label: "Learning & thresholds", icon: Brain, colorClass: "text-acr-warn dark:text-acr-warn" },
+  scheduling: { label: "Scheduling", icon: Clock, colorClass: "text-acr-accent dark:text-acr-accent" },
   general: { label: "General", icon: Settings, colorClass: "text-muted-foreground" },
 };
 
@@ -90,7 +90,7 @@ export default function FounderSettingsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600 dark:text-red-400" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg dark:text-acr-neg" role="alert">
               Couldn't load settings. The system continues to use the previously loaded values —{" "}
               <button
                 type="button"

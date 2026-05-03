@@ -260,12 +260,12 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
                     <td className="px-4 py-2 tabular-nums">{c.distance?.toFixed(1) ?? '—'} mi</td>
                     <td className="px-4 py-2 text-right font-medium tabular-nums">{formatDollar(c.salePrice)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{formatDollar(c.pricePerAcre)}</td>
-                    <td className={`px-4 py-2 text-right font-semibold tabular-nums ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <td className={`px-4 py-2 text-right font-semibold tabular-nums ${diff >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                       {diff >= 0 ? '+' : ''}{diffPct}%
                     </td>
                     <td className="px-4 py-2 text-right">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-xs tabular-nums ${c.similarity >= 70 ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}
+                        className={`px-1.5 py-0.5 rounded text-xs tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-muted-foreground'}`}
                         aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
                       >
                         {c.similarity}%
@@ -283,7 +283,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
 }
 
 function ConfidenceBar({ confidence }: { confidence: number }) {
-  const color = confidence >= 70 ? 'text-emerald-600' : confidence >= 40 ? 'text-yellow-600' : 'text-red-500';
+  const color = confidence >= 70 ? 'text-acr-pos' : confidence >= 40 ? 'text-acr-warn' : 'text-acr-neg';
   const tier = confidence >= 70 ? 'high' : confidence >= 40 ? 'moderate' : 'low';
   return (
     <div className="space-y-1">
@@ -582,12 +582,12 @@ export default function AVMPage() {
                     </span>
                   </div>
                   {latest.confidence >= 70 ? (
-                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 pt-2">
+                    <div className="flex items-center gap-2 text-acr-pos dark:text-acr-pos pt-2">
                       <CheckCircle className="w-4 h-4" />
                       <span className="text-xs">High confidence estimate</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 pt-2">
+                    <div className="flex items-center gap-2 text-acr-warn dark:text-acr-warn pt-2">
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-xs">
                         {latest.confidence < 40 ? 'Low' : 'Moderate'} confidence — limited comps
@@ -695,7 +695,7 @@ export default function AVMPage() {
                     {latest.marketAdjustments.map((a: any, i: number) => (
                       <div key={i} className="flex items-center justify-between text-sm">
                         <span>{a.factor}</span>
-                        <span className={`font-semibold ${a.adjustment > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${a.adjustment > 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                           {a.adjustment > 0 ? '+' : ''}{a.adjustment.toFixed(1)}%
                         </span>
                       </div>

@@ -216,10 +216,10 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
         </div>
       </fieldset>
 
-      <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10 p-4">
+      <div className="rounded-xl border border-acr-accent bg-acr-accent dark:border-acr-accent/50 dark:bg-acr-accent/10 p-4">
         <div className="flex gap-3">
-          <Star className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
-          <div className="text-sm text-blue-800 dark:text-blue-300">
+          <Star className="w-4 h-4 text-acr-accent mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <div className="text-sm text-acr-accent dark:text-acr-accent">
             <p className="font-semibold mb-1">County selection wisdom</p>
             <p>Validate your county before mailing: search eBay's sold land listings for this county. If you find 10+ listings with multiple bidders, the model works here. No bidders means no buyer market. Counties within 2-3 hours of a major metro consistently outperform remote rural counties.</p>
           </div>
@@ -267,9 +267,9 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
         <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land-value benchmarks automatically.</p>
       </div>
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4">
-        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">Where to find comps:</p>
-        <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1 list-none p-0 m-0">
+      <div className="rounded-xl border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 p-4">
+        <p className="text-sm font-semibold text-acr-warn dark:text-acr-warn mb-2">Where to find comps:</p>
+        <ul className="text-sm text-acr-warn dark:text-acr-warn space-y-1 list-none p-0 m-0">
           <li>• <strong>County assessor records</strong> — real transaction data (best source)</li>
           <li>• <strong>LandWatch.com</strong> → Sold listings filter</li>
           <li>• <strong>Land and Farm / Lands of America</strong> → Sold section</li>
@@ -323,15 +323,15 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">{comps.length} comp{comps.length === 1 ? "" : "s"} entered</h3>
             {lowestComp > 0 && (
-              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold tabular-nums">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold tabular-nums text-green-600">{fmt(lowestComp * 0.25)}/acre</span></p>
+              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold tabular-nums">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold tabular-nums text-acr-pos">{fmt(lowestComp * 0.25)}/acre</span></p>
             )}
           </div>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Comparable sales">
             {sortedComps.map((comp, i) => {
               const sourceLabel = comp.source.replace(/_/g, " ");
               return (
-                <li key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${i === 0 ? "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-900/10" : "border-border"}`}>
-                  {i === 0 && <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 text-xs" aria-label="Lowest comp">Lowest</Badge>}
+                <li key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${i === 0 ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"}`}>
+                  {i === 0 && <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos text-xs" aria-label="Lowest comp">Lowest</Badge>}
                   <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
                     <span className="font-semibold tabular-nums">{fmt(comp.pricePerAcre)}/acre</span>
                     <span className="text-muted-foreground tabular-nums">{comp.acres} acres</span>
@@ -391,9 +391,9 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
   }
 
   const tiers = [
-    { key: "aggressive", label: "Ultra-motivated (20%)", color: "border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-900/10" },
-    { key: "standard", label: "Standard (25%)", color: "border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/10" },
-    { key: "competitive", label: "Hot market (33%)", color: "border-purple-300 bg-purple-50 dark:border-purple-900 dark:bg-purple-900/10" },
+    { key: "aggressive", label: "Ultra-motivated (20%)", color: "border-acr-warn bg-acr-warn-soft dark:border-acr-warn-soft dark:bg-acr-warn-soft/10" },
+    { key: "standard", label: "Standard (25%)", color: "border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/10" },
+    { key: "competitive", label: "Hot market (33%)", color: "border-acr-brand bg-acr-brand-soft dark:border-acr-brand-soft dark:bg-acr-brand-soft/10" },
   ] as const;
 
   return (
@@ -407,7 +407,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
       {report.warnings.length > 0 && (
         <ul className="space-y-2 list-none p-0 m-0" aria-label="Calculation warnings">
           {report.warnings.map((w: string, i: number) => (
-            <li key={i} className="flex gap-2 p-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-900/10 text-sm text-yellow-800 dark:text-yellow-300" role="alert">
+            <li key={i} className="flex gap-2 p-3 rounded-lg border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 text-sm text-acr-warn dark:text-acr-warn" role="alert">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <span>{w}</span>
             </li>
@@ -510,7 +510,7 @@ function StepExit({ report, onNext, onBack }: any) {
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Net profit</dt>
-                <dd className="font-bold tabular-nums text-green-600 m-0">{fmt(cf.netProfit)}</dd>
+                <dd className="font-bold tabular-nums text-acr-pos m-0">{fmt(cf.netProfit)}</dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">ROI</dt>
@@ -522,18 +522,18 @@ function StepExit({ report, onNext, onBack }: any) {
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Annualized ROI</dt>
-                <dd className="font-bold tabular-nums text-blue-600 m-0">{cf.annualizedROI}%</dd>
+                <dd className="font-bold tabular-nums text-acr-accent m-0">{cf.annualizedROI}%</dd>
               </div>
             </dl>
           </CardContent>
         </Card>
 
         {/* Owner finance */}
-        <Card className="border-green-200 dark:border-green-900">
+        <Card className="border-acr-pos-soft dark:border-acr-pos-soft">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Owner financing</CardTitle>
-              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Wealth-building</Badge>
+              <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">Wealth-building</Badge>
             </div>
             <CardDescription>9% interest, 84-month note — pure passive income.</CardDescription>
           </CardHeader>
@@ -545,11 +545,11 @@ function StepExit({ report, onNext, onBack }: any) {
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Down payment</dt>
-                <dd className="font-semibold tabular-nums text-blue-600 m-0">{fmt(of_.downPayment)} (capital recovered)</dd>
+                <dd className="font-semibold tabular-nums text-acr-accent m-0">{fmt(of_.downPayment)} (capital recovered)</dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Monthly payment</dt>
-                <dd className="font-bold tabular-nums text-green-600 m-0">{fmt(of_.monthlyPayment)}/mo × 84 months</dd>
+                <dd className="font-bold tabular-nums text-acr-pos m-0">{fmt(of_.monthlyPayment)}/mo × 84 months</dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Total collected</dt>
@@ -557,7 +557,7 @@ function StepExit({ report, onNext, onBack }: any) {
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Total ROI</dt>
-                <dd className="font-bold tabular-nums text-green-600 m-0">{of_.roi}%</dd>
+                <dd className="font-bold tabular-nums text-acr-pos m-0">{of_.roi}%</dd>
               </div>
             </dl>
           </CardContent>
@@ -565,12 +565,12 @@ function StepExit({ report, onNext, onBack }: any) {
       </div>
 
       {/* Hybrid recommendation */}
-      <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10">
+      <div className="p-4 rounded-xl border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10">
         <div className="flex gap-3">
-          <Star className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <Star className="w-4 h-4 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div className="text-sm">
-            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Strategic recommendation</p>
-            <p className="text-amber-700 dark:text-amber-400">{report.hybridRecommendation}</p>
+            <p className="font-semibold text-acr-warn dark:text-acr-warn mb-1">Strategic recommendation</p>
+            <p className="text-acr-warn dark:text-acr-warn">{report.hybridRecommendation}</p>
           </div>
         </div>
       </div>
@@ -647,7 +647,7 @@ Private Real Estate Investor`;
         <Card>
           <CardContent className="p-4 text-center">
             <dt className="text-xs text-muted-foreground">Recommended offer</dt>
-            <dd className="text-2xl font-black tabular-nums text-green-600 m-0">{fmt(report.recommendedOfferTotal)}</dd>
+            <dd className="text-2xl font-black tabular-nums text-acr-pos m-0">{fmt(report.recommendedOfferTotal)}</dd>
             <p className="text-xs text-muted-foreground capitalize">{report.recommendedTier} strategy</p>
           </CardContent>
         </Card>
@@ -655,13 +655,13 @@ Private Real Estate Investor`;
           <CardContent className="p-4 text-center">
             <dt className="text-xs text-muted-foreground">Cash flip target</dt>
             <dd className="text-2xl font-black tabular-nums m-0">{fmt(report.cashFlipScenario.salePrice)}</dd>
-            <p className="text-xs text-green-600 tabular-nums">{report.cashFlipScenario.roi}% ROI</p>
+            <p className="text-xs text-acr-pos tabular-nums">{report.cashFlipScenario.roi}% ROI</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <dt className="text-xs text-muted-foreground">Owner-finance monthly</dt>
-            <dd className="text-2xl font-black tabular-nums text-blue-600 m-0">{fmt(report.ownerFinanceScenario.monthlyPayment)}</dd>
+            <dd className="text-2xl font-black tabular-nums text-acr-accent m-0">{fmt(report.ownerFinanceScenario.monthlyPayment)}</dd>
             <p className="text-xs text-muted-foreground">for 84 months</p>
           </CardContent>
         </Card>

@@ -23,7 +23,7 @@ export function ProviderStatusBadges() {
 
   const dot = (ok: boolean) => (
     <span
-      className={`inline-block w-2 h-2 rounded-full mr-1 ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`}
+      className={`inline-block w-2 h-2 rounded-full mr-1 ${ok ? 'bg-acr-pos' : 'bg-acr-warn'}`}
       aria-hidden="true"
     />
   );

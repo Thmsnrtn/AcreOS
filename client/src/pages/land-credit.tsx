@@ -49,22 +49,22 @@ function scoreTier(score: number): "excellent" | "very good" | "good" | "fair" |
 }
 
 const GRADE_COLORS: Record<string, string> = {
-  'A+': 'text-emerald-600 dark:text-emerald-400',
-  'A': 'text-emerald-500 dark:text-emerald-400',
-  'B+': 'text-green-600 dark:text-green-400',
+  'A+': 'text-acr-pos dark:text-acr-pos',
+  'A': 'text-acr-pos dark:text-acr-pos',
+  'B+': 'text-acr-pos dark:text-acr-pos',
   'B': 'text-lime-600 dark:text-lime-400',
-  'C+': 'text-yellow-600 dark:text-yellow-400',
-  'C': 'text-orange-600 dark:text-orange-400',
-  'D': 'text-red-500 dark:text-red-400',
-  'F': 'text-red-700 dark:text-red-500',
+  'C+': 'text-acr-warn dark:text-acr-warn',
+  'C': 'text-acr-warn dark:text-acr-warn',
+  'D': 'text-acr-neg dark:text-acr-neg',
+  'F': 'text-acr-neg dark:text-acr-neg',
 };
 
 const RISK_BADGE: Record<string, string> = {
-  excellent: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-  good: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  fair: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  poor: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  high: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  excellent: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  good: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  fair: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  poor: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  high: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -358,10 +358,10 @@ export default function LandCreditPage() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm tabular-nums" aria-label={`${dim} score: ${score} of 100, trend ${trendIcon}`}>{score}/100</span>
                               {score >= 65
-                                ? <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                                ? <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                                 : score >= 45
-                                ? <Minus className="w-4 h-4 text-yellow-500" aria-hidden="true" />
-                                : <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />}
+                                ? <Minus className="w-4 h-4 text-acr-warn" aria-hidden="true" />
+                                : <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />}
                             </div>
                           </div>
                           <Progress
@@ -461,7 +461,7 @@ export default function LandCreditPage() {
               {latestScore.strengths?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                    <CardTitle className="flex items-center gap-2 text-acr-pos dark:text-acr-pos">
                       <CheckCircle className="w-4 h-4" aria-hidden="true" />
                       Strengths
                     </CardTitle>
@@ -470,7 +470,7 @@ export default function LandCreditPage() {
                     <ul className="space-y-2 list-none p-0 m-0" aria-label="Score strengths">
                       {latestScore.strengths.map((s: string, i: number) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <TrendingUp className="w-4 h-4 mt-0.5 text-emerald-500 shrink-0" aria-hidden="true" />
+                          <TrendingUp className="w-4 h-4 mt-0.5 text-acr-pos shrink-0" aria-hidden="true" />
                           {s}
                         </li>
                       ))}
@@ -483,7 +483,7 @@ export default function LandCreditPage() {
               {latestScore.weaknesses?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                    <CardTitle className="flex items-center gap-2 text-acr-warn dark:text-acr-warn">
                       <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                       Weaknesses
                     </CardTitle>
@@ -492,7 +492,7 @@ export default function LandCreditPage() {
                     <ul className="space-y-2 list-none p-0 m-0" aria-label="Score weaknesses">
                       {latestScore.weaknesses.map((w: string, i: number) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <TrendingDown className="w-4 h-4 mt-0.5 text-orange-500 shrink-0" aria-hidden="true" />
+                          <TrendingDown className="w-4 h-4 mt-0.5 text-acr-warn shrink-0" aria-hidden="true" />
                           {w}
                         </li>
                       ))}
@@ -506,7 +506,7 @@ export default function LandCreditPage() {
                 <Card className="lg:col-span-1">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Info className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                      <Info className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                       Recommendations
                     </CardTitle>
                   </CardHeader>
@@ -528,7 +528,7 @@ export default function LandCreditPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-sm">
-                      <Target className="w-4 h-4 text-purple-500" aria-hidden="true" />
+                      <Target className="w-4 h-4 text-acr-brand" aria-hidden="true" />
                       Personalized for {INVESTOR_STRATEGIES.find(s => s.value === investorStrategy)?.label}
                     </CardTitle>
                   </CardHeader>
@@ -541,7 +541,7 @@ export default function LandCreditPage() {
                       <div className="text-muted-foreground" aria-hidden="true">→</div>
                       <div>
                         <dt className="text-xs text-muted-foreground">Adjusted score</dt>
-                        <dd className="text-2xl font-bold text-purple-600 tabular-nums">{personalizedScore}</dd>
+                        <dd className="text-2xl font-bold text-acr-brand tabular-nums">{personalizedScore}</dd>
                       </div>
                     </dl>
                     <p className="text-xs text-muted-foreground mt-2">

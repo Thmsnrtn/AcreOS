@@ -52,9 +52,9 @@ export function StatCard({
 
   const trendColor =
     trendDirection === "up"
-      ? "text-emerald-600"
+      ? "text-acr-pos"
       : trendDirection === "down"
-        ? "text-red-500"
+        ? "text-acr-neg"
         : "text-accent";
 
   const sparkData = sparklineData?.map((v, i) => ({ i, v }));

@@ -29,14 +29,14 @@ export function PaxEditDiff({ entityLabel, before, after }: PaxEditDiffProps) {
   );
 
   return (
-    <div className="rounded-md border bg-green-500/5 border-green-500/30 text-xs overflow-hidden my-1">
+    <div className="rounded-md border bg-acr-pos/5 border-acr-pos/30 text-xs overflow-hidden my-1">
       {/* Header */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-green-500/20">
-        <Pencil className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" />
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-acr-pos/20">
+        <Pencil className="w-3 h-3 text-acr-pos dark:text-acr-pos flex-shrink-0" />
         <span className="font-medium text-foreground flex-1 truncate">
           Pax edited {entityLabel}
         </span>
-        <span className="inline-flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400 font-medium">
+        <span className="inline-flex items-center gap-1 text-[10px] text-acr-pos dark:text-acr-pos font-medium">
           <CheckCircle2 className="w-2.5 h-2.5" />
           Applied
         </span>
@@ -54,13 +54,13 @@ export function PaxEditDiff({ entityLabel, before, after }: PaxEditDiffProps) {
               </span>
               {before[key] !== undefined && before[key] !== null && (
                 <span className={cn(
-                  "text-[11px] line-through text-red-500 dark:text-red-400 bg-red-500/10 px-1 rounded"
+                  "text-[11px] line-through text-acr-neg dark:text-acr-neg bg-acr-neg/10 px-1 rounded"
                 )}>
                   {displayValue(before[key])}
                 </span>
               )}
               <span className="text-[10px] text-muted-foreground">→</span>
-              <span className="text-[11px] text-green-600 dark:text-green-400 bg-green-500/10 px-1 rounded font-medium">
+              <span className="text-[11px] text-acr-pos dark:text-acr-pos bg-acr-pos/10 px-1 rounded font-medium">
                 {displayValue(after[key])}
               </span>
             </div>

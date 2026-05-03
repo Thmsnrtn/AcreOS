@@ -67,10 +67,10 @@ export function ScoutReportCard({
   const hasCoords = visit.latitude !== undefined && visit.longitude !== undefined;
 
   return (
-    <Card className="bg-gray-900 border-gray-800 overflow-hidden">
+    <Card className="bg-acr-bg-sunken border-border overflow-hidden">
       {/* Mini map thumbnail */}
       {hasCoords && (
-        <div className="relative h-28 bg-gray-800 overflow-hidden">
+        <div className="relative h-28 bg-acr-bg-sunken overflow-hidden">
           <img
             src={getMapboxStaticUrl(visit.latitude!, visit.longitude!)}
             alt="Visit location"
@@ -80,9 +80,9 @@ export function ScoutReportCard({
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent" />
-          <div className="absolute bottom-2 left-3 text-[10px] text-gray-300 font-mono flex items-center gap-1">
-            <MapPin className="w-3 h-3 text-emerald-400" />
+          <div className="absolute inset-0 bg-gradient-to-t from-muted to-transparent" />
+          <div className="absolute bottom-2 left-3 text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-acr-pos" />
             {visit.latitude!.toFixed(5)}, {visit.longitude!.toFixed(5)}
           </div>
         </div>
@@ -93,16 +93,16 @@ export function ScoutReportCard({
         <div>
           <div className="font-medium text-sm">{visit.propertyAddress || "Unknown Address"}</div>
           <div className="flex items-center gap-3 mt-1">
-            <span className="text-[10px] text-gray-500 flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {format(new Date(visit.startedAt), "MMM d, yyyy")}
             </span>
             {visit.durationMinutes !== undefined && (
-              <span className="text-[10px] text-gray-500">
+              <span className="text-[10px] text-muted-foreground">
                 {formatDuration(visit.durationMinutes)}
               </span>
             )}
-            <span className="text-[10px] text-gray-600">
+            <span className="text-[10px] text-muted-foreground">
               {relative(visit.startedAt)}
             </span>
           </div>
@@ -112,7 +112,7 @@ export function ScoutReportCard({
         <div className="flex items-center gap-2 flex-wrap">
           <Badge
             variant="secondary"
-            className="text-[10px] bg-gray-800 text-gray-400 flex items-center gap-1"
+            className="text-[10px] bg-acr-bg-sunken text-muted-foreground flex items-center gap-1"
           >
             <Camera className="w-3 h-3" />
             {visit.photoCount} photo{visit.photoCount !== 1 ? "s" : ""}
@@ -123,10 +123,10 @@ export function ScoutReportCard({
               className={cn(
                 "text-[10px] flex items-center gap-1",
                 visit.checklistScore >= 80
-                  ? "bg-emerald-900/50 text-emerald-300"
+                  ? "bg-acr-pos-soft/50 text-acr-pos"
                   : visit.checklistScore >= 50
-                  ? "bg-yellow-900/50 text-yellow-300"
-                  : "bg-red-900/50 text-red-300"
+                  ? "bg-acr-warn-soft/50 text-acr-warn"
+                  : "bg-acr-neg-soft/50 text-acr-neg"
               )}
             >
               <ClipboardCheck className="w-3 h-3" />
@@ -137,7 +137,7 @@ export function ScoutReportCard({
           {visit.dealId && (
             <Badge
               variant="outline"
-              className="text-[10px] border-blue-800 text-blue-300 flex items-center gap-1"
+              className="text-[10px] border-acr-accent text-acr-accent flex items-center gap-1"
             >
               <Link2 className="w-3 h-3" />
               Linked
@@ -147,7 +147,7 @@ export function ScoutReportCard({
           {!visit.synced && (
             <Badge
               variant="outline"
-              className="text-[10px] border-yellow-800 text-yellow-300"
+              className="text-[10px] border-acr-warn-soft text-acr-warn"
             >
               Pending sync
             </Badge>
@@ -156,7 +156,7 @@ export function ScoutReportCard({
 
         {/* Notes preview */}
         {visit.notesPreview && (
-          <p className="text-xs text-gray-500 line-clamp-2">{visit.notesPreview}</p>
+          <p className="text-xs text-muted-foreground line-clamp-2">{visit.notesPreview}</p>
         )}
 
         {/* Action buttons */}
@@ -165,7 +165,7 @@ export function ScoutReportCard({
             variant="outline"
             size="sm"
             onClick={() => onGenerateReport?.(visit.id)}
-            className="flex-1 border-gray-700 text-gray-300 text-xs"
+            className="flex-1 border-border text-muted-foreground text-xs"
           >
             <FileText className="w-3 h-3 mr-1" />
             Generate Report
@@ -175,7 +175,7 @@ export function ScoutReportCard({
               variant="outline"
               size="sm"
               onClick={() => onSyncToDeal?.(visit.id)}
-              className="flex-1 border-gray-700 text-blue-400 text-xs"
+              className="flex-1 border-border text-acr-accent text-xs"
             >
               <Link2 className="w-3 h-3 mr-1" />
               Sync to Deal

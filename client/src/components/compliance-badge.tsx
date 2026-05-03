@@ -21,11 +21,11 @@ interface ComplianceBadgeProps {
 function statusIcon(status: ComplianceStatus) {
   switch (status) {
     case "compliant":
-      return <CheckCircle className="w-4 h-4 text-emerald-500" />;
+      return <CheckCircle className="w-4 h-4 text-acr-pos" />;
     case "review_needed":
-      return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      return <AlertTriangle className="w-4 h-4 text-acr-warn" />;
     case "non_compliant":
-      return <XCircle className="w-4 h-4 text-red-500" />;
+      return <XCircle className="w-4 h-4 text-acr-neg" />;
   }
 }
 
@@ -39,9 +39,9 @@ function statusLabel(status: ComplianceStatus): string {
 
 function checkIcon(status: "pass" | "warn" | "fail") {
   switch (status) {
-    case "pass": return <CheckCircle className="w-3 h-3 text-emerald-500" />;
-    case "warn": return <AlertTriangle className="w-3 h-3 text-amber-500" />;
-    case "fail": return <XCircle className="w-3 h-3 text-red-500" />;
+    case "pass": return <CheckCircle className="w-3 h-3 text-acr-pos" />;
+    case "warn": return <AlertTriangle className="w-3 h-3 text-acr-warn" />;
+    case "fail": return <XCircle className="w-3 h-3 text-acr-neg" />;
   }
 }
 
@@ -97,7 +97,7 @@ export function ComplianceBadge({ entityType, entityId, checks: propChecks, stat
           </div>
         )}
         {status === "non_compliant" && (
-          <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">
+          <p className="text-[10px] text-acr-neg dark:text-acr-neg mt-2">
             This {entityType} cannot be created until compliance issues are resolved.
           </p>
         )}

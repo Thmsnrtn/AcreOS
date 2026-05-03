@@ -62,7 +62,7 @@ const FEATURES: TierFeature[] = [
 ];
 
 function FeatureCell({ value }: { value: string | boolean }) {
-  if (value === true) return <Check className="h-4 w-4 text-green-500 mx-auto" aria-label="Included" role="img" />;
+  if (value === true) return <Check className="h-4 w-4 text-acr-pos mx-auto" aria-label="Included" role="img" />;
   if (value === false) return <X className="h-4 w-4 text-muted-foreground/40 mx-auto" aria-label="Not included" role="img" />;
   return <span className="text-sm">{value}</span>;
 }

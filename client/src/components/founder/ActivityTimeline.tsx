@@ -73,7 +73,7 @@ export default function ActivityTimeline() {
     return (
       <div role="status" aria-busy="true" aria-label="Loading activity timeline" className="p-4 space-y-3">
         {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 bg-gray-800/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-16 bg-acr-bg-sunken/50 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -81,7 +81,7 @@ export default function ActivityTimeline() {
 
   if (entries.length === 0) {
     return (
-      <div className="p-6 text-center text-gray-400">
+      <div className="p-6 text-center text-muted-foreground">
         <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
         <p className="text-sm">No agent activity yet. Your team is standing by.</p>
       </div>
@@ -94,7 +94,7 @@ export default function ActivityTimeline() {
         const blockId = `timeline-block-${block.replace(/\s+/g, "-").toLowerCase()}`;
         return (
           <section key={block} aria-labelledby={blockId}>
-            <h3 id={blockId} className="text-xs font-medium text-gray-500 uppercase tracking-wide px-4 mb-2">
+            <h3 id={blockId} className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 mb-2">
               {block}
             </h3>
             <ul aria-labelledby={blockId} className="space-y-1 list-none p-0 m-0">
@@ -109,7 +109,7 @@ export default function ActivityTimeline() {
                 return (
                   <li
                     key={entry.id}
-                    className="mx-2 rounded-lg bg-gray-800/40 border border-gray-700/50 overflow-hidden"
+                    className="mx-2 rounded-lg bg-acr-bg-sunken/40 border border-border/50 overflow-hidden"
                   >
                     <button
                       type="button"
@@ -121,7 +121,7 @@ export default function ActivityTimeline() {
                       }}
                       aria-expanded={isExpanded}
                       aria-label={`${agentName}: ${action}, ${outcomeText} at ${formatTime(entry.createdAt)}`}
-                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-700/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-acr-bg-sunken/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {/* Agent letter mark — design-system §1.3. Soft tint
                           matches the agent's tone via the consolidated
@@ -135,52 +135,52 @@ export default function ActivityTimeline() {
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-200 truncate">
+                        <p className="text-sm text-muted-foreground truncate">
                           <span className="font-medium" style={{ color: agentColor }}>
                             {agentName}
                           </span>
                           {" "}
                           {action}
                         </p>
-                        <time dateTime={entry.createdAt} className="text-xs text-gray-500 mt-0.5 block tabular-nums">
+                        <time dateTime={entry.createdAt} className="text-xs text-muted-foreground mt-0.5 block tabular-nums">
                           {formatTime(entry.createdAt)}
                         </time>
                       </div>
 
                       {/* Outcome badge */}
                       {entry.outcome === "success" ? (
-                        <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
+                        <CheckCircle className="w-4 h-4 text-acr-pos flex-shrink-0" aria-hidden="true" />
                       ) : entry.outcome === "failure" ? (
-                        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden="true" />
+                        <XCircle className="w-4 h-4 text-acr-neg flex-shrink-0" aria-hidden="true" />
                       ) : (
-                        <Clock className="w-4 h-4 text-yellow-400 flex-shrink-0" aria-hidden="true" />
+                        <Clock className="w-4 h-4 text-acr-warn flex-shrink-0" aria-hidden="true" />
                       )}
 
                       {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-gray-500" aria-hidden="true" />
+                        <ChevronUp className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       ) : (
-                        <ChevronDown className="w-4 h-4 text-gray-500" aria-hidden="true" />
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       )}
                     </button>
 
                     {isExpanded && (
-                      <div className="px-3 pb-3 pt-1 border-t border-gray-700/30">
-                        <p className="text-xs text-gray-400 mb-2">
+                      <div className="px-3 pb-3 pt-1 border-t border-border/30">
+                        <p className="text-xs text-muted-foreground mb-2">
                           {entry.detail || "No additional details."}
                         </p>
 
                         {entry.verification && (
                           <div className={`text-xs px-2 py-1 rounded mb-2 ${
                             entry.verification.success
-                              ? "bg-emerald-900/30 text-emerald-400"
-                              : "bg-red-900/30 text-red-400"
+                              ? "bg-acr-pos-soft/30 text-acr-pos"
+                              : "bg-acr-neg-soft/30 text-acr-neg"
                           }`}>
                             Outcome: {entry.verification.detail}
                           </div>
                         )}
 
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">
                             {entry.triggeredBy === "reaction" ? "Auto-triggered" : entry.triggeredBy === "approval" ? "CEO-approved" : "Proactive"}
                           </span>
 
@@ -194,7 +194,7 @@ export default function ActivityTimeline() {
                               disabled={undoMutation.isPending}
                               aria-busy={undoMutation.isPending}
                               aria-label={`Undo ${agentName}: ${action}`}
-                              className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded bg-acr-bg-sunken hover:bg-muted text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               <Undo2 className="w-3 h-3" aria-hidden="true" />
                               {undoMutation.isPending ? "Undoing…" : "Undo"}
@@ -202,7 +202,7 @@ export default function ActivityTimeline() {
                           )}
 
                           {entry.undoExecuted && (
-                            <span className="ml-auto text-xs text-gray-500">Undone</span>
+                            <span className="ml-auto text-xs text-muted-foreground">Undone</span>
                           )}
                         </div>
                       </div>

@@ -88,11 +88,11 @@ type BucketKey = keyof DecisionLogResponse["buckets"];
 function riskBadgeClass(level: string): string {
   switch (level) {
     case "critical":
-      return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300";
+      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg";
     case "high":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn";
     case "medium":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -145,9 +145,9 @@ function DecisionRowCard({
                 variant="outline"
                 className={`text-[10px] ${
                   row.outcomeScore >= 1
-                    ? "bg-green-100 text-green-800"
+                    ? "bg-acr-pos-soft text-acr-pos"
                     : row.outcomeScore <= -1
-                    ? "bg-red-100 text-red-800"
+                    ? "bg-acr-neg-soft text-acr-neg"
                     : "bg-muted text-muted-foreground"
                 }`}
               >
@@ -272,25 +272,25 @@ const BUCKET_META: Record<
   needsYou: {
     label: "Needs you",
     icon: AlertCircle,
-    tone: "text-amber-600",
+    tone: "text-acr-warn",
     emptyText: "Nothing's waiting on you. The system handled everything.",
   },
   autoHandled: {
     label: "Auto-handled",
     icon: CheckCircle2,
-    tone: "text-green-600",
+    tone: "text-acr-pos",
     emptyText: "The system hasn't auto-handled anything in this window.",
   },
   guardrailStopped: {
     label: "Guardrail stopped",
     icon: ShieldAlert,
-    tone: "text-red-600",
+    tone: "text-acr-neg",
     emptyText: "No hard-guardrail rejections — that's a good thing.",
   },
   youReviewed: {
     label: "You reviewed",
     icon: UserIcon,
-    tone: "text-blue-600",
+    tone: "text-acr-accent",
     emptyText: "You haven't manually reviewed any decisions in this window.",
   },
   deferred: {

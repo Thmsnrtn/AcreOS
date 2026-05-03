@@ -254,13 +254,13 @@ export default function SyndicationPage() {
                   {results.map((r, i) => (
                     <li
                       key={i}
-                      className={`flex items-start gap-3 p-3 rounded-lg ${r.success ? "bg-emerald-50 dark:bg-emerald-900/10" : "bg-red-50 dark:bg-red-900/10"}`}
+                      className={`flex items-start gap-3 p-3 rounded-lg ${r.success ? "bg-acr-pos-soft dark:bg-acr-pos-soft/10" : "bg-acr-neg-soft dark:bg-acr-neg-soft/10"}`}
                       role={r.success ? undefined : "alert"}
                     >
                       {r.success ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" aria-label="Success" />
+                        <CheckCircle2 className="h-4 w-4 text-acr-pos flex-shrink-0 mt-0.5" aria-label="Success" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" aria-label="Failure" />
+                        <XCircle className="h-4 w-4 text-acr-neg flex-shrink-0 mt-0.5" aria-label="Failure" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{r.platform}</p>
@@ -271,19 +271,19 @@ export default function SyndicationPage() {
                                 href={r.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 hover:underline"
+                                className="text-xs text-acr-accent flex items-center gap-1 mt-0.5 hover:underline"
                                 aria-label={`View ${r.platform} listing in a new tab`}
                               >
                                 View listing <ExternalLink className="h-3 w-3" aria-hidden="true" />
                               </a>
                             )}
                             {r.requiresManualPost && (
-                              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Export ready — manual posting required.</p>
+                              <p className="text-xs text-acr-warn dark:text-acr-warn mt-0.5">Export ready — manual posting required.</p>
                             )}
                             {r.externalId && <p className="text-xs text-muted-foreground mt-0.5 font-mono">ID: {r.externalId}</p>}
                           </div>
                         ) : (
-                          <p className="text-xs text-red-600 mt-0.5">{r.error}</p>
+                          <p className="text-xs text-acr-neg mt-0.5">{r.error}</p>
                         )}
                       </div>
                     </li>
@@ -312,7 +312,7 @@ export default function SyndicationPage() {
                       )}
                     </div>
                     {platform.requiresPartnerAccount && (
-                      <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-acr-warn dark:text-acr-warn">
                         <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                         <a
                           href={platform.partnerSignupUrl}

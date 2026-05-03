@@ -269,7 +269,7 @@ export function FeatureHint({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
-                className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full z-10"
+                className="absolute -top-1 -right-1 w-3 h-3 bg-acr-warn rounded-full z-10"
               />
             )}
           </AnimatePresence>
@@ -280,11 +280,11 @@ export function FeatureHint({
         className="max-w-xs p-0"
         data-testid={`tooltip-${hint.id}`}
       >
-        <Card className="border-yellow-500/30 bg-card">
+        <Card className="border-acr-warn/30 bg-card">
           <CardContent className="p-3">
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
-                <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                <Lightbulb className="w-4 h-4 text-acr-warn flex-shrink-0" />
                 <span className="font-medium text-sm">{hint.title}</span>
               </div>
               <Button

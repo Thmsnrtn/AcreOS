@@ -38,10 +38,10 @@ const AGENT_LABELS: Record<string, { label: string; description: string }> = {
 };
 
 const STATUS_COLORS = {
-  idle: "bg-green-500",
-  running: "bg-blue-500 animate-pulse",
-  error: "bg-red-500",
-  disabled: "bg-gray-400",
+  idle: "bg-acr-pos",
+  running: "bg-acr-accent animate-pulse",
+  error: "bg-acr-neg",
+  disabled: "bg-muted",
 };
 
 export default function FounderAgentsPage() {

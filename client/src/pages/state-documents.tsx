@@ -118,7 +118,7 @@ export default function StateDocumentsPage() {
                         <span>Notary: {config.notaryRequired ? "required" : "not required"}</span>
                         {config.witnessCount > 0 && (
                           <span className="flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3 text-amber-500" aria-hidden="true" />
+                            <AlertTriangle className="w-3 h-3 text-acr-warn" aria-hidden="true" />
                             <span className="tabular-nums">{config.witnessCount}</span> witness{config.witnessCount > 1 ? "es" : ""} required
                           </span>
                         )}

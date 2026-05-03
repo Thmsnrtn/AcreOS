@@ -225,7 +225,7 @@ export function EnvironmentalIntelligenceCard({
           {isWesternState && waterData && (
             <motion.div variants={staggerItem} className="space-y-2">
               <div className="flex items-center gap-2">
-                <Droplets className="h-4 w-4 text-blue-500" />
+                <Droplets className="h-4 w-4 text-acr-accent" />
                 <h4 className="text-sm font-medium">Water Rights</h4>
                 <Badge variant="outline" className="text-xs">
                   {waterData.doctrine.replace(/_/g, " ")}
@@ -246,7 +246,7 @@ export function EnvironmentalIntelligenceCard({
           {isOilGasState && mineralData && (
             <motion.div variants={staggerItem} className="space-y-2">
               <div className="flex items-center gap-2">
-                <Mountain className="h-4 w-4 text-amber-600" />
+                <Mountain className="h-4 w-4 text-acr-warn" />
                 <h4 className="text-sm font-medium">Mineral Rights</h4>
                 <Badge variant={riskBadgeVariant(mineralData.severanceRisk)} className="text-xs">
                   {mineralData.severanceRisk} severance risk
@@ -274,7 +274,7 @@ export function EnvironmentalIntelligenceCard({
           {isForested && carbonData?.eligible && (
             <motion.div variants={staggerItem} className="space-y-2">
               <div className="flex items-center gap-2">
-                <Leaf className="h-4 w-4 text-green-600" />
+                <Leaf className="h-4 w-4 text-acr-pos" />
                 <h4 className="text-sm font-medium">Carbon Credit Potential</h4>
               </div>
               <div className="rounded-lg bg-muted/50 p-3 space-y-1">

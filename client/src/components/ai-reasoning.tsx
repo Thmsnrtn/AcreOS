@@ -22,7 +22,7 @@ interface AIReasoningProps {
 export function AIReasoning({ feature, decision, reasoning, confidence, inputs, className }: AIReasoningProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const confidenceColor = confidence >= 80 ? "text-green-600" : confidence >= 60 ? "text-amber-600" : "text-red-600";
+  const confidenceColor = confidence >= 80 ? "text-acr-pos" : confidence >= 60 ? "text-acr-warn" : "text-acr-neg";
 
   return (
     <div className={cn("border rounded-lg overflow-hidden", className)}>

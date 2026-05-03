@@ -67,9 +67,9 @@ interface ChecklistItem {
 
 const statusIcons: Record<ItemStatus, { icon: typeof CheckCircle; className: string }> = {
   pending: { icon: Clock, className: "text-muted-foreground" },
-  passed: { icon: CheckCircle, className: "text-green-600" },
-  failed: { icon: XCircle, className: "text-red-600" },
-  warning: { icon: AlertTriangle, className: "text-yellow-600" },
+  passed: { icon: CheckCircle, className: "text-acr-pos" },
+  failed: { icon: XCircle, className: "text-acr-neg" },
+  warning: { icon: AlertTriangle, className: "text-acr-warn" },
   skipped: { icon: SkipForward, className: "text-muted-foreground" },
 };
 
@@ -455,11 +455,11 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                   </div>
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1" aria-label={`Investability ${dossier.investabilityScore}%`}>
-                      <ShieldCheck className="w-4 h-4 text-green-600" aria-hidden="true" />
+                      <ShieldCheck className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                       <span aria-hidden="true">Investability: <span className="tabular-nums">{dossier.investabilityScore}</span>%</span>
                     </div>
                     <div className="flex items-center gap-1" aria-label={`Risk ${dossier.riskScore}%`}>
-                      <ShieldAlert className="w-4 h-4 text-yellow-600" aria-hidden="true" />
+                      <ShieldAlert className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                       <span aria-hidden="true">Risk: <span className="tabular-nums">{dossier.riskScore}</span>%</span>
                     </div>
                   </div>
@@ -494,11 +494,11 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
 
                 {(dossier.greenFlags && dossier.greenFlags.length > 0) && (
                   <section aria-labelledby="dossier-green-flags-label" className="space-y-1">
-                    <span id="dossier-green-flags-label" className="text-xs font-medium text-green-600">Green flags:</span>
+                    <span id="dossier-green-flags-label" className="text-xs font-medium text-acr-pos">Green flags:</span>
                     <ul aria-labelledby="dossier-green-flags-label" className="flex flex-wrap gap-1 list-none p-0 m-0">
                       {(dossier.greenFlags as string[]).map((flag, i) => (
                         <li key={i}>
-                          <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                          <Badge variant="outline" className="text-xs text-acr-pos border-acr-pos-soft">
                             <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                             {flag}
                           </Badge>
@@ -510,11 +510,11 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
 
                 {(dossier.redFlags && dossier.redFlags.length > 0) && (
                   <section aria-labelledby="dossier-red-flags-label" className="space-y-1">
-                    <span id="dossier-red-flags-label" className="text-xs font-medium text-red-600">Red flags:</span>
+                    <span id="dossier-red-flags-label" className="text-xs font-medium text-acr-neg">Red flags:</span>
                     <ul aria-labelledby="dossier-red-flags-label" className="flex flex-wrap gap-1 list-none p-0 m-0">
                       {(dossier.redFlags as string[]).map((flag, i) => (
                         <li key={i}>
-                          <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                          <Badge variant="outline" className="text-xs text-acr-neg border-acr-neg-soft">
                             <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                             {flag}
                           </Badge>

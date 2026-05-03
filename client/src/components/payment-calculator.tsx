@@ -199,10 +199,10 @@ export function PaymentCalculator({
           </div>
           <div className="flex items-center justify-between gap-2 flex-wrap text-lg border-t pt-3">
             <span className="font-semibold flex items-center gap-1.5">
-              <TrendingUp className="h-5 w-5 text-green-600" />
+              <TrendingUp className="h-5 w-5 text-acr-pos" />
               Monthly Payment:
             </span>
-            <span className="font-bold text-green-600" data-testid="text-calc-monthly-payment">
+            <span className="font-bold text-acr-pos" data-testid="text-calc-monthly-payment">
               {formatCurrency(calculations.monthlyPayment)}
             </span>
           </div>

@@ -161,7 +161,7 @@ function BudgetBar({ label, spent, budget }: { label: string; spent: number; bud
       <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${
-            isOver80 ? "bg-amber-500" : "bg-primary"
+            isOver80 ? "bg-acr-warn" : "bg-primary"
           }`}
           style={{ width: `${pct}%` }}
         />
@@ -203,7 +203,7 @@ function LeaseExpirationTimeline({ data }: { data: { month: string; count: numbe
         <div key={d.month} className="flex flex-col items-center gap-1 flex-1">
           <div
             className={`w-full rounded-t transition-all duration-500 ${
-              d.count > 0 ? "bg-amber-400 dark:bg-amber-500" : "bg-muted"
+              d.count > 0 ? "bg-acr-warn dark:bg-acr-warn" : "bg-muted"
             }`}
             style={{ height: `${Math.max((d.count / max) * 48, 4)}px` }}
           />
@@ -230,7 +230,7 @@ function LandWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <DollarSign className="w-4 h-4 text-emerald-500" />
+              <DollarSign className="w-4 h-4 text-acr-pos" />
               Pipeline Value
             </CardTitle>
           </CardHeader>
@@ -247,7 +247,7 @@ function LandWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="w-4 h-4 text-blue-500" />
+              <Clock className="w-4 h-4 text-acr-accent" />
               Avg Days to Close
             </CardTitle>
           </CardHeader>
@@ -297,7 +297,7 @@ function WholesalerWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <DollarSign className="w-4 h-4 text-emerald-500" />
+              <DollarSign className="w-4 h-4 text-acr-pos" />
               Assignment Fees
             </CardTitle>
           </CardHeader>
@@ -314,7 +314,7 @@ function WholesalerWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Zap className="w-4 h-4 text-amber-500" />
+              <Zap className="w-4 h-4 text-acr-warn" />
               Speed to Close
             </CardTitle>
           </CardHeader>
@@ -329,7 +329,7 @@ function WholesalerWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Users className="w-4 h-4 text-blue-500" />
+              <Users className="w-4 h-4 text-acr-accent" />
               Buyer List Health
             </CardTitle>
           </CardHeader>
@@ -340,8 +340,8 @@ function WholesalerWidgets() {
                 variant="outline"
                 className={`text-xs ${
                   healthPct >= 75
-                    ? "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
-                    : "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                    ? "border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
+                    : "border-acr-warn-soft text-acr-warn dark:border-acr-warn-soft dark:text-acr-warn"
                 }`}
               >
                 {data.buyerListHealth.active} active
@@ -392,7 +392,7 @@ function FlipperWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Hammer className="w-4 h-4 text-orange-500" />
+              <Hammer className="w-4 h-4 text-acr-warn" />
               Active Rehabs
               <Badge variant="outline" className="ml-auto text-xs">
                 {data.activeRehabs.length} projects
@@ -414,7 +414,7 @@ function FlipperWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <BarChart3 className="w-4 h-4 text-emerald-500" />
+              <BarChart3 className="w-4 h-4 text-acr-pos" />
               Total ARV
             </CardTitle>
           </CardHeader>
@@ -465,7 +465,7 @@ function BuyAndHoldWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Wallet className="w-4 h-4 text-emerald-500" />
+              <Wallet className="w-4 h-4 text-acr-pos" />
               Portfolio Cash Flow
             </CardTitle>
           </CardHeader>
@@ -482,7 +482,7 @@ function BuyAndHoldWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Droplets className="w-4 h-4 text-blue-500" />
+              <Droplets className="w-4 h-4 text-acr-accent" />
               Vacancy Rate
             </CardTitle>
           </CardHeader>
@@ -493,8 +493,8 @@ function BuyAndHoldWidgets() {
                 variant="outline"
                 className={`text-xs ${
                   data.vacancyRate <= 5
-                    ? "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
-                    : "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                    ? "border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
+                    : "border-acr-warn-soft text-acr-warn dark:border-acr-warn-soft dark:text-acr-warn"
                 }`}
               >
                 {data.vacancyRate <= 5 ? "Healthy" : "Watch"}
@@ -524,7 +524,7 @@ function BuyAndHoldWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <CalendarClock className="w-4 h-4 text-amber-500" />
+              <CalendarClock className="w-4 h-4 text-acr-warn" />
               Lease Expirations
             </CardTitle>
           </CardHeader>
@@ -553,7 +553,7 @@ function CommercialWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <PieChart className="w-4 h-4 text-emerald-500" />
+              <PieChart className="w-4 h-4 text-acr-pos" />
               Monthly NOI
             </CardTitle>
           </CardHeader>
@@ -570,7 +570,7 @@ function CommercialWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Landmark className="w-4 h-4 text-blue-500" />
+              <Landmark className="w-4 h-4 text-acr-accent" />
               Occupancy
             </CardTitle>
           </CardHeader>
@@ -581,8 +581,8 @@ function CommercialWidgets() {
                 variant="outline"
                 className={`text-xs ${
                   occupancyPct >= 90
-                    ? "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
-                    : "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                    ? "border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
+                    : "border-acr-warn-soft text-acr-warn dark:border-acr-warn-soft dark:text-acr-warn"
                 }`}
               >
                 {data.vacancyRate}% vacant
@@ -614,7 +614,7 @@ function CommercialWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <CalendarClock className="w-4 h-4 text-amber-500" />
+              <CalendarClock className="w-4 h-4 text-acr-warn" />
               Lease Expirations
             </CardTitle>
           </CardHeader>

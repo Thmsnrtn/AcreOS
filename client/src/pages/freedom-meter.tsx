@@ -151,10 +151,10 @@ function FreedomMeter({ score, monthlyIncome, monthlyExpenses }: {
 
 function NoteCard({ note }: { note: NotePayment }) {
   const statusColor = note.status === "current"
-    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+    ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
     : note.status === "late"
-    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
-    : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+    ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+    : "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
 
   const progressPct = note.remainingMonths > 0
     ? Math.round(((84 - note.remainingMonths) / 84) * 100)
@@ -173,7 +173,7 @@ function NoteCard({ note }: { note: NotePayment }) {
         <dl className="grid grid-cols-2 gap-2 text-sm mb-3">
           <div>
             <dt className="text-muted-foreground text-xs">Monthly payment</dt>
-            <dd className="font-bold text-green-600 tabular-nums">{fmt(note.monthlyPayment)}</dd>
+            <dd className="font-bold text-acr-pos tabular-nums">{fmt(note.monthlyPayment)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground text-xs">Balance remaining</dt>
@@ -212,21 +212,21 @@ function MilestoneCard({ milestone }: {
   milestone: FreedomSnapshot["milestones"][0];
 }) {
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${milestone.achieved ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/10" : "border-border bg-muted/30"}`}>
+    <div className={`flex items-center gap-3 p-3 rounded-lg border ${milestone.achieved ? "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border bg-muted/30"}`}>
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${milestone.achieved ? "bg-green-100 text-green-600 dark:bg-green-900/30" : "bg-muted text-muted-foreground"}`}
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${milestone.achieved ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30" : "bg-muted text-muted-foreground"}`}
         aria-hidden="true"
       >
         {milestone.achieved ? <CheckCircle className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold ${milestone.achieved ? "text-green-700 dark:text-green-400" : "text-foreground"}`}>
+        <p className={`text-sm font-semibold ${milestone.achieved ? "text-acr-pos dark:text-acr-pos" : "text-foreground"}`}>
           {milestone.label}
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">{fmt(milestone.targetMonthly)}/month</p>
       </div>
       {milestone.achieved && milestone.achievedDate && (
-        <p className="text-xs text-green-600 dark:text-green-400 flex-shrink-0 tabular-nums">
+        <p className="text-xs text-acr-pos dark:text-acr-pos flex-shrink-0 tabular-nums">
           <span aria-label="achieved">✓</span> {new Date(milestone.achievedDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
         </p>
       )}
@@ -353,11 +353,11 @@ export default function FreedomMeterPage() {
       {/* Top wisdom bar */}
       <aside
         aria-label="Daily wisdom"
-        className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4 mb-6"
+        className="rounded-xl border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 p-4 mb-6"
       >
         <div className="flex gap-3 items-start">
-          <Star className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
-          <p className="text-sm text-amber-800 dark:text-amber-300 italic">{data.dailyInsight}</p>
+          <Star className="w-5 h-5 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-sm text-acr-warn dark:text-acr-warn italic">{data.dailyInsight}</p>
         </div>
       </aside>
 
@@ -425,12 +425,12 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center" aria-hidden="true">
-                  <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <div className="w-8 h-8 rounded-full bg-acr-pos-soft dark:bg-acr-pos-soft/30 flex items-center justify-center" aria-hidden="true">
+                  <DollarSign className="w-4 h-4 text-acr-pos dark:text-acr-pos" />
                 </div>
                 <dt className="text-sm font-medium text-muted-foreground">Monthly note income</dt>
               </div>
-              <dd className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums">{fmt(data.totalMonthlyNoteIncome)}</dd>
+              <dd className="text-3xl font-black text-acr-pos dark:text-acr-pos tabular-nums">{fmt(data.totalMonthlyNoteIncome)}</dd>
               <p className="text-xs text-muted-foreground mt-1"><span className="tabular-nums">{data.activeNotes.filter(n => n.status === "current").length}</span> active notes</p>
             </CardContent>
           </Card>
@@ -438,8 +438,8 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center" aria-hidden="true">
-                  <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <div className="w-8 h-8 rounded-full bg-acr-accent dark:bg-acr-accent/30 flex items-center justify-center" aria-hidden="true">
+                  <Target className="w-4 h-4 text-acr-accent dark:text-acr-accent" />
                 </div>
                 <dt className="text-sm font-medium text-muted-foreground">Portfolio value</dt>
               </div>
@@ -451,18 +451,18 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center" aria-hidden="true">
-                  <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <div className="w-8 h-8 rounded-full bg-acr-brand-soft dark:bg-acr-brand-soft/30 flex items-center justify-center" aria-hidden="true">
+                  <Clock className="w-4 h-4 text-acr-brand dark:text-acr-brand" />
                 </div>
                 <dt className="text-sm font-medium text-muted-foreground">Freedom date</dt>
               </div>
               {data.projectedFreedomDate ? (
                 <>
-                  <dd className="text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums">{data.projectedFreedomDate}</dd>
+                  <dd className="text-xl font-black text-acr-brand dark:text-acr-brand tabular-nums">{data.projectedFreedomDate}</dd>
                   <p className="text-xs text-muted-foreground mt-1"><span className="tabular-nums">{data.monthsUntilFreedom}</span> months away</p>
                 </>
               ) : (
-                <dd className="text-xl font-black text-green-600">Already free!</dd>
+                <dd className="text-xl font-black text-acr-pos">Already free!</dd>
               )}
             </CardContent>
           </Card>
@@ -470,19 +470,19 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center" aria-hidden="true">
-                  <TrendingUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <div className="w-8 h-8 rounded-full bg-acr-warn-soft dark:bg-acr-warn-soft/30 flex items-center justify-center" aria-hidden="true">
+                  <TrendingUp className="w-4 h-4 text-acr-warn dark:text-acr-warn" />
                 </div>
                 <dt className="text-sm font-medium text-muted-foreground">Monthly surplus / gap</dt>
               </div>
               {data.totalMonthlyNoteIncome >= data.totalMonthlyExpenses ? (
                 <>
-                  <dd className="text-3xl font-black text-green-600 tabular-nums">+{fmt(data.totalMonthlyNoteIncome - data.totalMonthlyExpenses)}</dd>
-                  <p className="text-xs text-green-600 mt-1">Passive surplus each month</p>
+                  <dd className="text-3xl font-black text-acr-pos tabular-nums">+{fmt(data.totalMonthlyNoteIncome - data.totalMonthlyExpenses)}</dd>
+                  <p className="text-xs text-acr-pos mt-1">Passive surplus each month</p>
                 </>
               ) : (
                 <>
-                  <dd className="text-3xl font-black text-orange-500 tabular-nums">−{fmt(data.totalMonthlyExpenses - data.totalMonthlyNoteIncome)}</dd>
+                  <dd className="text-3xl font-black text-acr-warn tabular-nums">−{fmt(data.totalMonthlyExpenses - data.totalMonthlyNoteIncome)}</dd>
                   <p className="text-xs text-muted-foreground mt-1">Still needed to reach freedom</p>
                 </>
               )}
@@ -544,7 +544,7 @@ export default function FreedomMeterPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Active seller-financed notes</h3>
             {data.notesAtRisk > 0 && (
-              <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+              <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
                 <span className="tabular-nums mr-1">{data.notesAtRisk}</span> at risk
               </Badge>
             )}
@@ -585,10 +585,10 @@ export default function FreedomMeterPage() {
               </li>
             ))}
           </ul>
-          <div className="mt-6 p-4 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10">
+          <div className="mt-6 p-4 rounded-xl border border-acr-accent bg-acr-accent dark:border-acr-accent/50 dark:bg-acr-accent/10">
             <div className="flex gap-3">
-              <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
-              <div className="text-sm text-blue-800 dark:text-blue-300">
+              <Info className="w-4 h-4 text-acr-accent mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <div className="text-sm text-acr-accent dark:text-acr-accent">
                 <p className="font-semibold mb-1">The milestone strategy</p>
                 <p>Each milestone represents a real life expense covered by passive note income. When your notes cover groceries, you're partially free. When they cover rent, you're mostly free. When they exceed all expenses, work becomes optional — you do it because you want to, not because you have to.</p>
               </div>

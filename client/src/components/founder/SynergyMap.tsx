@@ -42,14 +42,14 @@ function SynergyRow({ synergy }: { synergy: Synergy }) {
         </div>
         <div className="flex items-center gap-2 mt-1">
           <Progress value={score} className="h-1.5 flex-1" aria-label={`Synergy score: ${score}%`} />
-          <span className={`text-[10px] font-medium tabular-nums ${isStrong ? "text-emerald-600" : isWeak ? "text-red-600" : "text-amber-600"}`}>{score}%</span>
+          <span className={`text-[10px] font-medium tabular-nums ${isStrong ? "text-acr-pos" : isWeak ? "text-acr-neg" : "text-acr-warn"}`}>{score}%</span>
         </div>
         {synergy.recommendation && <p className="text-[10px] text-muted-foreground mt-0.5 truncate m-0">{synergy.recommendation}</p>}
       </div>
       <div className="text-right shrink-0">
         <p className="text-[10px] text-muted-foreground tabular-nums m-0">{synergy.totalCollaborations} collabs</p>
         {synergy.bestAt?.length > 0 && (
-          <Badge variant="outline" className="text-[10px] h-4 px-1 text-emerald-600"><ArrowUpRight className="h-2 w-2 mr-0.5" aria-hidden="true" />{synergy.bestAt[0]}</Badge>
+          <Badge variant="outline" className="text-[10px] h-4 px-1 text-acr-pos"><ArrowUpRight className="h-2 w-2 mr-0.5" aria-hidden="true" />{synergy.bestAt[0]}</Badge>
         )}
       </div>
     </li>

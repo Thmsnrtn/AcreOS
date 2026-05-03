@@ -38,9 +38,9 @@ interface IntentPrediction {
 }
 
 const CATEGORY_COLORS = {
-  hot: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  warm: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  cold: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  hot: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
+  warm: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  cold: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
   unknown: "bg-muted text-muted-foreground",
 };
 
@@ -133,7 +133,7 @@ export function SellerIntentPanel({ leads }: Props) {
       <CardHeader className="pb-3 flex-row items-center justify-between">
         <div>
           <CardTitle className="text-base flex items-center gap-2">
-            <Brain className="w-4 h-4 text-purple-600" aria-hidden="true" />
+            <Brain className="w-4 h-4 text-acr-brand" aria-hidden="true" />
             Seller intent AI
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -143,9 +143,9 @@ export function SellerIntentPanel({ leads }: Props) {
         <div className="flex items-center gap-2">
           {predictions.size > 0 && (
             <div className="flex gap-1 text-xs tabular-nums">
-              <span className="text-red-600 font-medium">{hotCount} hot</span>
+              <span className="text-acr-neg font-medium">{hotCount} hot</span>
               <span className="text-muted-foreground" aria-hidden="true">/</span>
-              <span className="text-amber-600 font-medium">{warmCount} warm</span>
+              <span className="text-acr-warn font-medium">{warmCount} warm</span>
             </div>
           )}
           <Button

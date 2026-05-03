@@ -212,7 +212,7 @@ export default function InvestorDirectoryPage() {
                     </div>
                     {myProfile.verificationStatus === "verified" ? (
                       <Badge
-                        className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
                         aria-label="Identity verified"
                       >
                         <BadgeCheck className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -296,7 +296,7 @@ export default function InvestorDirectoryPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{profile.displayName}</span>
-                          <BadgeCheck className="h-4 w-4 text-emerald-500" aria-label="Verified investor" />
+                          <BadgeCheck className="h-4 w-4 text-acr-pos" aria-label="Verified investor" />
                           {profile.badgeLevel && <Badge variant="secondary" className="text-xs">{profile.badgeLevel}</Badge>}
                         </div>
                         {profile.bio && <p className="text-xs text-muted-foreground mt-0.5 truncate">{profile.bio}</p>}
@@ -441,7 +441,7 @@ export default function InvestorDirectoryPage() {
               <div
                 role="region"
                 aria-label="Verification benefits"
-                className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300"
+                className="p-3 bg-acr-accent dark:bg-acr-accent/20 rounded-lg text-sm text-acr-accent dark:text-acr-accent"
               >
                 <p className="font-medium mb-1">Verification enables:</p>
                 <ul className="space-y-0.5 text-xs list-disc pl-4">

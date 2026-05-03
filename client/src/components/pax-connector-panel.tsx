@@ -81,7 +81,7 @@ function StatusBadge({ status }: { status?: string }) {
   }
   if (status === "connected") {
     return (
-      <Badge variant="default" className="text-[10px] h-4 bg-green-600 hover:bg-green-600">
+      <Badge variant="default" className="text-[10px] h-4 bg-acr-pos hover:bg-acr-pos">
         <CheckCircle2 className="w-2.5 h-2.5 mr-1" /> Connected
       </Badge>
     );

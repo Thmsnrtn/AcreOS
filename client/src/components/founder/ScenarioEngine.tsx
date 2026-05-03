@@ -45,9 +45,9 @@ interface Scenario {
 }
 
 const OUTCOME_STYLES = {
-  best: { label: "Best case", icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/20" },
-  median: { label: "Most likely", icon: Minus, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
-  worst: { label: "Worst case", icon: TrendingDown, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/20" },
+  best: { label: "Best case", icon: TrendingUp, color: "text-acr-pos", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/20" },
+  median: { label: "Most likely", icon: Minus, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20" },
+  worst: { label: "Worst case", icon: TrendingDown, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20" },
 };
 
 function ScenarioCard({ scenario }: { scenario: Scenario }) {
@@ -65,9 +65,9 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
           variant="outline"
           aria-label={`Status: ${scenario.status}`}
           className={
-            scenario.status === "completed" ? "bg-emerald-100 text-emerald-800 capitalize" :
-            scenario.status === "running" ? "bg-blue-100 text-blue-800 animate-pulse capitalize" :
-            "bg-red-100 text-red-800 capitalize"
+            scenario.status === "completed" ? "bg-acr-pos-soft text-acr-pos capitalize" :
+            scenario.status === "running" ? "bg-acr-accent text-acr-accent animate-pulse capitalize" :
+            "bg-acr-neg-soft text-acr-neg capitalize"
           }
         >
           {scenario.status === "running" && <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" aria-hidden="true" />}

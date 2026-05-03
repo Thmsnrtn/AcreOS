@@ -11,9 +11,9 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 const TIERS = [
   {
     name: "Bronze",
-    color: "bg-amber-700 text-white",
-    borderColor: "border-amber-700",
-    badgeColor: "bg-amber-100 text-amber-800",
+    color: "bg-acr-warn text-white",
+    borderColor: "border-acr-warn",
+    badgeColor: "bg-acr-warn-soft text-acr-warn",
     icon: "🥉",
     requirements: [
       "Complete 3 core modules",
@@ -25,9 +25,9 @@ const TIERS = [
   },
   {
     name: "Silver",
-    color: "bg-gray-400 text-white",
-    borderColor: "border-gray-400",
-    badgeColor: "bg-gray-100 text-gray-700",
+    color: "bg-muted text-white",
+    borderColor: "border-border",
+    badgeColor: "bg-muted text-foreground",
     icon: "🥈",
     requirements: [
       "Complete 8 modules across 2 learning paths",
@@ -40,9 +40,9 @@ const TIERS = [
   },
   {
     name: "Gold",
-    color: "bg-yellow-500 text-white",
-    borderColor: "border-yellow-500",
-    badgeColor: "bg-yellow-100 text-yellow-800",
+    color: "bg-acr-warn text-white",
+    borderColor: "border-acr-warn",
+    badgeColor: "bg-acr-warn-soft text-acr-warn",
     icon: "🥇",
     requirements: [
       "Complete 15 modules across all learning paths",
@@ -55,9 +55,9 @@ const TIERS = [
   },
   {
     name: "Platinum",
-    color: "bg-blue-600 text-white",
-    borderColor: "border-blue-600",
-    badgeColor: "bg-blue-100 text-blue-800",
+    color: "bg-acr-accent text-white",
+    borderColor: "border-acr-accent",
+    badgeColor: "bg-acr-accent text-acr-accent",
     icon: "💎",
     requirements: [
       "Complete ALL platform courses",
@@ -70,9 +70,9 @@ const TIERS = [
   },
   {
     name: "Elite",
-    color: "bg-purple-700 text-white",
-    borderColor: "border-purple-700",
-    badgeColor: "bg-purple-100 text-purple-800",
+    color: "bg-acr-brand text-white",
+    borderColor: "border-acr-brand",
+    badgeColor: "bg-acr-brand-soft text-acr-brand",
     icon: "⭐",
     requirements: [
       "All Platinum requirements",
@@ -161,7 +161,7 @@ export default function CertificationRequirements() {
                   </div>
                 );
               }
-              return <p className="text-sm text-green-600 font-medium" role="status"><span aria-hidden="true">🎉 </span>You've reached the highest tier!</p>;
+              return <p className="text-sm text-acr-pos font-medium" role="status"><span aria-hidden="true">🎉 </span>You've reached the highest tier!</p>;
             })()}
           </CardContent>
         </Card>
@@ -177,7 +177,7 @@ export default function CertificationRequirements() {
               >
                 {status === "achieved" && (
                   <div className="absolute top-3 right-3">
-                    <CheckCircle className="h-6 w-6 text-green-500" aria-label="Tier achieved" />
+                    <CheckCircle className="h-6 w-6 text-acr-pos" aria-label="Tier achieved" />
                   </div>
                 )}
                 {status === "next" && (
@@ -203,7 +203,7 @@ export default function CertificationRequirements() {
                       {tier.requirements.map((req, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
                           {status === "achieved" ? (
-                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" aria-label="Done" />
+                            <CheckCircle className="h-4 w-4 text-acr-pos mt-0.5 flex-shrink-0" aria-label="Done" />
                           ) : (
                             <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" aria-label="Open" />
                           )}
@@ -219,7 +219,7 @@ export default function CertificationRequirements() {
                     <ul className="space-y-1" aria-label={`${tier.name} benefits`}>
                       {tier.benefits.map((b, i) => (
                         <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Zap className="h-3 w-3 text-yellow-500 flex-shrink-0" aria-hidden="true" /> {b}
+                          <Zap className="h-3 w-3 text-acr-warn flex-shrink-0" aria-hidden="true" /> {b}
                         </li>
                       ))}
                     </ul>

@@ -287,8 +287,8 @@ export default function FinancePage() {
             <Card className="glass-panel">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-blue-500/10">
-                    <TrendingUp className="w-5 h-5 text-blue-600" />
+                  <div className="p-3 rounded-xl bg-acr-accent/10">
+                    <TrendingUp className="w-5 h-5 text-acr-accent" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly income</p>
@@ -1036,7 +1036,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                               dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
                               dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
                               dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg capitalize' :
-                              'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-acr-neg capitalize'
+                              'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/50 dark:text-acr-neg capitalize'
                             }
                             data-testid="badge-dunning-stage"
                           >
@@ -1342,7 +1342,7 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
-                    <span className="font-medium text-acr-pos dark:text-emerald-200">Payment intent created</span>
+                    <span className="font-medium text-acr-pos dark:text-acr-pos">Payment intent created</span>
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
                     Amount: <span className="font-mono font-bold tabular-nums">{usd(Number(amount) || 0)}</span>

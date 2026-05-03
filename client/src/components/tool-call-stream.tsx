@@ -125,9 +125,9 @@ function ToolCard({ event }: ToolCardProps) {
       <div
         className={cn(
           "rounded-md border text-xs transition-colors",
-          event.status === "running" && "border-blue-500/30 bg-blue-500/5",
-          event.status === "done"    && "border-green-500/30 bg-green-500/5",
-          event.status === "error"   && "border-red-500/30 bg-red-500/5"
+          event.status === "running" && "border-acr-accent/30 bg-acr-accent/5",
+          event.status === "done"    && "border-acr-pos/30 bg-acr-pos/5",
+          event.status === "error"   && "border-acr-neg/30 bg-acr-neg/5"
         )}
       >
         <button
@@ -138,11 +138,11 @@ function ToolCard({ event }: ToolCardProps) {
           {/* Status indicator */}
           {event.status === "running" && (
             isMutation
-              ? <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />
-              : <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />
+              ? <Loader2 className="w-3 h-3 text-acr-accent animate-spin flex-shrink-0" />
+              : <Loader2 className="w-3 h-3 text-acr-accent animate-spin flex-shrink-0" />
           )}
-          {event.status === "done"    && <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />}
-          {event.status === "error"   && <AlertCircle  className="w-3 h-3 text-red-500 flex-shrink-0" />}
+          {event.status === "done"    && <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" />}
+          {event.status === "error"   && <AlertCircle  className="w-3 h-3 text-acr-neg flex-shrink-0" />}
 
           <Icon className="w-3 h-3 text-muted-foreground flex-shrink-0" />
 
@@ -155,7 +155,7 @@ function ToolCard({ event }: ToolCardProps) {
           )}
 
           {event.resultSummary && event.status === "done" && !showDiff && (
-            <span className="text-green-600 dark:text-green-400 ml-auto flex-shrink-0">
+            <span className="text-acr-pos dark:text-acr-pos ml-auto flex-shrink-0">
               → {event.resultSummary}
             </span>
           )}

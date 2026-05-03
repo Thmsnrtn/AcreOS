@@ -58,8 +58,8 @@ function GoalProgress({ goal }: { goal: ImprovementPlan["goals"][0] }) {
       aria-label={`${goal.description}: ${achieved ? "achieved" : `${Math.round(progress)}% — current ${current}, target ${goal.targetValue}`}`}
     >
       <div className="flex items-center justify-between text-xs">
-        <span className={achieved ? "text-emerald-600 font-medium" : ""}>{goal.description}</span>
-        {achieved && <CheckCircle2 className="h-3 w-3 text-emerald-500" aria-hidden="true" />}
+        <span className={achieved ? "text-acr-pos font-medium" : ""}>{goal.description}</span>
+        {achieved && <CheckCircle2 className="h-3 w-3 text-acr-pos" aria-hidden="true" />}
       </div>
       <Progress value={achieved ? 100 : progress} className="h-1.5" />
       <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
@@ -106,7 +106,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
         </div>
         <Badge
           variant="outline"
-          className={`capitalize ${plan.status === "completed" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"}`}
+          className={`capitalize ${plan.status === "completed" ? "bg-acr-pos-soft text-acr-pos" : "bg-acr-accent text-acr-accent"}`}
           aria-label={`Status: ${plan.status}`}
         >
           {plan.status}
@@ -123,13 +123,13 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
       {/* Skill Requests */}
       {skills.filter(s => s.status === "requested").length > 0 && (
         <div className="space-y-1.5">
-          <p id={`skill-requests-${plan.id}`} className="text-xs font-medium flex items-center gap-1 text-amber-600">
+          <p id={`skill-requests-${plan.id}`} className="text-xs font-medium flex items-center gap-1 text-acr-warn">
             <Sparkles className="h-3 w-3" aria-hidden="true" /> Skill requests
           </p>
           <ul aria-labelledby={`skill-requests-${plan.id}`} className="space-y-1.5 list-none p-0 m-0">
             {skills.map((s, i) => (
               s.status === "requested" && (
-                <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100">
+                <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft">
                   <div className="flex-1 text-xs">
                     <p className="font-medium m-0">{s.skill}</p>
                     <p className="text-muted-foreground m-0">{s.reason}</p>
@@ -138,7 +138,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-[10px] text-emerald-600"
+                    className="h-6 text-[10px] text-acr-pos"
                     onClick={() => approveSkillMutation.mutate({ planId: plan.id, skillIndex: i })}
                     disabled={approveSkillMutation.isPending}
                     aria-busy={approveSkillMutation.isPending}
@@ -150,7 +150,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-[10px] text-red-600"
+                    className="h-6 text-[10px] text-acr-neg"
                     onClick={() => denySkillMutation.mutate({ planId: plan.id, skillIndex: i })}
                     disabled={denySkillMutation.isPending}
                     aria-busy={denySkillMutation.isPending}
@@ -202,7 +202,7 @@ export function AgentGrowth() {
           <CardTitle className="text-base flex items-center gap-2">
             <Sprout className="h-4 w-4" aria-hidden="true" /> Agent growth
             {pendingSkills > 0 && (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1 tabular-nums" aria-label={`${pendingSkills} pending skill request${pendingSkills > 1 ? "s" : ""}`}>
+              <Badge variant="outline" className="bg-acr-warn-soft text-acr-warn ml-1 tabular-nums" aria-label={`${pendingSkills} pending skill request${pendingSkills > 1 ? "s" : ""}`}>
                 {pendingSkills} skill request{pendingSkills > 1 ? "s" : ""}
               </Badge>
             )}

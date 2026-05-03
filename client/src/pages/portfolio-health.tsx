@@ -24,9 +24,9 @@ interface PortfolioAlert {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800", badge: "destructive" as const },
-  warning: { icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800", badge: "outline" as const },
-  info: { icon: Info, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800", badge: "secondary" as const },
+  critical: { icon: AlertCircle, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border-acr-neg-soft dark:border-acr-neg-soft", badge: "destructive" as const },
+  warning: { icon: AlertTriangle, color: "text-acr-warn", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft", badge: "outline" as const },
+  info: { icon: Info, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent dark:border-acr-accent", badge: "secondary" as const },
 };
 
 function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id: number) => void }) {
@@ -145,18 +145,18 @@ export default function PortfolioHealthPage() {
       </div>
 
       <dl className="grid grid-cols-3 gap-3">
-        <Card className={criticalCount > 0 ? "border-red-300 dark:border-red-700" : ""}>
+        <Card className={criticalCount > 0 ? "border-acr-neg dark:border-acr-neg" : ""}>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-red-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-neg mb-1">
               <AlertCircle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Critical</span>
             </dt>
             <dd className="text-2xl font-bold tabular-nums">{criticalCount}</dd>
           </CardContent>
         </Card>
-        <Card className={warningCount > 0 ? "border-yellow-300 dark:border-yellow-700" : ""}>
+        <Card className={warningCount > 0 ? "border-acr-warn dark:border-acr-warn" : ""}>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-yellow-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-warn mb-1">
               <AlertTriangle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Warnings</span>
             </dt>
@@ -165,7 +165,7 @@ export default function PortfolioHealthPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-blue-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-accent mb-1">
               <Info className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Info</span>
             </dt>
@@ -180,7 +180,7 @@ export default function PortfolioHealthPage() {
         </div>
       ) : alerts.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center" role="status" aria-live="polite">
-          <ShieldCheck className="w-12 h-12 text-green-500" aria-hidden="true" />
+          <ShieldCheck className="w-12 h-12 text-acr-pos" aria-hidden="true" />
           <h2 className="font-semibold text-lg">Portfolio is healthy.</h2>
           <p className="text-muted-foreground text-sm max-w-md">
             No active alerts. Run a health scan to check for issues across your notes, leads, deals, and properties.

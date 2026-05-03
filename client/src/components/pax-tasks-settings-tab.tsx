@@ -193,7 +193,7 @@ export function PaxTasksSettingsTab() {
                 <div key={run.id} className="rounded-md border px-3 py-2 space-y-0.5">
                   <div className="flex items-center gap-2">
                     {run.status === "success" ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos flex-shrink-0" />
                     ) : (
                       <XCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
                     )}
@@ -202,7 +202,7 @@ export function PaxTasksSettingsTab() {
                     </span>
                     <span className={cn(
                       "ml-auto text-[10px] font-medium",
-                      run.status === "success" ? "text-green-600" : "text-destructive"
+                      run.status === "success" ? "text-acr-pos" : "text-destructive"
                     )}>
                       {run.status}
                     </span>

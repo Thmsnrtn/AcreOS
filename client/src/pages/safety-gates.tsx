@@ -135,11 +135,11 @@ function GateRow({ gate, result }: { gate: Gate; result: GateResult }) {
   const statusLabel = STATUS_LABEL[result.status];
   const icon =
     result.status === "pass" ? (
-      <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" aria-label={statusLabel} />
+      <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" aria-label={statusLabel} />
     ) : result.status === "fail" ? (
-      <XCircle className="w-5 h-5 text-red-500 shrink-0" aria-label={statusLabel} />
+      <XCircle className="w-5 h-5 text-acr-neg shrink-0" aria-label={statusLabel} />
     ) : (
-      <AlertCircle className="w-5 h-5 text-gray-400 shrink-0" aria-label={statusLabel} />
+      <AlertCircle className="w-5 h-5 text-muted-foreground shrink-0" aria-label={statusLabel} />
     );
 
   const rowColor =
@@ -163,9 +163,9 @@ function GateRow({ gate, result }: { gate: Gate; result: GateResult }) {
               variant="outline"
               className={`text-xs tabular-nums ${
                 result.status === "pass"
-                  ? "border-green-300 text-green-700"
+                  ? "border-acr-pos text-acr-pos"
                   : result.status === "fail"
-                  ? "border-red-300 text-red-700"
+                  ? "border-acr-neg text-acr-neg"
                   : ""
               }`}
             >
@@ -175,7 +175,7 @@ function GateRow({ gate, result }: { gate: Gate; result: GateResult }) {
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">{gate.description}</p>
         {result.note && (
-          <p className="text-xs text-amber-600 mt-0.5">{result.note}</p>
+          <p className="text-xs text-acr-warn mt-0.5">{result.note}</p>
         )}
       </div>
     </li>
@@ -220,7 +220,7 @@ export default function SafetyGatesPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-green-500" aria-hidden="true" />
+            <ShieldCheck className="w-6 h-6 text-acr-pos" aria-hidden="true" />
             Safety gates
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -262,7 +262,7 @@ export default function SafetyGatesPage() {
                 ) : (
                   <span
                     className={`text-sm font-normal tabular-nums ${
-                      allPass ? "text-green-600" : failed > 0 ? "text-red-600" : "text-amber-600"
+                      allPass ? "text-acr-pos" : failed > 0 ? "text-acr-neg" : "text-acr-warn"
                     }`}
                   >
                     {allPass
@@ -284,7 +284,7 @@ export default function SafetyGatesPage() {
                 </p>
               )}
               {allPass && (
-                <p className="text-xs text-green-600 pt-3 mt-3 border-t" role="status">
+                <p className="text-xs text-acr-pos pt-3 mt-3 border-t" role="status">
                   All gates passed. This deal looks ready for an offer.
                 </p>
               )}

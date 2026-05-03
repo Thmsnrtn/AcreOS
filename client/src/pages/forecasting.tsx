@@ -95,7 +95,7 @@ export default function ForecastingPage() {
     : [];
 
   const riskScore = summary?.averageRiskScore ?? 0;
-  const riskColor = riskScore > 60 ? "text-red-600" : riskScore > 30 ? "text-amber-600" : "text-green-600";
+  const riskColor = riskScore > 60 ? "text-acr-neg" : riskScore > 30 ? "text-acr-warn" : "text-acr-pos";
 
   return (
     <PageShell label="Forecasting">
@@ -115,9 +115,9 @@ export default function ForecastingPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <DollarSign className="w-8 h-8 text-green-500" aria-hidden="true" />
+                  <DollarSign className="w-8 h-8 text-acr-pos" aria-hidden="true" />
                   <div>
-                    <dd className="text-2xl font-bold text-green-700 tabular-nums">
+                    <dd className="text-2xl font-bold text-acr-pos tabular-nums">
                       {fmt(summary.totalProjectedIncome)}
                     </dd>
                     <dt className="text-xs text-muted-foreground">
@@ -130,9 +130,9 @@ export default function ForecastingPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <TrendingUp className="w-8 h-8 text-blue-500" aria-hidden="true" />
+                  <TrendingUp className="w-8 h-8 text-acr-accent" aria-hidden="true" />
                   <div>
-                    <dd className={`text-2xl font-bold tabular-nums ${summary.netCashFlow >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    <dd className={`text-2xl font-bold tabular-nums ${summary.netCashFlow >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                       {fmt(summary.netCashFlow)}
                     </dd>
                     <dt className="text-xs text-muted-foreground">Net cash flow</dt>
@@ -143,7 +143,7 @@ export default function ForecastingPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-8 h-8 text-purple-500" aria-hidden="true" />
+                  <CheckCircle2 className="w-8 h-8 text-acr-brand" aria-hidden="true" />
                   <div>
                     <dd className="text-2xl font-bold tabular-nums">{summary.activeNoteCount}</dd>
                     <dt className="text-xs text-muted-foreground">Active notes</dt>
@@ -155,7 +155,7 @@ export default function ForecastingPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
                   <AlertCircle
-                    className={`w-8 h-8 ${summary.highRiskNoteCount > 0 ? "text-red-500" : "text-green-500"}`}
+                    className={`w-8 h-8 ${summary.highRiskNoteCount > 0 ? "text-acr-neg" : "text-acr-pos"}`}
                     aria-hidden="true"
                   />
                   <div>
@@ -234,7 +234,7 @@ export default function ForecastingPage() {
                             aria-label={`${item.name}: ${fmt(item.amount)} (${Math.round(pct)}% of projected income)`}
                           >
                             <div
-                              className="h-full bg-green-500 rounded-full"
+                              className="h-full bg-acr-pos rounded-full"
                               style={{ width: `${Math.min(pct, 100)}%` }}
                             />
                           </div>
@@ -266,7 +266,7 @@ export default function ForecastingPage() {
                   <div className="flex justify-between text-sm">
                     <dt>Low risk notes</dt>
                     <dd>
-                      <Badge variant="outline" className="text-green-700 tabular-nums">
+                      <Badge variant="outline" className="text-acr-pos tabular-nums">
                         {summary.activeNoteCount - summary.highRiskNoteCount}
                       </Badge>
                     </dd>
@@ -276,14 +276,14 @@ export default function ForecastingPage() {
                     <dd>
                       <Badge
                         variant="outline"
-                        className={`tabular-nums ${summary.highRiskNoteCount > 0 ? "text-red-700" : "text-green-700"}`}
+                        className={`tabular-nums ${summary.highRiskNoteCount > 0 ? "text-acr-neg" : "text-acr-pos"}`}
                       >
                         {summary.highRiskNoteCount}
                       </Badge>
                     </dd>
                   </div>
                   {summary.highRiskNoteCount > 0 && (
-                    <p className="text-xs text-red-600 pt-1" role="alert">
+                    <p className="text-xs text-acr-neg pt-1" role="alert">
                       <span aria-hidden="true">⚠️ </span>
                       <span className="tabular-nums">{summary.highRiskNoteCount}</span> note(s) need attention — review payment history.
                     </p>

@@ -81,17 +81,17 @@ const sentimentConfig: Record<
   positive: {
     label: "Positive",
     className:
-      "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+      "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
   },
   neutral: {
     label: "Neutral",
     className:
-      "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+      "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
   },
   negative: {
     label: "Negative",
     className:
-      "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+      "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
   },
 };
 
@@ -153,9 +153,9 @@ function CallRow({ call }: { call: VoiceCall }) {
         {/* Direction icon */}
         <span aria-hidden="true" className="text-muted-foreground shrink-0">
           {isInbound ? (
-            <PhoneIncoming className="w-4 h-4 text-blue-500" aria-hidden="true" />
+            <PhoneIncoming className="w-4 h-4 text-acr-accent" aria-hidden="true" />
           ) : (
-            <PhoneOutgoing className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+            <PhoneOutgoing className="w-4 h-4 text-acr-accent" aria-hidden="true" />
           )}
         </span>
 

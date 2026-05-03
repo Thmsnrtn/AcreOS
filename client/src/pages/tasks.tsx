@@ -66,9 +66,9 @@ type TaskFormValues = z.infer<typeof taskFormSchema>;
 
 const priorityColors = {
   low: "bg-muted text-muted-foreground",
-  medium: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  high: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  urgent: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  medium: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  high: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  urgent: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg",
 };
 
 const statusIcons = {
@@ -579,7 +579,7 @@ export default function TasksPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={isCompleted ? "text-green-600" : "text-muted-foreground"}
+                          className={isCompleted ? "text-acr-pos" : "text-muted-foreground"}
                           onClick={() => !isCompleted && completeMutation.mutate(task.id)}
                           disabled={isCompleted || completeMutation.isPending}
                           aria-pressed={isCompleted}

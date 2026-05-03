@@ -35,10 +35,10 @@ function MemoryCard({ memory }: { memory: any }) {
   const detailsId = useId();
 
   const typeColors: Record<string, string> = {
-    episodic: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    semantic: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-    working: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    procedural: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+    episodic: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+    semantic: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
+    working: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+    procedural: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
   };
 
   const typeIcons: Record<string, React.ReactNode> = {
@@ -57,7 +57,7 @@ function MemoryCard({ memory }: { memory: any }) {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
               <div
-                className={`p-1.5 rounded ${typeColors[memory.type] ?? "bg-gray-100"}`}
+                className={`p-1.5 rounded ${typeColors[memory.type] ?? "bg-muted"}`}
                 aria-label={`${memory.type ?? "unknown"} memory`}
               >
                 {typeIcons[memory.type] ?? <Brain className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -218,7 +218,7 @@ export default function MemoryBrowser() {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <History className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                  <History className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <p className="font-medium text-sm">Episodic</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -231,7 +231,7 @@ export default function MemoryBrowser() {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Lightbulb className="w-4 h-4 text-purple-500" aria-hidden="true" />
+                  <Lightbulb className="w-4 h-4 text-acr-brand" aria-hidden="true" />
                   <p className="font-medium text-sm">Semantic</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -244,7 +244,7 @@ export default function MemoryBrowser() {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Layers className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <Layers className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <p className="font-medium text-sm">Working</p>
                 </div>
                 <p className="text-xs text-muted-foreground">

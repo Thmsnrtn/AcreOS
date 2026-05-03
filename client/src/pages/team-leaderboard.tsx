@@ -60,9 +60,9 @@ const PERIODS = [
 
 function RankBadge({ rank }: { rank: number }) {
   const ranks: Record<number, { emoji: string; bg: string; label: string }> = {
-    1: { emoji: "🥇", bg: "bg-yellow-100 text-yellow-700", label: "1st place" },
-    2: { emoji: "🥈", bg: "bg-gray-100 text-gray-600", label: "2nd place" },
-    3: { emoji: "🥉", bg: "bg-orange-100 text-orange-700", label: "3rd place" },
+    1: { emoji: "🥇", bg: "bg-acr-warn-soft text-acr-warn", label: "1st place" },
+    2: { emoji: "🥈", bg: "bg-muted text-muted-foreground", label: "2nd place" },
+    3: { emoji: "🥉", bg: "bg-acr-warn-soft text-acr-warn", label: "3rd place" },
   };
   const meta = ranks[rank];
   if (meta) {
@@ -161,14 +161,14 @@ export default function TeamLeaderboardPage() {
         </div>
 
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Team members" value={entries.length} icon={Users} color="text-blue-500" />
-          <StatCard label="Leads assigned" value={totalLeads} icon={TrendingUp} color="text-purple-500" />
-          <StatCard label="Deals closed" value={totalClosed} icon={Trophy} color="text-yellow-500" />
-          <StatCard label="Revenue generated" value={usd(totalRevenue, { noCents: true })} icon={DollarSign} color="text-green-500" />
+          <StatCard label="Team members" value={entries.length} icon={Users} color="text-acr-accent" />
+          <StatCard label="Leads assigned" value={totalLeads} icon={TrendingUp} color="text-acr-brand" />
+          <StatCard label="Deals closed" value={totalClosed} icon={Trophy} color="text-acr-warn" />
+          <StatCard label="Revenue generated" value={usd(totalRevenue, { noCents: true })} icon={DollarSign} color="text-acr-pos" />
         </dl>
 
         {topAgent && topAgent.dealsClosed > 0 && (
-          <Card className="border-yellow-200 bg-yellow-50">
+          <Card className="border-acr-warn-soft bg-acr-warn-soft">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4 flex-wrap">
                 <span className="text-4xl" aria-hidden="true">🏆</span>
@@ -179,7 +179,7 @@ export default function TeamLeaderboardPage() {
                     closed, <span className="tabular-nums">{usd(topAgent.revenueGenerated, { noCents: true })}</span> revenue.
                   </p>
                 </div>
-                <Badge className="ml-auto bg-yellow-200 text-yellow-800 hover:bg-yellow-200">
+                <Badge className="ml-auto bg-acr-warn-soft text-acr-warn hover:bg-acr-warn-soft">
                   <Medal className="w-3 h-3 mr-1" aria-hidden="true" />
                   MVP
                 </Badge>
@@ -222,7 +222,7 @@ export default function TeamLeaderboardPage() {
                     {entries.map((entry, idx) => (
                       <TableRow
                         key={entry.teamMemberId}
-                        className={idx === 0 ? "bg-yellow-50/50" : ""}
+                        className={idx === 0 ? "bg-acr-warn-soft/50" : ""}
                       >
                         <TableCell>
                           <RankBadge rank={idx + 1} />
@@ -242,11 +242,11 @@ export default function TeamLeaderboardPage() {
                         <TableCell className="text-center tabular-nums">{entry.offersOut}</TableCell>
                         <TableCell className="text-center tabular-nums">{entry.dealsUnderContract}</TableCell>
                         <TableCell className="text-center font-semibold tabular-nums">{entry.dealsClosed}</TableCell>
-                        <TableCell className="text-right font-semibold text-green-700 tabular-nums">
+                        <TableCell className="text-right font-semibold text-acr-pos tabular-nums">
                           {usd(entry.revenueGenerated, { noCents: true })}
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className="font-bold text-blue-700 tabular-nums">
+                          <span className="font-bold text-acr-accent tabular-nums">
                             {entry.score}
                           </span>
                         </TableCell>

@@ -205,7 +205,7 @@ export function OnboardingProgress() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2 flex-wrap">
             {allComplete ? (
-              <PartyPopper className="w-5 h-5 text-green-500" />
+              <PartyPopper className="w-5 h-5 text-acr-pos" />
             ) : (
               <Sparkles className="w-5 h-5 text-primary" />
             )}
@@ -244,7 +244,7 @@ export function OnboardingProgress() {
                     <div
                       className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer hover-elevate ${
                         item.isComplete
-                          ? "bg-green-500/5"
+                          ? "bg-acr-pos/5"
                           : "bg-muted/50"
                       }`}
                       data-testid={`progress-item-${item.id}`}
@@ -253,7 +253,7 @@ export function OnboardingProgress() {
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                             item.isComplete
-                              ? "bg-green-500/10 text-green-500"
+                              ? "bg-acr-pos/10 text-acr-pos"
                               : "bg-muted text-muted-foreground"
                           }`}
                         >

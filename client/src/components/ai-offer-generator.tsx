@@ -244,21 +244,21 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
   };
 
   const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 75) return <Badge variant="default" className="bg-green-600">High Confidence</Badge>;
+    if (confidence >= 75) return <Badge variant="default" className="bg-acr-pos">High Confidence</Badge>;
     if (confidence >= 50) return <Badge variant="secondary">Medium Confidence</Badge>;
     return <Badge variant="outline">Lower Confidence</Badge>;
   };
 
   const getImpactIcon = (impact: "positive" | "negative" | "neutral") => {
-    if (impact === "positive") return <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />;
-    if (impact === "negative") return <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />;
+    if (impact === "positive") return <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
+    if (impact === "negative") return <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
     return <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />;
   };
 
   const getProbabilityColor = (probability: number) => {
-    if (probability >= 70) return "text-green-600";
-    if (probability >= 40) return "text-yellow-600";
-    return "text-red-600";
+    if (probability >= 70) return "text-acr-pos";
+    if (probability >= 40) return "text-acr-warn";
+    return "text-acr-neg";
   };
 
   if (!hasCoordinates) {
@@ -282,7 +282,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
       <Card data-testid="ai-offer-generator">
         <CardContent className="py-8">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" aria-hidden="true" />
+            <AlertCircle className="w-12 h-12 mx-auto text-acr-warn mb-4" aria-hidden="true" />
             <h3 className="font-medium mb-2">AI Provider Not Configured</h3>
             <p className="text-sm text-muted-foreground">
               Configure an AI provider in Settings → Providers to enable offer analysis.

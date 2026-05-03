@@ -47,16 +47,16 @@ interface BriefingData {
 }
 
 const AGENT_BG_CLASSES: Record<string, string> = {
-  blue: "bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/30",
-  emerald: "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30",
-  amber: "bg-amber-50/50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30",
-  purple: "bg-purple-50/50 dark:bg-purple-950/20 border-purple-100 dark:border-purple-900/30",
-  red: "bg-red-50/50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30",
-  slate: "bg-slate-50/50 dark:bg-slate-950/20 border-slate-100 dark:border-slate-900/30",
-  indigo: "bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/30",
-  cyan: "bg-cyan-50/50 dark:bg-cyan-950/20 border-cyan-100 dark:border-cyan-900/30",
-  orange: "bg-orange-50/50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900/30",
-  pink: "bg-pink-50/50 dark:bg-pink-950/20 border-pink-100 dark:border-pink-900/30",
+  blue: "bg-acr-accent/50 dark:bg-acr-accent/20 border-acr-accent dark:border-acr-accent/30",
+  emerald: "bg-acr-pos-soft/50 dark:bg-acr-pos-soft/20 border-acr-pos-soft dark:border-acr-pos-soft/30",
+  amber: "bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft/30",
+  purple: "bg-acr-brand-soft/50 dark:bg-acr-brand-soft/20 border-acr-brand-soft dark:border-acr-brand-soft/30",
+  red: "bg-acr-neg-soft/50 dark:bg-acr-neg-soft/20 border-acr-neg-soft dark:border-acr-neg-soft/30",
+  slate: "bg-muted/50 dark:bg-acr-bg-sunken/20 border-border dark:border-border/30",
+  indigo: "bg-acr-accent/50 dark:bg-acr-accent/20 border-acr-accent dark:border-acr-accent/30",
+  cyan: "bg-acr-accent/50 dark:bg-acr-accent/20 border-acr-accent dark:border-acr-accent/30",
+  orange: "bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft/30",
+  pink: "bg-acr-brand-soft/50 dark:bg-acr-brand-soft/20 border-acr-brand-soft dark:border-acr-brand-soft/30",
 };
 
 function HealthRing({ score }: { score: number }) {
@@ -110,7 +110,7 @@ function AgentUpdateCard({ update }: { update: AgentUpdate }) {
                   {AGENT_ROLES[update.agent] || update.role}
                 </span>
                 {update.hasActivity && (
-                  <span aria-label="Active" className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" role="status" />
+                  <span aria-label="Active" className="h-1.5 w-1.5 rounded-full bg-acr-pos animate-pulse" role="status" />
                 )}
               </div>
               <p className="text-sm text-foreground/80 leading-relaxed mt-1">
@@ -172,7 +172,7 @@ export function MorningBriefing() {
                 </p>
                 {data.pendingDecisions > 0 && (
                   <div className="flex items-center gap-2 mt-3">
-                    <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 tabular-nums" aria-label={`${data.pendingDecisions} pending decision${data.pendingDecisions > 1 ? "s" : ""}`}>
+                    <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn tabular-nums" aria-label={`${data.pendingDecisions} pending decision${data.pendingDecisions > 1 ? "s" : ""}`}>
                       {data.pendingDecisions} decision{data.pendingDecisions > 1 ? "s" : ""} pending
                     </Badge>
                   </div>
@@ -183,8 +183,8 @@ export function MorningBriefing() {
 
             {data.allClear && (
               <div role="status" className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
-                <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden="true" />
-                <span className="text-xs text-green-700 dark:text-green-400 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-acr-pos" aria-hidden="true" />
+                <span className="text-xs text-acr-pos dark:text-acr-pos font-medium">
                   All systems nominal. Your team is handling everything.
                 </span>
               </div>
@@ -203,10 +203,10 @@ export function MorningBriefing() {
           >
             {data.trustUpdates.map((update, i) => (
               <li key={i}>
-                <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/30 dark:bg-amber-950/20">
+                <Card className="border-acr-warn-soft bg-acr-warn-soft/50 dark:border-acr-warn-soft/30 dark:bg-acr-warn-soft/20">
                   <CardContent className="p-3 flex items-center gap-3">
                     <span aria-hidden="true" className="text-lg">{AGENT_AVATARS[update.agent] || "⭐"}</span>
-                    <p className="text-sm text-amber-800 dark:text-amber-300">{update.message}</p>
+                    <p className="text-sm text-acr-warn dark:text-acr-warn">{update.message}</p>
                   </CardContent>
                 </Card>
               </li>

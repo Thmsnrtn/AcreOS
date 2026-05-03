@@ -245,11 +245,11 @@ export default function WorkflowsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-4 flex-1">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          workflow.isActive ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"
+                          workflow.isActive ? "bg-acr-pos-soft dark:bg-acr-pos-soft/30" : "bg-muted"
                         }`}>
                           <Workflow
                             className={`w-5 h-5 ${
-                              workflow.isActive ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                              workflow.isActive ? "text-acr-pos dark:text-acr-pos" : "text-muted-foreground"
                             }`}
                             aria-hidden="true"
                           />

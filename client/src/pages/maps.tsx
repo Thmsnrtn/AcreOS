@@ -180,13 +180,13 @@ interface PropertyIntelligence {
 }
 
 function getRiskColor(risk: "low" | "moderate" | "high"): string {
-  const map = { low: "text-emerald-600", moderate: "text-amber-500", high: "text-red-500" };
+  const map = { low: "text-acr-pos", moderate: "text-acr-warn", high: "text-acr-neg" };
   return map[risk] ?? "text-muted-foreground";
 }
 
 function getRiskBg(risk: "low" | "moderate" | "high"): string {
-  const map = { low: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300", moderate: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300", high: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" };
-  return map[risk] ?? "bg-gray-100";
+  const map = { low: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos", moderate: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn", high: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" };
+  return map[risk] ?? "bg-muted";
 }
 
 function IntelligenceRow({ label, value, icon: Icon, iconClass }: { label: string; value: React.ReactNode; icon?: React.ElementType; iconClass?: string }) {
@@ -289,7 +289,7 @@ function PropertyIntelligencePanel({
   }, [avmData, property, acres, lat]);
 
   const TrendIcon = intel.marketTrend === "up" ? ArrowUpRight : intel.marketTrend === "down" ? ArrowDownRight : Minus;
-  const trendColor = intel.marketTrend === "up" ? "text-emerald-600" : intel.marketTrend === "down" ? "text-red-500" : "text-muted-foreground";
+  const trendColor = intel.marketTrend === "up" ? "text-acr-pos" : intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground";
 
   return (
     <div className="w-80 border-l bg-card overflow-y-auto flex-shrink-0 flex flex-col" style={{ maxHeight: "calc(100vh - 130px)" }}>
@@ -414,8 +414,8 @@ function PropertyIntelligencePanel({
                 6-Month Value Trend
               </p>
               <div className={cn("flex items-center gap-0.5 text-[10px] font-semibold",
-                intel.marketTrend === "up" ? "text-emerald-600" :
-                intel.marketTrend === "down" ? "text-red-500" : "text-muted-foreground"
+                intel.marketTrend === "up" ? "text-acr-pos" :
+                intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground"
               )}>
                 {intel.marketTrend === "up" ? <TrendingUp className="w-3 h-3" /> :
                  intel.marketTrend === "down" ? <TrendingDown className="w-3 h-3" /> :
@@ -521,7 +521,7 @@ function PropertyIntelligencePanel({
               <IntelligenceRow
                 label="Avg Slope Grade"
                 icon={Mountain}
-                iconClass="text-slate-500"
+                iconClass="text-muted-foreground"
                 value={
                   <span className={getRiskColor(intel.slopeRisk ?? "low")}>
                     {intel.slopeGrade.toFixed(1)}°
@@ -536,7 +536,7 @@ function PropertyIntelligencePanel({
               <IntelligenceRow
                 label="Slope Aspect"
                 icon={Navigation}
-                iconClass="text-purple-500"
+                iconClass="text-acr-brand"
                 value={
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -556,12 +556,12 @@ function PropertyIntelligencePanel({
             <IntelligenceRow
               label="Solar Irradiance"
               icon={Sun}
-              iconClass="text-amber-500"
+              iconClass="text-acr-warn"
               value={
                 <span className="flex items-center gap-1">
                   {intel.solarScore ?? "—"}/100
                   {intel.solarScore && intel.solarScore >= 70 && (
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <CheckCircle2 className="w-3 h-3 text-acr-pos" />
                   )}
                 </span>
               }
@@ -569,12 +569,12 @@ function PropertyIntelligencePanel({
             <IntelligenceRow
               label="Flood Zone"
               icon={Droplets}
-              iconClass="text-blue-500"
+              iconClass="text-acr-accent"
               value={
                 <span className={cn("font-mono text-[10px] px-1.5 py-0.5 rounded",
-                  intel.floodRisk === "minimal" ? "bg-emerald-100 text-emerald-800" :
-                  intel.floodRisk === "moderate" ? "bg-amber-100 text-amber-800" :
-                  "bg-red-100 text-red-800"
+                  intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos" :
+                  intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn" :
+                  "bg-acr-neg-soft text-acr-neg"
                 )}>
                   FEMA {intel.floodZone ?? "X"}
                 </span>
@@ -583,12 +583,12 @@ function PropertyIntelligencePanel({
             <IntelligenceRow
               label="Soil Quality"
               icon={TreePine}
-              iconClass="text-green-600"
+              iconClass="text-acr-pos"
               value={
                 <div className="flex items-center gap-1.5">
                   <div className="h-1.5 w-14 bg-muted rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-green-500"
+                      className="h-full rounded-full bg-acr-pos"
                       style={{ width: `${intel.soilQuality ?? 0}%` }}
                     />
                   </div>
@@ -613,13 +613,13 @@ function PropertyIntelligencePanel({
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-md p-2 text-center",
                   ok
-                    ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800"
+                    ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft dark:border-acr-pos-soft"
                     : "bg-muted/50 border border-border"
                 )}
               >
-                <Icon className={cn("w-4 h-4", ok ? "text-emerald-600" : "text-muted-foreground")} />
+                <Icon className={cn("w-4 h-4", ok ? "text-acr-pos" : "text-muted-foreground")} />
                 <span className="text-[10px] font-medium">{label}</span>
-                <span className={cn("text-[9px]", ok ? "text-emerald-600" : "text-muted-foreground")}>
+                <span className={cn("text-[9px]", ok ? "text-acr-pos" : "text-muted-foreground")}>
                   {ok ? "Available" : "None"}
                 </span>
               </div>
@@ -654,7 +654,7 @@ function PropertyIntelligencePanel({
                 <IntelligenceRow
                   label="Assessed value"
                   icon={BarChart3}
-                  iconClass="text-blue-500"
+                  iconClass="text-acr-accent"
                   value={usd(intel.lastAssessedValue, { noCents: true })}
                 />
               )}
@@ -662,7 +662,7 @@ function PropertyIntelligencePanel({
                 <IntelligenceRow
                   label="Annual taxes"
                   icon={DollarSign}
-                  iconClass="text-amber-500"
+                  iconClass="text-acr-warn"
                   value={`${usd(intel.annualTaxes, { noCents: true })}/yr`}
                 />
               )}
@@ -900,12 +900,12 @@ export default function MapsPage() {
                 <PortfolioStatPill
                   label="Active"
                   value={String(dealStats.active)}
-                  color="border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-300"
+                  color="border-acr-accent text-acr-accent dark:border-acr-accent dark:text-acr-accent"
                 />
                 <PortfolioStatPill
                   label="Closed"
                   value={`$${(dealStats.totalVolume / 1000).toFixed(0)}K`}
-                  color="border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
+                  color="border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
                 />
               </>
             )}
@@ -917,12 +917,12 @@ export default function MapsPage() {
               />
             )}
             {showBuyerDemandHeatmap && (
-              <Badge className="text-[10px] shrink-0 bg-blue-100 text-blue-800 hidden md:flex">
+              <Badge className="text-[10px] shrink-0 bg-acr-accent text-acr-accent hidden md:flex">
                 <Users className="w-2.5 h-2.5 mr-1" /> Demand
               </Badge>
             )}
             {showPredictionHeatmap && (
-              <Badge className="text-[10px] shrink-0 bg-purple-100 text-purple-800 hidden md:flex">
+              <Badge className="text-[10px] shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
                 <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction
               </Badge>
             )}
@@ -1144,7 +1144,7 @@ export default function MapsPage() {
                   </legend>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Users className="w-3.5 h-3.5 text-blue-500" aria-hidden="true" />
+                      <Users className="w-3.5 h-3.5 text-acr-accent" aria-hidden="true" />
                       <div>
                         <Label htmlFor="layer-buyer-demand" className="text-xs cursor-pointer">Buyer-demand heatmap</Label>
                         <p className="text-[10px] text-muted-foreground">Inquiry density by area.</p>
@@ -1154,7 +1154,7 @@ export default function MapsPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <TrendingUp className="w-3.5 h-3.5 text-purple-500" aria-hidden="true" />
+                      <TrendingUp className="w-3.5 h-3.5 text-acr-brand" aria-hidden="true" />
                       <div>
                         <Label htmlFor="layer-ml-prediction" className="text-xs cursor-pointer">ML price prediction</Label>
                         <p className="text-[10px] text-muted-foreground">Green = above avg, red = below.</p>

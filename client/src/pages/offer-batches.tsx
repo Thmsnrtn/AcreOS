@@ -76,7 +76,7 @@ export default function OfferBatchesPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load batches. Your existing batches are unchanged — reload the page to try again.
             </CardContent>
           </Card>
@@ -161,7 +161,7 @@ function Metric({
 }) {
   return (
     <div>
-      <dd className={`text-xs font-semibold flex items-center justify-center gap-1 tabular-nums ${success ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+      <dd className={`text-xs font-semibold flex items-center justify-center gap-1 tabular-nums ${success ? "text-acr-pos dark:text-acr-pos" : "text-foreground"}`}>
         {Icon ? <Icon className="h-3 w-3" aria-hidden="true" /> : null}
         {value}
       </dd>

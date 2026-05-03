@@ -367,9 +367,9 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
           <div className="space-y-4 py-4">
             <div className="text-center py-4" role="status" aria-live="polite">
               {importResult.errorCount === 0 ? (
-                <CheckCircle className="w-12 h-12 mx-auto mb-4 text-emerald-500" aria-hidden="true" />
+                <CheckCircle className="w-12 h-12 mx-auto mb-4 text-acr-pos" aria-hidden="true" />
               ) : (
-                <XCircle className="w-12 h-12 mx-auto mb-4 text-amber-500" aria-hidden="true" />
+                <XCircle className="w-12 h-12 mx-auto mb-4 text-acr-warn" aria-hidden="true" />
               )}
               <h3 className="text-lg font-semibold mb-2">Import complete</h3>
               <p className="text-sm text-muted-foreground">
@@ -380,13 +380,13 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
 
             <dl className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
               <div className="text-center">
-                <dd className="text-2xl font-bold text-emerald-600 tabular-nums" data-testid="text-import-success-count">
+                <dd className="text-2xl font-bold text-acr-pos tabular-nums" data-testid="text-import-success-count">
                   {importResult.successCount}
                 </dd>
                 <dt className="text-xs text-muted-foreground">Imported</dt>
               </div>
               <div className="text-center">
-                <dd className="text-2xl font-bold text-red-600 tabular-nums" data-testid="text-import-error-count">
+                <dd className="text-2xl font-bold text-acr-neg tabular-nums" data-testid="text-import-error-count">
                   {importResult.errorCount}
                 </dd>
                 <dt className="text-xs text-muted-foreground">Errors</dt>

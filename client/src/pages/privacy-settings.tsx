@@ -83,7 +83,7 @@ export default function PrivacySettingsPage() {
           role="status"
           aria-live="polite"
         >
-          <CheckCircle2 className="w-12 h-12 text-green-500" aria-hidden="true" />
+          <CheckCircle2 className="w-12 h-12 text-acr-pos" aria-hidden="true" />
           <h1 className="text-xl font-semibold">Data deletion complete</h1>
           <p className="text-muted-foreground text-sm">Your personal data has already been anonymized.</p>
         </div>
@@ -140,11 +140,11 @@ export default function PrivacySettingsPage() {
         </Card>
 
         {/* Data Deletion */}
-        <Card className="border-red-200 dark:border-red-800">
+        <Card className="border-acr-neg-soft dark:border-acr-neg-soft">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-600" aria-hidden="true" />
-              <CardTitle className="text-base text-red-700 dark:text-red-400">Delete personal data</CardTitle>
+              <Trash2 className="w-5 h-5 text-acr-neg" aria-hidden="true" />
+              <CardTitle className="text-base text-acr-neg dark:text-acr-neg">Delete personal data</CardTitle>
             </div>
             <CardDescription>
               Permanently anonymize your personal data (GDPR Article 17 — Right to Erasure).
@@ -153,11 +153,11 @@ export default function PrivacySettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft"
               role="alert"
             >
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+              <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="text-xs text-acr-warn dark:text-acr-warn space-y-1">
                 <p className="font-medium">This action can't be undone.</p>
                 <p>Your email, name, and contact details will be replaced with anonymized values. Deals and business records are retained for legal compliance.</p>
               </div>

@@ -104,7 +104,7 @@ export default function FounderTrendsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load trends. The signals themselves are unaffected —{" "}
               <button
                 type="button"
@@ -226,13 +226,13 @@ function directionDisplay(
 ): { Icon: typeof TrendingUp; color: string; label: string } {
   if (direction === "up") {
     return upIsGood
-      ? { Icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400", label: "improving" }
-      : { Icon: TrendingUp, color: "text-red-600 dark:text-red-400", label: "worsening" };
+      ? { Icon: TrendingUp, color: "text-acr-pos dark:text-acr-pos", label: "improving" }
+      : { Icon: TrendingUp, color: "text-acr-neg dark:text-acr-neg", label: "worsening" };
   }
   if (direction === "down") {
     return upIsGood
-      ? { Icon: TrendingDown, color: "text-red-600 dark:text-red-400", label: "declining" }
-      : { Icon: TrendingDown, color: "text-emerald-600 dark:text-emerald-400", label: "improving" };
+      ? { Icon: TrendingDown, color: "text-acr-neg dark:text-acr-neg", label: "declining" }
+      : { Icon: TrendingDown, color: "text-acr-pos dark:text-acr-pos", label: "improving" };
   }
   if (direction === "flat") {
     return { Icon: Minus, color: "text-muted-foreground", label: "steady" };

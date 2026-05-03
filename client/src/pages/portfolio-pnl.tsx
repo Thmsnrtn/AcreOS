@@ -44,7 +44,7 @@ function StatCard({
   trend?: "up" | "down" | "neutral";
   subtext?: string;
 }) {
-  const trendColors = { up: "text-green-600", down: "text-red-600", neutral: "text-muted-foreground" };
+  const trendColors = { up: "text-acr-pos", down: "text-acr-neg", neutral: "text-muted-foreground" };
   const trendColor = trend ? trendColors[trend] : "text-muted-foreground";
 
   return (
@@ -162,7 +162,7 @@ export default function PortfolioPnLPage() {
                   ].map(({ label, value, type, bold }) => (
                     <div key={label} className={`flex justify-between items-center text-sm ${bold ? "font-semibold pt-2 border-t" : ""}`}>
                       <dt className={type === "expense" ? "text-muted-foreground" : ""}>{label}</dt>
-                      <dd className={`tabular-nums ${value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <dd className={`tabular-nums ${value >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                         {value >= 0 ? "+" : ""}{usd(value)}
                       </dd>
                     </div>
@@ -204,7 +204,7 @@ export default function PortfolioPnLPage() {
                     <li key={q.quarter} className="text-center p-3 rounded-lg border bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Q<span className="tabular-nums">{q.quarter}</span></p>
                       <p className="text-sm font-medium tabular-nums">{usd(q.revenue)}</p>
-                      <p className={`text-xs tabular-nums ${q.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <p className={`text-xs tabular-nums ${q.profit >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                         {q.profit >= 0 ? "+" : ""}{usd(q.profit)}
                       </p>
                     </li>
@@ -228,7 +228,7 @@ export default function PortfolioPnLPage() {
                       </span>
                       <div className="flex items-center gap-3">
                         <Badge variant="secondary" className="text-xs tabular-nums">{p.roi.toFixed(1)}% ROI</Badge>
-                        <span className="text-green-600 font-medium tabular-nums">{usd(p.netProfit)}</span>
+                        <span className="text-acr-pos font-medium tabular-nums">{usd(p.netProfit)}</span>
                       </div>
                     </li>
                   ))}

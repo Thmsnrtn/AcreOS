@@ -53,9 +53,9 @@ interface WarRoomMessageData {
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-800 border-red-200",
-  high: "bg-amber-100 text-amber-800 border-amber-200",
-  medium: "bg-blue-100 text-blue-800 border-blue-200",
+  critical: "bg-acr-neg-soft text-acr-neg border-acr-neg-soft",
+  high: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft",
+  medium: "bg-acr-accent text-acr-accent border-acr-accent",
 };
 
 const MESSAGE_TYPE_LABEL: Record<string, string> = {
@@ -68,16 +68,16 @@ const MESSAGE_TYPE_LABEL: Record<string, string> = {
 };
 
 const AGENT_BUBBLE_BG: Record<string, string> = {
-  blue: "bg-blue-50 dark:bg-blue-950/30 border-blue-100",
-  emerald: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100",
-  amber: "bg-amber-50 dark:bg-amber-950/30 border-amber-100",
-  purple: "bg-purple-50 dark:bg-purple-950/30 border-purple-100",
-  red: "bg-red-50 dark:bg-red-950/30 border-red-100",
-  slate: "bg-slate-50 dark:bg-slate-950/30 border-slate-100",
-  indigo: "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100",
-  cyan: "bg-cyan-50 dark:bg-cyan-950/30 border-cyan-100",
-  orange: "bg-orange-50 dark:bg-orange-950/30 border-orange-100",
-  pink: "bg-pink-50 dark:bg-pink-950/30 border-pink-100",
+  blue: "bg-acr-accent dark:bg-acr-accent/30 border-acr-accent",
+  emerald: "bg-acr-pos-soft dark:bg-acr-pos-soft/30 border-acr-pos-soft",
+  amber: "bg-acr-warn-soft dark:bg-acr-warn-soft/30 border-acr-warn-soft",
+  purple: "bg-acr-brand-soft dark:bg-acr-brand-soft/30 border-acr-brand-soft",
+  red: "bg-acr-neg-soft dark:bg-acr-neg-soft/30 border-acr-neg-soft",
+  slate: "bg-muted dark:bg-acr-bg-sunken/30 border-border",
+  indigo: "bg-acr-accent dark:bg-acr-accent/30 border-acr-accent",
+  cyan: "bg-acr-accent dark:bg-acr-accent/30 border-acr-accent",
+  orange: "bg-acr-warn-soft dark:bg-acr-warn-soft/30 border-acr-warn-soft",
+  pink: "bg-acr-brand-soft dark:bg-acr-brand-soft/30 border-acr-brand-soft",
 };
 
 function MessageBubble({ message }: { message: WarRoomMessageData }) {
@@ -85,7 +85,7 @@ function MessageBubble({ message }: { message: WarRoomMessageData }) {
   const avatar = isCEO ? "👑" : (AGENT_AVATARS[message.fromAgent] || "?");
   const name = isCEO ? "You (CEO)" : (AGENT_ROLES[message.fromAgent] || message.fromAgent);
   const color = isCEO ? "indigo" : (AGENT_COLORS[message.fromAgent] || "slate");
-  const bgClass = isCEO ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100" : (AGENT_BUBBLE_BG[color] || "");
+  const bgClass = isCEO ? "bg-acr-accent dark:bg-acr-accent/30 border-acr-accent" : (AGENT_BUBBLE_BG[color] || "");
   const typeLabel = MESSAGE_TYPE_LABEL[message.messageType] || message.messageType;
 
   return (
@@ -216,7 +216,7 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
 
       {/* Resolution */}
       {room.status === "resolved" && room.resolution && (
-        <p role="status" className="px-4 py-2 bg-emerald-50 dark:bg-emerald-950/20 border-t text-xs text-emerald-700 dark:text-emerald-400 m-0">
+        <p role="status" className="px-4 py-2 bg-acr-pos-soft dark:bg-acr-pos-soft/20 border-t text-xs text-acr-pos dark:text-acr-pos m-0">
           Resolved: {room.resolution}
         </p>
       )}

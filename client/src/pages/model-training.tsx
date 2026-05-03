@@ -134,7 +134,7 @@ export default function ModelTrainingPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-blue-500" aria-hidden="true" />
+              <Database className="h-5 w-5 text-acr-accent" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{(stats?.totalTransactions || 0).toLocaleString()}</dd>
                 <dt className="text-sm text-muted-foreground">Training records</dt>
@@ -145,7 +145,7 @@ export default function ModelTrainingPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-emerald-500" aria-hidden="true" />
+              <Activity className="h-5 w-5 text-acr-pos" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{accuracyPct}%</dd>
                 <dt className="text-sm text-muted-foreground">Model accuracy</dt>
@@ -156,7 +156,7 @@ export default function ModelTrainingPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-violet-500" aria-hidden="true" />
+              <TrendingUp className="h-5 w-5 text-acr-brand" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{predictions.length}</dd>
                 <dt className="text-sm text-muted-foreground">Predictions made</dt>
@@ -167,7 +167,7 @@ export default function ModelTrainingPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <GitBranch className="h-5 w-5 text-amber-500" aria-hidden="true" />
+              <GitBranch className="h-5 w-5 text-acr-warn" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{Object.keys(stats?.transactionsByState || {}).length}</dd>
                 <dt className="text-sm text-muted-foreground">States covered</dt>
@@ -181,7 +181,7 @@ export default function ModelTrainingPage() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-base flex items-center gap-2">
-              <Brain className="h-4 w-4 text-violet-500" aria-hidden="true" />
+              <Brain className="h-4 w-4 text-acr-brand" aria-hidden="true" />
               AcreOS Market Value™ model v2.0
             </CardTitle>
             <Badge variant={accuracyPct >= 85 ? "default" : accuracyPct >= 70 ? "secondary" : "destructive"}>

@@ -61,8 +61,8 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
   return (
     <li
       className={`flex items-center gap-3 p-3 rounded-lg border list-none ${
-        pattern.isAutopilotActive ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200" :
-        pattern.isAutopilotEligible ? "bg-blue-50 dark:bg-blue-950/20 border-blue-200" :
+        pattern.isAutopilotActive ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border-acr-pos-soft" :
+        pattern.isAutopilotEligible ? "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent" :
         "bg-background"
       }`}
       aria-label={`${role} — ${pattern.description}: ${pattern.totalDecisions} decisions, ${approveRate}% approved, ${confidence}% confidence${pattern.isAutopilotActive ? ", on autopilot" : pattern.isAutopilotEligible ? ", ready for autopilot" : ", still learning"}`}
@@ -80,7 +80,7 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
       {pattern.isAutopilotEligible && (
         <div className="flex items-center gap-2">
           {!pattern.isAutopilotActive && (
-            <Badge variant="outline" className="text-[10px] bg-blue-100 text-blue-700">
+            <Badge variant="outline" className="text-[10px] bg-acr-accent text-acr-accent">
               Ready
             </Badge>
           )}
@@ -147,13 +147,13 @@ export function DecisionAutopilot() {
           <ul aria-label="Autopilot statistics" className="flex items-center gap-4 text-xs list-none p-0 m-0">
             {autopilotStats.activeAutopilots > 0 && (
               <li className="flex items-center gap-1.5" aria-label={`${autopilotStats.activeAutopilots} on autopilot`}>
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+                <CheckCircle2 className="h-3 w-3 text-acr-pos" aria-hidden="true" />
                 <span><span className="tabular-nums">{autopilotStats.activeAutopilots}</span> on autopilot</span>
               </li>
             )}
             {autopilotStats.eligibleNotActive > 0 && (
               <li className="flex items-center gap-1.5" aria-label={`${autopilotStats.eligibleNotActive} ready to enable`}>
-                <Brain className="h-3 w-3 text-blue-500" aria-hidden="true" />
+                <Brain className="h-3 w-3 text-acr-accent" aria-hidden="true" />
                 <span><span className="tabular-nums">{autopilotStats.eligibleNotActive}</span> ready to enable</span>
               </li>
             )}
@@ -167,7 +167,7 @@ export function DecisionAutopilot() {
         {/* Eligible for autopilot */}
         {eligible.length > 0 && (
           <section aria-labelledby="ready-heading" className="space-y-2">
-            <p id="ready-heading" className="text-xs font-medium text-blue-600 uppercase tracking-wider">Ready for autopilot</p>
+            <p id="ready-heading" className="text-xs font-medium text-acr-accent uppercase tracking-wider">Ready for autopilot</p>
             <ul aria-labelledby="ready-heading" className="space-y-2 list-none p-0 m-0">
               {eligible.map(p => <PatternRow key={p.id} pattern={p} />)}
             </ul>
@@ -177,7 +177,7 @@ export function DecisionAutopilot() {
         {/* Active autopilots */}
         {active.length > 0 && (
           <section aria-labelledby="active-heading" className="space-y-2">
-            <p id="active-heading" className="text-xs font-medium text-emerald-600 uppercase tracking-wider">On autopilot</p>
+            <p id="active-heading" className="text-xs font-medium text-acr-pos uppercase tracking-wider">On autopilot</p>
             <ul aria-labelledby="active-heading" className="space-y-2 list-none p-0 m-0">
               {active.map(p => <PatternRow key={p.id} pattern={p} />)}
             </ul>

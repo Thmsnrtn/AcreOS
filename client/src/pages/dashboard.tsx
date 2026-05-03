@@ -31,11 +31,11 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 function getUrgencyStyle(urgency: string) {
   switch (urgency) {
     case 'urgent':
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+      return 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg';
     case 'warning':
-      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+      return 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn';
     default:
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+      return 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent';
   }
 }
 
@@ -395,10 +395,10 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 * index }}
           >
-            <Card className="floating-window border-amber-200 dark:border-amber-800" data-testid="section-aging-leads">
+            <Card className="floating-window border-acr-warn-soft dark:border-acr-warn-soft" data-testid="section-aging-leads">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+                  <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
                   Aging leads
                   <Badge variant="outline" className="ml-2 text-xs tabular-nums" data-testid="badge-aging-count">
                     {agingLeads.length}
@@ -701,11 +701,11 @@ export default function Dashboard() {
           {/* Contextual tip banner */}
           {!tipDismissed && !isLoading && (
             leads.length === 0 ? (
-              <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
+              <Card className="border-acr-accent dark:border-acr-accent bg-acr-accent dark:bg-acr-accent/40">
                 <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
                   <div className="flex items-center gap-3">
-                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" aria-hidden="true" />
-                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                    <Sparkles className="w-5 h-5 text-acr-accent shrink-0" aria-hidden="true" />
+                    <p className="text-sm text-acr-accent dark:text-acr-accent">
                       Import your first leads to see pipeline stats here.
                     </p>
                   </div>
@@ -720,11 +720,11 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             ) : campaignsData.length === 0 ? (
-              <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
+              <Card className="border-acr-accent dark:border-acr-accent bg-acr-accent dark:bg-acr-accent/40">
                 <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
                   <div className="flex items-center gap-3">
-                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" aria-hidden="true" />
-                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                    <Sparkles className="w-5 h-5 text-acr-accent shrink-0" aria-hidden="true" />
+                    <p className="text-sm text-acr-accent dark:text-acr-accent">
                       Create your first campaign to start outreach.
                     </p>
                   </div>

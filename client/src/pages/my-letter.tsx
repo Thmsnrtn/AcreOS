@@ -162,7 +162,7 @@ export default function MyLetterPage() {
             </Card>
           ) : isError ? (
             <Card>
-              <CardContent className="p-6 text-sm text-red-600" role="alert">
+              <CardContent className="p-6 text-sm text-acr-neg" role="alert">
                 Couldn't load your letter. Your previous letter is still saved —{" "}
                 <button
                   type="button"
@@ -210,14 +210,14 @@ export default function MyLetterPage() {
               </Card>
 
               {letter.recommendedAction && (
-                <Card className="bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40">
+                <Card className="bg-acr-pos-soft/50 dark:bg-acr-pos-soft/20 border-acr-pos-soft dark:border-acr-pos-soft/40">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-emerald-900 dark:text-emerald-200">
+                    <CardTitle className="text-sm text-acr-pos dark:text-acr-pos">
                       Pax's recommendation
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-emerald-900 dark:text-emerald-200">
+                    <p className="text-sm text-acr-pos dark:text-acr-pos">
                       {letter.recommendedAction}
                     </p>
                   </CardContent>

@@ -60,7 +60,7 @@ export function PlaybookSteps({ template, instance, onCompleteStep, onUncomplete
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500 border-green-500";
+        return "bg-acr-pos border-acr-pos";
       case "current":
         return "bg-primary border-primary";
       case "pending":
@@ -72,7 +72,7 @@ export function PlaybookSteps({ template, instance, onCompleteStep, onUncomplete
   const getLineColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500";
+        return "bg-acr-pos";
       default:
         return "bg-muted-foreground/20";
     }

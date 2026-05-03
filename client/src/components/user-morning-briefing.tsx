@@ -38,8 +38,8 @@ async function fetchBriefing(): Promise<BriefingData> {
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   target: <Target className="h-4 w-4 text-primary" />,
-  dollar: <DollarSign className="h-4 w-4 text-emerald-500" />,
-  message: <MessageSquare className="h-4 w-4 text-blue-500" />,
+  dollar: <DollarSign className="h-4 w-4 text-acr-pos" />,
+  message: <MessageSquare className="h-4 w-4 text-acr-accent" />,
 };
 
 export function UserMorningBriefing() {
@@ -72,7 +72,7 @@ export function UserMorningBriefing() {
       <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sun className="h-5 w-5 text-amber-500" />
+            <Sun className="h-5 w-5 text-acr-warn" />
             <CardTitle className="text-lg">{data.greeting}</CardTitle>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setDismissed(true)} aria-label="Dismiss briefing">

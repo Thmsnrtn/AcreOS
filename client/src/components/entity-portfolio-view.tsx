@@ -121,7 +121,7 @@ function PropertyRow({ property }: { property: EntityProperty }) {
           {property.address ?? `${property.county}, ${property.state}`}
         </span>
         {property.isOpportunityZone && (
-          <Badge variant="secondary" className="text-xs shrink-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="secondary" className="text-xs shrink-0 bg-acr-pos/10 text-acr-pos dark:text-acr-pos">
             OZ
           </Badge>
         )}
@@ -166,7 +166,7 @@ function EntityCard({ portfolio, taxSummary }: { portfolio: EntityPortfolio; tax
         <CardContent className="space-y-3">
           {/* OZ summary */}
           {ozCount > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="flex items-center gap-1.5 text-xs text-acr-pos dark:text-acr-pos">
               <Landmark className="h-3.5 w-3.5 shrink-0" aria-label="Opportunity Zone" />
               {ozCount} {ozCount === 1 ? "property" : "properties"} in Opportunity Zones
             </div>
@@ -177,10 +177,10 @@ function EntityCard({ portfolio, taxSummary }: { portfolio: EntityPortfolio; tax
             <div className="flex items-center gap-1.5 text-xs">
               <TrendingUp
                 className={`h-3.5 w-3.5 shrink-0 ${
-                  taxSummary.estimatedGains > 0 ? "text-green-600" : "text-red-500"
+                  taxSummary.estimatedGains > 0 ? "text-acr-pos" : "text-acr-neg"
                 }`}
               />
-              <span className={taxSummary.estimatedGains > 0 ? "text-green-600" : "text-red-500"}>
+              <span className={taxSummary.estimatedGains > 0 ? "text-acr-pos" : "text-acr-neg"}>
                 {formatCurrency(Math.abs(taxSummary.estimatedGains))}{" "}
                 {taxSummary.estimatedGains > 0 ? "unrealized gain" : "unrealized loss"}
               </span>
@@ -208,7 +208,7 @@ function EntityCard({ portfolio, taxSummary }: { portfolio: EntityPortfolio; tax
               </div>
               {taxSummary.suggestions.map((suggestion, i) => (
                 <div key={i} className="flex items-start gap-1.5">
-                  <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500 mt-0.5" />
+                  <AlertTriangle className="h-3 w-3 shrink-0 text-acr-warn mt-0.5" />
                   <p className="text-xs text-muted-foreground leading-relaxed">{suggestion}</p>
                 </div>
               ))}

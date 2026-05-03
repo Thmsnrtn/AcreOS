@@ -66,7 +66,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            <BarChart3 className="h-4 w-4 text-acr-accent" aria-hidden="true" />
             Revenue trajectory
           </CardTitle>
         </CardHeader>
@@ -111,8 +111,8 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
   }
 
   const MomIcon = mom > 0.5 ? TrendingUp : mom < -0.5 ? TrendingDown : Minus;
-  const momColor = mom > 0.5 ? "text-green-600" : mom < -0.5 ? "text-red-500" : "text-muted-foreground";
-  const momBg = mom > 0.5 ? "bg-green-500/10 text-green-600 border-green-500/20" : mom < -0.5 ? "bg-red-500/10 text-red-600 border-red-500/20" : "bg-muted text-muted-foreground";
+  const momColor = mom > 0.5 ? "text-acr-pos" : mom < -0.5 ? "text-acr-neg" : "text-muted-foreground";
+  const momBg = mom > 0.5 ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20" : mom < -0.5 ? "bg-acr-neg/10 text-acr-neg border-acr-neg/20" : "bg-muted text-muted-foreground";
 
   const maxRevenue = Math.max(
     ...history.map(h => h.revenueCents),
@@ -126,7 +126,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-blue-500" aria-hidden="true" />
+              <BarChart3 className="h-4 w-4 text-acr-accent" aria-hidden="true" />
               Revenue trajectory
             </CardTitle>
             {forecastStatement && (
@@ -225,16 +225,16 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
         </div>
         <ul aria-label="Chart legend" className="flex items-center gap-4 justify-end mt-1 list-none p-0 m-0">
           <li className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-blue-500" />
+            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-accent" />
             <span className="text-[10px] text-muted-foreground">Actual</span>
           </li>
           <li className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-purple-500 opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
+            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-brand opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
             <span className="text-[10px] text-muted-foreground">Forecast</span>
           </li>
           {goalCents && goalCents > 0 && (
             <li className="flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-0.5 w-4 bg-amber-500" style={{ borderTop: "2px dashed #f59e0b" }} />
+              <span aria-hidden="true" className="h-0.5 w-4 bg-acr-warn" style={{ borderTop: "2px dashed #f59e0b" }} />
               <span className="text-[10px] text-muted-foreground">Goal</span>
             </li>
           )}

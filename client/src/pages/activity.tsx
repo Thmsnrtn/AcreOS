@@ -45,17 +45,17 @@ const FILTER_TABS = [
 ] as const;
 
 const EVENT_META: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  email_sent:       { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-blue-400",    label: "Email" },
-  sms_sent:         { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: "border-green-400",   label: "SMS" },
-  mail_sent:        { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-purple-400",  label: "Mail" },
-  call_made:        { icon: <Phone className="w-4 h-4" aria-hidden="true" />,         color: "border-cyan-400",    label: "Call" },
-  note_added:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-gray-400",    label: "Note" },
-  stage_changed:    { icon: <GitBranch className="w-4 h-4" aria-hidden="true" />,     color: "border-yellow-400",  label: "Stage" },
-  offer_sent:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-orange-400",  label: "Offer" },
-  offer_accepted:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-green-500",   label: "Accepted" },
-  offer_rejected:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-red-400",     label: "Rejected" },
-  payment_received: { icon: <DollarSign className="w-4 h-4" aria-hidden="true" />,    color: "border-emerald-500", label: "Payment" },
-  deal_created:     { icon: <Plus className="w-4 h-4" aria-hidden="true" />,          color: "border-indigo-400",  label: "Deal" },
+  email_sent:       { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-acr-accent",    label: "Email" },
+  sms_sent:         { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: "border-acr-pos",   label: "SMS" },
+  mail_sent:        { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-acr-brand",  label: "Mail" },
+  call_made:        { icon: <Phone className="w-4 h-4" aria-hidden="true" />,         color: "border-acr-accent",    label: "Call" },
+  note_added:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-border",    label: "Note" },
+  stage_changed:    { icon: <GitBranch className="w-4 h-4" aria-hidden="true" />,     color: "border-acr-warn",  label: "Stage" },
+  offer_sent:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-acr-warn",  label: "Offer" },
+  offer_accepted:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-acr-pos",   label: "Accepted" },
+  offer_rejected:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-acr-neg",     label: "Rejected" },
+  payment_received: { icon: <DollarSign className="w-4 h-4" aria-hidden="true" />,    color: "border-acr-pos", label: "Payment" },
+  deal_created:     { icon: <Plus className="w-4 h-4" aria-hidden="true" />,          color: "border-acr-accent",  label: "Deal" },
 };
 
 function dayLabel(dateStr: string): string {
@@ -163,7 +163,7 @@ export default function ActivityPage() {
               {events.map(event => {
                 const meta = EVENT_META[event.eventType] ?? {
                   icon: <FileText className="w-4 h-4" aria-hidden="true" />,
-                  color: "border-gray-300",
+                  color: "border-border",
                   label: event.eventType.replace(/_/g, ' '),
                 };
                 return (

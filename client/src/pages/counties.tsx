@@ -27,17 +27,17 @@ const countyFormSchema = insertTargetCountySchema.omit({ organizationId: true })
 type CountyFormValues = z.infer<typeof countyFormSchema>;
 
 const statusOptions = [
-  { value: "researching", label: "Researching", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
-  { value: "active", label: "Active", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  { value: "paused", label: "Paused", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
+  { value: "researching", label: "Researching", color: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
+  { value: "active", label: "Active", color: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos" },
+  { value: "paused", label: "Paused", color: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
   { value: "exhausted", label: "Exhausted", color: "bg-muted text-muted-foreground" },
 ];
 
 const dataSourceTypes = [
-  { value: "tax_delinquent", label: "Tax delinquent", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
-  { value: "probate", label: "Probate", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" },
-  { value: "vacant", label: "Vacant", color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" },
-  { value: "absentee", label: "Absentee", color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400" },
+  { value: "tax_delinquent", label: "Tax delinquent", color: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" },
+  { value: "probate", label: "Probate", color: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand" },
+  { value: "vacant", label: "Vacant", color: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
+  { value: "absentee", label: "Absentee", color: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
 ];
 
 const PRIORITY_LABELS: Record<number, string> = {
@@ -129,7 +129,7 @@ function PriorityStars({ priority }: { priority: number }) {
           key={star}
           className={`w-3.5 h-3.5 ${
             star <= priority
-              ? "fill-amber-400 text-amber-400"
+              ? "fill-acr-warn text-acr-warn"
               : "text-muted-foreground/30"
           }`}
           aria-hidden="true"

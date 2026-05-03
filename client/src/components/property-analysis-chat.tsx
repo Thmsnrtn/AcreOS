@@ -120,11 +120,11 @@ function AnalysisMarkdown({ content }: { content: string }) {
 
 // ─── Section icons for structured analysis ────────────────────────────────────
 const SECTION_ICONS: Record<string, React.ReactNode> = {
-  "property summary": <BarChart3 className="w-4 h-4 text-blue-500" aria-hidden="true" />,
-  "market position": <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />,
-  "key risks": <AlertTriangle className="w-4 h-4 text-amber-500" aria-hidden="true" />,
-  "investment recommendation": <Target className="w-4 h-4 text-purple-500" aria-hidden="true" />,
-  "suggested offer range": <DollarSign className="w-4 h-4 text-emerald-500" aria-hidden="true" />,
+  "property summary": <BarChart3 className="w-4 h-4 text-acr-accent" aria-hidden="true" />,
+  "market position": <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />,
+  "key risks": <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" />,
+  "investment recommendation": <Target className="w-4 h-4 text-acr-brand" aria-hidden="true" />,
+  "suggested offer range": <DollarSign className="w-4 h-4 text-acr-pos" aria-hidden="true" />,
 };
 
 function getSectionIcon(heading: string): React.ReactNode {

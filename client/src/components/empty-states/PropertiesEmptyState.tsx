@@ -21,27 +21,27 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-          className="w-24 h-24 rounded-full bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center"
+          className="w-24 h-24 rounded-full bg-gradient-to-br from-acr-pos/20 to-acr-pos/5 flex items-center justify-center"
         >
-          <Map className="w-12 h-12 text-green-600" />
+          <Map className="w-12 h-12 text-acr-pos" />
         </motion.div>
         
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="absolute -top-1 -right-3 w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center"
+          className="absolute -top-1 -right-3 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
         >
-          <TreePine className="w-5 h-5 text-emerald-600" />
+          <TreePine className="w-5 h-5 text-acr-pos" />
         </motion.div>
         
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="absolute -bottom-2 -left-2 w-8 h-8 rounded-full bg-sky-500/10 flex items-center justify-center"
+          className="absolute -bottom-2 -left-2 w-8 h-8 rounded-full bg-acr-accent/10 flex items-center justify-center"
         >
-          <Mountain className="w-4 h-4 text-sky-600" />
+          <Mountain className="w-4 h-4 text-acr-accent" />
         </motion.div>
       </div>
       
@@ -81,7 +81,7 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
           className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <Sparkles className="w-5 h-5 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">

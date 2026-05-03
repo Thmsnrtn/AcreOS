@@ -369,7 +369,7 @@ function StripeConnectSettings() {
 
         {connectStatus?.requirements && connectStatus.requirements.currentlyDue.length > 0 && (
           <div
-            className="p-4 rounded-md bg-acr-warn/10 border border-amber-500/20"
+            className="p-4 rounded-md bg-acr-warn/10 border border-acr-warn/20"
             role="status"
             aria-live="polite"
           >
@@ -830,8 +830,8 @@ export default function Settings() {
       // Pro is the recommended tier — use the theme primary so "Pro"
       // reads as on-brand rather than an off-theme lavender accent.
       case "pro":     return "bg-primary/10 text-primary border-primary/20";
-      case "scale":   return "bg-acr-warn/10 text-acr-warn border-amber-500/20";
-      case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+      case "scale":   return "bg-acr-warn/10 text-acr-warn border-acr-warn/20";
+      case "starter": return "bg-acr-accent/10 text-acr-accent border-acr-accent/20";
       default:        return "bg-muted text-muted-foreground border-border";
     }
   };
@@ -959,7 +959,7 @@ export default function Settings() {
                             {organization.isFounder ? 'Enterprise (Founder)' : organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
                           </Badge>
                           {organization.isFounder && (
-                            <Badge variant="outline" className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500" data-testid="badge-unlimited">
+                            <Badge variant="outline" className="bg-gradient-to-r from-acr-warn to-acr-warn text-white border-acr-warn" data-testid="badge-unlimited">
                               Unlimited
                             </Badge>
                           )}
@@ -1024,7 +1024,7 @@ export default function Settings() {
                       ) : organization.subscriptionTier === "free" && (
                         <div className="space-y-3">
                           {!organization.trialUsed && (
-                            <div className="flex items-start gap-3 p-4 rounded-md bg-acr-pos/10 border border-emerald-500/20">
+                            <div className="flex items-start gap-3 p-4 rounded-md bg-acr-pos/10 border border-acr-pos/20">
                               <Gift className="w-5 h-5 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />
                               <div>
                                 <p className="font-medium text-acr-pos" data-testid="text-trial-available">
@@ -1087,7 +1087,7 @@ export default function Settings() {
                           <>
                             {nearLimitItems.length > 0 && usageData.tier !== "enterprise" && (
                               <div
-                                className="flex items-start gap-3 p-4 rounded-md bg-acr-warn/10 border border-amber-500/20 mb-4"
+                                className="flex items-start gap-3 p-4 rounded-md bg-acr-warn/10 border border-acr-warn/20 mb-4"
                                 role="status"
                                 aria-live="polite"
                               >
@@ -2476,7 +2476,7 @@ function GoalsSettings() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {isComplete && (
-                          <Badge variant="default" className="bg-green-600 text-white text-xs">Complete</Badge>
+                          <Badge variant="default" className="bg-acr-pos text-white text-xs">Complete</Badge>
                         )}
                         <Button
                           variant="ghost"
@@ -2610,7 +2610,7 @@ function ApiKeyManager() {
       {/* Newly created key — show once */}
       {createdKey && (
         <Card
-          className="border-emerald-500 bg-acr-pos-soft dark:bg-emerald-950/30"
+          className="border-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft/30"
           role="alert"
           aria-live="assertive"
         >
@@ -3067,7 +3067,7 @@ function PrivacyDataSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-amber-950/20 border border-acr-warn/30 dark:border-acr-warn/30"
+              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn/30 dark:border-acr-warn/30"
               role="alert"
             >
               <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />

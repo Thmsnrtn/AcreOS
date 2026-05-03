@@ -125,26 +125,26 @@ const AUTONOMY_LABELS: Record<AutonomyLevel, { label: string; description: strin
   full_auto: {
     label: "Full auto",
     description: "Agent acts on all tasks without waiting for approval.",
-    color: "text-green-600",
+    color: "text-acr-pos",
   },
   supervised: {
     label: "Supervised",
     description: "Agent auto-executes low-risk tasks; escalates high-risk ones.",
-    color: "text-amber-600",
+    color: "text-acr-warn",
   },
   manual: {
     label: "Manual",
     description: "Agent only acts when you explicitly approve each task.",
-    color: "text-red-600",
+    color: "text-acr-neg",
   },
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  processing: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-800",
+  pending: "bg-acr-warn-soft text-acr-warn",
+  processing: "bg-acr-accent text-acr-accent",
+  completed: "bg-acr-pos-soft text-acr-pos",
+  failed: "bg-acr-neg-soft text-acr-neg",
+  cancelled: "bg-muted text-foreground",
 };
 
 const ALL_CATEGORIES: ActionCategory[] = [
@@ -189,7 +189,7 @@ function AgentCard({
         </div>
         <div className="flex items-center gap-2">
           {agent.isActive && (
-            <span className="flex items-center gap-1 text-xs text-green-600" role="status" aria-live="polite">
+            <span className="flex items-center gap-1 text-xs text-acr-pos" role="status" aria-live="polite">
               <Activity className="h-3 w-3 animate-pulse" aria-hidden="true" />
               Active
             </span>
@@ -293,7 +293,7 @@ function TaskRow({
             {task.status}
           </Badge>
           {task.requiresReview && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200" aria-label="Needs your approval">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-acr-warn-soft text-acr-warn border-acr-warn-soft" aria-label="Needs your approval">
               needs approval
             </Badge>
           )}
@@ -311,7 +311,7 @@ function TaskRow({
           {task.executionTimeMs ? <span className="tabular-nums"> · {task.executionTimeMs}ms</span> : null}
         </p>
         {task.error && (
-          <p className="text-xs text-red-600 mt-1" role="alert">{task.error}</p>
+          <p className="text-xs text-acr-neg mt-1" role="alert">{task.error}</p>
         )}
         {task.output && task.status === "completed" && (task.output as any).data?.analysis && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
@@ -325,7 +325,7 @@ function TaskRow({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+              className="h-7 w-7 p-0 text-acr-pos hover:text-acr-pos hover:bg-acr-pos-soft"
               onClick={() => onApprove?.(task.id)}
               aria-label={`Approve ${taskLabel}`}
             >
@@ -334,7 +334,7 @@ function TaskRow({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="h-7 w-7 p-0 text-acr-neg hover:text-acr-neg hover:bg-acr-neg-soft"
               onClick={() => onReject?.(task.id)}
               aria-label={`Reject ${taskLabel}`}
             >
@@ -469,7 +469,7 @@ function AgentConfigPanel({
                     aria-label={`${pressed ? "Remove" : "Add"} auto-approve for ${cat.replace(/_/g, " ")}`}
                     className={`rounded-full px-3 py-1 text-xs border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       pressed
-                        ? "bg-green-100 border-green-400 text-green-800"
+                        ? "bg-acr-pos-soft border-acr-pos text-acr-pos"
                         : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
                     }`}
                   >
@@ -498,7 +498,7 @@ function AgentConfigPanel({
                     aria-label={`${pressed ? "Remove" : "Add"} approval requirement for ${cat.replace(/_/g, " ")}`}
                     className={`rounded-full px-3 py-1 text-xs border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive ${
                       pressed
-                        ? "bg-red-100 border-red-400 text-red-800"
+                        ? "bg-acr-neg-soft border-acr-neg text-acr-neg"
                         : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
                     }`}
                   >
@@ -699,8 +699,8 @@ export default function AgentCommandCenter() {
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-blue-100 p-2">
-              <Bot className="h-5 w-5 text-blue-600" aria-hidden="true" />
+            <div className="rounded-lg bg-acr-accent p-2">
+              <Bot className="h-5 w-5 text-acr-accent" aria-hidden="true" />
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Active agents</dt>
@@ -710,8 +710,8 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-amber-100 p-2">
-              <Clock className="h-5 w-5 text-amber-600" aria-hidden="true" />
+            <div className="rounded-lg bg-acr-warn-soft p-2">
+              <Clock className="h-5 w-5 text-acr-warn" aria-hidden="true" />
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Awaiting approval</dt>
@@ -721,8 +721,8 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-green-100 p-2">
-              <Zap className="h-5 w-5 text-green-600" aria-hidden="true" />
+            <div className="rounded-lg bg-acr-pos-soft p-2">
+              <Zap className="h-5 w-5 text-acr-pos" aria-hidden="true" />
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Actions today</dt>
@@ -732,8 +732,8 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-purple-100 p-2">
-              <BarChart3 className="h-5 w-5 text-purple-600" aria-hidden="true" />
+            <div className="rounded-lg bg-acr-brand-soft p-2">
+              <BarChart3 className="h-5 w-5 text-acr-brand" aria-hidden="true" />
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Success rate</dt>
@@ -750,7 +750,7 @@ export default function AgentCommandCenter() {
           <TabsTrigger value="approvals" className="relative">
             Approvals
             {totalPendingApprovals > 0 && (
-              <span className="ml-1.5 rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5">
+              <span className="ml-1.5 rounded-full bg-acr-neg text-white text-[10px] px-1.5 py-0.5">
                 {totalPendingApprovals}
               </span>
             )}
@@ -806,29 +806,29 @@ export default function AgentCommandCenter() {
               </CardHeader>
               <CardContent>
                 <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3 list-none p-0 m-0">
-                  <li className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <li className="rounded-lg border border-acr-pos-soft bg-acr-pos-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
-                      <span className="text-xs font-semibold text-green-800">Auto-execute</span>
+                      <CheckCircle2 className="h-4 w-4 text-acr-pos" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-acr-pos">Auto-execute</span>
                     </div>
-                    <p className="text-[11px] text-green-700">Research, data lookups, drafts, calculations.</p>
-                    <p className="text-[10px] text-green-600 mt-1 tabular-nums">Risk score: 0–25</p>
+                    <p className="text-[11px] text-acr-pos">Research, data lookups, drafts, calculations.</p>
+                    <p className="text-[10px] text-acr-pos mt-1 tabular-nums">Risk score: 0–25</p>
                   </li>
-                  <li className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <li className="rounded-lg border border-acr-warn-soft bg-acr-warn-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
-                      <span className="text-xs font-semibold text-amber-800">Needs approval</span>
+                      <AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-acr-warn">Needs approval</span>
                     </div>
-                    <p className="text-[11px] text-amber-700">Outbound comms, scheduling, data writes.</p>
-                    <p className="text-[10px] text-amber-600 mt-1 tabular-nums">Risk score: 26–75</p>
+                    <p className="text-[11px] text-acr-warn">Outbound comms, scheduling, data writes.</p>
+                    <p className="text-[10px] text-acr-warn mt-1 tabular-nums">Risk score: 26–75</p>
                   </li>
-                  <li className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <li className="rounded-lg border border-acr-neg-soft bg-acr-neg-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <XCircle className="h-4 w-4 text-red-600" aria-hidden="true" />
-                      <span className="text-xs font-semibold text-red-800">Always escalate</span>
+                      <XCircle className="h-4 w-4 text-acr-neg" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-acr-neg">Always escalate</span>
                     </div>
-                    <p className="text-[11px] text-red-700">Offers, contracts, financial commitments.</p>
-                    <p className="text-[10px] text-red-600 mt-1 tabular-nums">Risk score: 76–100</p>
+                    <p className="text-[11px] text-acr-neg">Offers, contracts, financial commitments.</p>
+                    <p className="text-[10px] text-acr-neg mt-1 tabular-nums">Risk score: 76–100</p>
                   </li>
                 </ul>
               </CardContent>
@@ -847,7 +847,7 @@ export default function AgentCommandCenter() {
               </div>
             ) : pendingTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mb-3" aria-hidden="true" />
+                <CheckCircle2 className="h-12 w-12 text-acr-pos mb-3" aria-hidden="true" />
                 <p className="font-medium">All caught up.</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   No tasks waiting for your approval.

@@ -78,15 +78,15 @@ function fmtDate(iso: string) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    held: "bg-blue-100 text-blue-800",
-    released: "bg-green-100 text-green-800",
-    processing: "bg-purple-100 text-purple-800",
-    completed: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
+    pending: "bg-acr-warn-soft text-acr-warn",
+    held: "bg-acr-accent text-acr-accent",
+    released: "bg-acr-pos-soft text-acr-pos",
+    processing: "bg-acr-brand-soft text-acr-brand",
+    completed: "bg-acr-pos-soft text-acr-pos",
+    failed: "bg-acr-neg-soft text-acr-neg",
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${map[status] ?? "bg-muted text-muted-foreground"}`}>
       {status}
     </span>
   );
@@ -100,10 +100,10 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function SummaryCards({ analytics, loading }: { analytics: FeeAnalytics | null; loading: boolean }) {
   const cards = [
-    { label: "Total fees collected", value: analytics?.totalCollected, icon: DollarSign, color: "text-green-500" },
-    { label: "Pending in escrow", value: analytics?.pendingInEscrow, icon: Clock, color: "text-yellow-500" },
-    { label: "Paid out", value: analytics?.paidOut, icon: CheckCircle2, color: "text-blue-500" },
-    { label: "This month", value: analytics?.thisMonth, icon: TrendingUp, color: "text-purple-500" },
+    { label: "Total fees collected", value: analytics?.totalCollected, icon: DollarSign, color: "text-acr-pos" },
+    { label: "Pending in escrow", value: analytics?.pendingInEscrow, icon: Clock, color: "text-acr-warn" },
+    { label: "Paid out", value: analytics?.paidOut, icon: CheckCircle2, color: "text-acr-accent" },
+    { label: "This month", value: analytics?.thisMonth, icon: TrendingUp, color: "text-acr-brand" },
   ];
 
   return (

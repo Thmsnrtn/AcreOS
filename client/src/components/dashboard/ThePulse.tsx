@@ -60,9 +60,9 @@ export function ThePulse({ decisionsInboxCount }: ThePulseProps) {
       </div>
 
       {allClear && (
-        <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-4 py-3">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
-          <p className="text-sm font-medium text-green-800 dark:text-green-300">
+        <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-lg border border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/30 px-4 py-3">
+          <CheckCircle2 className="h-5 w-5 text-acr-pos dark:text-acr-pos shrink-0" aria-hidden="true" />
+          <p className="text-sm font-medium text-acr-pos dark:text-acr-pos">
             All systems nominal. 0 decisions pending. Platform is running passively.
           </p>
         </div>
@@ -78,17 +78,17 @@ export function ThePulse({ decisionsInboxCount }: ThePulseProps) {
               <Card
                 className={`border transition-colors ${
                   isGreen
-                    ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20"
-                    : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+                    ? "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/20"
+                    : "border-acr-neg-soft bg-acr-neg-soft dark:border-acr-neg-soft dark:bg-acr-neg-soft/20"
                 }`}
                 aria-label={`${title}: ${light?.label ?? "Unknown"}`}
               >
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-xs font-medium text-muted-foreground">{title}</span>
-                    <span aria-hidden="true" className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isGreen ? "bg-green-500" : "bg-red-500"}`} />
+                    <span aria-hidden="true" className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isGreen ? "bg-acr-pos" : "bg-acr-neg"}`} />
                   </div>
-                  <p className={`mt-1 text-sm font-semibold ${isGreen ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                  <p className={`mt-1 text-sm font-semibold ${isGreen ? "text-acr-pos dark:text-acr-pos" : "text-acr-neg dark:text-acr-neg"}`}>
                     {light?.label ?? (isLoading ? "…" : "Unknown")}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground leading-tight">

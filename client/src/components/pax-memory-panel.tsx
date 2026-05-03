@@ -39,51 +39,51 @@ export interface PaxMemoryPanelProps {
 const GROUP_META: Record<string, { label: string; badgeClass: string }> = {
   preference: {
     label: "Preferences",
-    badgeClass: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+    badgeClass: "bg-acr-accent/10 text-acr-accent border-acr-accent/20",
   },
   preferences: {
     label: "Preferences",
-    badgeClass: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+    badgeClass: "bg-acr-accent/10 text-acr-accent border-acr-accent/20",
   },
   fact: {
     label: "Facts",
-    badgeClass: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+    badgeClass: "bg-acr-brand/10 text-acr-brand border-acr-brand/20",
   },
   facts: {
     label: "Facts",
-    badgeClass: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+    badgeClass: "bg-acr-brand/10 text-acr-brand border-acr-brand/20",
   },
   insight: {
     label: "Insights",
-    badgeClass: "bg-green-500/10 text-green-700 border-green-500/20",
+    badgeClass: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
   insights: {
     label: "Insights",
-    badgeClass: "bg-green-500/10 text-green-700 border-green-500/20",
+    badgeClass: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
   procedure: {
     label: "Procedures",
-    badgeClass: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    badgeClass: "bg-acr-warn/10 text-acr-warn border-acr-warn/20",
   },
   procedures: {
     label: "Procedures",
-    badgeClass: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    badgeClass: "bg-acr-warn/10 text-acr-warn border-acr-warn/20",
   },
   decision: {
     label: "Decisions",
-    badgeClass: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+    badgeClass: "bg-acr-warn/10 text-acr-warn border-acr-warn/20",
   },
   contact: {
     label: "Contacts",
-    badgeClass: "bg-pink-500/10 text-pink-700 border-pink-500/20",
+    badgeClass: "bg-acr-brand/10 text-acr-brand border-acr-brand/20",
   },
   correction: {
     label: "Corrections",
-    badgeClass: "bg-red-500/10 text-red-700 border-red-500/20",
+    badgeClass: "bg-acr-neg/10 text-acr-neg border-acr-neg/20",
   },
   reinforcement: {
     label: "Positive",
-    badgeClass: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+    badgeClass: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
 };
 
@@ -252,7 +252,7 @@ export function PaxMemoryPanel({ isOpen, open, onClose, orgId }: PaxMemoryPanelP
         <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
-              <BrainCircuit className="w-4 h-4 text-violet-500" />
+              <BrainCircuit className="w-4 h-4 text-acr-brand" />
               <h2 className="text-sm font-semibold text-foreground">Pax Memory</h2>
             </div>
             <p className="text-xs text-muted-foreground">

@@ -51,20 +51,20 @@ function QuotaBar({ item }: { item: QuotaItem }) {
           <span className="font-medium">{item.label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`tabular-nums ${isOverLimit ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+          <span className={`tabular-nums ${isOverLimit ? "text-acr-neg font-medium" : "text-muted-foreground"}`}>
             {item.used.toLocaleString()} / {item.limit.toLocaleString()}
           </span>
           {isOverLimit && !item.overageAllowed && (
             <Badge variant="destructive" className="text-xs py-0">Limit reached</Badge>
           )}
           {isNearLimit && !isOverLimit && (
-            <Badge variant="outline" className="text-xs py-0 border-yellow-400 text-yellow-600">Near limit</Badge>
+            <Badge variant="outline" className="text-xs py-0 border-acr-warn text-acr-warn">Near limit</Badge>
           )}
         </div>
       </div>
       <Progress
         value={pct}
-        className={`h-1.5 ${isOverLimit ? "[&>div]:bg-red-500" : isNearLimit ? "[&>div]:bg-yellow-500" : ""}`}
+        className={`h-1.5 ${isOverLimit ? "[&>div]:bg-acr-neg" : isNearLimit ? "[&>div]:bg-acr-warn" : ""}`}
         aria-label={`${item.label}: ${item.used.toLocaleString()} of ${item.limit.toLocaleString()} used (${pct}%)`}
       />
     </div>
@@ -119,16 +119,16 @@ export default function UsageQuotaPage() {
             <Card>
               <CardContent className="p-4">
                 <dt className="flex items-center gap-2 mb-2">
-                  <Zap className="w-4 h-4 text-yellow-500" aria-hidden="true" />
+                  <Zap className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   <span className="text-xs text-muted-foreground">AI spend</span>
-                  {nearAiLimit && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" aria-label="near limit" />}
+                  {nearAiLimit && <AlertTriangle className="w-3.5 h-3.5 text-acr-warn" aria-label="near limit" />}
                 </dt>
                 <dd className="text-lg font-bold tabular-nums">
                   {usd(data.totalAiCostCents / 100)} / {usd(data.aiCostLimitCents / 100)}
                 </dd>
                 <Progress
                   value={aiCostPct}
-                  className={`h-1.5 mt-2 ${nearAiLimit ? "[&>div]:bg-yellow-500" : ""}`}
+                  className={`h-1.5 mt-2 ${nearAiLimit ? "[&>div]:bg-acr-warn" : ""}`}
                   aria-label={`AI spend: ${aiCostPct}% of monthly limit`}
                 />
               </CardContent>

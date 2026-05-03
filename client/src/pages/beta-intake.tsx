@@ -117,8 +117,8 @@ export default function BetaIntakePage() {
         <div className="max-w-lg mx-auto space-y-6">
           <div className="text-center space-y-2" role="status" aria-live="polite">
             <div className="flex justify-center">
-              <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-green-600" aria-hidden="true" />
+              <div className="w-16 h-16 rounded-full bg-acr-pos-soft dark:bg-acr-pos-soft/30 flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-acr-pos" aria-hidden="true" />
               </div>
             </div>
             <h1 className="text-2xl font-bold">You're on the list!</h1>
@@ -145,7 +145,7 @@ export default function BetaIntakePage() {
                     aria-label={copied ? "Copied referral code to clipboard" : "Copy referral code"}
                   >
                     {copied ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600" aria-hidden="true" />
+                      <CheckCircle2 className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                     ) : (
                       <Copy className="w-4 h-4" aria-hidden="true" />
                     )}
@@ -185,7 +185,7 @@ export default function BetaIntakePage() {
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2" aria-label="Features included in the beta">
               {FEATURE_HIGHLIGHTS.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <CheckCircle2 className="w-4 h-4 text-acr-pos shrink-0 mt-0.5" aria-hidden="true" />
                   <span>{f}</span>
                 </li>
               ))}

@@ -186,7 +186,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
   if (!data?.success && data?.error) {
     return (
       <div className="text-center py-8" role="alert">
-        <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-4" aria-hidden="true" />
+        <AlertCircle className="w-12 h-12 mx-auto text-acr-warn mb-4" aria-hidden="true" />
         <h3 className="font-medium mb-2">Comps data unavailable</h3>
         <p className="text-sm text-muted-foreground mb-4">{data.error}</p>
         {data.limitedData && (
@@ -232,7 +232,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           </div>
         </div>
         {data?.message && (
-          <Badge variant="outline" className="text-yellow-600">
+          <Badge variant="outline" className="text-acr-warn">
             <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
             {data.message}
           </Badge>
@@ -319,10 +319,10 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <span className="text-xs text-muted-foreground">High $/acre</span>
                 </div>
-                <p className="text-lg font-bold mt-1 tabular-nums text-green-600 m-0" data-testid="text-high-price" aria-label={`High price per acre: ${formatCurrency(analysis.highPricePerAcre)}`}>
+                <p className="text-lg font-bold mt-1 tabular-nums text-acr-pos m-0" data-testid="text-high-price" aria-label={`High price per acre: ${formatCurrency(analysis.highPricePerAcre)}`}>
                   {formatCurrency(analysis.highPricePerAcre)}
                 </p>
                 <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
@@ -333,10 +333,10 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2">
-                  <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
+                  <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />
                   <span className="text-xs text-muted-foreground">Low $/acre</span>
                 </div>
-                <p className="text-lg font-bold mt-1 tabular-nums text-red-600 m-0" data-testid="text-low-price" aria-label={`Low price per acre: ${formatCurrency(analysis.lowPricePerAcre)}`}>
+                <p className="text-lg font-bold mt-1 tabular-nums text-acr-neg m-0" data-testid="text-low-price" aria-label={`Low price per acre: ${formatCurrency(analysis.lowPricePerAcre)}`}>
                   {formatCurrency(analysis.lowPricePerAcre)}
                 </p>
                 <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
@@ -383,37 +383,37 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           </CardHeader>
           <CardContent>
             <ul aria-label="Offer price tiers" className="grid grid-cols-1 md:grid-cols-3 gap-4 list-none p-0 m-0">
-              <li className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+              <li className="p-3 rounded-md bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft dark:border-acr-pos-soft">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
+                  <Badge variant="outline" className="bg-acr-pos-soft dark:bg-acr-pos-soft/40 text-acr-pos dark:text-acr-pos border-acr-pos dark:border-acr-pos">
                     Conservative
                   </Badge>
                 </div>
-                <p className="text-lg font-bold tabular-nums text-green-700 dark:text-green-300 m-0" data-testid="text-offer-conservative" aria-label={`Conservative offer: ${formatCurrency(data.offerPrices.conservative.min)} to ${formatCurrency(data.offerPrices.conservative.max)}`}>
+                <p className="text-lg font-bold tabular-nums text-acr-pos dark:text-acr-pos m-0" data-testid="text-offer-conservative" aria-label={`Conservative offer: ${formatCurrency(data.offerPrices.conservative.min)} to ${formatCurrency(data.offerPrices.conservative.max)}`}>
                   {formatCurrency(data.offerPrices.conservative.min)} - {formatCurrency(data.offerPrices.conservative.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">40-50% of market value</p>
                 <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
               </li>
-              <li className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <li className="p-3 rounded-md bg-acr-accent dark:bg-acr-accent/20 border border-acr-accent dark:border-acr-accent">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                  <Badge variant="outline" className="bg-acr-accent dark:bg-acr-accent/40 text-acr-accent dark:text-acr-accent border-acr-accent dark:border-acr-accent">
                     Standard
                   </Badge>
                 </div>
-                <p className="text-lg font-bold tabular-nums text-blue-700 dark:text-blue-300 m-0" data-testid="text-offer-standard" aria-label={`Standard offer: ${formatCurrency(data.offerPrices.standard.min)} to ${formatCurrency(data.offerPrices.standard.max)}`}>
+                <p className="text-lg font-bold tabular-nums text-acr-accent dark:text-acr-accent m-0" data-testid="text-offer-standard" aria-label={`Standard offer: ${formatCurrency(data.offerPrices.standard.min)} to ${formatCurrency(data.offerPrices.standard.max)}`}>
                   {formatCurrency(data.offerPrices.standard.min)} - {formatCurrency(data.offerPrices.standard.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">50-65% of market value</p>
                 <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
               </li>
-              <li className="p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+              <li className="p-3 rounded-md bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700">
+                  <Badge variant="outline" className="bg-acr-warn-soft dark:bg-acr-warn-soft/40 text-acr-warn dark:text-acr-warn border-acr-warn dark:border-acr-warn">
                     Aggressive
                   </Badge>
                 </div>
-                <p className="text-lg font-bold tabular-nums text-orange-700 dark:text-orange-300 m-0" data-testid="text-offer-aggressive" aria-label={`Aggressive offer: ${formatCurrency(data.offerPrices.aggressive.min)} to ${formatCurrency(data.offerPrices.aggressive.max)}`}>
+                <p className="text-lg font-bold tabular-nums text-acr-warn dark:text-acr-warn m-0" data-testid="text-offer-aggressive" aria-label={`Aggressive offer: ${formatCurrency(data.offerPrices.aggressive.min)} to ${formatCurrency(data.offerPrices.aggressive.max)}`}>
                   {formatCurrency(data.offerPrices.aggressive.min)} - {formatCurrency(data.offerPrices.aggressive.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">65-80% of market value</p>
@@ -439,10 +439,10 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                     data-testid="badge-desirability-score"
                     className={`inline-flex items-center rounded-md text-base px-3 py-1 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                       data.desirabilityScore.totalScore >= 70
-                        ? "bg-green-500 hover:bg-green-600 text-white"
+                        ? "bg-acr-pos hover:bg-acr-pos text-white"
                         : data.desirabilityScore.totalScore >= 40
-                        ? "bg-yellow-500 hover:bg-yellow-600 text-white"
-                        : "bg-red-500 hover:bg-red-600 text-white"
+                        ? "bg-acr-warn hover:bg-acr-warn text-white"
+                        : "bg-acr-neg hover:bg-acr-neg text-white"
                     }`}
                     onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
                     aria-expanded={showScoreBreakdown}
@@ -529,7 +529,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                           const staleness = saleDateStaleness(comp.saleDate);
                           const tone =
                             staleness === "stale"
-                              ? "text-amber-600 dark:text-amber-400"
+                              ? "text-acr-warn dark:text-acr-warn"
                               : staleness === "aging"
                               ? "text-muted-foreground"
                               : "";

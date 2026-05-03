@@ -119,20 +119,20 @@ export function GisHealthDashboard() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "online": return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case "offline": return <XCircle className="h-4 w-4 text-red-500" />;
-      case "error": return <AlertCircle className="h-4 w-4 text-orange-500" />;
-      case "timeout": return <Clock className="h-4 w-4 text-yellow-500" />;
+      case "online": return <CheckCircle2 className="h-4 w-4 text-acr-pos" />;
+      case "offline": return <XCircle className="h-4 w-4 text-acr-neg" />;
+      case "error": return <AlertCircle className="h-4 w-4 text-acr-warn" />;
+      case "timeout": return <Clock className="h-4 w-4 text-acr-warn" />;
       default: return null;
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "online": return <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20">Online</Badge>;
+      case "online": return <Badge variant="default" className="bg-acr-pos/10 text-acr-pos border-acr-pos/20">Online</Badge>;
       case "offline": return <Badge variant="destructive">Offline</Badge>;
-      case "error": return <Badge variant="default" className="bg-orange-500/10 text-orange-600 border-orange-500/20">Error</Badge>;
-      case "timeout": return <Badge variant="default" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Timeout</Badge>;
+      case "error": return <Badge variant="default" className="bg-acr-warn/10 text-acr-warn border-acr-warn/20">Error</Badge>;
+      case "timeout": return <Badge variant="default" className="bg-acr-warn/10 text-acr-warn border-acr-warn/20">Timeout</Badge>;
       default: return null;
     }
   };
@@ -207,11 +207,11 @@ export function GisHealthDashboard() {
       </div>
 
       {activeJob && (
-        <Card className="border-blue-500/30 bg-blue-500/5">
+        <Card className="border-acr-accent/30 bg-acr-accent/5">
           <CardContent className="pt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+                <RefreshCw className="h-4 w-4 animate-spin text-acr-accent" />
                 <span className="font-medium">Validation in progress...</span>
               </div>
               <span className="text-sm text-muted-foreground">
@@ -312,35 +312,35 @@ export function GisHealthDashboard() {
           <CardContent>
             <div className="grid gap-4 md:grid-cols-5 mb-6">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <CheckCircle2 className="h-5 w-5 text-acr-pos" />
                 <div>
                   <div className="text-lg font-semibold">{lastValidation.summary.online}</div>
                   <div className="text-xs text-muted-foreground">Online</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-red-500" />
+                <XCircle className="h-5 w-5 text-acr-neg" />
                 <div>
                   <div className="text-lg font-semibold">{lastValidation.summary.offline}</div>
                   <div className="text-xs text-muted-foreground">Offline</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-orange-500" />
+                <AlertCircle className="h-5 w-5 text-acr-warn" />
                 <div>
                   <div className="text-lg font-semibold">{lastValidation.summary.errors}</div>
                   <div className="text-xs text-muted-foreground">Errors</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-yellow-500" />
+                <Clock className="h-5 w-5 text-acr-warn" />
                 <div>
                   <div className="text-lg font-semibold">{lastValidation.summary.timeouts}</div>
                   <div className="text-xs text-muted-foreground">Timeouts</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-500" />
+                <Activity className="h-5 w-5 text-acr-accent" />
                 <div>
                   <div className="text-lg font-semibold">{lastValidation.summary.avgResponseTime}ms</div>
                   <div className="text-xs text-muted-foreground">Avg Response</div>

@@ -53,9 +53,9 @@ const CATEGORY_LABEL: Record<ToolProposalRow["category"], string> = {
 };
 
 const COMPLEXITY_COLOR: Record<string, string> = {
-  low: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  high: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  low: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
+  medium: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  high: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
 };
 
 export default function FounderToolsPage() {
@@ -120,7 +120,7 @@ export default function FounderToolsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load tool proposals. The proposal queue is unchanged —{" "}
               <button
                 type="button"
@@ -147,10 +147,10 @@ export default function FounderToolsPage() {
                 <Card key={status}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      {status === "proposed" && <Clock className="h-4 w-4 text-amber-600" aria-hidden="true" />}
-                      {status === "approved" && <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
-                      {status === "building" && <Clock className="h-4 w-4 text-blue-600" aria-hidden="true" />}
-                      {status === "shipped" && <Rocket className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
+                      {status === "proposed" && <Clock className="h-4 w-4 text-acr-warn" aria-hidden="true" />}
+                      {status === "approved" && <Check className="h-4 w-4 text-acr-pos" aria-hidden="true" />}
+                      {status === "building" && <Clock className="h-4 w-4 text-acr-accent" aria-hidden="true" />}
+                      {status === "shipped" && <Rocket className="h-4 w-4 text-acr-pos" aria-hidden="true" />}
                       {status === "rejected" && <X className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                       {statusLabel} (<span className="tabular-nums">{rows.length}</span>)
                     </CardTitle>

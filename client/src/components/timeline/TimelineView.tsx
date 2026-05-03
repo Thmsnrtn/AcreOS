@@ -101,11 +101,11 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500 text-white";
+        return "bg-acr-pos text-white";
       case "in_progress":
         return "bg-primary text-primary-foreground";
       case "overdue":
-        return "bg-red-500 text-white";
+        return "bg-acr-neg text-white";
       case "pending":
       default:
         return "bg-muted text-muted-foreground";
@@ -286,7 +286,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
           <span id="timeline-legend-label" className="text-xs text-muted-foreground">Legend:</span>
           <ul aria-labelledby="timeline-legend-label" className="flex items-center gap-2 flex-wrap list-none p-0 m-0">
             <li>
-              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+              <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-acr-pos/20">
                 <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
                 Completed
               </Badge>
@@ -304,7 +304,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
               </Badge>
             </li>
             <li>
-              <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+              <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-acr-neg/20">
                 <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                 Overdue
               </Badge>

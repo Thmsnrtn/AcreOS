@@ -230,12 +230,12 @@ export default function PropertyEnrichmentPage() {
                   <ul className="space-y-1.5" aria-label="Utilities and water features">
                     {ef.utilities?.map(u => (
                       <li key={u} className="flex items-center gap-1.5 text-xs">
-                        <CheckCircle2 className="w-3 h-3 text-green-600 flex-shrink-0" aria-hidden="true" /> {u}
+                        <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" aria-hidden="true" /> {u}
                       </li>
                     ))}
                     {ef.waterFeatures?.map(w => (
                       <li key={w} className="flex items-center gap-1.5 text-xs">
-                        <Droplets className="w-3 h-3 text-blue-500 flex-shrink-0" aria-hidden="true" /> {w}
+                        <Droplets className="w-3 h-3 text-acr-accent flex-shrink-0" aria-hidden="true" /> {w}
                       </li>
                     ))}
                   </ul>

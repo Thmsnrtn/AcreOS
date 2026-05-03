@@ -244,12 +244,12 @@ export default function TaxIdentitySettingsPage() {
             <CardTitle className="text-base flex items-center gap-2">
               {captured ? (
                 <>
-                  <ShieldCheck className="w-4 h-4 text-green-600" aria-hidden="true" />
+                  <ShieldCheck className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   Captured
                 </>
               ) : (
                 <>
-                  <ShieldAlert className="w-4 h-4 text-amber-600" aria-hidden="true" />
+                  <ShieldAlert className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   Not yet captured
                 </>
               )}

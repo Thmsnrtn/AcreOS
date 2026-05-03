@@ -264,8 +264,8 @@ export function UsageDashboard() {
                       <TableCell className="text-right">
                         <span className={`flex items-center justify-end gap-1 ${
                           tx.amountCents >= 0 
-                            ? "text-green-600 dark:text-green-400" 
-                            : "text-red-600 dark:text-red-400"
+                            ? "text-acr-pos dark:text-acr-pos" 
+                            : "text-acr-neg dark:text-acr-neg"
                         }`}>
                           {tx.amountCents >= 0 ? (
                             <ArrowUpRight className="w-3 h-3" />

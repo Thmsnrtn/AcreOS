@@ -42,10 +42,10 @@ interface Candidate {
 }
 
 const STATUS_COLOR: Record<Candidate["status"], string> = {
-  proposed: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  approved: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  offered: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  converted: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  proposed: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  approved: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  offered: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  converted: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
   declined: "bg-muted text-muted-foreground",
   rejected: "bg-muted text-muted-foreground",
 };
@@ -128,7 +128,7 @@ export default function FounderExpansionPage() {
                 <Skeleton className="h-24 w-full" />
               </div>
             ) : isError ? (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-acr-neg" role="alert">
                 Couldn't load candidates. The expansion queue is unchanged —{" "}
                 <button
                   type="button"

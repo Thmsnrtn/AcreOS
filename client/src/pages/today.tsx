@@ -960,7 +960,7 @@ export default function TodayPage() {
                 ? "border-acr-neg/30 bg-acr-neg-soft dark:border-acr-neg/30 dark:bg-acr-neg-soft"
                 : isWarning
                 ? "border-acr-warn/30 bg-acr-warn-soft dark:border-acr-warn/30 dark:bg-acr-warn-soft"
-                : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20";
+                : "border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/20";
               const iconClass = isCritical ? "text-acr-neg" : isWarning ? "text-acr-warn" : "text-primary";
               const href = alertHrefByType[alert.type] ?? "/";
               const linkLabel = alertLinkLabelByType[alert.type] ?? "View";
@@ -1144,7 +1144,7 @@ export default function TodayPage() {
                 ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos"
                 : confidencePct >= 70
                 ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+                : "bg-muted text-muted-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
               return (
                 <Card key={s.id} className="hover:shadow-sm transition-shadow border-acr-pos/20 dark:border-acr-pos/30">
                   <CardContent className="flex items-start gap-4 py-3 px-4">

@@ -132,13 +132,13 @@ function StackedFeatureBar({ items }: { items: FeatureUsage[] }) {
     return <p className="text-sm text-muted-foreground">No AI spend in the last 7 days.</p>;
   }
   const palette = [
-    "bg-blue-500",
-    "bg-emerald-500",
-    "bg-amber-500",
-    "bg-violet-500",
-    "bg-rose-500",
-    "bg-cyan-500",
-    "bg-orange-500",
+    "bg-acr-accent",
+    "bg-acr-pos",
+    "bg-acr-warn",
+    "bg-acr-brand",
+    "bg-acr-neg",
+    "bg-acr-accent",
+    "bg-acr-warn",
     "bg-lime-500",
   ];
   return (

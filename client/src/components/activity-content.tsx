@@ -29,12 +29,12 @@ const entityTypeIcons: Record<string, any> = {
 };
 
 const entityTypeColors: Record<string, string> = {
-  lead: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  property: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  deal: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  payment: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  note: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  task: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  lead: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  property: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  deal: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
+  payment: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  note: "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
+  task: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg",
 };
 
 const entityTypeRoutes: Record<string, string> = {

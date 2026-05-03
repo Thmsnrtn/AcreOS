@@ -27,19 +27,19 @@ interface MarketDataResponse {
 function TrendIcon({ trend }: { trend: string }) {
   switch (trend) {
     case "rising":
-      return <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />;
+      return <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
     case "falling":
-      return <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />;
+      return <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
     default:
-      return <Minus className="w-4 h-4 text-amber-500" aria-hidden="true" />;
+      return <Minus className="w-4 h-4 text-acr-warn" aria-hidden="true" />;
   }
 }
 
 function trendColor(trend: string): string {
   switch (trend) {
-    case "rising": return "text-emerald-600";
-    case "falling": return "text-red-600";
-    default: return "text-amber-600";
+    case "rising": return "text-acr-pos";
+    case "falling": return "text-acr-neg";
+    default: return "text-acr-warn";
   }
 }
 
