@@ -525,6 +525,19 @@ export function registerOrganizationRoutes(app: Express): void {
           onboardingData: nextData as typeof org.onboardingData,
         });
 
+        // Phase 3 W10 — mirror the tax address onto the Stripe customer so
+        // Stripe Tax computes correct rates on the next invoice. Best-effort:
+        // any failure logs but does not roll back the DB write.
+        try {
+          const { syncTaxAddressToStripe } = await import("./services/stripeTax");
+          await syncTaxAddressToStripe(updated);
+        } catch (e) {
+          logger.warn("[tax-identity] stripe customer tax sync failed (non-fatal)", {
+            orgId: org.id,
+            error: (e as Error).message,
+          });
+        }
+
         // Audit log — redacted last-4 only, never the plaintext.
         try {
           const user = authReq.user as any;
@@ -823,6 +836,10 @@ export function registerOrganizationRoutes(app: Express): void {
           quantity: String(quantity),
           tier: tier,
         },
+        // Phase 3 W10 — Stripe Tax on seat add-ons.
+        automatic_tax: { enabled: true },
+        customer_update: { address: "auto", name: "auto" },
+        tax_id_collection: { enabled: true },
       });
       
       logger.info(`[seats] Org ${org.id} initiating seat purchase: ${quantity} seats, ${billingPeriod}, price ${validPrice.id}`);

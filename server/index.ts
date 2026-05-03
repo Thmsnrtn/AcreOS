@@ -1018,6 +1018,9 @@ app.use("/api", apiLimiter);
       // Founder Weekly Digest (Mondays 8 AM CT)
       startFounderWeeklyDigestJob();
 
+      // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
+      startCustomerConcentrationJob();
+
       // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
       startAutonomousDecisionExecutorJob();
 
@@ -2071,6 +2074,31 @@ function startAutonomousHealthMonitorJob() {
         log(`Health monitor run failed: ${err}`, 'health-monitor');
       });
     }).catch(err => log(`Health monitor import failed: ${err}`, 'health-monitor'));
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Customer Concentration Check — Phase 3 Week 10
+// Daily snapshot of MRR concentration. Fires once per day at ~13:00 UTC
+// (8 AM CT) so the founder sees fresh numbers in the morning briefing
+// surface. Cheap to run; no external API calls.
+// ============================================================================
+function startCustomerConcentrationJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60;
+
+  log('Registering customer concentration job (daily 13:00 UTC)', 'concentration');
+
+  trackInterval(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    if (utcHour === 13) {
+      import('./jobs/customerConcentration').then(({ runCustomerConcentrationCheck }) => {
+        withJobLock('customer_concentration', TTL_SECONDS, runCustomerConcentrationCheck).catch(err => {
+          log(`Customer concentration job failed: ${err}`, 'concentration');
+        });
+      }).catch(err => log(`Customer concentration import failed: ${err}`, 'concentration'));
+    }
   }, ONE_HOUR);
 }
 

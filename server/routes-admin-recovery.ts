@@ -35,6 +35,7 @@ import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 
 import { db } from "./db";
+import { STRIPE_API_VERSION } from "./stripeClient";
 import { auditEvents, organizations } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { isAuthenticated } from "./auth";
@@ -52,7 +53,7 @@ const clerkClient = createClerkClient({
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
-  return new Stripe(key, { apiVersion: "2024-09-30.acacia" as any });
+  return new Stripe(key, { apiVersion: STRIPE_API_VERSION });
 }
 
 // ─── Zod request bodies ──────────────────────────────────────────────────────

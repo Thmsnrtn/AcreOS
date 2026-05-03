@@ -1,6 +1,18 @@
 import Stripe from 'stripe';
 import { isCategorySimulated, recordSimulatedAction } from './utils/simulationMode';
 
+/**
+ * Pinned Stripe API version. Phase 3 Week 10: every `new Stripe(...)` site
+ * agrees on a single, explicit apiVersion. Stripe SDK 20.4.1 ships with
+ * `LatestApiVersion = '2026-02-25.clover'` — pinning to that string keeps
+ * us on the typed surface (apiVersion?: LatestApiVersion) without `as any`.
+ *
+ * Re-exported so other modules that construct Stripe clients (webhook
+ * handlers, connect service, support agent, etc.) reuse this constant
+ * rather than scattering string literals.
+ */
+export const STRIPE_API_VERSION: Stripe.LatestApiVersion = '2026-02-25.clover';
+
 function getSecretKey(): string {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
@@ -75,6 +87,7 @@ function wrapStripeForSimulation<T extends object>(stripe: T): T {
 
 export async function getUncachableStripeClient() {
   const real = new Stripe(getSecretKey(), {
+    apiVersion: STRIPE_API_VERSION,
     maxNetworkRetries: 3,
   });
   if (isCategorySimulated("stripe")) {

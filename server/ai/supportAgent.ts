@@ -3376,7 +3376,10 @@ export async function executeSupportTool(
         
         try {
           const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          const { STRIPE_API_VERSION } = await import("../stripeClient");
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: STRIPE_API_VERSION,
+          });
           
           const syncResults: any = { syncType: sync_type };
           
@@ -3439,7 +3442,10 @@ export async function executeSupportTool(
         
         try {
           const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          const { STRIPE_API_VERSION } = await import("../stripeClient");
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: STRIPE_API_VERSION,
+          });
           
           const subscriptions = await stripe.subscriptions.list({
             customer: org.stripeCustomerId,
@@ -3492,7 +3498,10 @@ export async function executeSupportTool(
         
         try {
           const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          const { STRIPE_API_VERSION } = await import("../stripeClient");
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: STRIPE_API_VERSION,
+          });
           
           const charges = await stripe.charges.list({
             customer: org.stripeCustomerId,
@@ -3542,7 +3551,10 @@ export async function executeSupportTool(
         
         try {
           const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          const { STRIPE_API_VERSION } = await import("../stripeClient");
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: STRIPE_API_VERSION,
+          });
           
           const issues: any[] = [];
           
@@ -3650,7 +3662,10 @@ export async function executeSupportTool(
         
         try {
           const Stripe = (await import("stripe")).default;
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          const { STRIPE_API_VERSION } = await import("../stripeClient");
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: STRIPE_API_VERSION,
+          });
           
           switch (fix_type) {
             case "retry_payment": {

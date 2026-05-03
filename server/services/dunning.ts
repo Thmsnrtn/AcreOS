@@ -334,6 +334,130 @@ class DunningService {
   }
 
   // -------------------------------------------------------------------
+  // SMS dispatch (Phase 3 Week 10 — Part B)
+  // -------------------------------------------------------------------
+  //
+  // Sends one SMS per dunning sequence on day-3 (the last grace-period day)
+  // when:
+  //   1. The org has a phone on file (settings.companyPhone or owner phone).
+  //   2. The org has not opted out of SMS dunning in /settings/notifications
+  //      (notification-prefs key: "billing.dunning_sms").
+  //   3. dunning_events.sms_sent_at is null (one-SMS-per-sequence throttle).
+  //
+  // Returns true on dispatch, false on opt-out/throttle/missing-phone so the
+  // caller knows whether to record the notification.
+  private async sendDunningSMS(
+    org: Organization,
+    dunningEventId: number,
+    amountCents: number,
+  ): Promise<boolean> {
+    try {
+      // Throttle: at most one SMS per dunning sequence.
+      const [event] = await db
+        .select({ smsSentAt: dunningEvents.smsSentAt })
+        .from(dunningEvents)
+        .where(eq(dunningEvents.id, dunningEventId))
+        .limit(1);
+      if (event?.smsSentAt) {
+        logger.info(`[Dunning] SMS already sent for event ${dunningEventId}, skipping`, {
+          metadata: { orgId: org.id, dunningEventId },
+        });
+        return false;
+      }
+
+      // Per-org opt-out: respect notification-prefs override on the owner's
+      // user record. If the owner has set billing.dunning_sms → sms = false,
+      // we never dispatch. Defaults from the schema (sms: true on this event)
+      // apply otherwise.
+      const optedOut = await this.isDunningSMSOptedOut(org);
+      if (optedOut) {
+        logger.info(`[Dunning] Org ${org.id} has opted out of SMS dunning`);
+        return false;
+      }
+
+      // Resolve phone — org settings first, then fall back to org.taxAddress.phone.
+      const phone = this.resolveOrgPhone(org);
+      if (!phone) {
+        logger.info(`[Dunning] No phone on file for org ${org.id}, skipping SMS`);
+        return false;
+      }
+
+      const amountDue = `$${(amountCents / 100).toFixed(2)}`;
+      const message =
+        `Hi ${org.name}, AcreOS — your card was declined for ${amountDue}. ` +
+        `Update at acreos.com/settings/billing to keep service running.`;
+
+      const { smsService } = await import("./smsService");
+      const result = await smsService.sendSMS({ to: phone, message });
+
+      if (!result.success) {
+        logger.warn(`[Dunning] SMS dispatch failed for org ${org.id}`, {
+          metadata: { error: result.error },
+        });
+        return false;
+      }
+
+      // Record the dispatch — sets the throttle.
+      await db
+        .update(dunningEvents)
+        .set({ smsSentAt: new Date() })
+        .where(eq(dunningEvents.id, dunningEventId));
+
+      logger.info(`[Dunning] Sent dunning SMS to ${phone} for org ${org.id}`, {
+        metadata: { messageId: result.messageId, dunningEventId },
+      });
+      return true;
+    } catch (error) {
+      logger.error(`[Dunning] sendDunningSMS error for org ${org.id}`, error);
+      return false;
+    }
+  }
+
+  /**
+   * True when the org's owner has set billing.dunning_sms → sms = false in
+   * /settings/notifications. The schema-level default for this event is
+   * sms: true, so the absence of an override means SMS is enabled.
+   */
+  private async isDunningSMSOptedOut(org: Organization): Promise<boolean> {
+    try {
+      const { notificationPrefsService } = await import("./notificationPreferences");
+      const allowed = await notificationPrefsService.shouldNotify(
+        org.ownerId,
+        org.id,
+        "billing.dunning_sms",
+        "sms",
+      );
+      return !allowed;
+    } catch (err) {
+      // If prefs lookup fails, default to sending (SMS is opt-out, not opt-in)
+      // — the customer's card just got declined, the message is high-value.
+      logger.warn(`[Dunning] Could not load notification prefs for org ${org.id}, defaulting to send`, {
+        metadata: { error: (err as Error).message },
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Resolves a phone number for the org. Order:
+   *   1. settings.companyPhone (admin-configured org-level phone)
+   *   2. taxAddress.phone (captured in the 1099 onboarding step)
+   * Returns null when neither is set or both are blank.
+   */
+  private resolveOrgPhone(org: Organization): string | null {
+    const settings = org.settings as Record<string, unknown> | null;
+    const companyPhone = settings?.companyPhone;
+    if (typeof companyPhone === "string" && companyPhone.trim().length > 0) {
+      return companyPhone.trim();
+    }
+    const taxAddress = org.taxAddress as { phone?: string } | null;
+    if (taxAddress?.phone && taxAddress.phone.trim().length > 0) {
+      return taxAddress.phone.trim();
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------
   // Stage calculations
   // -------------------------------------------------------------------
 
@@ -411,7 +535,13 @@ class DunningService {
             }
           }
 
-          // Send scheduled notification emails
+          // Send scheduled notifications (email + SMS legs).
+          //
+          // The schedule entry's `channel` selects the dispatcher:
+          //   - "email" → sendDunningEmail
+          //   - "sms"   → sendDunningSMS (Phase 3 W10), guarded by per-org
+          //               opt-out and a one-SMS-per-sequence throttle so a
+          //               flapping sequence can't spam the customer.
           const notification = this.getScheduledNotification(daysSinceFailure);
           if (notification) {
             const recentEvents = await storage.getDunningEvents(org.id, "pending");
@@ -422,20 +552,32 @@ class DunningService {
               const alreadySent = sentNotifications.some((n: any) => n.type === notification.type);
 
               if (!alreadySent) {
-                logger.info(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
+                let dispatched = false;
 
-                await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
+                if (notification.channel === "sms") {
+                  dispatched = await this.sendDunningSMS(
+                    org,
+                    latestEvent.id,
+                    latestEvent.amountDueCents || 0,
+                  );
+                } else {
+                  logger.info(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
+                  await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
+                  dispatched = true;
+                }
 
-                await storage.updateDunningEvent(latestEvent.id, {
-                  notificationsSent: [
-                    ...sentNotifications,
-                    {
-                      type: notification.type,
-                      sentAt: now.toISOString(),
-                      channel: notification.channel,
-                    }
-                  ],
-                });
+                if (dispatched) {
+                  await storage.updateDunningEvent(latestEvent.id, {
+                    notificationsSent: [
+                      ...sentNotifications,
+                      {
+                        type: notification.type,
+                        sentAt: now.toISOString(),
+                        channel: notification.channel,
+                      }
+                    ],
+                  });
+                }
               }
             }
           }

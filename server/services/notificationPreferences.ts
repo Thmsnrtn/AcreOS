@@ -165,6 +165,23 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
     ],
   },
   {
+    id: "billing",
+    label: "Billing",
+    description: "Subscription billing, dunning, and payment events",
+    events: [
+      {
+        // Phase 3 W10 — SMS leg of the AcreOS subscription dunning sequence.
+        // Defaults ON because a declined card is high-stakes and customers
+        // usually want a heads-up. Owners can flip sms → false to opt out.
+        // Throttled to one SMS per dunning sequence regardless of preference.
+        id: "billing.dunning_sms",
+        label: "Payment failed — SMS reminder",
+        description: "When a card is declined, send a single SMS on day 3 of dunning",
+        defaultChannels: { email: false, sms: true, push: false, inApp: false },
+      },
+    ],
+  },
+  {
     id: "system",
     label: "System",
     description: "Platform digest and AI insights",

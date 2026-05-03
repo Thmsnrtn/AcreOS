@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { STRIPE_API_VERSION } from "../stripeClient";
 
 function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
@@ -12,6 +13,7 @@ function getStripeClient(): Stripe | null {
     return null;
   }
   return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: STRIPE_API_VERSION,
     maxNetworkRetries: 3,
   });
 }

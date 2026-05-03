@@ -3651,11 +3651,15 @@ export const dunningEvents = pgTable("dunning_events", {
   // Resolution
   resolvedAt: timestamp("resolved_at"),
   resolutionType: text("resolution_type"), // auto_recovered, manual_payment, subscription_cancelled, escalated
-  
+
+  // Phase 3 W10 — SMS leg throttle. Set the first time a dunning SMS is
+  // dispatched in a sequence; checked before sending again so we never spam.
+  smsSentAt: timestamp("sms_sent_at"),
+
   // Metadata
   metadata: jsonb("metadata").$type<Record<string, any>>(),
   errorMessage: text("error_message"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3674,6 +3678,10 @@ export const DUNNING_CONFIG = {
   notificationSchedule: [
     { dayOffset: 0, type: "payment_failed", channel: "email" },
     { dayOffset: 2, type: "reminder", channel: "email" },
+    // Phase 3 W10 — SMS leg fires on day 3 (after grace period). Throttled to
+    // exactly one SMS per dunning sequence via dunning_events.sms_sent_at,
+    // and respects the per-org notification-prefs override at billing.dunning_sms.
+    { dayOffset: 3, type: "dunning_sms", channel: "sms" },
     { dayOffset: 6, type: "warning", channel: "email" },
     { dayOffset: 13, type: "final_notice", channel: "email" },
   ],
@@ -5717,6 +5725,83 @@ export const insertSubscriptionHistorySchema = createInsertSchema(subscriptionHi
 });
 export type InsertSubscriptionHistory = z.infer<typeof insertSubscriptionHistorySchema>;
 export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
+
+// ============================================
+// CUSTOMER CONCENTRATION (Phase 3 Week 10)
+// ============================================
+// Daily snapshots of MRR concentration so the founder can spot single-
+// customer or top-3 risk over time. Computed by jobs/customerConcentration.ts.
+// alert_triggered/alert_severity carry the policy result so the surface
+// can render historical bands without re-applying thresholds.
+
+export const customerConcentration = pgTable("customer_concentration", {
+  id: serial("id").primaryKey(),
+  computedAt: timestamp("computed_at").defaultNow().notNull(),
+  topMrrPctSingle: numeric("top_mrr_pct_single", { precision: 5, scale: 2 }).notNull().default("0"),
+  topMrrPctTop3: numeric("top_mrr_pct_top3", { precision: 5, scale: 2 }).notNull().default("0"),
+  totalMrrCents: bigint("total_mrr_cents", { mode: "number" }).notNull().default(0),
+  activeOrgCount: integer("active_org_count").notNull().default(0),
+  snapshot: jsonb("snapshot").$type<{
+    topOrgs: Array<{
+      organizationId: number;
+      name: string;
+      tier: string;
+      billingInterval: string;
+      mrrCents: number;
+      pctOfTotal: number;
+    }>;
+  }>().notNull().default({ topOrgs: [] }),
+  alertTriggered: boolean("alert_triggered").notNull().default(false),
+  alertSeverity: text("alert_severity"), // null | 'warning' | 'critical'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCustomerConcentrationSchema = createInsertSchema(customerConcentration).omit({
+  id: true,
+  computedAt: true,
+  createdAt: true,
+});
+export type InsertCustomerConcentration = z.infer<typeof insertCustomerConcentrationSchema>;
+export type CustomerConcentrationRow = typeof customerConcentration.$inferSelect;
+
+// Concentration alert thresholds — kept here so the job and dashboard share
+// the same numbers. Adjust both via this constant only.
+export const CONCENTRATION_THRESHOLDS = {
+  singleCustomerCriticalPct: 20, // > 20% in one customer is critical
+  top3CustomersWarningPct: 40,   // > 40% in top three is a warning
+} as const;
+
+// ============================================
+// DEFERRED REVENUE (Phase 3 Week 10)
+// ============================================
+// Period-by-period accrual rows. The recognition worker (Week 10+, out of
+// scope here) will increment recognized_cents over time. One row per
+// (organization, invoice/subscription period). Currency tracked for future
+// multi-currency support; defaults to USD.
+
+export const deferredRevenue = pgTable("deferred_revenue", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  subscriptionId: text("subscription_id"), // sub_xxx; null for one-time invoices
+  invoiceId: text("invoice_id"),           // in_xxx; useful for recon
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  recognizedCents: bigint("recognized_cents", { mode: "number" }).notNull().default(0),
+  asOfDate: timestamp("as_of_date").defaultNow().notNull(),
+  currency: text("currency").notNull().default("usd"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDeferredRevenueSchema = createInsertSchema(deferredRevenue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDeferredRevenue = z.infer<typeof insertDeferredRevenueSchema>;
+export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 
 // ============================================
 // CANCELLATION SURVEYS & REFUND REQUESTS
