@@ -72,10 +72,9 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
   const resolvedLabel = useDocumentTitleFallback(label);
+  // min-h-[100dvh] (not min-h-screen / 100vh) so iOS Safari's dynamic
+  // address bar doesn't cause content to overflow the visible viewport.
   return (
-    {/* min-h-[100dvh] (not min-h-screen / 100vh) so iOS Safari's dynamic
-        address bar doesn't cause content to overflow the visible viewport.
-        100dvh = "the *visible* viewport height," not the layout viewport. */}
     <div className="flex min-h-[100dvh] desert-gradient isolate">
       <a
         href="#main-content"
