@@ -77,7 +77,7 @@ export default function DirectMailCampaignsPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/direct-mail/campaigns/${id}/send`),
+    mutationFn: (id: number) => apiRequest("POST", `/api/direct-mail/campaigns/${id}/send`, undefined, { idempotent: true }),
     onSuccess: () => {
       toast({ title: "Campaign queued for sending." });
       qc.invalidateQueries({ queryKey: ["/api/direct-mail"] });

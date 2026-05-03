@@ -117,9 +117,21 @@ export default function SignDocumentPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      // Idempotency-Key on /api/public/sign — a network blip on the
+      // signature submit must not result in two recorded signatures
+      // (each signature is an immutable audit row). The server's
+      // idempotency middleware replays the prior response if the
+      // same key is seen twice within the TTL window.
+      const idempotencyKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `sign-${docId}-${signerId}-${Date.now()}`;
       const res = await fetch(`/api/public/sign/${docId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           s: signerId,
           t: token,

@@ -27,7 +27,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
 
   const purchaseMutation = useMutation({
     mutationFn: async (packId: string) => {
-      const res = await apiRequest("POST", "/api/credits/purchase", { packId });
+      const res = await apiRequest("POST", "/api/credits/purchase", { packId }, { idempotent: true });
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Failed to create checkout session");

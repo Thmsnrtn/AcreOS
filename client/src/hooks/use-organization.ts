@@ -124,7 +124,7 @@ export function useStripeSubscription() {
 export function useCreateCheckoutSession() {
   return useMutation({
     mutationFn: async (priceId: string) => {
-      const res = await apiRequest("POST", "/api/stripe/checkout", { priceId });
+      const res = await apiRequest("POST", "/api/stripe/checkout", { priceId }, { idempotent: true });
       return res.json() as Promise<{ url: string }>;
     },
   });
