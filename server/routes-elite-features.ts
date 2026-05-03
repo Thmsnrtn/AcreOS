@@ -554,6 +554,15 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const forms = await bookkeeping.generate1099IntForms(org.id, taxYear);
       res.json({ taxYear, forms });
     } catch (err: any) {
+      if (err instanceof bookkeeping.TaxIdentityError) {
+        return res.status(422).json({
+          error: "tax_identity_missing",
+          code: err.code,
+          message: err.message,
+          orgId: err.orgId,
+          noteId: err.noteId,
+        });
+      }
       res.status(500).json({ message: err.message });
     }
   });

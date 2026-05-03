@@ -13,6 +13,7 @@ import {
   generate1099IntForms,
   calculateDealPnL,
   getPortfolioAnnualSummary,
+  TaxIdentityError,
 } from "./services/bookkeeping";
 
 const router = Router();
@@ -40,6 +41,16 @@ router.get("/1099", async (req: Request, res: Response) => {
     const forms = await generate1099IntForms(org.id, taxYear);
     res.json({ taxYear, forms });
   } catch (err: any) {
+    if (err instanceof TaxIdentityError) {
+      // 422: caller can act on this — capture the missing TIN(s) and retry.
+      return res.status(422).json({
+        error: "tax_identity_missing",
+        code: err.code,
+        message: err.message,
+        orgId: err.orgId,
+        noteId: err.noteId,
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 });

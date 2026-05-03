@@ -110,6 +110,24 @@ export const organizations = pgTable("organizations", {
   // Milestone tracking for self-promotion nudges
   milestonesReached: jsonb("milestones_reached").$type<string[]>().default([]),
   referralNudgeSentAt: timestamp("referral_nudge_sent_at"),
+  // ─── Tax / 1099 reporting identity ─────────────────────────────────────────
+  // Captured during onboarding and required to issue valid 1099-INTs.
+  // EIN is stored as ciphertext (AES-256-GCM) using the helpers in
+  // server/services/configManager.ts (encryptValue / decryptValue).
+  // All fields nullable because legacy orgs pre-date them; downstream tax
+  // code MUST throw if missing rather than fall back to a placeholder.
+  ein: text("ein"), // ciphertext of the payer EIN/SSN/ITIN
+  taxIdType: text("tax_id_type"), // 'EIN' | 'SSN' | 'ITIN'
+  taxAddress: jsonb("tax_address").$type<{
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    phone?: string;
+  }>(),
+  legalEntityName: text("legal_entity_name"), // exact IRS filing name
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -381,7 +399,14 @@ export const leads = pgTable("leads", {
   // Soft delete support for safe bulk operations with recovery
   deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
   deletedBy: text("deleted_by"), // user ID who performed the deletion
-  
+
+  // ─── Tax / 1099 recipient identity ─────────────────────────────────────────
+  // When a lead is also a borrower on a note, their TIN is required to issue
+  // a 1099-INT (interest > $600). Stored encrypted (AES-256-GCM) via
+  // server/services/configManager.ts encryptValue / decryptValue.
+  taxId: text("tax_id"), // ciphertext of the recipient TIN (SSN/EIN/ITIN)
+  taxIdType: text("tax_id_type"), // 'SSN' | 'EIN' | 'ITIN'
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
