@@ -49,6 +49,12 @@ export const organizations = pgTable("organizations", {
     completedSteps?: number[];
     skippedSteps?: number[];
     aiTips?: string[];
+    // Tax-identity onboarding step (1099 issuer fields). Stored here rather
+    // than as a top-level column because the columns shipped via 0035; the
+    // skip flag is purely UX state. The 1099 generator still 422s when the
+    // identity columns are unset — skipping only completes onboarding.
+    skippedTaxIdentity?: { skipped: boolean; skippedAt: string };
+    taxIdentityCapturedAt?: string;
   }>(),
   settings: jsonb("settings").$type<{
     timezone?: string;

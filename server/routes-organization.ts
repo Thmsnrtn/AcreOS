@@ -33,6 +33,13 @@ import {
   tokenMatchesRow,
 } from "./utils/inviteTokens";
 import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
+import { encrypt, decrypt, isEncrypted } from "./services/fieldEncryption";
+import {
+  taxIdentitySchema,
+  taxIdLast4,
+  maskTaxId,
+  type TaxIdType,
+} from "@shared/taxIdentity";
 
 // Zod schema for safe organization updates via PATCH /api/organization.
 // Sensitive fields (subscriptionTier, isFounder, stripeCustomerId, creditBalance, etc.)
@@ -427,6 +434,199 @@ export function registerOrganizationRoutes(app: Express): void {
     res.json(updated);
   });
   
+  // ─── Tax Identity (1099 issuer fields) ───────────────────────────────────
+  //
+  // Captures the org-side fields required to issue a valid Form 1099-INT:
+  //   - legalEntityName  (exact IRS filing name)
+  //   - taxIdType + ein  (EIN ciphertext via fieldEncryption)
+  //   - taxAddress       (jsonb)
+  //
+  // GET   returns a redacted view (last4 + masked) — never the plaintext EIN.
+  // PATCH validates with the shared Zod schema and encrypts before insert.
+  // POST  /skip stores onboardingData.skippedTaxIdentity = {skipped:true, ts}.
+  //
+  // Owner-gated. The 1099 generator still 422s when these are unset.
+
+  api.get(
+    "/api/organization/tax-identity",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireOwner(),
+    async (req, res) => {
+      try {
+        const authReq = req as AuthenticatedRequest;
+        const org = authReq.organization;
+        let last4: string | null = null;
+        if (org.ein) {
+          try {
+            const plain = decrypt(org.ein);
+            last4 = taxIdLast4(plain);
+          } catch (err) {
+            // Bad ciphertext or wrong key — surface as missing rather than 500.
+            logger.warn(
+              "[tax-identity] failed to decrypt stored EIN — treating as missing",
+              { orgId: org.id, error: (err as Error).message },
+            );
+            last4 = null;
+          }
+        }
+        res.json({
+          legalEntityName: org.legalEntityName ?? null,
+          taxIdType: (org.taxIdType as TaxIdType | null) ?? null,
+          taxIdLast4: last4,
+          taxIdMasked: last4 ? maskTaxId(`000-00-${last4}`) : null,
+          taxAddress: org.taxAddress ?? null,
+          captured: !!org.ein && !!org.legalEntityName,
+          skipped: !!org.onboardingData?.skippedTaxIdentity?.skipped,
+          skippedAt: org.onboardingData?.skippedTaxIdentity?.skippedAt ?? null,
+          capturedAt: org.onboardingData?.taxIdentityCapturedAt ?? null,
+        });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  api.patch(
+    "/api/organization/tax-identity",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireOwner(),
+    async (req, res) => {
+      const authReq = req as AuthenticatedRequest;
+      const org = authReq.organization;
+      const parsed = taxIdentitySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { legalEntityName, taxIdType, taxId, taxAddress } = parsed.data;
+
+      try {
+        // Encrypt the tax ID via the canonical fieldEncryption module.
+        // Idempotent guard: never double-encrypt if a caller passed an
+        // already-enveloped value.
+        const cipher = isEncrypted(taxId) ? taxId : encrypt(taxId);
+
+        // Merge the captured-at timestamp into onboardingData and clear any
+        // prior "skipped" flag — capturing always supersedes skipping.
+        const now = new Date().toISOString();
+        const existingData = org.onboardingData ?? {};
+        const nextData = {
+          ...existingData,
+          taxIdentityCapturedAt: now,
+          skippedTaxIdentity: undefined,
+        };
+
+        const updated = await storage.updateOrganization(org.id, {
+          ein: cipher,
+          taxIdType,
+          legalEntityName,
+          taxAddress,
+          onboardingData: nextData as typeof org.onboardingData,
+        });
+
+        // Audit log — redacted last-4 only, never the plaintext.
+        try {
+          const user = authReq.user as any;
+          await storage.createAuditLogEntry({
+            organizationId: org.id,
+            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            action: "update",
+            entityType: "organization_tax_identity",
+            entityId: org.id,
+            changes: {
+              fields: ["legalEntityName", "taxIdType", "ein", "taxAddress"],
+              taxIdType,
+              taxIdLast4: taxIdLast4(taxId),
+              legalEntityName,
+              taxAddress: {
+                city: taxAddress.city,
+                state: taxAddress.state,
+                zip: taxAddress.zip,
+              },
+            },
+            ipAddress: req.ip || null,
+            userAgent: req.headers["user-agent"] || null,
+            metadata: { source: "tax-identity-form" },
+          });
+        } catch (e) {
+          logger.warn("[tax-identity] audit-log entry failed (non-fatal)", {
+            orgId: org.id,
+            error: (e as Error).message,
+          });
+        }
+
+        logger.info("[tax-identity] captured", {
+          orgId: org.id,
+          taxIdType,
+          taxIdLast4: taxIdLast4(taxId),
+        });
+
+        res.json({
+          success: true,
+          legalEntityName: updated.legalEntityName,
+          taxIdType: updated.taxIdType,
+          taxIdLast4: taxIdLast4(taxId),
+          taxAddress: updated.taxAddress,
+          capturedAt: now,
+        });
+      } catch (err) {
+        logger.error(
+          "[tax-identity] failed to update org tax identity",
+          err instanceof Error ? err : undefined,
+        );
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  api.post(
+    "/api/organization/tax-identity/skip",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireOwner(),
+    async (req, res) => {
+      try {
+        const authReq = req as AuthenticatedRequest;
+        const org = authReq.organization;
+        const now = new Date().toISOString();
+        const existingData = org.onboardingData ?? {};
+        const nextData = {
+          ...existingData,
+          skippedTaxIdentity: { skipped: true, skippedAt: now },
+        };
+        await storage.updateOrganization(org.id, {
+          onboardingData: nextData as typeof org.onboardingData,
+        });
+
+        try {
+          const user = authReq.user as any;
+          await storage.createAuditLogEntry({
+            organizationId: org.id,
+            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            action: "skip",
+            entityType: "organization_tax_identity",
+            entityId: org.id,
+            changes: { skipped: true, skippedAt: now },
+            ipAddress: req.ip || null,
+            userAgent: req.headers["user-agent"] || null,
+            metadata: { source: "tax-identity-form" },
+          });
+        } catch (e) {
+          /* non-fatal */
+        }
+
+        logger.info("[tax-identity] skipped during onboarding", {
+          orgId: org.id,
+        });
+
+        res.json({ success: true, skipped: true, skippedAt: now });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
   // Update AI settings for the organization
   api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
