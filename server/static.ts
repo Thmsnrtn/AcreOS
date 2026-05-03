@@ -49,6 +49,17 @@ export function serveStatic(app: Express) {
   // fall through to index.html — inject runtime env + CSP nonce into the HTML shell
   // Skip API routes — they should have already sent a response
   const indexPath = path.resolve(distPath, "index.html");
+
+  // Wave: cost — Cloudflare-edge cacheable SPA routes. The asset URLs
+  // referenced by the HTML shell are content-hashed so a stale shell
+  // can't break a deploy; the only risk is users seeing copy that's up
+  // to TTL_SECONDS old, which is fine for marketing-style pages.
+  // These need `public` so Cloudflare will actually cache them.
+  const EDGE_CACHEABLE_SPA_PATHS: Array<{ rx: RegExp; ttl: number }> = [
+    { rx: /^\/security(\/|$)/, ttl: 600 },   // 10 min
+    { rx: /^\/changelog(\/|$)/, ttl: 600 },  // 10 min
+  ];
+
   app.use("{*splat}", (req: Request, res: Response) => {
     if (res.headersSent) return;
     // Don't serve index.html for API routes — if we got here, the API route didn't match
@@ -69,9 +80,21 @@ export function serveStatic(app: Express) {
         html = html.replace(/data-csp-nonce/g, `nonce="${nonce}" data-csp-nonce`);
       }
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
+
+      // Cloudflare-cacheable for marketing-style SPA routes; no-cache
+      // for everything else so deploys take effect immediately for
+      // authenticated app surfaces.
+      const edgeRule = EDGE_CACHEABLE_SPA_PATHS.find((r) => r.rx.test(req.path));
+      if (edgeRule) {
+        res.setHeader(
+          "Cache-Control",
+          `public, max-age=${edgeRule.ttl}, s-maxage=${edgeRule.ttl}, stale-while-revalidate=${edgeRule.ttl * 6}`,
+        );
+      } else {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
       res.send(html);
     } catch {
       res.sendFile(indexPath);
