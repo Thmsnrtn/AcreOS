@@ -39,6 +39,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { plural, usd } from "@/lib/format";
+import { GlossaryTerm } from "@/components/Glossary";
 import {
   Plus, MapPin, Calendar, FileText, Trash2, Loader2, Calculator, ClipboardCheck,
   Upload, AlertTriangle, CheckSquare, Square, Clock, Package, Play, Eye, FolderPlus,
@@ -554,7 +555,9 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               {deal.titleCompany && (
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Closing details</CardTitle>
+                    <CardTitle className="text-base">
+                      Closing details · <GlossaryTerm slug="title_commitment">title commitment</GlossaryTerm> · <GlossaryTerm slug="earnest_money">earnest money</GlossaryTerm>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm">

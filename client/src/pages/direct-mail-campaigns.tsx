@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { Mail, Plus, Send, Users, DollarSign, BarChart3, Loader2 } from "lucide-react";
+import { GlossaryTerm } from "@/components/Glossary";
 
 interface DirectMailCampaign {
   id: number;
@@ -103,7 +104,7 @@ export default function DirectMailCampaignsPage() {
             Direct mail campaigns
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Send postcards, letters, and yellow letters to targeted land-owner lists.
+            Send postcards, letters, and <GlossaryTerm slug="yellow_letter">yellow letters</GlossaryTerm> to targeted land-owner lists.
           </p>
         </div>
         <Button

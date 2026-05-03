@@ -49,6 +49,7 @@ import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { ClearedEmpty } from "@/components/empty-states";
+import { GlossaryTerm } from "@/components/Glossary";
 import "./today.css";
 
 interface GoalWithProgress {
@@ -874,7 +875,9 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-            <h2 className="acr-section-h2">Today's actions</h2>
+            <h2 className="acr-section-h2">
+              <GlossaryTerm slug="decision_queue">Today's actions</GlossaryTerm>
+            </h2>
             {todayActions.length > 0 && (
               <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                 {todayActions.length}

@@ -13,6 +13,7 @@ import {
 } from "@/hooks/use-due-diligence";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { GlossaryTerm } from "@/components/Glossary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -352,7 +353,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               AI dossier
             </CardTitle>
             <CardDescription>
-              Comprehensive due-diligence report — title, tax, environmental, zoning, access, market comps, and owner research, in one pass.
+              Comprehensive <GlossaryTerm slug="due_diligence">due-diligence</GlossaryTerm> report — title, tax, environmental, zoning, access, market <GlossaryTerm slug="comp">comps</GlossaryTerm>, and owner research, in one pass.
             </CardDescription>
           </CardHeader>
           <CardContent>
