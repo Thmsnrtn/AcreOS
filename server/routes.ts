@@ -149,6 +149,7 @@ import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
+import { registerLegalHoldRoutes } from "./routes-legal-holds";
 import { registerSubProcessorRoutes } from "./routes-sub-processors";
 import { registerActivationRoutes } from "./routes-activation";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
@@ -1695,6 +1696,9 @@ export async function registerRoutes(
   // Phase 3 Week 11: GDPR/CCPA DSAR pipeline (public intake + founder ops)
   // and the founder-only sub-processor DPA registry.
   registerDsarRoutes(app);
+  // Phase 3 Week 11: Legal-hold mechanism (Saskia/Lazlo/Margolis) — FRCP 37(e)
+  // delete-blocker + retention exclusion + founder admin UI backing endpoints.
+  registerLegalHoldRoutes(app);
   registerSubProcessorRoutes(app);
   // Phase 3 Week 14: Activation funnel + retention infra (Yuna §8, Konstantin §2)
   registerActivationRoutes(app);

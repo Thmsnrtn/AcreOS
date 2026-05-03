@@ -16,6 +16,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { db } from "./db";
 import { leads, properties, deals, tasks } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { filterOutHeldIds } from "./services/legalHold";
 
 const router = Router();
 const MAX_BATCH = 100;
@@ -73,13 +74,20 @@ router.post("/leads/delete", async (req: Request, res: Response) => {
     const { ids } = req.body;
     const parsedIds = validateIds(ids);
 
-    await db.delete(leads)
-      .where(and(
-        eq(leads.organizationId, org.id),
-        inArray(leads.id, parsedIds)
-      ));
+    // Phase 3 Week 11 — FRCP 37(e) legal-hold preservation. Drop held ids
+    // before bulk-DELETE; report skipped count back to the caller.
+    const allowed = await filterOutHeldIds(org.id, "lead", parsedIds);
+    const skipped = parsedIds.length - allowed.length;
 
-    res.json({ success: true, deleted: parsedIds.length });
+    if (allowed.length > 0) {
+      await db.delete(leads)
+        .where(and(
+          eq(leads.organizationId, org.id),
+          inArray(leads.id, allowed)
+        ));
+    }
+
+    res.json({ success: true, deleted: allowed.length, skippedDueToLegalHold: skipped });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

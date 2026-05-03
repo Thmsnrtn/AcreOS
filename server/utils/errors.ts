@@ -60,6 +60,13 @@ export const Errors = {
     sendError(res, 429, "LIMIT_EXCEEDED", "Usage limit exceeded", details);
   },
 
+  legalHoldActive(res: Response, message: string, details?: unknown): void {
+    // 423 Locked — surface the FRCP 37(e) delete-block as a distinct status
+    // so client UI can render a "this is under legal hold" panel rather than
+    // a generic error. See server/services/legalHold.ts.
+    sendError(res, 423, "LEGAL_HOLD_ACTIVE", message, details);
+  },
+
   internal(res: Response, error: unknown): void {
     const message =
       process.env.NODE_ENV === "production"
