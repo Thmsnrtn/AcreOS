@@ -1,0 +1,94 @@
+/**
+ * Email-suppression integration with EmailService.
+ *
+ * Hessam §2.3: sending to a suppressed address must be blocked before
+ * SES is called. We mock the suppression DB lookup and assert the send
+ * never reaches SES (the all-suppressed fast-path).
+ *
+ * The mixed-suppression / clean-send paths are exercised in integration
+ * (DB) testing — the EmailService internals (SES client construction +
+ * AWS credential lookup) are too tangled to mock cleanly in a unit test.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const suppressedSet = new Set<string>();
+
+vi.mock("../../server/services/emailSuppressions", () => ({
+  filterSuppressed: vi.fn(async (emails: string[]) => {
+    const allowed: string[] = [];
+    const suppressed: string[] = [];
+    for (const e of emails) {
+      const norm = e.trim().toLowerCase();
+      if (suppressedSet.has(norm)) suppressed.push(norm);
+      else allowed.push(norm);
+    }
+    return { allowed, suppressed };
+  }),
+  isSuppressed: vi.fn(async (e: string) => suppressedSet.has(e.trim().toLowerCase())),
+  suppress: vi.fn(async (e: string) => {
+    suppressedSet.add(e.trim().toLowerCase());
+  }),
+  suppressionFromEvent: vi.fn(),
+}));
+
+vi.mock("../../server/utils/simulationMode", () => ({
+  shouldSimulate: () => false,
+  recordSimulatedAction: vi.fn(),
+}));
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    getOrganization: vi.fn(async () => null),
+    getOrganizationIntegration: vi.fn(async () => null),
+    getVerifiedEmailDomains: vi.fn(async () => []),
+  },
+}));
+
+vi.mock("../../server/services/encryption", () => ({
+  decryptJsonCredentials: vi.fn(),
+}));
+
+vi.mock("../../server/utils/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
+beforeEach(() => {
+  suppressedSet.clear();
+});
+
+describe("EmailService.sendEmail suppression integration", () => {
+  it("blocks sending when the only recipient is suppressed (no SES call)", async () => {
+    suppressedSet.add("blocked@example.com");
+    const { emailService } = await import("../../server/services/emailService");
+    const { filterSuppressed } = await import("../../server/services/emailSuppressions");
+    const result = await emailService.sendEmail({
+      to: "blocked@example.com",
+      subject: "Hi",
+      html: "<p>Hello</p>",
+    });
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe("recipient_rejected");
+    expect(filterSuppressed).toHaveBeenCalled();
+    // The error message should name the suppressed address
+    expect(result.error).toContain("blocked@example.com");
+  });
+
+  it("invokes filterSuppressed for every send attempt", async () => {
+    const { emailService } = await import("../../server/services/emailService");
+    const { filterSuppressed } = await import("../../server/services/emailSuppressions");
+    const callsBefore = (filterSuppressed as any).mock.calls.length;
+    await emailService.sendEmail({
+      to: "ok@example.com",
+      subject: "Hi",
+      html: "<p>Hello</p>",
+    });
+    const callsAfter = (filterSuppressed as any).mock.calls.length;
+    expect(callsAfter).toBeGreaterThan(callsBefore);
+  });
+});

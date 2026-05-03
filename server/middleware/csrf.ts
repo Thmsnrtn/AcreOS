@@ -24,6 +24,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/twilio/webhook",
   "/sns/webhook",
   "/webhooks/inbound-email",
+  "/webhooks/sendgrid/events",
   "/webhooks/twilio/sms",
   "/webhooks/twilio/sms-status",
   "/webhooks/twilio/recording-status",

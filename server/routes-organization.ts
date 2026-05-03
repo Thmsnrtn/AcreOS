@@ -25,6 +25,14 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
+import {
+  generateInviteToken,
+  hashInviteToken,
+  inviteTokenLast4,
+  redactToken,
+  tokenMatchesRow,
+} from "./utils/inviteTokens";
+import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
 
 // Zod schema for safe organization updates via PATCH /api/organization.
 // Sensitive fields (subscriptionTier, isFounder, stripeCustomerId, creditBalance, etc.)
@@ -1130,13 +1138,10 @@ export function registerOrganizationRoutes(app: Express): void {
     invites: z.array(createInvitationSchema).min(1).max(200),
   });
 
-  // Helper: generate a short, URL-safe token
-  function generateInviteToken(): string {
-    const bytes = new Uint8Array(24);
-    // Node 18+ globalThis.crypto
-    globalThis.crypto.getRandomValues(bytes);
-    return Buffer.from(bytes).toString("base64url");
-  }
+  // Pelle G/H/I: invite-token generation now lives in utils/inviteTokens.ts
+  // so it's shared with the accept path and unit tests. The plaintext is
+  // produced once here, returned to the caller in the response (so the UI
+  // can build the email link), and only its SHA-256 hash is persisted.
 
   // GET /api/organization/invitations — list pending invites
   api.get("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
@@ -1173,26 +1178,58 @@ export function registerOrganizationRoutes(app: Express): void {
       } else {
         return Errors.validationFailed(res, (bulkParsed.error ?? singleParsed.error).errors);
       }
+      // Pelle G/H/I: per-org invite-creation rate limit (100/day).
+      // Cost = number of invites in this request so bulk callers can't
+      // sneak past with a single API call.
+      const rl = await checkInviteCreateLimit(org.id, invites.length);
+      if (!rl.allowed) {
+        res.setHeader("Retry-After", String(rl.retryAfterSeconds));
+        return Errors.limitExceeded(res, {
+          limit: rl.limit,
+          windowSeconds: 24 * 60 * 60,
+          retryAfterSeconds: rl.retryAfterSeconds,
+          message: "Too many invites created for this organization in the last 24 hours",
+        });
+      }
+
       const { organizationInvitations } = await import("@shared/schema");
       const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
-      const rows = await db
-        .insert(organizationInvitations)
-        .values(
-          invites.map((i) => ({
+
+      // Generate one plaintext token per invite, persist only the hash +
+      // last4. The plaintext lives in memory just long enough to build the
+      // response link below; it never touches the DB or the audit log.
+      const prepared = invites.map((i) => {
+        const plaintext = generateInviteToken();
+        return {
+          plaintext,
+          values: {
             organizationId: org.id,
             email: i.email.toLowerCase(),
             role: i.role,
-            token: generateInviteToken(),
+            // token: legacy plaintext column — left NULL on new rows so we
+            // never persist plaintext. Tolerant accept path handles either.
+            token: null,
+            inviteTokenHash: hashInviteToken(plaintext),
+            inviteTokenLast4: inviteTokenLast4(plaintext),
             invitedByUserId: inviterId,
             status: "pending",
             expiresAt,
-          }))
-        )
+          },
+        };
+      });
+
+      const rows = await db
+        .insert(organizationInvitations)
+        .values(prepared.map((p) => p.values))
         .returning();
 
       // Non-fatal: log activity so Dolores's audit-log export captures each invite.
+      // Tokens are REDACTED — we log only the last4. Anyone with audit-log
+      // read access can no longer hijack outstanding invites.
       try {
-        for (const row of rows) {
+        for (let idx = 0; idx < rows.length; idx++) {
+          const row = rows[idx];
+          const last4 = prepared[idx]?.values.inviteTokenLast4 ?? null;
           await storage.createAuditLogEntry({
             organizationId: org.id,
             userId: inviterId,
@@ -1202,23 +1239,25 @@ export function registerOrganizationRoutes(app: Express): void {
             changes: { after: { email: row.email, role: row.role }, fields: ["email", "role"] },
             ipAddress: req.ip || null,
             userAgent: req.headers["user-agent"] || null,
-            metadata: { token: row.token },
+            metadata: { tokenLast4: last4, tokenRedacted: redactToken(prepared[idx]?.plaintext) },
           });
         }
       } catch { /* non-fatal */ }
 
-      // TODO: send actual invitation emails (SendGrid). For now, the link is
-      // surfaced in the response so an operator UI can copy/share it.
+      // The plaintext token is returned to the caller exactly once so the
+      // UI / email-template layer can compose the invite link. After this
+      // response, the only persisted reference is the SHA-256 hash.
       const origin = (req.headers.origin as string) || `https://${req.headers.host}`;
       res.status(201).json({
         created: rows.length,
-        invitations: rows.map((r) => ({
+        invitations: rows.map((r, idx) => ({
           id: r.id,
           email: r.email,
           role: r.role,
-          token: r.token,
+          token: prepared[idx].plaintext,
+          tokenLast4: prepared[idx].values.inviteTokenLast4,
           expiresAt: r.expiresAt,
-          link: `${origin}/auth?invite=${r.token}`,
+          link: `${origin}/auth?invite=${prepared[idx].plaintext}`,
         })),
       });
     } catch (err) {
@@ -1255,12 +1294,66 @@ export function registerOrganizationRoutes(app: Express): void {
       const userEmail = (user?.claims?.email || user?.email || "").toLowerCase();
       const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+
+      // Pelle G/H/I: per-user accept-rate limit (10/hr) — defends against
+      // a leaked / brute-forced token from being burned through by an
+      // attacker iterating tokens against this endpoint.
+      if (userId) {
+        const rl = await checkInviteAcceptLimit(String(userId));
+        if (!rl.allowed) {
+          res.setHeader("Retry-After", String(rl.retryAfterSeconds));
+          return Errors.limitExceeded(res, {
+            limit: rl.limit,
+            windowSeconds: 60 * 60,
+            retryAfterSeconds: rl.retryAfterSeconds,
+            message: "Too many invitation accept attempts. Try again later.",
+          });
+        }
+      }
+
       const { organizationInvitations, teamMembers } = await import("@shared/schema");
-      const [invite] = await db
-        .select()
-        .from(organizationInvitations)
-        .where(eq(organizationInvitations.token, parsed.data.token))
-        .limit(1);
+      const plaintext = parsed.data.token;
+      const tokenHash = hashInviteToken(plaintext);
+
+      // Tolerant lookup: try hashed-row path first (new invites), then
+      // legacy plaintext column (old invites). On a legacy hit we lazy-
+      // migrate by writing the hash + last4 in place — eventually all
+      // outstanding invites end up in the hashed bucket and a follow-up
+      // migration can drop the plaintext column.
+      let invite = (
+        await db
+          .select()
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.inviteTokenHash, tokenHash))
+          .limit(1)
+      )[0];
+
+      if (!invite) {
+        const [legacy] = await db
+          .select()
+          .from(organizationInvitations)
+          .where(eq(organizationInvitations.token, plaintext))
+          .limit(1);
+        if (legacy && tokenMatchesRow(plaintext, legacy)) {
+          invite = legacy;
+          // Lazy migration: rehash the row and clear plaintext.
+          try {
+            await db
+              .update(organizationInvitations)
+              .set({
+                inviteTokenHash: tokenHash,
+                inviteTokenLast4: inviteTokenLast4(plaintext),
+                token: null,
+              })
+              .where(eq(organizationInvitations.id, legacy.id));
+          } catch (err) {
+            logger.warn("[invite-accept] lazy hash migration failed", {
+              metadata: { id: legacy.id, error: (err as Error).message },
+            });
+          }
+        }
+      }
+
       if (!invite) return Errors.notFound(res, "Invitation");
       if (invite.status !== "pending") return Errors.badRequest(res, `Invitation is ${invite.status}`);
       if (invite.expiresAt < new Date()) {
@@ -1330,6 +1423,21 @@ export function registerOrganizationRoutes(app: Express): void {
         .update(organizationInvitations)
         .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId })
         .where(eq(organizationInvitations.id, invite.id));
+
+      // Audit-log the acceptance with the token redacted to last4 only.
+      try {
+        await storage.createAuditLogEntry({
+          organizationId: invite.organizationId,
+          userId: userId || null,
+          action: "update",
+          entityType: "organization_invitation",
+          entityId: invite.id,
+          changes: { after: { status: "accepted" }, fields: ["status", "acceptedByUserId"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: { tokenLast4: inviteTokenLast4(plaintext) },
+        });
+      } catch { /* non-fatal */ }
 
       res.json({ ok: true, organizationId: invite.organizationId, role: invite.role });
     } catch (err) {

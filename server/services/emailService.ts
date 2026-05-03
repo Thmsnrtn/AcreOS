@@ -3,6 +3,7 @@ import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
+import { filterSuppressed } from "./emailSuppressions";
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -310,6 +311,31 @@ export class EmailService {
         durationMs: Date.now() - startTime,
       };
     }
+
+    // Hessam §2.3: short-circuit suppressed recipients before calling SES.
+    // We block the whole message when EVERY recipient is suppressed; for
+    // mixed-recipient messages we filter out the suppressed addresses and
+    // proceed with the remainder. This prevents domain-reputation damage
+    // from re-sending to known bouncers/spam-reporters/unsubscribers.
+    const suppressionCheck = await filterSuppressed(toAddresses);
+    if (suppressionCheck.suppressed.length > 0) {
+      logger.info('[EmailService] suppressed recipients filtered', { metadata: {
+        suppressed: suppressionCheck.suppressed,
+        original: toAddresses.length,
+      } });
+    }
+    if (suppressionCheck.allowed.length === 0) {
+      return {
+        success: false,
+        error: `All recipient(s) are on the suppression list: ${suppressionCheck.suppressed.join(', ')}`,
+        errorType: 'recipient_rejected',
+        attempts: 0,
+      };
+    }
+    // Replace toAddresses with the allowed subset for the rest of the send.
+    toAddresses.length = 0;
+    toAddresses.push(...suppressionCheck.allowed);
+
     let lastError: any = null;
     let attempts = 0;
     

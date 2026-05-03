@@ -96,6 +96,7 @@ import commentsRouter from "./routes-comments";
 
 // Phase 1: Communication features
 import { registerInboundEmailRoutes } from "./routes-inbound-email";
+import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -1643,6 +1644,8 @@ export async function registerRoutes(
 
   // Phase 1: Communication features
   registerInboundEmailRoutes(app);
+  // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
+  registerSendGridEventRoutes(app);
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
