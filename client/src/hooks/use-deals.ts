@@ -98,14 +98,39 @@ export function useUpdateDeal() {
       const res = await apiRequest("PUT", `/api/deals/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-      toast({
-        title: "Success",
-        description: "Deal updated successfully.",
-      });
+    // Optimistic deal update — primary use case is stage/status drag-and-drop
+    // on the deals board, where instant feedback is critical.
+    onMutate: async ({ id, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: ['/api/deals'] });
+
+      const snapshots: Array<[readonly unknown[], unknown]> = [];
+
+      const listEntries = queryClient.getQueriesData({ queryKey: ['/api/deals'] });
+      for (const [key, value] of listEntries) {
+        snapshots.push([key, value]);
+        if (Array.isArray(value)) {
+          queryClient.setQueryData(key, value.map((deal: any) =>
+            deal?.id === id ? { ...deal, ...updates } : deal
+          ));
+        } else if (value && typeof value === "object" && Array.isArray((value as any).data)) {
+          const v = value as { data: any[] };
+          queryClient.setQueryData(key, {
+            ...value,
+            data: v.data.map((deal: any) => (deal?.id === id ? { ...deal, ...updates } : deal)),
+          });
+        } else if (value && typeof value === "object" && (value as any).id === id) {
+          queryClient.setQueryData(key, { ...(value as object), ...updates });
+        }
+      }
+
+      return { snapshots };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      if (context?.snapshots) {
+        for (const [key, value] of context.snapshots) {
+          queryClient.setQueryData(key, value);
+        }
+      }
       const title = getErrorTitle(error);
       const description = getErrorMessage(error);
       toast({
@@ -113,6 +138,15 @@ export function useUpdateDeal() {
         description,
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Deal updated successfully.",
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
     },
   });
 }

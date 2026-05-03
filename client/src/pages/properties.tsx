@@ -10,6 +10,7 @@ import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
+import { ContentReveal } from "@/components/ContentReveal";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo, useEffect } from "react";
 import { useOrganization } from "@/hooks/use-organization";
@@ -666,21 +667,26 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          {(viewMode === "list" || isLoading) && (delayedLoading ? (
-            <div data-testid="skeleton-properties-grid">
-              <ListSkeleton count={6} variant="card" />
-            </div>
-          ) : error ? (
-            <QueryErrorState
-              error={error}
-              onRetry={() => refetch()}
-              isRetrying={isRefetching}
-              title="Unable to load properties"
-              description="We couldn't fetch your property inventory. This might be a temporary issue."
-              testId="query-error-state-properties"
-            />
-          ) : (
-            <>
+          {(viewMode === "list" || isLoading) && (
+            <ContentReveal
+              ready={!isLoading}
+              skeleton={
+                <div data-testid="skeleton-properties-grid">
+                  <ListSkeleton count={6} variant="card" />
+                </div>
+              }
+            >
+              {error ? (
+                <QueryErrorState
+                  error={error}
+                  onRetry={() => refetch()}
+                  isRetrying={isRefetching}
+                  title="Unable to load properties"
+                  description="We couldn't fetch your property inventory. This might be a temporary issue."
+                  testId="query-error-state-properties"
+                />
+              ) : (
+                <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
@@ -736,7 +742,9 @@ export default function PropertiesPage() {
               />
             )}
             </>
-          ))}
+              )}
+            </ContentReveal>
+          )}
 
 
       <ConfirmDialog

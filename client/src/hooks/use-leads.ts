@@ -127,14 +127,48 @@ export function useUpdateLead() {
       if (!res.ok) throw new Error(`${res.status}: Failed to update lead`);
       return api.leads.update.responses[200].parse(await res.json());
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
-      toast({
-        title: "Success",
-        description: "Lead updated successfully.",
-      });
+    // Optimistic update: instantly reflect the new lead state (e.g. "contacted",
+    // status change, score) across every cached leads query. Snapshot the
+    // previous cache and roll it back on error.
+    onMutate: async ({ id, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: [api.leads.list.path] });
+      await queryClient.cancelQueries({ queryKey: [api.leads.get.path, id] });
+
+      const snapshots: Array<[readonly unknown[], unknown]> = [];
+
+      // Patch every cached list (paginated + flat).
+      const listEntries = queryClient.getQueriesData({ queryKey: [api.leads.list.path] });
+      for (const [key, value] of listEntries) {
+        snapshots.push([key, value]);
+        if (Array.isArray(value)) {
+          queryClient.setQueryData(key, value.map((lead: any) =>
+            lead?.id === id ? { ...lead, ...updates } : lead
+          ));
+        } else if (value && typeof value === "object" && Array.isArray((value as any).data)) {
+          const v = value as { data: any[] };
+          queryClient.setQueryData(key, {
+            ...value,
+            data: v.data.map((lead: any) => (lead?.id === id ? { ...lead, ...updates } : lead)),
+          });
+        }
+      }
+
+      // Patch the per-lead detail cache.
+      const detail = queryClient.getQueryData<any>([api.leads.get.path, id]);
+      if (detail) {
+        snapshots.push([[api.leads.get.path, id], detail]);
+        queryClient.setQueryData([api.leads.get.path, id], { ...detail, ...updates });
+      }
+
+      return { snapshots };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      // Roll back every cache we touched.
+      if (context?.snapshots) {
+        for (const [key, value] of context.snapshots) {
+          queryClient.setQueryData(key, value);
+        }
+      }
       const title = getErrorTitle(error);
       const description = getErrorMessage(error);
       toast({
@@ -142,6 +176,15 @@ export function useUpdateLead() {
         description,
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Lead updated successfully.",
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
     },
   });
 }

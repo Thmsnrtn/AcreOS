@@ -16,6 +16,7 @@ import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
+import { ContentReveal } from "@/components/ContentReveal";
 import { useState, useMemo, useEffect, useRef, useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1466,11 +1467,14 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-{useDelayedLoading(isLoading, 200) ? (
-                  <div className="p-4" data-testid="skeleton-leads-table">
-                    <ListSkeleton count={8} variant="table" />
-                  </div>
-                ) : (
+                <ContentReveal
+                  ready={!isLoading}
+                  skeleton={
+                    <div className="p-4" data-testid="skeleton-leads-table">
+                      <ListSkeleton count={8} variant="table" />
+                    </div>
+                  }
+                >
                   <>
                     {/* Desktop Table View */}
                     <div className="hidden md:block overflow-x-auto">
@@ -1848,7 +1852,7 @@ export default function LeadsPage() {
                       )}
                     </div>
                   </>
-                )}
+                </ContentReveal>
               </div>
             </div>
 
