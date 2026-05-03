@@ -1488,6 +1488,9 @@ export async function registerRoutes(
     // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
     const { registerAiCostRoutes } = await import("./routes-ai-cost");
     registerAiCostRoutes(app);
+    // Sentry cost tuning: founder-only observability cost dashboard.
+    const { registerObservabilityCostRoutes } = await import("./routes-observability-cost");
+    registerObservabilityCostRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
