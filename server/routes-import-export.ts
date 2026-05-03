@@ -14,6 +14,7 @@ import {
 } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+import { auditFromRequest, AuditActions } from "./utils/auditLog";
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
@@ -218,6 +219,14 @@ export function registerImportExportRoutes(app: Express): void {
       };
 
       const date = new Date().toISOString().split("T")[0];
+
+      // Phase 3 Week 11 — every customer-initiated data export must be
+      // recorded in audit_events for compliance posture (GDPR Art. 30).
+      await auditFromRequest(req, {
+        action: AuditActions.DATA_EXPORT,
+        target: { type: "export", id: org.id },
+        metadata: { entityType, format, filters },
+      });
 
       if (format === "json") {
         let data: any[];

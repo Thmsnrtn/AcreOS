@@ -7,6 +7,13 @@ import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
 import { ACTIVE_ORG_COOKIE, ACTIVE_ORG_COOKIE_OPTS } from "../middleware/getOrCreateOrg";
+import { auditFromRequest, AuditActions } from "../utils/auditLog";
+
+// Process-local set of userIds that have already emitted an auth.login
+// audit event. Cleared on process restart, which is acceptable: the audit
+// log tolerates duplicate login events (and Clerk webhooks remain the
+// authoritative source of session lifecycle).
+const loggedLoginThisProcess = new Set<string>();
 
 export function registerAuthRoutes(app: Express): void {
   // Get current authenticated user (used by frontend useAuth hook)
@@ -18,6 +25,18 @@ export function registerAuthRoutes(app: Express): void {
     const user = req.user as any;
     const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
     const isFounder = isFounderIdentity({ email: user?.email, userId });
+    // Phase 3 Week 11: emit auth.login on the first hit-after-sign-in for
+    // each userId in this process. Subsequent polls are deduped by the
+    // in-memory set; persistent login telemetry remains the responsibility
+    // of Clerk webhooks. Best-effort, fire-and-forget — never blocks.
+    if (userId && !loggedLoginThisProcess.has(userId)) {
+      loggedLoginThisProcess.add(userId);
+      void auditFromRequest(req, {
+        action: AuditActions.AUTH_LOGIN,
+        target: { type: "user", id: userId },
+        metadata: { isFounder },
+      });
+    }
     res.json(isFounder ? { ...user, isFounder: true } : user);
   });
 
@@ -66,6 +85,20 @@ export function registerAuthRoutes(app: Express): void {
       res.clearCookie(name, opts);
       res.clearCookie(name, { path: "/", domain: ".acreos.io" });
     }
+    // Phase 3 Week 11 — log the logout intent. The endpoint is not
+    // isAuthenticated-gated, so the user object may be absent; in that
+    // case we record the row as anonymous. Clerk webhooks remain the
+    // authoritative source for session lifecycle.
+    const userForLogout = (req as any).user as { clerkUserId?: string; id?: string } | undefined;
+    const logoutTarget = userForLogout?.clerkUserId ?? userForLogout?.id ?? "anonymous";
+    if (userForLogout?.clerkUserId) {
+      loggedLoginThisProcess.delete(userForLogout.clerkUserId);
+    }
+    void auditFromRequest(req, {
+      action: AuditActions.AUTH_LOGOUT,
+      target: { type: "user", id: logoutTarget },
+      metadata: { clearedCookies: Array.from(seen) },
+    });
     res.json({ ok: true, cleared: Array.from(seen) });
   });
 

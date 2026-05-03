@@ -10,6 +10,7 @@ import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
+import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { withTransaction } from "./db";
 import { z } from "zod";
 
@@ -233,6 +234,13 @@ export function registerBillingRoutes(app: Express): void {
           metadata: {},
         });
       } catch (e) { /* non-fatal */ }
+
+      // Phase 3 Week 11 — autopay state change is a sensitive event.
+      await auditFromRequest(req, {
+        action: AuditActions.BILLING_AUTOPAY_TOGGLED,
+        target: { type: "billing", id: org.id },
+        metadata: { enabled: enabled === true, thresholdCents, amountCents },
+      });
 
       res.json({ success: true });
     } catch (error: any) {
@@ -778,6 +786,20 @@ export function registerBillingRoutes(app: Express): void {
         });
       } catch { /* non-fatal */ }
 
+      // Phase 3 Week 11 — emit a sensitive-action audit event for plan
+      // changes. The Stripe webhook is the source of truth for the
+      // *confirmed* cancellation; this row captures the user-initiated
+      // intent independent of webhook delivery.
+      await auditFromRequest(req, {
+        action: AuditActions.BILLING_PLAN_SWITCHED,
+        target: { type: "billing", id: org.id },
+        metadata: {
+          op: "self_serve_cancel_intent",
+          previousTier: org.subscriptionTier,
+          reason: parsed.data.reason,
+        },
+      });
+
       // If they have a Stripe subscription, redirect to portal for actual cancellation
       if (org.stripeCustomerId) {
         const { stripeService } = await import("./stripeService");
@@ -935,6 +957,19 @@ export function registerBillingRoutes(app: Express): void {
               });
             }
           } catch {}
+
+          // Phase 3 Week 11 — refund issuance is a sensitive billing event.
+          await auditFromRequest(req, {
+            action: AuditActions.BILLING_REFUND_ISSUED,
+            target: { type: "billing", id: org.id },
+            metadata: {
+              op: "auto_refund",
+              refundRequestId: request.id,
+              stripeRefundId: refund.id,
+              amountCents,
+              previousTier,
+            },
+          });
 
           return res.json({ status: "processed", amountCents, message: "Refund processed automatically" });
         } catch (refundErr: any) {

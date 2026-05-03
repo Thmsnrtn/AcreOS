@@ -4362,6 +4362,71 @@ export const auditEvents = pgTable("audit_events", {
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type InsertAuditEvent = typeof auditEvents.$inferInsert;
 
+// ─── Phase 3 Week 11: GDPR/CCPA Data Subject Access Requests ──────────────
+// Public DSAR intake; rows are operator-driven post-receipt. Customers can
+// request access, erasure, portability, or rectification. Founder reviews
+// each request, runs identity verification (email-loop), and either fulfils
+// (data fan-out) or denies (with documented reason).
+export const dsarRequests = pgTable("dsar_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestType: text("request_type").notNull(), // access | erasure | portability | rectification
+  email: text("email").notNull(),
+  fullName: text("full_name").notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  organization: text("organization"),
+  justification: text("justification"),
+  status: text("status").notNull().default("pending"), // pending | verified | fulfilling | completed | denied
+  verificationToken: text("verification_token"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  deniedReason: text("denied_reason"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_dsar_requests_email").on(table.email),
+  index("idx_dsar_requests_status").on(table.status),
+  index("idx_dsar_requests_created_at").on(table.createdAt),
+  index("idx_dsar_requests_org").on(table.organizationId),
+]);
+
+export type DsarRequest = typeof dsarRequests.$inferSelect;
+export type InsertDsarRequest = typeof dsarRequests.$inferInsert;
+
+export const DSAR_REQUEST_TYPES = ["access", "erasure", "portability", "rectification"] as const;
+export type DsarRequestType = typeof DSAR_REQUEST_TYPES[number];
+
+export const DSAR_STATUSES = ["pending", "verified", "fulfilling", "completed", "denied"] as const;
+export type DsarStatus = typeof DSAR_STATUSES[number];
+
+// ─── Phase 3 Week 11: Data Processing Agreements (sub-processor registry) ──
+// Every external vendor that ever touches customer data lives here. The
+// founder maintains negotiation status; vendor outreach is a manual
+// workstream tracked in the /founder/sub-processors UI.
+export const dataProcessingAgreements = pgTable("data_processing_agreements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorName: text("vendor_name").notNull().unique(),
+  status: text("status").notNull().default("pending"), // pending | negotiating | signed | expired
+  signedDate: date("signed_date"),
+  expiresAt: date("expires_at"),
+  contactEmail: text("contact_email"),
+  scope: text("scope"),
+  evidenceUrl: text("evidence_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_dpa_status").on(table.status),
+]);
+
+export type DataProcessingAgreement = typeof dataProcessingAgreements.$inferSelect;
+export type InsertDataProcessingAgreement = typeof dataProcessingAgreements.$inferInsert;
+
+export const DPA_STATUSES = ["pending", "negotiating", "signed", "expired"] as const;
+export type DpaStatus = typeof DPA_STATUSES[number];
+
 // Audit action types
 export const AUDIT_ACTIONS = [
   "create",
