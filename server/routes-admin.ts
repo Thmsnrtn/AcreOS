@@ -30,9 +30,11 @@ import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
-import { isFounderEmail } from "./services/founder";
+import { isFounderEmail, isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { Errors } from "./utils/errors";
+import { getUserId, getOrganization, type AuthenticatedRequest } from "./types/request";
 
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
@@ -458,12 +460,15 @@ export function registerAdminRoutes(app: Express): void {
   // Founder: Get all feature requests across all orgs
   api.get("/api/founder/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const user = req.user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+      const userId = getUserId(authReq);
+      const userEmail = user.claims?.email || user.email;
 
-      // Simple founder check - org owner can see all feature requests
-      if (org.ownerId !== (user.claims?.sub || user.id)) {
-        return res.status(403).json({ error: "Founder access required" });
+      // R1 fix: gate on canonical founder identity, not org ownership.
+      // Previously any org owner could call this endpoint against any org.
+      if (!isFounderIdentity({ email: userEmail, userId })) {
+        return Errors.forbidden(res, "Founder access required");
       }
 
       const requests = await storage.getAllFeatureRequestsForFounder();
@@ -477,13 +482,15 @@ export function registerAdminRoutes(app: Express): void {
   // Founder: Update feature request status/notes
   api.patch("/api/founder/feature-requests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const user = req.user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+      const userId = getUserId(authReq);
+      const userEmail = user.claims?.email || user.email;
       const requestId = parseInt(req.params.id);
 
-      // Simple founder check
-      if (org.ownerId !== (user.claims?.sub || user.id)) {
-        return res.status(403).json({ error: "Founder access required" });
+      // R1 fix: gate on canonical founder identity, not org ownership.
+      if (!isFounderIdentity({ email: userEmail, userId })) {
+        return Errors.forbidden(res, "Founder access required");
       }
 
       const parsed = featureRequestUpdateSchema.safeParse(req.body);
