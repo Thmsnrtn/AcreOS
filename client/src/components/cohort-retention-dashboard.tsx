@@ -62,11 +62,11 @@ function formatCurrency(n: number): string {
 }
 
 function getRetentionColor(rate: number): string {
-  if (rate >= 0.5) return "bg-green-600 text-white";
-  if (rate >= 0.3) return "bg-green-500 text-white";
-  if (rate >= 0.2) return "bg-green-400 text-white";
-  if (rate >= 0.1) return "bg-green-300 text-green-900";
-  if (rate > 0) return "bg-green-200 text-green-900";
+  if (rate >= 0.5) return "bg-acr-pos text-white";
+  if (rate >= 0.3) return "bg-acr-pos text-white";
+  if (rate >= 0.2) return "bg-acr-pos text-white";
+  if (rate >= 0.1) return "bg-acr-pos text-acr-pos";
+  if (rate > 0) return "bg-acr-pos-soft text-acr-pos";
   return "bg-muted text-muted-foreground";
 }
 
@@ -358,10 +358,10 @@ export function CohortRetentionDashboard() {
                         <span
                           className={`tabular-nums ${
                             cohort.contactRate >= 0.5
-                              ? "text-green-600"
+                              ? "text-acr-pos"
                               : cohort.contactRate >= 0.3
-                                ? "text-yellow-600"
-                                : "text-red-500"
+                                ? "text-acr-warn"
+                                : "text-acr-neg"
                           }`}
                         >
                           {pct(cohort.contactRate)}
@@ -372,10 +372,10 @@ export function CohortRetentionDashboard() {
                         <span
                           className={`tabular-nums ${
                             cohort.conversionRate >= 0.1
-                              ? "text-green-600"
+                              ? "text-acr-pos"
                               : cohort.conversionRate >= 0.05
-                                ? "text-yellow-600"
-                                : "text-red-500"
+                                ? "text-acr-warn"
+                                : "text-acr-neg"
                           }`}
                         >
                           {pct(cohort.conversionRate)}

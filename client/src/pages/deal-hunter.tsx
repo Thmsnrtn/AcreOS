@@ -69,21 +69,21 @@ interface DealStats {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function DistressBadge({ score }: { score: number }) {
-  if (score >= 80) return <Badge className="bg-red-600 text-white">🔥 Hot {score}</Badge>;
-  if (score >= 60) return <Badge className="bg-orange-500 text-white">Warm {score}</Badge>;
-  if (score >= 40) return <Badge className="bg-yellow-500 text-black">Moderate {score}</Badge>;
+  if (score >= 80) return <Badge className="bg-acr-neg text-white">🔥 Hot {score}</Badge>;
+  if (score >= 60) return <Badge className="bg-acr-warn text-white">Warm {score}</Badge>;
+  if (score >= 40) return <Badge className="bg-acr-warn text-black">Moderate {score}</Badge>;
   return <Badge variant="secondary">Low {score}</Badge>;
 }
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    new: "bg-blue-100 text-blue-800",
-    reviewed: "bg-purple-100 text-purple-800",
-    added_to_crm: "bg-green-100 text-green-800",
-    rejected: "bg-gray-100 text-gray-600",
+    new: "bg-acr-accent text-acr-accent",
+    reviewed: "bg-acr-brand-soft text-acr-brand",
+    added_to_crm: "bg-acr-pos-soft text-acr-pos",
+    rejected: "bg-muted text-muted-foreground",
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? "bg-muted text-muted-foreground"}`}>
       {status.replace(/_/g, " ")}
     </span>
   );
@@ -313,13 +313,13 @@ function SourceHealthPanel({ sources }: { sources: any[] }) {
                       {!source.isActive ? (
                         <Badge variant="secondary" className="text-xs">Disabled</Badge>
                       ) : isHealthy ? (
-                        <Badge className="bg-green-100 text-green-800 text-xs">Healthy</Badge>
+                        <Badge className="bg-acr-pos-soft text-acr-pos text-xs">Healthy</Badge>
                       ) : (
                         <Badge variant="destructive" className="text-xs">Failing</Badge>
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <span className={`tabular-nums ${source.consecutiveFailures > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                      <span className={`tabular-nums ${source.consecutiveFailures > 0 ? "text-acr-neg font-medium" : "text-muted-foreground"}`}>
                         {source.consecutiveFailures}
                       </span>
                     </td>
@@ -585,8 +585,8 @@ function SourcesTab() {
                         aria-label={`${source.isActive ? "Disable" : "Enable"} source ${source.name}`}
                       >
                         {source.isActive
-                          ? <ToggleRight className="w-5 h-5 text-green-500" aria-hidden="true" />
-                          : <ToggleLeft className="w-5 h-5 text-gray-400" aria-hidden="true" />}
+                          ? <ToggleRight className="w-5 h-5 text-acr-pos" aria-hidden="true" />
+                          : <ToggleLeft className="w-5 h-5 text-muted-foreground" aria-hidden="true" />}
                       </Button>
                       <Button
                         variant="outline"
@@ -859,15 +859,15 @@ function DealsTab() {
                       </div>
                     )}
                     {deal.taxesOwed != null && (
-                      <div className="bg-red-50 dark:bg-red-950/20 rounded p-2">
+                      <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded p-2">
                         <dt className="text-muted-foreground">Taxes owed</dt>
-                        <dd className="font-semibold tabular-nums text-red-600 m-0">{usd(deal.taxesOwed, { noCents: true })}</dd>
+                        <dd className="font-semibold tabular-nums text-acr-neg m-0">{usd(deal.taxesOwed, { noCents: true })}</dd>
                       </div>
                     )}
                   </dl>
 
                   {deal.auctionDate && (
-                    <p className="text-xs text-orange-600 font-medium mb-2">
+                    <p className="text-xs text-acr-warn font-medium mb-2">
                       Auction: <time dateTime={new Date(deal.auctionDate).toISOString()}>{new Date(deal.auctionDate).toLocaleDateString()}</time>
                     </p>
                   )}
@@ -890,7 +890,7 @@ function DealsTab() {
                   )}
 
                   {deal.status === "added_to_crm" && (
-                    <div className="flex items-center gap-1 text-xs text-green-600 mt-2" role="status">
+                    <div className="flex items-center gap-1 text-xs text-acr-pos mt-2" role="status">
                       <CheckCircle className="w-3 h-3" aria-hidden="true" />
                       {deal.convertedToLeadId
                         ? <>Converted to lead #<span className="tabular-nums">{deal.convertedToLeadId}</span></>
@@ -1006,7 +1006,7 @@ export default function DealHunterPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Search className="w-7 h-7 text-primary" aria-hidden="true" /> Deal hunter
             {newDealCount > 0 && (
-              <Badge className="bg-red-500 text-white ml-1" data-testid="badge-new-deals" aria-live="polite" aria-label={`${newDealCount} new deal match${newDealCount === 1 ? "" : "es"}`}>
+              <Badge className="bg-acr-neg text-white ml-1" data-testid="badge-new-deals" aria-live="polite" aria-label={`${newDealCount} new deal match${newDealCount === 1 ? "" : "es"}`}>
                 <span className="tabular-nums">{newDealCount}</span> new
               </Badge>
             )}
@@ -1037,27 +1037,27 @@ export default function DealHunterPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
               <dt className="text-sm text-muted-foreground">New deals</dt>
-              <TrendingUp className="w-4 h-4 text-blue-500" aria-hidden="true" />
+              <TrendingUp className="w-4 h-4 text-acr-accent" aria-hidden="true" />
             </div>
-            <dd className="text-2xl font-bold tabular-nums text-blue-600 m-0">{Number(stats.newDeals).toLocaleString()}</dd>
+            <dd className="text-2xl font-bold tabular-nums text-acr-accent m-0">{Number(stats.newDeals).toLocaleString()}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
               <dt className="text-sm text-muted-foreground">High quality (70+)</dt>
-              <Flame className="w-4 h-4 text-red-500" aria-hidden="true" />
+              <Flame className="w-4 h-4 text-acr-neg" aria-hidden="true" />
             </div>
-            <dd className="text-2xl font-bold tabular-nums text-red-600 m-0">{Number(stats.highQualityDeals).toLocaleString()}</dd>
+            <dd className="text-2xl font-bold tabular-nums text-acr-neg m-0">{Number(stats.highQualityDeals).toLocaleString()}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
               <dt className="text-sm text-muted-foreground">Converted</dt>
-              <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />
+              <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
             </div>
-            <dd className="text-2xl font-bold tabular-nums text-green-600 m-0">{Number(stats.convertedDeals).toLocaleString()}</dd>
+            <dd className="text-2xl font-bold tabular-nums text-acr-pos m-0">{Number(stats.convertedDeals).toLocaleString()}</dd>
           </CardContent>
         </Card>
       </dl>

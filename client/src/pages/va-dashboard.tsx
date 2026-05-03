@@ -387,10 +387,10 @@ export default function VADashboardPage() {
                             <Badge
                               className={
                                 entry.status === 'completed'
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                  ? 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos'
                                   : entry.status === 'cancelled'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
+                                  ? 'bg-acr-neg-soft text-acr-neg'
+                                  : 'bg-acr-warn-soft text-acr-warn'
                               }
                               aria-label={`Status: ${entry.status}`}
                             >
@@ -603,7 +603,7 @@ export default function VADashboardPage() {
                                 disabled={wfSteps.length === 1}
                                 aria-label={`Remove step ${i + 1}${step.title ? `: ${step.title}` : ""}`}
                               >
-                                <Trash2 className="w-3 h-3 text-red-500" aria-hidden="true" />
+                                <Trash2 className="w-3 h-3 text-acr-neg" aria-hidden="true" />
                               </Button>
                             </div>
                           </div>

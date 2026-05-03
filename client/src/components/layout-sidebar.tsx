@@ -198,9 +198,9 @@ function PaxNotificationBadge() {
   };
 
   const severityColor: Record<string, string> = {
-    high: "text-red-500",
-    medium: "text-amber-500",
-    low: "text-blue-500",
+    high: "text-acr-neg",
+    medium: "text-acr-warn",
+    low: "text-acr-accent",
     info: "text-muted-foreground",
   };
 
@@ -754,7 +754,7 @@ export function Sidebar() {
               {isFounder && (
                 <Badge
                   variant="outline"
-                  className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0 shrink-0"
+                  className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-[10px] px-1.5 py-0 shrink-0"
                   data-testid="badge-founder"
                 >
                   <Crown className="w-2.5 h-2.5 mr-0.5" />
@@ -873,11 +873,11 @@ export function Sidebar() {
             isCollapsed={isCollapsed}
             accentClass={
               location === "/founder" || location === "/founder-home"
-                ? "bg-amber-500 text-white shadow-md"
-                : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                ? "bg-acr-warn text-white shadow-md"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
             }
             iconClass={
-              location === "/founder" || location === "/founder-home" ? "text-white" : "text-amber-500"
+              location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
@@ -1093,7 +1093,7 @@ export function Sidebar() {
                             {child.legacy && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] uppercase tracking-wide shrink-0 border-amber-500/40 text-amber-600"
+                                className="text-[9px] uppercase tracking-wide shrink-0 border-acr-warn/40 text-acr-warn"
                                 aria-label="Legacy surface"
                               >
                                 Legacy
@@ -1185,7 +1185,7 @@ export function Sidebar() {
             {isFounder && (
               <Badge
                 variant="outline"
-                className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
+                className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-xs"
               >
                 <Crown className="w-3 h-3 mr-1" />
                 Founder
@@ -1229,8 +1229,8 @@ export function Sidebar() {
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group mb-2 min-h-[44px]",
               location === "/founder" || location === "/founder-home"
-                ? "bg-amber-500 text-white shadow-md"
-                : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                ? "bg-acr-warn text-white shadow-md"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
             )}
             data-testid="link-founder-dashboard"
             data-tour-nav="founder-business"
@@ -1238,7 +1238,7 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder" || location === "/founder-home" ? "text-white" : "text-amber-500"
+                location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
               )}
             />
             <span className="font-medium text-sm">Founder home</span>
@@ -1397,7 +1397,7 @@ export function Sidebar() {
                             {child.legacy && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] uppercase tracking-wide shrink-0 border-amber-500/40 text-amber-600"
+                                className="text-[9px] uppercase tracking-wide shrink-0 border-acr-warn/40 text-acr-warn"
                                 aria-label="Legacy surface"
                               >
                                 Legacy

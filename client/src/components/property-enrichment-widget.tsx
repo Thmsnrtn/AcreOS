@@ -211,9 +211,9 @@ function getRiskBadgeVariant(risk?: "low" | "medium" | "high"): "default" | "sec
 }
 
 function getRiskColor(risk?: "low" | "medium" | "high"): string {
-  if (risk === "high") return "text-red-600 font-medium";
-  if (risk === "medium") return "text-yellow-600 font-medium";
-  return "text-green-600 font-medium";
+  if (risk === "high") return "text-acr-neg font-medium";
+  if (risk === "medium") return "text-acr-warn font-medium";
+  return "text-acr-pos font-medium";
 }
 
 function formatDistance(miles?: number): string {
@@ -245,10 +245,10 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
               <div
                 className={`h-2 rounded-full transition-all ${
                   enrichmentData.completenessScore >= 80
-                    ? "bg-green-500"
+                    ? "bg-acr-pos"
                     : enrichmentData.completenessScore >= 50
-                    ? "bg-yellow-500"
-                    : "bg-red-500"
+                    ? "bg-acr-warn"
+                    : "bg-acr-neg"
                 }`}
                 style={{ width: `${enrichmentData.completenessScore}%` }}
               />
@@ -260,7 +260,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     key={key}
                     className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
                       value
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
                         : "bg-muted text-muted-foreground"
                     }`}
                     title={key}
@@ -304,10 +304,10 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                   <p
                     className={`font-medium ${
                       (enrichmentData.scores.riskScore ?? 0) > 50
-                        ? "text-red-600"
+                        ? "text-acr-neg"
                         : (enrichmentData.scores.riskScore ?? 0) > 25
-                        ? "text-yellow-600"
-                        : "text-green-600"
+                        ? "text-acr-warn"
+                        : "text-acr-pos"
                     }`}
                   >
                     {enrichmentData.scores.riskScore ?? "N/A"}
@@ -323,7 +323,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-flood-zone">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Droplets className="w-4 h-4 text-blue-500" />
+                <Droplets className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">Flood & Water Risk</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -339,7 +339,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Wetlands Present</span>
-                  <span className={enrichmentData.hazards.wetlandsPresent ? "text-yellow-600" : "text-green-600"}>
+                  <span className={enrichmentData.hazards.wetlandsPresent ? "text-acr-warn" : "text-acr-pos"}>
                     {enrichmentData.hazards.wetlandsPresent
                       ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)`
                       : "No"}
@@ -361,7 +361,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-natural-hazards">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Flame className="w-4 h-4 text-orange-500" />
+                <Flame className="w-4 h-4 text-acr-warn" />
                 <h4 className="font-semibold">Natural Hazards</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -399,7 +399,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-environmental">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Leaf className="w-4 h-4 text-green-600" />
+                <Leaf className="w-4 h-4 text-acr-pos" />
                 <h4 className="font-semibold">Environmental & Soil</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -420,7 +420,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                 {enrichmentData.environment.primeFarmland !== undefined && (
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Prime Farmland</span>
-                    <span className={enrichmentData.environment.primeFarmland ? "text-green-600" : "text-muted-foreground"}>
+                    <span className={enrichmentData.environment.primeFarmland ? "text-acr-pos" : "text-muted-foreground"}>
                       {enrichmentData.environment.primeFarmland ? "Yes" : "No"}
                     </span>
                   </div>
@@ -430,8 +430,8 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                   <span
                     className={
                       enrichmentData.environment.epaFacilitiesNearby && enrichmentData.environment.epaFacilitiesNearby > 0
-                        ? "text-yellow-600"
-                        : "text-green-600"
+                        ? "text-acr-warn"
+                        : "text-acr-pos"
                     }
                   >
                     {enrichmentData.environment.epaFacilitiesNearby ?? 0}
@@ -485,7 +485,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-demographics">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Users className="w-4 h-4 text-indigo-500" />
+                <Users className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">Demographics</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -567,7 +567,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                   enrichmentData.transportation.hasPavedRoad !== undefined && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Paved Road Access</span>
-                      <span className={enrichmentData.transportation.hasPavedRoad ? "text-green-600" : "text-yellow-600"}>
+                      <span className={enrichmentData.transportation.hasPavedRoad ? "text-acr-pos" : "text-acr-warn"}>
                         {enrichmentData.transportation.hasPavedRoad ? "Yes" : "No"}
                       </span>
                     </div>
@@ -588,7 +588,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-public-lands">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <TreePine className="w-4 h-4 text-green-700" />
+                <TreePine className="w-4 h-4 text-acr-pos" />
                 <h4 className="font-semibold">Public Lands</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -614,7 +614,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-water-resources">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Droplets className="w-4 h-4 text-cyan-500" />
+                <Droplets className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">Water Resources</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -642,7 +642,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-elevation">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Mountain className="w-4 h-4 text-slate-500" />
+                <Mountain className="w-4 h-4 text-muted-foreground" />
                 <h4 className="font-semibold">Elevation & Terrain</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -678,7 +678,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-climate">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Thermometer className="w-4 h-4 text-orange-400" />
+                <Thermometer className="w-4 h-4 text-acr-warn" />
                 <h4 className="font-semibold">Climate & Growing</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -716,7 +716,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-agricultural-values">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Wheat className="w-4 h-4 text-yellow-600" />
+                <Wheat className="w-4 h-4 text-acr-warn" />
                 <h4 className="font-semibold">Agricultural Values</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -751,7 +751,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-land-cover">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Leaf className="w-4 h-4 text-emerald-500" />
+                <Leaf className="w-4 h-4 text-acr-pos" />
                 <h4 className="font-semibold">Land Cover</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -780,7 +780,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-cropland">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Wheat className="w-4 h-4 text-amber-500" />
+                <Wheat className="w-4 h-4 text-acr-warn" />
                 <h4 className="font-semibold">Cropland Data</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -809,7 +809,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-epa-facilities">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Factory className="w-4 h-4 text-gray-500" />
+                <Factory className="w-4 h-4 text-muted-foreground" />
                 <h4 className="font-semibold">EPA Facilities Nearby</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -817,7 +817,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                   <span className="text-muted-foreground">Total Facilities</span>
                   <span
                     className={
-                      (enrichmentData.epaFacilities.totalCount ?? 0) > 0 ? "text-yellow-600 font-medium" : "text-green-600"
+                      (enrichmentData.epaFacilities.totalCount ?? 0) > 0 ? "text-acr-warn font-medium" : "text-acr-pos"
                     }
                   >
                     {enrichmentData.epaFacilities.totalCount ?? 0}
@@ -826,13 +826,13 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                 {(enrichmentData.epaFacilities.superfundCount ?? 0) > 0 && (
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Superfund Sites</span>
-                    <span className="text-red-600 font-medium">{enrichmentData.epaFacilities.superfundCount}</span>
+                    <span className="text-acr-neg font-medium">{enrichmentData.epaFacilities.superfundCount}</span>
                   </div>
                 )}
                 {(enrichmentData.epaFacilities.airViolationCount ?? 0) > 0 && (
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Air Violations</span>
-                    <span className="text-orange-500">{enrichmentData.epaFacilities.airViolationCount}</span>
+                    <span className="text-acr-warn">{enrichmentData.epaFacilities.airViolationCount}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
@@ -856,7 +856,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-storm-history">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Cloud className="w-4 h-4 text-blue-400" />
+                <Cloud className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">Storm Risk</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -882,7 +882,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-plss">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Grid3x3 className="w-4 h-4 text-teal-600" />
+                <Grid3x3 className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">PLSS Legal Description</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -921,7 +921,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-watershed">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Waves className="w-4 h-4 text-blue-500" />
+                <Waves className="w-4 h-4 text-acr-accent" />
                 <h4 className="font-semibold">Watershed</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -954,7 +954,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-fema-nri">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Shield className="w-4 h-4 text-red-500" />
+                <Shield className="w-4 h-4 text-acr-neg" />
                 <h4 className="font-semibold">FEMA National Risk Index</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -964,10 +964,10 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     <span
                       className={`font-bold text-lg ${
                         enrichmentData.femaNri.compositeScore > 70
-                          ? "text-red-600"
+                          ? "text-acr-neg"
                           : enrichmentData.femaNri.compositeScore > 40
-                          ? "text-yellow-600"
-                          : "text-green-600"
+                          ? "text-acr-warn"
+                          : "text-acr-pos"
                       }`}
                     >
                       {enrichmentData.femaNri.compositeScore.toFixed(1)}
@@ -1003,7 +1003,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           <Card data-testid="card-usda-clu">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Wheat className="w-4 h-4 text-green-600" />
+                <Wheat className="w-4 h-4 text-acr-pos" />
                 <h4 className="font-semibold">USDA Farm Records (CLU)</h4>
               </div>
               <div className="space-y-2 text-sm">
@@ -1034,11 +1034,11 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
 
       {/* Errors */}
       {enrichmentData.errors && Object.keys(enrichmentData.errors).length > 0 && (
-        <Card className="border-yellow-200 dark:border-yellow-800" data-testid="card-errors">
+        <Card className="border-acr-warn-soft dark:border-acr-warn-soft" data-testid="card-errors">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-yellow-600" />
-              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Some data could not be fetched</h4>
+              <AlertCircle className="w-4 h-4 text-acr-warn" />
+              <h4 className="font-semibold text-acr-warn dark:text-acr-warn">Some data could not be fetched</h4>
             </div>
             <ul className="text-sm text-muted-foreground space-y-1">
               {Object.entries(enrichmentData.errors).map(([category, error]) => (

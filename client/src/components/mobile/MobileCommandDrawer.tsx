@@ -33,11 +33,11 @@ interface MobileCommandDrawerProps {
 }
 
 const quickActions = [
-  { href: "/settings", icon: Settings, label: "Settings", color: "text-slate-500" },
-  { href: "/ai", icon: Bot, label: "AI Hub", color: "text-violet-500" },
-  { href: "/finance", icon: Banknote, label: "Finance", color: "text-green-500" },
-  { href: "/campaigns", icon: Mail, label: "Marketing", color: "text-blue-500" },
-  { href: "/help", icon: HelpCircle, label: "Help", color: "text-orange-500" },
+  { href: "/settings", icon: Settings, label: "Settings", color: "text-muted-foreground" },
+  { href: "/ai", icon: Bot, label: "AI Hub", color: "text-acr-brand" },
+  { href: "/finance", icon: Banknote, label: "Finance", color: "text-acr-pos" },
+  { href: "/campaigns", icon: Mail, label: "Marketing", color: "text-acr-accent" },
+  { href: "/help", icon: HelpCircle, label: "Help", color: "text-acr-warn" },
 ];
 
 const moreItems = [

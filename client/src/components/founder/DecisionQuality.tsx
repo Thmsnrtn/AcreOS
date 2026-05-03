@@ -94,11 +94,11 @@ export function DecisionQuality() {
               <dt className="text-xs text-muted-foreground">Decisions</dt>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/50">
-              <dd className="text-2xl font-bold text-emerald-600 tabular-nums m-0">{data.approvalRate}%</dd>
+              <dd className="text-2xl font-bold text-acr-pos tabular-nums m-0">{data.approvalRate}%</dd>
               <dt className="text-xs text-muted-foreground">Approval rate</dt>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/50">
-              <dd className="text-2xl font-bold text-blue-600 tabular-nums m-0">{data.positiveOutcomeRate}%</dd>
+              <dd className="text-2xl font-bold text-acr-accent tabular-nums m-0">{data.positiveOutcomeRate}%</dd>
               <dt className="text-xs text-muted-foreground">Positive outcomes</dt>
             </div>
           </motion.dl>
@@ -128,9 +128,9 @@ export function DecisionQuality() {
                           >
                             <span className="font-medium capitalize">{agentLabel}</span>
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <span className="text-emerald-600 tabular-nums">{agent.approved} approved</span>
-                              <span className="text-red-500 tabular-nums">{agent.rejected} rejected</span>
-                              <span className="text-amber-500 tabular-nums">{agent.modified} modified</span>
+                              <span className="text-acr-pos tabular-nums">{agent.approved} approved</span>
+                              <span className="text-acr-neg tabular-nums">{agent.rejected} rejected</span>
+                              <span className="text-acr-warn tabular-nums">{agent.modified} modified</span>
                               <span className="font-semibold text-foreground tabular-nums">{agent.outcomeQuality}% quality</span>
                             </div>
                           </li>
@@ -158,9 +158,9 @@ export function DecisionQuality() {
                           >
                             <span>{action}</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full tabular-nums ${
-                              outcome.score > 0 ? "bg-emerald-100 text-emerald-700" :
-                              outcome.score < 0 ? "bg-red-100 text-red-700" :
-                              "bg-gray-100 text-gray-700"
+                              outcome.score > 0 ? "bg-acr-pos-soft text-acr-pos" :
+                              outcome.score < 0 ? "bg-acr-neg-soft text-acr-neg" :
+                              "bg-muted text-foreground"
                             }`}>
                               {sign}{outcome.score}
                             </span>

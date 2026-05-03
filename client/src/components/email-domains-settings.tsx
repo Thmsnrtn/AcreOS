@@ -141,7 +141,7 @@ export function EmailDomainsSettings() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "verified":
-        return <Badge variant="default" className="bg-green-600"><CheckCircle className="w-3 h-3 mr-1" /> Verified</Badge>;
+        return <Badge variant="default" className="bg-acr-pos"><CheckCircle className="w-3 h-3 mr-1" /> Verified</Badge>;
       case "pending":
         return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
       case "failed":
@@ -345,7 +345,7 @@ export function EmailDomainsSettings() {
                                 <TableCell className="font-mono text-xs break-all max-w-xs truncate">{record.data}</TableCell>
                                 <TableCell>
                                   {record.valid ? (
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                    <CheckCircle className="w-4 h-4 text-acr-pos" />
                                   ) : (
                                     <Clock className="w-4 h-4 text-muted-foreground" />
                                   )}

@@ -23,17 +23,17 @@ type CaseWithMessages = {
 function getStatusColor(status: string): string {
   switch (status) {
     case "open":
-      return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      return "bg-acr-accent/10 text-acr-accent dark:text-acr-accent border-acr-accent/20";
     case "ai_handling":
-      return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+      return "bg-acr-brand/10 text-acr-brand dark:text-acr-brand border-acr-brand/20";
     case "awaiting_user":
-      return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
+      return "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/20";
     case "escalated":
-      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+      return "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/20";
     case "resolved":
-      return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
+      return "bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-acr-pos/20";
     case "closed":
-      return "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20";
+      return "bg-muted/10 text-muted-foreground dark:text-muted-foreground border-border/20";
     default:
       return "";
   }
@@ -79,17 +79,17 @@ function formatDate(date: string | Date | null | undefined): string {
 function getFeatureRequestStatusColor(status: string): string {
   switch (status) {
     case "submitted":
-      return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      return "bg-acr-accent/10 text-acr-accent dark:text-acr-accent border-acr-accent/20";
     case "under_review":
-      return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+      return "bg-acr-brand/10 text-acr-brand dark:text-acr-brand border-acr-brand/20";
     case "planned":
-      return "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20";
+      return "bg-acr-accent/10 text-acr-accent dark:text-acr-accent border-acr-accent/20";
     case "in_progress":
-      return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
+      return "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/20";
     case "completed":
-      return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
+      return "bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-acr-pos/20";
     case "declined":
-      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+      return "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/20";
     default:
       return "";
   }
@@ -576,7 +576,7 @@ export function SupportContent() {
                           <Star
                             className={`w-6 h-6 ${
                               star <= rating
-                                ? "fill-yellow-400 text-yellow-400"
+                                ? "fill-acr-warn text-acr-warn"
                                 : "text-muted-foreground"
                             }`}
                           />

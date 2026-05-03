@@ -32,19 +32,19 @@ interface ChurnData {
 
 const STATUS_STYLES: Record<string, { badge: string; dot: string; bar: string }> = {
   healthy: {
-    badge: "bg-green-500/10 text-green-600 border-green-500/20",
-    dot: "bg-green-500",
-    bar: "bg-green-500",
+    badge: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
+    dot: "bg-acr-pos",
+    bar: "bg-acr-pos",
   },
   watch: {
-    badge: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-    dot: "bg-amber-500",
-    bar: "bg-amber-500",
+    badge: "bg-acr-warn/10 text-acr-warn border-acr-warn/20",
+    dot: "bg-acr-warn",
+    bar: "bg-acr-warn",
   },
   critical: {
-    badge: "bg-red-500/10 text-red-600 border-red-500/20",
-    dot: "bg-red-500",
-    bar: "bg-red-500",
+    badge: "bg-acr-neg/10 text-acr-neg border-acr-neg/20",
+    dot: "bg-acr-neg",
+    bar: "bg-acr-neg",
   },
 };
 
@@ -59,7 +59,7 @@ export function ChurnIntelligence() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-red-500" aria-hidden="true" />
+            <TrendingDown className="h-4 w-4 text-acr-neg" aria-hidden="true" />
             Churn intelligence
           </CardTitle>
         </CardHeader>
@@ -88,7 +88,7 @@ export function ChurnIntelligence() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-red-500" aria-hidden="true" />
+            <TrendingDown className="h-4 w-4 text-acr-neg" aria-hidden="true" />
             Churn intelligence
           </CardTitle>
           <Badge variant="outline" className={`text-xs capitalize ${style.badge}`} aria-label={`Status: ${churnMetrics.status}`}>
@@ -101,7 +101,7 @@ export function ChurnIntelligence() {
         {/* Rate vs benchmark */}
         <dl className="grid grid-cols-3 gap-1 text-center m-0">
           <div>
-            <dd className={`text-2xl font-bold tabular-nums m-0 ${churnMetrics.status === "healthy" ? "text-green-600" : churnMetrics.status === "watch" ? "text-amber-600" : "text-red-600"}`}>
+            <dd className={`text-2xl font-bold tabular-nums m-0 ${churnMetrics.status === "healthy" ? "text-acr-pos" : churnMetrics.status === "watch" ? "text-acr-warn" : "text-acr-neg"}`}>
               {churnRate.toFixed(1)}%
             </dd>
             <dt className="text-[11px] text-muted-foreground">Your churn</dt>
@@ -111,7 +111,7 @@ export function ChurnIntelligence() {
             <dt className="text-[11px] text-muted-foreground">Industry avg</dt>
           </div>
           <div>
-            <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-green-600" : "text-red-600"}`}>
+            <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
               {vsIndustry > 0 ? "+" : ""}{vsIndustry.toFixed(1)}%
             </dd>
             <dt className="text-[11px] text-muted-foreground">vs benchmark</dt>
@@ -155,7 +155,7 @@ export function ChurnIntelligence() {
         {atRiskOrgs.length > 0 ? (
           <div className="space-y-1.5">
             <p id="at-risk-heading" className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3 text-amber-500" aria-hidden="true" />
+              <AlertTriangle className="h-3 w-3 text-acr-warn" aria-hidden="true" />
               <span className="tabular-nums">{atRiskOrgs.length}</span> paying {atRiskOrgs.length === 1 ? "org" : "orgs"} at risk
             </p>
             <ul aria-labelledby="at-risk-heading" className="list-none p-0 m-0">
@@ -173,7 +173,7 @@ export function ChurnIntelligence() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${
-                        org.churnSignal === "high" ? "bg-red-500" : "bg-amber-500"
+                        org.churnSignal === "high" ? "bg-acr-neg" : "bg-acr-warn"
                       }`} />
                       <span className="text-sm truncate">{org.name}</span>
                       {org.tier && (
@@ -197,7 +197,7 @@ export function ChurnIntelligence() {
             )}
           </div>
         ) : (
-          <div role="status" className="flex items-center gap-2 py-2 text-sm text-green-600">
+          <div role="status" className="flex items-center gap-2 py-2 text-sm text-acr-pos">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             <span>No paying orgs at churn risk</span>
           </div>
@@ -207,7 +207,7 @@ export function ChurnIntelligence() {
         {recentCancellations.length > 0 && (
           <div className="flex items-center justify-between text-xs pt-1 border-t">
             <span className="text-muted-foreground">Cancelled last 30d</span>
-            <span className="font-medium text-red-500 tabular-nums">{recentCancellations.length}</span>
+            <span className="font-medium text-acr-neg tabular-nums">{recentCancellations.length}</span>
           </div>
         )}
 
@@ -216,7 +216,7 @@ export function ChurnIntelligence() {
           <ul aria-label="Recommendations" className="space-y-1 pt-1 border-t list-none p-0 m-0">
             {recommendations.slice(0, 2).map((rec, i) => (
               <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                <span aria-hidden="true" className="text-blue-500 shrink-0 mt-0.5">→</span>
+                <span aria-hidden="true" className="text-acr-accent shrink-0 mt-0.5">→</span>
                 <span>{rec}</span>
               </li>
             ))}

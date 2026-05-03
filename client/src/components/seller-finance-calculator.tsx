@@ -128,7 +128,7 @@ export default function SellerFinanceCalculator({
     <Card className="w-full">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <TrendingDown className="h-4 w-4 text-green-700" />
+          <TrendingDown className="h-4 w-4 text-acr-pos" />
           Seller Financing Calculator
         </CardTitle>
       </CardHeader>
@@ -224,9 +224,9 @@ export default function SellerFinanceCalculator({
 
         {/* Summary metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-green-50 dark:bg-green-950/30 rounded-lg p-3 text-center">
+          <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Monthly Payment</p>
-            <p className="text-lg font-bold text-green-700 dark:text-green-400">
+            <p className="text-lg font-bold text-acr-pos dark:text-acr-pos">
               {fmtFull$(monthlyPayment)}
             </p>
           </div>
@@ -236,7 +236,7 @@ export default function SellerFinanceCalculator({
           </div>
           <div className="bg-muted/40 rounded-lg p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Total Interest</p>
-            <p className="text-base font-semibold text-amber-600 dark:text-amber-400">
+            <p className="text-base font-semibold text-acr-warn dark:text-acr-warn">
               {fmt$(totalInterest)}
             </p>
           </div>
@@ -287,8 +287,8 @@ export default function SellerFinanceCalculator({
                       <tr key={row.month} className="border-b border-border/40 last:border-0">
                         <td className="py-0.5 pr-2 text-muted-foreground">{row.month}</td>
                         <td className="py-0.5 pr-2 text-right tabular-nums">{fmtFull$(row.payment)}</td>
-                        <td className="py-0.5 pr-2 text-right tabular-nums text-green-700 dark:text-green-400">{fmtFull$(row.principal)}</td>
-                        <td className="py-0.5 pr-2 text-right tabular-nums text-amber-600">{fmtFull$(row.interest)}</td>
+                        <td className="py-0.5 pr-2 text-right tabular-nums text-acr-pos dark:text-acr-pos">{fmtFull$(row.principal)}</td>
+                        <td className="py-0.5 pr-2 text-right tabular-nums text-acr-warn">{fmtFull$(row.interest)}</td>
                         <td className="py-0.5 text-right tabular-nums">{fmtFull$(row.balance)}</td>
                       </tr>
                     ))}

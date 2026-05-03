@@ -185,9 +185,9 @@ export function OfferPreflightChecklist({
   }, [preflightResult]);
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-green-600";
-    if (score >= 60) return "text-yellow-600";
-    return "text-red-600";
+    if (score >= 80) return "text-acr-pos";
+    if (score >= 60) return "text-acr-warn";
+    return "text-acr-neg";
   };
 
   const getCategoryIcon = (category: ValidationIssue["category"]) => {
@@ -226,19 +226,19 @@ export function OfferPreflightChecklist({
               <div className="text-xs text-muted-foreground text-center">Total Selected</div>
             </Card>
             <Card className="p-3">
-              <div className="text-2xl font-bold text-center text-green-600" data-testid="stat-valid">
+              <div className="text-2xl font-bold text-center text-acr-pos" data-testid="stat-valid">
                 {preflightResult.validLeads}
               </div>
               <div className="text-xs text-muted-foreground text-center">Ready</div>
             </Card>
             <Card className="p-3">
-              <div className="text-2xl font-bold text-center text-yellow-600" data-testid="stat-warnings">
+              <div className="text-2xl font-bold text-center text-acr-warn" data-testid="stat-warnings">
                 {preflightResult.leadsWithWarnings}
               </div>
               <div className="text-xs text-muted-foreground text-center">Warnings</div>
             </Card>
             <Card className="p-3">
-              <div className="text-2xl font-bold text-center text-red-600" data-testid="stat-errors">
+              <div className="text-2xl font-bold text-center text-acr-neg" data-testid="stat-errors">
                 {preflightResult.leadsWithErrors}
               </div>
               <div className="text-xs text-muted-foreground text-center">Errors</div>
@@ -275,12 +275,12 @@ export function OfferPreflightChecklist({
                         key={`${issue.leadId}-${issue.category}-${index}`}
                         className={`flex items-start gap-3 p-2 rounded-md ${
                           issue.type === "error"
-                            ? "bg-red-50 dark:bg-red-950/20"
-                            : "bg-yellow-50 dark:bg-yellow-950/20"
+                            ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20"
+                            : "bg-acr-warn-soft dark:bg-acr-warn-soft/20"
                         }`}
                         data-testid={`issue-${issue.leadId}-${issue.category}`}
                       >
-                        <div className={issue.type === "error" ? "text-red-500" : "text-yellow-500"}>
+                        <div className={issue.type === "error" ? "text-acr-neg" : "text-acr-warn"}>
                           {issue.type === "error" ? (
                             <XCircle className="w-4 h-4 mt-0.5" />
                           ) : (
@@ -307,9 +307,9 @@ export function OfferPreflightChecklist({
 
           {/* All Clear Message */}
           {preflightResult.issues.length === 0 && (
-            <Card className="border-green-200 dark:border-green-800">
+            <Card className="border-acr-pos-soft dark:border-acr-pos-soft">
               <CardContent className="pt-4">
-                <div className="flex items-center gap-3 text-green-600">
+                <div className="flex items-center gap-3 text-acr-pos">
                   <CheckCircle2 className="w-8 h-8" />
                   <div>
                     <p className="font-medium">All checks passed!</p>

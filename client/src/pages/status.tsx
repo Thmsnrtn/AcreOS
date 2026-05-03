@@ -104,7 +104,7 @@ export default function StatusPage() {
                       </span>
                       <Badge variant="outline" className="gap-1.5">
                         <SvcIcon
-                          className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-green-600" : service.status === "degraded" ? "text-yellow-600" : "text-red-600"}`}
+                          className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-acr-pos" : service.status === "degraded" ? "text-acr-warn" : "text-acr-neg"}`}
                           aria-hidden="true"
                         />
                         {svc.label}

@@ -44,32 +44,32 @@ function getErrorConfig(type: ErrorType, error: Error | null) {
         icon: WifiOff,
         title: "Offline",
         description: "AcreOS can't reach our servers right now. Check your connection and try again — your data is safe.",
-        iconColor: "text-yellow-600",
-        bgColor: "from-yellow-500/20 to-yellow-500/5",
+        iconColor: "text-acr-warn",
+        bgColor: "from-acr-warn/20 to-acr-warn/5",
       };
     case "server":
       return {
         icon: ServerCrash,
         title: "We're having a moment",
         description: "AcreOS servers hit an issue loading this. Most retries succeed within a few seconds.",
-        iconColor: "text-red-600",
-        bgColor: "from-red-500/20 to-red-500/5",
+        iconColor: "text-acr-neg",
+        bgColor: "from-acr-neg/20 to-acr-neg/5",
       };
     case "auth":
       return {
         icon: Shield,
         title: "Authentication required",
         description: "Your session may have expired. Sign in again to continue.",
-        iconColor: "text-orange-600",
-        bgColor: "from-orange-500/20 to-orange-500/5",
+        iconColor: "text-acr-warn",
+        bgColor: "from-acr-warn/20 to-acr-warn/5",
       };
     case "notFound":
       return {
         icon: Database,
         title: "Data not found",
         description: "The requested data couldn't be found. It may have been moved or deleted.",
-        iconColor: "text-slate-600",
-        bgColor: "from-slate-500/20 to-slate-500/5",
+        iconColor: "text-muted-foreground",
+        bgColor: "from-muted/20 to-muted/5",
       };
     default:
       return {

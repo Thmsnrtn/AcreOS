@@ -31,35 +31,35 @@ export default function OutcomeFeedback() {
   return (
     <section aria-labelledby="agent-performance-heading" className="p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-blue-400" aria-hidden="true" />
-        <h3 id="agent-performance-heading" className="text-xs font-medium text-gray-500 uppercase tracking-wide m-0">Agent performance</h3>
+        <BarChart3 className="w-4 h-4 text-acr-accent" aria-hidden="true" />
+        <h3 id="agent-performance-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wide m-0">Agent performance</h3>
       </div>
 
       <ul aria-label="Outcome breakdown" className="grid grid-cols-3 gap-2 text-center list-none p-0 m-0">
-        <li className="p-2 rounded-lg bg-emerald-900/20 border border-emerald-900/30" aria-label={`${verified.length} verified good`}>
+        <li className="p-2 rounded-lg bg-acr-pos-soft/20 border border-acr-pos-soft/30" aria-label={`${verified.length} verified good`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
           </div>
-          <p className="text-lg font-semibold text-emerald-400 tabular-nums m-0">{verified.length}</p>
-          <p className="text-[10px] text-gray-500 m-0">Verified good</p>
+          <p className="text-lg font-semibold text-acr-pos tabular-nums m-0">{verified.length}</p>
+          <p className="text-[10px] text-muted-foreground m-0">Verified good</p>
         </li>
-        <li className="p-2 rounded-lg bg-yellow-900/20 border border-yellow-900/30" aria-label={`${pending.length} awaiting check`}>
+        <li className="p-2 rounded-lg bg-acr-warn-soft/20 border border-acr-warn-soft/30" aria-label={`${pending.length} awaiting check`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
-            <Clock className="w-3.5 h-3.5 text-yellow-400" aria-hidden="true" />
+            <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
           </div>
-          <p className="text-lg font-semibold text-yellow-400 tabular-nums m-0">{pending.length}</p>
-          <p className="text-[10px] text-gray-500 m-0">Awaiting check</p>
+          <p className="text-lg font-semibold text-acr-warn tabular-nums m-0">{pending.length}</p>
+          <p className="text-[10px] text-muted-foreground m-0">Awaiting check</p>
         </li>
-        <li className="p-2 rounded-lg bg-red-900/20 border border-red-900/30" aria-label={`${failed.length} didn't help`}>
+        <li className="p-2 rounded-lg bg-acr-neg-soft/20 border border-acr-neg-soft/30" aria-label={`${failed.length} didn't help`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
-            <XCircle className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+            <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
           </div>
-          <p className="text-lg font-semibold text-red-400 tabular-nums m-0">{failed.length}</p>
-          <p className="text-[10px] text-gray-500 m-0">Didn't help</p>
+          <p className="text-lg font-semibold text-acr-neg tabular-nums m-0">{failed.length}</p>
+          <p className="text-[10px] text-muted-foreground m-0">Didn't help</p>
         </li>
       </ul>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-muted-foreground text-center">
         <span className="tabular-nums">{successRate}%</span> action success rate across <span className="tabular-nums">{totalActions}</span> recent actions
       </p>
     </section>

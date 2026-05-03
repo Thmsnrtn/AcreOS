@@ -192,11 +192,11 @@ function getBearingLabel(deg: number): string {
 }
 
 function getGPSAccuracyLabel(accuracy: number): { label: string; color: string } {
-  if (accuracy <= 3) return { label: "Excellent (±3m)", color: "text-emerald-600" };
-  if (accuracy <= 10) return { label: "Good (±10m)", color: "text-green-500" };
-  if (accuracy <= 25) return { label: "Fair (±25m)", color: "text-amber-500" };
-  if (accuracy <= 100) return { label: "Poor (±100m)", color: "text-orange-500" };
-  return { label: "Very Poor", color: "text-red-500" };
+  if (accuracy <= 3) return { label: "Excellent (±3m)", color: "text-acr-pos" };
+  if (accuracy <= 10) return { label: "Good (±10m)", color: "text-acr-pos" };
+  if (accuracy <= 25) return { label: "Fair (±25m)", color: "text-acr-warn" };
+  if (accuracy <= 100) return { label: "Poor (±100m)", color: "text-acr-warn" };
+  return { label: "Very Poor", color: "text-acr-neg" };
 }
 
 // ---------------------------------------------------------------------------
@@ -723,15 +723,15 @@ export default function FieldScout() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-20">
+    <div className="min-h-screen bg-acr-bg-sunken text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 px-4 py-3">
+      <div className="sticky top-0 z-50 bg-acr-bg-sunken border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {/* Compass rose mini */}
             <div className="relative w-9 h-9 shrink-0">
               <div
-                className="w-full h-full rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center"
+                className="w-full h-full rounded-full bg-acr-bg-sunken border border-border flex items-center justify-center"
                 style={{
                   transform: compass.heading !== null
                     ? `rotate(${-compass.heading}deg)`
@@ -746,14 +746,14 @@ export default function FieldScout() {
                 </svg>
               </div>
               {compass.heading !== null && (
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-emerald-400 bg-gray-900 px-0.5 rounded">
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-acr-pos bg-acr-bg-sunken px-0.5 rounded">
                   {getBearingLabel(compass.heading)}
                 </div>
               )}
             </div>
             <div>
               <div className="font-bold text-sm">Field Scout</div>
-              <div className="text-[10px] text-gray-400 font-mono">
+              <div className="text-[10px] text-muted-foreground font-mono">
                 {gpsDMSDisplay ?? gpsDisplay}
               </div>
               {gpsAccuracyInfo && (
@@ -771,7 +771,7 @@ export default function FieldScout() {
               </Badge>
             )}
             {isOnline && (
-              <Badge className="text-xs bg-emerald-700 flex items-center gap-1">
+              <Badge className="text-xs bg-acr-pos flex items-center gap-1">
                 <Wifi className="w-3 h-3" />
                 Online
               </Badge>
@@ -786,7 +786,7 @@ export default function FieldScout() {
       </div>
 
       {/* Navigation tabs */}
-      <div className="flex border-b border-gray-800 bg-gray-900">
+      <div className="flex border-b border-border bg-acr-bg-sunken">
         {[
           { key: "scout", label: "Scout", icon: Navigation },
           { key: "leads", label: "Leads", icon: MapPin },
@@ -800,10 +800,10 @@ export default function FieldScout() {
             aria-selected={activeView === key}
             onClick={() => setActiveView(key as any)}
             className={cn(
-              "flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+              "flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos",
               activeView === key
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-500 hover:text-gray-300"
+                ? "text-acr-pos border-b-2 border-acr-pos"
+                : "text-muted-foreground hover:text-muted-foreground"
             )}
           >
             <Icon className="w-4 h-4" />
@@ -828,22 +828,22 @@ export default function FieldScout() {
       {activeView === "scout" && (
         <div className="p-4 space-y-4">
           {/* GPS Parcel Identify */}
-          <Card className="bg-gray-900 border-gray-800">
+          <Card className="bg-acr-bg-sunken border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Zap className="w-4 h-4 text-yellow-400" />
+                <Zap className="w-4 h-4 text-acr-warn" />
                 Instant Parcel Identify
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Standing near a property? GPS-identify the parcel instantly — get owner,
                 tax status, and estimated value in seconds.
               </p>
               <Button
                 onClick={handleGPSLookup}
                 disabled={gpsLoading || parcelLookupMutation.isPending}
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                className="w-full bg-acr-pos hover:bg-acr-pos"
               >
                 <MapPin className="w-4 h-4 mr-2" />
                 {gpsLoading
@@ -854,13 +854,13 @@ export default function FieldScout() {
               </Button>
 
               {coords && (
-                <div className="text-xs text-gray-500 flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3 text-acr-pos" />
                   GPS: {coords.latitude.toFixed(5)}, {coords.longitude.toFixed(5)} (±{Math.round(coords.accuracy)}m)
                 </div>
               )}
               {gpsError && (
-                <div className="text-xs text-red-400 flex items-center gap-1">
+                <div className="text-xs text-acr-neg flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
                   {gpsError}
                 </div>
@@ -870,69 +870,69 @@ export default function FieldScout() {
 
           {/* Quick Add Form */}
           {showQuickAdd && (
-            <Card className="bg-gray-900 border-emerald-700 border-2">
+            <Card className="bg-acr-bg-sunken border-acr-pos border-2">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-emerald-400" />
+                  <Plus className="w-4 h-4 text-acr-pos" />
                   Add to Pipeline
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-gray-400">Owner Name</Label>
+                    <Label className="text-xs text-muted-foreground">Owner Name</Label>
                     <Input
                       value={newLeadForm.ownerName || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, ownerName: e.target.value }))
                       }
-                      className="bg-gray-800 border-gray-700 text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm"
                       placeholder="Owner name"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-400">APN</Label>
+                    <Label className="text-xs text-muted-foreground">APN</Label>
                     <Input
                       value={newLeadForm.apn || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, apn: e.target.value }))
                       }
-                      className="bg-gray-800 border-gray-700 text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm"
                       placeholder="Parcel number"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-400">County</Label>
+                    <Label className="text-xs text-muted-foreground">County</Label>
                     <Input
                       value={newLeadForm.county || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, county: e.target.value }))
                       }
-                      className="bg-gray-800 border-gray-700 text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm"
                       placeholder="County"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-400">State</Label>
+                    <Label className="text-xs text-muted-foreground">State</Label>
                     <Input
                       value={newLeadForm.state || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, state: e.target.value }))
                       }
-                      className="bg-gray-800 border-gray-700 text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm"
                       placeholder="TX"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label className="text-xs text-gray-400">Address</Label>
+                  <Label className="text-xs text-muted-foreground">Address</Label>
                   <Input
                     value={newLeadForm.address || ""}
                     onChange={(e) =>
                       setNewLeadForm((p) => ({ ...p, address: e.target.value }))
                     }
-                    className="bg-gray-800 border-gray-700 text-white text-sm"
+                    className="bg-acr-bg-sunken border-border text-white text-sm"
                     placeholder="Property address"
                     autoComplete="street-address"
                     autoCapitalize="words"
@@ -941,14 +941,14 @@ export default function FieldScout() {
 
                 {/* Voice note area */}
                 <div>
-                  <Label className="text-xs text-gray-400 flex items-center gap-1">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
                     Notes
-                    <span className="text-gray-600">· Voice memo supported</span>
+                    <span className="text-muted-foreground">· Voice memo supported</span>
                   </Label>
                   <Textarea
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-white text-sm h-20 resize-none"
+                    className="bg-acr-bg-sunken border-border text-white text-sm h-20 resize-none"
                     placeholder="Field notes, observations, access notes…"
                   />
                 </div>
@@ -960,8 +960,8 @@ export default function FieldScout() {
                     size="sm"
                     onClick={isRecording ? stopRecording : startRecording}
                     className={cn(
-                      "flex-1 border-gray-700",
-                      isRecording && "border-red-500 text-red-400"
+                      "flex-1 border-border",
+                      isRecording && "border-acr-neg text-acr-neg"
                     )}
                   >
                     {isRecording ? (
@@ -979,13 +979,13 @@ export default function FieldScout() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-gray-700"
+                    className="flex-1 border-border"
                     onClick={handleAddPhoto}
                   >
                     <Camera className="w-4 h-4 mr-1" />
                     Photo
                     {scoutPhotos.length > 0 && (
-                      <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4 bg-blue-900/50 text-blue-300">
+                      <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4 bg-acr-accent/50 text-acr-accent">
                         {scoutPhotos.length}
                       </Badge>
                     )}
@@ -1001,7 +1001,7 @@ export default function FieldScout() {
                       setNewLeadForm({});
                       setCurrentNote("");
                     }}
-                    className="flex-1 text-gray-500"
+                    className="flex-1 text-muted-foreground"
                   >
                     Cancel
                   </Button>
@@ -1014,7 +1014,7 @@ export default function FieldScout() {
                       })
                     }
                     disabled={createLeadMutation.isPending || !newLeadForm.ownerName}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                    className="flex-1 bg-acr-pos hover:bg-acr-pos"
                   >
                     {createLeadMutation.isPending ? "Saving..." : "Add Lead"}
                   </Button>
@@ -1024,25 +1024,25 @@ export default function FieldScout() {
           )}
 
           {/* Inspection Checklist (collapsible) */}
-          <Card className="bg-gray-900 border-gray-800">
+          <Card className="bg-acr-bg-sunken border-border">
             <button
               type="button"
               onClick={() => setShowChecklist(!showChecklist)}
               aria-expanded={showChecklist}
-              className="w-full px-4 py-3 flex items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="w-full px-4 py-3 flex items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
             >
               <div className="flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-emerald-400" />
+                <ClipboardList className="w-4 h-4 text-acr-pos" />
                 <span className="text-sm font-medium">Property Inspection</span>
                 {checklistResults && (
                   <Badge
                     className={cn(
                       "text-[10px]",
                       checklistResults.overallScore >= 80
-                        ? "bg-emerald-900/50 text-emerald-300"
+                        ? "bg-acr-pos-soft/50 text-acr-pos"
                         : checklistResults.overallScore >= 50
-                        ? "bg-yellow-900/50 text-yellow-300"
-                        : "bg-red-900/50 text-red-300"
+                        ? "bg-acr-warn-soft/50 text-acr-warn"
+                        : "bg-acr-neg-soft/50 text-acr-neg"
                     )}
                   >
                     {checklistResults.overallScore}%
@@ -1050,9 +1050,9 @@ export default function FieldScout() {
                 )}
               </div>
               {showChecklist ? (
-                <ChevronUp className="w-4 h-4 text-gray-500" />
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
           </Card>
@@ -1076,7 +1076,7 @@ export default function FieldScout() {
             <Button
               onClick={handleCompleteVisit}
               disabled={saveVisitMutation.isPending}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-sm font-medium"
+              className="w-full bg-acr-pos hover:bg-acr-pos h-12 text-sm font-medium"
             >
               <Save className="w-4 h-4 mr-2" />
               {saveVisitMutation.isPending ? "Saving Visit..." : "Complete Visit"}
@@ -1085,7 +1085,7 @@ export default function FieldScout() {
 
           {/* Quick Actions for selected lead */}
           {selectedLead && (
-            <Card className="bg-gray-900 border-gray-800">
+            <Card className="bg-acr-bg-sunken border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center justify-between">
                   <span>{selectedLead.ownerName}</span>
@@ -1093,14 +1093,14 @@ export default function FieldScout() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setSelectedLead(null)}
-                    className="text-gray-500 h-6 w-6 p-0"
+                    className="text-muted-foreground h-6 w-6 p-0"
                   >
                     ×
                   </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-muted-foreground">
                   {selectedLead.county}, {selectedLead.state} · APN: {selectedLead.apn || "N/A"}
                 </div>
                 {selectedLead.score !== undefined && (
@@ -1108,10 +1108,10 @@ export default function FieldScout() {
                     className={cn(
                       "text-xs",
                       selectedLead.score >= 80
-                        ? "bg-red-900/50 text-red-300"
+                        ? "bg-acr-neg-soft/50 text-acr-neg"
                         : selectedLead.score >= 60
-                        ? "bg-yellow-900/50 text-yellow-300"
-                        : "bg-gray-800 text-gray-400"
+                        ? "bg-acr-warn-soft/50 text-acr-warn"
+                        : "bg-acr-bg-sunken text-muted-foreground"
                     )}
                   >
                     Score: {selectedLead.score}
@@ -1123,7 +1123,7 @@ export default function FieldScout() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-gray-700 text-emerald-400 flex-col h-14 gap-1"
+                    className="border-border text-acr-pos flex-col h-14 gap-1"
                     onClick={() => {
                       // Quick call
                       window.location.href = `tel:${(selectedLead as any).phone || ""}`;
@@ -1135,7 +1135,7 @@ export default function FieldScout() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-gray-700 text-blue-400 flex-col h-14 gap-1"
+                    className="border-border text-acr-accent flex-col h-14 gap-1"
                     onClick={() => {
                       window.location.href = `sms:${(selectedLead as any).phone || ""}`;
                     }}
@@ -1146,7 +1146,7 @@ export default function FieldScout() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-gray-700 text-purple-400 flex-col h-14 gap-1"
+                    className="border-border text-acr-brand flex-col h-14 gap-1"
                     onClick={() => setShowQuickAdd(true)}
                   >
                     <Plus className="w-4 h-4" />
@@ -1158,15 +1158,15 @@ export default function FieldScout() {
           )}
 
           {/* Recent Activity */}
-          <Card className="bg-gray-900 border-gray-800">
+          <Card className="bg-acr-bg-sunken border-border">
             <CardHeader className="pb-2">
-              <CardTitle className="text-xs text-gray-400 uppercase tracking-wide">
+              <CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">
                 Recent Field Activity
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
               {offlineQueue.length > 0 && (
-                <div className="text-xs text-yellow-400 flex items-center gap-1 p-2 bg-yellow-900/20 rounded mb-2">
+                <div className="text-xs text-acr-warn flex items-center gap-1 p-2 bg-acr-warn-soft/20 rounded mb-2">
                   <Clock className="w-3 h-3" />
                   {offlineQueue.length} action{offlineQueue.length > 1 ? "s" : ""} waiting to sync
                 </div>
@@ -1177,38 +1177,38 @@ export default function FieldScout() {
                   type="button"
                   onClick={() => setSelectedLead(lead)}
                   aria-label={`View lead ${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "View lead"}
-                  className="w-full flex items-center justify-between p-2 rounded hover:bg-gray-800 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="w-full flex items-center justify-between p-2 rounded hover:bg-acr-bg-sunken text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
                 >
                   <div>
                     <div className="text-sm font-medium">{lead.ownerName || "Unknown"}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       {lead.county}, {lead.state}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {(lead as any).isOffline && (
-                      <WifiOff className="w-3 h-3 text-yellow-400" />
+                      <WifiOff className="w-3 h-3 text-acr-warn" />
                     )}
                     {lead.score !== undefined && (
                       <span
                         className={cn(
                           "text-xs font-bold",
                           lead.score >= 80
-                            ? "text-red-400"
+                            ? "text-acr-neg"
                             : lead.score >= 60
-                            ? "text-yellow-400"
-                            : "text-gray-500"
+                            ? "text-acr-warn"
+                            : "text-muted-foreground"
                         )}
                       >
                         {lead.score}
                       </span>
                     )}
-                    <Eye className="w-3 h-3 text-gray-600" />
+                    <Eye className="w-3 h-3 text-muted-foreground" />
                   </div>
                 </button>
               ))}
               {filteredLeads.length === 0 && (
-                <p className="text-xs text-gray-600 text-center py-4">
+                <p className="text-xs text-muted-foreground text-center py-4">
                   No field leads yet. Use GPS parcel identify to get started.
                 </p>
               )}
@@ -1220,7 +1220,7 @@ export default function FieldScout() {
             <Button
               onClick={() => setShowQuickAdd(true)}
               variant="outline"
-              className="w-full border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-emerald-600"
+              className="w-full border-dashed border-border text-muted-foreground hover:text-white hover:border-acr-pos"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Lead Manually
@@ -1233,12 +1233,12 @@ export default function FieldScout() {
       {activeView === "leads" && (
         <div className="p-4 space-y-3">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
-              className="pl-9 bg-gray-900 border-gray-800 text-white"
+              className="pl-9 bg-acr-bg-sunken border-border text-white"
             />
           </div>
 
@@ -1247,8 +1247,8 @@ export default function FieldScout() {
               <Card
                 key={lead.id || i}
                 className={cn(
-                  "bg-gray-900 border-gray-800 cursor-pointer hover:border-gray-700",
-                  selectedLead?.id === lead.id && "border-emerald-700"
+                  "bg-acr-bg-sunken border-border cursor-pointer hover:border-border",
+                  selectedLead?.id === lead.id && "border-acr-pos"
                 )}
                 onClick={() => setSelectedLead(lead)}
               >
@@ -1256,12 +1256,12 @@ export default function FieldScout() {
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="font-medium text-sm">{lead.ownerName || "Unknown Owner"}</div>
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-muted-foreground">
                         {lead.county}, {lead.state}
                         {lead.acreage && ` · ${lead.acreage} acres`}
                       </div>
                       {lead.apn && (
-                        <div className="text-xs text-gray-600 font-mono">APN: {lead.apn}</div>
+                        <div className="text-xs text-muted-foreground font-mono">APN: {lead.apn}</div>
                       )}
                     </div>
                     <div className="text-right">
@@ -1270,17 +1270,17 @@ export default function FieldScout() {
                           className={cn(
                             "text-lg font-bold",
                             lead.score >= 80
-                              ? "text-red-400"
+                              ? "text-acr-neg"
                               : lead.score >= 65
-                              ? "text-yellow-400"
-                              : "text-gray-500"
+                              ? "text-acr-warn"
+                              : "text-muted-foreground"
                           )}
                         >
                           {lead.score}
                         </div>
                       )}
                       {lead.assessedValue && (
-                        <div className="text-xs text-gray-500 tabular-nums">
+                        <div className="text-xs text-muted-foreground tabular-nums">
                           {usd(parseInt(lead.assessedValue), { noCents: true })}
                         </div>
                       )}
@@ -1292,7 +1292,7 @@ export default function FieldScout() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs text-emerald-400 px-2"
+                      className="h-7 text-xs text-acr-pos px-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         window.location.href = `tel:${(lead as any).phone || ""}`;
@@ -1304,7 +1304,7 @@ export default function FieldScout() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs text-blue-400 px-2"
+                      className="h-7 text-xs text-acr-accent px-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         window.location.href = `sms:${(lead as any).phone || ""}`;
@@ -1314,7 +1314,7 @@ export default function FieldScout() {
                       Text
                     </Button>
                     {lead.notes && (
-                      <span className="text-xs text-gray-600 ml-auto self-center truncate max-w-24">
+                      <span className="text-xs text-muted-foreground ml-auto self-center truncate max-w-24">
                         {lead.notes}
                       </span>
                     )}
@@ -1329,19 +1329,19 @@ export default function FieldScout() {
       {/* MAP VIEW */}
       {activeView === "map" && (
         <div className="p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl h-80 flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <Map className="w-12 h-12 mx-auto mb-2 text-gray-700" />
+          <div className="bg-acr-bg-sunken border border-border rounded-xl h-80 flex items-center justify-center">
+            <div className="text-center text-muted-foreground">
+              <Map className="w-12 h-12 mx-auto mb-2 text-foreground" />
               <div className="text-sm">Territory Map</div>
               <div className="text-xs mt-1">Shows leads, visited properties, and GPS track</div>
               {coords && (
-                <div className="text-xs text-emerald-400 mt-2">
+                <div className="text-xs text-acr-pos mt-2">
                   Current: {coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)}
                 </div>
               )}
               <Button
                 size="sm"
-                className="mt-3 bg-emerald-700 hover:bg-emerald-600 text-xs"
+                className="mt-3 bg-acr-pos hover:bg-acr-pos text-xs"
                 onClick={getCurrentPosition}
               >
                 <Navigation className="w-3 h-3 mr-1" />
@@ -1351,19 +1351,19 @@ export default function FieldScout() {
           </div>
 
           <div className="mt-4 space-y-2">
-            <h3 className="text-xs text-gray-500 uppercase tracking-wide">Lead Density</h3>
+            <h3 className="text-xs text-muted-foreground uppercase tracking-wide">Lead Density</h3>
             {["TX", "AZ", "NM"].map((state) => {
               const count = recentLeads.filter((l) => l.state === state).length;
               return (
                 <div key={state} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-6">{state}</span>
-                  <div className="flex-1 bg-gray-800 rounded-full h-2">
+                  <span className="text-xs text-muted-foreground w-6">{state}</span>
+                  <div className="flex-1 bg-acr-bg-sunken rounded-full h-2">
                     <div
-                      className="bg-emerald-600 rounded-full h-2 transition-all"
+                      className="bg-acr-pos rounded-full h-2 transition-all"
                       style={{ width: `${Math.min(100, count * 20)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-gray-500">{count}</span>
+                  <span className="text-xs text-muted-foreground">{count}</span>
                 </div>
               );
             })}
@@ -1375,23 +1375,23 @@ export default function FieldScout() {
       {activeView === "visits" && (
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-xs text-gray-400 uppercase tracking-wide">Past Scout Visits</h2>
-            <Badge variant="secondary" className="text-[10px] bg-gray-800 text-gray-400">
+            <h2 className="text-xs text-muted-foreground uppercase tracking-wide">Past Scout Visits</h2>
+            <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
               {pastVisits.length} visit{pastVisits.length !== 1 ? "s" : ""}
             </Badge>
           </div>
 
           {pastVisits.length === 0 ? (
-            <Card className="bg-gray-900 border-gray-800">
+            <Card className="bg-acr-bg-sunken border-border">
               <CardContent className="py-8 text-center">
-                <FileText className="w-10 h-10 mx-auto mb-2 text-gray-700" />
-                <p className="text-sm text-gray-500">No visits recorded yet</p>
-                <p className="text-xs text-gray-600 mt-1">
+                <FileText className="w-10 h-10 mx-auto mb-2 text-foreground" />
+                <p className="text-sm text-muted-foreground">No visits recorded yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   Complete a scout visit to see it here.
                 </p>
                 <Button
                   size="sm"
-                  className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-xs"
+                  className="mt-3 bg-acr-pos hover:bg-acr-pos text-xs"
                   onClick={() => setActiveView("scout")}
                 >
                   <Navigation className="w-3 h-3 mr-1" />
@@ -1421,7 +1421,7 @@ export default function FieldScout() {
             type="button"
             onClick={stopRecording}
             aria-label="Stop voice recording"
-            className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            className="w-14 h-14 bg-acr-neg rounded-full flex items-center justify-center shadow-lg animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           >
             <MicOff className="w-6 h-6 text-white" aria-hidden="true" />
           </button>
@@ -1430,7 +1430,7 @@ export default function FieldScout() {
             type="button"
             onClick={startRecording}
             aria-label="Start voice recording"
-            className="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="w-14 h-14 bg-acr-bg-sunken rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
           >
             <Mic className="w-6 h-6 text-white" aria-hidden="true" />
           </button>
@@ -1442,7 +1442,7 @@ export default function FieldScout() {
             setActiveView("scout");
           }}
           aria-label="Quick-add new lead"
-          className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="w-14 h-14 bg-acr-pos rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <Plus className="w-7 h-7 text-white" aria-hidden="true" />
         </button>
@@ -1451,7 +1451,7 @@ export default function FieldScout() {
       {/* Recording indicator */}
       {isRecording && (
         <div className="fixed top-16 left-0 right-0 flex justify-center pointer-events-none">
-          <div className="bg-red-600 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-lg">
+          <div className="bg-acr-neg text-white text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-lg">
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
             Recording {recordingSeconds}s
           </div>

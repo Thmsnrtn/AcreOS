@@ -67,7 +67,7 @@ export function CountyIntelligenceCard({ state, county, compact = false }: Count
             {county} County, {state}
             {data.avgRating && (
               <Badge variant="outline" className="text-xs ml-auto">
-                <Star className="w-3 h-3 mr-1 text-amber-500 fill-amber-500" />
+                <Star className="w-3 h-3 mr-1 text-acr-warn fill-acr-warn" />
                 {data.avgRating} ({data.reviewCount} reviews)
               </Badge>
             )}
@@ -118,8 +118,8 @@ export function CountyIntelligenceCard({ state, county, compact = false }: Count
               </div>
               {data.reviews.slice(0, 2).map((r, i) => (
                 <div key={i} className="text-xs space-y-0.5">
-                  <p className="text-emerald-600 dark:text-emerald-400">+ {r.pros}</p>
-                  <p className="text-red-600 dark:text-red-400">- {r.cons}</p>
+                  <p className="text-acr-pos dark:text-acr-pos">+ {r.pros}</p>
+                  <p className="text-acr-neg dark:text-acr-neg">- {r.cons}</p>
                 </div>
               ))}
             </motion.div>

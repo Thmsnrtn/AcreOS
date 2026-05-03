@@ -81,14 +81,14 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    active: "bg-green-100 text-green-800",
-    trial: "bg-blue-100 text-blue-800",
-    suspended: "bg-red-100 text-red-800",
-    onboarding: "bg-yellow-100 text-yellow-800",
+    active: "bg-acr-pos-soft text-acr-pos",
+    trial: "bg-acr-accent text-acr-accent",
+    suspended: "bg-acr-neg-soft text-acr-neg",
+    onboarding: "bg-acr-warn-soft text-acr-warn",
   };
   return (
     <span
-      className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${map[status] ?? "bg-gray-100 text-gray-600"}`}
+      className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${map[status] ?? "bg-muted text-muted-foreground"}`}
       aria-label={`Status: ${status}`}
     >
       {status}
@@ -242,10 +242,10 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
 
 function AnalyticsCards({ analytics, loading }: { analytics: ResellerAnalytics | null; loading: boolean }) {
   const cards = [
-    { label: "Total tenants", value: analytics?.totalTenants, display: "number", icon: Building2, color: "text-blue-500" },
-    { label: "Active users", value: analytics?.totalUsers, display: "number", icon: Users, color: "text-green-500" },
-    { label: "Total revenue", value: analytics?.totalRevenue, display: "currency", icon: DollarSign, color: "text-purple-500" },
-    { label: "MRR", value: analytics?.mrr, display: "currency", icon: TrendingUp, color: "text-orange-500" },
+    { label: "Total tenants", value: analytics?.totalTenants, display: "number", icon: Building2, color: "text-acr-accent" },
+    { label: "Active users", value: analytics?.totalUsers, display: "number", icon: Users, color: "text-acr-pos" },
+    { label: "Total revenue", value: analytics?.totalRevenue, display: "currency", icon: DollarSign, color: "text-acr-brand" },
+    { label: "MRR", value: analytics?.mrr, display: "currency", icon: TrendingUp, color: "text-acr-warn" },
   ];
 
   return (
@@ -383,7 +383,7 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
                           />
                         </div>
                       ) : (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" aria-label="Onboarding complete" />
+                        <CheckCircle2 className="w-4 h-4 text-acr-pos" aria-label="Onboarding complete" />
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -687,7 +687,7 @@ function WhiteLabelPanel() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold">{branding.brandName} Platform</p>
-                      <p className="text-xs text-gray-500">Real Estate Suite</p>
+                      <p className="text-xs text-muted-foreground">Real Estate Suite</p>
                     </div>
                     <button
                       type="button"
@@ -699,8 +699,8 @@ function WhiteLabelPanel() {
                       Get Started
                     </button>
                   </div>
-                  <div className="h-px bg-gray-100" />
-                  <p className="text-xs text-gray-400">{branding.footerText}</p>
+                  <div className="h-px bg-muted" />
+                  <p className="text-xs text-muted-foreground">{branding.footerText}</p>
                 </div>
               </div>
             </CardContent>

@@ -45,9 +45,9 @@ function AgentRuntime() {
   });
 
   const stateColors: Record<string, string> = {
-    ready: "bg-green-500", thinking: "bg-blue-500", acting: "bg-purple-500",
-    waiting: "bg-yellow-500", sleeping: "bg-gray-500", crashed: "bg-red-500",
-    initializing: "bg-cyan-500", terminated: "bg-gray-800",
+    ready: "bg-acr-pos", thinking: "bg-acr-accent", acting: "bg-acr-brand",
+    waiting: "bg-acr-warn", sleeping: "bg-muted", crashed: "bg-acr-neg",
+    initializing: "bg-acr-accent", terminated: "bg-acr-bg-sunken",
   };
 
   const stateIcons: Record<string, string> = {
@@ -69,14 +69,14 @@ function AgentRuntime() {
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 list-none p-0 m-0" aria-label="Agent lifecycle states">
           {(states || []).map((s: any) => (
             <li key={s.id}>
-              <Card className={s.lifecycleState === "crashed" ? "border-red-500" : ""}>
+              <Card className={s.lifecycleState === "crashed" ? "border-acr-neg" : ""}>
                 <CardContent className="pt-3 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg" role="img" aria-label={`Lifecycle state: ${s.lifecycleState}`}>{stateIcons[s.lifecycleState] || "?"}</span>
                       <span className="font-mono text-sm font-bold">{s.agentCodename}</span>
                     </div>
-                    <Badge className={`${stateColors[s.lifecycleState] || "bg-gray-500"} text-white`} aria-label={`State: ${s.lifecycleState}`}>{s.lifecycleState}</Badge>
+                    <Badge className={`${stateColors[s.lifecycleState] || "bg-muted"} text-white`} aria-label={`State: ${s.lifecycleState}`}>{s.lifecycleState}</Badge>
                   </div>
                   <dl className="grid grid-cols-3 gap-2 text-xs">
                     <div>
@@ -93,7 +93,7 @@ function AgentRuntime() {
                     </div>
                   </dl>
                   {s.currentTask && <p className="text-xs text-muted-foreground mt-1">Task: {s.currentTask}</p>}
-                  {s.waitingFor && <p className="text-xs text-yellow-600 mt-1" role="status">Waiting: {s.waitingFor}</p>}
+                  {s.waitingFor && <p className="text-xs text-acr-warn mt-1" role="status">Waiting: {s.waitingFor}</p>}
                 </CardContent>
               </Card>
             </li>
@@ -133,8 +133,8 @@ function EventMesh() {
             <dd className="text-2xl font-bold tabular-nums">{stats.activeChannels || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <dt className="text-xs text-muted-foreground text-red-500">Dead letter</dt>
-            <dd className="text-2xl font-bold text-red-500 tabular-nums">{stats.deadLetterCount || 0}</dd>
+            <dt className="text-xs text-muted-foreground text-acr-neg">Dead letter</dt>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{stats.deadLetterCount || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Subscribers</dt>
@@ -161,8 +161,8 @@ function EventMesh() {
       </Card>
 
       {(dlq || []).length > 0 && (
-        <Card className="border-red-500">
-          <CardHeader><CardTitle className="text-sm text-red-500">Dead-letter queue ({dlq.length})</CardTitle></CardHeader>
+        <Card className="border-acr-neg">
+          <CardHeader><CardTitle className="text-sm text-acr-neg">Dead-letter queue ({dlq.length})</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-1 list-none p-0 m-0" aria-label="Dead-letter events">
               {dlq.slice(0, 10).map((e: any) => (
@@ -219,11 +219,11 @@ function OutcomeVerification() {
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Verified</dt>
-            <dd className="text-2xl font-bold text-green-500 tabular-nums">{stats.verified || 0}</dd>
+            <dd className="text-2xl font-bold text-acr-pos tabular-nums">{stats.verified || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <dt className="text-xs text-muted-foreground text-red-500">Discrepancies</dt>
-            <dd className="text-2xl font-bold text-red-500 tabular-nums">{stats.discrepancies || 0}</dd>
+            <dt className="text-xs text-muted-foreground text-acr-neg">Discrepancies</dt>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{stats.discrepancies || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Accuracy</dt>
@@ -233,8 +233,8 @@ function OutcomeVerification() {
       )}
 
       {(discrepancies || []).length > 0 && (
-        <Card className="border-red-500">
-          <CardHeader><CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" /> Discrepancies</CardTitle></CardHeader>
+        <Card className="border-acr-neg">
+          <CardHeader><CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-acr-neg" aria-hidden="true" /> Discrepancies</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-2 list-none p-0 m-0" aria-label="Outcome discrepancies">
               {discrepancies.map((d: any) => (
@@ -244,7 +244,7 @@ function OutcomeVerification() {
                     <Badge variant="destructive">discrepancy</Badge>
                   </div>
                   <p className="text-sm mt-1">Claimed: {d.claimedOutcome}</p>
-                  <p className="text-sm text-red-500">Verified: {d.verifiedOutcome || "Failed verification"}</p>
+                  <p className="text-sm text-acr-neg">Verified: {d.verifiedOutcome || "Failed verification"}</p>
                 </li>
               ))}
             </ul>
@@ -262,8 +262,8 @@ function SagaOrchestrator() {
   });
 
   const statusColors: Record<string, string> = {
-    running: "bg-blue-500", completed: "bg-green-500", rolled_back: "bg-red-500",
-    compensating: "bg-orange-500", partially_compensated: "bg-yellow-500", timed_out: "bg-gray-500",
+    running: "bg-acr-accent", completed: "bg-acr-pos", rolled_back: "bg-acr-neg",
+    compensating: "bg-acr-warn", partially_compensated: "bg-acr-warn", timed_out: "bg-muted",
   };
 
   return (
@@ -278,7 +278,7 @@ function SagaOrchestrator() {
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-sm">{s.sagaName}</span>
                     <div className="flex items-center gap-2">
-                      <Badge className={`${statusColors[s.status] || "bg-gray-500"} text-white`} aria-label={`Saga status: ${s.status}`}>{s.status}</Badge>
+                      <Badge className={`${statusColors[s.status] || "bg-muted"} text-white`} aria-label={`Saga status: ${s.status}`}>{s.status}</Badge>
                       <span className="text-xs text-muted-foreground tabular-nums" aria-label={`Step ${s.currentStep} of ${s.totalSteps}`}>Step {s.currentStep}/{s.totalSteps}</span>
                     </div>
                   </div>
@@ -293,7 +293,7 @@ function SagaOrchestrator() {
                     {(s.steps || []).map((step: any, i: number) => (
                       <div
                         key={i}
-                        className={`h-2 flex-1 rounded ${step.status === "completed" ? "bg-green-500" : step.status === "failed" ? "bg-red-500" : step.status === "compensated" ? "bg-orange-500" : "bg-muted"}`}
+                        className={`h-2 flex-1 rounded ${step.status === "completed" ? "bg-acr-pos" : step.status === "failed" ? "bg-acr-neg" : step.status === "compensated" ? "bg-acr-warn" : "bg-muted"}`}
                         title={`${step.agent}: ${step.action} (${step.status})`}
                         aria-label={`Step ${i + 1}: ${step.agent} ${step.action} — ${step.status}`}
                       />
@@ -325,13 +325,13 @@ function AgentVersions() {
         <ul className="space-y-3 list-none p-0 m-0" aria-label="Active canary deployments">
           {canaries.map((v: any) => (
             <li key={v.id}>
-              <Card className="border-blue-500">
+              <Card className="border-acr-accent">
                 <CardContent className="pt-3 pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{v.agentCodename}</Badge>
                       <Badge variant="secondary">v{v.versionNumber}</Badge>
-                      <Badge className="bg-blue-500 text-white tabular-nums" aria-label={`${v.canaryWeight} percent canary traffic`}>{v.canaryWeight}% canary</Badge>
+                      <Badge className="bg-acr-accent text-white tabular-nums" aria-label={`${v.canaryWeight} percent canary traffic`}>{v.canaryWeight}% canary</Badge>
                     </div>
                     <span className="text-xs text-muted-foreground">{v.changeDescription}</span>
                   </div>
@@ -379,15 +379,15 @@ function TrustEnforcement() {
         <dl className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Allowed</dt>
-            <dd className="text-2xl font-bold text-green-500 tabular-nums">{stats.allowed || 0}</dd>
+            <dd className="text-2xl font-bold text-acr-pos tabular-nums">{stats.allowed || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Blocked</dt>
-            <dd className="text-2xl font-bold text-red-500 tabular-nums">{stats.blocked || 0}</dd>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{stats.blocked || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Pending</dt>
-            <dd className="text-2xl font-bold text-yellow-500 tabular-nums">{stats.pendingApproval || 0}</dd>
+            <dd className="text-2xl font-bold text-acr-warn tabular-nums">{stats.pendingApproval || 0}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Approved</dt>
@@ -401,7 +401,7 @@ function TrustEnforcement() {
       )}
 
       {(pending || []).length > 0 && (
-        <Card className="border-yellow-500">
+        <Card className="border-acr-warn">
           <CardHeader><CardTitle className="text-sm">Awaiting CEO approval ({pending.length})</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-2 list-none p-0 m-0" aria-label="Trust requests awaiting CEO approval">
@@ -469,8 +469,8 @@ function IntegrationFramework() {
             <dd className="text-2xl font-bold tabular-nums">{usd((stats.totalCost || 0) / 100)}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <dt className="text-xs text-muted-foreground text-red-500">Open circuits</dt>
-            <dd className="text-2xl font-bold text-red-500 tabular-nums">{stats.openCircuits || 0}</dd>
+            <dt className="text-xs text-muted-foreground text-acr-neg">Open circuits</dt>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{stats.openCircuits || 0}</dd>
           </CardContent></Card>
         </dl>
       )}

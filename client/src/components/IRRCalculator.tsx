@@ -200,10 +200,10 @@ export function IRRCalculator({
     results.irr === null
       ? 'text-muted-foreground'
       : results.irr >= 0.2
-      ? 'text-emerald-600'
+      ? 'text-acr-pos'
       : results.irr >= 0.1
-      ? 'text-yellow-600'
-      : 'text-red-500';
+      ? 'text-acr-warn'
+      : 'text-acr-neg';
 
   const irrText = fmtPct(results.irr);
   const npvText = fmtDollar(results.npv);
@@ -324,21 +324,21 @@ export function IRRCalculator({
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">NPV</dt>
-            <dd className={`text-3xl font-bold tabular-nums m-0 ${results.npv >= 0 ? 'text-emerald-600' : 'text-red-500'}`} aria-label={`NPV: ${npvText}`}>
+            <dd className={`text-3xl font-bold tabular-nums m-0 ${results.npv >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`} aria-label={`NPV: ${npvText}`}>
               {npvText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">@ <span className="tabular-nums">{inputs.discountRate}</span>% discount</p>
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">Equity multiple</dt>
-            <dd className="text-3xl font-bold tabular-nums text-blue-600 m-0" aria-label={`Equity multiple: ${emText}`}>
+            <dd className="text-3xl font-bold tabular-nums text-acr-accent m-0" aria-label={`Equity multiple: ${emText}`}>
               {emText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Total return on equity</p>
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">Cash-on-cash</dt>
-            <dd className="text-3xl font-bold tabular-nums text-purple-600 m-0" aria-label={`Cash-on-cash return: ${cocText}`}>
+            <dd className="text-3xl font-bold tabular-nums text-acr-brand m-0" aria-label={`Cash-on-cash return: ${cocText}`}>
               {cocText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Annual income yield</p>
@@ -371,7 +371,7 @@ export function IRRCalculator({
             {results.annualCashFlows.map((cf, i) => (
               <li key={i} className="text-center" aria-label={`Year ${i}: ${fmtDollar(cf)}`}>
                 <p className="text-xs text-muted-foreground" aria-hidden="true">Y<span className="tabular-nums">{i}</span></p>
-                <p className={`text-xs font-mono font-bold tabular-nums ${cf >= 0 ? 'text-emerald-600' : 'text-red-500'}`} aria-hidden="true">
+                <p className={`text-xs font-mono font-bold tabular-nums ${cf >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`} aria-hidden="true">
                   {fmtDollar(cf)}
                 </p>
               </li>

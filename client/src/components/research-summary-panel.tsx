@@ -284,7 +284,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
               return (
                 <div key={key} className="flex items-center gap-1" data-testid={`checklist-${key}`}>
                   {effective ? (
-                    <CheckCircle2 className="w-3 h-3 text-green-500" aria-hidden="true" />
+                    <CheckCircle2 className="w-3 h-3 text-acr-pos" aria-hidden="true" />
                   ) : (
                     <Circle className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                   )}

@@ -36,10 +36,10 @@ interface DunningSummary {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-  pending: { label: "Pending", color: "text-yellow-600", icon: Clock },
-  retrying: { label: "Retrying", color: "text-blue-600", icon: RefreshCw },
-  failed: { label: "Failed", color: "text-red-600", icon: XCircle },
-  resolved: { label: "Resolved", color: "text-green-600", icon: CheckCircle2 },
+  pending: { label: "Pending", color: "text-acr-warn", icon: Clock },
+  retrying: { label: "Retrying", color: "text-acr-accent", icon: RefreshCw },
+  failed: { label: "Failed", color: "text-acr-neg", icon: XCircle },
+  resolved: { label: "Resolved", color: "text-acr-pos", icon: CheckCircle2 },
   cancelled: { label: "Cancelled", color: "text-muted-foreground", icon: XCircle },
 };
 
@@ -105,7 +105,7 @@ export default function DunningManagerPage() {
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card>
             <CardContent className="p-4">
-              <dt className="flex items-center gap-2 text-yellow-600 mb-1">
+              <dt className="flex items-center gap-2 text-acr-warn mb-1">
                 <Clock className="w-4 h-4" aria-hidden="true" />
                 <span className="text-xs">Pending</span>
               </dt>
@@ -114,7 +114,7 @@ export default function DunningManagerPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <dt className="flex items-center gap-2 text-blue-600 mb-1">
+              <dt className="flex items-center gap-2 text-acr-accent mb-1">
                 <RefreshCw className="w-4 h-4" aria-hidden="true" />
                 <span className="text-xs">Retrying</span>
               </dt>
@@ -123,7 +123,7 @@ export default function DunningManagerPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <dt className="flex items-center gap-2 text-red-600 mb-1">
+              <dt className="flex items-center gap-2 text-acr-neg mb-1">
                 <XCircle className="w-4 h-4" aria-hidden="true" />
                 <span className="text-xs">Failed</span>
               </dt>
@@ -156,7 +156,7 @@ export default function DunningManagerPage() {
             </div>
           ) : cases.length === 0 ? (
             <div className="text-center py-8">
-              <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" aria-hidden="true" />
+              <CheckCircle2 className="w-8 h-8 text-acr-pos mx-auto mb-2" aria-hidden="true" />
               <p className="text-muted-foreground text-sm">No active dunning cases.</p>
             </div>
           ) : (
@@ -183,7 +183,7 @@ export default function DunningManagerPage() {
                           <a href={`mailto:${c.email}`} className="underline-offset-2 hover:underline truncate">{c.email}</a>
                         </span>
                         <span className="flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-yellow-500" aria-hidden="true" />
+                          <AlertTriangle className="w-3 h-3 text-acr-warn" aria-hidden="true" />
                           <span className="tabular-nums">{c.daysOverdue}</span> days overdue
                         </span>
                         <span className="tabular-nums">{usd(c.amountDueCents / 100)}</span>

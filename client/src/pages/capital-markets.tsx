@@ -15,8 +15,8 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
 function RatingBadge({ rating }: { rating: string }) {
-  const colors: Record<string, string> = { AAA: "bg-green-100 text-green-800", AA: "bg-blue-100 text-blue-800", A: "bg-sky-100 text-sky-800", BBB: "bg-yellow-100 text-yellow-800" };
-  return <Badge className={colors[rating] ?? "bg-gray-100 text-gray-600"} aria-label={`Credit rating: ${rating}`}>{rating}</Badge>;
+  const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn" };
+  return <Badge className={colors[rating] ?? "bg-muted text-muted-foreground"} aria-label={`Credit rating: ${rating}`}>{rating}</Badge>;
 }
 
 function fmt(n: number) {
@@ -69,7 +69,7 @@ function SecuritizationWizard() {
                 onClick={() => setStep(i)}
                 aria-current={i === step ? "step" : undefined}
                 aria-label={`Step ${i + 1} of ${WIZARD_STEPS.length}: ${s.title}${i === step ? " (current)" : i < step ? " (completed)" : ""}`}
-                className={`flex items-center gap-2 text-sm ${i === step ? "font-semibold text-primary" : i < step ? "text-emerald-600" : "text-muted-foreground"}`}
+                className={`flex items-center gap-2 text-sm ${i === step ? "font-semibold text-primary" : i < step ? "text-acr-pos" : "text-muted-foreground"}`}
               >
                 {i < step ? (
                   <CheckCircle className="w-5 h-5" aria-hidden="true" />
@@ -81,7 +81,7 @@ function SecuritizationWizard() {
                 <span className="hidden md:inline">{s.title}</span>
               </button>
               {i < WIZARD_STEPS.length - 1 && (
-                <div className={`h-0.5 w-8 ${i < step ? "bg-emerald-500" : "bg-muted"}`} aria-hidden="true" />
+                <div className={`h-0.5 w-8 ${i < step ? "bg-acr-pos" : "bg-muted"}`} aria-hidden="true" />
               )}
             </li>
           ))}
@@ -165,7 +165,7 @@ function SecuritizationWizard() {
               Next <ArrowRight className="w-4 h-4 ml-1" aria-hidden="true" />
             </Button>
           ) : (
-            <Button onClick={handleLaunch} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={handleLaunch} className="bg-acr-pos hover:bg-acr-pos">
               <CheckCircle className="w-4 h-4 mr-1" aria-hidden="true" /> Launch offering
             </Button>
           )}
@@ -272,11 +272,11 @@ export default function CapitalMarketsPage() {
           </CardContent></Card>
           <Card><CardContent className="p-4">
             <dt className="text-xs text-muted-foreground">Active securities</dt>
-            <dd className="text-xl font-bold text-blue-600 tabular-nums">{metrics.activeSecurities ?? securities.length}</dd>
+            <dd className="text-xl font-bold text-acr-accent tabular-nums">{metrics.activeSecurities ?? securities.length}</dd>
           </CardContent></Card>
           <Card><CardContent className="p-4">
             <dt className="text-xs text-muted-foreground">Average yield</dt>
-            <dd className="text-xl font-bold text-green-600 tabular-nums">{metrics.avgYield ? `${metrics.avgYield.toFixed(1)}%` : "—"}</dd>
+            <dd className="text-xl font-bold text-acr-pos tabular-nums">{metrics.avgYield ? `${metrics.avgYield.toFixed(1)}%` : "—"}</dd>
           </CardContent></Card>
           <Card><CardContent className="p-4">
             <dt className="text-xs text-muted-foreground">Capital efficiency</dt>
@@ -319,7 +319,7 @@ export default function CapitalMarketsPage() {
                         </div>
                         <div>
                           <dt className="text-muted-foreground">Yield</dt>
-                          <dd className="font-semibold text-green-600 tabular-nums">{sec.expectedYield?.toFixed(1) ?? "—"}%</dd>
+                          <dd className="font-semibold text-acr-pos tabular-nums">{sec.expectedYield?.toFixed(1) ?? "—"}%</dd>
                         </div>
                         <div>
                           <dt className="text-muted-foreground">Min investment</dt>
@@ -450,7 +450,7 @@ export default function CapitalMarketsPage() {
                               <div className="flex items-center gap-2">
                                 <p className="font-semibold">{lender.name}</p>
                                 <span
-                                  className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${matchScore >= 80 ? 'bg-emerald-100 text-emerald-700' : matchScore >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}
+                                  className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${matchScore >= 80 ? 'bg-acr-pos-soft text-acr-pos' : matchScore >= 60 ? 'bg-acr-warn-soft text-acr-warn' : 'bg-muted text-muted-foreground'}`}
                                   aria-label={`Match score ${matchScore} of 100`}
                                 >
                                   {matchScore} match
@@ -509,7 +509,7 @@ export default function CapitalMarketsPage() {
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Raised</dt>
-                            <dd className="font-bold text-green-600 tabular-nums">{fmt(raise.raisedAmount ?? 0)}</dd>
+                            <dd className="font-bold text-acr-pos tabular-nums">{fmt(raise.raisedAmount ?? 0)}</dd>
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Investors</dt>

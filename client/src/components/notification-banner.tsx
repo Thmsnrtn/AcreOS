@@ -82,9 +82,9 @@ export function NotificationBanner() {
   };
 
   const getPriorityIcon = (priority: number) => {
-    if (priority <= 2) return <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />;
-    if (priority <= 4) return <Info className="w-4 h-4 text-yellow-500" aria-hidden="true" />;
-    return <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />;
+    if (priority <= 2) return <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
+    if (priority <= 4) return <Info className="w-4 h-4 text-acr-warn" aria-hidden="true" />;
+    return <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
   };
 
   return (
@@ -99,7 +99,7 @@ export function NotificationBanner() {
             "fixed top-16 right-4 md:right-16 z-50 max-w-sm",
             "bg-card border shadow-lg rounded-lg p-4",
             "animate-in slide-in-from-top-2 fade-in duration-300",
-            latestNotif.priority <= 2 && "border-red-300 dark:border-red-800",
+            latestNotif.priority <= 2 && "border-acr-neg dark:border-acr-neg-soft",
           )}
         >
           <div className="flex items-start gap-3">

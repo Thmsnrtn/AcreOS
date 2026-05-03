@@ -22,17 +22,17 @@ function getAnomalyStyle(type: string) {
   switch (type) {
     case "positive":
       return {
-        badge: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-800",
+        badge: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos border-acr-pos-soft dark:border-acr-pos-soft",
         icon: <TrendingUp className="w-3 h-3" aria-hidden="true" />,
       };
     case "negative":
       return {
-        badge: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800",
+        badge: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg border-acr-neg-soft dark:border-acr-neg-soft",
         icon: <TrendingDown className="w-3 h-3" aria-hidden="true" />,
       };
     default:
       return {
-        badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        badge: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn border-acr-warn-soft dark:border-acr-warn-soft",
         icon: <Minus className="w-3 h-3" aria-hidden="true" />,
       };
   }
@@ -42,12 +42,12 @@ export function AnomalyAlerts({ anomalies, isLoading }: AnomalyAlertsProps) {
   if (isLoading) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-warn/50 to-acr-warn/30 dark:from-acr-warn/20 dark:to-acr-warn/10"
         data-testid="dashboard-anomaly-alerts"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+            <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             Anomaly alerts
           </CardTitle>
         </CardHeader>
@@ -63,12 +63,12 @@ export function AnomalyAlerts({ anomalies, isLoading }: AnomalyAlertsProps) {
   if (!anomalies || anomalies.length === 0) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-warn/50 to-acr-warn/30 dark:from-acr-warn/20 dark:to-acr-warn/10"
         data-testid="dashboard-anomaly-alerts"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+            <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             Anomaly alerts
           </CardTitle>
         </CardHeader>
@@ -81,12 +81,12 @@ export function AnomalyAlerts({ anomalies, isLoading }: AnomalyAlertsProps) {
 
   return (
     <Card 
-      className="relative overflow-visible bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10"
+      className="relative overflow-visible bg-gradient-to-br from-acr-warn/50 to-acr-warn/30 dark:from-acr-warn/20 dark:to-acr-warn/10"
       data-testid="dashboard-anomaly-alerts"
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+          <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
           Anomaly alerts
           <Badge variant="outline" className="ml-2 text-xs tabular-nums" aria-label={`${anomalies.length} detected`}>
             {anomalies.length}

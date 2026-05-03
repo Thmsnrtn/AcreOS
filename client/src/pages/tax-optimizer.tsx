@@ -93,10 +93,10 @@ interface Exchange1031 {
 }
 
 const PRIORITY_CONFIG = {
-  critical: { label: "Critical", variant: "destructive" as const, color: "text-red-600" },
-  high: { label: "High", variant: "default" as const, color: "text-orange-600" },
-  medium: { label: "Medium", variant: "secondary" as const, color: "text-amber-600" },
-  low: { label: "Low", variant: "outline" as const, color: "text-blue-600" },
+  critical: { label: "Critical", variant: "destructive" as const, color: "text-acr-neg" },
+  high: { label: "High", variant: "default" as const, color: "text-acr-warn" },
+  medium: { label: "Medium", variant: "secondary" as const, color: "text-acr-warn" },
+  low: { label: "Low", variant: "outline" as const, color: "text-acr-accent" },
 };
 
 export default function TaxOptimizerPage() {
@@ -176,14 +176,14 @@ export default function TaxOptimizerPage() {
         <Card>
           <CardContent className="pt-5">
             <dt className="text-sm text-muted-foreground">Total gains</dt>
-            <dd className="text-2xl font-bold text-emerald-600 tabular-nums">{usd(p?.totalRealizedGains || 0, { noCents: true })}</dd>
+            <dd className="text-2xl font-bold text-acr-pos tabular-nums">{usd(p?.totalRealizedGains || 0, { noCents: true })}</dd>
             <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">Realized {taxYear}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
             <dt className="text-sm text-muted-foreground">Est. federal tax</dt>
-            <dd className="text-2xl font-bold text-red-600 tabular-nums">{usd(p?.estimatedFederalTax || 0, { noCents: true })}</dd>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{usd(p?.estimatedFederalTax || 0, { noCents: true })}</dd>
             <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">+{usd(p?.estimatedNIIT || 0, { noCents: true })} NIIT</p>
           </CardContent>
         </Card>
@@ -197,17 +197,17 @@ export default function TaxOptimizerPage() {
         <Card>
           <CardContent className="pt-5">
             <dt className="text-sm text-muted-foreground">Total tax owed</dt>
-            <dd className="text-2xl font-bold text-orange-600 tabular-nums">{usd(p?.totalEstimatedTax || 0, { noCents: true })}</dd>
+            <dd className="text-2xl font-bold text-acr-warn tabular-nums">{usd(p?.totalEstimatedTax || 0, { noCents: true })}</dd>
             <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">Est. {taxYear}</p>
           </CardContent>
         </Card>
       </dl>
 
       {reportMutation.data && (
-        <Card className="mb-6 border-blue-200 dark:border-blue-800" role="region" aria-label="AI tax planning report">
+        <Card className="mb-6 border-acr-accent dark:border-acr-accent" role="region" aria-label="AI tax planning report">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              <FileText className="h-4 w-4 text-acr-accent" aria-hidden="true" />
               AI tax planning report — <span className="tabular-nums">{taxYear}</span>
             </CardTitle>
           </CardHeader>
@@ -237,7 +237,7 @@ export default function TaxOptimizerPage() {
           {!p?.recommendations?.length ? (
             <Card>
               <CardContent className="py-10 text-center">
-                <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3" aria-hidden="true" />
+                <CheckCircle2 className="h-10 w-10 text-acr-pos mx-auto mb-3" aria-hidden="true" />
                 <p className="text-muted-foreground">No tax recommendations for <span className="tabular-nums">{taxYear}</span>. No realized gains found.</p>
               </CardContent>
             </Card>
@@ -257,12 +257,12 @@ export default function TaxOptimizerPage() {
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">{rec.description}</p>
                             {rec.estimatedSavings > 0 && (
-                              <p className="text-sm text-emerald-600 font-medium mb-2 tabular-nums">
+                              <p className="text-sm text-acr-pos font-medium mb-2 tabular-nums">
                                 Potential savings: {usd(rec.estimatedSavings, { noCents: true })}
                               </p>
                             )}
                             {rec.deadline && (
-                              <p className="text-xs text-amber-600 flex items-center gap-1 mb-2 tabular-nums">
+                              <p className="text-xs text-acr-warn flex items-center gap-1 mb-2 tabular-nums">
                                 <Calendar className="h-3 w-3" aria-hidden="true" />
                                 Deadline: {rec.deadline}
                               </p>
@@ -270,7 +270,7 @@ export default function TaxOptimizerPage() {
                             <ul className="space-y-1" aria-label={`Action items for ${rec.title}`}>
                               {rec.actionItems.map((item, j) => (
                                 <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                                  <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-blue-500" aria-hidden="true" />
+                                  <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-acr-accent" aria-hidden="true" />
                                   {item}
                                 </li>
                               ))}
@@ -312,7 +312,7 @@ export default function TaxOptimizerPage() {
                       <TableRow key={tx.dealId}>
                         <th scope="row" className="font-medium max-w-[200px] truncate px-4 text-left">{tx.propertyAddress}</th>
                         <TableCell className="text-right tabular-nums">{usd(tx.saleProceeds, { noCents: true })}</TableCell>
-                        <TableCell className={`text-right font-medium tabular-nums ${tx.realizedGain >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        <TableCell className={`text-right font-medium tabular-nums ${tx.realizedGain >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                           {tx.realizedGain >= 0 ? "+" : ""}{usd(tx.realizedGain, { noCents: true })}
                         </TableCell>
                         <TableCell>
@@ -320,10 +320,10 @@ export default function TaxOptimizerPage() {
                             {tx.isLongTerm ? "LT" : "ST"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right text-red-600 tabular-nums">{usd(tx.estimatedTax, { noCents: true })}</TableCell>
+                        <TableCell className="text-right text-acr-neg tabular-nums">{usd(tx.estimatedTax, { noCents: true })}</TableCell>
                         <TableCell className="max-w-[200px]">
                           {tx.taxSavingOpportunities.length > 0 ? (
-                            <span className="text-xs text-emerald-600">{tx.taxSavingOpportunities[0]}</span>
+                            <span className="text-xs text-acr-pos">{tx.taxSavingOpportunities[0]}</span>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
@@ -356,19 +356,19 @@ export default function TaxOptimizerPage() {
                         <div>
                           <h3 className="font-medium">{c.propertyAddress}</h3>
                           <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">
-                            Gain: <span className="text-emerald-600 font-medium">{usd(c.gain, { noCents: true })}</span>
-                            {" · "}Tax deferred: <span className="text-blue-600 font-medium">{usd(c.potentialTaxDeferred, { noCents: true })}</span>
+                            Gain: <span className="text-acr-pos font-medium">{usd(c.gain, { noCents: true })}</span>
+                            {" · "}Tax deferred: <span className="text-acr-accent font-medium">{usd(c.potentialTaxDeferred, { noCents: true })}</span>
                           </p>
                         </div>
                         <Badge variant="outline">Deal #<span className="tabular-nums">{c.dealId}</span></Badge>
                       </div>
-                      <dl className="grid grid-cols-2 gap-3 mt-3 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
+                      <dl className="grid grid-cols-2 gap-3 mt-3 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/10 rounded-lg">
                         <div>
-                          <dt className="text-xs text-amber-700 dark:text-amber-400 font-medium">45-day ID deadline</dt>
+                          <dt className="text-xs text-acr-warn dark:text-acr-warn font-medium">45-day ID deadline</dt>
                           <dd className="text-sm font-bold tabular-nums">{format(new Date(c.deadline45Day), "MMM d, yyyy")}</dd>
                         </div>
                         <div>
-                          <dt className="text-xs text-amber-700 dark:text-amber-400 font-medium">180-day close deadline</dt>
+                          <dt className="text-xs text-acr-warn dark:text-acr-warn font-medium">180-day close deadline</dt>
                           <dd className="text-sm font-bold tabular-nums">{format(new Date(c.deadline180Day), "MMM d, yyyy")}</dd>
                         </div>
                       </dl>
@@ -401,7 +401,7 @@ export default function TaxOptimizerPage() {
                       <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
                         <div>
                           <dt className="text-xs text-muted-foreground">Total gain</dt>
-                          <dd className="font-semibold text-emerald-600 tabular-nums">{usd(s.totalGain, { noCents: true })}</dd>
+                          <dd className="font-semibold text-acr-pos tabular-nums">{usd(s.totalGain, { noCents: true })}</dd>
                         </div>
                         <div>
                           <dt className="text-xs text-muted-foreground">Spread over</dt>
@@ -409,7 +409,7 @@ export default function TaxOptimizerPage() {
                         </div>
                         <div>
                           <dt className="text-xs text-muted-foreground">Annual tax savings</dt>
-                          <dd className="font-semibold text-blue-600 tabular-nums">{usd(s.annualTaxSavings, { noCents: true })}</dd>
+                          <dd className="font-semibold text-acr-accent tabular-nums">{usd(s.annualTaxSavings, { noCents: true })}</dd>
                         </div>
                       </dl>
                       <p className="text-xs text-muted-foreground mt-2">{s.notes}</p>

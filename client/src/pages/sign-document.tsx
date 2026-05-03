@@ -265,7 +265,7 @@ export default function SignDocumentPage() {
                   aria-live="polite"
                   className="p-8 text-center space-y-3 outline-none"
                 >
-                  <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" aria-hidden="true" />
+                  <CheckCircle2 className="h-10 w-10 text-acr-pos mx-auto" aria-hidden="true" />
                   <h2 className="text-lg font-semibold text-foreground">
                     Signed — thank you, {data.signer.name}
                   </h2>

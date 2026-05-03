@@ -49,11 +49,11 @@ import {
 const PIE_COLORS = ['#d97541', '#4f8ef7', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'];
 
 const ACTION_STYLES: Record<string, { color: string; icon: JSX.Element }> = {
-  sell: { color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: <TrendingDown className="w-4 h-4" /> },
-  hold: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', icon: <Shield className="w-4 h-4" /> },
-  refinance: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300', icon: <RefreshCw className="w-4 h-4" /> },
-  develop: { color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', icon: <TrendingUp className="w-4 h-4" /> },
-  subdivide: { color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: <Layers className="w-4 h-4" /> },
+  sell: { color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg', icon: <TrendingDown className="w-4 h-4" /> },
+  hold: { color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <Shield className="w-4 h-4" /> },
+  refinance: { color: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand', icon: <RefreshCw className="w-4 h-4" /> },
+  develop: { color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos', icon: <TrendingUp className="w-4 h-4" /> },
+  subdivide: { color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn', icon: <Layers className="w-4 h-4" /> },
 };
 
 // P1 money-precision: K/M compact bands kept for hero portfolio numbers (Monte
@@ -97,14 +97,14 @@ function CapitalStackBar({ equity = 30, mezzanine = 20, seniorDebt = 50 }: { equ
   return (
     <div className="space-y-2">
       <div className="flex h-8 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-center text-xs text-white font-semibold bg-emerald-600" style={{ width: `${ep}%` }}>Equity {ep}%</div>
-        <div className="flex items-center justify-center text-xs text-white font-semibold bg-amber-500" style={{ width: `${mp}%` }}>Mezz {mp}%</div>
-        <div className="flex items-center justify-center text-xs text-white font-semibold bg-blue-600" style={{ width: `${sp}%` }}>Sr Debt {sp}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-pos" style={{ width: `${ep}%` }}>Equity {ep}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-warn" style={{ width: `${mp}%` }}>Mezz {mp}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-accent" style={{ width: `${sp}%` }}>Sr Debt {sp}%</div>
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />Equity</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Mezzanine</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />Senior Debt</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-pos inline-block" />Equity</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-warn inline-block" />Mezzanine</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-accent inline-block" />Senior Debt</span>
       </div>
     </div>
   );
@@ -137,7 +137,7 @@ function RecDrillDownModal({ rec }: { rec: any }) {
                 {rec.expectedImpact.valueChange !== 0 && (
                   <div className="p-2 bg-muted/40 rounded">
                     <dt className="text-xs text-muted-foreground">Value change</dt>
-                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.valueChange > 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                       {rec.expectedImpact.valueChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.valueChange)}
                     </dd>
                   </div>
@@ -145,7 +145,7 @@ function RecDrillDownModal({ rec }: { rec: any }) {
                 {rec.expectedImpact.cashFlowChange !== 0 && (
                   <div className="p-2 bg-muted/40 rounded">
                     <dt className="text-xs text-muted-foreground">Cash flow/yr</dt>
-                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.cashFlowChange > 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                       {rec.expectedImpact.cashFlowChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.cashFlowChange)}
                     </dd>
                   </div>
@@ -446,10 +446,10 @@ export default function PortfolioOptimizerPage() {
       {metrics && (sharpeRatio || maxDrawdown || calmarRatio) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {sharpeRatio && (
-            <Card className={`${parseFloat(sharpeRatio) >= 1 ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-900/10" : parseFloat(sharpeRatio) >= 0.5 ? "border-amber-200 bg-amber-50/30" : "border-red-200 bg-red-50/30"}`}>
+            <Card className={`${parseFloat(sharpeRatio) >= 1 ? "border-acr-pos-soft bg-acr-pos-soft/30 dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : parseFloat(sharpeRatio) >= 0.5 ? "border-acr-warn-soft bg-acr-warn-soft/30" : "border-acr-neg-soft bg-acr-neg-soft/30"}`}>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
-                <p className={`text-2xl font-bold ${parseFloat(sharpeRatio) >= 1 ? "text-emerald-600" : parseFloat(sharpeRatio) >= 0.5 ? "text-amber-600" : "text-red-500"}`}>{sharpeRatio}</p>
+                <p className={`text-2xl font-bold ${parseFloat(sharpeRatio) >= 1 ? "text-acr-pos" : parseFloat(sharpeRatio) >= 0.5 ? "text-acr-warn" : "text-acr-neg"}`}>{sharpeRatio}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {parseFloat(sharpeRatio) >= 1 ? "Excellent risk-adj return" : parseFloat(sharpeRatio) >= 0.5 ? "Acceptable" : "Below threshold"}
                 </p>
@@ -460,7 +460,7 @@ export default function PortfolioOptimizerPage() {
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Max Drawdown</p>
-                <p className="text-2xl font-bold text-red-500">-{maxDrawdown}%</p>
+                <p className="text-2xl font-bold text-acr-neg">-{maxDrawdown}%</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Worst-case loss scenario</p>
               </CardContent>
             </Card>
@@ -483,7 +483,7 @@ export default function PortfolioOptimizerPage() {
                   <span className="text-sm text-muted-foreground mb-0.5">/100</span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-1.5 mt-1">
-                  <div className={`h-full rounded-full ${metrics.diversificationScore >= 70 ? "bg-emerald-500" : metrics.diversificationScore >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                  <div className={`h-full rounded-full ${metrics.diversificationScore >= 70 ? "bg-acr-pos" : metrics.diversificationScore >= 40 ? "bg-acr-warn" : "bg-acr-neg"}`}
                     style={{ width: `${metrics.diversificationScore}%` }} />
                 </div>
               </CardContent>
@@ -527,9 +527,9 @@ export default function PortfolioOptimizerPage() {
               <>
                 {/* Scenario summary */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card className="border-red-200 dark:border-red-800">
+                  <Card className="border-acr-neg-soft dark:border-acr-neg-soft">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-red-600 dark:text-red-400">Pessimistic (10th %ile)</CardTitle>
+                      <CardTitle className="text-sm text-acr-neg dark:text-acr-neg">Pessimistic (10th %ile)</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatDollar(latestSim.scenarios.pessimistic.value)}</div>
@@ -545,9 +545,9 @@ export default function PortfolioOptimizerPage() {
                       <div className="text-sm text-muted-foreground">{latestSim.scenarios.base.roi.toFixed(1)}% ROI</div>
                     </CardContent>
                   </Card>
-                  <Card className="border-emerald-200 dark:border-emerald-800">
+                  <Card className="border-acr-pos-soft dark:border-acr-pos-soft">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-emerald-600 dark:text-emerald-400">Optimistic (90th %ile)</CardTitle>
+                      <CardTitle className="text-sm text-acr-pos dark:text-acr-pos">Optimistic (90th %ile)</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatDollar(latestSim.scenarios.optimistic.value)}</div>
@@ -593,7 +593,7 @@ export default function PortfolioOptimizerPage() {
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Value at Risk (95%)</p>
-                      <p className="text-xl font-bold text-red-500 mt-1">
+                      <p className="text-xl font-bold text-acr-neg mt-1">
                         {formatDollar(latestSim.riskMetrics.valueAtRisk95)}
                       </p>
                     </CardContent>
@@ -601,7 +601,7 @@ export default function PortfolioOptimizerPage() {
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Expected Shortfall</p>
-                      <p className="text-xl font-bold text-orange-500 mt-1">
+                      <p className="text-xl font-bold text-acr-warn mt-1">
                         {formatDollar(latestSim.riskMetrics.expectedShortfall)}
                       </p>
                     </CardContent>
@@ -617,7 +617,7 @@ export default function PortfolioOptimizerPage() {
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Max Drawdown</p>
-                      <p className="text-xl font-bold text-red-500 mt-1">
+                      <p className="text-xl font-bold text-acr-neg mt-1">
                         {latestSim.riskMetrics.maxDrawdown.toFixed(1)}%
                       </p>
                     </CardContent>
@@ -679,7 +679,7 @@ export default function PortfolioOptimizerPage() {
                     {maxDrawdown && (
                       <div className="rounded-lg border p-3 text-center">
                         <p className="text-xs text-muted-foreground">Max Drawdown</p>
-                        <p className="text-xl font-bold text-red-500">-{maxDrawdown}%</p>
+                        <p className="text-xl font-bold text-acr-neg">-{maxDrawdown}%</p>
                         <p className="text-xs text-muted-foreground">worst scenario</p>
                       </div>
                     )}
@@ -798,7 +798,7 @@ export default function PortfolioOptimizerPage() {
 
                       {diversification.topRisks?.length > 0 && (
                         <div className="space-y-2 pt-2">
-                          <p className="text-sm font-medium text-orange-600 dark:text-orange-400 flex items-center gap-1">
+                          <p className="text-sm font-medium text-acr-warn dark:text-acr-warn flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3" /> Top Concentration Risks
                           </p>
                           {diversification.topRisks.map((r: string, i: number) => (
@@ -859,12 +859,12 @@ export default function PortfolioOptimizerPage() {
                         {rec.expectedImpact && (
                           <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                             {rec.expectedImpact.valueChange !== 0 && (
-                              <span className={rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}>
+                              <span className={rec.expectedImpact.valueChange > 0 ? 'text-acr-pos' : 'text-acr-neg'}>
                                 Value: {rec.expectedImpact.valueChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.valueChange)}
                               </span>
                             )}
                             {rec.expectedImpact.cashFlowChange !== 0 && (
-                              <span className={rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}>
+                              <span className={rec.expectedImpact.cashFlowChange > 0 ? 'text-acr-pos' : 'text-acr-neg'}>
                                 Cash flow: {rec.expectedImpact.cashFlowChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.cashFlowChange)}/yr
                               </span>
                             )}
@@ -913,19 +913,19 @@ export default function PortfolioOptimizerPage() {
               <CardContent className="space-y-6">
                 <CapitalStackBar equity={30} mezzanine={15} seniorDebt={55} />
                 <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                  <div className="p-4 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20">
                     <p className="text-xs text-muted-foreground">Equity</p>
-                    <p className="text-xl font-bold text-emerald-600">30%</p>
+                    <p className="text-xl font-bold text-acr-pos">30%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Highest risk / return</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                  <div className="p-4 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20">
                     <p className="text-xs text-muted-foreground">Mezzanine</p>
-                    <p className="text-xl font-bold text-amber-600">15%</p>
+                    <p className="text-xl font-bold text-acr-warn">15%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Bridge / mezz debt</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                  <div className="p-4 rounded-lg bg-acr-accent dark:bg-acr-accent/20">
                     <p className="text-xs text-muted-foreground">Senior Debt</p>
-                    <p className="text-xl font-bold text-blue-600">55%</p>
+                    <p className="text-xl font-bold text-acr-accent">55%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Lowest risk / first lien</p>
                   </div>
                 </div>
@@ -962,10 +962,10 @@ export default function PortfolioOptimizerPage() {
                               <p className="text-xs text-muted-foreground">{h.county}, {h.state}</p>
                             </td>
                             <td className="py-2 pr-4 text-right font-mono">{formatDollar(h.currentValue || h.estimatedValue || 0)}</td>
-                            <td className={`py-2 pr-4 text-right font-mono ${(h.annualCashFlow || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            <td className={`py-2 pr-4 text-right font-mono ${(h.annualCashFlow || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                               {formatDollar(h.annualCashFlow || 0)}
                             </td>
-                            <td className={`py-2 pr-4 text-right ${(h.appreciationRate || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            <td className={`py-2 pr-4 text-right ${(h.appreciationRate || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                               {(h.appreciationRate || 0).toFixed(1)}%
                             </td>
                             <td className="py-2 text-right text-muted-foreground">
@@ -1118,7 +1118,7 @@ function StressTestTab() {
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} aria-hidden="true" />
                     <span className="text-sm font-medium">{s.label}</span>
-                    <span className={`text-sm ml-auto font-semibold ${s.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    <span className={`text-sm ml-auto font-semibold ${s.priceImpact < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                       {s.priceImpact > 0 ? "+" : ""}{(s.priceImpact * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -1131,7 +1131,7 @@ function StressTestTab() {
 
         {/* Stress test results */}
         <div className="space-y-3">
-          <Card className={selectedScenario.priceImpact < 0 ? "border-red-200 dark:border-red-800" : "border-emerald-200 dark:border-emerald-800"}>
+          <Card className={selectedScenario.priceImpact < 0 ? "border-acr-neg-soft dark:border-acr-neg-soft" : "border-acr-pos-soft dark:border-acr-pos-soft"}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">{selectedScenario.label} Impact</CardTitle>
             </CardHeader>
@@ -1143,7 +1143,7 @@ function StressTestTab() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Stressed Value</p>
-                  <p className={`text-xl font-bold ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                  <p className={`text-xl font-bold ${selectedScenario.priceImpact < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                     {formatDollar(stressedValue)}
                   </p>
                 </div>
@@ -1151,7 +1151,7 @@ function StressTestTab() {
               <div className="p-3 bg-muted/40 rounded-lg">
                 <p className="text-sm font-medium">
                   {selectedScenario.priceImpact < 0 ? "Portfolio Loss:" : "Portfolio Gain:"}
-                  <span className={`ml-2 ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                  <span className={`ml-2 ${selectedScenario.priceImpact < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                     {selectedScenario.priceImpact < 0 ? "-" : "+"}{formatDollar(Math.abs(loss))} ({lossPercent}%)
                   </span>
                 </p>
@@ -1174,27 +1174,27 @@ function StressTestTab() {
               <ul className="space-y-1.5">
                 {selectedScenario.priceImpact < -0.2 && (
                   <li className="text-xs flex items-start gap-1.5">
-                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <Shield className="h-3 w-3 text-acr-accent flex-shrink-0 mt-0.5" />
                     Build cash reserves (6-12 months of expenses)
                   </li>
                 )}
                 <li className="text-xs flex items-start gap-1.5">
-                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <Shield className="h-3 w-3 text-acr-accent flex-shrink-0 mt-0.5" />
                   Diversify across states to reduce geographic concentration
                 </li>
                 <li className="text-xs flex items-start gap-1.5">
-                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <Shield className="h-3 w-3 text-acr-accent flex-shrink-0 mt-0.5" />
                   Prioritize seller-financed notes for stable cash flow
                 </li>
                 {selectedScenario.id === "rate_shock" && (
                   <li className="text-xs flex items-start gap-1.5">
-                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <Shield className="h-3 w-3 text-acr-accent flex-shrink-0 mt-0.5" />
                     Lock in fixed-rate financing before rate increases
                   </li>
                 )}
                 {selectedScenario.id === "recession_severe" && (
                   <li className="text-xs flex items-start gap-1.5">
-                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <Shield className="h-3 w-3 text-acr-accent flex-shrink-0 mt-0.5" />
                     Identify distressed sellers — opportunistic buying window
                   </li>
                 )}

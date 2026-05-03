@@ -29,9 +29,9 @@ function formatProvenanceDate(date: string | Date): string {
 }
 
 const confidenceDot: Record<string, string> = {
-  high: "bg-emerald-500",
-  medium: "bg-amber-500",
-  low: "bg-red-400",
+  high: "bg-acr-pos",
+  medium: "bg-acr-warn",
+  low: "bg-acr-neg",
 };
 
 /**

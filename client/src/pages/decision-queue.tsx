@@ -69,7 +69,7 @@ function AskPaxButton({ label, message, onAsk }: { label: string; message: strin
     <Button
       size="sm"
       variant="outline"
-      className="text-xs text-purple-600 border-purple-200 hover:bg-purple-50 dark:hover:bg-purple-900/20 min-h-9"
+      className="text-xs text-acr-brand border-acr-brand-soft hover:bg-acr-brand-soft dark:hover:bg-acr-brand-soft/20 min-h-9"
       onClick={() => onAsk(message, label)}
       aria-label={`Ask Pax about ${label}`}
     >
@@ -258,7 +258,7 @@ export default function DecisionQueuePage() {
           role="status"
           aria-live="polite"
         >
-          <CheckCheck className="w-10 h-10 text-green-500" aria-hidden="true" />
+          <CheckCheck className="w-10 h-10 text-acr-pos" aria-hidden="true" />
           <h2 className="font-semibold text-lg">Pipeline is clear.</h2>
           <p className="text-muted-foreground text-sm max-w-xs">No decisions needed today. All leads are current and deals are moving.</p>
         </div>
@@ -294,14 +294,14 @@ export default function DecisionQueuePage() {
                 const paxMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
                 return (
                   <li key={lead.id}>
-                    <Card className="border-l-4 border-red-400">
+                    <Card className="border-l-4 border-acr-neg">
                       <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">{name}</p>
                           {lead.propertyAddress && (
                             <p className="text-xs text-muted-foreground truncate">{lead.propertyAddress}</p>
                           )}
-                          <p className="text-xs text-red-500 mt-0.5">{lastContact}</p>
+                          <p className="text-xs text-acr-neg mt-0.5">{lastContact}</p>
                         </div>
                         <div className="flex gap-2 shrink-0 flex-wrap">
                           <AskPaxButton
@@ -355,7 +355,7 @@ export default function DecisionQueuePage() {
                 const paxMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
                 return (
                   <li key={deal.id}>
-                    <Card className="border-l-4 border-orange-400">
+                    <Card className="border-l-4 border-acr-warn">
                       <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">Deal <span className="tabular-nums">#{deal.id}</span></p>
@@ -364,7 +364,7 @@ export default function DecisionQueuePage() {
                               Offer: {usd(parseFloat(deal.offerAmount))}
                             </p>
                           )}
-                          <p className="text-xs text-orange-500 mt-0.5">
+                          <p className="text-xs text-acr-warn mt-0.5">
                             Sent {relative(deal.offerDate)}
                           </p>
                         </div>
@@ -377,7 +377,7 @@ export default function DecisionQueuePage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs text-green-600 min-h-9"
+                            className="text-xs text-acr-pos min-h-9"
                             onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "accepted" } })}
                             disabled={updateDeal.isPending}
                             aria-label={`Mark Deal #${deal.id} as accepted`}
@@ -388,7 +388,7 @@ export default function DecisionQueuePage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs text-red-600 min-h-9"
+                            className="text-xs text-acr-neg min-h-9"
                             onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "cancelled" } })}
                             disabled={updateDeal.isPending}
                             aria-label={`Mark Deal #${deal.id} as rejected`}
@@ -430,7 +430,7 @@ export default function DecisionQueuePage() {
                 const paxMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
                 return (
                   <li key={deal.id}>
-                    <Card className="border-l-4 border-yellow-400">
+                    <Card className="border-l-4 border-acr-warn">
                       <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">Deal <span className="tabular-nums">#{deal.id}</span></p>
@@ -438,7 +438,7 @@ export default function DecisionQueuePage() {
                             Stage: {deal.status.replace(/_/g, " ")}
                           </p>
                           {deal.updatedAt && (
-                            <p className="text-xs text-yellow-600 mt-0.5">
+                            <p className="text-xs text-acr-warn mt-0.5">
                               Stalled {relative(deal.updatedAt)}
                             </p>
                           )}
@@ -478,7 +478,7 @@ export default function DecisionQueuePage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-500" aria-hidden="true" />
+              <Sparkles className="w-5 h-5 text-acr-brand" aria-hidden="true" />
               <DialogTitle>Ask Pax</DialogTitle>
             </div>
             {pax.contextLabel && (
@@ -523,11 +523,11 @@ export default function DecisionQueuePage() {
 
             {pax.response && (
               <div
-                className={`rounded-lg p-4 text-sm whitespace-pre-wrap ${pax.responseIsError ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40" : "bg-muted"}`}
+                className={`rounded-lg p-4 text-sm whitespace-pre-wrap ${pax.responseIsError ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft/40" : "bg-muted"}`}
                 role={pax.responseIsError ? "alert" : "status"}
                 aria-live={pax.responseIsError ? "assertive" : "polite"}
               >
-                <p className={`font-semibold text-xs mb-1 ${pax.responseIsError ? "text-red-600" : "text-purple-600"}`}>
+                <p className={`font-semibold text-xs mb-1 ${pax.responseIsError ? "text-acr-neg" : "text-acr-brand"}`}>
                   {pax.responseIsError ? "Pax couldn't reach the assistant" : "Pax replied"}
                 </p>
                 {pax.response}
@@ -538,7 +538,7 @@ export default function DecisionQueuePage() {
               For a full conversation,{' '}
               <a
                 href="/ai"
-                className="text-purple-600 underline hover:no-underline"
+                className="text-acr-brand underline hover:no-underline"
                 aria-label="Open AI hub for a full Pax conversation"
               >
                 open AI hub

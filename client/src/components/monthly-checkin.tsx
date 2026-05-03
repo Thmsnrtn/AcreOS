@@ -67,7 +67,7 @@ export function MonthlyCheckin() {
 
   if (!data) return null;
 
-  const healthColor = data.health.overall === "healthy" ? "text-green-600" : data.health.overall === "degraded" ? "text-amber-500" : "text-red-500";
+  const healthColor = data.health.overall === "healthy" ? "text-acr-pos" : data.health.overall === "degraded" ? "text-acr-warn" : "text-acr-neg";
   const aiResolutionRate = data.support.totalTickets > 0
     ? Math.round((data.support.aiResolved / data.support.totalTickets) * 100)
     : 100;
@@ -86,7 +86,7 @@ export function MonthlyCheckin() {
           {maintenanceMutation.isPending ? (
             <Loader2 className="w-4 h-4 mr-1 animate-spin" />
           ) : maintenanceMutation.isSuccess ? (
-            <CheckCircle2 className="w-4 h-4 mr-1 text-green-600" />
+            <CheckCircle2 className="w-4 h-4 mr-1 text-acr-pos" />
           ) : (
             <Play className="w-4 h-4 mr-1" />
           )}
@@ -119,12 +119,12 @@ export function MonthlyCheckin() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-600" />
+              <TrendingUp className="w-4 h-4 text-acr-pos" />
               <span className="text-lg font-semibold">+{data.revenue.newSignupsThisMonth}</span>
               <span className="text-xs text-muted-foreground">new</span>
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <TrendingDown className="w-4 h-4 text-red-500" />
+              <TrendingDown className="w-4 h-4 text-acr-neg" />
               <span className="text-lg font-semibold">-{data.revenue.churnedThisMonth}</span>
               <span className="text-xs text-muted-foreground">churned</span>
             </div>
@@ -144,7 +144,7 @@ export function MonthlyCheckin() {
               AI resolved ({data.support.aiResolved}/{data.support.totalTickets})
             </p>
             {data.support.escalated > 0 && (
-              <p className="text-xs text-amber-500 mt-1">{data.support.escalated} escalated</p>
+              <p className="text-xs text-acr-warn mt-1">{data.support.escalated} escalated</p>
             )}
           </CardContent>
         </Card>
@@ -161,11 +161,11 @@ export function MonthlyCheckin() {
             <div className="flex gap-1 mt-1 flex-wrap">
               {data.health.services.filter(s => s.status !== "healthy").map(s => (
                 <Badge key={s.name} variant="outline" className="text-xs">
-                  <XCircle className="w-3 h-3 mr-1 text-red-500" /> {s.name}
+                  <XCircle className="w-3 h-3 mr-1 text-acr-neg" /> {s.name}
                 </Badge>
               ))}
               {data.health.services.every(s => s.status === "healthy") && (
-                <span className="text-xs text-green-600">All services operational</span>
+                <span className="text-xs text-acr-pos">All services operational</span>
               )}
             </div>
           </CardContent>
@@ -184,7 +184,7 @@ export function MonthlyCheckin() {
             <div className="space-y-1 text-sm">
               {Object.entries(data.alerts.byPriority).map(([p, c]) => (
                 <div key={p} className="flex justify-between">
-                  <span className={p === "P0" ? "text-red-500 font-bold" : p === "P1" ? "text-amber-500" : "text-muted-foreground"}>
+                  <span className={p === "P0" ? "text-acr-neg font-bold" : p === "P1" ? "text-acr-warn" : "text-muted-foreground"}>
                     {p}
                   </span>
                   <span className="font-mono">{c}</span>
@@ -203,7 +203,7 @@ export function MonthlyCheckin() {
             <p className="text-xs text-muted-foreground">
               ${(data.dunning.totalAmountAtRiskCents / 100).toFixed(0)} at risk
             </p>
-            <p className="text-xs text-green-600 mt-1">
+            <p className="text-xs text-acr-pos mt-1">
               {data.dunning.recoveredLast30Days} recovered (30d)
             </p>
           </CardContent>

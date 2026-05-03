@@ -41,7 +41,7 @@ function ChannelStatusBadge({
   return (
     <Badge 
       variant={configured ? "default" : "outline"} 
-      className={`gap-1 ${configured ? "bg-green-500/10 text-green-600 border-green-500/20" : "bg-yellow-500/10 text-yellow-600 border-yellow-500/20"}`}
+      className={`gap-1 ${configured ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20" : "bg-acr-warn/10 text-acr-warn border-acr-warn/20"}`}
       data-testid={`badge-channel-status-${label.toLowerCase().replace(/\s/g, '-')}`}
     >
       {configured ? (
@@ -102,12 +102,12 @@ export function ProviderReadinessBanner({
     if (compact) return null;
     return (
       <Alert 
-        className={`border-green-500/20 bg-green-500/5 ${className}`}
+        className={`border-acr-pos/20 bg-acr-pos/5 ${className}`}
         data-testid="alert-providers-ready"
       >
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
-        <AlertTitle className="text-green-600">Communication Ready</AlertTitle>
-        <AlertDescription className="text-green-600/80">
+        <CheckCircle2 className="h-4 w-4 text-acr-pos" />
+        <AlertTitle className="text-acr-pos">Communication Ready</AlertTitle>
+        <AlertDescription className="text-acr-pos/80">
           {channel === "email" && "Email provider is configured and ready to send."}
           {channel === "sms" && "SMS provider is configured and ready to send."}
           {channel === "all" && "All communication channels are configured and ready."}
@@ -124,18 +124,18 @@ export function ProviderReadinessBanner({
   if (compact) {
     return (
       <div 
-        className={`flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/20 ${className}`}
+        className={`flex items-center gap-2 p-2 rounded-md bg-acr-warn/10 border border-acr-warn/20 ${className}`}
         data-testid="banner-provider-setup-compact"
       >
-        <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-        <span className="text-sm text-yellow-600">
+        <AlertTriangle className="h-4 w-4 text-acr-warn flex-shrink-0" />
+        <span className="text-sm text-acr-warn">
           {missingChannelsList.join(" & ")} not configured
         </span>
         <Button
           asChild
           size="sm"
           variant="outline"
-          className="ml-auto h-7 text-xs border-yellow-500/30 hover:bg-yellow-500/10"
+          className="ml-auto h-7 text-xs border-acr-warn/30 hover:bg-acr-warn/10"
           data-testid="button-setup-providers-compact"
         >
           <Link href="/settings?tab=integrations">
@@ -149,15 +149,15 @@ export function ProviderReadinessBanner({
 
   return (
     <Alert 
-      className={`border-yellow-500/20 bg-yellow-500/5 ${className}`}
+      className={`border-acr-warn/20 bg-acr-warn/5 ${className}`}
       data-testid="alert-providers-setup-needed"
     >
-      <AlertTriangle className="h-4 w-4 text-yellow-600" />
-      <AlertTitle className="text-yellow-600 flex items-center gap-2">
+      <AlertTriangle className="h-4 w-4 text-acr-warn" />
+      <AlertTitle className="text-acr-warn flex items-center gap-2">
         Provider Setup Needed
       </AlertTitle>
       <AlertDescription className="space-y-3">
-        <p className="text-yellow-600/80">
+        <p className="text-acr-warn/80">
           Configure your communication providers to send messages from your own verified domain and phone numbers.
         </p>
         
@@ -229,7 +229,7 @@ export function ProviderStatusIndicator({
   if (isConfigured) {
     return (
       <span 
-        className="inline-flex items-center gap-1 text-xs text-green-600"
+        className="inline-flex items-center gap-1 text-xs text-acr-pos"
         data-testid={`indicator-${channel}-ready`}
       >
         <CheckCircle2 className="h-3 w-3" />
@@ -241,7 +241,7 @@ export function ProviderStatusIndicator({
   return (
     <Link href="/settings?tab=integrations">
       <span 
-        className="inline-flex items-center gap-1 text-xs text-yellow-600 hover:text-yellow-700 cursor-pointer"
+        className="inline-flex items-center gap-1 text-xs text-acr-warn hover:text-acr-warn cursor-pointer"
         data-testid={`indicator-${channel}-setup`}
       >
         <AlertTriangle className="h-3 w-3" />

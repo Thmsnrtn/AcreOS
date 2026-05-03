@@ -131,7 +131,7 @@ export default function BorrowerPortal() {
                 <div
                   id="borrower-email-error"
                   role="alert"
-                  className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-sm"
+                  className="p-3 rounded-lg bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg text-sm"
                 >
                   {error}
                 </div>
@@ -212,12 +212,12 @@ function PortalSunsetBanner() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pt-4">
-      <Alert className="relative pr-10 border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20" role="status" data-testid="banner-portal-sunset">
-        <Info className="h-4 w-4 text-amber-600" aria-hidden="true" />
-        <AlertTitle className="text-amber-900 dark:text-amber-200">
+      <Alert className="relative pr-10 border-acr-warn/40 bg-acr-warn-soft/60 dark:bg-acr-warn-soft/20" role="status" data-testid="banner-portal-sunset">
+        <Info className="h-4 w-4 text-acr-warn" aria-hidden="true" />
+        <AlertTitle className="text-acr-warn dark:text-acr-warn">
           This portal is being upgraded
         </AlertTitle>
-        <AlertDescription className="text-amber-900/80 dark:text-amber-200/80">
+        <AlertDescription className="text-acr-warn/80 dark:text-acr-warn/80">
           New URL coming soon. Your existing access link will keep working
           during the transition — we'll email you the new address before the
           old one retires.
@@ -225,7 +225,7 @@ function PortalSunsetBanner() {
         <button
           type="button"
           onClick={handleDismiss}
-          className="absolute top-2 right-2 p-1 rounded-md text-amber-900/60 hover:bg-amber-500/10 hover:text-amber-900 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+          className="absolute top-2 right-2 p-1 rounded-md text-acr-warn/60 hover:bg-acr-warn/10 hover:text-acr-warn transition-colors focus:outline-none focus:ring-2 focus:ring-acr-warn/40"
           aria-label="Dismiss portal upgrade notice"
           data-testid="button-dismiss-portal-sunset"
         >
@@ -254,8 +254,8 @@ function BorrowerLandingPage() {
         <CardContent className="space-y-6">
           <ul className="grid gap-4 text-left">
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                <FileText className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+              <div className="p-2 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/30 shrink-0">
+                <FileText className="w-4 h-4 text-acr-pos" aria-hidden="true" />
               </div>
               <div>
                 <p className="font-medium">View loan details</p>
@@ -263,8 +263,8 @@ function BorrowerLandingPage() {
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 shrink-0">
-                <CreditCard className="w-4 h-4 text-blue-600" aria-hidden="true" />
+              <div className="p-2 rounded-lg bg-acr-accent dark:bg-acr-accent/30 shrink-0">
+                <CreditCard className="w-4 h-4 text-acr-accent" aria-hidden="true" />
               </div>
               <div>
                 <p className="font-medium">Make payments</p>
@@ -272,8 +272,8 @@ function BorrowerLandingPage() {
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 shrink-0">
-                <Download className="w-4 h-4 text-amber-600" aria-hidden="true" />
+              <div className="p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/30 shrink-0">
+                <Download className="w-4 h-4 text-acr-warn" aria-hidden="true" />
               </div>
               <div>
                 <p className="font-medium">Download documents</p>
@@ -714,11 +714,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const getPaymentStatusBadge = () => {
-    if (!note.nextPaymentDate) return { status: 'current', label: 'Current', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' };
+    if (!note.nextPaymentDate) return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' };
     const daysUntilDue = differenceInDays(new Date(note.nextPaymentDate), new Date());
-    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days past due`, color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' };
-    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' };
-    return { status: 'current', label: 'Current', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' };
+    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days past due`, color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg' };
+    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn' };
+    return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' };
   };
 
   const paymentStatusBadge = getPaymentStatusBadge();
@@ -758,7 +758,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <div
             role="status"
             aria-live="polite"
-            className="p-4 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 flex items-center gap-2"
+            className="p-4 rounded-lg bg-acr-accent dark:bg-acr-accent/30 text-acr-accent dark:text-acr-accent flex items-center gap-2"
           >
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             Verifying your payment…
@@ -773,8 +773,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             aria-live={paymentStatusState.type === "success" ? "polite" : "assertive"}
             className={`p-4 rounded-lg flex items-center gap-2 ${
               paymentStatusState.type === 'success'
-                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400'
-                : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
+                ? 'bg-acr-pos-soft dark:bg-acr-pos-soft/30 text-acr-pos dark:text-acr-pos'
+                : 'bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg'
             }`}
           >
             {paymentStatusState.type === 'success' ? (
@@ -788,7 +788,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       )}
 
       <main ref={portalDocRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6">
-        <Card className={`glass-panel border-2 ${paymentStatusBadge.status === 'late' ? 'border-red-400/60' : 'border-primary/20'}`} data-testid="card-payment-due">
+        <Card className={`glass-panel border-2 ${paymentStatusBadge.status === 'late' ? 'border-acr-neg/60' : 'border-primary/20'}`} data-testid="card-payment-due">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-center sm:text-left">
@@ -797,12 +797,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   ${Number(note.monthlyPayment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 {note.nextPaymentDate && (
-                  <p className={`text-sm mt-1 tabular-nums ${paymentStatusBadge.status === 'late' ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-muted-foreground'}`}>
+                  <p className={`text-sm mt-1 tabular-nums ${paymentStatusBadge.status === 'late' ? 'text-acr-neg dark:text-acr-neg font-semibold' : 'text-muted-foreground'}`}>
                     Due {format(new Date(note.nextPaymentDate), 'MMMM d, yyyy')}
                   </p>
                 )}
                 {autopayEnabled && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 justify-center sm:justify-start">
+                  <p className="text-xs text-acr-pos dark:text-acr-pos mt-1 flex items-center gap-1 justify-center sm:justify-start">
                     <CheckCircle className="w-3 h-3" aria-hidden="true" /> Autopay is on — we'll collect this payment automatically.
                   </p>
                 )}
@@ -909,8 +909,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <Card className="glass-panel">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 sm:p-3 rounded-xl bg-emerald-500/10">
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" aria-hidden="true" />
+                <div className="p-2 sm:p-3 rounded-xl bg-acr-pos/10">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-acr-pos" aria-hidden="true" />
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground">Total paid</p>
@@ -926,8 +926,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 sm:p-3 rounded-xl bg-blue-500/10">
-                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" aria-hidden="true" />
+                  <div className="p-2 sm:p-3 rounded-xl bg-acr-accent/10">
+                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-acr-accent" aria-hidden="true" />
                   </div>
                   <div>
                     <p className="text-xs sm:text-sm text-muted-foreground" id="autopay-label">Autopay</p>

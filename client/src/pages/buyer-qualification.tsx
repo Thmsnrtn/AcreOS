@@ -31,10 +31,10 @@ interface BuyerQualification {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-  qualified: { label: "Qualified", color: "text-green-600", icon: CheckCircle2 },
-  high_risk: { label: "High risk", color: "text-red-600", icon: XCircle },
-  pending: { label: "Pending", color: "text-yellow-600", icon: AlertTriangle },
-  in_progress: { label: "In progress", color: "text-blue-600", icon: Loader2 },
+  qualified: { label: "Qualified", color: "text-acr-pos", icon: CheckCircle2 },
+  high_risk: { label: "High risk", color: "text-acr-neg", icon: XCircle },
+  pending: { label: "Pending", color: "text-acr-warn", icon: AlertTriangle },
+  in_progress: { label: "In progress", color: "text-acr-accent", icon: Loader2 },
 };
 
 function QualificationCard({ q }: { q: BuyerQualification }) {
@@ -180,7 +180,7 @@ export default function BuyerQualificationPage() {
       <dl className="grid grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-green-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-pos mb-1">
               <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Qualified</span>
             </dt>
@@ -189,7 +189,7 @@ export default function BuyerQualificationPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-red-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-neg mb-1">
               <XCircle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">High risk</span>
             </dt>

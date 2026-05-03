@@ -73,8 +73,8 @@ function NegotiationProtocol() {
   }
 
   const resolutionColors: Record<string, string> = {
-    compromise: "bg-green-500", initiator_wins: "bg-blue-500",
-    respondent_wins: "bg-purple-500", deadlocked: "bg-red-500", escalated: "bg-orange-500",
+    compromise: "bg-acr-pos", initiator_wins: "bg-acr-accent",
+    respondent_wins: "bg-acr-brand", deadlocked: "bg-acr-neg", escalated: "bg-acr-warn",
   };
 
   return (
@@ -87,11 +87,11 @@ function NegotiationProtocol() {
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Resolved</dt>
-            <dd className="text-2xl font-bold text-green-500 tabular-nums">{stats.resolved}</dd>
+            <dd className="text-2xl font-bold text-acr-pos tabular-nums">{stats.resolved}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Escalated</dt>
-            <dd className="text-2xl font-bold text-orange-500 tabular-nums">{stats.escalated}</dd>
+            <dd className="text-2xl font-bold text-acr-warn tabular-nums">{stats.escalated}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Compromise rate</dt>
@@ -151,7 +151,7 @@ function NegotiationProtocol() {
         <ul className="space-y-3 list-none p-0 m-0" aria-label="Recent agent negotiations">
           {negotiations.map((n: any) => (
             <li key={n.id}>
-              <Card className={n.status === "escalated" ? "border-orange-500" : ""}>
+              <Card className={n.status === "escalated" ? "border-acr-warn" : ""}>
                 <CardContent className="pt-3 pb-3">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <Badge variant="outline" aria-label={`Initiator: ${n.initiatorAgent}`}>{n.initiatorAgent}</Badge>
@@ -235,7 +235,7 @@ function RevenueAttribution() {
                           aria-valuemax={100}
                           aria-label={`${c.agentCodename}: ${Math.round(c.avgAttribution)}% average attribution`}
                         >
-                          <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(100, c.avgAttribution)}%` }} />
+                          <div className="bg-acr-pos h-2 rounded-full" style={{ width: `${Math.min(100, c.avgAttribution)}%` }} />
                         </div>
                         <span className="text-xs font-mono w-24 text-right tabular-nums">{usd(c.totalRevenue / 100)}</span>
                         <span className="text-xs text-muted-foreground tabular-nums">{c.actionCount} action{c.actionCount === 1 ? "" : "s"}</span>
@@ -279,8 +279,8 @@ function CognitiveModel() {
       <h3 className="font-semibold flex items-center gap-2"><Brain className="h-5 w-5" aria-hidden="true" /> CEO cognitive model</h3>
 
       {(eligible || []).length > 0 && (
-        <Card className="border-green-500">
-          <CardHeader><CardTitle className="text-sm text-green-600">Autopilot eligible</CardTitle></CardHeader>
+        <Card className="border-acr-pos">
+          <CardHeader><CardTitle className="text-sm text-acr-pos">Autopilot eligible</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-1 list-none p-0 m-0" aria-label="Decision categories eligible for autopilot">
               {eligible.map((m: any) => (
@@ -321,7 +321,7 @@ function CognitiveModel() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono tabular-nums">{Number(m.shadowAccuracy).toFixed(1)}% accuracy</span>
                       <span className="text-xs text-muted-foreground tabular-nums">{m.shadowCorrect}/{m.shadowPredictions} correct</span>
-                      {m.autopilotEnabled && <Badge className="bg-green-500 text-white" aria-label="Autopilot active">Autopilot</Badge>}
+                      {m.autopilotEnabled && <Badge className="bg-acr-pos text-white" aria-label="Autopilot active">Autopilot</Badge>}
                     </div>
                   </div>
                   {(m.decisionPatterns || []).length > 0 && (
@@ -377,12 +377,12 @@ function KnowledgeDecay() {
             <dd className="text-2xl font-bold tabular-nums">{stats.avgFreshness}%</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <dt className="text-xs text-muted-foreground text-red-500">Zombies</dt>
-            <dd className="text-2xl font-bold text-red-500 tabular-nums">{stats.zombies}</dd>
+            <dt className="text-xs text-muted-foreground text-acr-neg">Zombies</dt>
+            <dd className="text-2xl font-bold text-acr-neg tabular-nums">{stats.zombies}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Stale</dt>
-            <dd className="text-2xl font-bold text-orange-500 tabular-nums">{stats.stale}</dd>
+            <dd className="text-2xl font-bold text-acr-warn tabular-nums">{stats.stale}</dd>
           </CardContent></Card>
         </dl>
       )}
@@ -392,10 +392,10 @@ function KnowledgeDecay() {
       </Button>
 
       {(zombies || []).length > 0 && (
-        <Card className="border-red-500">
+        <Card className="border-acr-neg">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" /> Zombie patterns
+              <AlertTriangle className="h-4 w-4 text-acr-neg" aria-hidden="true" /> Zombie patterns
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -449,13 +449,13 @@ function ResourceGovernor() {
             const hourlyPct = Math.min(100, (q.hourlyActionsUsed / q.hourlyRateLimit) * 100);
             return (
               <li key={q.id}>
-                <Card className={q.circuitBreakerTripped ? "border-red-500" : q.burstDetected ? "border-orange-500" : ""}>
+                <Card className={q.circuitBreakerTripped ? "border-acr-neg" : q.burstDetected ? "border-acr-warn" : ""}>
                   <CardContent className="pt-3 pb-3">
                     <div className="flex items-center justify-between mb-2">
                       <Badge variant="outline" aria-label={`Agent: ${q.agentCodename}`}>{q.agentCodename}</Badge>
                       <div className="flex gap-1">
                         {q.circuitBreakerTripped && <Badge variant="destructive" aria-label="Circuit breaker tripped">CIRCUIT BREAKER</Badge>}
-                        {q.burstDetected && <Badge className="bg-orange-500 text-white" aria-label="Burst detected">BURST</Badge>}
+                        {q.burstDetected && <Badge className="bg-acr-warn text-white" aria-label="Burst detected">BURST</Badge>}
                       </div>
                     </div>
                     <dl className="grid grid-cols-3 gap-2 text-xs">
@@ -484,7 +484,7 @@ function ResourceGovernor() {
                           aria-valuemax={100}
                           aria-label={`${q.agentCodename} daily cost used`}
                         >
-                          <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${costPct}%` }} />
+                          <div className="bg-acr-pos h-1.5 rounded-full" style={{ width: `${costPct}%` }} />
                         </div>
                       </div>
                       <div>
@@ -498,7 +498,7 @@ function ResourceGovernor() {
                           aria-valuemax={100}
                           aria-label={`${q.agentCodename} hourly rate used`}
                         >
-                          <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${hourlyPct}%` }} />
+                          <div className="bg-acr-accent h-1.5 rounded-full" style={{ width: `${hourlyPct}%` }} />
                         </div>
                       </div>
                     </dl>
@@ -683,11 +683,11 @@ function PredictiveOrchestration() {
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Staged</dt>
-            <dd className="text-2xl font-bold text-blue-500 tabular-nums">{stats.stagedActions}</dd>
+            <dd className="text-2xl font-bold text-acr-accent tabular-nums">{stats.stagedActions}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Triggered</dt>
-            <dd className="text-2xl font-bold text-green-500 tabular-nums">{stats.triggered}</dd>
+            <dd className="text-2xl font-bold text-acr-pos tabular-nums">{stats.triggered}</dd>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
             <dt className="text-xs text-muted-foreground">Accuracy</dt>
@@ -697,10 +697,10 @@ function PredictiveOrchestration() {
       )}
 
       {(staged || []).length > 0 && (
-        <Card className="border-blue-500">
+        <Card className="border-acr-accent">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
-              <Radar className="h-4 w-4 text-blue-500 animate-pulse" aria-hidden="true" /> Pre-staged actions
+              <Radar className="h-4 w-4 text-acr-accent animate-pulse" aria-hidden="true" /> Pre-staged actions
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -733,7 +733,7 @@ function PredictiveOrchestration() {
                   <span className="text-xs text-muted-foreground ml-auto tabular-nums">
                     ~{Number(p.avgDelayHours).toFixed(0)}h delay · {(Number(p.correlationStrength) * 100).toFixed(0)}% correlation
                   </span>
-                  {p.autoStageEnabled && <Badge className="bg-green-500 text-white text-xs" aria-label="Auto-stage enabled">Auto</Badge>}
+                  {p.autoStageEnabled && <Badge className="bg-acr-pos text-white text-xs" aria-label="Auto-stage enabled">Auto</Badge>}
                 </li>
               ))}
             </ul>

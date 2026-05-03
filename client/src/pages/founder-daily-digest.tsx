@@ -114,10 +114,10 @@ export default function FounderDailyDigestPage() {
 
           {digest.needsAttention && digest.needsAttention.length > 0 && (
             <li>
-              <Card className="border-yellow-500">
+              <Card className="border-acr-warn">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" aria-hidden="true" />
+                    <AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                     Needs your attention (<span className="tabular-nums">{digest.needsAttention.length}</span>)
                   </CardTitle>
                 </CardHeader>

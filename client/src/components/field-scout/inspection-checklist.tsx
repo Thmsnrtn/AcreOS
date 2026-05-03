@@ -149,16 +149,16 @@ function computeScore(categories: ChecklistCategory[]): number {
 }
 
 const STATUS_ICONS: Record<ChecklistStatus, React.ReactNode> = {
-  pass: <CheckCircle className="w-4 h-4 text-emerald-400" />,
-  fail: <XCircle className="w-4 h-4 text-red-400" />,
-  na: <MinusCircle className="w-4 h-4 text-gray-500" />,
-  unchecked: <MinusCircle className="w-4 h-4 text-gray-700" />,
+  pass: <CheckCircle className="w-4 h-4 text-acr-pos" />,
+  fail: <XCircle className="w-4 h-4 text-acr-neg" />,
+  na: <MinusCircle className="w-4 h-4 text-muted-foreground" />,
+  unchecked: <MinusCircle className="w-4 h-4 text-foreground" />,
 };
 
 const SEVERITY_BADGES: Record<ChecklistSeverity, { label: string; className: string; icon: React.ReactNode }> = {
-  info: { label: "Info", className: "bg-blue-900/40 text-blue-300 border-blue-800", icon: <Info className="w-3 h-3" /> },
-  warning: { label: "Warning", className: "bg-yellow-900/40 text-yellow-300 border-yellow-800", icon: <AlertTriangle className="w-3 h-3" /> },
-  critical: { label: "Critical", className: "bg-red-900/40 text-red-300 border-red-800", icon: <AlertOctagon className="w-3 h-3" /> },
+  info: { label: "Info", className: "bg-acr-accent/40 text-acr-accent border-acr-accent", icon: <Info className="w-3 h-3" /> },
+  warning: { label: "Warning", className: "bg-acr-warn-soft/40 text-acr-warn border-acr-warn-soft", icon: <AlertTriangle className="w-3 h-3" /> },
+  critical: { label: "Critical", className: "bg-acr-neg-soft/40 text-acr-neg border-acr-neg-soft", icon: <AlertOctagon className="w-3 h-3" /> },
 };
 
 // ---------------------------------------------------------------------------
@@ -246,11 +246,11 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
   };
 
   return (
-    <Card className="bg-gray-900 border-gray-800">
+    <Card className="bg-acr-bg-sunken border-border">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <ClipboardCheck className="w-4 h-4 text-emerald-400" />
+            <ClipboardCheck className="w-4 h-4 text-acr-pos" />
             Property Inspection Checklist
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -258,10 +258,10 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
               className={cn(
                 "text-xs",
                 overallScore >= 80
-                  ? "bg-emerald-900/50 text-emerald-300"
+                  ? "bg-acr-pos-soft/50 text-acr-pos"
                   : overallScore >= 50
-                  ? "bg-yellow-900/50 text-yellow-300"
-                  : "bg-gray-800 text-gray-400"
+                  ? "bg-acr-warn-soft/50 text-acr-warn"
+                  : "bg-acr-bg-sunken text-muted-foreground"
               )}
             >
               {overallScore}% passing
@@ -277,12 +277,12 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
               <AccordionItem
                 key={cat.id}
                 value={cat.id}
-                className="border border-gray-800 rounded-lg overflow-hidden"
+                className="border border-border rounded-lg overflow-hidden"
               >
-                <AccordionTrigger className="px-3 py-2 hover:bg-gray-800/50 text-sm [&[data-state=open]>svg]:rotate-180">
+                <AccordionTrigger className="px-3 py-2 hover:bg-acr-bg-sunken/50 text-sm [&[data-state=open]>svg]:rotate-180">
                   <div className="flex items-center gap-2 flex-1 text-left">
                     <span className="font-medium">{cat.label}</span>
-                    <Badge variant="secondary" className="text-[10px] bg-gray-800 text-gray-400">
+                    <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
                       {progress.checked}/{progress.total}
                     </Badge>
                   </div>
@@ -293,7 +293,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                     return (
                       <div
                         key={item.id}
-                        className="border border-gray-800 rounded-md p-2 space-y-2"
+                        className="border border-border rounded-md p-2 space-y-2"
                       >
                         <div className="flex items-start gap-2">
                           <Checkbox
@@ -304,7 +304,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                                 status: checked ? "pass" : "unchecked",
                               })
                             }
-                            className="mt-0.5 border-gray-600 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                            className="mt-0.5 border-border data-[state=checked]:bg-acr-pos data-[state=checked]:border-acr-pos"
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -320,7 +320,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                           </div>
                           <button
                             onClick={() => cycleStatus(cat.id, item.id, item.status)}
-                            className="shrink-0 p-0.5 rounded hover:bg-gray-800 transition-colors"
+                            className="shrink-0 p-0.5 rounded hover:bg-acr-bg-sunken transition-colors"
                             title={`Status: ${item.status} (click to cycle)`}
                           >
                             {STATUS_ICONS[item.status]}
@@ -333,7 +333,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                               updateItem(cat.id, item.id, { notes: e.target.value })
                             }
                             placeholder="Add notes…"
-                            className="bg-gray-800 border-gray-700 text-white text-xs h-14 resize-none"
+                            className="bg-acr-bg-sunken border-border text-white text-xs h-14 resize-none"
                           />
                         )}
                       </div>
@@ -350,7 +350,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
             variant="outline"
             size="sm"
             onClick={handleExportJSON}
-            className="flex-1 border-gray-700 text-gray-400"
+            className="flex-1 border-border text-muted-foreground"
           >
             <Download className="w-3 h-3 mr-1" />
             Export JSON
@@ -358,7 +358,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
           <Button
             size="sm"
             onClick={handleComplete}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            className="flex-1 bg-acr-pos hover:bg-acr-pos"
           >
             <ClipboardCheck className="w-3 h-3 mr-1" />
             Complete Inspection

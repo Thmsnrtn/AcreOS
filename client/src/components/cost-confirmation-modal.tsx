@@ -99,10 +99,10 @@ export function CostConfirmationModal({
                 </div>
 
                 {hasInsufficientCredits && (
-                  <div role="alert" className="flex items-start gap-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <div role="alert" className="flex items-start gap-3 p-3 rounded-md bg-acr-warn-soft dark:bg-acr-warn-soft/50 border border-acr-warn-soft dark:border-acr-warn-soft">
+                    <AlertTriangle className="w-5 h-5 text-acr-warn dark:text-acr-warn flex-shrink-0 mt-0.5" aria-hidden="true" />
                     <div className="space-y-2">
-                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                      <p className="text-sm text-acr-warn dark:text-acr-warn">
                         You don't have enough credits for this action.
                       </p>
                       <Button

@@ -24,10 +24,10 @@ function EventRow({ event }: { event: any }) {
   const detailsId = useId();
 
   const priorityColors: Record<number, string> = {
-    1: "text-red-500",
-    2: "text-red-400",
-    3: "text-orange-500",
-    4: "text-yellow-500",
+    1: "text-acr-neg",
+    2: "text-acr-neg",
+    3: "text-acr-warn",
+    4: "text-acr-warn",
     5: "text-muted-foreground",
   };
 
@@ -110,7 +110,7 @@ function EventRow({ event }: { event: any }) {
             )}
           </dl>
           {event.deadLetterReason && (
-            <p className="text-xs text-red-500" role="alert">DLQ reason: {event.deadLetterReason}</p>
+            <p className="text-xs text-acr-neg" role="alert">DLQ reason: {event.deadLetterReason}</p>
           )}
         </div>
       )}
@@ -179,7 +179,7 @@ export default function EventLog() {
             <Card>
               <CardContent className="pt-4">
                 <dt className="text-xs text-muted-foreground flex items-center gap-1">
-                  DLQ {(stats.deadLetterDepth ?? 0) > 0 && <AlertTriangle className="w-3 h-3 text-yellow-500" aria-hidden="true" />}
+                  DLQ {(stats.deadLetterDepth ?? 0) > 0 && <AlertTriangle className="w-3 h-3 text-acr-warn" aria-hidden="true" />}
                 </dt>
                 <dd className="text-xl font-bold tabular-nums">{stats.deadLetterDepth ?? 0}</dd>
               </CardContent>

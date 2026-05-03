@@ -64,9 +64,9 @@ interface AccuracyMetrics {
 
 function DirectionBadge({ direction }: { direction: string }) {
   if (direction === "bullish")
-    return <Badge className="bg-green-100 text-green-800" aria-label="Direction: bullish (rising)">Bullish</Badge>;
+    return <Badge className="bg-acr-pos-soft text-acr-pos" aria-label="Direction: bullish (rising)">Bullish</Badge>;
   if (direction === "bearish")
-    return <Badge className="bg-red-100 text-red-800" aria-label="Direction: bearish (falling)">Bearish</Badge>;
+    return <Badge className="bg-acr-neg-soft text-acr-neg" aria-label="Direction: bearish (falling)">Bearish</Badge>;
   return <Badge variant="secondary" aria-label="Direction: neutral (flat)">Neutral</Badge>;
 }
 
@@ -78,9 +78,9 @@ const WINDOW_LABEL: Record<"buy" | "sell" | "hold", string> = {
 
 function WindowBadge({ type }: { type: "buy" | "sell" | "hold" }) {
   const map: Record<string, string> = {
-    buy: "bg-blue-100 text-blue-800",
-    sell: "bg-orange-100 text-orange-800",
-    hold: "bg-gray-100 text-gray-700",
+    buy: "bg-acr-accent text-acr-accent",
+    sell: "bg-acr-warn-soft text-acr-warn",
+    hold: "bg-muted text-foreground",
   };
   return (
     <span
@@ -320,7 +320,7 @@ export default function PredictionsPage() {
                     <ul className="space-y-1" aria-label="Momentum drivers">
                       {momentum.drivers.map((d, i) => (
                         <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" aria-hidden="true" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos mt-0.5 shrink-0" aria-hidden="true" />
                           {d}
                         </li>
                       ))}
@@ -498,7 +498,7 @@ export default function PredictionsPage() {
                       </div>
                       <p className="text-xs">{w.reasoning}</p>
                       {w.estimatedGain != null && (
-                        <div className="flex items-center gap-1 text-xs font-medium text-green-600">
+                        <div className="flex items-center gap-1 text-xs font-medium text-acr-pos">
                           {w.estimatedGain >= 0 ? <ArrowUpRight className="w-3 h-3" aria-hidden="true" /> : <ArrowDownRight className="w-3 h-3" aria-hidden="true" />}
                           <span className="tabular-nums">Est. {w.estimatedGain >= 0 ? "+" : ""}{w.estimatedGain.toFixed(1)}% gain</span>
                         </div>

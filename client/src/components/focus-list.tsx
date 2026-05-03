@@ -31,13 +31,13 @@ function getStageIcon(stage: string) {
 function getStageStyle(stage: string) {
   switch (stage) {
     case "hot":
-      return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "warm":
-      return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "cold":
-      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
-      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
   }
 }
 
@@ -157,11 +157,11 @@ function getActionIcon(type: NextAction["type"]) {
 function getPriorityStyle(priority: NextAction["priority"]) {
   switch (priority) {
     case "high":
-      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800";
+      return "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn dark:border-acr-warn-soft";
     case "medium":
-      return "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800";
+      return "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn dark:border-acr-warn-soft";
     case "low":
-      return "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700";
+      return "bg-muted text-muted-foreground border-border dark:bg-acr-bg-sunken/50 dark:text-muted-foreground dark:border-border";
   }
 }
 
@@ -320,10 +320,10 @@ export function FocusList() {
         </CardHeader>
         <CardContent>
           <div className="text-center py-6">
-            <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-6 h-6 text-green-600 dark:text-green-400" />
+            <div className="w-12 h-12 rounded-full bg-acr-pos-soft dark:bg-acr-pos-soft/30 flex items-center justify-center mx-auto mb-3">
+              <Sparkles className="w-6 h-6 text-acr-pos dark:text-acr-pos" />
             </div>
-            <p className="text-sm font-medium text-green-700 dark:text-green-400">
+            <p className="text-sm font-medium text-acr-pos dark:text-acr-pos">
               All caught up!
             </p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -453,7 +453,7 @@ export function FocusList() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/30"
+                      className="h-8 w-8 text-acr-pos hover:text-acr-pos hover:bg-acr-pos-soft dark:text-acr-pos dark:hover:bg-acr-pos-soft/30"
                       onClick={() => handleMarkContacted ? handleMarkContacted(lead, "manual") : markContactedMutation.mutate(lead.id)}
                       disabled={isPending || markContactedMutation?.isPending}
                       aria-label="Mark as contacted"

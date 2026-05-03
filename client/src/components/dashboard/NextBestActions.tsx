@@ -41,11 +41,11 @@ function getActionIcon(type: string) {
 function getPriorityStyle(priority: string) {
   switch (priority) {
     case "high":
-      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800";
+      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg border-acr-neg-soft dark:border-acr-neg-soft";
     case "medium":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn border-acr-warn-soft dark:border-acr-warn-soft";
     default:
-      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent border-acr-accent dark:border-acr-accent";
   }
 }
 
@@ -53,12 +53,12 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
   if (isLoading) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-green-50/50 to-emerald-50/30 dark:from-green-950/20 dark:to-emerald-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-pos/50 to-acr-pos/30 dark:from-acr-pos/20 dark:to-acr-pos/10"
         data-testid="dashboard-next-actions"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+            <Lightbulb className="w-5 h-5 text-acr-pos" aria-hidden="true" />
             Next best actions
           </CardTitle>
         </CardHeader>
@@ -74,12 +74,12 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
   if (!actions || actions.length === 0) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-green-50/50 to-emerald-50/30 dark:from-green-950/20 dark:to-emerald-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-pos/50 to-acr-pos/30 dark:from-acr-pos/20 dark:to-acr-pos/10"
         data-testid="dashboard-next-actions"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+            <Lightbulb className="w-5 h-5 text-acr-pos" aria-hidden="true" />
             Next best actions
           </CardTitle>
         </CardHeader>
@@ -92,12 +92,12 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
 
   return (
     <Card 
-      className="relative overflow-visible bg-gradient-to-br from-green-50/50 to-emerald-50/30 dark:from-green-950/20 dark:to-emerald-950/10"
+      className="relative overflow-visible bg-gradient-to-br from-acr-pos/50 to-acr-pos/30 dark:from-acr-pos/20 dark:to-acr-pos/10"
       data-testid="dashboard-next-actions"
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+          <Lightbulb className="w-5 h-5 text-acr-pos" aria-hidden="true" />
           Next best actions
           <Badge variant="outline" className="ml-2 text-xs tabular-nums">
             {actions.length}

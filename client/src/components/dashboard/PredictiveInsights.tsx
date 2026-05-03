@@ -30,12 +30,12 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
   if (isLoading) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-blue-50/50 to-indigo-50/30 dark:from-blue-950/20 dark:to-indigo-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-accent/50 to-acr-accent/30 dark:from-acr-accent/20 dark:to-acr-accent/10"
         data-testid="dashboard-predictive-insights"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+            <TrendingUp className="w-5 h-5 text-acr-accent" aria-hidden="true" />
             Predictive insights
           </CardTitle>
         </CardHeader>
@@ -50,12 +50,12 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
   if (!predictions || predictions.length === 0) {
     return (
       <Card 
-        className="relative overflow-visible bg-gradient-to-br from-blue-50/50 to-indigo-50/30 dark:from-blue-950/20 dark:to-indigo-950/10"
+        className="relative overflow-visible bg-gradient-to-br from-acr-accent/50 to-acr-accent/30 dark:from-acr-accent/20 dark:to-acr-accent/10"
         data-testid="dashboard-predictive-insights"
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+            <TrendingUp className="w-5 h-5 text-acr-accent" aria-hidden="true" />
             Predictive insights
           </CardTitle>
         </CardHeader>
@@ -68,12 +68,12 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
 
   return (
     <Card 
-      className="relative overflow-visible bg-gradient-to-br from-blue-50/50 to-indigo-50/30 dark:from-blue-950/20 dark:to-indigo-950/10"
+      className="relative overflow-visible bg-gradient-to-br from-acr-accent/50 to-acr-accent/30 dark:from-acr-accent/20 dark:to-acr-accent/10"
       data-testid="dashboard-predictive-insights"
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+          <TrendingUp className="w-5 h-5 text-acr-accent" aria-hidden="true" />
           Predictive insights
         </CardTitle>
       </CardHeader>

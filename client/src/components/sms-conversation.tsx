@@ -134,7 +134,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
             DNC listed
           </Badge>
         ) : (
-          <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+          <Badge variant="outline" className="text-xs text-acr-pos border-acr-pos">
             <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" />
             TCPA clear
           </Badge>

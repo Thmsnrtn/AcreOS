@@ -169,7 +169,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const getMarketConditionIcon = (condition: 'hot' | 'neutral' | 'cold') => {
     switch (condition) {
       case 'hot': return <Flame className="w-4 h-4 text-acr-warn" />;
-      case 'cold': return <Snowflake className="w-4 h-4 text-blue-500" />;
+      case 'cold': return <Snowflake className="w-4 h-4 text-acr-accent" />;
       default: return <Minus className="w-4 h-4 text-muted-foreground" />;
     }
   };
@@ -707,7 +707,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
 
             <TabsContent value="checklist" className="space-y-6">
               {stageGate && !stageGate.canAdvance && (
-                <Card role="status" className="border-amber-500/50 bg-acr-warn/10">
+                <Card role="status" className="border-acr-warn/50 bg-acr-warn/10">
                   <CardContent className="p-4 flex items-center gap-3">
                     <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
                     <div>

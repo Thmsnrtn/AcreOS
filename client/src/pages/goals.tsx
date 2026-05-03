@@ -53,11 +53,11 @@ interface Goal {
 }
 
 const CATEGORY_CONFIG = {
-  revenue: { label: "Revenue", icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-  deals: { label: "Deals", icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20" },
-  leads: { label: "Leads", icon: Users, color: "text-cyan-600", bg: "bg-cyan-50 dark:bg-cyan-900/20" },
-  properties: { label: "Properties", icon: Home, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20" },
-  custom: { label: "Custom", icon: Target, color: "text-gray-600", bg: "bg-gray-50 dark:bg-gray-900/20" },
+  revenue: { label: "Revenue", icon: DollarSign, color: "text-acr-pos", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/20" },
+  deals: { label: "Deals", icon: TrendingUp, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20" },
+  leads: { label: "Leads", icon: Users, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20" },
+  properties: { label: "Properties", icon: Home, color: "text-acr-warn", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20" },
+  custom: { label: "Custom", icon: Target, color: "text-muted-foreground", bg: "bg-muted dark:bg-acr-bg-sunken/20" },
 };
 
 function getGoalStatus(goal: Goal) {
@@ -68,10 +68,10 @@ function getGoalStatus(goal: Goal) {
   const deadline = goal.deadline ? new Date(goal.deadline) : null;
   const daysLeft = deadline ? differenceInDays(deadline, now) : null;
 
-  if (pct >= 100) return { status: "completed", label: "Completed", color: "text-emerald-600", badgeVariant: "default" as const };
-  if (daysLeft !== null && daysLeft < 0) return { status: "overdue", label: "Overdue", color: "text-red-600", badgeVariant: "destructive" as const };
-  if (daysLeft !== null && daysLeft <= 7) return { status: "urgent", label: `${daysLeft}d left`, color: "text-amber-600", badgeVariant: "secondary" as const };
-  return { status: "active", label: "In progress", color: "text-blue-600", badgeVariant: "outline" as const };
+  if (pct >= 100) return { status: "completed", label: "Completed", color: "text-acr-pos", badgeVariant: "default" as const };
+  if (daysLeft !== null && daysLeft < 0) return { status: "overdue", label: "Overdue", color: "text-acr-neg", badgeVariant: "destructive" as const };
+  if (daysLeft !== null && daysLeft <= 7) return { status: "urgent", label: `${daysLeft}d left`, color: "text-acr-warn", badgeVariant: "secondary" as const };
+  return { status: "active", label: "In progress", color: "text-acr-accent", badgeVariant: "outline" as const };
 }
 
 function fmt(val: string | number, unit?: string): string {
@@ -174,8 +174,8 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20" aria-hidden="true">
-                <Target className="h-5 w-5 text-blue-600" />
+              <div className="p-2 rounded-lg bg-acr-accent dark:bg-acr-accent/20" aria-hidden="true">
+                <Target className="h-5 w-5 text-acr-accent" />
               </div>
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{goals.length}</dd>
@@ -187,8 +187,8 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20" aria-hidden="true">
-                <Trophy className="h-5 w-5 text-emerald-600" />
+              <div className="p-2 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20" aria-hidden="true">
+                <Trophy className="h-5 w-5 text-acr-pos" />
               </div>
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{completedCount}</dd>
@@ -200,8 +200,8 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20" aria-hidden="true">
-                <DollarSign className="h-5 w-5 text-amber-600" />
+              <div className="p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20" aria-hidden="true">
+                <DollarSign className="h-5 w-5 text-acr-warn" />
               </div>
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{totalTargetRevenue > 0 ? Math.round((currentRevenue / totalTargetRevenue) * 100) : 0}%</dd>

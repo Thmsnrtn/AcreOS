@@ -29,9 +29,9 @@ function StarRating({ rating }: { rating: number }) {
   return (
     <span className="flex items-center gap-0.5" title={`${rating.toFixed(1)} / 5`}>
       {Array.from({ length: full }).map((_, i) => (
-        <Star key={`f${i}`} className="w-3 h-3 fill-amber-400 text-amber-400" />
+        <Star key={`f${i}`} className="w-3 h-3 fill-acr-warn text-acr-warn" />
       ))}
-      {half && <Star key="h" className="w-3 h-3 fill-amber-200 text-amber-400" />}
+      {half && <Star key="h" className="w-3 h-3 fill-acr-warn text-acr-warn" />}
       {Array.from({ length: empty }).map((_, i) => (
         <Star key={`e${i}`} className="w-3 h-3 text-muted-foreground/40" />
       ))}
@@ -54,7 +54,7 @@ export function InvestorProfileCard({ profile, orgName, onConnect }: InvestorPro
               <CardTitle className="text-base">{profile.displayName}</CardTitle>
               {profile.isVerified && (
                 <CheckCircle
-                  className="w-4 h-4 text-blue-500 shrink-0"
+                  className="w-4 h-4 text-acr-accent shrink-0"
                   aria-label="Verified investor"
                 />
               )}
@@ -132,7 +132,7 @@ export function InvestorProfileCard({ profile, orgName, onConnect }: InvestorPro
             </span>
           )}
           {profile.isVerified && (
-            <span className="ml-auto flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+            <span className="ml-auto flex items-center gap-1 text-acr-accent dark:text-acr-accent font-medium">
               <CheckCircle className="w-3 h-3" />
               Verified
             </span>

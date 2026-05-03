@@ -356,16 +356,16 @@ export function getRoleLabel(role: string): string {
 export function getRoleBadgeStyle(role: string): string {
   switch (role) {
     case "owner":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "admin":
-      return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
+      return "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand";
     case "member":
-      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     case "viewer":
-      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
     case "va":
-      return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
-      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
   }
 }

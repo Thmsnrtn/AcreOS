@@ -50,7 +50,7 @@ export function PreferencesCard() {
             <p className="text-xs text-muted-foreground mt-1">
               Soft clicks on key actions and a chime when a deal closes.
               {reducedMotion && (
-                <span className="block mt-1 inline-flex items-center gap-1 text-amber-600">
+                <span className="block mt-1 inline-flex items-center gap-1 text-acr-warn">
                   <AlertCircle className="w-3 h-3" aria-hidden="true" />
                   Disabled while &ldquo;reduce motion&rdquo; is on at the OS level.
                 </span>

@@ -38,13 +38,13 @@ function StatusIcon({ status }: { status: string }) {
   const label = STATUS_LABEL[status] ?? STATUS_LABEL.unknown;
   switch (status) {
     case "success":
-      return <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-label={label} />;
+      return <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-label={label} />;
     case "failed":
-      return <AlertTriangle className="w-3.5 h-3.5 text-red-500" aria-label={label} />;
+      return <AlertTriangle className="w-3.5 h-3.5 text-acr-neg" aria-label={label} />;
     case "skipped_lock":
       return <SkipForward className="w-3.5 h-3.5 text-muted-foreground" aria-label={label} />;
     case "running":
-      return <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" aria-label={label} />;
+      return <RefreshCw className="w-3.5 h-3.5 text-acr-accent animate-spin" aria-label={label} />;
     default:
       return <Clock className="w-3.5 h-3.5 text-muted-foreground" aria-label={label} />;
   }
@@ -125,13 +125,13 @@ export default function JobHealth() {
           <Card>
             <CardContent className="pt-4">
               <dt className="text-xs text-muted-foreground">Successful runs</dt>
-              <dd className="text-xl font-bold text-green-600 tabular-nums">{successCount}</dd>
+              <dd className="text-xl font-bold text-acr-pos tabular-nums">{successCount}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <dt className="text-xs text-muted-foreground">Failed runs</dt>
-              <dd className="text-xl font-bold text-red-600 tabular-nums">{failedCount}</dd>
+              <dd className="text-xl font-bold text-acr-neg tabular-nums">{failedCount}</dd>
             </CardContent>
           </Card>
           <Card>
@@ -239,7 +239,7 @@ export default function JobHealth() {
                         <span className="tabular-nums">{format(new Date(job.runCompletedAt), "MMM d HH:mm:ss")}</span>
                       )}
                       {job.errorMessage && (
-                        <span className="text-red-500 truncate max-w-48" title={job.errorMessage} role="alert">
+                        <span className="text-acr-neg truncate max-w-48" title={job.errorMessage} role="alert">
                           {job.errorMessage}
                         </span>
                       )}

@@ -25,9 +25,9 @@ type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
 
 const statusColors: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
-  running: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  running: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+  completed: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
 };
 
 const statusIcons: Record<string, any> = {
@@ -52,9 +52,9 @@ const winningMetricLabels: Record<string, string> = {
 };
 
 const confidenceBadge = (level: number) => {
-  if (level >= 99) return { label: '99%', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' };
-  if (level >= 95) return { label: '95%', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' };
-  if (level >= 90) return { label: '90%', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' };
+  if (level >= 99) return { label: '99%', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' };
+  if (level >= 95) return { label: '95%', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent' };
+  if (level >= 90) return { label: '90%', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn' };
   return { label: 'Not significant', color: 'bg-muted text-muted-foreground' };
 };
 
@@ -397,7 +397,7 @@ export function AbTestsContent() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Tests</CardTitle>
-            <Play className="w-4 h-4 text-blue-500" />
+            <Play className="w-4 h-4 text-acr-accent" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold" data-testid="text-running-count">
@@ -408,7 +408,7 @@ export function AbTestsContent() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="w-4 h-4 text-emerald-500" />
+            <CheckCircle className="w-4 h-4 text-acr-pos" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold" data-testid="text-completed-count">
@@ -563,7 +563,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                 </TableCell>
                 <TableCell>
                   {winner ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
                       <Trophy className="w-3 h-3 mr-1" />
                       {winner.name}
                     </Badge>
@@ -666,7 +666,7 @@ function TestDetails({ test, onComplete, isPending }: TestDetailsProps) {
           return (
             <Card
               key={variant.id}
-              className={isWinner ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10" : ""}
+              className={isWinner ? "border-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft/10" : ""}
               data-testid={`card-variant-detail-${variant.id}`}
             >
               <CardHeader className="pb-2">
@@ -676,7 +676,7 @@ function TestDetails({ test, onComplete, isPending }: TestDetailsProps) {
                     <span className="font-medium">{variant.name}</span>
                     {variant.isControl && <Badge variant="outline">Control</Badge>}
                     {isWinner && (
-                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
                         <Trophy className="w-3 h-3 mr-1" />
                         Winner
                       </Badge>

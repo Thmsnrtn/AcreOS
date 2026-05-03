@@ -396,7 +396,7 @@ export function ImportExportManager() {
                     <Badge variant="outline">
                       Total: {preview.totalRows} rows
                     </Badge>
-                    <Badge variant="default" className="bg-green-500">
+                    <Badge variant="default" className="bg-acr-pos">
                       <Check className="w-3 h-3 mr-1" />
                       Valid: {preview.validRows}
                     </Badge>
@@ -444,7 +444,7 @@ export function ImportExportManager() {
                           </TableCell>
                           <TableCell>
                             {row.valid ? (
-                              <Badge variant="default" className="bg-green-500">
+                              <Badge variant="default" className="bg-acr-pos">
                                 <Check className="w-3 h-3" />
                               </Badge>
                             ) : (
@@ -493,12 +493,12 @@ export function ImportExportManager() {
                 data-testid="import-result"
               >
                 <div className="flex items-center gap-2">
-                  <Check className="w-5 h-5 text-green-500" />
+                  <Check className="w-5 h-5 text-acr-pos" />
                   <span className="font-medium">Import Complete</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
                   <span>Total: {importResult.totalRows}</span>
-                  <span className="text-green-600">
+                  <span className="text-acr-pos">
                     Success: {importResult.successCount}
                   </span>
                   {importResult.errorCount > 0 && (

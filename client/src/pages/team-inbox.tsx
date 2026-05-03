@@ -73,9 +73,9 @@ function initials(name?: string, email?: string): string {
 
 function presenceDot(status?: string) {
   const c: Record<string, string> = {
-    online: "bg-green-500",
-    away:   "bg-yellow-400",
-    offline: "bg-gray-300 dark:bg-gray-600",
+    online: "bg-acr-pos",
+    away:   "bg-acr-warn",
+    offline: "bg-muted dark:bg-muted",
   };
   const s = status ?? "offline";
   return (

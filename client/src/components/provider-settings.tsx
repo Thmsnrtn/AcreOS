@@ -98,7 +98,7 @@ export function ProviderSettings() {
           </div>
 
           <div className="flex items-center gap-2 text-sm">
-            <DollarSign className="h-4 w-4 text-green-600" aria-hidden="true" />
+            <DollarSign className="h-4 w-4 text-acr-pos" aria-hidden="true" />
             <span>
               Current mode: <strong>{providers.ai.defaultTier === "economy" ? "Economy (90% cheaper)" : "Premium"}</strong>
             </span>
@@ -142,7 +142,7 @@ export function ProviderSettings() {
 
           {providers.sms.default && (
             <div className="flex items-center gap-2 text-sm">
-              <DollarSign className="h-4 w-4 text-green-600" aria-hidden="true" />
+              <DollarSign className="h-4 w-4 text-acr-pos" aria-hidden="true" />
               <span>
                 Default provider: <strong>{providers.sms.default}</strong>
                 {providers.sms.default === "telnyx" && " (50% cheaper)"}
@@ -200,7 +200,7 @@ export function ProviderSettings() {
 
           {providers.mail.default && (
             <div className="flex items-center gap-2 text-sm">
-              <DollarSign className="h-4 w-4 text-green-600" aria-hidden="true" />
+              <DollarSign className="h-4 w-4 text-acr-pos" aria-hidden="true" />
               <span>
                 Default provider: <strong>{providers.mail.default}</strong>
                 {providers.mail.default === "pcm" && " (No monthly subscription)"}

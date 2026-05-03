@@ -143,7 +143,7 @@ export default function ListingSyndicationPage() {
           <Card>
             <CardContent className="p-4">
               <dt className="text-xs text-muted-foreground mb-1">Errors</dt>
-              <dd className="text-2xl font-bold text-red-600 tabular-nums">
+              <dd className="text-2xl font-bold text-acr-neg tabular-nums">
                 {channels.filter(c => c.syncStatus === "error").length}
               </dd>
             </CardContent>
@@ -168,23 +168,23 @@ export default function ListingSyndicationPage() {
                         <span className="font-medium text-sm">{ch.name}</span>
                         <Badge variant="outline" className="text-xs">{TYPE_LABELS[ch.type] ?? ch.type}</Badge>
                         {ch.syncStatus === "synced" && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-label="Synced" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos" aria-label="Synced" />
                         )}
                         {ch.syncStatus === "error" && (
-                          <XCircle className="w-3.5 h-3.5 text-red-600" aria-label="Sync error" />
+                          <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-label="Sync error" />
                         )}
                         {ch.syncStatus === "pending" && (
-                          <RefreshCw className="w-3.5 h-3.5 text-blue-600" aria-label="Sync pending" />
+                          <RefreshCw className="w-3.5 h-3.5 text-acr-accent" aria-label="Sync pending" />
                         )}
                       </div>
                       {ch.errorMessage && (
-                        <div className="flex items-center gap-1.5 text-xs text-red-600" role="alert">
+                        <div className="flex items-center gap-1.5 text-xs text-acr-neg" role="alert">
                           <AlertTriangle className="w-3 h-3" aria-hidden="true" /> {ch.errorMessage}
                         </div>
                       )}
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span><span className="tabular-nums">{ch.listingsPublished}</span> published</span>
-                        {ch.pendingCount > 0 && <span className="text-blue-600"><span className="tabular-nums">{ch.pendingCount}</span> pending</span>}
+                        {ch.pendingCount > 0 && <span className="text-acr-accent"><span className="tabular-nums">{ch.pendingCount}</span> pending</span>}
                         {ch.lastSyncAt && <span className="tabular-nums">Last sync: {new Date(ch.lastSyncAt).toLocaleString()}</span>}
                       </div>
                     </div>

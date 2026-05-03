@@ -16,7 +16,7 @@ import {
 } from "@/hooks/use-sovereign-dashboard";
 
 function TrustScoreBar({ score, label }: { score: number; label: string }) {
-  const color = score >= 80 ? "bg-green-500" : score >= 50 ? "bg-yellow-500" : "bg-red-500";
+  const color = score >= 80 ? "bg-acr-pos" : score >= 50 ? "bg-acr-warn" : "bg-acr-neg";
   const rounded = Math.round(score);
   return (
     <div className="space-y-1">
@@ -166,7 +166,7 @@ export default function AgentPerformance() {
                           return (
                             <li key={i} className="flex items-center justify-between gap-3 flex-wrap">
                               <div className="flex items-center gap-2 min-w-0">
-                                <DollarSign className="w-3.5 h-3.5 text-green-500 shrink-0" aria-hidden="true" />
+                                <DollarSign className="w-3.5 h-3.5 text-acr-pos shrink-0" aria-hidden="true" />
                                 <span className="text-sm font-medium truncate">{a.agent ?? a.name}</span>
                               </div>
                               <div className="flex items-center gap-3">

@@ -36,10 +36,10 @@ interface SellerIntentPrediction {
 }
 
 const INTENT_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-  hot: { icon: Flame, color: "text-red-500", label: "Hot" },
-  warm: { icon: Thermometer, color: "text-orange-500", label: "Warm" },
-  cool: { icon: Wind, color: "text-blue-400", label: "Cool" },
-  cold: { icon: Snowflake, color: "text-blue-600", label: "Cold" },
+  hot: { icon: Flame, color: "text-acr-neg", label: "Hot" },
+  warm: { icon: Thermometer, color: "text-acr-warn", label: "Warm" },
+  cool: { icon: Wind, color: "text-acr-accent", label: "Cool" },
+  cold: { icon: Snowflake, color: "text-acr-accent", label: "Cold" },
 };
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -117,7 +117,7 @@ function IntentCard({ prediction }: { prediction: SellerIntentPrediction }) {
 
         {prediction.offerRange && (
           <div className="flex items-center gap-1 text-xs">
-            <DollarSign className="w-3 h-3 text-green-600" aria-hidden="true" />
+            <DollarSign className="w-3 h-3 text-acr-pos" aria-hidden="true" />
             <span className="text-muted-foreground">
               Offer range: <span className="tabular-nums">{usd(prediction.offerRange.min)}</span> – <span className="tabular-nums">{usd(prediction.offerRange.max)}</span>
             </span>
@@ -189,7 +189,7 @@ export default function SellerIntentPage() {
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-red-500 mb-1">
+            <dt className="flex items-center gap-2 text-acr-neg mb-1">
               <Flame className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Hot leads</span>
             </dt>
@@ -198,7 +198,7 @@ export default function SellerIntentPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-orange-500 mb-1">
+            <dt className="flex items-center gap-2 text-acr-warn mb-1">
               <Thermometer className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Warm leads</span>
             </dt>

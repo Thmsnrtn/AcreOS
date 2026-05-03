@@ -45,22 +45,22 @@ const eventTypeIcons: Record<ActivityEventType, typeof Mail> = {
 };
 
 const eventTypeColors: Record<ActivityEventType, string> = {
-  email_sent: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  email_opened: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  email_clicked: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  sms_sent: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
-  sms_delivered: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  mail_sent: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
-  mail_delivered: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  call_made: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  call_received: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  note_added: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-  stage_changed: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  payment_received: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+  email_sent: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  email_opened: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  email_clicked: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
+  sms_sent: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  sms_delivered: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  mail_sent: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  mail_delivered: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  call_made: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  call_received: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  note_added: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  stage_changed: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
+  payment_received: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
   document_uploaded: "bg-muted text-muted-foreground",
-  task_completed: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  task_created: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  task_updated: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+  task_completed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  task_created: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  task_updated: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
 };
 
 const entityTypeIcons: Record<string, typeof Users> = {
@@ -82,7 +82,7 @@ interface ActivityFeedItemProps {
 function ActivityFeedItem({ event }: ActivityFeedItemProps) {
   const eventType = event.eventType as ActivityEventType;
   const Icon = eventTypeIcons[eventType] || FileText;
-  const colorClass = eventTypeColors[eventType] || "bg-gray-100 text-gray-700";
+  const colorClass = eventTypeColors[eventType] || "bg-muted text-foreground";
   const eventInfo = ACTIVITY_EVENT_TYPES[eventType];
   const eventDate = new Date(event.eventDate);
   const EntityIcon = entityTypeIcons[event.entityType] || Activity;

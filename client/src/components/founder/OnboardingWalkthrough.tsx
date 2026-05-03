@@ -108,21 +108,21 @@ export default function OnboardingWalkthrough() {
         aria-label="Founder onboarding walkthrough"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-gray-900 rounded-2xl border border-gray-700/50 overflow-hidden shadow-2xl"
+        className="w-full max-w-md bg-acr-bg-sunken rounded-2xl border border-border/50 overflow-hidden shadow-2xl"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex gap-1.5">
             {STEPS.map((_, i) => (
               <div
                 key={i}
                 className={`h-1 rounded-full transition-all ${
-                  i === step ? "w-8 bg-blue-500" : i < step ? "w-4 bg-blue-500/50" : "w-4 bg-gray-700"
+                  i === step ? "w-8 bg-acr-accent" : i < step ? "w-4 bg-acr-accent/50" : "w-4 bg-acr-bg-sunken"
                 }`}
               />
             ))}
           </div>
-          <button type="button" onClick={handleSkip} aria-label="Skip onboarding walkthrough" className="p-1 text-gray-500 hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+          <button type="button" onClick={handleSkip} aria-label="Skip onboarding walkthrough" className="p-1 text-muted-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
@@ -138,13 +138,13 @@ export default function OnboardingWalkthrough() {
             className="p-6"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <StepIcon className="w-6 h-6 text-blue-400" />
+              <div className="p-2 rounded-lg bg-acr-accent/10">
+                <StepIcon className="w-6 h-6 text-acr-accent" />
               </div>
-              <h2 className="text-lg font-semibold text-gray-100">{currentStep.title}</h2>
+              <h2 className="text-lg font-semibold text-muted-foreground">{currentStep.title}</h2>
             </div>
 
-            <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
               {currentStep.description}
             </p>
 
@@ -159,8 +159,8 @@ export default function OnboardingWalkthrough() {
                     >
                       {agent.emoji}
                     </div>
-                    <p className="text-xs text-gray-300 font-medium">{agent.name}</p>
-                    <p className="text-[10px] text-gray-500">{agent.role}</p>
+                    <p className="text-xs text-muted-foreground font-medium">{agent.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{agent.role}</p>
                   </div>
                 ))}
               </div>
@@ -168,12 +168,12 @@ export default function OnboardingWalkthrough() {
 
             {currentStep.content === "decisions" && (
               <div className="relative mx-auto w-64 h-32 mb-4">
-                <div className="absolute inset-0 bg-gray-800 rounded-xl border border-gray-700 p-3">
-                  <p className="text-xs text-gray-500 mb-1">Sophie recommends</p>
-                  <p className="text-sm text-gray-200">Send retention email to Acme Corp</p>
+                <div className="absolute inset-0 bg-acr-bg-sunken rounded-xl border border-border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Sophie recommends</p>
+                  <p className="text-sm text-muted-foreground">Send retention email to Acme Corp</p>
                   <div className="flex justify-between mt-4">
-                    <div className="text-xs text-red-400/60">← Reject</div>
-                    <div className="text-xs text-emerald-400/60">Approve →</div>
+                    <div className="text-xs text-acr-neg/60">← Reject</div>
+                    <div className="text-xs text-acr-pos/60">Approve →</div>
                   </div>
                 </div>
               </div>
@@ -181,15 +181,15 @@ export default function OnboardingWalkthrough() {
 
             {currentStep.content === "priorities" && (
               <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/60 border border-gray-700/40">
-                  <span className="text-sm text-gray-300">Keep customers happy</span>
-                  <span className="ml-auto text-xs text-yellow-400">★★★★★</span>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-bg-sunken/60 border border-border/40">
+                  <span className="text-sm text-muted-foreground">Keep customers happy</span>
+                  <span className="ml-auto text-xs text-acr-warn">★★★★★</span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/60 border border-gray-700/40">
-                  <span className="text-sm text-gray-300">Grow revenue</span>
-                  <span className="ml-auto text-xs text-yellow-400">★★★</span>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-bg-sunken/60 border border-border/40">
+                  <span className="text-sm text-muted-foreground">Grow revenue</span>
+                  <span className="ml-auto text-xs text-acr-warn">★★★</span>
                 </div>
-                <p className="text-xs text-gray-500 text-center mt-2">
+                <p className="text-xs text-muted-foreground text-center mt-2">
                   You can set these via chat: "focus on retention"
                 </p>
               </div>
@@ -198,30 +198,30 @@ export default function OnboardingWalkthrough() {
             {currentStep.content === "control" && (
               <div className="space-y-3 mb-4">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                    <span className="text-emerald-400 text-xs">↩</span>
+                  <div className="w-8 h-8 rounded-lg bg-acr-pos/10 flex items-center justify-center">
+                    <span className="text-acr-pos text-xs">↩</span>
                   </div>
                   <div>
-                    <p className="text-gray-300 font-medium">Undo actions</p>
-                    <p className="text-xs text-gray-500">Reverse agent decisions you disagree with</p>
+                    <p className="text-muted-foreground font-medium">Undo actions</p>
+                    <p className="text-xs text-muted-foreground">Reverse agent decisions you disagree with</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <span className="text-blue-400 text-xs">🌙</span>
+                  <div className="w-8 h-8 rounded-lg bg-acr-accent/10 flex items-center justify-center">
+                    <span className="text-acr-accent text-xs">🌙</span>
                   </div>
                   <div>
-                    <p className="text-gray-300 font-medium">Quiet hours</p>
-                    <p className="text-xs text-gray-500">No notifications between 10pm - 7am</p>
+                    <p className="text-muted-foreground font-medium">Quiet hours</p>
+                    <p className="text-xs text-muted-foreground">No notifications between 10pm - 7am</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                    <span className="text-purple-400 text-xs">📈</span>
+                  <div className="w-8 h-8 rounded-lg bg-acr-brand/10 flex items-center justify-center">
+                    <span className="text-acr-brand text-xs">📈</span>
                   </div>
                   <div>
-                    <p className="text-gray-300 font-medium">Trust builds over time</p>
-                    <p className="text-xs text-gray-500">Agents earn autonomy by proving themselves</p>
+                    <p className="text-muted-foreground font-medium">Trust builds over time</p>
+                    <p className="text-xs text-muted-foreground">Agents earn autonomy by proving themselves</p>
                   </div>
                 </div>
               </div>
@@ -235,7 +235,7 @@ export default function OnboardingWalkthrough() {
             <button
               type="button"
               onClick={() => setStep(s => s - 1)}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back
             </button>
@@ -243,7 +243,7 @@ export default function OnboardingWalkthrough() {
             <button
               type="button"
               onClick={handleSkip}
-              className="text-sm text-gray-500 hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="text-sm text-muted-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               Skip
             </button>
@@ -252,7 +252,7 @@ export default function OnboardingWalkthrough() {
           <button
             type="button"
             onClick={isLast ? handleComplete : () => setStep(s => s + 1)}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-acr-accent hover:bg-acr-accent text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {isLast ? "Get started" : "Next"}
             {!isLast && <ChevronRight className="w-4 h-4" aria-hidden="true" />}

@@ -20,17 +20,17 @@ interface NpsDialogProps {
 }
 
 const SCORE_COLORS: Record<number, string> = {
-  0: "bg-red-600 hover:bg-red-700 text-white",
-  1: "bg-red-500 hover:bg-red-600 text-white",
-  2: "bg-orange-600 hover:bg-orange-700 text-white",
-  3: "bg-orange-500 hover:bg-orange-600 text-white",
-  4: "bg-amber-500 hover:bg-amber-600 text-white",
-  5: "bg-yellow-500 hover:bg-yellow-600 text-white",
-  6: "bg-yellow-400 hover:bg-yellow-500 text-black",
+  0: "bg-acr-neg hover:bg-acr-neg text-white",
+  1: "bg-acr-neg hover:bg-acr-neg text-white",
+  2: "bg-acr-warn hover:bg-acr-warn text-white",
+  3: "bg-acr-warn hover:bg-acr-warn text-white",
+  4: "bg-acr-warn hover:bg-acr-warn text-white",
+  5: "bg-acr-warn hover:bg-acr-warn text-white",
+  6: "bg-acr-warn hover:bg-acr-warn text-black",
   7: "bg-lime-400 hover:bg-lime-500 text-black",
-  8: "bg-green-400 hover:bg-green-500 text-white",
-  9: "bg-green-500 hover:bg-green-600 text-white",
-  10: "bg-green-600 hover:bg-green-700 text-white",
+  8: "bg-acr-pos hover:bg-acr-pos text-white",
+  9: "bg-acr-pos hover:bg-acr-pos text-white",
+  10: "bg-acr-pos hover:bg-acr-pos text-white",
 };
 
 export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {

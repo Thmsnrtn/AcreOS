@@ -65,7 +65,7 @@ export default function SkipTracingPage() {
   });
 
   const statusColor = (status: string) =>
-    status === "found" ? "text-green-600" : status === "partial" ? "text-yellow-600" : "text-red-600";
+    status === "found" ? "text-acr-pos" : status === "partial" ? "text-acr-warn" : "text-acr-neg";
 
   return (
     <PageShell>

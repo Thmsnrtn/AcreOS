@@ -81,6 +81,11 @@ export default [
     },
     rules: {
       "acreos/no-founder-codenames-in-customer-jsx": "error",
+      // Phase 4 Week 15-16 (Calla §7): wired as `warn` because legacy
+      // fixtures (test mocks, edge-case branded illustrations) may quote
+      // palette classes intentionally. Promote to `error` once the
+      // codemod settles and fixtures are clean.
+      "acreos/no-hardcoded-color-literals": "warn",
     },
   },
 ];

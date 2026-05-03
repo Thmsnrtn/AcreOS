@@ -42,10 +42,10 @@ const campaignTypes = [
 
 const statusColors: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
-  scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  paused: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  completed: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  scheduled: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+  active: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  paused: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  completed: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand',
 };
 
 const pieceTypes = [
@@ -228,7 +228,7 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
       <svg
         width={width}
         height={height}
-        className="text-emerald-500 shrink-0"
+        className="text-acr-pos shrink-0"
         role="img"
         aria-label={`7-day response trend: ${totalThisWeek} responses`}
       >
@@ -251,9 +251,9 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
 // ─── AI Optimizer Suggestions Panel ──────────────────────────────────────────
 
 const priorityConfig: Record<string, { label: string; className: string }> = {
-  high: { label: "High", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  medium: { label: "Medium", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  low: { label: "Low", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  high: { label: "High", className: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" },
+  medium: { label: "Medium", className: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
+  low: { label: "Low", className: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -301,10 +301,10 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <Lightbulb className="w-4 h-4 text-acr-warn" aria-hidden="true" />
             AI optimization suggestions
             {pending.length > 0 && (
-              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ml-1 tabular-nums">
+              <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn ml-1 tabular-nums">
                 {pending.length}
               </Badge>
             )}
@@ -401,7 +401,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
                 {done.map((s) => (
                   <div key={s.id} className="rounded-lg border border-dashed p-2 opacity-60">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <CheckCircle className="w-3 h-3 text-emerald-500" aria-hidden="true" />
+                      <CheckCircle className="w-3 h-3 text-acr-pos" aria-hidden="true" />
                       <span className="capitalize">{s.type}</span>
                     </div>
                     <p className="leading-snug">{s.suggestion}</p>
@@ -425,10 +425,10 @@ function MailModeIndicator() {
 
   if (!mailStatus.isConfigured) {
     return (
-      <Card className="glass-panel border-amber-200 dark:border-amber-800">
+      <Card className="glass-panel border-acr-warn-soft dark:border-acr-warn-soft">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+            <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             <div>
               <p className="font-medium">Direct mail not configured</p>
               <p className="text-sm text-muted-foreground">Add your Lob API key in settings to enable direct mail.</p>
@@ -462,21 +462,21 @@ function MailModeIndicator() {
   };
 
   return (
-    <Card className={`glass-panel ${isTestMode ? 'border-blue-200 dark:border-blue-800' : 'border-emerald-200 dark:border-emerald-800'}`}>
+    <Card className={`glass-panel ${isTestMode ? 'border-acr-accent dark:border-acr-accent' : 'border-acr-pos-soft dark:border-acr-pos-soft'}`}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {isTestMode ? (
-              <TestTube className="w-5 h-5 text-blue-500" aria-hidden="true" />
+              <TestTube className="w-5 h-5 text-acr-accent" aria-hidden="true" />
             ) : (
-              <Zap className="w-5 h-5 text-emerald-500" aria-hidden="true" />
+              <Zap className="w-5 h-5 text-acr-pos" aria-hidden="true" />
             )}
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-medium">
                   {isTestMode ? 'Test mode' : 'Live mode'}
                 </p>
-                <Badge className={isTestMode ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}>
+                <Badge className={isTestMode ? 'bg-acr-accent text-acr-accent' : 'bg-acr-pos-soft text-acr-pos'}>
                   {isTestMode ? 'Safe' : 'Active'}
                 </Badge>
               </div>
@@ -571,8 +571,8 @@ export function CampaignsContent() {
         <Card className="glass-panel">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-blue-500/10">
-                <Send className="w-5 h-5 text-blue-600" aria-hidden="true" />
+              <div className="p-3 rounded-xl bg-acr-accent/10">
+                <Send className="w-5 h-5 text-acr-accent" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total sent</p>
@@ -585,12 +585,12 @@ export function CampaignsContent() {
         <Card className="glass-panel">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-emerald-500/10">
-                <TrendingUp className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+              <div className="p-3 rounded-xl bg-acr-pos/10">
+                <TrendingUp className="w-5 h-5 text-acr-pos" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Response rate</p>
-                <p className="text-2xl font-bold text-emerald-600 tabular-nums" data-testid="text-response-rate">{responseRate}%</p>
+                <p className="text-2xl font-bold text-acr-pos tabular-nums" data-testid="text-response-rate">{responseRate}%</p>
               </div>
             </div>
           </CardContent>
@@ -599,8 +599,8 @@ export function CampaignsContent() {
         <Card className="glass-panel">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-purple-500/10">
-                <Users className="w-5 h-5 text-purple-600" aria-hidden="true" />
+              <div className="p-3 rounded-xl bg-acr-brand/10">
+                <Users className="w-5 h-5 text-acr-brand" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Available leads</p>
@@ -751,7 +751,7 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Responded</p>
-                  <p className="font-medium text-emerald-600 tabular-nums">{campaign.totalResponded || 0}</p>
+                  <p className="font-medium text-acr-pos tabular-nums">{campaign.totalResponded || 0}</p>
                 </div>
               </div>
 
@@ -867,13 +867,13 @@ function SendMailDialog({
             </Select>
           </div>
 
-          <Card className={isTestMode ? 'border-blue-200 dark:border-blue-800' : 'border-amber-200 dark:border-amber-800'}>
+          <Card className={isTestMode ? 'border-acr-accent dark:border-acr-accent' : 'border-acr-warn-soft dark:border-acr-warn-soft'}>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 {isTestMode ? (
-                  <TestTube className="w-5 h-5 text-blue-500" aria-hidden="true" />
+                  <TestTube className="w-5 h-5 text-acr-accent" aria-hidden="true" />
                 ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+                  <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
                 )}
                 <div>
                   <p className="font-medium">
@@ -901,11 +901,11 @@ function SendMailDialog({
           )}
 
           {estimateMutation.error && (
-            <Card className="border-red-200 dark:border-red-800" role="alert">
+            <Card className="border-acr-neg-soft dark:border-acr-neg-soft" role="alert">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
-                  <span className="text-sm text-red-600 dark:text-red-400">
+                  <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
+                  <span className="text-sm text-acr-neg dark:text-acr-neg">
                     Couldn't check your credit balance. Please try again.
                   </span>
                 </div>
@@ -914,13 +914,13 @@ function SendMailDialog({
           )}
 
           {estimateMutation.data && !estimateMutation.isPending && (
-            <Card className={estimateMutation.data.hasEnoughCredits ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}>
+            <Card className={estimateMutation.data.hasEnoughCredits ? 'border-acr-pos-soft dark:border-acr-pos-soft' : 'border-acr-neg-soft dark:border-acr-neg-soft'}>
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
                   {estimateMutation.data.hasEnoughCredits ? (
-                    <CheckCircle className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                    <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   ) : (
-                    <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
+                    <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
                   )}
                   <span className="text-sm">
                     {estimateMutation.data.hasEnoughCredits
@@ -1090,7 +1090,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             </Card>
             <Card className="glass-panel">
               <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold text-emerald-600 tabular-nums">{(campaign.totalResponded || 0).toLocaleString()}</p>
+                <p className="text-3xl font-bold text-acr-pos tabular-nums">{(campaign.totalResponded || 0).toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground">Responses</p>
               </CardContent>
             </Card>
@@ -1128,10 +1128,10 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
           </Card>
 
           {isDirectMail && mailAttribution && (
-            <Card className="glass-panel border-blue-200 dark:border-blue-800">
+            <Card className="glass-panel border-acr-accent dark:border-acr-accent">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                  <Mail className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   Direct mail performance
                 </CardTitle>
               </CardHeader>
@@ -1142,7 +1142,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                     <p className="text-xs text-muted-foreground">Pieces sent</p>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-emerald-600 tabular-nums">{mailAttribution.attributedResponses.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-acr-pos tabular-nums">{mailAttribution.attributedResponses.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Responses attributed</p>
                   </div>
                 </div>
@@ -1163,7 +1163,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                   <p className="text-xs text-muted-foreground mt-1">
                     Industry benchmark: <span className="tabular-nums">{mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%</span>
                     {mailAttribution.responseRate >= mailAttribution.industryBenchmarkMin && (
-                      <span className="text-emerald-600 ml-1">— above average</span>
+                      <span className="text-acr-pos ml-1">— above average</span>
                     )}
                   </p>
                 </div>

@@ -233,7 +233,7 @@ export default function DealUnderwriting() {
                     <Card>
                       <CardContent className="pt-4">
                         <dt className="text-xs text-muted-foreground">Net profit</dt>
-                        <dd className={`text-lg font-bold tabular-nums ${r.exitAnalysis.netProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <dd className={`text-lg font-bold tabular-nums ${r.exitAnalysis.netProfit >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                           {usd(r.exitAnalysis.netProfit)}
                         </dd>
                       </CardContent>
@@ -241,7 +241,7 @@ export default function DealUnderwriting() {
                     <Card>
                       <CardContent className="pt-4">
                         <dt className="text-xs text-muted-foreground">ROI</dt>
-                        <dd className={`text-lg font-bold tabular-nums ${r.exitAnalysis.roi >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <dd className={`text-lg font-bold tabular-nums ${r.exitAnalysis.roi >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                           {formatPct(r.exitAnalysis.roi)}
                         </dd>
                       </CardContent>
@@ -271,15 +271,15 @@ export default function DealUnderwriting() {
                           return (
                             <li
                               key={strategy}
-                              className={`p-3 rounded-lg border ${isRecommended ? "border-green-500 bg-green-50 dark:bg-green-950" : "border-border"}`}
+                              className={`p-3 rounded-lg border ${isRecommended ? "border-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft" : "border-border"}`}
                             >
                               <div className="flex items-center justify-between mb-1 gap-2">
                                 <span className="font-medium text-sm">{label}</span>
-                                {isRecommended && <Badge variant="default" className="text-xs bg-green-600">Recommended</Badge>}
+                                {isRecommended && <Badge variant="default" className="text-xs bg-acr-pos">Recommended</Badge>}
                               </div>
                               <p className="text-xs text-muted-foreground">{s.recommendation}</p>
                               {strategy === "ownerFinance" ? (
-                                <p className="text-sm font-semibold text-green-600 mt-1 tabular-nums">
+                                <p className="text-sm font-semibold text-acr-pos mt-1 tabular-nums">
                                   {usd((s as any).monthlyIncome)}/mo · {usd((s as any).totalReturn)} total
                                 </p>
                               ) : (
@@ -298,7 +298,7 @@ export default function DealUnderwriting() {
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-sm flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-yellow-500" aria-hidden="true" />
+                          <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                           Risk factors
                         </CardTitle>
                       </CardHeader>
@@ -306,7 +306,7 @@ export default function DealUnderwriting() {
                         <ul className="space-y-1" aria-label="Identified risk factors">
                           {r.riskFactors.map((risk, i) => (
                             <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                              <span className="text-yellow-500 mt-0.5" aria-hidden="true">•</span>
+                              <span className="text-acr-warn mt-0.5" aria-hidden="true">•</span>
                               {risk}
                             </li>
                           ))}
@@ -339,7 +339,7 @@ export default function DealUnderwriting() {
                           <dt className="text-muted-foreground">Projected exit value</dt>
                           <dd className="tabular-nums">{usd(r.exitAnalysis.projectedValue)}</dd>
                         </div>
-                        <div className="flex justify-between font-semibold text-green-600 border-t pt-2">
+                        <div className="flex justify-between font-semibold text-acr-pos border-t pt-2">
                           <dt>Net profit</dt>
                           <dd className="tabular-nums">{usd(r.exitAnalysis.netProfit)}</dd>
                         </div>

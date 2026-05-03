@@ -122,11 +122,11 @@ function getStageIcon(stage: string) {
 function getStageStyle(stage: string) {
   switch (stage) {
     case "hot":
-      return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "warm":
-      return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "cold":
-      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -135,18 +135,18 @@ function getStageStyle(stage: string) {
 function getRecommendationStyle(rec: "mail" | "maybe" | "skip"): string {
   switch (rec) {
     case "mail":
-      return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+      return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
     case "maybe":
-      return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
     case "skip":
-      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
   }
 }
 
 function getScoreColorStyle(score: number): string {
-  if (score >= 70) return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-  if (score >= 40) return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
-  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  if (score >= 70) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
+  if (score >= 40) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+  return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
 }
 
 interface ScoreHistory {
@@ -219,14 +219,14 @@ function ScoreDetailsDialog({
     const isPositive = score > 0;
     const isNegative = score < 0;
     const colorClass = isPositive 
-      ? "text-green-600 dark:text-green-400" 
+      ? "text-acr-pos dark:text-acr-pos" 
       : isNegative 
-        ? "text-red-600 dark:text-red-400" 
+        ? "text-acr-neg dark:text-acr-neg" 
         : "text-muted-foreground";
     const bgClass = isPositive
-      ? "bg-green-50 dark:bg-green-900/20"
+      ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20"
       : isNegative
-        ? "bg-red-50 dark:bg-red-900/20"
+        ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20"
         : "bg-muted/50";
     
     return (
@@ -236,8 +236,8 @@ function ScoreDetailsDialog({
         data-testid={`factor-${key}-${lead.id}`}
       >
         <div className="flex items-center gap-2">
-          {isPositive && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400" />}
-          {isNegative && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400" />}
+          {isPositive && <TrendingUp className="w-3 h-3 text-acr-pos dark:text-acr-pos" />}
+          {isNegative && <TrendingDown className="w-3 h-3 text-acr-neg dark:text-acr-neg" />}
           {!isPositive && !isNegative && <Minus className="w-3 h-3 text-muted-foreground" />}
           <span className="text-sm capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
         </div>
@@ -409,9 +409,9 @@ function RescoreMenuItem({ leadId }: { leadId: number }) {
 }
 
 function getScoreTier(score: number): { tier: string; color: string } {
-  if (score >= 80) return { tier: 'A', color: 'text-emerald-700 dark:text-emerald-400' };
-  if (score >= 60) return { tier: 'B', color: 'text-blue-700 dark:text-blue-400' };
-  if (score >= 40) return { tier: 'C', color: 'text-amber-700 dark:text-amber-400' };
+  if (score >= 80) return { tier: 'A', color: 'text-acr-pos dark:text-acr-pos' };
+  if (score >= 60) return { tier: 'B', color: 'text-acr-accent dark:text-acr-accent' };
+  if (score >= 40) return { tier: 'C', color: 'text-acr-warn dark:text-acr-warn' };
   return { tier: 'D', color: 'text-muted-foreground' };
 }
 
@@ -470,9 +470,9 @@ function getDaysSinceContact(lead: Lead): number {
 }
 
 function getContactAgeStyle(days: number): string {
-  if (days <= 3) return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-  if (days <= 7) return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
-  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  if (days <= 3) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
+  if (days <= 7) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+  return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
 }
 
 function ContactAgeBadge({ lead }: { lead: Lead }) {
@@ -590,7 +590,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className="text-xs border-0 flex items-center gap-1 cursor-default bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg"
             data-testid={`badge-tcpa-${lead.id}`}
           >
             <PhoneOff className="w-3 h-3" />
@@ -613,7 +613,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className="text-xs border-0 flex items-center gap-1 cursor-default bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
             data-testid={`badge-tcpa-${lead.id}`}
           >
             <Shield className="w-3 h-3" />
@@ -636,7 +636,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
       <TooltipTrigger asChild>
         <Badge
           variant="outline"
-          className="text-xs border-0 flex items-center gap-1 cursor-default bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
+          className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
           data-testid={`badge-tcpa-${lead.id}`}
         >
           <AlertCircle className="w-3 h-3" />
@@ -1215,7 +1215,7 @@ export default function LeadsPage() {
                     Lead quality distribution — <span className="tabular-nums">{total}</span> total
                   </span>
                   {overdue > 0 && (
-                    <span className="flex items-center gap-1 text-amber-600 font-medium">
+                    <span className="flex items-center gap-1 text-acr-warn font-medium">
                       <Clock className="w-3 h-3" aria-hidden="true" /> <span className="tabular-nums">{overdue}</span> overdue for follow-up
                     </span>
                   )}
@@ -1225,15 +1225,15 @@ export default function LeadsPage() {
                   role="img"
                   aria-label={`Quality distribution: ${tierA} A-tier, ${tierB} B-tier, ${tierC} C-tier, ${tierD} D-tier`}
                 >
-                  {tierA > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(tierA/total)*100}%` }} title={`A tier: ${tierA}`} />}
-                  {tierB > 0 && <div className="bg-blue-400 transition-all" style={{ width: `${(tierB/total)*100}%` }} title={`B tier: ${tierB}`} />}
-                  {tierC > 0 && <div className="bg-amber-400 transition-all" style={{ width: `${(tierC/total)*100}%` }} title={`C tier: ${tierC}`} />}
+                  {tierA > 0 && <div className="bg-acr-pos transition-all" style={{ width: `${(tierA/total)*100}%` }} title={`A tier: ${tierA}`} />}
+                  {tierB > 0 && <div className="bg-acr-accent transition-all" style={{ width: `${(tierB/total)*100}%` }} title={`B tier: ${tierB}`} />}
+                  {tierC > 0 && <div className="bg-acr-warn transition-all" style={{ width: `${(tierC/total)*100}%` }} title={`C tier: ${tierC}`} />}
                   {tierD > 0 && <div className="bg-muted-foreground/30 transition-all" style={{ width: `${(tierD/total)*100}%` }} title={`D tier: ${tierD}`} />}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {tierA > 0 && <span className="text-[10px] text-emerald-700 dark:text-emerald-400">A tier <strong className="tabular-nums">{tierA}</strong></span>}
-                  {tierB > 0 && <span className="text-[10px] text-blue-700 dark:text-blue-400">B tier <strong className="tabular-nums">{tierB}</strong></span>}
-                  {tierC > 0 && <span className="text-[10px] text-amber-700 dark:text-amber-400">C tier <strong className="tabular-nums">{tierC}</strong></span>}
+                  {tierA > 0 && <span className="text-[10px] text-acr-pos dark:text-acr-pos">A tier <strong className="tabular-nums">{tierA}</strong></span>}
+                  {tierB > 0 && <span className="text-[10px] text-acr-accent dark:text-acr-accent">B tier <strong className="tabular-nums">{tierB}</strong></span>}
+                  {tierC > 0 && <span className="text-[10px] text-acr-warn dark:text-acr-warn">C tier <strong className="tabular-nums">{tierC}</strong></span>}
                   {tierD > 0 && <span className="text-[10px] text-muted-foreground">D tier <strong className="tabular-nums">{tierD}</strong></span>}
                 </div>
               </div>
@@ -1285,17 +1285,17 @@ export default function LeadsPage() {
                       <SelectItem value="all">All leads</SelectItem>
                       <SelectItem value="hot">
                         <span className="flex items-center gap-2">
-                          <Flame className="w-3 h-3 text-orange-500" aria-hidden="true" /> Hot leads
+                          <Flame className="w-3 h-3 text-acr-warn" aria-hidden="true" /> Hot leads
                         </span>
                       </SelectItem>
                       <SelectItem value="warm">
                         <span className="flex items-center gap-2">
-                          <Sun className="w-3 h-3 text-yellow-500" aria-hidden="true" /> Warm leads
+                          <Sun className="w-3 h-3 text-acr-warn" aria-hidden="true" /> Warm leads
                         </span>
                       </SelectItem>
                       <SelectItem value="cold">
                         <span className="flex items-center gap-2">
-                          <Snowflake className="w-3 h-3 text-blue-500" aria-hidden="true" /> Cold leads
+                          <Snowflake className="w-3 h-3 text-acr-accent" aria-hidden="true" /> Cold leads
                         </span>
                       </SelectItem>
                       <SelectItem value="dead">
@@ -1389,17 +1389,17 @@ export default function LeadsPage() {
                             <SelectItem value="all">All Leads</SelectItem>
                             <SelectItem value="hot">
                               <span className="flex items-center gap-2">
-                                <Flame className="w-3 h-3 text-orange-500" /> Hot Leads
+                                <Flame className="w-3 h-3 text-acr-warn" /> Hot Leads
                               </span>
                             </SelectItem>
                             <SelectItem value="warm">
                               <span className="flex items-center gap-2">
-                                <Sun className="w-3 h-3 text-yellow-500" /> Warm Leads
+                                <Sun className="w-3 h-3 text-acr-warn" /> Warm Leads
                               </span>
                             </SelectItem>
                             <SelectItem value="cold">
                               <span className="flex items-center gap-2">
-                                <Snowflake className="w-3 h-3 text-blue-500" /> Cold Leads
+                                <Snowflake className="w-3 h-3 text-acr-accent" /> Cold Leads
                               </span>
                             </SelectItem>
                             <SelectItem value="dead">
@@ -1999,7 +1999,7 @@ export default function LeadsPage() {
           {importPreview && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-2 text-sm" role="status" aria-live="polite">
-                <CheckCircle className="w-4 h-4 text-green-600" aria-hidden="true" />
+                <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                 <span>Found <span className="tabular-nums">{importPreview.totalRows}</span> rows to import.</span>
               </div>
 
@@ -2048,19 +2048,19 @@ export default function LeadsPage() {
                   <dd className="text-2xl font-bold tabular-nums">{importResult.totalRows}</dd>
                   <dt className="text-xs text-muted-foreground">Total rows</dt>
                 </div>
-                <div className="bg-green-100 dark:bg-green-900/30 rounded-lg p-4">
-                  <dd className="text-2xl font-bold text-green-700 dark:text-green-300 tabular-nums">{importResult.successCount}</dd>
-                  <dt className="text-xs text-green-600 dark:text-green-400">Imported</dt>
+                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg p-4">
+                  <dd className="text-2xl font-bold text-acr-pos dark:text-acr-pos tabular-nums">{importResult.successCount}</dd>
+                  <dt className="text-xs text-acr-pos dark:text-acr-pos">Imported</dt>
                 </div>
-                <div className="bg-red-100 dark:bg-red-900/30 rounded-lg p-4">
-                  <dd className="text-2xl font-bold text-red-700 dark:text-red-300 tabular-nums">{importResult.errorCount}</dd>
-                  <dt className="text-xs text-red-600 dark:text-red-400">Failed</dt>
+                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 rounded-lg p-4">
+                  <dd className="text-2xl font-bold text-acr-neg dark:text-acr-neg tabular-nums">{importResult.errorCount}</dd>
+                  <dt className="text-xs text-acr-neg dark:text-acr-neg">Failed</dt>
                 </div>
               </dl>
 
               {importResult.errors.length > 0 && (
-                <div className="border border-red-200 dark:border-red-800 rounded-lg overflow-hidden" role="alert">
-                  <div className="bg-red-50 dark:bg-red-900/30 p-2 text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-2">
+                <div className="border border-acr-neg-soft dark:border-acr-neg-soft rounded-lg overflow-hidden" role="alert">
+                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" aria-hidden="true" />
                     Errors (<span className="tabular-nums">{importResult.errors.length}</span>)
                   </div>
@@ -2068,7 +2068,7 @@ export default function LeadsPage() {
                     {importResult.errors.slice(0, 10).map((err, idx) => (
                       <div key={idx} className="p-2 border-b last:border-0 text-xs">
                         <span className="font-medium">Row <span className="tabular-nums">{err.row}</span>:</span>{" "}
-                        <span className="text-red-600 dark:text-red-400">{err.error}</span>
+                        <span className="text-acr-neg dark:text-acr-neg">{err.error}</span>
                       </div>
                     ))}
                     {importResult.errors.length > 10 && (
@@ -2120,10 +2120,10 @@ export default function LeadsPage() {
 
 function LeadStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-    contacting: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-    negotiation: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
-    closed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+    contacting: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
+    negotiation: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+    closed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
     dead: "bg-muted text-muted-foreground",
   };
   
@@ -2370,16 +2370,16 @@ export function ScoreBreakdownCard({ leadId }: { leadId: number }) {
                     <div
                       key={key}
                       className={`flex items-center justify-between py-1.5 px-3 rounded-md text-sm
-                        ${isPos ? "bg-green-50 dark:bg-green-900/20" : isNeg ? "bg-red-50 dark:bg-red-900/20" : "bg-muted/40"}`}
+                        ${isPos ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20" : isNeg ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20" : "bg-muted/40"}`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        {isPos && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" aria-hidden="true" />}
-                        {isNeg && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0" aria-hidden="true" />}
+                        {isPos && <TrendingUp className="w-3 h-3 text-acr-pos dark:text-acr-pos flex-shrink-0" aria-hidden="true" />}
+                        {isNeg && <TrendingDown className="w-3 h-3 text-acr-neg dark:text-acr-neg flex-shrink-0" aria-hidden="true" />}
                         {!isPos && !isNeg && <Minus className="w-3 h-3 text-muted-foreground flex-shrink-0" aria-hidden="true" />}
                         <span className="truncate text-xs">{explanation || FACTOR_LABELS[key] || key.replace(/([A-Z])/g, ' $1').trim()}</span>
                       </div>
                       <span className={`text-xs font-semibold flex-shrink-0 ml-2 tabular-nums
-                        ${isPos ? "text-green-600 dark:text-green-400" : isNeg ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                        ${isPos ? "text-acr-pos dark:text-acr-pos" : isNeg ? "text-acr-neg dark:text-acr-neg" : "text-muted-foreground"}`}>
                         {isPos ? "+" : ""}{score}
                       </span>
                     </div>

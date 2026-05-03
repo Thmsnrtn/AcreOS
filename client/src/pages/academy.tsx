@@ -166,9 +166,9 @@ const SECTIONS: { key: Course['section']; label: string; description: string }[]
 ];
 
 const DIFFICULTY_COLORS: Record<Course['difficulty'], string> = {
-  Beginner: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-  Intermediate: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  Advanced: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  Beginner: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  Intermediate: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  Advanced: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
 };
 
 // ─── localStorage Progress Tracking ──────────────────────────────────────────
@@ -219,19 +219,19 @@ function GamificationPanel({ completed }: { completed: Set<string> }) {
     <Card className="border-primary/20">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Zap className="w-4 h-4 text-yellow-500" aria-hidden="true" /> Progress &amp; achievements
+          <Zap className="w-4 h-4 text-acr-warn" aria-hidden="true" /> Progress &amp; achievements
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <dl className="grid grid-cols-3 gap-3 text-center">
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
-            <dd className="text-xl font-bold text-yellow-600 tabular-nums">{xpPoints.toLocaleString()}</dd>
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
+            <dd className="text-xl font-bold text-acr-warn tabular-nums">{xpPoints.toLocaleString()}</dd>
             <dt className="text-xs text-muted-foreground">XP points</dt>
           </div>
-          <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-2">
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
             <dd className="flex items-center justify-center gap-1">
-              <Flame className="w-4 h-4 text-orange-500" aria-hidden="true" />
-              <span className="text-xl font-bold text-orange-600 tabular-nums">{streakDays}</span>
+              <Flame className="w-4 h-4 text-acr-warn" aria-hidden="true" />
+              <span className="text-xl font-bold text-acr-warn tabular-nums">{streakDays}</span>
             </dd>
             <dt className="text-xs text-muted-foreground">Day streak</dt>
           </div>
@@ -300,12 +300,12 @@ function KnowledgeGapPanel({ completed }: { completed: Set<string> }) {
           {gaps.map(gap => (
             <li key={gap.label} className="space-y-1">
               <div className="flex justify-between text-xs">
-                <span className={gap.pct < 50 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>{gap.label}</span>
+                <span className={gap.pct < 50 ? 'text-acr-neg font-medium' : 'text-muted-foreground'}>{gap.label}</span>
                 <span className="tabular-nums">{gap.done}/{gap.total} · {gap.pct}%</span>
               </div>
               <Progress
                 value={gap.pct}
-                className={`h-1.5 ${gap.pct < 50 ? '[&>div]:bg-red-500' : gap.pct < 80 ? '[&>div]:bg-yellow-500' : ''}`}
+                className={`h-1.5 ${gap.pct < 50 ? '[&>div]:bg-acr-neg' : gap.pct < 80 ? '[&>div]:bg-acr-warn' : ''}`}
                 role="progressbar"
                 aria-valuenow={gap.pct}
                 aria-valuemin={0}
@@ -316,11 +316,11 @@ function KnowledgeGapPanel({ completed }: { completed: Set<string> }) {
           ))}
         </ul>
         {weakAreas.length > 0 ? (
-          <div className="text-xs text-muted-foreground bg-red-50 dark:bg-red-900/20 rounded p-2" role="status">
+          <div className="text-xs text-muted-foreground bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded p-2" role="status">
             Focus areas: <strong>{weakAreas.map(w => w.label).join(', ')}</strong>
           </div>
         ) : (
-          <div className="text-xs text-green-700 bg-green-50 dark:bg-green-900/20 rounded p-2" role="status">
+          <div className="text-xs text-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft/20 rounded p-2" role="status">
             Great progress! No critical knowledge gaps detected.
           </div>
         )}
@@ -510,11 +510,11 @@ export default function AcademyPage() {
                 return (
                   <li key={course.id}>
                     <Card
-                      className={`relative flex flex-col transition-shadow hover:shadow-md h-full ${isDone ? 'border-emerald-300 dark:border-emerald-700' : ''}`}
+                      className={`relative flex flex-col transition-shadow hover:shadow-md h-full ${isDone ? 'border-acr-pos dark:border-acr-pos' : ''}`}
                     >
                       {isDone && (
                         <div className="absolute top-3 right-3" role="img" aria-label="Course completed">
-                          <CheckCircle className="w-5 h-5 text-emerald-500" aria-hidden="true" />
+                          <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                         </div>
                       )}
                       <CardHeader className="pb-2 pr-10">
@@ -549,7 +549,7 @@ export default function AcademyPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className={`text-xs px-2 ${isDone ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                            className={`text-xs px-2 ${isDone ? 'text-acr-pos' : 'text-muted-foreground'}`}
                             onClick={() => handleMarkComplete(course.id)}
                             aria-pressed={isDone}
                             aria-label={`${isDone ? 'Mark incomplete' : 'Mark complete'}: ${course.title}`}

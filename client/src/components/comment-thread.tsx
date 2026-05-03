@@ -73,7 +73,7 @@ function CommentBubble({
               className="opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm focus-visible:opacity-100"
               aria-label={`Delete your comment from ${time}`}
             >
-              <Trash2 className="w-3 h-3 text-muted-foreground hover:text-red-500" aria-hidden="true" />
+              <Trash2 className="w-3 h-3 text-muted-foreground hover:text-acr-neg" aria-hidden="true" />
             </button>
           )}
         </div>

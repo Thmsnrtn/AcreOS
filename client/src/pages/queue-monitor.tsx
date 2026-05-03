@@ -103,7 +103,7 @@ export default function QueueMonitor() {
       <div className="p-8 max-w-2xl mx-auto">
         <Card>
           <CardContent className="p-8 text-center">
-            <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-4" aria-hidden="true" />
+            <AlertCircle className="h-12 w-12 text-acr-warn mx-auto mb-4" aria-hidden="true" />
             <h2 className="text-lg font-semibold mb-2">Queue monitoring disabled</h2>
             <p className="text-muted-foreground">{data?.message}</p>
           </CardContent>
@@ -225,11 +225,11 @@ function StatBadge({
   color: "amber" | "blue" | "green" | "red" | "purple";
 }) {
   const colorMap = {
-    amber: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
-    blue: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-    green: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300",
-    red: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300",
-    purple: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300",
+    amber: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft dark:text-acr-warn",
+    blue: "bg-acr-accent text-acr-accent border-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+    green: "bg-acr-pos-soft text-acr-pos border-acr-pos-soft dark:bg-acr-pos-soft dark:text-acr-pos",
+    red: "bg-acr-neg-soft text-acr-neg border-acr-neg-soft dark:bg-acr-neg-soft dark:text-acr-neg",
+    purple: "bg-acr-brand-soft text-acr-brand border-acr-brand-soft dark:bg-acr-brand-soft dark:text-acr-brand",
   };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${colorMap[color]}`}>
@@ -258,7 +258,7 @@ function JobList({ jobs, type }: { jobs: JobEntry[]; type: string }) {
             <div className="font-mono font-medium truncate">{job.name}</div>
             <div className="text-xs text-muted-foreground font-mono truncate">ID: {job.id}</div>
             {job.failedReason && (
-              <div className="text-xs text-red-600 dark:text-red-400 mt-1" role="alert">
+              <div className="text-xs text-acr-neg dark:text-acr-neg mt-1" role="alert">
                 {job.failedReason.slice(0, 120)}
               </div>
             )}

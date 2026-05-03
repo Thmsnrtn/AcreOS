@@ -53,11 +53,11 @@ export function UsageLimitBanner() {
   return (
     <Alert
       variant={isCritical ? "destructive" : "default"}
-      className={`mx-4 mt-2 ${isCritical ? "border-red-500/50 bg-red-500/5" : "border-amber-500/50 bg-amber-500/5"}`}
+      className={`mx-4 mt-2 ${isCritical ? "border-acr-neg/50 bg-acr-neg/5" : "border-acr-warn/50 bg-acr-warn/5"}`}
       role="alert"
       aria-live={isCritical ? "assertive" : "polite"}
     >
-      <AlertTriangle className={`h-4 w-4 ${isCritical ? "text-red-500" : "text-amber-500"}`} aria-hidden="true" />
+      <AlertTriangle className={`h-4 w-4 ${isCritical ? "text-acr-neg" : "text-acr-warn"}`} aria-hidden="true" />
       <AlertDescription className="flex items-center justify-between gap-4">
         <span className="text-sm">
           {isCritical

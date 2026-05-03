@@ -36,10 +36,10 @@ interface InboxResponse {
 }
 
 const RISK_BADGE: Record<string, string> = {
-  critical: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300",
-  high: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300",
-  medium: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300",
-  low: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300",
+  critical: "bg-acr-neg-soft text-acr-neg border-acr-neg-soft dark:bg-acr-neg-soft/30 dark:text-acr-neg",
+  high: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  medium: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  low: "bg-acr-accent text-acr-accent border-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
 };
 
 function formatItemType(type: string) {
@@ -96,7 +96,7 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
         <Button
           type="button"
           size="sm"
-          className="bg-green-600 hover:bg-green-700 text-white"
+          className="bg-acr-pos hover:bg-acr-pos text-white"
           disabled={mutate.isPending}
           aria-busy={mutate.isPending}
           onClick={() => mutate.mutate({ action: "approve" })}
@@ -161,7 +161,7 @@ export function DecisionsInbox() {
           <CardTitle className="text-base">
             Decisions inbox
             {pending > 0 && (
-              <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 text-xs tabular-nums" aria-label={`${pending} pending`}>
+              <Badge className="ml-2 bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn text-xs tabular-nums" aria-label={`${pending} pending`}>
                 {pending}
               </Badge>
             )}
@@ -171,7 +171,7 @@ export function DecisionsInbox() {
       <CardContent className="space-y-3">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" aria-hidden="true" />
+            <CheckCircle2 className="h-10 w-10 text-acr-pos mb-2" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">All clear. Sophie has handled everything.</p>
             <p className="text-xs text-muted-foreground mt-1">No decisions pending</p>
           </div>

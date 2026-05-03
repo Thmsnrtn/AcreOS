@@ -55,9 +55,9 @@ function formatPrice(val: string | number) {
 
 function confidenceColor(conf: string) {
   const c = parseFloat(conf);
-  if (c >= 0.8) return "text-green-600";
-  if (c >= 0.6) return "text-yellow-600";
-  return "text-red-600";
+  if (c >= 0.8) return "text-acr-pos";
+  if (c >= 0.6) return "text-acr-warn";
+  return "text-acr-neg";
 }
 
 function confidenceLabel(conf: string) {
@@ -102,9 +102,9 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
   };
 
   const typeIcon: Record<string, React.ReactNode> = {
-    acquisition_offer: <TrendingDown className="w-4 h-4 text-blue-500" aria-hidden="true" />,
-    disposition_list: <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />,
-    counter_offer: <Target className="w-4 h-4 text-orange-500" aria-hidden="true" />,
+    acquisition_offer: <TrendingDown className="w-4 h-4 text-acr-accent" aria-hidden="true" />,
+    disposition_list: <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />,
+    counter_offer: <Target className="w-4 h-4 text-acr-warn" aria-hidden="true" />,
   };
 
   const confPct = Math.round(parseFloat(rec.confidence) * 100);

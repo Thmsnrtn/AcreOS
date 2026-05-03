@@ -57,9 +57,9 @@ function listingTypeBadgeVariant(type: string): 'default' | 'secondary' | 'outli
 }
 
 function bidStatusIcon(status: string) {
-  if (status === 'accepted') return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
-  if (status === 'rejected') return <XCircle className="w-3.5 h-3.5 text-red-400" />;
-  if (status === 'countered') return <TrendingUp className="w-3.5 h-3.5 text-amber-500" />;
+  if (status === 'accepted') return <CheckCircle className="w-3.5 h-3.5 text-acr-pos" />;
+  if (status === 'rejected') return <XCircle className="w-3.5 h-3.5 text-acr-neg" />;
+  if (status === 'countered') return <TrendingUp className="w-3.5 h-3.5 text-acr-warn" />;
   return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
 }
 
@@ -98,11 +98,11 @@ function CardSkeleton() {
 
 function ListingStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    active: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-    under_offer: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-    sold: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+    active: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+    under_offer: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+    sold: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
     expired: 'bg-muted text-muted-foreground',
-    cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+    cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
   };
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${map[status] ?? map.active}`}>
@@ -242,7 +242,7 @@ function ListingDetailDialog({
                   listing.acceptsPartnership ? 'Open to partnership / JV structures' : null,
                 ].filter(Boolean).slice(0, 5).map((h, i) => (
                   <li key={i} className="flex items-start gap-1.5">
-                    <span className="text-green-500 mt-0.5">•</span>
+                    <span className="text-acr-pos mt-0.5">•</span>
                     {h}
                   </li>
                 ))}
@@ -426,11 +426,11 @@ function BidCountdownTimer({ expiresAt }: { expiresAt?: string }) {
   const expiry = new Date(expiresAt).getTime();
   const now = Date.now();
   const msLeft = expiry - now;
-  if (msLeft <= 0) return <span className="text-xs text-red-500 font-medium">Bid expired</span>;
+  if (msLeft <= 0) return <span className="text-xs text-acr-neg font-medium">Bid expired</span>;
   const hoursLeft = Math.floor(msLeft / (1000 * 60 * 60));
   const minutesLeft = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
   return (
-    <span className={`flex items-center gap-1 text-xs font-medium ${hoursLeft < 24 ? 'text-orange-600' : 'text-muted-foreground'}`}>
+    <span className={`flex items-center gap-1 text-xs font-medium ${hoursLeft < 24 ? 'text-acr-warn' : 'text-muted-foreground'}`}>
       <Clock className="w-3 h-3" />
       {hoursLeft > 0 ? `${hoursLeft}h ` : ''}{minutesLeft}m remaining
     </span>
@@ -868,18 +868,18 @@ export default function MarketplacePage() {
                 const isCompliant = listing.complianceStatus !== 'non_compliant';
 
                 return (
-                  <Card key={listing.id} className={`hover:shadow-md transition-shadow flex flex-col ${isPromoted ? 'ring-2 ring-yellow-400' : ''}`}>
+                  <Card key={listing.id} className={`hover:shadow-md transition-shadow flex flex-col ${isPromoted ? 'ring-2 ring-acr-warn' : ''}`}>
                     <CardHeader className="pb-2 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                             {isPromoted && (
-                              <span className="flex items-center gap-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full">
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-warn bg-acr-warn-soft px-1.5 py-0.5 rounded-full">
                                 <Star className="w-2.5 h-2.5" /> Featured
                               </span>
                             )}
                             {isCompliant && (
-                              <span className="flex items-center gap-0.5 text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-pos bg-acr-pos-soft px-1.5 py-0.5 rounded-full">
                                 <ShieldCheck className="w-2.5 h-2.5" /> Compliant
                               </span>
                             )}

@@ -121,7 +121,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
                       data-testid="button-share-gis-filters"
                     >
                       {showCopied ? (
-                        <Check className="w-4 h-4 sm:w-3 sm:h-3 text-green-600" aria-hidden="true" />
+                        <Check className="w-4 h-4 sm:w-3 sm:h-3 text-acr-pos" aria-hidden="true" />
                       ) : (
                         <Share2 className="w-4 h-4 sm:w-3 sm:h-3" aria-hidden="true" />
                       )}

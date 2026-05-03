@@ -79,9 +79,9 @@ function fmt$(n: number) {
 }
 
 function roiColor(roi: number) {
-  if (roi > 2) return "text-green-600";
-  if (roi > 0) return "text-yellow-600";
-  return "text-red-500";
+  if (roi > 2) return "text-acr-pos";
+  if (roi > 0) return "text-acr-warn";
+  return "text-acr-neg";
 }
 
 export function AttributionAnalytics() {
@@ -260,7 +260,7 @@ export function AttributionAnalytics() {
                             </Badge>
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums">{row.conversions}</td>
-                          <td className="px-4 py-2 text-right text-green-600 font-medium tabular-nums">{fmt$(row.totalRevenue)}</td>
+                          <td className="px-4 py-2 text-right text-acr-pos font-medium tabular-nums">{fmt$(row.totalRevenue)}</td>
                           <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">{fmt$(row.totalCost)}</td>
                           <td className={`px-4 py-2 text-right font-semibold tabular-nums ${roiColor(row.roi)}`}>
                             {row.totalCost > 0 ? `${(row.roi * 100).toFixed(0)}%` : "—"}

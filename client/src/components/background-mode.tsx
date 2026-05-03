@@ -136,7 +136,7 @@ export function BackgroundTaskNotification({
     : Loader2;
   
   const iconColor = type === "success" 
-    ? "text-green-500" 
+    ? "text-acr-pos" 
     : type === "error" 
     ? "text-destructive" 
     : "text-primary";

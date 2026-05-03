@@ -97,13 +97,13 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function ComplexityBadge({ complexity }: { complexity: string }) {
   const map: Record<string, string> = {
-    low: "bg-green-100 text-green-800",
-    medium: "bg-yellow-100 text-yellow-800",
-    high: "bg-red-100 text-red-800",
+    low: "bg-acr-pos-soft text-acr-pos",
+    medium: "bg-acr-warn-soft text-acr-warn",
+    high: "bg-acr-neg-soft text-acr-neg",
   };
   return (
     <span
-      className={`px-2 py-0.5 rounded text-xs font-medium ${map[complexity] ?? "bg-gray-100 text-gray-600"}`}
+      className={`px-2 py-0.5 rounded text-xs font-medium ${map[complexity] ?? "bg-muted text-muted-foreground"}`}
       aria-label={`Complexity: ${complexity}`}
     >
       {complexity} complexity
@@ -198,7 +198,7 @@ function StrategiesTab() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs text-muted-foreground">Est. Savings</p>
-                    <p className="text-lg font-bold text-green-600">{fmtCurrency(s.estimatedSavings)}</p>
+                    <p className="text-lg font-bold text-acr-pos">{fmtCurrency(s.estimatedSavings)}</p>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">{s.description}</p>
@@ -362,9 +362,9 @@ function ScenariosTab() {
   });
 
   const scenarioTypeColors: Record<string, string> = {
-    hold: "bg-blue-100 text-blue-800",
-    sell: "bg-orange-100 text-orange-800",
-    exchange: "bg-green-100 text-green-800",
+    hold: "bg-acr-accent text-acr-accent",
+    sell: "bg-acr-warn-soft text-acr-warn",
+    exchange: "bg-acr-pos-soft text-acr-pos",
   };
 
   // Chart data for comparison
@@ -422,7 +422,7 @@ function ScenariosTab() {
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <p className="font-semibold">{s.name}</p>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${scenarioTypeColors[s.scenarioType] ?? "bg-gray-100"}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${scenarioTypeColors[s.scenarioType] ?? "bg-muted"}`}>
                       {s.scenarioType}
                     </span>
                   </div>
@@ -432,13 +432,13 @@ function ScenariosTab() {
                   </Button>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="bg-red-50 dark:bg-red-950/20 rounded p-2">
+                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded p-2">
                     <p className="text-muted-foreground">Est. Tax</p>
-                    <p className="font-semibold text-red-600">{fmtCurrency(s.estimatedTax)}</p>
+                    <p className="font-semibold text-acr-neg">{fmtCurrency(s.estimatedTax)}</p>
                   </div>
-                  <div className="bg-green-50 dark:bg-green-950/20 rounded p-2">
+                  <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/20 rounded p-2">
                     <p className="text-muted-foreground">Net Proceeds</p>
-                    <p className="font-semibold text-green-600">{fmtCurrency(s.netProceeds)}</p>
+                    <p className="font-semibold text-acr-pos">{fmtCurrency(s.netProceeds)}</p>
                   </div>
                   <div className="bg-muted/50 rounded p-2">
                     <p className="text-muted-foreground">Eff. Rate</p>
@@ -506,7 +506,7 @@ function CostBasisTab() {
                   <TableCell>{fmtCurrency(r.purchasePrice)}</TableCell>
                   <TableCell>{fmtCurrency(r.closingCosts)}</TableCell>
                   <TableCell>{fmtCurrency(r.improvements)}</TableCell>
-                  <TableCell className="text-red-600">-{fmtCurrency(r.depreciationTaken)}</TableCell>
+                  <TableCell className="text-acr-neg">-{fmtCurrency(r.depreciationTaken)}</TableCell>
                   <TableCell className="font-semibold">{fmtCurrency(r.adjustedBasis)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{fmtDate(r.acquisitionDate)}</TableCell>
                 </TableRow>

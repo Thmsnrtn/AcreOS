@@ -187,15 +187,15 @@ export default function TaxResearcherPage() {
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <dt className="text-xs text-muted-foreground">Active alerts</dt>
-          <dd className="text-2xl font-bold text-orange-600 tabular-nums">{alerts.length}</dd>
+          <dd className="text-2xl font-bold text-acr-warn tabular-nums">{alerts.length}</dd>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <dt className="text-xs text-muted-foreground">Watchlist items</dt>
-          <dd className="text-2xl font-bold text-blue-600 tabular-nums">{watchlist.length}</dd>
+          <dd className="text-2xl font-bold text-acr-accent tabular-nums">{watchlist.length}</dd>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <dt className="text-xs text-muted-foreground">Delinquent properties</dt>
-          <dd className="text-2xl font-bold text-yellow-600 tabular-nums">{delinquent.length}</dd>
+          <dd className="text-2xl font-bold text-acr-warn tabular-nums">{delinquent.length}</dd>
         </CardContent></Card>
       </dl>
 
@@ -264,7 +264,7 @@ export default function TaxResearcherPage() {
                           </div>
                         </div>
                         <div className="text-right text-xs">
-                          <div className="flex items-center gap-1 text-orange-600 font-medium tabular-nums">
+                          <div className="flex items-center gap-1 text-acr-warn font-medium tabular-nums">
                             <Calendar className="w-3 h-3" aria-hidden="true" />
                             {auction.auctionDate ? new Date(auction.auctionDate).toLocaleDateString() : "TBD"}
                           </div>
@@ -301,7 +301,7 @@ export default function TaxResearcherPage() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-red-600 font-bold tabular-nums">{fmt(prop.taxesOwed)}</p>
+                            <p className="text-acr-neg font-bold tabular-nums">{fmt(prop.taxesOwed)}</p>
                             <p className="text-xs text-muted-foreground">taxes owed</p>
                             <Button
                               size="sm"

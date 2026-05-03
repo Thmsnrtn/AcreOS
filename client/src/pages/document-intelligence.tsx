@@ -20,14 +20,14 @@ const SEVERITY_LABEL: Record<string, string> = {
 
 function RiskBadge({ severity }: { severity: string }) {
   const map: Record<string, string> = {
-    critical: "bg-red-100 text-red-800",
-    high: "bg-orange-100 text-orange-800",
-    medium: "bg-yellow-100 text-yellow-800",
-    low: "bg-blue-100 text-blue-800",
+    critical: "bg-acr-neg-soft text-acr-neg",
+    high: "bg-acr-warn-soft text-acr-warn",
+    medium: "bg-acr-warn-soft text-acr-warn",
+    low: "bg-acr-accent text-acr-accent",
   };
   const label = SEVERITY_LABEL[severity] ?? severity;
   return (
-    <Badge className={map[severity] ?? "bg-gray-100 text-gray-600"} aria-label={`Severity: ${label}`}>
+    <Badge className={map[severity] ?? "bg-muted text-muted-foreground"} aria-label={`Severity: ${label}`}>
       {label}
     </Badge>
   );
@@ -257,8 +257,8 @@ export default function DocumentIntelligencePage() {
                     {processMutation.isPending ? "Analyzing…" : "Run AI analysis"}
                   </Button>
                   {analysisResults && (
-                    <div className="mt-2 p-3 bg-green-50 dark:bg-green-950/20 rounded text-sm" role="status">
-                      <CheckCircle className="w-4 h-4 text-green-600 inline mr-1" aria-hidden="true" />
+                    <div className="mt-2 p-3 bg-acr-pos-soft dark:bg-acr-pos-soft/20 rounded text-sm" role="status">
+                      <CheckCircle className="w-4 h-4 text-acr-pos inline mr-1" aria-hidden="true" />
                       Analysis complete — view results in the Analysis results tab.
                     </div>
                   )}
@@ -285,13 +285,13 @@ export default function DocumentIntelligencePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-500" aria-hidden="true" /> Risk flags
+                <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" /> Risk flags
                 {risks.length > 0 && <Badge variant="destructive" className="ml-auto tabular-nums">{risks.length}</Badge>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {risks.length === 0 ? (
-                <div className="flex items-center gap-2 text-sm text-green-600">
+                <div className="flex items-center gap-2 text-sm text-acr-pos">
                   <CheckCircle className="w-4 h-4" aria-hidden="true" /> No significant risks detected.
                 </div>
               ) : (
@@ -301,7 +301,7 @@ export default function DocumentIntelligencePage() {
                     return (
                       <li
                         key={i}
-                        className="border-l-4 border-orange-400 pl-3 py-1"
+                        className="border-l-4 border-acr-warn pl-3 py-1"
                         role={isCritical ? "alert" : undefined}
                       >
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -323,7 +323,7 @@ export default function DocumentIntelligencePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <Tag className="w-4 h-4 text-blue-500" aria-hidden="true" /> Key terms &amp; clauses
+                <Tag className="w-4 h-4 text-acr-accent" aria-hidden="true" /> Key terms &amp; clauses
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">

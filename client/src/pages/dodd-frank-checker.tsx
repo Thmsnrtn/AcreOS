@@ -27,9 +27,9 @@ interface ComplianceResult {
 }
 
 const SEVERITY_META: Record<FindingItem["severity"], { label: string; render: () => JSX.Element }> = {
-  info: { label: "Informational", render: () => <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" aria-hidden="true" /> },
-  warning: { label: "Warning", render: () => <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" /> },
-  critical: { label: "Critical", render: () => <XCircle className="w-3.5 h-3.5 text-red-500" aria-hidden="true" /> },
+  info: { label: "Informational", render: () => <CheckCircle2 className="w-3.5 h-3.5 text-acr-accent" aria-hidden="true" /> },
+  warning: { label: "Warning", render: () => <AlertTriangle className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" /> },
+  critical: { label: "Critical", render: () => <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" /> },
 };
 
 const RISK_BADGE: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -209,7 +209,7 @@ export default function DoddFrankCheckerPage() {
             <p className="text-sm text-muted-foreground">{result.summary}</p>
 
             {result.requiresLicensedMLO && (
-              <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-700" role="alert">
+              <div className="bg-acr-neg-soft border border-acr-neg-soft rounded p-3 text-xs text-acr-neg" role="alert">
                 <strong>Licensed MLO required.</strong> This deal likely requires a licensed mortgage loan originator.
               </div>
             )}

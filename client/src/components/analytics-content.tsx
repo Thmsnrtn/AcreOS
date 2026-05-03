@@ -85,7 +85,7 @@ function KPICard({ title, value, change, icon, loading }: KPICardProps) {
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
         {change !== undefined && (
-          <div className={`text-xs flex items-center gap-1 ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`text-xs flex items-center gap-1 ${change >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
             {change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
             {change >= 0 ? '+' : ''}{formatPercent(change)} from last period
           </div>
@@ -145,7 +145,7 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
     <Card data-testid="card-projected-mrr">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Zap className="h-4 w-4 text-yellow-500" />
+          <Zap className="h-4 w-4 text-acr-warn" />
           Projected MRR (90 days)
         </CardTitle>
       </CardHeader>
@@ -164,7 +164,7 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
                 <p className="text-xs text-muted-foreground">projected in 3 months</p>
               </div>
               <div className="text-right">
-                <div className={`text-sm font-medium flex items-center gap-1 ${forecast.growthRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-sm font-medium flex items-center gap-1 ${forecast.growthRate >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                   {forecast.growthRate >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                   {forecast.growthRate >= 0 ? '+' : ''}{formatPercent(forecast.growthRate * 100)} growth
                 </div>
@@ -553,7 +553,7 @@ export function AnalyticsContent() {
                 ))}
                 <div className="pt-4 border-t flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Overall Win Rate</span>
-                  <span className="text-lg font-bold text-green-600">
+                  <span className="text-lg font-bold text-acr-pos">
                     {formatPercent(conversions?.overallWinRate || 0)}
                   </span>
                 </div>

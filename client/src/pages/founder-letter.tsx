@@ -243,14 +243,14 @@ export default function FounderLetterPage() {
               </Card>
 
               {letter.pendingFounderDecision && (
-                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" role="region" aria-label="Founder decision required">
+                <Card className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft" role="region" aria-label="Founder decision required">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base text-amber-900 dark:text-amber-200">
+                    <CardTitle className="text-base text-acr-warn dark:text-acr-warn">
                       The one thing I need from you
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-amber-900 dark:text-amber-200">
+                    <p className="text-sm text-acr-warn dark:text-acr-warn">
                       {letter.pendingFounderDecision}
                     </p>
                   </CardContent>

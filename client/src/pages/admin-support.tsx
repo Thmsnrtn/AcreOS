@@ -37,9 +37,9 @@ type CaseWithMessages = {
 
 function getSlaColor(status: SlaStatus | undefined): string {
   switch (status) {
-    case "breached": return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
-    case "at_risk": return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
-    case "on_track": return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
+    case "breached": return "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/20";
+    case "at_risk": return "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/20";
+    case "on_track": return "bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-acr-pos/20";
     default: return "bg-muted text-muted-foreground border-border";
   }
 }
@@ -62,13 +62,13 @@ function formatSlaTime(hoursUntilBreached: number | undefined): string {
 function getPriorityColor(priority: number): string {
   switch (priority) {
     case 5:
-      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+      return "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/20";
     case 4:
-      return "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20";
+      return "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/20";
     case 3:
-      return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
+      return "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/20";
     case 2:
-      return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      return "bg-acr-accent/10 text-acr-accent dark:text-acr-accent border-acr-accent/20";
     default:
       return "bg-muted text-muted-foreground border-border";
   }
@@ -499,7 +499,7 @@ export default function AdminSupportPage() {
 
           {escalatedCases && escalatedCases.some(c => c.slaStatus === "breached") && (
             <div
-              className="flex items-center gap-3 p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"
+              className="flex items-center gap-3 p-4 rounded-lg border border-acr-neg/30 bg-acr-neg/10 text-acr-neg dark:text-acr-neg"
               data-testid="alert-sla-breach"
               role="alert"
             >
@@ -532,7 +532,7 @@ export default function AdminSupportPage() {
                     </div>
                   ) : !escalatedCases?.length ? (
                     <div className="p-6 text-center" data-testid="empty-escalated-cases">
-                      <CheckCircle className="w-10 h-10 mx-auto mb-3 text-green-500" aria-hidden="true" />
+                      <CheckCircle className="w-10 h-10 mx-auto mb-3 text-acr-pos" aria-hidden="true" />
                       <p className="font-medium">No escalated cases</p>
                       <p className="text-muted-foreground text-sm mt-1">
                         All support cases are being handled by AI
@@ -716,7 +716,7 @@ export default function AdminSupportPage() {
                                   msg.role === "user"
                                     ? "bg-primary text-primary-foreground"
                                     : msg.role === "ai_support"
-                                    ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                                    ? "bg-acr-brand/10 text-acr-brand dark:text-acr-brand"
                                     : "bg-accent"
                                 }`}
                                 role="img"

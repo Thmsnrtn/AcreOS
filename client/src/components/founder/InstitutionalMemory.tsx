@@ -58,9 +58,9 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground tabular-nums">{pattern.sampleSize} observations</span>
           <Badge variant="outline" className={
-            (successRate >= 70 ? "bg-emerald-100 text-emerald-800 " :
-             successRate >= 40 ? "bg-amber-100 text-amber-800 " :
-             "bg-red-100 text-red-800 ") + "tabular-nums"
+            (successRate >= 70 ? "bg-acr-pos-soft text-acr-pos " :
+             successRate >= 40 ? "bg-acr-warn-soft text-acr-warn " :
+             "bg-acr-neg-soft text-acr-neg ") + "tabular-nums"
           }>
             {successRate}%
           </Badge>
@@ -71,14 +71,14 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
 
       {pattern.effectiveResponse && (
         <p className="text-xs m-0">
-          <span className="text-emerald-600 font-medium">Works: </span>
+          <span className="text-acr-pos font-medium">Works: </span>
           <span className="text-muted-foreground">{pattern.effectiveResponse}</span>
         </p>
       )}
 
       {pattern.ineffectiveResponse && (
         <p className="text-xs m-0">
-          <span className="text-red-600 font-medium">Doesn't work: </span>
+          <span className="text-acr-neg font-medium">Doesn't work: </span>
           <span className="text-muted-foreground">{pattern.ineffectiveResponse}</span>
         </p>
       )}

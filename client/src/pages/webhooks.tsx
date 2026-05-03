@@ -147,14 +147,14 @@ export default function WebhooksPage() {
         </Button>
       </div>
 
-      <Card className="mb-6 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+      <Card className="mb-6 border-acr-accent dark:border-acr-accent bg-acr-accent/50 dark:bg-acr-accent/10">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
-            <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <Shield className="h-5 w-5 text-acr-accent flex-shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">HMAC-SHA256 signed payloads</p>
-              <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
-                All webhook payloads are signed with a secret key. Verify the <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">X-AcreOS-Signature</code> header to ensure authenticity.
+              <p className="text-sm font-medium text-acr-accent dark:text-acr-accent">HMAC-SHA256 signed payloads</p>
+              <p className="text-xs text-acr-accent dark:text-acr-accent mt-0.5">
+                All webhook payloads are signed with a secret key. Verify the <code className="bg-acr-accent dark:bg-acr-accent px-1 rounded">X-AcreOS-Signature</code> header to ensure authenticity.
                 Failed deliveries are automatically retried with exponential backoff (up to <span className="tabular-nums">5</span> attempts).
               </p>
             </div>

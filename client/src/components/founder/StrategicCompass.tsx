@@ -13,11 +13,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Compass, Rocket, PiggyBank, AlertTriangle, Telescope, Scale, PenLine } from "lucide-react";
 
 const MODE_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
-  growth: { icon: Rocket, color: "text-emerald-700", bg: "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200", label: "Growth" },
-  efficiency: { icon: PiggyBank, color: "text-blue-700", bg: "bg-blue-50 dark:bg-blue-950/20 border-blue-200", label: "Efficiency" },
-  crisis: { icon: AlertTriangle, color: "text-red-700", bg: "bg-red-50 dark:bg-red-950/20 border-red-200", label: "Crisis" },
-  exploration: { icon: Telescope, color: "text-purple-700", bg: "bg-purple-50 dark:bg-purple-950/20 border-purple-200", label: "Exploration" },
-  balanced: { icon: Scale, color: "text-slate-700", bg: "bg-slate-50 dark:bg-slate-950/20 border-slate-200", label: "Balanced" },
+  growth: { icon: Rocket, color: "text-acr-pos", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border-acr-pos-soft", label: "Growth" },
+  efficiency: { icon: PiggyBank, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent", label: "Efficiency" },
+  crisis: { icon: AlertTriangle, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border-acr-neg-soft", label: "Crisis" },
+  exploration: { icon: Telescope, color: "text-acr-brand", bg: "bg-acr-brand-soft dark:bg-acr-brand-soft/20 border-acr-brand-soft", label: "Exploration" },
+  balanced: { icon: Scale, color: "text-foreground", bg: "bg-muted dark:bg-acr-bg-sunken/20 border-border", label: "Balanced" },
 };
 
 export function StrategicCompass() {

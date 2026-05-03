@@ -710,9 +710,9 @@ export function OnboardingWizard() {
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="w-20 h-20 mx-auto rounded-full bg-green-500/10 flex items-center justify-center"
+              className="w-20 h-20 mx-auto rounded-full bg-acr-pos/10 flex items-center justify-center"
             >
-              <PartyPopper className="w-10 h-10 text-green-500" />
+              <PartyPopper className="w-10 h-10 text-acr-pos" />
             </motion.div>
             
             <div>
@@ -726,15 +726,15 @@ export function OnboardingWizard() {
             
             <div className="grid gap-2 text-left max-w-xs mx-auto">
               <div className="flex items-center gap-3 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-acr-pos flex-shrink-0" />
                 <span>Organization: <strong>{organizationName || organization?.name}</strong></span>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-acr-pos flex-shrink-0" />
                 <span>Business type: <strong className="capitalize">{businessType?.replace(/_/g, " ")}</strong></span>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-acr-pos flex-shrink-0" />
                 <span>Campaign templates created</span>
               </div>
             </div>

@@ -23,10 +23,10 @@ const TYPE_ICONS: Record<IslandType, React.ReactNode> = {
 
 const TYPE_COLORS: Record<IslandType, string> = {
   default: "text-foreground",
-  success: "text-emerald-400",
-  warning: "text-amber-400",
+  success: "text-acr-pos",
+  warning: "text-acr-warn",
   ai:      "text-[hsl(var(--primary))]",
-  alert:   "text-rose-400",
+  alert:   "text-acr-neg",
   saving:  "text-[hsl(var(--accent))]",
 };
 

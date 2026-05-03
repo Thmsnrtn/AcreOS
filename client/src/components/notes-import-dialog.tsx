@@ -296,8 +296,8 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
         {/* Step: Done */}
         {step === "done" && result && (
           <div className="py-6 space-y-5">
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-acr-pos/10 border border-acr-pos/20">
+              <CheckCircle2 className="w-6 h-6 text-acr-pos shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold">Import complete</p>
                 <p className="text-sm text-muted-foreground">

@@ -24,21 +24,21 @@ function gradeFromScore(score: number): Grade {
 
 function gradeColor(grade: string): string {
   switch (grade) {
-    case "A+": return "bg-emerald-500";
-    case "A": return "bg-emerald-400";
-    case "B+": return "bg-blue-500";
-    case "B": return "bg-blue-400";
-    case "C+": return "bg-amber-500";
-    case "C": return "bg-amber-400";
-    case "D": return "bg-orange-500";
-    default: return "bg-red-500";
+    case "A+": return "bg-acr-pos";
+    case "A": return "bg-acr-pos";
+    case "B+": return "bg-acr-accent";
+    case "B": return "bg-acr-accent";
+    case "C+": return "bg-acr-warn";
+    case "C": return "bg-acr-warn";
+    case "D": return "bg-acr-warn";
+    default: return "bg-acr-neg";
   }
 }
 
 function barColor(value: number): string {
-  if (value >= 70) return "bg-emerald-500";
-  if (value >= 50) return "bg-amber-500";
-  return "bg-red-500";
+  if (value >= 70) return "bg-acr-pos";
+  if (value >= 50) return "bg-acr-warn";
+  return "bg-acr-neg";
 }
 
 const dimensionLabels: Record<string, string> = {

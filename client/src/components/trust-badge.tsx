@@ -28,41 +28,41 @@ const TIER_CONFIG: Record<TrustTier, {
   platinum: {
     label: "Platinum",
     icon: Sparkles,
-    color: "text-violet-700",
-    bgColor: "bg-violet-50",
-    borderColor: "border-violet-200",
+    color: "text-acr-brand",
+    bgColor: "bg-acr-brand-soft",
+    borderColor: "border-acr-brand-soft",
     description: "Top-tier investor with exceptional track record",
   },
   gold: {
     label: "Gold",
     icon: Award,
-    color: "text-amber-700",
-    bgColor: "bg-amber-50",
-    borderColor: "border-amber-200",
+    color: "text-acr-warn",
+    bgColor: "bg-acr-warn-soft",
+    borderColor: "border-acr-warn-soft",
     description: "Proven investor with strong deal history",
   },
   silver: {
     label: "Silver",
     icon: ShieldCheck,
-    color: "text-slate-600",
-    bgColor: "bg-slate-50",
-    borderColor: "border-slate-200",
+    color: "text-muted-foreground",
+    bgColor: "bg-muted",
+    borderColor: "border-border",
     description: "Established investor with verified deals",
   },
   bronze: {
     label: "Bronze",
     icon: Shield,
-    color: "text-orange-700",
-    bgColor: "bg-orange-50",
-    borderColor: "border-orange-200",
+    color: "text-acr-warn",
+    bgColor: "bg-acr-warn-soft",
+    borderColor: "border-acr-warn-soft",
     description: "Active investor building their track record",
   },
   new: {
     label: "New",
     icon: Star,
-    color: "text-gray-500",
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
+    color: "text-muted-foreground",
+    bgColor: "bg-muted",
+    borderColor: "border-border",
     description: "New to the AcreOS marketplace",
   },
 };
@@ -140,7 +140,7 @@ export function TrustProgress({ score, tier, className }: TrustProgressProps) {
   if (!nextTier) {
     return (
       <div className={cn("text-sm text-muted-foreground", className)}>
-        <span className="text-violet-700 font-medium">Platinum tier achieved</span> — highest trust level
+        <span className="text-acr-brand font-medium">Platinum tier achieved</span> — highest trust level
       </div>
     );
   }

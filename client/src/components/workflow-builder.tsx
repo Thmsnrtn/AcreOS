@@ -556,7 +556,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
             <Card data-testid="card-trigger-section">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-500" />
+                  <Zap className="w-4 h-4 text-acr-warn" />
                   Trigger
                 </CardTitle>
               </CardHeader>
@@ -641,7 +641,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
             <Card data-testid="card-actions-section">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <ListTodo className="w-4 h-4 text-blue-500" />
+                  <ListTodo className="w-4 h-4 text-acr-accent" />
                   Actions
                 </CardTitle>
               </CardHeader>
@@ -918,9 +918,9 @@ function PanelActionForm({ onAdd, onCancel }: PanelActionFormProps) {
       {def && (
         <>
           {def.warning && (
-            <div className="flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/5 px-3 py-2">
-              <AlertCircle className="w-3.5 h-3.5 text-yellow-600 mt-0.5 shrink-0" />
-              <p className="text-xs text-yellow-700 leading-snug">{def.warning}</p>
+            <div className="flex items-start gap-2 rounded-md border border-acr-warn/30 bg-acr-warn/5 px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-acr-warn mt-0.5 shrink-0" />
+              <p className="text-xs text-acr-warn leading-snug">{def.warning}</p>
             </div>
           )}
           {def.fields.map((field) => (
@@ -1020,7 +1020,7 @@ function PanelWorkflowPreview({ workflow }: { workflow: WorkflowConfig }) {
       <p>
         <span className="text-muted-foreground">Status:</span>{" "}
         {workflow.isActive
-          ? <span className="text-green-600">active</span>
+          ? <span className="text-acr-pos">active</span>
           : <span className="text-muted-foreground">inactive</span>}
       </p>
     </div>
@@ -1071,7 +1071,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-yellow-500" />
+          <Zap className="w-4 h-4 text-acr-warn" />
           <h2 className="text-sm font-semibold text-foreground">
             {existingWorkflow ? "Edit Workflow" : "New Workflow"}
           </h2>
@@ -1148,7 +1148,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
               </Select>
               {triggerEvent && (
                 <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-                  <Zap className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                  <Zap className="w-3.5 h-3.5 text-acr-warn shrink-0" />
                   <p className="text-xs text-foreground">
                     <strong>When:</strong> {panelGetTriggerLabel(triggerEvent)}
                   </p>

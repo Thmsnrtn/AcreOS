@@ -24,18 +24,18 @@ export function TrialBanner() {
     return (
       <aside
         aria-label="Free trial available"
-        className="mx-4 mb-2 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/50 p-3 flex items-center justify-between"
+        className="mx-4 mb-2 rounded-lg border border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/50 p-3 flex items-center justify-between"
       >
         <div className="flex items-center gap-2 text-sm">
-          <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-          <span className="text-blue-800 dark:text-blue-200">
+          <Sparkles className="h-4 w-4 text-acr-accent dark:text-acr-accent" aria-hidden="true" />
+          <span className="text-acr-accent dark:text-acr-accent">
             Try Starter or Pro free for 14 days
           </span>
         </div>
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300"
+          className="h-7 text-xs border-acr-accent text-acr-accent hover:bg-acr-accent dark:border-acr-accent dark:text-acr-accent"
           onClick={() => setLocation("/settings?tab=billing")}
         >
           Start trial
@@ -51,20 +51,20 @@ export function TrialBanner() {
         aria-label={`Free trial — ${trial.daysRemaining} day${trial.daysRemaining !== 1 ? "s" : ""} remaining`}
         className={`mx-4 mb-2 rounded-lg border p-3 flex items-center justify-between ${
           urgent
-            ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/50"
-            : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/50"
+            ? "border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/50"
+            : "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/50"
         }`}
       >
         <div className="flex items-center gap-2 text-sm">
           <Clock
-            className={`h-4 w-4 ${urgent ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}
+            className={`h-4 w-4 ${urgent ? "text-acr-warn dark:text-acr-warn" : "text-acr-pos dark:text-acr-pos"}`}
             aria-hidden="true"
           />
-          <span className={urgent ? "text-amber-800 dark:text-amber-200" : "text-green-800 dark:text-green-200"}>
+          <span className={urgent ? "text-acr-warn dark:text-acr-warn" : "text-acr-pos dark:text-acr-pos"}>
             {trial.daysRemaining} day{trial.daysRemaining !== 1 ? "s" : ""} left in your free trial
           </span>
           {urgent && (
-            <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-300">
+            <Badge variant="outline" className="text-xs border-acr-warn text-acr-warn dark:text-acr-warn">
               Expiring soon
             </Badge>
           )}

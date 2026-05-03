@@ -27,24 +27,24 @@ function getConfidenceColor(confidence: number): {
 } {
   if (confidence >= 70) {
     return {
-      filled: "bg-emerald-500",
-      muted: "bg-emerald-500/20",
-      text: "text-emerald-600 dark:text-emerald-400",
+      filled: "bg-acr-pos",
+      muted: "bg-acr-pos/20",
+      text: "text-acr-pos dark:text-acr-pos",
       label: "High",
     };
   }
   if (confidence >= 40) {
     return {
-      filled: "bg-amber-500",
-      muted: "bg-amber-500/20",
-      text: "text-amber-600 dark:text-amber-400",
+      filled: "bg-acr-warn",
+      muted: "bg-acr-warn/20",
+      text: "text-acr-warn dark:text-acr-warn",
       label: "Medium",
     };
   }
   return {
-    filled: "bg-red-500",
-    muted: "bg-red-500/20",
-    text: "text-red-600 dark:text-red-400",
+    filled: "bg-acr-neg",
+    muted: "bg-acr-neg/20",
+    text: "text-acr-neg dark:text-acr-neg",
     label: "Low",
   };
 }
@@ -135,7 +135,7 @@ function SourceRow({ source }: { source: DataSource }) {
           aria-hidden="true"
           className={cn(
             "inline-block h-2 w-2 shrink-0 rounded-full",
-            source.returned ? "bg-emerald-500" : "bg-red-400"
+            source.returned ? "bg-acr-pos" : "bg-acr-neg"
           )}
         />
         <span className="text-sm truncate text-foreground" aria-hidden="true">{source.name}</span>
@@ -147,11 +147,11 @@ function SourceRow({ source }: { source: DataSource }) {
           </span>
         )}
         {source.returned ? (
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <span className="text-xs font-medium text-acr-pos dark:text-acr-pos">
             OK
           </span>
         ) : (
-          <span className="text-xs font-medium text-red-500">Miss</span>
+          <span className="text-xs font-medium text-acr-neg">Miss</span>
         )}
       </div>
     </motion.li>

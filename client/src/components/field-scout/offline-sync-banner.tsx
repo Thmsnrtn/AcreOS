@@ -56,14 +56,14 @@ export function OfflineSyncBanner({
       className={cn(
         "mx-4 mt-3 rounded-lg border p-3 space-y-2",
         !isOnline
-          ? "bg-red-950/30 border-red-900/50"
+          ? "bg-acr-neg-soft/30 border-acr-neg-soft/50"
           : syncState === "error"
-          ? "bg-yellow-950/30 border-yellow-900/50"
+          ? "bg-acr-warn-soft/30 border-acr-warn-soft/50"
           : syncState === "syncing"
-          ? "bg-blue-950/30 border-blue-900/50"
+          ? "bg-acr-accent/30 border-acr-accent/50"
           : syncState === "success"
-          ? "bg-emerald-950/30 border-emerald-900/50"
-          : "bg-gray-900 border-gray-800"
+          ? "bg-acr-pos-soft/30 border-acr-pos-soft/50"
+          : "bg-acr-bg-sunken border-border"
       )}
     >
       {/* Status line */}
@@ -71,33 +71,33 @@ export function OfflineSyncBanner({
         <div className="flex items-center gap-2">
           {!isOnline ? (
             <>
-              <WifiOff className="w-4 h-4 text-red-400" />
-              <span className="text-xs font-medium text-red-300">Offline</span>
+              <WifiOff className="w-4 h-4 text-acr-neg" />
+              <span className="text-xs font-medium text-acr-neg">Offline</span>
             </>
           ) : syncState === "syncing" ? (
             <>
-              <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-              <span className="text-xs font-medium text-blue-300">Syncing...</span>
+              <Loader2 className="w-4 h-4 text-acr-accent animate-spin" />
+              <span className="text-xs font-medium text-acr-accent">Syncing...</span>
             </>
           ) : syncState === "error" ? (
             <>
-              <AlertTriangle className="w-4 h-4 text-yellow-400" />
-              <span className="text-xs font-medium text-yellow-300">Sync failed</span>
+              <AlertTriangle className="w-4 h-4 text-acr-warn" />
+              <span className="text-xs font-medium text-acr-warn">Sync failed</span>
             </>
           ) : syncState === "success" ? (
             <>
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-medium text-emerald-300">All synced</span>
+              <CheckCircle className="w-4 h-4 text-acr-pos" />
+              <span className="text-xs font-medium text-acr-pos">All synced</span>
             </>
           ) : (
             <>
-              <Wifi className="w-4 h-4 text-gray-400" />
-              <span className="text-xs font-medium text-gray-300">Online</span>
+              <Wifi className="w-4 h-4 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Online</span>
             </>
           )}
 
           {queueCount > 0 && (
-            <Badge variant="secondary" className="text-[10px] bg-gray-800 text-gray-400">
+            <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
               {queueCount} queued
             </Badge>
           )}
@@ -105,7 +105,7 @@ export function OfflineSyncBanner({
 
         <div className="flex items-center gap-2">
           {lastSyncedAt && (
-            <span className="text-[10px] text-gray-600 flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {relative(lastSyncedAt)}
             </span>
@@ -116,7 +116,7 @@ export function OfflineSyncBanner({
               variant="ghost"
               size="sm"
               onClick={onRetry}
-              className="h-6 px-2 text-[10px] text-yellow-400 hover:text-yellow-300"
+              className="h-6 px-2 text-[10px] text-acr-warn hover:text-acr-warn"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
               Retry
@@ -126,7 +126,7 @@ export function OfflineSyncBanner({
               variant="ghost"
               size="sm"
               onClick={onSyncNow}
-              className="h-6 px-2 text-[10px] text-emerald-400 hover:text-emerald-300"
+              className="h-6 px-2 text-[10px] text-acr-pos hover:text-acr-pos"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
               Sync Now
@@ -137,17 +137,17 @@ export function OfflineSyncBanner({
 
       {/* Progress bar during sync */}
       {syncState === "syncing" && (
-        <Progress value={syncProgress} className="h-1.5 bg-gray-800" />
+        <Progress value={syncProgress} className="h-1.5 bg-acr-bg-sunken" />
       )}
 
       {/* Error detail */}
       {syncState === "error" && syncError && (
-        <p className="text-[10px] text-yellow-400/70">{syncError}</p>
+        <p className="text-[10px] text-acr-warn/70">{syncError}</p>
       )}
 
       {/* Offline details */}
       {!isOnline && queueCount > 0 && (
-        <p className="text-[10px] text-red-400/70">
+        <p className="text-[10px] text-acr-neg/70">
           {queueCount} action{queueCount !== 1 ? "s" : ""} will sync automatically when you reconnect.
         </p>
       )}

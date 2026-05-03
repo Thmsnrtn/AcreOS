@@ -111,7 +111,7 @@ function ScenarioWarRoom() {
       {isLoading ? <Skeleton className="h-40" /> : (
         <div className="space-y-3">
           {(scenarios || []).map((s: any) => (
-            <Card key={s.id} className={s.status === "running" ? "border-yellow-500" : ""}>
+            <Card key={s.id} className={s.status === "running" ? "border-acr-warn" : ""}>
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">{s.title}</h3>
@@ -182,7 +182,7 @@ function HeartbeatMonitor() {
     },
   });
 
-  const gradeColors: Record<string, string> = { A: "text-green-500", B: "text-blue-500", C: "text-yellow-500", D: "text-orange-500", F: "text-red-500" };
+  const gradeColors: Record<string, string> = { A: "text-acr-pos", B: "text-acr-accent", C: "text-acr-warn", D: "text-acr-warn", F: "text-acr-neg" };
 
   if (isLoading) return <Skeleton className="h-60" />;
 
@@ -246,7 +246,7 @@ function HeartbeatMonitor() {
                 aria-valuemin={0}
                 aria-valuemax={100}
               >
-                <div className="bg-green-500 h-3 rounded-full" style={{ width: `${Math.min(100, Number(heartbeat?.feedbackClosureRate || 0))}%` }} />
+                <div className="bg-acr-pos h-3 rounded-full" style={{ width: `${Math.min(100, Number(heartbeat?.feedbackClosureRate || 0))}%` }} />
               </div>
               <span className="text-sm font-mono tabular-nums">{Number(heartbeat?.feedbackClosureRate || 0).toFixed(1)}%</span>
             </div>
@@ -255,8 +255,8 @@ function HeartbeatMonitor() {
       </div>
 
       {(anomalies || []).length > 0 && (
-        <Card className="border-yellow-500" role="alert">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-yellow-500" aria-hidden="true" /> Active anomalies</CardTitle></CardHeader>
+        <Card className="border-acr-warn" role="alert">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" /> Active anomalies</CardTitle></CardHeader>
           <CardContent>
             <ul className="list-none p-0 m-0">
               {anomalies.map((a: any, i: number) => (
@@ -336,7 +336,7 @@ function SelfCalibration() {
       </div>
 
       {(pending || []).length > 0 && (
-        <Card className="border-blue-500">
+        <Card className="border-acr-accent">
           <CardHeader><CardTitle className="text-sm">Pending approval ({pending.length})</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-2 list-none p-0 m-0">
@@ -428,7 +428,7 @@ function DecisionReplay() {
       )}
 
       {(biases?.biases || []).length > 0 && (
-        <Card className="border-orange-500">
+        <Card className="border-acr-warn">
           <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" aria-hidden="true" /> Detected biases</CardTitle></CardHeader>
           <CardContent>
             <ul className="space-y-2 list-none p-0 m-0">
@@ -534,7 +534,7 @@ function ResilienceTesting() {
                   <p className="text-sm">{t.testDescription}</p>
                   {(t.singlePointsOfFailure || []).length > 0 && (
                     <div className="mt-2">
-                      <p className="text-xs font-medium text-red-500">{t.singlePointsOfFailure.length} SPOF{t.singlePointsOfFailure.length === 1 ? "" : "s"}:</p>
+                      <p className="text-xs font-medium text-acr-neg">{t.singlePointsOfFailure.length} SPOF{t.singlePointsOfFailure.length === 1 ? "" : "s"}:</p>
                       <ul className="list-none p-0 m-0">
                         {t.singlePointsOfFailure.map((spof: any, i: number) => (
                           <li key={i} className="text-xs text-muted-foreground">• {spof.component}: {spof.risk}</li>
@@ -592,7 +592,7 @@ function NervousSystem() {
       )}
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Radio className="h-4 w-4 text-green-500 animate-pulse" aria-hidden="true" /> Live event feed</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Radio className="h-4 w-4 text-acr-pos animate-pulse" aria-hidden="true" /> Live event feed</CardTitle></CardHeader>
         <CardContent>
           <ScrollArea className="h-[400px]">
             {isLoading ? <Skeleton className="h-40" /> : (
@@ -687,12 +687,12 @@ function AdaptiveSurface() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Card>
-          <CardHeader><CardTitle className="text-sm text-green-600">Active layers</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm text-acr-pos">Active layers</CardTitle></CardHeader>
           <CardContent>
             <ul className="list-none p-0 m-0">
               {(surface?.activeLayers || []).map((l: string) => (
                 <li key={l} className="flex items-center gap-2 py-1">
-                  <CheckCircle className="h-3 w-3 text-green-500" aria-hidden="true" />
+                  <CheckCircle className="h-3 w-3 text-acr-pos" aria-hidden="true" />
                   <span className="text-sm">{layers?.[l] || l}</span>
                 </li>
               ))}
@@ -776,7 +776,7 @@ function LearningEngine() {
                     aria-valuemin={0}
                     aria-valuemax={100}
                   >
-                    <div className={`h-2 rounded-full ${c.isOverconfident ? "bg-orange-500" : "bg-green-500"}`} style={{ width: `${c.actualSuccessRate}%` }} />
+                    <div className={`h-2 rounded-full ${c.isOverconfident ? "bg-acr-warn" : "bg-acr-pos"}`} style={{ width: `${c.actualSuccessRate}%` }} />
                   </div>
                   <span className="text-xs font-mono tabular-nums w-20 text-right">
                     {c.actualSuccessRate}% real / {c.averageConfidence}% pred

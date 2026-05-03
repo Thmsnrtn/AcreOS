@@ -25,13 +25,13 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  email_sent: "bg-blue-500",
-  sms_sent: "bg-green-500",
-  ai_chat: "bg-purple-500",
-  ai_image: "bg-pink-500",
-  pdf_generated: "bg-orange-500",
-  comps_query: "bg-cyan-500",
-  direct_mail: "bg-amber-500",
+  email_sent: "bg-acr-accent",
+  sms_sent: "bg-acr-pos",
+  ai_chat: "bg-acr-brand",
+  ai_image: "bg-acr-brand",
+  pdf_generated: "bg-acr-warn",
+  comps_query: "bg-acr-accent",
+  direct_mail: "bg-acr-warn",
 };
 
 export default function UsageAnalyticsPage() {
@@ -162,7 +162,7 @@ export default function UsageAnalyticsPage() {
                       {Object.entries(day.actions).map(([action, { count }]) => (
                         <div
                           key={action}
-                          className={`${ACTION_COLORS[action] || "bg-gray-400"} transition-all`}
+                          className={`${ACTION_COLORS[action] || "bg-muted"} transition-all`}
                           style={{ width: `${(count / maxDaily) * 100}%` }}
                           title={`${ACTION_LABELS[action] || action}: ${count}`}
                           aria-hidden="true"
@@ -195,7 +195,7 @@ export default function UsageAnalyticsPage() {
                 .map(([action, { count, costCents }]) => (
                   <li key={action} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${ACTION_COLORS[action] || "bg-gray-400"}`} aria-hidden="true" />
+                      <div className={`w-3 h-3 rounded-full ${ACTION_COLORS[action] || "bg-muted"}`} aria-hidden="true" />
                       <span className="font-medium">{ACTION_LABELS[action] || action}</span>
                     </div>
                     <div className="flex items-center gap-4">

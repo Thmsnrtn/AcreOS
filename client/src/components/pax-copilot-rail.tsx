@@ -1068,7 +1068,7 @@ export function PaxCopilotRail() {
                 >
                   <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
                   {observations.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" aria-hidden="true" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-acr-neg rounded-full" aria-hidden="true" />
                   )}
                 </button>
               </TooltipTrigger>
@@ -1333,8 +1333,8 @@ export function PaxCopilotRail() {
                   <div key={obs.id} className="rounded-md border bg-muted/30 p-2 text-xs group">
                     <div className="flex items-start gap-1.5">
                       {obs.severity === "high"
-                        ? <AlertCircle className="w-3 h-3 text-red-500 flex-shrink-0 mt-0.5" />
-                        : <CheckCircle2 className="w-3 h-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                        ? <AlertCircle className="w-3 h-3 text-acr-neg flex-shrink-0 mt-0.5" />
+                        : <CheckCircle2 className="w-3 h-3 text-acr-accent flex-shrink-0 mt-0.5" />
                       }
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-foreground leading-tight">{obs.title}</p>
@@ -1535,13 +1535,13 @@ export function PaxCopilotRail() {
                           )}
                           {/* Pre-approval card */}
                           {msg.approvalRequired && (
-                            <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-xs space-y-2 mt-1">
+                            <div className="rounded-md border border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/30 dark:border-acr-warn-soft p-3 text-xs space-y-2 mt-1">
                               <div className="flex items-center gap-1.5">
-                                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                                <span className="font-medium text-amber-900 dark:text-amber-300">Action requires your approval</span>
+                                <AlertCircle className="w-3.5 h-3.5 text-acr-warn flex-shrink-0" />
+                                <span className="font-medium text-acr-warn dark:text-acr-warn">Action requires your approval</span>
                               </div>
-                              <p className="text-amber-800 dark:text-amber-400 leading-snug">
-                                <span className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded text-[11px]">{msg.approvalRequired.toolName}</span>
+                              <p className="text-acr-warn dark:text-acr-warn leading-snug">
+                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-[11px]">{msg.approvalRequired.toolName}</span>
                                 {" "}{formatApprovalArgs(msg.approvalRequired.toolName, msg.approvalRequired.args)}
                               </p>
                               <div className="flex gap-2">
@@ -1584,7 +1584,7 @@ export function PaxCopilotRail() {
                                 onClick={() => handleRating(msg.id, 1)}
                                 className={cn(
                                   "p-0.5 rounded hover:bg-muted transition-colors",
-                                  ratings[msg.id] === 1 ? "text-green-500" : "text-muted-foreground/40 hover:text-muted-foreground"
+                                  ratings[msg.id] === 1 ? "text-acr-pos" : "text-muted-foreground/40 hover:text-muted-foreground"
                                 )}
                                 title="Good response"
                               >
@@ -1594,7 +1594,7 @@ export function PaxCopilotRail() {
                                 onClick={() => handleRating(msg.id, -1)}
                                 className={cn(
                                   "p-0.5 rounded hover:bg-muted transition-colors",
-                                  ratings[msg.id] === -1 ? "text-red-500" : "text-muted-foreground/40 hover:text-muted-foreground"
+                                  ratings[msg.id] === -1 ? "text-acr-neg" : "text-muted-foreground/40 hover:text-muted-foreground"
                                 )}
                                 title="Poor response"
                               >

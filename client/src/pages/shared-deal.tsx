@@ -183,13 +183,13 @@ export default function SharedDealPage() {
             <ul className="space-y-1 text-sm" aria-label="Compliance checks">
               {compliance.doddFrank && (
                 <li className="flex items-center gap-2">
-                  <CheckCircle className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label="Pass" />
+                  <CheckCircle className="h-3.5 w-3.5 text-acr-pos shrink-0" aria-label="Pass" />
                   Dodd-Frank: {compliance.doddFrank}
                 </li>
               )}
               {compliance.usury && (
                 <li className="flex items-center gap-2">
-                  <CheckCircle className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label="Pass" />
+                  <CheckCircle className="h-3.5 w-3.5 text-acr-pos shrink-0" aria-label="Pass" />
                   Usury: {compliance.usury}
                 </li>
               )}
@@ -211,7 +211,7 @@ export default function SharedDealPage() {
               {checklist.items.map((item, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm">
                   <CheckCircle
-                    className={`h-3.5 w-3.5 shrink-0 ${item.completed ? "text-green-600" : "text-muted-foreground"}`}
+                    className={`h-3.5 w-3.5 shrink-0 ${item.completed ? "text-acr-pos" : "text-muted-foreground"}`}
                     aria-label={item.completed ? "Done" : "Open"}
                   />
                   <span className={item.completed ? "line-through text-muted-foreground" : ""}>

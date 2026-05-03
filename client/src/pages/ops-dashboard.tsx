@@ -169,7 +169,7 @@ export default function OpsDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <StatPanel
             title="Tasks due today"
-            icon={<CheckSquare className="w-4 h-4 text-blue-500" aria-hidden="true" />}
+            icon={<CheckSquare className="w-4 h-4 text-acr-accent" aria-hidden="true" />}
             linkTo="/tasks"
             isLoading={tasksLoading}
           >
@@ -185,7 +185,7 @@ export default function OpsDashboardPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-5 text-xs shrink-0 text-green-600"
+                        className="h-5 text-xs shrink-0 text-acr-pos"
                         onClick={() => completeTask.mutate(t.id)}
                         disabled={completeTask.isPending}
                         aria-label={`Mark "${t.title}" as done`}
@@ -204,7 +204,7 @@ export default function OpsDashboardPage() {
 
           <StatPanel
             title="Offers expiring this week"
-            icon={<FileText className="w-4 h-4 text-orange-500" aria-hidden="true" />}
+            icon={<FileText className="w-4 h-4 text-acr-warn" aria-hidden="true" />}
             linkTo="/pipeline"
             isLoading={dealsLoading}
           >
@@ -233,7 +233,7 @@ export default function OpsDashboardPage() {
 
           <StatPanel
             title="Overdue follow-ups"
-            icon={<UserX className="w-4 h-4 text-red-500" aria-hidden="true" />}
+            icon={<UserX className="w-4 h-4 text-acr-neg" aria-hidden="true" />}
             linkTo="/leads"
             isLoading={leadsLoading}
           >
@@ -241,7 +241,7 @@ export default function OpsDashboardPage() {
               <p className="text-sm text-muted-foreground">All leads are current.</p>
             ) : (
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-red-600 tabular-nums">{staleLeads.length}</p>
+                <p className="text-2xl font-bold text-acr-neg tabular-nums">{staleLeads.length}</p>
                 <ul className="space-y-1" aria-label="Leads needing follow-up">
                   {staleLeads.slice(0, 5).map(l => (
                     <li key={l.id} className="flex items-center justify-between text-sm gap-2">
@@ -265,7 +265,7 @@ export default function OpsDashboardPage() {
 
           <StatPanel
             title="Pipeline health"
-            icon={<TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />}
+            icon={<TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />}
             linkTo="/pipeline"
             isLoading={statsLoading}
           >
@@ -306,7 +306,7 @@ export default function OpsDashboardPage() {
 
         {(expiringOffers.length > 0 || staleLeads.length > 0) && (
           <div
-            className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3"
+            className="flex items-center gap-2 text-sm text-acr-warn bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft rounded-lg px-4 py-3"
             role="status"
           >
             <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />

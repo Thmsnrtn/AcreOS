@@ -18,23 +18,23 @@ const SEVERITY_LABEL: Record<string, string> = {
 
 function SeverityBadge({ severity }: { severity: string }) {
   const map: Record<string, string> = {
-    critical: "bg-red-100 text-red-800",
-    high: "bg-orange-100 text-orange-800",
-    medium: "bg-yellow-100 text-yellow-800",
-    low: "bg-blue-100 text-blue-800",
+    critical: "bg-acr-neg-soft text-acr-neg",
+    high: "bg-acr-warn-soft text-acr-warn",
+    medium: "bg-acr-warn-soft text-acr-warn",
+    low: "bg-acr-accent text-acr-accent",
   };
   const label = SEVERITY_LABEL[severity] ?? severity;
   return (
-    <Badge className={map[severity] ?? "bg-gray-100 text-gray-600"} aria-label={`Severity: ${label}`}>
+    <Badge className={map[severity] ?? "bg-muted text-muted-foreground"} aria-label={`Severity: ${label}`}>
       {label}
     </Badge>
   );
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "resolved") return <CheckCircle className="w-4 h-4 text-green-500" aria-label="Resolved" />;
-  if (status === "acknowledged") return <Clock className="w-4 h-4 text-yellow-500" aria-label="Acknowledged" />;
-  return <AlertTriangle className="w-4 h-4 text-red-500" aria-label="Open" />;
+  if (status === "resolved") return <CheckCircle className="w-4 h-4 text-acr-pos" aria-label="Resolved" />;
+  if (status === "acknowledged") return <Clock className="w-4 h-4 text-acr-warn" aria-label="Acknowledged" />;
+  return <AlertTriangle className="w-4 h-4 text-acr-neg" aria-label="Open" />;
 }
 
 export default function CompliancePage() {
@@ -130,7 +130,7 @@ export default function CompliancePage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
                 <dt className="text-sm text-muted-foreground">Compliance score</dt>
-                <Shield className={`w-4 h-4 ${(dashboard.complianceScore ?? 0) >= 80 ? "text-green-500" : "text-yellow-500"}`} aria-hidden="true" />
+                <Shield className={`w-4 h-4 ${(dashboard.complianceScore ?? 0) >= 80 ? "text-acr-pos" : "text-acr-warn"}`} aria-hidden="true" />
               </div>
               <dd className="text-2xl font-bold tabular-nums">{dashboard.complianceScore ?? "—"}/100</dd>
               <Progress
@@ -144,9 +144,9 @@ export default function CompliancePage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
                 <dt className="text-sm text-muted-foreground">Open alerts</dt>
-                <AlertTriangle className={`w-4 h-4 ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-500" : "text-green-500"}`} aria-hidden="true" />
+                <AlertTriangle className={`w-4 h-4 ${(dashboard.openAlerts ?? 0) > 0 ? "text-acr-neg" : "text-acr-pos"}`} aria-hidden="true" />
               </div>
-              <dd className={`text-2xl font-bold tabular-nums ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+              <dd className={`text-2xl font-bold tabular-nums ${(dashboard.openAlerts ?? 0) > 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                 {dashboard.openAlerts ?? 0}
               </dd>
             </CardContent>
@@ -160,7 +160,7 @@ export default function CompliancePage() {
           <Card>
             <CardContent className="p-4">
               <dt className="text-sm text-muted-foreground mb-1">Resolved (30d)</dt>
-              <dd className="text-2xl font-bold text-green-600 tabular-nums">{dashboard.resolvedLast30Days ?? 0}</dd>
+              <dd className="text-2xl font-bold text-acr-pos tabular-nums">{dashboard.resolvedLast30Days ?? 0}</dd>
             </CardContent>
           </Card>
         </dl>
@@ -177,7 +177,7 @@ export default function CompliancePage() {
           {alerts.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center" role="status">
-                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" aria-hidden="true" />
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-acr-pos" aria-hidden="true" />
                 <p className="font-medium">All clear — no compliance alerts.</p>
                 <p className="text-sm text-muted-foreground mt-1">AcreOS is actively monitoring your portfolio for regulatory changes.</p>
               </CardContent>
@@ -187,7 +187,7 @@ export default function CompliancePage() {
               {alerts.map((alert: any) => (
                 <li key={alert.id}>
                   <Card
-                    className={alert.severity === "critical" ? "border-red-200" : ""}
+                    className={alert.severity === "critical" ? "border-acr-neg-soft" : ""}
                     role={alert.severity === "critical" && alert.status === "open" ? "alert" : undefined}
                   >
                     <CardContent className="p-4">
@@ -203,8 +203,8 @@ export default function CompliancePage() {
                       </div>
                       <p className="text-sm text-muted-foreground mb-3">{alert.description}</p>
                       {alert.requiredAction && (
-                        <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 rounded p-2 mb-3">
-                          <p className="text-xs font-medium text-orange-700">Required action: {alert.requiredAction}</p>
+                        <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft rounded p-2 mb-3">
+                          <p className="text-xs font-medium text-acr-warn">Required action: {alert.requiredAction}</p>
                         </div>
                       )}
                       {alert.status === "open" && (
@@ -303,12 +303,12 @@ const COMPLIANCE_DEADLINES = [
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "Federal Tax": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  "Tax Strategy": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  "RESPA": "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-  "TCPA": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  "Dodd-Frank": "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  "Compliance": "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+  "Federal Tax": "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  "Tax Strategy": "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
+  "RESPA": "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
+  "TCPA": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  "Dodd-Frank": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  "Compliance": "bg-muted text-foreground dark:bg-acr-bg-sunken/30 dark:text-muted-foreground",
 };
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -342,7 +342,7 @@ function ComplianceCalendar() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4 text-amber-500" aria-hidden="true" />
+            <Clock className="h-4 w-4 text-acr-warn" aria-hidden="true" />
             Upcoming compliance deadlines
           </CardTitle>
         </CardHeader>
@@ -354,7 +354,7 @@ function ComplianceCalendar() {
               return (
                 <li
                   key={i}
-                  className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10" : "border-border"}`}
+                  className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft dark:bg-acr-warn-soft/10" : "border-border"}`}
                   role={isUrgent ? "alert" : undefined}
                 >
                   <div className="text-center min-w-[48px]">
@@ -370,7 +370,7 @@ function ComplianceCalendar() {
                     <p className="text-xs text-muted-foreground mt-0.5">{d.description}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className={`text-xs font-medium tabular-nums ${isUrgent ? "text-amber-600" : "text-muted-foreground"}`}>
+                    <p className={`text-xs font-medium tabular-nums ${isUrgent ? "text-acr-warn" : "text-muted-foreground"}`}>
                       {days === 0 ? "Today!" : `${days}d`}
                     </p>
                   </div>
@@ -389,7 +389,7 @@ function ComplianceCalendar() {
           <ul className="space-y-2" aria-label="Past deadlines this year">
             {pastDeadlines.map((d, i) => (
               <li key={i} className="flex items-center gap-3 opacity-60">
-                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" aria-label="Past" />
+                <CheckCircle className="h-4 w-4 text-acr-pos flex-shrink-0" aria-label="Past" />
                 <span className="text-sm tabular-nums">{MONTH_NAMES[d.month - 1]} {d.day}</span>
                 <span className="text-sm">— {d.title}</span>
                 <Badge className={`text-xs py-0 ml-auto ${CATEGORY_COLORS[d.category] || ""}`}>{d.category}</Badge>

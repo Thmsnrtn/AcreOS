@@ -452,8 +452,8 @@ interface ResultCardProps {
 function ResultCard({ label, value, description, variant = "default", testId }: ResultCardProps) {
   const valueColor = {
     default: "text-foreground",
-    positive: "text-green-600 dark:text-green-400",
-    negative: "text-red-600 dark:text-red-400",
+    positive: "text-acr-pos dark:text-acr-pos",
+    negative: "text-acr-neg dark:text-acr-neg",
   }[variant];
 
   return (

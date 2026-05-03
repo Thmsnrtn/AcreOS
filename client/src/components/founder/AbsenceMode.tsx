@@ -79,12 +79,12 @@ export function AbsenceMode() {
     const hoursLeft = endsAt ? Math.max(0, Math.round((endsAt.getTime() - Date.now()) / (1000 * 60 * 60))) : 0;
 
     return (
-      <Card className="border-indigo-200 dark:border-indigo-800">
+      <Card className="border-acr-accent dark:border-acr-accent">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
-              <Plane className="h-4 w-4 text-indigo-600" aria-hidden="true" />
-              <span className="text-indigo-700 dark:text-indigo-400">Away mode active</span>
+              <Plane className="h-4 w-4 text-acr-accent" aria-hidden="true" />
+              <span className="text-acr-accent dark:text-acr-accent">Away mode active</span>
             </CardTitle>
             <Button
               type="button"
@@ -108,7 +108,7 @@ export function AbsenceMode() {
               <span><span className="tabular-nums">{hoursLeft}</span>h remaining</span>
             </li>
             <li className="flex items-center gap-1.5" aria-label={`Trust boosted by ${data.trustBoost}`}>
-              <Shield className="h-3 w-3 text-indigo-500" aria-hidden="true" />
+              <Shield className="h-3 w-3 text-acr-accent" aria-hidden="true" />
               <span>Trust boosted +<span className="tabular-nums">{data.trustBoost}</span></span>
             </li>
             <li className="flex items-center gap-1.5" aria-label={`${batchedItems.length} items batched`}>
@@ -120,12 +120,12 @@ export function AbsenceMode() {
           {/* Emergency Breaks */}
           {emergencyBreaks.length > 0 && (
             <div role="alert" className="space-y-1">
-              <p id="emergency-breaks-heading" className="text-xs font-medium text-red-600 flex items-center gap-1">
+              <p id="emergency-breaks-heading" className="text-xs font-medium text-acr-neg flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Emergency breaks
               </p>
               <ul aria-labelledby="emergency-breaks-heading" className="space-y-1 list-none p-0 m-0">
                 {emergencyBreaks.map((e, i) => (
-                  <li key={i} className="text-xs p-2 rounded bg-red-50 dark:bg-red-950/20 border border-red-100">
+                  <li key={i} className="text-xs p-2 rounded bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft">
                     <span className="font-medium">{e.agentCodename}</span>: {e.reason}
                     <div className="text-muted-foreground mt-0.5">Action: {e.actionTaken}</div>
                   </li>

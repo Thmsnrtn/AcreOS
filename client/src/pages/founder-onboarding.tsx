@@ -53,11 +53,11 @@ const STATUS_META: Record<
   JourneyRow["activationStatus"],
   { label: string; icon: any; color: string }
 > = {
-  pending: { label: "In progress", icon: Clock, color: "text-amber-600 dark:text-amber-400" },
-  active: { label: "Activated", icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400" },
-  at_risk: { label: "At risk", icon: AlertTriangle, color: "text-amber-600 dark:text-amber-400" },
-  churned: { label: "Churned", icon: AlertTriangle, color: "text-red-600 dark:text-red-400" },
-  completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400" },
+  pending: { label: "In progress", icon: Clock, color: "text-acr-warn dark:text-acr-warn" },
+  active: { label: "Activated", icon: CheckCircle2, color: "text-acr-pos dark:text-acr-pos" },
+  at_risk: { label: "At risk", icon: AlertTriangle, color: "text-acr-warn dark:text-acr-warn" },
+  churned: { label: "Churned", icon: AlertTriangle, color: "text-acr-neg dark:text-acr-neg" },
+  completed: { label: "Completed", icon: CheckCircle2, color: "text-acr-pos dark:text-acr-pos" },
 };
 
 export default function FounderOnboardingPage() {
@@ -128,9 +128,9 @@ export default function FounderOnboardingPage() {
         )}
 
         {flagged.length > 0 && (
-          <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40">
+          <Card className="bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft/40">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-200">
+              <CardTitle className="text-base flex items-center gap-2 text-acr-warn dark:text-acr-warn">
                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 Flagged — Sophie wants you on a call
               </CardTitle>
@@ -158,7 +158,7 @@ export default function FounderOnboardingPage() {
                 <Skeleton className="h-16 w-full" />
               </div>
             ) : isError ? (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-acr-neg" role="alert">
                 Couldn't load journeys. The list is unchanged —{" "}
                 <button
                   type="button"

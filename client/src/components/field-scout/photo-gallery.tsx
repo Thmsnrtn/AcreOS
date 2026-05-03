@@ -76,14 +76,14 @@ export function PhotoGallery({
 
   return (
     <>
-      <Card className="bg-gray-900 border-gray-800">
+      <Card className="bg-acr-bg-sunken border-border">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Camera className="w-4 h-4 text-blue-400" />
+              <Camera className="w-4 h-4 text-acr-accent" />
               Photos
             </CardTitle>
-            <Badge variant="secondary" className="text-xs bg-gray-800 text-gray-400">
+            <Badge variant="secondary" className="text-xs bg-acr-bg-sunken text-muted-foreground">
               {photos.length} photo{photos.length !== 1 ? "s" : ""}
             </Badge>
           </div>
@@ -91,14 +91,14 @@ export function PhotoGallery({
         <CardContent>
           {photos.length === 0 ? (
             <div className="text-center py-6">
-              <Image className="w-10 h-10 mx-auto mb-2 text-gray-700" />
-              <p className="text-xs text-gray-500 mb-3">
+              <Image className="w-10 h-10 mx-auto mb-2 text-foreground" />
+              <p className="text-xs text-muted-foreground mb-3">
                 No photos yet. Capture property photos to include in your report.
               </p>
               <Button
                 size="sm"
                 onClick={onAddPhoto}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-acr-accent hover:bg-acr-accent"
               >
                 <Camera className="w-3 h-3 mr-1" />
                 Take Photo
@@ -112,7 +112,7 @@ export function PhotoGallery({
                   <button
                     key={photo.id}
                     onClick={() => openPhoto(photo)}
-                    className="relative aspect-square rounded-lg overflow-hidden bg-gray-800 hover:ring-2 hover:ring-emerald-500 transition-all group"
+                    className="relative aspect-square rounded-lg overflow-hidden bg-acr-bg-sunken hover:ring-2 hover:ring-acr-pos transition-all group"
                   >
                     <img
                       src={photo.thumbnailUrl || photo.url}
@@ -130,7 +130,7 @@ export function PhotoGallery({
                     {/* GPS indicator */}
                     {photo.latitude && (
                       <div className="absolute top-1 right-1">
-                        <MapPin className="w-3 h-3 text-emerald-400 drop-shadow" />
+                        <MapPin className="w-3 h-3 text-acr-pos drop-shadow" />
                       </div>
                     )}
                   </button>
@@ -139,7 +139,7 @@ export function PhotoGallery({
                 {/* Add photo button in grid */}
                 <button
                   onClick={onAddPhoto}
-                  className="aspect-square rounded-lg border-2 border-dashed border-gray-700 flex flex-col items-center justify-center gap-1 hover:border-blue-500 hover:text-blue-400 transition-colors text-gray-600"
+                  className="aspect-square rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 hover:border-acr-accent hover:text-acr-accent transition-colors text-muted-foreground"
                 >
                   <Plus className="w-5 h-5" />
                   <span className="text-[9px]">Add</span>
@@ -152,7 +152,7 @@ export function PhotoGallery({
 
       {/* Full-size photo dialog */}
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
-        <DialogContent className="bg-gray-900 border-gray-800 max-w-lg p-0 overflow-hidden">
+        <DialogContent className="bg-acr-bg-sunken border-border max-w-lg p-0 overflow-hidden">
           <DialogHeader className="p-3 pb-0">
             <DialogTitle className="text-sm flex items-center justify-between">
               <span>Photo Detail</span>
@@ -163,7 +163,7 @@ export function PhotoGallery({
                   onClick={() => setShowMetadata(!showMetadata)}
                   className={cn(
                     "h-7 px-2 text-xs",
-                    showMetadata ? "text-emerald-400" : "text-gray-500"
+                    showMetadata ? "text-acr-pos" : "text-muted-foreground"
                   )}
                 >
                   <MapPin className="w-3 h-3 mr-1" />
@@ -178,7 +178,7 @@ export function PhotoGallery({
                       setSelectedPhoto(null);
                     }
                   }}
-                  className="h-7 px-2 text-xs text-red-400 hover:text-red-300"
+                  className="h-7 px-2 text-xs text-acr-neg hover:text-acr-neg"
                 >
                   <Trash2 className="w-3 h-3" />
                 </Button>
@@ -201,19 +201,19 @@ export function PhotoGallery({
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
                     <div className="space-y-1">
                       {selectedPhoto.latitude && selectedPhoto.longitude && (
-                        <div className="flex items-center gap-1 text-[10px] text-gray-300">
-                          <MapPin className="w-3 h-3 text-emerald-400" />
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <MapPin className="w-3 h-3 text-acr-pos" />
                           {selectedPhoto.latitude.toFixed(6)}, {selectedPhoto.longitude.toFixed(6)}
                         </div>
                       )}
                       {selectedPhoto.bearing !== undefined && (
-                        <div className="flex items-center gap-1 text-[10px] text-gray-300">
-                          <Compass className="w-3 h-3 text-blue-400" />
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Compass className="w-3 h-3 text-acr-accent" />
                           {selectedPhoto.bearing.toFixed(1)} heading
                         </div>
                       )}
-                      <div className="flex items-center gap-1 text-[10px] text-gray-300">
-                        <Clock className="w-3 h-3 text-amber-400" />
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="w-3 h-3 text-acr-warn" />
                         {format(new Date(selectedPhoto.timestamp), "MMM d, yyyy h:mm a")}
                       </div>
                     </div>
@@ -229,7 +229,7 @@ export function PhotoGallery({
                       value={captionDraft}
                       onChange={(e) => setCaptionDraft(e.target.value)}
                       placeholder="Add a caption or notes…"
-                      className="bg-gray-800 border-gray-700 text-white text-xs h-16 resize-none"
+                      className="bg-acr-bg-sunken border-border text-white text-xs h-16 resize-none"
                       autoFocus
                     />
                     <div className="flex gap-2">
@@ -237,14 +237,14 @@ export function PhotoGallery({
                         variant="ghost"
                         size="sm"
                         onClick={() => setEditingCaption(false)}
-                        className="flex-1 text-xs text-gray-500"
+                        className="flex-1 text-xs text-muted-foreground"
                       >
                         Cancel
                       </Button>
                       <Button
                         size="sm"
                         onClick={handleSaveCaption}
-                        className="flex-1 text-xs bg-emerald-600 hover:bg-emerald-700"
+                        className="flex-1 text-xs bg-acr-pos hover:bg-acr-pos"
                       >
                         Save
                       </Button>
@@ -256,12 +256,12 @@ export function PhotoGallery({
                       setCaptionDraft(selectedPhoto.caption);
                       setEditingCaption(true);
                     }}
-                    className="w-full text-left p-2 rounded border border-gray-800 hover:border-gray-700 transition-colors"
+                    className="w-full text-left p-2 rounded border border-border hover:border-border transition-colors"
                   >
                     {selectedPhoto.caption ? (
-                      <p className="text-xs text-gray-300">{selectedPhoto.caption}</p>
+                      <p className="text-xs text-muted-foreground">{selectedPhoto.caption}</p>
                     ) : (
-                      <p className="text-xs text-gray-600 flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <MessageSquare className="w-3 h-3" />
                         Tap to add caption...
                       </p>

@@ -53,7 +53,7 @@ const PROVIDERS = [
     name: 'SendGrid',
     description: 'Send professional emails from your verified domain',
     icon: SiSendgrid,
-    iconColor: 'text-blue-500',
+    iconColor: 'text-acr-accent',
     apiKeyLabel: 'SendGrid API Key',
     helpUrl: 'https://docs.sendgrid.com/ui/account-and-settings/api-keys',
     helpText: 'Connect your SendGrid account to send emails from your own verified domain. This improves email deliverability and ensures recipients see your professional branding instead of a generic sender address.',
@@ -63,7 +63,7 @@ const PROVIDERS = [
     name: 'Twilio',
     description: 'Send SMS messages from your own phone number',
     icon: SiTwilio,
-    iconColor: 'text-red-500',
+    iconColor: 'text-acr-neg',
     apiKeyLabel: 'Twilio Auth Token',
     helpUrl: 'https://www.twilio.com/docs/sms/api',
     additionalFields: [
@@ -76,7 +76,7 @@ const PROVIDERS = [
     name: 'Lob',
     description: 'Send physical mail pieces (postcards, letters)',
     icon: FileText,
-    iconColor: 'text-green-500',
+    iconColor: 'text-acr-pos',
     apiKeyLabel: 'Lob API Key',
     helpUrl: 'https://www.lob.com/docs',
     helpText: 'Connect your Lob account to send direct mail with your own custom return addresses. This creates a more professional impression and allows recipients to respond directly to your business address.',
@@ -86,7 +86,7 @@ const PROVIDERS = [
     name: 'Regrid',
     description: 'Parcel data and comparable property lookups',
     icon: MapPin,
-    iconColor: 'text-purple-500',
+    iconColor: 'text-acr-brand',
     apiKeyLabel: 'Regrid API Key',
     helpUrl: 'https://regrid.com/api',
     helpText: 'Connect your Regrid account for parcel data and comparable property (comps) analysis. Using your own API key bypasses platform credit usage for comps queries, giving you unlimited lookups based on your Regrid plan.',
@@ -128,17 +128,17 @@ function IntegrationCard({
         <div className="flex items-center gap-2">
           {isConfigured ? (
             isValid ? (
-              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+              <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-acr-pos/20">
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 Connected
               </Badge>
             ) : config?.validationError ? (
-              <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+              <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-acr-neg/20">
                 <XCircle className="w-3 h-3 mr-1" />
                 Error
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+              <Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-acr-warn/20">
                 <AlertCircle className="w-3 h-3 mr-1" />
                 Pending
               </Badge>
@@ -156,7 +156,7 @@ function IntegrationCard({
               <code className="text-sm font-mono">{config.credentials.maskedKey}</code>
             </div>
             {config.validationError && (
-              <p className="text-sm text-red-500 mt-2">{config.validationError}</p>
+              <p className="text-sm text-acr-neg mt-2">{config.validationError}</p>
             )}
           </div>
         )}
@@ -191,7 +191,7 @@ function IntegrationCard({
                 variant="ghost" 
                 size="sm"
                 onClick={() => onDelete(provider.id)}
-                className="text-red-500"
+                className="text-acr-neg"
                 data-testid={`button-delete-${provider.id}`}
               >
                 <Trash2 className="w-4 h-4" />

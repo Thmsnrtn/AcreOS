@@ -223,12 +223,12 @@ function formatSolarTime(hours: number): string {
 
 function getSkyGradientClass(phase: SolarPosition["phase"]): string {
   switch (phase) {
-    case "night": return "from-slate-950 via-indigo-950 to-slate-900";
-    case "astronomical": return "from-slate-900 via-indigo-900 to-slate-800";
-    case "nautical": return "from-indigo-900 via-blue-900 to-indigo-800";
-    case "civil": return "from-orange-900 via-rose-800 to-amber-700";
-    case "golden": return "from-amber-600 via-orange-500 to-yellow-400";
-    case "day": return "from-sky-400 via-blue-400 to-sky-300";
+    case "night": return "from-muted via-acr-accent to-muted";
+    case "astronomical": return "from-muted via-acr-accent to-muted";
+    case "nautical": return "from-acr-accent via-acr-accent to-acr-accent";
+    case "civil": return "from-acr-warn via-acr-neg to-acr-warn";
+    case "golden": return "from-acr-warn via-acr-warn to-acr-warn";
+    case "day": return "from-acr-accent via-acr-accent to-acr-accent";
   }
 }
 
@@ -320,7 +320,7 @@ function ElevationProfileOverlay({
     <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <Mountain className="h-3.5 w-3.5 text-amber-500" />
+          <Mountain className="h-3.5 w-3.5 text-acr-warn" />
           <span className="text-xs font-semibold">Elevation Profile</span>
           <span className="text-[10px] text-muted-foreground">
             ({formatDistance(totalDistance, units)})
@@ -373,12 +373,12 @@ function ElevationProfileOverlay({
           <div className="font-semibold">{toDisplay(maxElev)}</div>
         </div>
         <div className="text-center">
-          <div className="text-emerald-600">↑ Gain</div>
-          <div className="font-semibold text-emerald-600">{toDisplay(gainM)}</div>
+          <div className="text-acr-pos">↑ Gain</div>
+          <div className="font-semibold text-acr-pos">{toDisplay(gainM)}</div>
         </div>
         <div className="text-center">
-          <div className="text-red-500">↓ Loss</div>
-          <div className="font-semibold text-red-500">{toDisplay(lossM)}</div>
+          <div className="text-acr-neg">↓ Loss</div>
+          <div className="font-semibold text-acr-neg">{toDisplay(lossM)}</div>
         </div>
       </div>
     </div>
@@ -486,7 +486,7 @@ function SunControlPanel({
     >
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-1.5">
-          <Sun className="h-3.5 w-3.5 text-amber-400" />
+          <Sun className="h-3.5 w-3.5 text-acr-warn" />
           <span className="text-xs font-semibold">Solar Simulation</span>
         </div>
         <button
@@ -503,7 +503,7 @@ function SunControlPanel({
       >
         {solar.isDaytime && (
           <div
-            className="absolute w-5 h-5 rounded-full bg-yellow-200 shadow-[0_0_12px_4px_rgba(253,224,71,0.8)] pointer-events-none"
+            className="absolute w-5 h-5 rounded-full bg-acr-warn-soft shadow-[0_0_12px_4px_rgba(253,224,71,0.8)] pointer-events-none"
             style={{
               left: `${(solar.azimuth / 360) * 100}%`,
               top: `${Math.max(8, 80 - solar.altitude)}%`,
@@ -534,7 +534,7 @@ function SunControlPanel({
         <div className="bg-muted/50 rounded p-1.5">
           <div className="text-[9px] text-muted-foreground">Elevation</div>
           <div
-            className={`text-xs font-bold ${solar.altitude > 0 ? "text-amber-500" : "text-slate-400"}`}
+            className={`text-xs font-bold ${solar.altitude > 0 ? "text-acr-warn" : "text-muted-foreground"}`}
           >
             {solar.altitude.toFixed(1)}°
           </div>
@@ -2294,7 +2294,7 @@ export function PropertyMap({
                       data-testid="button-toggle-nearby-panel"
                     >
                       <div className="flex items-center gap-2">
-                        <MapPinned className="h-4 w-4 text-blue-500" />
+                        <MapPinned className="h-4 w-4 text-acr-accent" />
                         <span className="text-sm font-medium">Nearby Parcels ({nearbyParcels.length})</span>
                       </div>
                       {nearbyPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -2384,7 +2384,7 @@ export function PropertyMap({
                       data-testid="button-toggle-comps-panel"
                     >
                       <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-green-500" />
+                        <BarChart3 className="h-4 w-4 text-acr-pos" />
                         <span className="text-sm font-medium">Comparables ({comps.length})</span>
                       </div>
                       {compsPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -2421,7 +2421,7 @@ export function PropertyMap({
                             >
                               <div className="font-medium truncate">{comp.address || comp.apn || "Comp Property"}</div>
                               {comp.salePrice && (
-                                <div className="text-green-600 font-semibold">${comp.salePrice.toLocaleString()}</div>
+                                <div className="text-acr-pos font-semibold">${comp.salePrice.toLocaleString()}</div>
                               )}
                               <div className="text-muted-foreground flex flex-wrap gap-2">
                                 {comp.saleDate && <span>{new Date(comp.saleDate).toLocaleDateString()}</span>}
@@ -2596,7 +2596,7 @@ export function PropertyMap({
                           data-testid="checkbox-hypsometric-hillshade"
                         />
                         <Label htmlFor="hypsometric-hillshade" className="text-sm cursor-pointer flex items-center gap-1">
-                          <Mountain className="h-3 w-3 text-emerald-600" />
+                          <Mountain className="h-3 w-3 text-acr-pos" />
                           Hypsometric Relief
                         </Label>
                       </div>
@@ -2609,7 +2609,7 @@ export function PropertyMap({
                           data-testid="checkbox-slope-gradient"
                         />
                         <Label htmlFor="slope-gradient" className="text-sm cursor-pointer flex items-center gap-1">
-                          <TrendingUp className="h-3 w-3 text-amber-600" />
+                          <TrendingUp className="h-3 w-3 text-acr-warn" />
                           Slope Gradient
                         </Label>
                       </div>
@@ -2708,7 +2708,7 @@ export function PropertyMap({
                                               {layer.description && <p className="text-xs text-muted-foreground">{layer.description}</p>}
                                               {layer.coverage && <p className="text-xs text-muted-foreground">Coverage: {layer.coverage}</p>}
                                               {!isArcGISMapServerUrl(layer.apiUrl) && (
-                                                <p className="text-xs text-yellow-500">Not a compatible MapServer layer</p>
+                                                <p className="text-xs text-acr-warn">Not a compatible MapServer layer</p>
                                               )}
                                             </div>
                                           </TooltipContent>
@@ -2779,9 +2779,9 @@ export function PropertyMap({
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="flex items-center gap-2">
               {measurementMode === "distance" ? (
-                <Ruler className="h-4 w-4 text-blue-500" />
+                <Ruler className="h-4 w-4 text-acr-accent" />
               ) : (
-                <Square className="h-4 w-4 text-blue-500" />
+                <Square className="h-4 w-4 text-acr-accent" />
               )}
               <span className="text-sm font-medium">
                 {measurementMode === "distance" ? "Distance" : "Area"}

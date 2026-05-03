@@ -340,7 +340,7 @@ export function MailSettingsContent() {
     switch (status) {
       case "verified":
         return (
-          <Badge variant="default" className="bg-green-600" data-testid="badge-status-verified">
+          <Badge variant="default" className="bg-acr-pos" data-testid="badge-status-verified">
             <CheckCircle className="w-3 h-3 mr-1" /> Verified
           </Badge>
         );

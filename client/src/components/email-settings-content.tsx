@@ -183,7 +183,7 @@ export function EmailSettingsContent() {
   const existingPlatformIdentity = identities.find((i) => i.type === "platform_alias");
 
   const ProviderNotice = !mailReady ? (
-    <div className="p-3 mb-3 border rounded-md bg-amber-50 text-amber-800 flex items-center gap-2">
+    <div className="p-3 mb-3 border rounded-md bg-acr-warn-soft text-acr-warn flex items-center gap-2">
       <AlertCircle className="w-4 h-4" />
       <span className="text-sm">Email provider not configured. Configure in Settings → Providers to enable sending.</span>
     </div>
@@ -340,7 +340,7 @@ export function EmailSettingsContent() {
     switch (status) {
       case "verified":
         return (
-          <Badge variant="default" className="bg-green-600" data-testid="badge-status-verified">
+          <Badge variant="default" className="bg-acr-pos" data-testid="badge-status-verified">
             <CheckCircle className="w-3 h-3 mr-1" /> Verified
           </Badge>
         );
@@ -716,7 +716,7 @@ export function EmailSettingsContent() {
                                 </TableCell>
                                 <TableCell>
                                   {record.valid ? (
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                    <CheckCircle className="w-4 h-4 text-acr-pos" />
                                   ) : (
                                     <Clock className="w-4 h-4 text-muted-foreground" />
                                   )}

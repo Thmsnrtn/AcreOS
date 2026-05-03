@@ -16,12 +16,12 @@ interface GrowthData {
 }
 
 const TIER_STYLES: Record<string, { bar: string; label: string }> = {
-  free:         { bar: "bg-slate-400",   label: "Free" },
-  sprout:       { bar: "bg-emerald-400", label: "Sprout" },
-  starter:      { bar: "bg-blue-400",    label: "Starter" },
-  professional: { bar: "bg-purple-500",  label: "Pro" },
-  scale:        { bar: "bg-orange-500",  label: "Scale" },
-  enterprise:   { bar: "bg-amber-500",   label: "Enterprise" },
+  free:         { bar: "bg-muted",   label: "Free" },
+  sprout:       { bar: "bg-acr-pos", label: "Sprout" },
+  starter:      { bar: "bg-acr-accent",    label: "Starter" },
+  professional: { bar: "bg-acr-brand",  label: "Pro" },
+  scale:        { bar: "bg-acr-warn",  label: "Scale" },
+  enterprise:   { bar: "bg-acr-warn",   label: "Enterprise" },
 };
 
 export function GrowthEngine() {
@@ -35,7 +35,7 @@ export function GrowthEngine() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-green-500" aria-hidden="true" />
+            <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
             Growth engine
           </CardTitle>
         </CardHeader>
@@ -63,14 +63,14 @@ export function GrowthEngine() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-green-500" aria-hidden="true" />
+            <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
             Growth engine
           </CardTitle>
           <Badge
             variant="outline"
             className={`text-xs tabular-nums ${netPos
-              ? "bg-green-500/10 text-green-600 border-green-500/20"
-              : "bg-red-500/10 text-red-600 border-red-500/20"
+              ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20"
+              : "bg-acr-neg/10 text-acr-neg border-acr-neg/20"
             }`}
             aria-label={`Net expansion 30 days: ${netPos ? "+" : ""}${expansionSignals.netExpansion}`}
           >
@@ -91,7 +91,7 @@ export function GrowthEngine() {
           </p>
           <ul aria-labelledby="customer-distribution-heading" className="space-y-2 list-none p-0 m-0">
             {tierDistribution.map(({ tier, count, percentage }) => {
-              const style = TIER_STYLES[tier] ?? { bar: "bg-blue-400", label: tier };
+              const style = TIER_STYLES[tier] ?? { bar: "bg-acr-accent", label: tier };
               return (
                 <li
                   key={tier}
@@ -124,17 +124,17 @@ export function GrowthEngine() {
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">→</div>
             {/* Conversions */}
-            <div className="flex-1 rounded-lg bg-green-500/5 border border-green-500/20 px-2 py-2 text-center" aria-label={`Converted: ${expansionSignals.freeToPayConversions30d}`}>
-              <p className="text-lg font-bold text-green-600 tabular-nums">{expansionSignals.freeToPayConversions30d}</p>
+            <div className="flex-1 rounded-lg bg-acr-pos/5 border border-acr-pos/20 px-2 py-2 text-center" aria-label={`Converted: ${expansionSignals.freeToPayConversions30d}`}>
+              <p className="text-lg font-bold text-acr-pos tabular-nums">{expansionSignals.freeToPayConversions30d}</p>
               <p className="text-[10px] text-muted-foreground">converted</p>
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">=</div>
             {/* Conversion rate */}
             <div
-              className={`flex-1 rounded-lg border px-2 py-2 text-center ${convRate >= 5 ? "bg-green-500/5 border-green-500/20" : convRate >= 2 ? "bg-amber-500/5 border-amber-500/20" : "bg-muted/50"}`}
+              className={`flex-1 rounded-lg border px-2 py-2 text-center ${convRate >= 5 ? "bg-acr-pos/5 border-acr-pos/20" : convRate >= 2 ? "bg-acr-warn/5 border-acr-warn/20" : "bg-muted/50"}`}
               aria-label={`Conversion rate: ${convRate.toFixed(1)}%`}
             >
-              <p className={`text-lg font-bold tabular-nums ${convRate >= 5 ? "text-green-600" : convRate >= 2 ? "text-amber-600" : "text-foreground"}`}>
+              <p className={`text-lg font-bold tabular-nums ${convRate >= 5 ? "text-acr-pos" : convRate >= 2 ? "text-acr-warn" : "text-foreground"}`}>
                 {convRate.toFixed(1)}%
               </p>
               <p className="text-[10px] text-muted-foreground">conv. rate</p>
@@ -144,12 +144,12 @@ export function GrowthEngine() {
 
         {/* Expansion signals */}
         <ul aria-label="Expansion signals" className="grid grid-cols-2 gap-2 border-t pt-3 list-none p-0 m-0">
-          <li className="rounded-lg bg-green-500/5 border border-green-500/10 px-3 py-2 text-center" aria-label={`${expansionSignals.upgrades30d} upgrades`}>
-            <p className="text-xl font-bold text-green-600 tabular-nums">{expansionSignals.upgrades30d}</p>
+          <li className="rounded-lg bg-acr-pos/5 border border-acr-pos/10 px-3 py-2 text-center" aria-label={`${expansionSignals.upgrades30d} upgrades`}>
+            <p className="text-xl font-bold text-acr-pos tabular-nums">{expansionSignals.upgrades30d}</p>
             <p className="text-[10px] text-muted-foreground">upgrades</p>
           </li>
-          <li className="rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-center" aria-label={`${expansionSignals.downgrades30d} downgrades`}>
-            <p className="text-xl font-bold text-red-500 tabular-nums">{expansionSignals.downgrades30d}</p>
+          <li className="rounded-lg bg-acr-neg/5 border border-acr-neg/10 px-3 py-2 text-center" aria-label={`${expansionSignals.downgrades30d} downgrades`}>
+            <p className="text-xl font-bold text-acr-neg tabular-nums">{expansionSignals.downgrades30d}</p>
             <p className="text-[10px] text-muted-foreground">downgrades</p>
           </li>
         </ul>
@@ -158,13 +158,13 @@ export function GrowthEngine() {
         {growthOpportunities.length > 0 && (
           <div className="space-y-1.5 border-t pt-2">
             <p id="growth-opps-heading" className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-amber-500" aria-hidden="true" />
+              <Sparkles className="h-3 w-3 text-acr-warn" aria-hidden="true" />
               Growth opportunities
             </p>
             <ul aria-labelledby="growth-opps-heading" className="space-y-1.5 list-none p-0 m-0">
               {growthOpportunities.slice(0, 3).map((opp, i) => (
                 <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                  <span aria-hidden="true" className="text-emerald-500 shrink-0 mt-0.5">→</span>
+                  <span aria-hidden="true" className="text-acr-pos shrink-0 mt-0.5">→</span>
                   <span>{opp}</span>
                 </li>
               ))}

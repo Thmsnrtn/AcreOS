@@ -130,7 +130,7 @@ export default function FounderPromptEvolutionsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load proposals. The proposal queue is unchanged —{" "}
               <button
                 type="button"

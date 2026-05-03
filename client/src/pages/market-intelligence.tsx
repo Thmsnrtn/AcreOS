@@ -15,14 +15,14 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
 function HealthBadge({ score }: { score: number }) {
-  if (score >= 70) return <Badge className="bg-green-100 text-green-800" aria-label={`Market health: strong, ${score} of 100`}>Strong {score}</Badge>;
-  if (score >= 50) return <Badge className="bg-yellow-100 text-yellow-800" aria-label={`Market health: moderate, ${score} of 100`}>Moderate {score}</Badge>;
-  return <Badge className="bg-red-100 text-red-800" aria-label={`Market health: weak, ${score} of 100`}>Weak {score}</Badge>;
+  if (score >= 70) return <Badge className="bg-acr-pos-soft text-acr-pos" aria-label={`Market health: strong, ${score} of 100`}>Strong {score}</Badge>;
+  if (score >= 50) return <Badge className="bg-acr-warn-soft text-acr-warn" aria-label={`Market health: moderate, ${score} of 100`}>Moderate {score}</Badge>;
+  return <Badge className="bg-acr-neg-soft text-acr-neg" aria-label={`Market health: weak, ${score} of 100`}>Weak {score}</Badge>;
 }
 
 function TrendArrow({ direction }: { direction: string }) {
-  if (direction === "up") return <ArrowUpRight className="w-4 h-4 text-green-500" aria-hidden="true" />;
-  if (direction === "down") return <ArrowDownRight className="w-4 h-4 text-red-500" aria-hidden="true" />;
+  if (direction === "up") return <ArrowUpRight className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
+  if (direction === "down") return <ArrowDownRight className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
   return null;
 }
 
@@ -98,10 +98,10 @@ export default function MarketIntelligencePage() {
     : null;
 
   const investmentGrade = overallScore !== null
-    ? overallScore >= 75 ? { label: "A — Prime", color: "text-emerald-600 bg-emerald-50 border-emerald-200" }
-    : overallScore >= 60 ? { label: "B — Strong", color: "text-blue-600 bg-blue-50 border-blue-200" }
-    : overallScore >= 45 ? { label: "C — Moderate", color: "text-amber-600 bg-amber-50 border-amber-200" }
-    : { label: "D — Weak", color: "text-red-600 bg-red-50 border-red-200" }
+    ? overallScore >= 75 ? { label: "A — Prime", color: "text-acr-pos bg-acr-pos-soft border-acr-pos-soft" }
+    : overallScore >= 60 ? { label: "B — Strong", color: "text-acr-accent bg-acr-accent border-acr-accent" }
+    : overallScore >= 45 ? { label: "C — Moderate", color: "text-acr-warn bg-acr-warn-soft border-acr-warn-soft" }
+    : { label: "D — Weak", color: "text-acr-neg bg-acr-neg-soft border-acr-neg-soft" }
     : null;
 
   const priceHistory = trends?.historicalPrices?.map((p: any) => ({
@@ -286,7 +286,7 @@ export default function MarketIntelligencePage() {
                 <dt className="text-xs text-muted-foreground">YoY change</dt>
                 <dd className="flex items-center gap-1">
                   <TrendArrow direction={(analysis.yoyChange ?? 0) >= 0 ? "up" : "down"} />
-                  <span className={`text-xl font-bold tabular-nums ${(analysis.yoyChange ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span className={`text-xl font-bold tabular-nums ${(analysis.yoyChange ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                     {(analysis.yoyChange ?? 0).toFixed(1)}%
                   </span>
                 </dd>
@@ -361,7 +361,7 @@ export default function MarketIntelligencePage() {
                     <dt className="text-xs text-muted-foreground">{label} forecast</dt>
                     <dd className="flex items-center gap-1 mt-1">
                       <TrendArrow direction={(trends.forecast[key] ?? 0) >= 0 ? "up" : "down"} />
-                      <span className={`text-lg font-bold tabular-nums ${(trends.forecast[key] ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <span className={`text-lg font-bold tabular-nums ${(trends.forecast[key] ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                         {(trends.forecast[key] ?? 0).toFixed(1)}%
                       </span>
                     </dd>
@@ -468,7 +468,7 @@ export default function MarketIntelligencePage() {
                             aria-label={`${d.dimension} score`}
                           >
                             <div
-                              className={`h-full rounded-full ${d.score >= 70 ? "bg-emerald-500" : d.score >= 50 ? "bg-amber-500" : "bg-red-400"}`}
+                              className={`h-full rounded-full ${d.score >= 70 ? "bg-acr-pos" : d.score >= 50 ? "bg-acr-warn" : "bg-acr-neg"}`}
                               style={{ width: `${d.score}%` }}
                             />
                           </div>
@@ -506,7 +506,7 @@ export default function MarketIntelligencePage() {
                           </div>
                           <div>
                             <dt className="text-muted-foreground">YoY</dt>
-                            <dd className={`font-bold tabular-nums ${(m.yoyChange ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>{(m.yoyChange ?? 0).toFixed(1)}%</dd>
+                            <dd className={`font-bold tabular-nums ${(m.yoyChange ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>{(m.yoyChange ?? 0).toFixed(1)}%</dd>
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Rank</dt>

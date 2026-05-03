@@ -24,19 +24,19 @@ import {
 
 function StatusIndicator({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    running: "bg-green-500",
-    active: "bg-green-500",
-    healthy: "bg-green-500",
-    idle: "bg-yellow-500",
-    paused: "bg-yellow-500",
-    warning: "bg-yellow-500",
-    error: "bg-red-500",
-    failed: "bg-red-500",
-    critical: "bg-red-500",
+    running: "bg-acr-pos",
+    active: "bg-acr-pos",
+    healthy: "bg-acr-pos",
+    idle: "bg-acr-warn",
+    paused: "bg-acr-warn",
+    warning: "bg-acr-warn",
+    error: "bg-acr-neg",
+    failed: "bg-acr-neg",
+    critical: "bg-acr-neg",
   };
   return (
     <span
-      className={`inline-block w-2 h-2 rounded-full ${colors[status] ?? "bg-gray-400"}`}
+      className={`inline-block w-2 h-2 rounded-full ${colors[status] ?? "bg-muted"}`}
       role="img"
       aria-label={`Status: ${status}`}
     />
@@ -68,7 +68,7 @@ function MetricCard({ title, value, subtitle, icon: Icon, trend }: {
         {trend && (
           <div className="mt-2" role="status">
             <TrendingUp
-              className={`w-3 h-3 inline ${trend === "up" ? "text-green-500" : trend === "down" ? "text-red-500 rotate-180" : "text-muted-foreground"}`}
+              className={`w-3 h-3 inline ${trend === "up" ? "text-acr-pos" : trend === "down" ? "text-acr-neg rotate-180" : "text-muted-foreground"}`}
               aria-hidden="true"
             />
             <span className="text-xs text-muted-foreground ml-1">
@@ -272,7 +272,7 @@ export default function SovereignDashboard() {
                   <CardContent className="pt-4">
                     <dt className="text-xs text-muted-foreground flex items-center gap-1">
                       Dead-letter queue
-                      {(meshStats.deadLetterDepth ?? 0) > 0 && <AlertTriangle className="w-3 h-3 text-yellow-500" aria-label="Dead-letter queue has events awaiting review" />}
+                      {(meshStats.deadLetterDepth ?? 0) > 0 && <AlertTriangle className="w-3 h-3 text-acr-warn" aria-label="Dead-letter queue has events awaiting review" />}
                     </dt>
                     <dd className="text-xl font-bold tabular-nums">{meshStats.deadLetterDepth ?? 0}</dd>
                   </CardContent>
@@ -330,9 +330,9 @@ export default function SovereignDashboard() {
                       <li key={job.id ?? i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2">
                         <div className="flex items-center gap-2">
                           {job.status === "success" ? (
-                            <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-label="Succeeded" />
+                            <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-label="Succeeded" />
                           ) : job.status === "failed" ? (
-                            <AlertTriangle className="w-3.5 h-3.5 text-red-500" aria-label="Failed" />
+                            <AlertTriangle className="w-3.5 h-3.5 text-acr-neg" aria-label="Failed" />
                           ) : (
                             <Clock className="w-3.5 h-3.5 text-muted-foreground" aria-label={`Status: ${job.status ?? "pending"}`} />
                           )}

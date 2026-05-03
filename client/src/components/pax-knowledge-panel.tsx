@@ -154,7 +154,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
             {uploading ? "Uploading…" : "Drop files or click to upload"}
           </p>
           <p className="text-[10px] text-muted-foreground/60 mt-0.5">PDF, DOCX, CSV, TXT · max 10 MB</p>
-          <p className="text-[10px] text-amber-600/80 mt-1">Only upload templates and criteria, not personal data.</p>
+          <p className="text-[10px] text-acr-warn/80 mt-1">Only upload templates and criteria, not personal data.</p>
         </button>
         <input
           ref={fileInputRef}

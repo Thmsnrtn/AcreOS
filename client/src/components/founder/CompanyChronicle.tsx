@@ -21,7 +21,7 @@ interface ChronicleEntry {
 
 const HIGHLIGHT_ICONS: Record<string, any> = { win: Trophy, challenge: AlertCircle, learning: Lightbulb, milestone: Star, decision: Star };
 const HIGHLIGHT_COLORS: Record<string, string> = {
-  win: "text-emerald-600", challenge: "text-amber-600", learning: "text-blue-600", milestone: "text-purple-600", decision: "text-indigo-600",
+  win: "text-acr-pos", challenge: "text-acr-warn", learning: "text-acr-accent", milestone: "text-acr-brand", decision: "text-acr-accent",
 };
 
 function ChronicleCard({ entry }: { entry: ChronicleEntry }) {
@@ -85,7 +85,7 @@ function ChronicleCard({ entry }: { entry: ChronicleEntry }) {
               <ul aria-labelledby={`${entryId}-learnings`} className="list-none p-0 m-0 space-y-1">
                 {learnings.map((l, i) => (
                   <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                    <Lightbulb className="h-2.5 w-2.5 mt-0.5 text-amber-500 shrink-0" aria-hidden="true" /> {l}
+                    <Lightbulb className="h-2.5 w-2.5 mt-0.5 text-acr-warn shrink-0" aria-hidden="true" /> {l}
                   </li>
                 ))}
               </ul>

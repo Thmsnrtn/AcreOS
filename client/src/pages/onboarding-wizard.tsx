@@ -127,7 +127,7 @@ export default function OnboardingWizardPage() {
                 aria-current={isCurrent ? "step" : undefined}
                 className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${
                   isCurrent ? "bg-primary text-primary-foreground" :
-                  isDone ? "bg-green-100 text-green-700" :
+                  isDone ? "bg-acr-pos-soft text-acr-pos" :
                   "bg-muted text-muted-foreground"
                 }`}
               >

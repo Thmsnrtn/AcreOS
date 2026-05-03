@@ -44,14 +44,14 @@ interface ActivityResponse {
 
 function PresenceDot({ status }: { status?: string }) {
   const colors: Record<string, string> = {
-    online: "bg-green-500",
-    away: "bg-yellow-400",
-    offline: "bg-gray-300",
+    online: "bg-acr-pos",
+    away: "bg-acr-warn",
+    offline: "bg-muted",
   };
   const label = status ?? "offline";
   return (
     <span
-      className={`inline-block w-2.5 h-2.5 rounded-full ${colors[label] ?? "bg-gray-300"}`}
+      className={`inline-block w-2.5 h-2.5 rounded-full ${colors[label] ?? "bg-muted"}`}
       aria-label={`Presence: ${label}`}
     />
   );

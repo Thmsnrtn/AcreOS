@@ -20,10 +20,10 @@ interface CalendarEvent {
 }
 
 const EVENT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  closing: { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
-  visit: { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
-  follow_up: { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
-  other: { bg: "bg-gray-100 dark:bg-gray-900/30", text: "text-gray-700 dark:text-gray-400", dot: "bg-gray-500" },
+  closing: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", dot: "bg-acr-pos" },
+  visit: { bg: "bg-acr-accent dark:bg-acr-accent/30", text: "text-acr-accent dark:text-acr-accent", dot: "bg-acr-accent" },
+  follow_up: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", dot: "bg-acr-warn" },
+  other: { bg: "bg-muted dark:bg-acr-bg-sunken/30", text: "text-foreground dark:text-muted-foreground", dot: "bg-muted" },
 };
 
 function getWeekDays(): Date[] {

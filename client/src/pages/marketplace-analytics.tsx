@@ -60,12 +60,12 @@ export default function MarketplaceAnalytics() {
   const listings = listingsData?.listings || [];
 
   const summaryCards = [
-    { label: "Total volume", value: `$${((analytics.totalVolume || 0) / 1000000).toFixed(1)}M`, icon: DollarSign, color: "text-green-500" },
-    { label: "Fees collected", value: `$${((analytics.totalFees || 0) / 1000).toFixed(1)}K`, icon: TrendingUp, color: "text-blue-500" },
-    { label: "Avg days to close", value: `${analytics.avgDaysToClose || 0}d`, icon: Clock, color: "text-orange-500" },
-    { label: "Close rate", value: `${analytics.closeRate || 0}%`, icon: Activity, color: "text-purple-500" },
-    { label: "Active listings", value: analytics.activeListings || 0, icon: BarChart2, color: "text-indigo-500" },
-    { label: "Bids placed", value: analytics.totalBids || 0, icon: Star, color: "text-yellow-500" },
+    { label: "Total volume", value: `$${((analytics.totalVolume || 0) / 1000000).toFixed(1)}M`, icon: DollarSign, color: "text-acr-pos" },
+    { label: "Fees collected", value: `$${((analytics.totalFees || 0) / 1000).toFixed(1)}K`, icon: TrendingUp, color: "text-acr-accent" },
+    { label: "Avg days to close", value: `${analytics.avgDaysToClose || 0}d`, icon: Clock, color: "text-acr-warn" },
+    { label: "Close rate", value: `${analytics.closeRate || 0}%`, icon: Activity, color: "text-acr-brand" },
+    { label: "Active listings", value: analytics.activeListings || 0, icon: BarChart2, color: "text-acr-accent" },
+    { label: "Bids placed", value: analytics.totalBids || 0, icon: Star, color: "text-acr-warn" },
   ];
 
   return (
@@ -76,8 +76,8 @@ export default function MarketplaceAnalytics() {
             Marketplace analytics
             {newBidCount > 0 && (
               <span className="relative" aria-label={`${newBidCount} pending bids`}>
-                <Bell className="w-5 h-5 text-orange-500" aria-hidden="true" />
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold tabular-nums">
+                <Bell className="w-5 h-5 text-acr-warn" aria-hidden="true" />
+                <span className="absolute -top-1 -right-1 bg-acr-neg text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold tabular-nums">
                   {newBidCount > 9 ? "9+" : newBidCount}
                 </span>
               </span>
@@ -270,7 +270,7 @@ export default function MarketplaceAnalytics() {
                         <th scope="row" className="font-medium px-4 text-left">{inv.name}</th>
                         <TableCell>
                           {inv.verified ? (
-                            <Badge className="bg-green-100 text-green-700" aria-label="Verified investor">
+                            <Badge className="bg-acr-pos-soft text-acr-pos" aria-label="Verified investor">
                               <span aria-hidden="true">✓</span> Verified
                             </Badge>
                           ) : (
@@ -280,7 +280,7 @@ export default function MarketplaceAnalytics() {
                         <TableCell className="tabular-nums">{inv.dealsClosed || 0}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1" aria-label={`Rating ${(inv.rating || 0).toFixed(1)} of 5`}>
-                            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />
+                            <Star className="h-3 w-3 text-acr-warn fill-acr-warn" aria-hidden="true" />
                             <span className="tabular-nums">{(inv.rating || 0).toFixed(1)}</span>
                           </div>
                         </TableCell>

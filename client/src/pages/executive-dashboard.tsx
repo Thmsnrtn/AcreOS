@@ -320,7 +320,7 @@ export default function ExecutiveDashboard() {
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       <dt>New (last 30 days)</dt>
                     </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
                     <dd className="text-2xl font-bold tabular-nums" aria-label={`Plus ${formatNumber(metrics.newOrgsLast30Days)} new organizations`}>
@@ -444,10 +444,10 @@ export default function ExecutiveDashboard() {
                     <dd
                       className={`text-2xl font-bold tabular-nums ${
                         metrics.nps.score >= 50
-                          ? "text-emerald-600"
+                          ? "text-acr-pos"
                           : metrics.nps.score >= 0
-                          ? "text-amber-600"
-                          : "text-red-600"
+                          ? "text-acr-warn"
+                          : "text-acr-neg"
                       }`}
                       aria-label={`NPS score ${metrics.nps.score}, ${npsTier(metrics.nps.score)}`}
                     >
@@ -466,10 +466,10 @@ export default function ExecutiveDashboard() {
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       <dt><InfoTooltip term="Promoters" explanation="Customers who love your product and would recommend it to others (scored 9-10).">Promoters</InfoTooltip></dt>
                     </CardTitle>
-                    <ThumbsUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    <ThumbsUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <dd className="text-2xl font-bold text-emerald-600 tabular-nums">
+                    <dd className="text-2xl font-bold text-acr-pos tabular-nums">
                       {metrics.nps.promoters}
                     </dd>
                     <p className="text-xs text-muted-foreground">
@@ -485,10 +485,10 @@ export default function ExecutiveDashboard() {
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       <dt><InfoTooltip term="Passives" explanation="Customers who are satisfied but not enthusiastic. They might switch to a competitor (scored 7-8).">Passives</InfoTooltip></dt>
                     </CardTitle>
-                    <Minus className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                    <Minus className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <dd className="text-2xl font-bold text-amber-600 tabular-nums">
+                    <dd className="text-2xl font-bold text-acr-warn tabular-nums">
                       {metrics.nps.passives}
                     </dd>
                     <p className="text-xs text-muted-foreground">
@@ -504,10 +504,10 @@ export default function ExecutiveDashboard() {
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       <dt><InfoTooltip term="Detractors" explanation="Unhappy customers who may discourage others from using your product (scored 0-6).">Detractors</InfoTooltip></dt>
                     </CardTitle>
-                    <ThumbsDown className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    <ThumbsDown className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <dd className="text-2xl font-bold text-red-600 tabular-nums">
+                    <dd className="text-2xl font-bold text-acr-neg tabular-nums">
                       {metrics.nps.detractors}
                     </dd>
                     <p className="text-xs text-muted-foreground">

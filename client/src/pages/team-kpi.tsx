@@ -19,12 +19,12 @@ export default function TeamKPI() {
 
   // Placeholder KPI cards shown while real data loads or if API not ready
   const placeholderKPIs = [
-    { label: "Deals Closed (30d)", value: "—", icon: Target, color: "text-green-600" },
-    { label: "Avg Deal Cycle Time", value: "—", icon: Clock, color: "text-blue-600" },
-    { label: "Leads Worked", value: "—", icon: Users, color: "text-purple-600" },
-    { label: "Revenue Generated", value: "—", icon: DollarSign, color: "text-yellow-600" },
-    { label: "Conversion Rate", value: "—", icon: TrendingUp, color: "text-teal-600" },
-    { label: "Avg Offer Accepted %", value: "—", icon: BarChart2, color: "text-orange-600" },
+    { label: "Deals Closed (30d)", value: "—", icon: Target, color: "text-acr-pos" },
+    { label: "Avg Deal Cycle Time", value: "—", icon: Clock, color: "text-acr-accent" },
+    { label: "Leads Worked", value: "—", icon: Users, color: "text-acr-brand" },
+    { label: "Revenue Generated", value: "—", icon: DollarSign, color: "text-acr-warn" },
+    { label: "Conversion Rate", value: "—", icon: TrendingUp, color: "text-acr-accent" },
+    { label: "Avg Offer Accepted %", value: "—", icon: BarChart2, color: "text-acr-warn" },
   ];
 
   return (
@@ -45,7 +45,7 @@ export default function TeamKPI() {
                     <p className="text-xs text-muted-foreground">{kpi.label}</p>
                     <p className="text-2xl font-bold mt-1">{kpi.value}</p>
                     {kpi.change !== undefined && (
-                      <p className={`text-xs mt-1 ${kpi.change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <p className={`text-xs mt-1 ${kpi.change >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                         {kpi.change >= 0 ? "+" : ""}{kpi.change}% vs last period
                       </p>
                     )}

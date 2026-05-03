@@ -47,23 +47,23 @@ const notificationIcons: Record<string, any> = {
 };
 
 const notificationColors: Record<string, string> = {
-  task_assigned: "text-blue-500",
-  task_due: "text-amber-500",
-  task_overdue: "text-red-500",
-  deal_update: "text-green-500",
-  deal_stage_changed: "text-purple-500",
-  payment_received: "text-green-500",
-  payment_missed: "text-red-500",
-  lead_response: "text-blue-500",
-  lead_assigned: "text-blue-500",
-  team_mention: "text-purple-500",
-  automation_triggered: "text-amber-500",
-  system_alert: "text-red-500",
+  task_assigned: "text-acr-accent",
+  task_due: "text-acr-warn",
+  task_overdue: "text-acr-neg",
+  deal_update: "text-acr-pos",
+  deal_stage_changed: "text-acr-brand",
+  payment_received: "text-acr-pos",
+  payment_missed: "text-acr-neg",
+  lead_response: "text-acr-accent",
+  lead_assigned: "text-acr-accent",
+  team_mention: "text-acr-brand",
+  automation_triggered: "text-acr-warn",
+  system_alert: "text-acr-neg",
   // v3: Agent action colors
-  agent_action_completed: "text-green-500",
-  agent_decision_made: "text-blue-500",
-  trust_promotion: "text-amber-500",
-  agent_proactive: "text-purple-500",
+  agent_action_completed: "text-acr-pos",
+  agent_decision_made: "text-acr-accent",
+  trust_promotion: "text-acr-warn",
+  agent_proactive: "text-acr-brand",
 };
 
 export function NotificationCenter() {

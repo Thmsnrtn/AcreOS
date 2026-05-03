@@ -46,17 +46,17 @@ export function LcsBenchmarkPopover({ propertyId, children }: LcsBenchmarkPopove
 
   const trendIcon = data?.comparison
     ? data.comparison.vsMedian > 0
-      ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
+      ? <TrendingUp className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
       : data.comparison.vsMedian < 0
-        ? <TrendingDown className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+        ? <TrendingDown className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
         : <Minus className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
     : null;
 
   const positionColor: Record<string, string> = {
-    top_quartile: "text-emerald-600 dark:text-emerald-400",
-    above_median: "text-blue-600 dark:text-blue-400",
-    below_median: "text-amber-600 dark:text-amber-400",
-    bottom_quartile: "text-red-600 dark:text-red-400",
+    top_quartile: "text-acr-pos dark:text-acr-pos",
+    above_median: "text-acr-accent dark:text-acr-accent",
+    below_median: "text-acr-warn dark:text-acr-warn",
+    bottom_quartile: "text-acr-neg dark:text-acr-neg",
   };
 
   return (

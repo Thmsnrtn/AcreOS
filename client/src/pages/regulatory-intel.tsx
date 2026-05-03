@@ -112,7 +112,7 @@ interface RiskAssessment {
 // ─── Compliance Score Gauge ───────────────────────────────────────────────────
 
 function ComplianceScoreGauge({ score }: { score: number }) {
-  const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600';
+  const color = score >= 80 ? 'text-acr-pos' : score >= 60 ? 'text-acr-warn' : 'text-acr-neg';
   const tier = score >= 80 ? 'strong' : score >= 60 ? 'moderate' : 'weak';
   const circumference = 2 * Math.PI * 36;
   const dashoffset = circumference - (score / 100) * circumference;
@@ -131,7 +131,7 @@ function ComplianceScoreGauge({ score }: { score: number }) {
             strokeDasharray={circumference}
             strokeDashoffset={dashoffset}
             strokeLinecap="round"
-            className={score >= 80 ? 'stroke-green-500' : score >= 60 ? 'stroke-yellow-500' : 'stroke-red-500'}
+            className={score >= 80 ? 'stroke-acr-pos' : score >= 60 ? 'stroke-acr-warn' : 'stroke-acr-neg'}
             style={{ transition: 'stroke-dashoffset 0.5s ease' }}
           />
         </svg>
@@ -220,16 +220,16 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
       </CardHeader>
       <CardContent className="space-y-4">
         <dl className="grid grid-cols-3 gap-3 text-center">
-          <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-2">
-            <dd className="text-xl font-bold text-red-600 tabular-nums">{criticalCount}</dd>
+          <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded-lg p-2">
+            <dd className="text-xl font-bold text-acr-neg tabular-nums">{criticalCount}</dd>
             <dt className="text-xs text-muted-foreground">Critical alerts</dt>
           </div>
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
-            <dd className="text-xl font-bold text-yellow-600 tabular-nums">{warningCount}</dd>
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
+            <dd className="text-xl font-bold text-acr-warn tabular-nums">{warningCount}</dd>
             <dt className="text-xs text-muted-foreground">Warnings</dt>
           </div>
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
-            <dd className="text-xl font-bold text-blue-600 tabular-nums">{impactedStates.length}</dd>
+          <div className="bg-acr-accent dark:bg-acr-accent/20 rounded-lg p-2">
+            <dd className="text-xl font-bold text-acr-accent tabular-nums">{impactedStates.length}</dd>
             <dt className="text-xs text-muted-foreground">States impacted</dt>
           </div>
         </dl>
@@ -253,7 +253,7 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
                         aria-valuemax={4}
                         aria-label={`${s.name} alert intensity`}
                       >
-                        <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                        <div className="bg-acr-neg h-1.5 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {s.alertCount} alert{s.alertCount !== 1 ? 's' : ''}
@@ -281,9 +281,9 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
 }
 
 const RISK_COLORS = {
-  low: "text-green-600 bg-green-50 dark:bg-green-900/20",
-  medium: "text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20",
-  high: "text-red-600 bg-red-50 dark:bg-red-900/20",
+  low: "text-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft/20",
+  medium: "text-acr-warn bg-acr-warn-soft dark:bg-acr-warn-soft/20",
+  high: "text-acr-neg bg-acr-neg-soft dark:bg-acr-neg-soft/20",
 };
 
 const SEVERITY_ICONS = {
@@ -293,9 +293,9 @@ const SEVERITY_ICONS = {
 };
 
 const SEVERITY_COLORS = {
-  info: "text-blue-600 border-blue-200",
-  warning: "text-yellow-600 border-yellow-200",
-  critical: "text-red-600 border-red-200",
+  info: "text-acr-accent border-acr-accent",
+  warning: "text-acr-warn border-acr-warn-soft",
+  critical: "text-acr-neg border-acr-neg-soft",
 };
 
 function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
@@ -310,7 +310,7 @@ function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
 }
 
 function ScoreBar({ score }: { score: number }) {
-  const color = score <= 3 ? "bg-green-500" : score <= 6 ? "bg-yellow-500" : "bg-red-500";
+  const color = score <= 3 ? "bg-acr-pos" : score <= 6 ? "bg-acr-warn" : "bg-acr-neg";
   const tier = score <= 3 ? "low" : score <= 6 ? "moderate" : "high";
   return (
     <div className="flex items-center gap-2">
@@ -410,16 +410,16 @@ export default function RegulatoryIntelPage() {
       {/* Critical Alerts Banner */}
       {criticalAlerts.length > 0 && (
         <div
-          className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-1"
+          className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft rounded-lg p-4 space-y-1"
           role="alert"
         >
-          <p className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium text-sm">
+          <p className="flex items-center gap-2 text-acr-neg dark:text-acr-neg font-medium text-sm">
             <XCircle className="w-4 h-4" aria-hidden="true" />
             <span className="tabular-nums">{criticalAlerts.length}</span> critical alert{criticalAlerts.length > 1 ? "s" : ""}
           </p>
           <ul className="space-y-0.5 list-none p-0 m-0" aria-label="Critical regulatory alerts">
             {criticalAlerts.map(a => (
-              <li key={a.id} className="text-sm text-red-600 dark:text-red-400">
+              <li key={a.id} className="text-sm text-acr-neg dark:text-acr-neg">
                 {a.state && <strong>[{a.state}]</strong>} {a.title}
               </li>
             ))}
@@ -617,7 +617,7 @@ export default function RegulatoryIntelPage() {
                       {items.map((item, i) => (
                         <li key={i} className="flex items-start gap-2.5 text-sm">
                           {item.required ? (
-                            <CheckCircle2 className="w-4 h-4 text-red-500 shrink-0 mt-0.5" aria-label="Required" />
+                            <CheckCircle2 className="w-4 h-4 text-acr-neg shrink-0 mt-0.5" aria-label="Required" />
                           ) : (
                             <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/40 shrink-0 mt-0.5" role="img" aria-label="Optional" />
                           )}
@@ -718,7 +718,7 @@ export default function RegulatoryIntelPage() {
                     <ul className="space-y-1.5 list-none p-0 m-0" aria-labelledby="risk-flags-label">
                       {assessment.flags.map((flag, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" aria-hidden="true" />
+                          <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
                           <span>{flag}</span>
                         </li>
                       ))}
@@ -731,7 +731,7 @@ export default function RegulatoryIntelPage() {
                     <ul className="space-y-1.5 list-none p-0 m-0" aria-labelledby="recommendations-label">
                       {assessment.recommendations.map((rec, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" aria-hidden="true" />
+                          <CheckCircle2 className="w-4 h-4 text-acr-pos shrink-0 mt-0.5" aria-hidden="true" />
                           <span>{rec}</span>
                         </li>
                       ))}

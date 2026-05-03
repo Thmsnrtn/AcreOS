@@ -66,9 +66,9 @@ function pct(n: number) {
 }
 
 function colorForRate(rate: number): string {
-  if (rate >= 0.15) return "text-green-600";
-  if (rate >= 0.08) return "text-yellow-600";
-  return "text-red-500";
+  if (rate >= 0.15) return "text-acr-pos";
+  if (rate >= 0.08) return "text-acr-warn";
+  return "text-acr-neg";
 }
 
 export function CohortAnalytics() {

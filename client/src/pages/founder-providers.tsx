@@ -60,7 +60,7 @@ export default function FounderProvidersPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load provider summary. Provider state is unchanged —{" "}
               <button
                 type="button"
@@ -111,10 +111,10 @@ export default function FounderProvidersPage() {
                           <span
                             className={`tabular-nums ${
                               p.successRate < 60
-                                ? "text-red-600 dark:text-red-400 font-medium"
+                                ? "text-acr-neg dark:text-acr-neg font-medium"
                                 : p.successRate < 80
-                                  ? "text-amber-600 dark:text-amber-400"
-                                  : "text-emerald-600 dark:text-emerald-400"
+                                  ? "text-acr-warn dark:text-acr-warn"
+                                  : "text-acr-pos dark:text-acr-pos"
                             }`}
                             aria-label={
                               p.successRate < 60
@@ -127,7 +127,7 @@ export default function FounderProvidersPage() {
                             {p.successRate}%
                           </span>
                           {p.successRate < 60 && (
-                            <AlertTriangle className="inline-block ml-1 h-3 w-3 text-red-600" aria-hidden="true" />
+                            <AlertTriangle className="inline-block ml-1 h-3 w-3 text-acr-neg" aria-hidden="true" />
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-xs text-muted-foreground tabular-nums">

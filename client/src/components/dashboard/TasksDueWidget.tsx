@@ -25,10 +25,10 @@ interface TasksDashboardSummary {
 }
 
 const priorityStyles: Record<string, string> = {
-  urgent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  high: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  medium: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  low: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  urgent: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
+  high: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  medium: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  low: "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
 };
 
 function TaskItem({ task, onComplete, isCompleting }: {
@@ -58,7 +58,7 @@ function TaskItem({ task, onComplete, isCompleting }: {
           {isCompleting ? (
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-muted-foreground hover:text-green-600" aria-hidden="true" />
+            <CheckCircle2 className="w-4 h-4 text-muted-foreground hover:text-acr-pos" aria-hidden="true" />
           )}
         </Button>
         <div className="min-w-0 flex-1">
@@ -67,7 +67,7 @@ function TaskItem({ task, onComplete, isCompleting }: {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" aria-hidden="true" />
               {isOverdue ? (
-                <span className="text-red-600 dark:text-red-400">
+                <span className="text-acr-neg dark:text-acr-neg">
                   {relative(task.dueDate)}
                 </span>
               ) : (
@@ -141,7 +141,7 @@ export function TasksDueWidget() {
   // Error state
   if (error) {
     return (
-      <Card className="floating-window border-red-200 dark:border-red-800" data-testid="tasks-due-widget">
+      <Card className="floating-window border-acr-neg-soft dark:border-acr-neg-soft" data-testid="tasks-due-widget">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ListTodo className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -149,7 +149,7 @@ export function TasksDueWidget() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="text-sm text-acr-neg dark:text-acr-neg">
             Failed to load tasks. Please try again.
           </p>
         </CardContent>
@@ -173,7 +173,7 @@ export function TasksDueWidget() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <CheckCircle2 className="w-10 h-10 text-green-500 mb-3" aria-hidden="true" />
+            <CheckCircle2 className="w-10 h-10 text-acr-pos mb-3" aria-hidden="true" />
             <p className="text-sm font-medium">All caught up!</p>
             <p className="text-xs text-muted-foreground mt-1">No tasks due today or overdue.</p>
             <Button asChild variant="outline" size="sm" className="mt-4">
@@ -189,7 +189,7 @@ export function TasksDueWidget() {
 
   return (
     <Card 
-      className={`floating-window ${hasOverdue ? 'border-red-200 dark:border-red-800' : ''}`}
+      className={`floating-window ${hasOverdue ? 'border-acr-neg-soft dark:border-acr-neg-soft' : ''}`}
       data-testid="tasks-due-widget"
     >
       <CardHeader className="pb-3">
@@ -206,8 +206,8 @@ export function TasksDueWidget() {
         {hasOverdue && (
           <section aria-labelledby="overdue-heading" data-testid="overdue-section">
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
-              <span id="overdue-heading" className="text-sm font-medium text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
+              <span id="overdue-heading" className="text-sm font-medium text-acr-neg dark:text-acr-neg">
                 Overdue (<span className="tabular-nums">{data.overdueCount}</span>)
               </span>
             </div>
@@ -235,7 +235,7 @@ export function TasksDueWidget() {
         {hasDueToday && (
           <section aria-labelledby="due-today-heading" data-testid="due-today-section">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-amber-500" aria-hidden="true" />
+              <Clock className="w-4 h-4 text-acr-warn" aria-hidden="true" />
               <span id="due-today-heading" className="text-sm font-medium">
                 Due today (<span className="tabular-nums">{data.dueTodayCount}</span>)
               </span>

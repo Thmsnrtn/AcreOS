@@ -19,10 +19,10 @@ function formatCents(cents: number): string {
 }
 
 const BAND_COLORS: Record<string, string> = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
-  critical: "bg-red-700",
+  green: "bg-acr-pos",
+  yellow: "bg-acr-warn",
+  red: "bg-acr-neg",
+  critical: "bg-acr-neg",
 };
 
 const BAND_LABELS: Record<string, string> = {
@@ -34,7 +34,7 @@ const BAND_LABELS: Record<string, string> = {
 
 function MetricCard({ title, value, sub, trend }: { title: string; value: string; sub?: string; trend?: "up" | "down" | "flat" }) {
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
-  const trendColor = trend === "up" ? "text-green-500" : trend === "down" ? "text-red-500" : "text-muted-foreground";
+  const trendColor = trend === "up" ? "text-acr-pos" : trend === "down" ? "text-acr-neg" : "text-muted-foreground";
   const trendLabel = trend === "up" ? "trending up" : trend === "down" ? "trending down" : "flat";
 
   return (
@@ -123,7 +123,7 @@ export function BusinessIntelligence() {
                       className="flex items-center gap-2"
                       aria-label={`${label}: ${count} (${pct}%)`}
                     >
-                      <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${BAND_COLORS[band] ?? "bg-gray-400"}`} />
+                      <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${BAND_COLORS[band] ?? "bg-muted"}`} />
                       <span className="text-xs text-muted-foreground flex-1">{label}</span>
                       <span className="text-xs font-medium tabular-nums">{count}</span>
                       <span className="text-xs text-muted-foreground tabular-nums">({pct}%)</span>

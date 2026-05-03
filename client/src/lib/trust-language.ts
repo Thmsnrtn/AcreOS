@@ -96,11 +96,11 @@ export function trustLabel(score: number): string {
  * Trust badge color class for UI components.
  */
 export function trustBadgeColor(score: number): string {
-  if (score >= 90) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
-  if (score >= 75) return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-  if (score >= 60) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
-  if (score >= 40) return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
-  return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+  if (score >= 90) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
+  if (score >= 75) return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+  if (score >= 60) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+  if (score >= 40) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+  return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
 }
 
 /**

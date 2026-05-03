@@ -42,8 +42,8 @@ export default function DelegationManager() {
   return (
     <section aria-labelledby="active-delegations-heading" className="p-4 space-y-2">
       <div className="flex items-center gap-2 mb-1">
-        <Shield className="w-4 h-4 text-amber-400" aria-hidden="true" />
-        <h3 id="active-delegations-heading" className="text-xs font-medium text-gray-500 uppercase tracking-wide m-0">Active delegations</h3>
+        <Shield className="w-4 h-4 text-acr-warn" aria-hidden="true" />
+        <h3 id="active-delegations-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wide m-0">Active delegations</h3>
       </div>
 
       <ul aria-labelledby="active-delegations-heading" className="space-y-2 list-none p-0 m-0">
@@ -55,16 +55,16 @@ export default function DelegationManager() {
           return (
             <li
               key={d.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-900/10 border border-amber-900/20"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-warn-soft/10 border border-acr-warn-soft/20"
               aria-label={`${name} elevated to level ${d.toLevel}, ${expiryText}, reason: ${d.reason}`}
             >
               <div className="flex-1">
-                <p className="text-sm text-gray-200">
-                  <span className="font-medium text-amber-400">{name}</span> — elevated to Level <span className="tabular-nums">{d.toLevel}</span>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-acr-warn">{name}</span> — elevated to Level <span className="tabular-nums">{d.toLevel}</span>
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <Clock className="w-3 h-3 text-gray-500" aria-hidden="true" />
-                  <p className="text-[10px] text-gray-500">
+                  <Clock className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
+                  <p className="text-[10px] text-muted-foreground">
                     <span className="tabular-nums">{expiryText}</span> · {d.reason}
                   </p>
                 </div>
@@ -75,7 +75,7 @@ export default function DelegationManager() {
                 disabled={revokeMutation.isPending}
                 aria-busy={revokeMutation.isPending}
                 aria-label={`Revoke delegation for ${name}`}
-                className="p-1 text-gray-500 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                className="p-1 text-muted-foreground hover:text-acr-neg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>

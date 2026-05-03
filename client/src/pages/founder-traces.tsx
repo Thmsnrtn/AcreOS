@@ -104,7 +104,7 @@ export default function FounderTracesPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load traces. The trace log is unchanged —{" "}
               <button
                 type="button"
@@ -172,7 +172,7 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
           <span className="text-sm font-medium text-foreground">{trace.purpose}</span>
           <Badge variant="outline" className="text-[10px]">{trace.model}</Badge>
           {trace.error ? (
-            <Badge variant="outline" className="text-[10px] border-rose-500/30 text-rose-600">
+            <Badge variant="outline" className="text-[10px] border-acr-neg/30 text-acr-neg">
               Error
             </Badge>
           ) : null}
@@ -200,7 +200,7 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
                 {detail.error && (
                   <div
                     role="alert"
-                    className="rounded-md bg-rose-500/5 border border-rose-500/30 p-2 text-xs text-rose-700 dark:text-rose-300 font-mono whitespace-pre-wrap"
+                    className="rounded-md bg-acr-neg/5 border border-acr-neg/30 p-2 text-xs text-acr-neg dark:text-acr-neg font-mono whitespace-pre-wrap"
                   >
                     {detail.error}
                   </div>

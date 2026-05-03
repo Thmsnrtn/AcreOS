@@ -51,9 +51,9 @@ interface Initiative {
 }
 
 const CONFIDENCE_COLORS: Record<string, string> = {
-  high: "text-emerald-600",
-  medium: "text-amber-600",
-  low: "text-red-600",
+  high: "text-acr-pos",
+  medium: "text-acr-warn",
+  low: "text-acr-neg",
 };
 
 function InitiativeCard({ initiative }: { initiative: Initiative }) {
@@ -89,10 +89,10 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
           variant="outline"
           aria-label={`Status: ${initiative.status}`}
           className={`capitalize ${
-            initiative.status === "approved" ? "bg-emerald-100 text-emerald-800" :
-            initiative.status === "rejected" ? "bg-red-100 text-red-800" :
-            initiative.status === "shelved" ? "bg-amber-100 text-amber-800" :
-            "bg-blue-100 text-blue-800"
+            initiative.status === "approved" ? "bg-acr-pos-soft text-acr-pos" :
+            initiative.status === "rejected" ? "bg-acr-neg-soft text-acr-neg" :
+            initiative.status === "shelved" ? "bg-acr-warn-soft text-acr-warn" :
+            "bg-acr-accent text-acr-accent"
           }`}
         >
           {initiative.status}
@@ -193,7 +193,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
               type="button"
               size="sm"
               variant="ghost"
-              className="h-7 text-xs text-red-600"
+              className="h-7 text-xs text-acr-neg"
               onClick={() => voteMutation.mutate({ action: "reject", ceoNotes: notes || undefined })}
               disabled={voteMutation.isPending}
               aria-busy={voteMutation.isPending}
@@ -248,7 +248,7 @@ export function InitiativeBoard() {
           <CardTitle className="text-base flex items-center gap-2">
             <Lightbulb className="h-4 w-4" aria-hidden="true" /> Agent initiatives
             {pendingCount > 0 && (
-              <Badge variant="outline" className="bg-blue-100 text-blue-800 ml-1 tabular-nums" aria-label={`${pendingCount} pending`}>
+              <Badge variant="outline" className="bg-acr-accent text-acr-accent ml-1 tabular-nums" aria-label={`${pendingCount} pending`}>
                 {pendingCount} pending
               </Badge>
             )}

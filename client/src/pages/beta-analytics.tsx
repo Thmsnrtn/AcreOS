@@ -52,9 +52,9 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const HEALTH_COLORS = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
+  green: "bg-acr-pos",
+  yellow: "bg-acr-warn",
+  red: "bg-acr-neg",
 };
 
 const HEALTH_LABELS = {

@@ -25,10 +25,10 @@ function HealthGauge({ score }: { score: number }) {
   const offset = circumference - (Math.min(100, score) / 100) * circumference;
 
   const color =
-    score >= 80 ? "stroke-emerald-500" :
-    score >= 60 ? "stroke-blue-500" :
-    score >= 40 ? "stroke-amber-500" :
-    "stroke-red-500";
+    score >= 80 ? "stroke-acr-pos" :
+    score >= 60 ? "stroke-acr-accent" :
+    score >= 40 ? "stroke-acr-warn" :
+    "stroke-acr-neg";
 
   const label =
     score >= 80 ? "Excellent" :
@@ -68,10 +68,10 @@ function HealthGauge({ score }: { score: number }) {
 
 function DimensionBar({ dimension }: { dimension: HealthDimension }) {
   const color =
-    dimension.score >= 80 ? "bg-emerald-500" :
-    dimension.score >= 60 ? "bg-blue-500" :
-    dimension.score >= 40 ? "bg-amber-500" :
-    "bg-red-500";
+    dimension.score >= 80 ? "bg-acr-pos" :
+    dimension.score >= 60 ? "bg-acr-accent" :
+    dimension.score >= 40 ? "bg-acr-warn" :
+    "bg-acr-neg";
 
   return (
     <div className="space-y-0.5">
@@ -128,7 +128,7 @@ export function PortfolioHealthCard() {
           {/* Top 2 action items */}
           {data.topActions.slice(0, 2).map((action, i) => (
             <div key={i} className="flex items-start gap-1.5 text-[10px] text-muted-foreground">
-              <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+              <AlertTriangle className="w-3 h-3 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
               <span className="truncate">{action}</span>
             </div>
           ))}
@@ -152,10 +152,10 @@ export function TaxOptimizationBanner({ estimatedSavings }: { estimatedSavings?:
 
   return (
     <aside aria-label="Year-end tax optimization">
-      <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+      <Card className="border-acr-warn-soft dark:border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/20">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <TrendingUp className="w-5 h-5 text-amber-600" aria-hidden="true" />
+            <TrendingUp className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             <div>
               <p className="text-sm font-semibold">Year-end tax optimization</p>
               <p className="text-xs text-muted-foreground">

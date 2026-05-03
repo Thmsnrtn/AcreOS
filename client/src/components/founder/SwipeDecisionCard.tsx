@@ -148,7 +148,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           className="absolute inset-y-0 right-4 flex items-center pointer-events-none"
           style={{ opacity: approveOpacity }}
         >
-          <div className="flex items-center gap-2 text-green-600 font-medium">
+          <div className="flex items-center gap-2 text-acr-pos font-medium">
             <Check className="h-6 w-6" />
             <span className="text-sm">Approve</span>
           </div>
@@ -158,7 +158,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           className="absolute inset-y-0 left-4 flex items-center pointer-events-none"
           style={{ opacity: rejectOpacity }}
         >
-          <div className="flex items-center gap-2 text-red-600 font-medium">
+          <div className="flex items-center gap-2 text-acr-neg font-medium">
             <span className="text-sm">Reject</span>
             <X className="h-6 w-6" />
           </div>
@@ -176,17 +176,17 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
               exit={{ opacity: 0 }}
               className={`absolute inset-0 z-10 flex items-center justify-center rounded-xl ${
                 flashState === 'approved'
-                  ? 'bg-green-500/20'
-                  : 'bg-red-500/20'
+                  ? 'bg-acr-pos/20'
+                  : 'bg-acr-neg/20'
               }`}
             >
               {flashState === 'approved' ? (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
-                  <Check className="h-12 w-12 text-green-600" strokeWidth={3} aria-hidden="true" />
+                  <Check className="h-12 w-12 text-acr-pos" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               ) : (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
-                  <X className="h-12 w-12 text-red-600" strokeWidth={3} aria-hidden="true" />
+                  <X className="h-12 w-12 text-acr-neg" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               )}
             </motion.div>
@@ -207,9 +207,9 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
               </div>
             </div>
             <Badge className={`text-xs ${
-              item.riskLevel === "critical" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" :
-              item.riskLevel === "high" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" :
-              "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+              item.riskLevel === "critical" ? "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" :
+              item.riskLevel === "high" ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" :
+              "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
             }`}>
               {naturalRisk(item.riskLevel)}
             </Badge>
@@ -259,7 +259,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
             <Button
               type="button"
               size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white flex-1"
+              className="bg-acr-pos hover:bg-acr-pos text-white flex-1"
               disabled={mutate.isPending}
               aria-busy={mutate.isPending}
               onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "approve" }); }}

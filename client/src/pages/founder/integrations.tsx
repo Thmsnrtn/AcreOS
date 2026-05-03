@@ -140,26 +140,26 @@ export default function FounderIntegrationsPage() {
           <Card
             className={
               data.summary.criticalMissing > 0
-                ? "border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20"
-                : "border-green-500/50 bg-green-50/50 dark:bg-green-950/20"
+                ? "border-acr-warn/50 bg-acr-warn-soft/50 dark:bg-acr-warn-soft/20"
+                : "border-acr-pos/50 bg-acr-pos-soft/50 dark:bg-acr-pos-soft/20"
             }
           >
             <CardContent className="py-4">
               <div className="flex items-center gap-3">
                 {data.summary.criticalMissing > 0 ? (
-                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
+                  <AlertTriangle className="w-5 h-5 text-acr-warn dark:text-acr-warn shrink-0" aria-hidden="true" />
                 ) : (
-                  <ShieldCheck className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
+                  <ShieldCheck className="w-5 h-5 text-acr-pos dark:text-acr-pos shrink-0" aria-hidden="true" />
                 )}
                 <p className="text-sm font-medium">
                   {data.summary.configured} of {data.summary.total} integrations configured.
                   {data.summary.criticalMissing > 0 && (
-                    <span className="text-amber-700 dark:text-amber-300 ml-1">
+                    <span className="text-acr-warn dark:text-acr-warn ml-1">
                       {data.summary.criticalMissing} critical integration{data.summary.criticalMissing > 1 ? "s" : ""} need{data.summary.criticalMissing === 1 ? "s" : ""} attention.
                     </span>
                   )}
                   {data.summary.criticalMissing === 0 && (
-                    <span className="text-green-700 dark:text-green-300 ml-1">
+                    <span className="text-acr-pos dark:text-acr-pos ml-1">
                       All critical integrations are configured.
                     </span>
                   )}
@@ -246,12 +246,12 @@ function IntegrationCard({
         <h3 className="font-semibold text-sm">{integration.displayName}</h3>
         <div className="flex items-center gap-1.5">
           {integration.isCritical && (
-            <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-300">
+            <Badge variant="outline" className="text-xs border-acr-warn text-acr-warn dark:text-acr-warn">
               Critical
             </Badge>
           )}
           {integration.isConfigured ? (
-            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-xs">
+            <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/40 dark:text-acr-pos text-xs">
               <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
               Configured
             </Badge>
@@ -269,8 +269,8 @@ function IntegrationCard({
         <p
           className={`text-xs ${
             verifyResult.status === "pass"
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400"
+              ? "text-acr-pos dark:text-acr-pos"
+              : "text-acr-neg dark:text-acr-neg"
           }`}
         >
           {verifyResult.status === "pass" ? "Verified" : "Failed"}: {verifyResult.message}

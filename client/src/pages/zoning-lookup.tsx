@@ -136,13 +136,13 @@ export default function ZoningLookupPage() {
 
             {result.floodZone && (
               <div className="flex items-center gap-2 text-sm" role="alert">
-                <AlertTriangle className="w-4 h-4 text-yellow-500" aria-hidden="true" />
+                <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                 <span>Flood zone: <strong>{result.floodZone}</strong></span>
               </div>
             )}
 
             {result.permitRequired && (
-              <div className="flex items-center gap-2 text-sm text-blue-600">
+              <div className="flex items-center gap-2 text-sm text-acr-accent">
                 <FileText className="w-4 h-4" aria-hidden="true" />
                 Permit required for development.
               </div>
@@ -154,7 +154,7 @@ export default function ZoningLookupPage() {
                 <ul className="space-y-1" aria-label="Allowed uses">
                   {result.allowedUses.map(use => (
                     <li key={use} className="flex items-center gap-1.5 text-xs">
-                      <CheckCircle2 className="w-3 h-3 text-green-600 flex-shrink-0" aria-hidden="true" /> {use}
+                      <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" aria-hidden="true" /> {use}
                     </li>
                   ))}
                 </ul>
@@ -164,7 +164,7 @@ export default function ZoningLookupPage() {
                 <ul className="space-y-1" aria-label="Restrictions">
                   {result.restrictions.map(r => (
                     <li key={r} className="flex items-center gap-1.5 text-xs">
-                      <AlertTriangle className="w-3 h-3 text-yellow-500 flex-shrink-0" aria-hidden="true" /> {r}
+                      <AlertTriangle className="w-3 h-3 text-acr-warn flex-shrink-0" aria-hidden="true" /> {r}
                     </li>
                   ))}
                 </ul>

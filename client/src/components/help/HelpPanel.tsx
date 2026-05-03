@@ -732,7 +732,7 @@ export function HelpPanel() {
               {/* Proactive Alerts Section */}
               {activeAlerts.length > 0 && (
                 <div className="space-y-2" data-testid="proactive-alerts-section">
-                  <div className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center gap-2 text-sm font-medium text-acr-warn dark:text-acr-warn">
                     <Bell className="h-4 w-4" />
                     Pax noticed some issues
                   </div>
@@ -751,7 +751,7 @@ export function HelpPanel() {
                           <AlertTriangle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
                             alert.severity === "critical" || alert.severity === "error"
                               ? "text-destructive"
-                              : "text-amber-500"
+                              : "text-acr-warn"
                           }`} />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm">{alert.title}</p>

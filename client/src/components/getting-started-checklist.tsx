@@ -167,7 +167,7 @@ export function GettingStartedChecklist() {
                         <div
                           className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                             item.isComplete
-                              ? "bg-green-500/10 text-green-500"
+                              ? "bg-acr-pos/10 text-acr-pos"
                               : "bg-primary/10 text-primary"
                           }`}
                         >

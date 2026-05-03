@@ -43,9 +43,9 @@ interface MonitorRunResult {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 dark:bg-red-900/20", border: "border-red-200 dark:border-red-800", badge: "destructive" as const, label: "Critical" },
-  warning: { icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20", border: "border-amber-200 dark:border-amber-800", badge: "secondary" as const, label: "Warning" },
-  info: { icon: Info, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", badge: "outline" as const, label: "Info" },
+  critical: { icon: AlertCircle, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20", border: "border-acr-neg-soft dark:border-acr-neg-soft", badge: "destructive" as const, label: "Critical" },
+  warning: { icon: AlertTriangle, color: "text-acr-warn", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20", border: "border-acr-warn-soft dark:border-acr-warn-soft", badge: "secondary" as const, label: "Warning" },
+  info: { icon: Info, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20", border: "border-acr-accent dark:border-acr-accent", badge: "outline" as const, label: "Info" },
 };
 
 export default function ProactiveMonitorPage() {
@@ -100,10 +100,10 @@ export default function ProactiveMonitorPage() {
     : critical.length > 0 ? Math.max(0, 60 - critical.length * 10)
     : Math.max(60, 100 - warnings.length * 5);
 
-  const healthGrade = healthScore >= 90 ? { label: "A", color: "text-emerald-600" }
-    : healthScore >= 75 ? { label: "B", color: "text-blue-600" }
-    : healthScore >= 60 ? { label: "C", color: "text-amber-600" }
-    : { label: "F", color: "text-red-600" };
+  const healthGrade = healthScore >= 90 ? { label: "A", color: "text-acr-pos" }
+    : healthScore >= 75 ? { label: "B", color: "text-acr-accent" }
+    : healthScore >= 60 ? { label: "C", color: "text-acr-warn" }
+    : { label: "F", color: "text-acr-neg" };
 
   return (
     <PageShell>
@@ -142,7 +142,7 @@ export default function ProactiveMonitorPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
+              <AlertCircle className="h-5 w-5 text-acr-neg" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{critical.length}</dd>
                 <dt className="text-sm text-muted-foreground">Critical alerts</dt>
@@ -153,7 +153,7 @@ export default function ProactiveMonitorPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" />
+              <AlertTriangle className="h-5 w-5 text-acr-warn" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{warnings.length}</dd>
                 <dt className="text-sm text-muted-foreground">Warnings</dt>
@@ -164,7 +164,7 @@ export default function ProactiveMonitorPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-hidden="true" />
+              <CheckCircle2 className="h-5 w-5 text-acr-pos" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{resolved.length}</dd>
                 <dt className="text-sm text-muted-foreground">Resolved</dt>
@@ -175,19 +175,19 @@ export default function ProactiveMonitorPage() {
       </dl>
 
       {lastRun && (
-        <Card className="mb-6 border-blue-200 dark:border-blue-800">
+        <Card className="mb-6 border-acr-accent dark:border-acr-accent">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="h-4 w-4 text-blue-500" aria-hidden="true" />
+              <Zap className="h-4 w-4 text-acr-accent" aria-hidden="true" />
               Last health check — <span className="tabular-nums">{format(new Date(lastRun.checkedAt), "HH:mm:ss")}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="Health check categories">
-              <li className={`p-3 rounded-lg ${lastRun.activityAnomaly.hasAnomaly ? "bg-amber-50 dark:bg-amber-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>
+              <li className={`p-3 rounded-lg ${lastRun.activityAnomaly.hasAnomaly ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
                 <div className="flex items-center gap-2">
                   <TrendingDown
-                    className={`h-4 w-4 ${lastRun.activityAnomaly.hasAnomaly ? "text-amber-600" : "text-emerald-600"}`}
+                    className={`h-4 w-4 ${lastRun.activityAnomaly.hasAnomaly ? "text-acr-warn" : "text-acr-pos"}`}
                     aria-label={lastRun.activityAnomaly.hasAnomaly ? "Anomaly" : "Normal"}
                   />
                   <span className="text-sm font-medium">Activity</span>
@@ -196,10 +196,10 @@ export default function ProactiveMonitorPage() {
                   {lastRun.activityAnomaly.hasAnomaly ? "Unusual activity drop detected." : "Activity levels normal."}
                 </p>
               </li>
-              <li className={`p-3 rounded-lg ${lastRun.integrityIssues.length > 0 ? "bg-amber-50 dark:bg-amber-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>
+              <li className={`p-3 rounded-lg ${lastRun.integrityIssues.length > 0 ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
                 <div className="flex items-center gap-2">
                   <Database
-                    className={`h-4 w-4 ${lastRun.integrityIssues.length > 0 ? "text-amber-600" : "text-emerald-600"}`}
+                    className={`h-4 w-4 ${lastRun.integrityIssues.length > 0 ? "text-acr-warn" : "text-acr-pos"}`}
                     aria-label={lastRun.integrityIssues.length > 0 ? "Issues found" : "No issues"}
                   />
                   <span className="text-sm font-medium">Data integrity</span>
@@ -210,9 +210,9 @@ export default function ProactiveMonitorPage() {
                     : "No integrity issues."}
                 </p>
               </li>
-              <li className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+              <li className="p-3 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20">
                 <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                  <Eye className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                   <span className="text-sm font-medium">Anomalies</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Anomaly detection complete.</p>
@@ -221,7 +221,7 @@ export default function ProactiveMonitorPage() {
             {lastRun.integrityIssues.length > 0 && (
               <ul className="mt-3 space-y-1" aria-label="Integrity issues found">
                 {lastRun.integrityIssues.map((issue, i) => (
-                  <li key={i} className="text-xs text-amber-700 dark:text-amber-300">
+                  <li key={i} className="text-xs text-acr-warn dark:text-acr-warn">
                     • {issue.description} (<span className="tabular-nums">{issue.count}</span> records in {issue.table})
                   </li>
                 ))}
@@ -239,7 +239,7 @@ export default function ProactiveMonitorPage() {
       ) : alerts.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Shield className="h-12 w-12 text-emerald-500 mx-auto mb-4" aria-hidden="true" />
+            <Shield className="h-12 w-12 text-acr-pos mx-auto mb-4" aria-hidden="true" />
             <h2 className="text-lg font-semibold mb-2">All systems healthy</h2>
             <p className="text-muted-foreground">No alerts or anomalies detected. Run health checks to scan for new issues.</p>
           </CardContent>
@@ -302,7 +302,7 @@ export default function ProactiveMonitorPage() {
                     <Card className="opacity-60">
                       <CardContent className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" aria-label="Resolved" />
+                          <CheckCircle2 className="h-3.5 w-3.5 text-acr-pos flex-shrink-0" aria-label="Resolved" />
                           <span className="text-sm font-medium truncate">{alert.title}</span>
                           <span className="text-xs text-muted-foreground ml-auto flex-shrink-0 tabular-nums">
                             {alert.resolvedAt ? relative(alert.resolvedAt) : ""}

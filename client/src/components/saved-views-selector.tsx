@@ -163,7 +163,7 @@ export function SavedViewsSelector({
             {selectedView ? (
               <>
                 {selectedView.name}
-                {selectedView.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />}
+                {selectedView.isDefault && <Star className="w-3 h-3 text-acr-warn fill-acr-warn" aria-hidden="true" />}
               </>
             ) : (
               <>
@@ -208,7 +208,7 @@ export function SavedViewsSelector({
               data-testid={`dropdown-view-${view.id}`}
             >
               <div className="flex items-center gap-2">
-                {view.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />}
+                {view.isDefault && <Star className="w-3 h-3 text-acr-warn fill-acr-warn" aria-hidden="true" />}
                 {view.name}
                 {view.isShared && <Badge variant="secondary" className="text-xs">Shared</Badge>}
               </div>

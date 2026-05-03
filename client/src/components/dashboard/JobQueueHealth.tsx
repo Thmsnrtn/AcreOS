@@ -25,11 +25,11 @@ interface JobHealthResponse {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  healthy: "bg-green-500",
-  warning: "bg-yellow-500",
-  failing: "bg-red-500",
-  overdue: "bg-orange-500",
-  unknown: "bg-gray-400",
+  healthy: "bg-acr-pos",
+  warning: "bg-acr-warn",
+  failing: "bg-acr-neg",
+  overdue: "bg-acr-warn",
+  unknown: "bg-muted",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -93,7 +93,7 @@ export function JobQueueHealth() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
             Job queue health
-            <span className={`ml-2 text-sm font-normal tabular-nums ${unhealthy === 0 ? "text-green-600" : "text-orange-600"}`}>
+            <span className={`ml-2 text-sm font-normal tabular-nums ${unhealthy === 0 ? "text-acr-pos" : "text-acr-warn"}`}>
               {unhealthy === 0 ? `${total}/${total} healthy` : `${total - unhealthy}/${total} healthy — ${unhealthy} need attention`}
             </span>
           </CardTitle>
@@ -111,8 +111,8 @@ export function JobQueueHealth() {
                 job.status === "healthy"
                   ? "border-border bg-card"
                   : job.status === "failing"
-                  ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
-                  : "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20"
+                  ? "border-acr-neg-soft bg-acr-neg-soft dark:border-acr-neg-soft dark:bg-acr-neg-soft/20"
+                  : "border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft dark:bg-acr-warn-soft/20"
               }`}
               aria-label={`${job.displayName}: ${STATUS_LABEL[job.status]}${job.consecutiveFailures > 0 ? `, ${job.consecutiveFailures} consecutive failures` : ""}`}
             >
@@ -124,13 +124,13 @@ export function JobQueueHealth() {
                 <span>Every {formatInterval(job.expectedIntervalMs)}</span>
                 {" · "}
                 {job.overdue && job.minutesSinceLastRun !== null ? (
-                  <span className="text-orange-600 dark:text-orange-400 font-medium">Overdue</span>
+                  <span className="text-acr-warn dark:text-acr-warn font-medium">Overdue</span>
                 ) : (
                   <span>{formatMinutes(job.minutesSinceLastRun)}</span>
                 )}
               </div>
               {job.consecutiveFailures > 0 && (
-                <div className="text-red-600 dark:text-red-400 tabular-nums">{job.consecutiveFailures} fail{job.consecutiveFailures === 1 ? "" : "s"}</div>
+                <div className="text-acr-neg dark:text-acr-neg tabular-nums">{job.consecutiveFailures} fail{job.consecutiveFailures === 1 ? "" : "s"}</div>
               )}
               {job.status !== "healthy" && job.status !== "unknown" && (
                 <Button

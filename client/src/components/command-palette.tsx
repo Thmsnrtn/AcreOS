@@ -554,7 +554,7 @@ export function CommandPalette() {
                           data-testid={`command-lead-status-${status.value}`}
                         >
                           {selectedLead.status === status.value ? (
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" aria-hidden="true" />
+                            <CheckCircle className="mr-2 h-4 w-4 text-acr-pos" aria-hidden="true" />
                           ) : (
                             <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           )}
@@ -584,7 +584,7 @@ export function CommandPalette() {
                           data-testid={`command-deal-stage-${stage.value}`}
                         >
                           {selectedDeal.status === stage.value ? (
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" aria-hidden="true" />
+                            <CheckCircle className="mr-2 h-4 w-4 text-acr-pos" aria-hidden="true" />
                           ) : (
                             <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           )}
@@ -723,7 +723,7 @@ export function CommandPalette() {
                             data-testid="command-item-founder-dashboard"
                             className="cursor-pointer"
                           >
-                            <Sparkles className="mr-2 h-4 w-4 text-amber-500" aria-hidden="true" />
+                            <Sparkles className="mr-2 h-4 w-4 text-acr-warn" aria-hidden="true" />
                             <span>Open founder dashboard</span>
                           </CommandItem>
                           <CommandItem
@@ -739,7 +739,7 @@ export function CommandPalette() {
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >
-                            <DollarSign className="mr-2 h-4 w-4 text-green-600" aria-hidden="true" />
+                            <DollarSign className="mr-2 h-4 w-4 text-acr-pos" aria-hidden="true" />
                             <span>Open credits & costs</span>
                           </CommandItem>
                         </CommandGroup>
@@ -799,7 +799,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-emerald-500" aria-hidden="true" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-acr-pos" aria-hidden="true" />
                             <span>How's revenue doing?</span>
                             {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Forge</span>
@@ -808,7 +808,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-amber-500" aria-hidden="true" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-acr-warn" aria-hidden="true" />
                             <span>Any support issues?</span>
                             {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Sophie</span>
@@ -817,7 +817,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-blue-500" aria-hidden="true" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-acr-accent" aria-hidden="true" />
                             <span>Is anything broken?</span>
                             {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Sentinel</span>
@@ -826,7 +826,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-purple-500" aria-hidden="true" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-acr-brand" aria-hidden="true" />
                             <span>Morning briefing</span>
                             <span className="ml-auto text-xs text-muted-foreground">All agents</span>
                           </CommandItem>

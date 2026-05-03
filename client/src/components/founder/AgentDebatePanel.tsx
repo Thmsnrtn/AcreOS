@@ -47,9 +47,9 @@ function DebateCard({ debate }: { debate: Debate }) {
           variant="outline"
           aria-label={`Status: ${debate.status.replace(/_/g, " ")}`}
           className={
-            debate.status === "awaiting_decision" ? "bg-amber-100 text-amber-800 animate-pulse" :
-            debate.status === "decided" ? "bg-emerald-100 text-emerald-800" :
-            debate.status === "in_progress" ? "bg-blue-100 text-blue-800" : ""
+            debate.status === "awaiting_decision" ? "bg-acr-warn-soft text-acr-warn animate-pulse" :
+            debate.status === "decided" ? "bg-acr-pos-soft text-acr-pos" :
+            debate.status === "in_progress" ? "bg-acr-accent text-acr-accent" : ""
           }
         >
           {debate.status === "in_progress" && <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" aria-hidden="true" />}{debate.status.replace(/_/g, " ")}
@@ -60,10 +60,10 @@ function DebateCard({ debate }: { debate: Debate }) {
       {args.filter(a => a.round === 1).length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           <section aria-labelledby={`for-heading-${debate.id}`}>
-            <p id={`for-heading-${debate.id}`} className="text-[10px] font-medium text-emerald-600 mb-1">For</p>
+            <p id={`for-heading-${debate.id}`} className="text-[10px] font-medium text-acr-pos mb-1">For</p>
             <ul aria-labelledby={`for-heading-${debate.id}`} className="list-none p-0 m-0">
               {args.filter(a => a.position === "for" && a.round === 1).map((a, i) => (
-                <li key={i} className="text-xs p-2 rounded bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 mb-1">
+                <li key={i} className="text-xs p-2 rounded bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft mb-1">
                   <p className="font-medium m-0"><span aria-hidden="true">{AGENT_AVATARS[a.agentCodename]}</span> {AGENT_ROLES[a.agentCodename]}</p>
                   <p className="text-muted-foreground mt-0.5 m-0">{a.argument}</p>
                 </li>
@@ -71,10 +71,10 @@ function DebateCard({ debate }: { debate: Debate }) {
             </ul>
           </section>
           <section aria-labelledby={`against-heading-${debate.id}`}>
-            <p id={`against-heading-${debate.id}`} className="text-[10px] font-medium text-red-600 mb-1">Against</p>
+            <p id={`against-heading-${debate.id}`} className="text-[10px] font-medium text-acr-neg mb-1">Against</p>
             <ul aria-labelledby={`against-heading-${debate.id}`} className="list-none p-0 m-0">
               {args.filter(a => a.position === "against" && a.round === 1).map((a, i) => (
-                <li key={i} className="text-xs p-2 rounded bg-red-50 dark:bg-red-950/20 border border-red-100 mb-1">
+                <li key={i} className="text-xs p-2 rounded bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft mb-1">
                   <p className="font-medium m-0"><span aria-hidden="true">{AGENT_AVATARS[a.agentCodename]}</span> {AGENT_ROLES[a.agentCodename]}</p>
                   <p className="text-muted-foreground mt-0.5 m-0">{a.argument}</p>
                 </li>
@@ -90,7 +90,7 @@ function DebateCard({ debate }: { debate: Debate }) {
           <p id={`rebuttals-heading-${debate.id}`} className="text-[10px] font-medium text-muted-foreground">Rebuttals</p>
           <ul aria-labelledby={`rebuttals-heading-${debate.id}`} className="space-y-1 list-none p-0 m-0">
             {args.filter(a => a.round === 2).map((a, i) => (
-              <li key={i} className={`text-xs p-2 rounded border ${a.position === "for" ? "border-emerald-100" : "border-red-100"}`}>
+              <li key={i} className={`text-xs p-2 rounded border ${a.position === "for" ? "border-acr-pos-soft" : "border-acr-neg-soft"}`}>
                 <span className="font-medium"><span aria-hidden="true">{AGENT_AVATARS[a.agentCodename]}</span> {AGENT_ROLES[a.agentCodename]}</span>
                 <span className="text-muted-foreground ml-1">{a.argument}</span>
               </li>
@@ -103,15 +103,15 @@ function DebateCard({ debate }: { debate: Debate }) {
       {votes.length > 0 && (
         <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50" aria-label={`Votes: ${forVotes} for, ${againstVotes} against`}>
           <div className="flex items-center gap-1 text-xs">
-            <ThumbsUp className="h-3 w-3 text-emerald-600" aria-hidden="true" /> <span className="font-medium tabular-nums">{forVotes}</span>
+            <ThumbsUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> <span className="font-medium tabular-nums">{forVotes}</span>
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <ThumbsDown className="h-3 w-3 text-red-600" aria-hidden="true" /> <span className="font-medium tabular-nums">{againstVotes}</span>
+            <ThumbsDown className="h-3 w-3 text-acr-neg" aria-hidden="true" /> <span className="font-medium tabular-nums">{againstVotes}</span>
           </div>
           <ul aria-label="Vote details" className="flex-1 flex flex-wrap gap-1 list-none p-0 m-0">
             {votes.map((v, i) => (
               <li key={i}>
-                <Badge variant="outline" className={`text-[10px] h-4 ${v.vote === "for" ? "text-emerald-700" : v.vote === "against" ? "text-red-700" : "text-muted-foreground"}`} aria-label={`${AGENT_ROLES[v.agentCodename]}: ${v.vote}`}>
+                <Badge variant="outline" className={`text-[10px] h-4 ${v.vote === "for" ? "text-acr-pos" : v.vote === "against" ? "text-acr-neg" : "text-muted-foreground"}`} aria-label={`${AGENT_ROLES[v.agentCodename]}: ${v.vote}`}>
                   <span aria-hidden="true">{AGENT_AVATARS[v.agentCodename]}</span> {v.vote}
                 </Badge>
               </li>
@@ -181,7 +181,7 @@ export function AgentDebatePanel() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Swords className="h-4 w-4" aria-hidden="true" /> Agent debates
-            {pending > 0 && <Badge variant="outline" className="bg-amber-100 text-amber-800 tabular-nums" aria-label={`${pending} awaiting decision`}>{pending} awaiting</Badge>}
+            {pending > 0 && <Badge variant="outline" className="bg-acr-warn-soft text-acr-warn tabular-nums" aria-label={`${pending} awaiting decision`}>{pending} awaiting</Badge>}
           </CardTitle>
         </div>
       </CardHeader>

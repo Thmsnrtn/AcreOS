@@ -81,7 +81,7 @@ export default function ResetPasswordPage() {
 
           {success ? (
             <div className="flex flex-col items-center gap-3 py-4" role="status" aria-live="polite">
-              <CheckCircle className="w-12 h-12 text-emerald-500" aria-hidden="true" />
+              <CheckCircle className="w-12 h-12 text-acr-pos" aria-hidden="true" />
               <p className="text-center text-sm text-muted-foreground">
                 Password reset successful. Redirecting to sign in…
               </p>

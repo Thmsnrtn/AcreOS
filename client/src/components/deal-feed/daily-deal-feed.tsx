@@ -89,17 +89,17 @@ interface FeedResponse {
 }
 
 const motivationColors: Record<string, string> = {
-  "Tax delinquent": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  "Out of state": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  "Inherited property": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "Tax delinquent": "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
+  "Out of state": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  "Inherited property": "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
 };
 
 function lcsColor(grade: string): string {
-  if (grade.startsWith("A")) return "bg-emerald-500";
-  if (grade.startsWith("B")) return "bg-blue-500";
-  if (grade.startsWith("C")) return "bg-amber-500";
-  if (grade === "D") return "bg-orange-500";
-  return "bg-red-500";
+  if (grade.startsWith("A")) return "bg-acr-pos";
+  if (grade.startsWith("B")) return "bg-acr-accent";
+  if (grade.startsWith("C")) return "bg-acr-warn";
+  if (grade === "D") return "bg-acr-warn";
+  return "bg-acr-neg";
 }
 
 function formatCurrency(val: number | null | undefined): string {
@@ -206,17 +206,17 @@ function HeroDealCard({
                 </Badge>
               ))}
               {signals.environmental.slice(0, 3).map((s) => (
-                <Badge key={s} variant="secondary" className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <Badge key={s} variant="secondary" className="text-xs bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
                   {s}
                 </Badge>
               ))}
               {legal?.multipleOwners && (
-                <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                <Badge variant="secondary" className="text-xs bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
                   Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
                 </Badge>
               )}
               {legal?.taxDelinquent && legal?.redemptionMonths != null && (
-                <Badge variant="secondary" className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <Badge variant="secondary" className="text-xs bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
                   Tax lien — {legal.redemptionMonths} mo redemption
                 </Badge>
               )}
@@ -243,7 +243,7 @@ function HeroDealCard({
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Cash Flip Profit</p>
-              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              <p className="text-sm font-semibold text-acr-pos dark:text-acr-pos">
                 {formatCurrency(financials.cashFlipProfit.market)}
               </p>
             </div>
@@ -376,17 +376,17 @@ function DealCard({
                 </Badge>
               ))}
               {signals.environmental.slice(0, 2).map((s) => (
-                <Badge key={s} variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <Badge key={s} variant="secondary" className="text-[10px] bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
                   {s}
                 </Badge>
               ))}
               {legal?.multipleOwners && (
-                <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                <Badge variant="secondary" className="text-[10px] bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
                   Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
                 </Badge>
               )}
               {legal?.taxDelinquent && legal?.redemptionMonths != null && (
-                <Badge variant="secondary" className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <Badge variant="secondary" className="text-[10px] bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
                   Tax lien — {legal.redemptionMonths} mo redemption
                 </Badge>
               )}

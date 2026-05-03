@@ -24,14 +24,14 @@ const INSIGHT_ICONS: Record<string, any> = {
   warning: AlertTriangle, celebration: PartyPopper, nudge: Coffee, milestone: Trophy,
 };
 const INSIGHT_COLORS: Record<string, string> = {
-  warning: "bg-amber-50 dark:bg-amber-950/20 border-amber-200 text-amber-800",
-  celebration: "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 text-emerald-800",
-  nudge: "bg-blue-50 dark:bg-blue-950/20 border-blue-200 text-blue-800",
-  milestone: "bg-purple-50 dark:bg-purple-950/20 border-purple-200 text-purple-800",
+  warning: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 border-acr-warn-soft text-acr-warn",
+  celebration: "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border-acr-pos-soft text-acr-pos",
+  nudge: "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent text-acr-accent",
+  milestone: "bg-acr-brand-soft dark:bg-acr-brand-soft/20 border-acr-brand-soft text-acr-brand",
 };
 
 function EnergyBar({ score }: { score: number }) {
-  const color = score >= 70 ? "bg-emerald-500" : score >= 40 ? "bg-amber-500" : "bg-red-500";
+  const color = score >= 70 ? "bg-acr-pos" : score >= 40 ? "bg-acr-warn" : "bg-acr-neg";
   return (
     <div className="flex items-center gap-2">
       <Battery className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />

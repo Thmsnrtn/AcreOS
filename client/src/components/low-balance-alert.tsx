@@ -60,12 +60,12 @@ export function LowBalanceAlert() {
   return (
     <>
       <div 
-        className="flex items-center justify-between gap-4 px-4 py-3 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800"
+        className="flex items-center justify-between gap-4 px-4 py-3 bg-acr-warn-soft dark:bg-acr-warn-soft/50 border-b border-acr-warn-soft dark:border-acr-warn-soft"
         data-testid="alert-low-balance"
       >
         <div className="flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-200">
+          <AlertTriangle className="w-5 h-5 text-acr-warn dark:text-acr-warn flex-shrink-0" />
+          <p className="text-sm text-acr-warn dark:text-acr-warn">
             <span className="font-medium">Low credit balance:</span>{" "}
             ${(balance / 100).toFixed(2)} remaining. Add credits to continue using AI features, emails, and SMS.
           </p>
@@ -83,7 +83,7 @@ export function LowBalanceAlert() {
             size="icon"
             variant="ghost"
             onClick={handleDismiss}
-            className="text-amber-700 dark:text-amber-300"
+            className="text-acr-warn dark:text-acr-warn"
             aria-label="Dismiss"
             data-testid="button-dismiss-low-balance"
           >

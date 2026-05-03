@@ -145,8 +145,8 @@ export default function SovereignV13Page() {
       icon: Brain,
       title: "Cognitive memory",
       subtitle: "Remember, learn, forget",
-      color: "text-purple-500",
-      bgColor: "bg-purple-500/10",
+      color: "text-acr-brand",
+      bgColor: "bg-acr-brand/10",
       stats: memoryStats ? [
         { label: "Episodic", value: memoryStats.episodicCount ?? 0 },
         { label: "Semantic", value: memoryStats.semanticCount ?? 0 },
@@ -158,8 +158,8 @@ export default function SovereignV13Page() {
       icon: Target,
       title: "Adaptive strategy",
       subtitle: "Evolve & optimize",
-      color: "text-amber-500",
-      bgColor: "bg-amber-500/10",
+      color: "text-acr-warn",
+      bgColor: "bg-acr-warn/10",
       stats: strategyStats ? [
         { label: "Strategies", value: strategyStats.totalStrategies ?? 0 },
         { label: "Active", value: strategyStats.activeStrategies ?? 0 },
@@ -171,8 +171,8 @@ export default function SovereignV13Page() {
       icon: Users,
       title: "Collaboration",
       subtitle: "Negotiate & delegate",
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
+      color: "text-acr-accent",
+      bgColor: "bg-acr-accent/10",
       stats: collaborationStats ? [
         { label: "Dialogues", value: collaborationStats.activeDialogues ?? 0 },
         { label: "Delegations", value: collaborationStats.totalDelegations ?? 0 },
@@ -184,8 +184,8 @@ export default function SovereignV13Page() {
       icon: HeartPulse,
       title: "Self-healing",
       subtitle: "Detect, heal, harden",
-      color: "text-red-500",
-      bgColor: "bg-red-500/10",
+      color: "text-acr-neg",
+      bgColor: "bg-acr-neg/10",
       stats: healthStats ? [
         { label: "Anomalies", value: healthStats.unresolvedAnomalies ?? 0 },
         { label: "Playbooks", value: healthStats.playbooksCount ?? 0 },
@@ -197,8 +197,8 @@ export default function SovereignV13Page() {
       icon: Shield,
       title: "Governance",
       subtitle: "Comply & explain",
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
+      color: "text-acr-pos",
+      bgColor: "bg-acr-pos/10",
       stats: governanceStats ? [
         { label: "Policies", value: governanceStats.activePolicies ?? 0 },
         { label: "Evaluations", value: governanceStats.totalEvaluations ?? 0 },
@@ -210,8 +210,8 @@ export default function SovereignV13Page() {
       icon: Lightbulb,
       title: "Founder intelligence",
       subtitle: "Insights & foresight",
-      color: "text-cyan-500",
-      bgColor: "bg-cyan-500/10",
+      color: "text-acr-accent",
+      bgColor: "bg-acr-accent/10",
       stats: [],
     },
   ];
@@ -219,10 +219,10 @@ export default function SovereignV13Page() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b bg-gradient-to-r from-background via-background to-purple-500/5">
+      <div className="border-b bg-gradient-to-r from-background via-background to-acr-brand/5">
         <div className="container mx-auto px-6 py-8">
           <div className="flex items-center gap-3 mb-2">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-acr-brand to-acr-accent flex items-center justify-center">
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -303,7 +303,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-purple-500" />
+                    <BookOpen className="h-4 w-4 text-acr-brand" />
                     <InfoTooltip term="Episodic Memory" explanation="Timestamped records of things your system has done.">Episodic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Timestamped experiences</CardDescription>
@@ -327,7 +327,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-purple-500" />
+                    <Brain className="h-4 w-4 text-acr-brand" />
                     <InfoTooltip term="Semantic Memory" explanation="Facts and knowledge your system has learned over time.">Semantic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Distilled facts & patterns</CardDescription>
@@ -343,7 +343,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-purple-500" />
+                    <Zap className="h-4 w-4 text-acr-brand" />
                     <InfoTooltip term="Working Memory" explanation="Information your system is actively thinking about right now.">Working Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Active scratchpads</CardDescription>
@@ -369,7 +369,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                    <BarChart3 className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                     Strategy performance
                   </CardTitle>
                 </CardHeader>
@@ -381,7 +381,7 @@ export default function SovereignV13Page() {
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-sm text-muted-foreground">Active</dt>
-                      <dd className="font-mono font-bold tabular-nums text-green-500 m-0">{strategyStats?.activeStrategies ?? 0}</dd>
+                      <dd className="font-mono font-bold tabular-nums text-acr-pos m-0">{strategyStats?.activeStrategies ?? 0}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-sm text-muted-foreground">Avg success rate</dt>
@@ -398,7 +398,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <FlaskConical className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                    <FlaskConical className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                     Strategy proposals
                   </CardTitle>
                   <CardDescription>Agent-proposed strategy mutations</CardDescription>
@@ -407,8 +407,8 @@ export default function SovereignV13Page() {
                   <div className="text-3xl font-bold">{strategyStats?.pendingProposals ?? 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">pending review</p>
                   {strategyStats?.topPerformingStrategy && (
-                    <div className="mt-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <p className="text-xs font-medium text-amber-600">Top strategy</p>
+                    <div className="mt-3 p-2 rounded-lg bg-acr-warn/10 border border-acr-warn/20">
+                      <p className="text-xs font-medium text-acr-warn">Top strategy</p>
                       <p className="text-xs">{strategyStats.topPerformingStrategy}</p>
                     </div>
                   )}
@@ -423,7 +423,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    <MessageSquare className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                     Active dialogues
                   </CardTitle>
                 </CardHeader>
@@ -448,7 +448,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <ArrowRight className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    <ArrowRight className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                     Delegations
                   </CardTitle>
                 </CardHeader>
@@ -463,7 +463,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Network className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    <Network className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                     Skill registry
                   </CardTitle>
                 </CardHeader>
@@ -484,7 +484,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    <AlertTriangle className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                     Anomalies
                   </CardTitle>
                 </CardHeader>
@@ -507,7 +507,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    <Activity className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                     Agent health
                   </CardTitle>
                 </CardHeader>
@@ -526,7 +526,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    <FileText className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                     Playbooks
                   </CardTitle>
                 </CardHeader>
@@ -539,7 +539,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    <Flame className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                     Chaos engineering
                   </CardTitle>
                 </CardHeader>
@@ -575,7 +575,7 @@ export default function SovereignV13Page() {
                         <div className="flex items-center gap-2 text-xs">
                           <span className="text-muted-foreground">Expected: {Number(a.expectedValue).toFixed(1)}</span>
                           <ArrowRight className="h-3 w-3" aria-hidden="true" />
-                          <span className="font-bold tabular-nums text-red-500">Actual: {Number(a.actualValue).toFixed(1)}</span>
+                          <span className="font-bold tabular-nums text-acr-neg">Actual: {Number(a.actualValue).toFixed(1)}</span>
                         </div>
                       </div>
                     ))}
@@ -591,7 +591,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    <Shield className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                     Policy engine
                   </CardTitle>
                 </CardHeader>
@@ -614,7 +614,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    <Eye className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                     Evaluations
                   </CardTitle>
                 </CardHeader>
@@ -626,21 +626,21 @@ export default function SovereignV13Page() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <dt className="flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3 text-green-500" aria-hidden="true" />Pass
+                        <CheckCircle2 className="h-3 w-3 text-acr-pos" aria-hidden="true" />Pass
                       </dt>
-                      <dd className="font-mono tabular-nums text-green-500 m-0">{governanceStats?.passCount ?? 0}</dd>
+                      <dd className="font-mono tabular-nums text-acr-pos m-0">{governanceStats?.passCount ?? 0}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
                       <dt className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-yellow-500" aria-hidden="true" />Warning
+                        <AlertTriangle className="h-3 w-3 text-acr-warn" aria-hidden="true" />Warning
                       </dt>
-                      <dd className="font-mono tabular-nums text-yellow-500 m-0">{governanceStats?.warningCount ?? 0}</dd>
+                      <dd className="font-mono tabular-nums text-acr-warn m-0">{governanceStats?.warningCount ?? 0}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
                       <dt className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-red-500" aria-hidden="true" />Blocked
+                        <AlertTriangle className="h-3 w-3 text-acr-neg" aria-hidden="true" />Blocked
                       </dt>
-                      <dd className="font-mono tabular-nums text-red-500 m-0">{governanceStats?.blockedCount ?? 0}</dd>
+                      <dd className="font-mono tabular-nums text-acr-neg m-0">{governanceStats?.blockedCount ?? 0}</dd>
                     </div>
                   </dl>
                 </CardContent>
@@ -649,12 +649,12 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                     Compliance score
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tabular-nums text-emerald-500" role="progressbar" aria-valuenow={governanceStats?.avgScore ?? 100} aria-valuemin={0} aria-valuemax={100} aria-label="Compliance score">{governanceStats?.avgScore ?? 100}</div>
+                  <div className="text-3xl font-bold tabular-nums text-acr-pos" role="progressbar" aria-valuenow={governanceStats?.avgScore ?? 100} aria-valuemin={0} aria-valuemax={100} aria-label="Compliance score">{governanceStats?.avgScore ?? 100}</div>
                   <Progress value={governanceStats?.avgScore ?? 100} className="mt-2" aria-hidden="true" />
                   <p className="text-xs text-muted-foreground mt-2">
                     Sandbox runs: {governanceStats?.sandboxRuns ?? 0}
@@ -670,7 +670,7 @@ export default function SovereignV13Page() {
               <Card className="md:col-span-2">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                    <Sparkles className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                     Founder intelligence center
                   </CardTitle>
                   <CardDescription>
@@ -679,9 +679,9 @@ export default function SovereignV13Page() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-lg border bg-cyan-500/5">
+                    <div className="p-4 rounded-lg border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <BookOpen className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <BookOpen className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">Daily briefings</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -689,9 +689,9 @@ export default function SovereignV13Page() {
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg border bg-cyan-500/5">
+                    <div className="p-4 rounded-lg border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <FlaskConical className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <FlaskConical className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">What-if simulator</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -699,9 +699,9 @@ export default function SovereignV13Page() {
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg border bg-cyan-500/5">
+                    <div className="p-4 rounded-lg border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <Lightbulb className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <Lightbulb className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">Strategic recommendations</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -721,7 +721,7 @@ export default function SovereignV13Page() {
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1" role="status" aria-live="polite">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
+                  <span className="h-2 w-2 rounded-full bg-acr-pos animate-pulse" aria-hidden="true" />
                   V13 sentient enterprise online
                 </span>
                 <span>6 cognitive pillars active</span>

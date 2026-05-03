@@ -1103,8 +1103,8 @@ function PropertyCard({ property, onDelete }: {
           const color = score >= 70
             ? "bg-acr-neg-soft text-acr-neg border-acr-neg/30"
             : score >= 40
-            ? "bg-acr-warn-soft text-yellow-700 border-acr-warn/30"
-            : "bg-acr-pos-soft text-acr-pos border-green-200";
+            ? "bg-acr-warn-soft text-acr-warn border-acr-warn/30"
+            : "bg-acr-pos-soft text-acr-pos border-acr-pos-soft";
           const label = score >= 70 ? "High" : score >= 40 ? "Medium" : "Low";
           return (
             <div className="mt-2">
@@ -1538,9 +1538,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   });
 
   const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-    green: { bg: "bg-acr-pos-soft dark:bg-green-950/30", text: "text-acr-pos dark:text-acr-pos", border: "border-green-200 dark:border-green-800", dot: "bg-acr-pos" },
-    yellow: { bg: "bg-acr-warn-soft dark:bg-yellow-950/30", text: "text-yellow-700 dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30", dot: "bg-acr-warn" },
-    red: { bg: "bg-acr-neg-soft dark:bg-red-950/30", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30", dot: "bg-acr-neg" },
+    green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", border: "border-acr-pos-soft dark:border-acr-pos-soft", dot: "bg-acr-pos" },
+    yellow: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30", dot: "bg-acr-warn" },
+    red: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30", dot: "bg-acr-neg" },
     gray: { bg: "bg-muted/50", text: "text-muted-foreground", border: "border-muted", dot: "bg-muted-foreground" },
   };
   const sc = signalColors[verdictData.signal];
@@ -2579,7 +2579,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-flood-zone">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Droplets className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                  <Droplets className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">Flood & Water Risk</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2724,7 +2724,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-demographics">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+                  <Users className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">Demographics</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2849,7 +2849,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-water-resources">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Droplets className="w-4 h-4 text-cyan-500" aria-hidden="true" />
+                  <Droplets className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">Water Resources</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2876,7 +2876,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-elevation">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Mountain className="w-4 h-4 text-slate-500" aria-hidden="true" />
+                  <Mountain className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                   <h4 className="font-semibold">Elevation & Terrain</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3043,7 +3043,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-epa-facilities">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Factory className="w-4 h-4 text-gray-500" aria-hidden="true" />
+                  <Factory className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                   <h4 className="font-semibold">EPA Facilities Nearby</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3087,7 +3087,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-storm-history">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Cloud className="w-4 h-4 text-blue-400" aria-hidden="true" />
+                  <Cloud className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">Storm Risk</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3115,7 +3115,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-plss">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Grid3x3 className="w-4 h-4 text-teal-600" aria-hidden="true" />
+                  <Grid3x3 className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">PLSS Legal Description</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3153,7 +3153,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-watershed">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Waves className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                  <Waves className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                   <h4 className="font-semibold">Watershed</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3272,7 +3272,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
-              <h4 className="font-semibold text-yellow-700 dark:text-acr-warn">Some data couldn't be fetched</h4>
+              <h4 className="font-semibold text-acr-warn dark:text-acr-warn">Some data couldn't be fetched</h4>
             </div>
             <ul className="text-sm text-muted-foreground space-y-1">
               {Object.entries(enrichmentData.errors).map(([category, error]) => (

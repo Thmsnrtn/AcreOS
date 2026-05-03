@@ -36,9 +36,9 @@ interface TitleSearchResult {
 }
 
 const SEVERITY_CONFIG = {
-  blocking: { color: "text-red-600", bg: "bg-red-50", icon: XCircle },
-  warning: { color: "text-yellow-600", bg: "bg-yellow-50", icon: AlertTriangle },
-  informational: { color: "text-blue-600", bg: "bg-blue-50", icon: FileCheck },
+  blocking: { color: "text-acr-neg", bg: "bg-acr-neg-soft", icon: XCircle },
+  warning: { color: "text-acr-warn", bg: "bg-acr-warn-soft", icon: AlertTriangle },
+  informational: { color: "text-acr-accent", bg: "bg-acr-accent", icon: FileCheck },
 };
 
 function humanizeType(s: string): string {
@@ -166,11 +166,11 @@ export default function TitleSearchPage() {
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Blocking issues</dt>
-                  <dd className={`font-medium tabular-nums ${blockingCount > 0 ? "text-red-600" : "text-green-600"}`}>{blockingCount}</dd>
+                  <dd className={`font-medium tabular-nums ${blockingCount > 0 ? "text-acr-neg" : "text-acr-pos"}`}>{blockingCount}</dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Warnings</dt>
-                  <dd className={`font-medium tabular-nums ${warningCount > 0 ? "text-yellow-600" : ""}`}>{warningCount}</dd>
+                  <dd className={`font-medium tabular-nums ${warningCount > 0 ? "text-acr-warn" : ""}`}>{warningCount}</dd>
                 </div>
               </dl>
 

@@ -201,14 +201,14 @@ function PerformanceSection() {
             role="img"
             aria-label={`Outcome distribution: ${perf.patternsByOutcome.success} success, ${perf.patternsByOutcome.partialSuccess} partial, ${perf.patternsByOutcome.failure} failed`}
           >
-            <div className="bg-emerald-500" style={{ width: `${(perf.patternsByOutcome.success / total) * 100}%` }} />
-            <div className="bg-amber-500" style={{ width: `${(perf.patternsByOutcome.partialSuccess / total) * 100}%` }} />
-            <div className="bg-red-400" style={{ width: `${(perf.patternsByOutcome.failure / total) * 100}%` }} />
+            <div className="bg-acr-pos" style={{ width: `${(perf.patternsByOutcome.success / total) * 100}%` }} />
+            <div className="bg-acr-warn" style={{ width: `${(perf.patternsByOutcome.partialSuccess / total) * 100}%` }} />
+            <div className="bg-acr-neg" style={{ width: `${(perf.patternsByOutcome.failure / total) * 100}%` }} />
           </div>
           <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="Outcome legend">
-            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />Success (<span className="tabular-nums">{perf.patternsByOutcome.success}</span>)</li>
-            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />Partial (<span className="tabular-nums">{perf.patternsByOutcome.partialSuccess}</span>)</li>
-            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" aria-hidden="true" />Failed (<span className="tabular-nums">{perf.patternsByOutcome.failure}</span>)</li>
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-pos" aria-hidden="true" />Success (<span className="tabular-nums">{perf.patternsByOutcome.success}</span>)</li>
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-warn" aria-hidden="true" />Partial (<span className="tabular-nums">{perf.patternsByOutcome.partialSuccess}</span>)</li>
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-acr-neg" aria-hidden="true" />Failed (<span className="tabular-nums">{perf.patternsByOutcome.failure}</span>)</li>
           </ul>
         </div>
       )}
@@ -374,7 +374,7 @@ export default function DealPatternsPage() {
       {insightsList.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-yellow-500" aria-hidden="true" />
+            <Lightbulb className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             Pattern insights
           </h2>
           <ol className="space-y-2" aria-label="Pattern insights">

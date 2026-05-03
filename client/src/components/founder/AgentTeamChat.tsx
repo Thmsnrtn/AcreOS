@@ -25,16 +25,16 @@ interface ChatMessage {
 }
 
 const AGENT_BUBBLE_CLASSES: Record<string, string> = {
-  blue: "bg-blue-50 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900/30",
-  emerald: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/30",
-  amber: "bg-amber-50 dark:bg-amber-950/40 border-amber-100 dark:border-amber-900/30",
-  purple: "bg-purple-50 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900/30",
-  red: "bg-red-50 dark:bg-red-950/40 border-red-100 dark:border-red-900/30",
-  slate: "bg-slate-50 dark:bg-slate-950/40 border-slate-100 dark:border-slate-900/30",
-  indigo: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-100 dark:border-indigo-900/30",
-  cyan: "bg-cyan-50 dark:bg-cyan-950/40 border-cyan-100 dark:border-cyan-900/30",
-  orange: "bg-orange-50 dark:bg-orange-950/40 border-orange-100 dark:border-orange-900/30",
-  pink: "bg-pink-50 dark:bg-pink-950/40 border-pink-100 dark:border-pink-900/30",
+  blue: "bg-acr-accent dark:bg-acr-accent/40 border-acr-accent dark:border-acr-accent/30",
+  emerald: "bg-acr-pos-soft dark:bg-acr-pos-soft/40 border-acr-pos-soft dark:border-acr-pos-soft/30",
+  amber: "bg-acr-warn-soft dark:bg-acr-warn-soft/40 border-acr-warn-soft dark:border-acr-warn-soft/30",
+  purple: "bg-acr-brand-soft dark:bg-acr-brand-soft/40 border-acr-brand-soft dark:border-acr-brand-soft/30",
+  red: "bg-acr-neg-soft dark:bg-acr-neg-soft/40 border-acr-neg-soft dark:border-acr-neg-soft/30",
+  slate: "bg-muted dark:bg-acr-bg-sunken/40 border-border dark:border-border/30",
+  indigo: "bg-acr-accent dark:bg-acr-accent/40 border-acr-accent dark:border-acr-accent/30",
+  cyan: "bg-acr-accent dark:bg-acr-accent/40 border-acr-accent dark:border-acr-accent/30",
+  orange: "bg-acr-warn-soft dark:bg-acr-warn-soft/40 border-acr-warn-soft dark:border-acr-warn-soft/30",
+  pink: "bg-acr-brand-soft dark:bg-acr-brand-soft/40 border-acr-brand-soft dark:border-acr-brand-soft/30",
 };
 
 /** Simple keyword-based agent routing */

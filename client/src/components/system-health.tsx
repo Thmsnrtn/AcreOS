@@ -41,28 +41,28 @@ function getStatusBadge(status: ServiceStatus) {
   switch (status) {
     case 'healthy':
       return (
-        <Badge className="bg-green-500/10 text-green-600 border-green-500/20" data-testid="badge-status-healthy">
+        <Badge className="bg-acr-pos/10 text-acr-pos border-acr-pos/20" data-testid="badge-status-healthy">
           <CheckCircle2 className="w-3 h-3 mr-1" />
           Healthy
         </Badge>
       );
     case 'degraded':
       return (
-        <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20" data-testid="badge-status-degraded">
+        <Badge className="bg-acr-warn/10 text-acr-warn border-acr-warn/20" data-testid="badge-status-degraded">
           <AlertTriangle className="w-3 h-3 mr-1" />
           Degraded
         </Badge>
       );
     case 'unavailable':
       return (
-        <Badge className="bg-red-500/10 text-red-600 border-red-500/20" data-testid="badge-status-unavailable">
+        <Badge className="bg-acr-neg/10 text-acr-neg border-acr-neg/20" data-testid="badge-status-unavailable">
           <XCircle className="w-3 h-3 mr-1" />
           Unavailable
         </Badge>
       );
     case 'unconfigured':
       return (
-        <Badge className="bg-gray-500/10 text-gray-600 border-gray-500/20" data-testid="badge-status-unconfigured">
+        <Badge className="bg-muted/10 text-muted-foreground border-border/20" data-testid="badge-status-unconfigured">
           <HelpCircle className="w-3 h-3 mr-1" />
           Unconfigured
         </Badge>
@@ -74,10 +74,10 @@ function getStatusBadge(status: ServiceStatus) {
 
 function getOverallStatusColor(status: ServiceStatus) {
   switch (status) {
-    case 'healthy': return 'text-green-500';
-    case 'degraded': return 'text-yellow-500';
-    case 'unavailable': return 'text-red-500';
-    case 'unconfigured': return 'text-gray-500';
+    case 'healthy': return 'text-acr-pos';
+    case 'degraded': return 'text-acr-warn';
+    case 'unavailable': return 'text-acr-neg';
+    case 'unconfigured': return 'text-muted-foreground';
     default: return 'text-muted-foreground';
   }
 }

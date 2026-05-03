@@ -354,7 +354,7 @@ export function LiveDemoMode({
             variant="outline"
             className={cn(
               "text-xs",
-              isPaused && "bg-yellow-500/10 text-yellow-600 border-yellow-500/30"
+              isPaused && "bg-acr-warn/10 text-acr-warn border-acr-warn/30"
             )}
           >
             {isPaused ? "Paused" : `Running at ${SPEED_LABELS[speed]}`}

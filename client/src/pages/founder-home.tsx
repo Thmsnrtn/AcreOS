@@ -94,9 +94,9 @@ const AGENT_NAMES: Record<string, string> = {
 };
 
 const STATUS_CFG: Record<string, { label: string; color: string }> = {
-  idle: { label: "Running", color: "bg-emerald-500" },
-  running: { label: "Running", color: "bg-blue-500 animate-pulse" },
-  error: { label: "Error", color: "bg-red-500" },
+  idle: { label: "Running", color: "bg-acr-pos" },
+  running: { label: "Running", color: "bg-acr-accent animate-pulse" },
+  error: { label: "Error", color: "bg-acr-neg" },
   disabled: { label: "Paused", color: "bg-muted-foreground" },
 };
 
@@ -226,7 +226,7 @@ function WhatNeedsYouCard({
       <motion.div variants={staggerItem}>
         <Card>
           <CardContent className="p-6 flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
+            <CheckCircle2 className="h-6 w-6 text-acr-pos dark:text-acr-pos shrink-0" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold text-foreground">Inbox zero</h2>
               <p className="text-sm text-muted-foreground">
@@ -289,9 +289,9 @@ function WhatNeedsYouCard({
 
 function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
   const bandCfg: Record<Band, { bg: string; text: string; Icon: typeof ShieldCheck; label: string }> = {
-    green: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-400", Icon: ShieldCheck, label: "Autonomous" },
-    yellow: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-500", Icon: ShieldAlert, label: "Needs a look" },
-    red: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-400", Icon: ShieldX, label: "Intervene now" },
+    green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", Icon: ShieldCheck, label: "Autonomous" },
+    yellow: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", Icon: ShieldAlert, label: "Needs a look" },
+    red: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30", text: "text-acr-neg dark:text-acr-neg", Icon: ShieldX, label: "Intervene now" },
   };
   const cfg = bandCfg[report.band];
   const dims = Object.entries(report.dimensions);
@@ -311,7 +311,7 @@ function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
               <ul className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 list-none p-0" aria-label="Autonomy dimensions">
                 {dims.map(([key, d]) => {
                   const dotColor =
-                    d.band === "green" ? "bg-emerald-500" : d.band === "yellow" ? "bg-amber-500" : "bg-red-500";
+                    d.band === "green" ? "bg-acr-pos" : d.band === "yellow" ? "bg-acr-warn" : "bg-acr-neg";
                   const niceKey = key.replace(/([A-Z])/g, " $1").trim();
                   return (
                     <li
@@ -430,10 +430,10 @@ function CriticalAlertsBanner({ data }: { data: CriticalAlertsReport | undefined
 
   return (
     <motion.div variants={staggerItem}>
-      <Card className="border-l-4 border-l-red-500 bg-red-50 dark:bg-red-950/30">
+      <Card className="border-l-4 border-l-red-500 bg-acr-neg-soft dark:bg-acr-neg-soft/30">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <AlertTriangle className="h-5 w-5 text-acr-neg dark:text-acr-neg" aria-hidden="true" />
             <h2 className="text-base font-semibold text-foreground">
               Critical alerts ({unacked.length})
             </h2>
@@ -453,8 +453,8 @@ function CriticalAlertsBanner({ data }: { data: CriticalAlertsReport | undefined
                     variant="outline"
                     className={
                       a.severity === "P0"
-                        ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30"
-                        : "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30"
+                        ? "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/30"
+                        : "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/30"
                     }
                   >
                     {a.severity}
@@ -482,7 +482,7 @@ function CriticalAlertsBanner({ data }: { data: CriticalAlertsReport | undefined
                     {a.overdue && !a.escalatedAt && (
                       <button
                         type="button"
-                        className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                        className="text-xs px-2 py-1 rounded bg-acr-neg text-white hover:bg-acr-neg"
                         onClick={() => escalateMutation.mutate(a.id)}
                         disabled={escalateMutation.isPending}
                         aria-label={`Escalate ${a.severity} alert to backup`}
@@ -509,11 +509,11 @@ function VendorStatusTile({ report }: { report: VendorStatusReport | undefined }
   const overall = report?.overall ?? "unknown";
   const dotColor =
     overall === "ok"
-      ? "bg-emerald-500"
+      ? "bg-acr-pos"
       : overall === "incident"
-        ? "bg-red-500"
+        ? "bg-acr-neg"
         : overall === "degraded"
-          ? "bg-amber-500"
+          ? "bg-acr-warn"
           : "bg-muted-foreground";
   const label =
     overall === "ok"
@@ -524,11 +524,11 @@ function VendorStatusTile({ report }: { report: VendorStatusReport | undefined }
           ? "Some vendors degraded"
           : "Checking vendor status…";
   const indicatorBadge = (i: VendorIndicator) => {
-    if (i === "none") return { color: "bg-emerald-500", text: "Operational" };
+    if (i === "none") return { color: "bg-acr-pos", text: "Operational" };
     if (i === "minor" || i === "maintenance")
-      return { color: "bg-amber-500", text: i === "minor" ? "Minor issue" : "Maintenance" };
-    if (i === "major") return { color: "bg-orange-500", text: "Major incident" };
-    if (i === "critical") return { color: "bg-red-500", text: "Critical outage" };
+      return { color: "bg-acr-warn", text: i === "minor" ? "Minor issue" : "Maintenance" };
+    if (i === "major") return { color: "bg-acr-warn", text: "Major incident" };
+    if (i === "critical") return { color: "bg-acr-neg", text: "Critical outage" };
     return { color: "bg-muted-foreground", text: "Unknown" };
   };
   return (
@@ -553,13 +553,13 @@ function VendorStatusTile({ report }: { report: VendorStatusReport | undefined }
                   {report.vendors.map((v) => {
                     const c =
                       v.indicator === "none"
-                        ? "bg-emerald-500"
+                        ? "bg-acr-pos"
                         : v.indicator === "minor" || v.indicator === "maintenance"
-                          ? "bg-amber-500"
+                          ? "bg-acr-warn"
                           : v.indicator === "major"
-                            ? "bg-orange-500"
+                            ? "bg-acr-warn"
                             : v.indicator === "critical"
-                              ? "bg-red-500"
+                              ? "bg-acr-neg"
                               : "bg-muted-foreground";
                     return <li key={v.slug} className={`h-1.5 w-1.5 rounded-full ${c}`} title={v.name} />;
                   })}

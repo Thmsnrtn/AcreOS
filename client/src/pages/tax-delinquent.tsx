@@ -29,10 +29,10 @@ interface DelinquentLead {
 }
 
 const RISK_CONFIG = {
-  critical: { color: "text-red-600", bg: "bg-red-50", badge: "destructive" as const },
-  high: { color: "text-orange-600", bg: "bg-orange-50", badge: "secondary" as const },
-  medium: { color: "text-yellow-600", bg: "bg-yellow-50", badge: "outline" as const },
-  low: { color: "text-blue-600", bg: "bg-blue-50", badge: "outline" as const },
+  critical: { color: "text-acr-neg", bg: "bg-acr-neg-soft", badge: "destructive" as const },
+  high: { color: "text-acr-warn", bg: "bg-acr-warn-soft", badge: "secondary" as const },
+  medium: { color: "text-acr-warn", bg: "bg-acr-warn-soft", badge: "outline" as const },
+  low: { color: "text-acr-accent", bg: "bg-acr-accent", badge: "outline" as const },
 };
 
 export default function TaxDelinquentPage() {
@@ -114,7 +114,7 @@ export default function TaxDelinquentPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <dt className="flex items-center gap-2 text-red-600 mb-1">
+            <dt className="flex items-center gap-2 text-acr-neg mb-1">
               <AlertTriangle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Critical</span>
             </dt>
@@ -195,7 +195,7 @@ export default function TaxDelinquentPage() {
                           <span className="truncate">{lead.propertyAddress} · {lead.county}, {lead.stateCode}</span>
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                          <span className="text-red-600">
+                          <span className="text-acr-neg">
                             <DollarSign className="w-3 h-3 inline" aria-hidden="true" />
                             <span className="tabular-nums">{usd(lead.taxOwedCents / 100)}</span> owed (<span className="tabular-nums">{lead.yearsDelinquent}</span>yr)
                           </span>
@@ -204,7 +204,7 @@ export default function TaxDelinquentPage() {
                             <span className="tabular-nums">{lead.equityPercent}%</span> equity
                           </span>
                           {lead.daysUntilTaxSale !== undefined && (
-                            <span className={lead.daysUntilTaxSale <= 60 ? "text-red-600" : "text-muted-foreground"}>
+                            <span className={lead.daysUntilTaxSale <= 60 ? "text-acr-neg" : "text-muted-foreground"}>
                               <Calendar className="w-3 h-3 inline mr-0.5" aria-hidden="true" />
                               Tax sale in <span className="tabular-nums">{lead.daysUntilTaxSale}</span>d
                             </span>

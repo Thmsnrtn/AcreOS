@@ -255,7 +255,7 @@ function ExportOptionCard({
             {option.formats.map(f => (
               <Badge key={f} variant="outline" className="text-xs uppercase">{f}</Badge>
             ))}
-            {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-label="Exported" />}
+            {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos" aria-label="Exported" />}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{option.description}.</p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
