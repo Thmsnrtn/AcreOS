@@ -168,9 +168,19 @@ describe("Security Middleware Verification", () => {
     expect(res.status).toBe(200);
   });
 
-  it("2FA middleware file exists for admin routes", async () => {
+  it("Clerk MFA middleware file exists for admin routes", async () => {
     const fs = await import("fs");
-    expect(fs.existsSync("server/middleware/require2FA.ts")).toBe(true);
+    const path = await import("path");
+    const url = await import("url");
+    // R4: legacy require2FA was deleted (broken — used express-session that
+    // wasn't installed). MFA enforcement now lives in requireClerkMFA.
+    // Anchor on the test file's directory so the assertion works under
+    // both the main checkout and any git-worktree clone (where vitest's
+    // process.cwd() may resolve to the parent rather than the worktree).
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const repoRoot = path.resolve(here, "..", "..");
+    expect(fs.existsSync(path.join(repoRoot, "server/middleware/requireClerkMFA.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(repoRoot, "server/middleware/require2FA.ts"))).toBe(false);
   });
 
   it("CORS headers are not set for untrusted origins in production", async () => {

@@ -167,8 +167,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
       const body = parsed.data;
 
       try {
-        // 1. Look up the local user record so we can resolve their Clerk id
-        //    and clear our own twoFactorEnabled flag (set in routes-2fa).
+        // 1. Look up the local user record so we can resolve their Clerk id.
         const [localUser] = await db
           .select()
           .from(users)
@@ -179,15 +178,12 @@ export function registerAdminRecoveryRoutes(app: Express): void {
           return Errors.notFound(res, "User");
         }
 
-        // 2. Clear our own 2FA columns (TOTP secret + backup codes).
-        await db
-          .update(users)
-          .set({
-            twoFactorSecret: null,
-            twoFactorEnabled: false,
-            twoFactorBackupCodes: [],
-          } as any)
-          .where(eq(users.id, String(targetUserId)));
+        // 2. R4: In-house 2FA columns (twoFactorEnabled / twoFactorSecret /
+        //    twoFactorBackupCodes) were never persisted to the users table —
+        //    the legacy code wrote through `as any` to a column set that
+        //    doesn't exist in shared/models/auth.ts. MFA state now lives
+        //    exclusively in Clerk (see requireClerkMFA middleware), so the
+        //    only thing left to clear here is Clerk's own factor list.
 
         // 3. Disable Clerk MFA factors. The Clerk JS SDK exposes per-factor
         //    delete endpoints; we iterate and remove every TOTP / phone /
