@@ -155,7 +155,15 @@
   font-family: "Lexend";
   font-style: normal;
   font-weight: 100 900;
-  font-display: swap;
+  /* Phase 8 Mo 12 — Beatriz §2 (CLS):
+   * Lexend is the dyslexia-friendly opt-in face. It only resolves when
+   * the user explicitly enables it via accessibility settings, so for
+   * the vast majority of sessions it must NOT block first paint or
+   * trigger a layout shift on arrival. `optional` tells the browser
+   * "use it only if it's already cached at first text render; otherwise
+   * fall through to the system fallback for the lifetime of the page."
+   * Net effect: zero CLS budget consumed by Lexend on the cold path. */
+  font-display: optional;
   src: url("/fonts/Lexend-VariableFont.woff2") format("woff2-variations"),
        url("/fonts/Lexend-VariableFont.woff2") format("woff2");
   unicode-range: U+0020-007F, U+00A0-00FF, U+2000-206F, U+2070-209F, U+20A0-20CF;

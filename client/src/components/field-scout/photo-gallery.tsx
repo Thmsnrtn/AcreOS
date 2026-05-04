@@ -118,6 +118,16 @@ export function PhotoGallery({
                       src={photo.thumbnailUrl || photo.url}
                       alt={photo.caption || "Field photo"}
                       className="w-full h-full object-cover"
+                      // Phase 8 Mo 12 — Beatriz §1 (LCP) / §2 (CLS).
+                      // Photos in the gallery grid are below-the-fold —
+                      // lazy + async decode keeps them from blocking the
+                      // initial paint. Explicit width/height matches the
+                      // CSS aspect-square parent so the browser reserves
+                      // layout space (zero CLS).
+                      width={200}
+                      height={200}
+                      loading="lazy"
+                      decoding="async"
                     />
                     {/* Overlay on hover */}
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
@@ -194,6 +204,13 @@ export function PhotoGallery({
                   src={selectedPhoto.url}
                   alt={selectedPhoto.caption || "Field photo"}
                   className="w-full max-h-[60vh] object-contain"
+                  // Lightbox view — eagerly load (user opened the dialog).
+                  // Explicit dims taken from the canonical "full" variant
+                  // so the dialog reserves space before the bytes arrive.
+                  width={1920}
+                  height={1440}
+                  loading="eager"
+                  decoding="async"
                 />
 
                 {/* Metadata overlay */}

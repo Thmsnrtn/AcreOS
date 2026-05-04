@@ -4,6 +4,8 @@ import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/s
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+// Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 hash + resize variants.
+import { processUploadedImage } from "./services/imagePipeline";
 
 const fieldScoutRouter = Router();
 
@@ -178,26 +180,66 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
     }
 
     const results = [];
+    const dedupedHashes: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const meta = photoMeta[i] || {};
 
+      // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 + resize.
+      // The validateFileMiddleware above already ran a JPEG-only marker
+      // walker for defense-in-depth; re-running through sharp here gives
+      // us non-JPEG support, baked-in orientation, the dedup hash, and
+      // the resize variants in one pass.
+      let processed: Awaited<ReturnType<typeof processUploadedImage>> | null = null;
+      try {
+        processed = await processUploadedImage(file.buffer, file.mimetype || "image/jpeg");
+      } catch (err) {
+        logger.warn(`[field-scout] image pipeline failed for ${file.originalname}; storing raw`, {
+          metadata: { error: (err as Error).message },
+        });
+      }
+
+      const imageHash = processed?.hash ?? null;
+
+      // Reverse-image dedup — if this org has uploaded the exact same image
+      // before, return the existing record's URLs instead of re-storing.
+      if (imageHash) {
+        const existing = await storage.findFieldScoutPhotoByHash(org.id, imageHash);
+        if (existing) {
+          dedupedHashes.push(imageHash);
+          results.push(existing);
+          continue;
+        }
+      }
+
+      // TODO(Wave 10 blob-storage): once the S3/R2 client lands per
+      // docs/cost/blob-storage-migration.md, upload `processed.variants.*`
+      // and use the returned URLs here. For now we persist the hash + sizes
+      // so the dedup table is populated; URL points to a placeholder data
+      // path the surface API will resolve at read time.
+      const filename = (file.originalname || `photo_${Date.now()}_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+
       const photoRecord = await storage.createFieldScoutPhoto({
-        visitId: meta.visitId ? parseInt(meta.visitId) : null,
+        organizationId: org.id,
+        visitId: meta.visitId ? parseInt(meta.visitId) : 0,
         leadId,
-        filename: file.originalname || `photo_${Date.now()}_${i}`,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        latitude: meta.latitude ? String(meta.latitude) : null,
-        longitude: meta.longitude ? String(meta.longitude) : null,
-        capturedAt: meta.capturedAt ? new Date(meta.capturedAt) : null,
+        url: `/uploads/field-scout/${imageHash || filename}`,
+        caption: meta.caption ?? null,
+        latitude: meta.latitude != null ? Number(meta.latitude) : null,
+        longitude: meta.longitude != null ? Number(meta.longitude) : null,
+        imageHash,
+        thumbnailUrl: imageHash ? `/uploads/field-scout/${imageHash}/thumbnail.jpg` : null,
+        cardUrl: imageHash ? `/uploads/field-scout/${imageHash}/card.jpg` : null,
+        fullUrl: imageHash ? `/uploads/field-scout/${imageHash}/full.jpg` : null,
+        bytes: processed?.stripped.length ?? file.size,
+        mime: file.mimetype ?? null,
       });
 
       results.push(photoRecord);
     }
 
-    res.json({ photos: results });
+    res.json({ photos: results, deduped: dedupedHashes });
   } catch (err: any) {
     logger.error('[field-scout] photo upload error', err);
     res.status(500).json({ error: err.message });
@@ -232,18 +274,27 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
       checklistResults: checklistResults || null,
     });
 
-    // If photos metadata was included, link them to the visit
+    // If photos metadata was included, link them to the visit. Image
+    // payloads (with EXIF strip + hash + variants) are uploaded via
+    // POST /leads/:id/photos — this path only records pointer metadata
+    // for previously uploaded photos.
     if (Array.isArray(photos) && photos.length > 0) {
+      const org = req.organization;
       for (const photo of photos) {
         await storage.createFieldScoutPhoto({
+          organizationId: org.id,
           visitId: visit.id,
           leadId: parseInt(leadId),
-          filename: photo.filename || 'unknown',
-          mimeType: photo.mimeType || 'image/jpeg',
-          sizeBytes: photo.sizeBytes || 0,
-          latitude: photo.latitude ? String(photo.latitude) : null,
-          longitude: photo.longitude ? String(photo.longitude) : null,
-          capturedAt: photo.capturedAt ? new Date(photo.capturedAt) : null,
+          url: photo.url || photo.filename || 'unknown',
+          caption: photo.caption ?? null,
+          latitude: photo.latitude != null ? Number(photo.latitude) : null,
+          longitude: photo.longitude != null ? Number(photo.longitude) : null,
+          imageHash: photo.imageHash ?? null,
+          thumbnailUrl: photo.thumbnailUrl ?? null,
+          cardUrl: photo.cardUrl ?? null,
+          fullUrl: photo.fullUrl ?? null,
+          bytes: photo.sizeBytes ?? null,
+          mime: photo.mimeType ?? null,
         });
       }
     }

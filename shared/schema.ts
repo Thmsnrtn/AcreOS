@@ -16312,10 +16312,21 @@ export const fieldScoutPhotos = pgTable("field_scout_photos", {
   caption: text("caption"),
   latitude: real("latitude"),
   longitude: real("longitude"),
+  // Phase 8 Mo 12 — Yara §1 photo-hash + resize pipeline (migration 0067).
+  // SHA-256 of the post-EXIF-strip bytes; per-org dedup key.
+  imageHash: varchar("image_hash", { length: 64 }),
+  // Resize variants (re-encoded JPEG, generated on upload). Surface APIs
+  // return whichever size was requested instead of the 12 MP original.
+  thumbnailUrl: text("thumbnail_url"),
+  cardUrl: text("card_url"),
+  fullUrl: text("full_url"),
+  bytes: integer("bytes"),
+  mime: varchar("mime", { length: 64 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("fsp_visit_idx").on(t.visitId),
   index("fsp_lead_idx").on(t.leadId),
+  index("fsp_org_hash_idx").on(t.organizationId, t.imageHash),
 ]);
 
 export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });

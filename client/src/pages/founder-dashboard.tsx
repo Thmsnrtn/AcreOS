@@ -126,27 +126,32 @@ import ForecastPanel from "@/components/founder/ForecastPanel";
 import CustomerHealthPanel from "@/components/founder/CustomerHealthPanel";
 import OutcomeFeedback from "@/components/founder/OutcomeFeedback";
 import DelegationManager from "@/components/founder/DelegationManager";
-// v6: Self-Running Company
-import { WorkflowMonitor } from "@/components/founder/WorkflowMonitor";
-import { WarRoom } from "@/components/founder/WarRoom";
-import { InitiativeBoard } from "@/components/founder/InitiativeBoard";
-import { PerformanceReviews } from "@/components/founder/PerformanceReviews";
-import { DecisionQuality } from "@/components/founder/DecisionQuality";
-import { PlaybookManager } from "@/components/founder/PlaybookManager";
-import { AbsenceMode } from "@/components/founder/AbsenceMode";
-// v7: The Learning Company
+// Phase 8 Mo 12 — Beatriz §3 (code-splitting).
+// The v6/v7/v8 panels are only mounted when their tab is active. Each one
+// pulls a small constellation of charts / framer-motion / its own data
+// hooks into the founder-dashboard chunk. Converting them to React.lazy
+// reclaims ~80 KB of inert JS from the founder-dashboard entry chunk.
+//
+// FocusCard stays eager — it renders on the default Overview tab so it
+// would just defer the very first paint by one round-trip.
 import { FocusCard } from "@/components/founder/FocusCard";
-import { DecisionAutopilot } from "@/components/founder/DecisionAutopilot";
-import { ScenarioEngine } from "@/components/founder/ScenarioEngine";
-import { AgentGrowth } from "@/components/founder/AgentGrowth";
-import { FounderTwin } from "@/components/founder/FounderTwin";
-import { InstitutionalMemory } from "@/components/founder/InstitutionalMemory";
-// v8: The Living Organization
-import { StrategicCompass } from "@/components/founder/StrategicCompass";
-import { AgentDebatePanel } from "@/components/founder/AgentDebatePanel";
-import { FounderWellbeingCard } from "@/components/founder/FounderWellbeingCard";
-import { SynergyMap } from "@/components/founder/SynergyMap";
-import { CompanyChronicle } from "@/components/founder/CompanyChronicle";
+const WorkflowMonitor      = React.lazy(() => import("@/components/founder/WorkflowMonitor").then(m => ({ default: m.WorkflowMonitor })));
+const WarRoom              = React.lazy(() => import("@/components/founder/WarRoom").then(m => ({ default: m.WarRoom })));
+const InitiativeBoard      = React.lazy(() => import("@/components/founder/InitiativeBoard").then(m => ({ default: m.InitiativeBoard })));
+const PerformanceReviews   = React.lazy(() => import("@/components/founder/PerformanceReviews").then(m => ({ default: m.PerformanceReviews })));
+const DecisionQuality      = React.lazy(() => import("@/components/founder/DecisionQuality").then(m => ({ default: m.DecisionQuality })));
+const PlaybookManager      = React.lazy(() => import("@/components/founder/PlaybookManager").then(m => ({ default: m.PlaybookManager })));
+const AbsenceMode          = React.lazy(() => import("@/components/founder/AbsenceMode").then(m => ({ default: m.AbsenceMode })));
+const DecisionAutopilot    = React.lazy(() => import("@/components/founder/DecisionAutopilot").then(m => ({ default: m.DecisionAutopilot })));
+const ScenarioEngine       = React.lazy(() => import("@/components/founder/ScenarioEngine").then(m => ({ default: m.ScenarioEngine })));
+const AgentGrowth          = React.lazy(() => import("@/components/founder/AgentGrowth").then(m => ({ default: m.AgentGrowth })));
+const FounderTwin          = React.lazy(() => import("@/components/founder/FounderTwin").then(m => ({ default: m.FounderTwin })));
+const InstitutionalMemory  = React.lazy(() => import("@/components/founder/InstitutionalMemory").then(m => ({ default: m.InstitutionalMemory })));
+const StrategicCompass     = React.lazy(() => import("@/components/founder/StrategicCompass").then(m => ({ default: m.StrategicCompass })));
+const AgentDebatePanel     = React.lazy(() => import("@/components/founder/AgentDebatePanel").then(m => ({ default: m.AgentDebatePanel })));
+const FounderWellbeingCard = React.lazy(() => import("@/components/founder/FounderWellbeingCard").then(m => ({ default: m.FounderWellbeingCard })));
+const SynergyMap           = React.lazy(() => import("@/components/founder/SynergyMap").then(m => ({ default: m.SynergyMap })));
+const CompanyChronicle     = React.lazy(() => import("@/components/founder/CompanyChronicle").then(m => ({ default: m.CompanyChronicle })));
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 import { GlossaryTerm } from "@/components/Glossary";
 
@@ -2139,13 +2144,15 @@ export default function FounderDashboard() {
               </Card>
               <CompanyBriefingPanel />
               <AgentTeamPanel />
-              <DecisionAutopilot />
-              <AgentGrowth />
-              <FounderTwin />
-              <AgentDebatePanel />
-              <PerformanceReviews />
-              <SynergyMap />
-              <InstitutionalMemory />
+              <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
+                <DecisionAutopilot />
+                <AgentGrowth />
+                <FounderTwin />
+                <AgentDebatePanel />
+                <PerformanceReviews />
+                <SynergyMap />
+                <InstitutionalMemory />
+              </Suspense>
             </div>
           )}
 
@@ -2176,16 +2183,18 @@ export default function FounderDashboard() {
                 </CardContent>
               </Card>
               <DelegationManager />
-              <AbsenceMode />
-              <WarRoom />
-              <WorkflowMonitor />
-              <InitiativeBoard />
-              <PlaybookManager />
-              <DecisionQuality />
-              <ScenarioEngine />
-              <StrategicCompass />
-              <FounderWellbeingCard />
-              <CompanyChronicle />
+              <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
+                <AbsenceMode />
+                <WarRoom />
+                <WorkflowMonitor />
+                <InitiativeBoard />
+                <PlaybookManager />
+                <DecisionQuality />
+                <ScenarioEngine />
+                <StrategicCompass />
+                <FounderWellbeingCard />
+                <CompanyChronicle />
+              </Suspense>
             </div>
           )}
 

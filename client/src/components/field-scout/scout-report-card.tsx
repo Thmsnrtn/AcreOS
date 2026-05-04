@@ -75,6 +75,12 @@ export function ScoutReportCard({
             src={getMapboxStaticUrl(visit.latitude!, visit.longitude!)}
             alt="Visit location"
             className="w-full h-full object-cover opacity-80"
+            // Phase 8 Mo 12 — Beatriz §1/§2.
+            // Mini map thumbnail; below-the-fold (cards in a list).
+            width={400}
+            height={112}
+            loading="lazy"
+            decoding="async"
             onError={(e) => {
               // Hide image on load error (no Mapbox token)
               (e.target as HTMLImageElement).style.display = "none";

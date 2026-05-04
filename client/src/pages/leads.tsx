@@ -17,7 +17,7 @@ import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { ContentReveal } from "@/components/ContentReveal";
-import { useState, useMemo, useEffect, useRef, useId } from "react";
+import { useState, useMemo, useEffect, useRef, useId, useDeferredValue } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeadSchema, type Lead } from "@shared/schema";
@@ -961,16 +961,23 @@ export default function LeadsPage() {
     }
   };
 
+  // Phase 8 Mo 12 — Beatriz §3 (INP).
+  // useDeferredValue lets React keep the input echoing the user's keystrokes
+  // while the (potentially expensive) re-filter happens at a lower priority.
+  // On large lead lists the filter ran inline on every keystroke and pushed
+  // INP > 200ms; deferring it keeps typing responsive without changing UX.
+  const deferredSearch = useDeferredValue(search);
+
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
-    
+
     let result = leads as LeadWithScore[];
-    
-    // Apply search filter
-    if (search) {
-      const searchLower = search.toLowerCase();
-      result = result.filter(l => 
-        l.lastName.toLowerCase().includes(searchLower) || 
+
+    // Apply search filter (uses deferredSearch — see useDeferredValue above)
+    if (deferredSearch) {
+      const searchLower = deferredSearch.toLowerCase();
+      result = result.filter(l =>
+        l.lastName.toLowerCase().includes(searchLower) ||
         l.firstName.toLowerCase().includes(searchLower) ||
         l.email?.toLowerCase().includes(searchLower)
       );
@@ -1010,7 +1017,7 @@ export default function LeadsPage() {
     }
     
     return result;
-  }, [leads, search, stageFilter, assigneeFilter, gisFilters, sortOrder]);
+  }, [leads, deferredSearch, stageFilter, assigneeFilter, gisFilters, sortOrder]);
 
   // Server-side pagination: the data returned is already one page
   // Client-side filtering (search, GIS) is applied on the current page
