@@ -136,8 +136,12 @@ function doSentryInit(): void {
     "VITE_SENTRY_REPLAY_SESSION_RATE",
     isProd ? 0.01 : 0.0,
   );
-  // On-error replay: keep at 1.0 — that's the high-value data.
-  const replayOnError = readRate("VITE_SENTRY_REPLAY_ON_ERROR_RATE", 1.0);
+  // On-error replay: 0.5 default (down from 1.0 on 2026-05-04, Workstream B.5).
+  // At 100 customers, 1.0 projected ~915 replays/mo vs free-tier 50/mo cap.
+  // 0.5 still captures replay around half of all errors — high signal —
+  // while staying within budget. Revisit when MRR > $5K (per founder
+  // directive) or when Sentry Replay paid SKU is purchased.
+  const replayOnError = readRate("VITE_SENTRY_REPLAY_ON_ERROR_RATE", 0.5);
   // Traces: 5% in prod, 0 in dev/local.
   const tracesRate = readRate(
     "VITE_SENTRY_TRACES_RATE",
