@@ -87,6 +87,35 @@ const STATEMENTS = [
   'CREATE EXTENSION IF NOT EXISTS pg_trgm',
   'CREATE EXTENSION IF NOT EXISTS pg_stat_statements',
 
+  // ── Coriander §1 (Wave 3): Recovery-console audit trail. Migration 0039. ──
+  // Append-only event log for high-risk admin recovery operations (2FA reset,
+  // session revoke, ownership transfer, autopay freeze, password-reset link).
+  // Distinct from the org-scoped audit_log table: audit_events is platform-
+  // wide, founder-driven, and may have no owning organization. Retention: 7
+  // years (legal). No deletes. Append-only.
+  //
+  // 2026-05-04 (Workstream §3.1): added to migrate.mjs to bring prod DB into
+  // alignment with shared/schema.ts. Was sitting in migrations/0039_audit_events.sql
+  // but never applied to prod, causing the index-audit CREATE INDEX below to
+  // fail-non-fatal every deploy.
+  `CREATE TABLE IF NOT EXISTS "audit_events" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "actor_user_id" text,
+     "actor_email" text,
+     "action" text NOT NULL,
+     "target_type" text NOT NULL,
+     "target_id" text NOT NULL,
+     "justification" text,
+     "metadata" jsonb,
+     "ip" text,
+     "user_agent" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_audit_events_actor" ON "audit_events" ("actor_user_id")',
+  'CREATE INDEX IF NOT EXISTS "idx_audit_events_target" ON "audit_events" ("target_type", "target_id")',
+  'CREATE INDEX IF NOT EXISTS "idx_audit_events_action" ON "audit_events" ("action")',
+  'CREATE INDEX IF NOT EXISTS "idx_audit_events_created_at" ON "audit_events" ("created_at" DESC)',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
