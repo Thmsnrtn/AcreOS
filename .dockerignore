@@ -5,6 +5,33 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
+# Build-context bloat exclusions (added 2026-05-04, Workstream A.2 follow-on
+# discovered during PERFORMANCE-DIAGNOSTIC.md investigation). These dirs
+# are not needed inside the production server image and were inflating
+# the Docker build context to 2.6+ GB at deploy time:
+#
+#   .git                — 196 MB (full history; never needed in image)
+#   docs/               — 65 MB  (audit synthesis + auth screenshots)
+#   attached_assets/    — 93 MB  (raw assets / not built into the image)
+#   acreos/             — 0.5 MB (round3 prototype reference jsx)
+#   acreos-onboarding/  — 0.1 MB (onboarding prototype reference jsx)
+#   acreos-landing/     — 0.1 MB (landing prototype reference jsx)
+#   ios/, android/      — 0.7 MB each (Capacitor native projects; built off-host)
+#   evals/              — 0.1 MB (eval harness; ops-side, not server-runtime)
+#
+# Net: drops build context from ~2.7 GB → ~80 MB. Deploys should go from
+# 6+ minutes of context upload to under 30 seconds.
+.git
+.gitignore
+docs/
+attached_assets/
+acreos/
+acreos-onboarding/
+acreos-landing/
+ios/
+android/
+evals/
+
 # Local env / secrets
 .env
 .env.*
