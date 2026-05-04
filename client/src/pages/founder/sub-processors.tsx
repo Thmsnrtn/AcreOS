@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Save } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type DpaStatus = "pending" | "negotiating" | "signed" | "expired";
 
@@ -53,6 +54,8 @@ const STATUS_VARIANT: Record<DpaStatus, "default" | "secondary" | "destructive" 
 const STATUS_OPTIONS: DpaStatus[] = ["pending", "negotiating", "signed", "expired"];
 
 export default function FounderSubProcessorsPage() {
+  useDocumentTitle("Sub-processors");
+
   const { toast } = useToast();
   const [draft, setDraft] = useState<Record<string, Partial<Vendor>>>({});
 

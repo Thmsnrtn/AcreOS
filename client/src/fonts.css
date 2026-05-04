@@ -143,3 +143,20 @@
   --font-serif:   "Newsreader", "Times New Roman", Georgia, serif;
   --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
+
+/* ─────────────── Wave B accessibility — Lexend (dyslexia-friendly) ───────────────
+   Beck §2: a per-user font preference for dyslexia-friendly reading.
+   Self-hosted policy applies — when shipping, drop Lexend-VariableFont.woff2
+   into client/public/fonts/. Until then, the rule below resolves to the
+   declared @font-face if the file exists, otherwise the user agent falls
+   through to the next family in the family list applied at the html level.
+   Latin subset only (HANDOFF.md §13). */
+@font-face {
+  font-family: "Lexend";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Lexend-VariableFont.woff2") format("woff2-variations"),
+       url("/fonts/Lexend-VariableFont.woff2") format("woff2");
+  unicode-range: U+0020-007F, U+00A0-00FF, U+2000-206F, U+2070-209F, U+20A0-20CF;
+}

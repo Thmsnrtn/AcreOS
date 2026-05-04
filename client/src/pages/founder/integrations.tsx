@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Loader2,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,8 @@ const CATEGORY_ORDER = ["ai", "data", "communications", "mail"];
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function FounderIntegrationsPage() {
+  useDocumentTitle("Integrations");
+
   const { toast } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [verifyResults, setVerifyResults] = useState<Record<string, VerifyResult>>({});

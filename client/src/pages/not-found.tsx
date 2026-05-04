@@ -7,7 +7,10 @@
  * import `NotFound` from "@/pages/not-found".
  */
 import { NotFoundPage } from "./coverage-page";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function NotFound() {
+  useDocumentTitle("Page not found");
+
   return <NotFoundPage />;
 }

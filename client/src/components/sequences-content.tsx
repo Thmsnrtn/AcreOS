@@ -388,7 +388,7 @@ export function SequencesContent() {
                           <Edit className="w-4 h-4 mr-1" />
                           Edit
                         </Button>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => deleteMutation.mutate(sequence.id)}

@@ -187,7 +187,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
 
         <div className="flex gap-2">
           {stepIndex > 0 && (
-            <Button variant="ghost" size="sm" onClick={onPrev} className="h-8 px-3">
+            <Button aria-label="Previous" variant="ghost" size="sm" onClick={onPrev} className="h-8 px-3">
               <ChevronLeft className="h-4 w-4" />
             </Button>
           )}

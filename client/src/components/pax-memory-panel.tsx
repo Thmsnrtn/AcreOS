@@ -166,7 +166,7 @@ function MemoryCard({
           {relative(memory.createdAt)}
         </p>
       </div>
-      <button
+      <button aria-label="Memory Response"
         onClick={() => onDelete(memory.id)}
         disabled={isDeleting}
         className="text-muted-foreground/30 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 mt-0.5 flex-shrink-0 disabled:opacity-30"

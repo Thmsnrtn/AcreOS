@@ -15,6 +15,7 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import {
   Target, DollarSign, TrendingUp, Zap, Star, Clock, Award,
   Edit3, Save, ChevronRight, Info, CheckCircle, Lock,
@@ -115,7 +116,7 @@ function FreedomMeter({ score, monthlyIncome, monthlyExpenses }: {
         <svg height={radius * 2} width={radius * 2} aria-hidden="true">
           {/* Background ring */}
           <circle
-            stroke="#e5e7eb"
+            stroke={chartColor(0)}
             fill="transparent"
             strokeWidth={stroke}
             r={normalizedRadius}
@@ -530,8 +531,8 @@ export default function FreedomMeterPage() {
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => fmt(v)} />
                   <Tooltip formatter={((v: number) => [usd(v, { noCents: true }), ""]) as any} />
-                  <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
-                  <Area type="monotone" dataKey="noteIncome" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Note income" strokeWidth={2} />
+                  <ReferenceLine y={data.totalMonthlyExpenses} stroke={chartColor(1)} strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
+                  <Area type="monotone" dataKey="noteIncome" stroke={chartColor(2)} fill={chartColor(2)} fillOpacity={0.2} name="Note income" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -617,12 +618,12 @@ export default function FreedomMeterPage() {
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={5} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => fmt(v)} />
                   <Tooltip formatter={((v: number) => [usd(v, { noCents: true }), ""]) as any} />
-                  <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
+                  <ReferenceLine y={data.totalMonthlyExpenses} stroke={chartColor(1)} strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
                   {freedomMonth && (
-                    <ReferenceLine x={freedomMonth.month} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Freedom!", position: "top", fontSize: 11, fill: "#10b981" }} />
+                    <ReferenceLine x={freedomMonth.month} stroke={chartColor(2)} strokeDasharray="4 4" label={{ value: "Freedom!", position: "top", fontSize: 11, fill: "#10b981" }} />
                   )}
-                  <Area type="monotone" dataKey="noteIncome" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} name="Projected note income" strokeWidth={2} />
-                  <Area type="monotone" dataKey="expenses" stroke="#ef4444" fill="none" name="Fixed expenses" strokeWidth={2} strokeDasharray="4 4" />
+                  <Area type="monotone" dataKey="noteIncome" stroke={chartColor(3)} fill={chartColor(3)} fillOpacity={0.15} name="Projected note income" strokeWidth={2} />
+                  <Area type="monotone" dataKey="expenses" stroke={chartColor(1)} fill="none" name="Fixed expenses" strokeWidth={2} strokeDasharray="4 4" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

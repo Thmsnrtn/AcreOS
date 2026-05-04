@@ -1460,7 +1460,7 @@ export default function LeadsPage() {
                       <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete">
                         <Trash2 className="w-4 h-4 mr-1" /> Delete
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
+                      <Button aria-label="Content Reveal" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
                         <X className="w-4 h-4" />
                       </Button>
                     </div>

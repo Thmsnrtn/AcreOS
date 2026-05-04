@@ -13,7 +13,8 @@
     "react",
     "react-hooks",
     "jsx-a11y",
-    "import"
+    "import",
+    "acreos"
   ],
   "extends": [
     "eslint:recommended",
@@ -39,7 +40,8 @@
     "jsx-a11y/aria-proptypes": "error",
     "jsx-a11y/aria-unsupported-elements": "error",
     "jsx-a11y/role-has-required-aria-props": "error",
-    "import/no-duplicates": "warn"
+    "import/no-duplicates": "warn",
+    "acreos/icon-button-needs-aria-label": "error"
   },
   "env": {
     "browser": true,

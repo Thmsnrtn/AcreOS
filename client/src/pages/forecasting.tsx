@@ -12,6 +12,7 @@ import {
   ComposedChart,
   Bar,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import {
   TrendingUp,
   DollarSign,
@@ -181,7 +182,7 @@ export default function ForecastingPage() {
                 >
                   <ResponsiveContainer width="100%" height={300}>
                     <ComposedChart data={monthlyEntries}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartColor(0)} />
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} />
                       <YAxis
                         tick={{ fontSize: 11 }}
@@ -190,9 +191,9 @@ export default function ForecastingPage() {
                         axisLine={false}
                       />
                       <Tooltip formatter={((value: number, name: string) => [fmt(value), name]) as any} />
-                      <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} opacity={0.85} />
-                      <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} opacity={0.85} />
-                      <Line type="monotone" dataKey="net" name="Net" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                      <Bar dataKey="income" name="Income" fill={chartColor(1)} radius={[4, 4, 0, 0]} opacity={0.85} />
+                      <Bar dataKey="expenses" name="Expenses" fill={chartColor(2)} radius={[4, 4, 0, 0]} opacity={0.85} />
+                      <Line type="monotone" dataKey="net" name="Net" stroke={chartColor(3)} strokeWidth={2} dot={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>

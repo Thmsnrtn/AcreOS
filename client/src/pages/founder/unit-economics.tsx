@@ -55,6 +55,7 @@ import {
   AlertTriangle,
   LineChart,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types — must match server/services/unitEconomics.ts ────────────────────
 
@@ -97,6 +98,8 @@ interface UnitEconomicsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
+  useDocumentTitle("Unit economics");
+
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

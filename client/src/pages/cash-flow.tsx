@@ -22,6 +22,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { chartColor } from "@/lib/chartPalette";
 import {
   DollarSign,
   TrendingUp,
@@ -389,7 +390,7 @@ export default function CashFlowPage() {
                       <Area
                         type="monotone"
                         dataKey="income"
-                        stroke="#10b981"
+                        stroke={chartColor(0)}
                         strokeWidth={2}
                         fill="url(#incomeGrad)"
                         name="Expected income"
@@ -398,7 +399,7 @@ export default function CashFlowPage() {
                           if (!payload.isBalloon) return <g key={`dot-${cx}-${cy}`} />;
                           return (
                             <circle key={`balloon-${cx}-${cy}`} cx={cx} cy={cy} r={6}
-                              fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                              fill={chartColor(1)} stroke={chartColor(2)} strokeWidth={2} />
                           );
                         }}
                       />
@@ -436,9 +437,9 @@ export default function CashFlowPage() {
                       <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                       <Tooltip formatter={((v: any, name: string) => [formatDollar(v), name]) as any} />
                       <Legend />
-                      <ReferenceLine y={0} stroke="#888" />
-                      <Bar dataKey="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      <ReferenceLine y={0} stroke={chartColor(3)} />
+                      <Bar dataKey="Income" fill={chartColor(0)} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Expenses" fill={chartColor(4)} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -455,12 +456,12 @@ export default function CashFlowPage() {
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                       <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                       <Tooltip formatter={(v: any) => [formatDollar(v), 'Net cash flow']} />
-                      <ReferenceLine y={0} stroke="#888" />
+                      <ReferenceLine y={0} stroke={chartColor(3)} />
                       <Area
                         type="monotone"
                         dataKey="Net cash flow"
-                        stroke="#d97541"
-                        fill="#d9754130"
+                        stroke={chartColor(5)}
+                        fill={chartColor(6)}
                         strokeWidth={2}
                       />
                     </AreaChart>

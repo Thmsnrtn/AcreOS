@@ -28,6 +28,7 @@ import {
   Bar,
 } from 'recharts';
 
+import { chartColor } from "@/lib/chartPalette";
 import {
   TrendingUp,
   TrendingDown,
@@ -576,11 +577,11 @@ export default function PortfolioOptimizerPage() {
                             formatter={((v: any, name: string) => [formatDollar(v), name.replace('p', 'P').replace(/(\d+)/, '$1th %ile')]) as any}
                           />
                           <Legend />
-                          <Area type="monotone" dataKey="p90" stackId="a" stroke="#10b981" fill="#10b98120" name="p90" />
-                          <Area type="monotone" dataKey="p75" stackId="b" stroke="#22c55e" fill="#22c55e20" name="p75" />
-                          <Area type="monotone" dataKey="p50" stackId="c" stroke="#d97541" fill="#d9754130" name="p50" strokeWidth={2} />
-                          <Area type="monotone" dataKey="p25" stackId="d" stroke="#f97316" fill="#f9731620" name="p25" />
-                          <Area type="monotone" dataKey="p10" stackId="e" stroke="#ef4444" fill="#ef444420" name="p10" />
+                          <Area type="monotone" dataKey="p90" stackId="a" stroke={chartColor(0)} fill={chartColor(1)} name="p90" />
+                          <Area type="monotone" dataKey="p75" stackId="b" stroke={chartColor(2)} fill={chartColor(3)} name="p75" />
+                          <Area type="monotone" dataKey="p50" stackId="c" stroke={chartColor(4)} fill={chartColor(5)} name="p50" strokeWidth={2} />
+                          <Area type="monotone" dataKey="p25" stackId="d" stroke={chartColor(6)} fill={chartColor(7)} name="p25" />
+                          <Area type="monotone" dataKey="p10" stackId="e" stroke={chartColor(8)} fill={chartColor(9)} name="p10" />
                         </AreaChart>
                       </ResponsiveContainer>
                       </div>
@@ -774,7 +775,7 @@ export default function PortfolioOptimizerPage() {
                           <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                           <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} />
                           <Tooltip formatter={(v: any) => [`${v.toFixed(1)}%`, 'Share']} />
-                          <Bar dataKey="percentage" fill="#d97541" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="percentage" fill={chartColor(4)} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                       </div>
@@ -1012,8 +1013,8 @@ export default function PortfolioOptimizerPage() {
                       <YAxis tickFormatter={v => `${v}%`} />
                       <Tooltip formatter={(v: any) => [`${v}%`, '']} />
                       <Legend />
-                      <Bar dataKey="current" name="Current %" fill="#d97541" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="optimized" name="AI-Optimized %" fill="#4f8ef7" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="current" name="Current %" fill={chartColor(4)} radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="optimized" name="AI-Optimized %" fill={chartColor(10)} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   </div>

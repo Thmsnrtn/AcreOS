@@ -487,7 +487,7 @@ function TeamTabContent() {
                           </div>
                           {action.status === "proposed" && (
                             <div className="flex items-center gap-2">
-                              <Button
+                              <Button aria-label="Button"
                                 size="sm"
                                 variant="outline"
                                 onClick={() => rejectActionMutation.mutate(action.id)}
@@ -496,7 +496,7 @@ function TeamTabContent() {
                               >
                                 <X className="w-4 h-4" />
                               </Button>
-                              <Button
+                              <Button aria-label="Confirm"
                                 size="sm"
                                 onClick={() => approveActionMutation.mutate(action.id)}
                                 disabled={approveActionMutation.isPending}
@@ -2172,7 +2172,7 @@ export default function CommandCenterPage() {
                               <FileText className="w-5 h-5 text-muted-foreground" />
                             )}
                             <span className="text-xs truncate max-w-[100px]">{att.file.name}</span>
-                            <button
+                            <button aria-label="Button"
                               onClick={() => removeAttachment(att.id)}
                               className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted"
                               data-testid={`button-remove-attachment-${att.id}`}

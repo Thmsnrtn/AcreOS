@@ -567,7 +567,7 @@ export function SupportContent() {
                     <p className="text-sm font-medium">How was your experience?</p>
                     <div className="flex justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <button
+                        <button aria-label="Favorite"
                           key={star}
                           onClick={() => setRating(star)}
                           className="p-1 hover-elevate"

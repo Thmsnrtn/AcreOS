@@ -1580,7 +1580,7 @@ export function PaxCopilotRail() {
                                 text={msg.content}
                                 data-testid={`pax-rail-read-aloud-${msg.id}`}
                               />
-                              <button
+                              <button aria-label="Thumbs up"
                                 onClick={() => handleRating(msg.id, 1)}
                                 className={cn(
                                   "p-0.5 rounded hover:bg-muted transition-colors",
@@ -1590,7 +1590,7 @@ export function PaxCopilotRail() {
                               >
                                 <ThumbsUp className="w-3 h-3" />
                               </button>
-                              <button
+                              <button aria-label="Thumbs down"
                                 onClick={() => handleRating(msg.id, -1)}
                                 className={cn(
                                   "p-0.5 rounded hover:bg-muted transition-colors",
@@ -1622,7 +1622,7 @@ export function PaxCopilotRail() {
                       className="flex items-center gap-1 text-[11px] bg-primary/10 text-primary rounded px-2 py-0.5 border border-primary/20"
                     >
                       @{e.name}
-                      <button
+                      <button aria-label={`Remove mention of ${e.name}`}
                         onClick={() => setMentionedEntities((prev) => prev.filter((x) => !(x.type === e.type && x.id === e.id)))}
                         className="hover:text-foreground"
                       >
@@ -1655,7 +1655,7 @@ export function PaxCopilotRail() {
                           <Paperclip className="w-3 h-3 text-muted-foreground" />
                         )}
                         <span className="truncate max-w-[100px]">{f.name}</span>
-                        <button
+                        <button aria-label="Pax Slash Picker"
                           onClick={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
                           className="text-muted-foreground hover:text-foreground"
                         >

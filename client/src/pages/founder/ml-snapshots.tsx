@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Brain, Database, Clock, CheckCircle2 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type SnapshotType =
   | "avm_vs_actual"
@@ -77,7 +78,9 @@ const WIRING_INFO: Record<SnapshotType, string> = {
   offer_acceptance: "server/routes-deals.ts → PUT /api/deals/:id (offer_sent → accepted/countered/cancelled)",
 };
 
-function ProgressBar({ value, max }: { value: number; max: number }) {
+function ProgressBar({
+  useDocumentTitle("ML snapshots");
+ value, max }: { value: number; max: number }) {
   const pct = Math.max(0, Math.min(100, max > 0 ? (value / max) * 100 : 0));
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">

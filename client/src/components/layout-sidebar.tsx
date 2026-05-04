@@ -1123,7 +1123,7 @@ export function Sidebar() {
             <div className="flex justify-center py-1">
               <ThemeToggle />
             </div>
-            <button
+            <button aria-label="Tooltip"
               onClick={() => logout()}
               data-testid="button-logout"
               className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"

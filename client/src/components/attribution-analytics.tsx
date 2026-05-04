@@ -26,6 +26,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { TrendingUp, DollarSign, Target, Mail } from "lucide-react";
 
 interface AttributionRow {
@@ -217,7 +218,7 @@ export function AttributionAnalytics() {
                         <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                         <YAxis tick={{ fontSize: 10 }} />
                         <Tooltip />
-                        <Bar dataKey="Conversions" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="Conversions" fill={chartColor(0)} radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

@@ -18,6 +18,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
 import {
   TrendingDown, Star, Trash2, Plus, RefreshCw, Building2, DollarSign,
@@ -395,8 +396,8 @@ function ScenariosTab() {
                   <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
                   <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Est. Tax" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Net Proceeds" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Est. Tax" fill={chartColor(0)} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Net Proceeds" fill={chartColor(1)} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -426,7 +427,7 @@ function ScenariosTab() {
                       {s.scenarioType}
                     </span>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  <Button aria-label="Delete" variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => deleteMutation.mutate(s.id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -558,9 +559,9 @@ function ProjectionsTab() {
                   <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={65} />
                   <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="taxLiability" name="Tax Liability" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="afterTaxReturn" name="After-Tax Return" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="strategySavings" name="Strategy Savings" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="taxLiability" name="Tax Liability" stroke={chartColor(0)} strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="afterTaxReturn" name="After-Tax Return" stroke={chartColor(1)} strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="strategySavings" name="Strategy Savings" stroke={chartColor(2)} strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

@@ -179,7 +179,7 @@ export function WorkspaceManager() {
                       {preset.name}
                     </span>
                     {isActive && <Check className="h-4 w-4 text-primary" />}
-                    <button
+                    <button aria-label="Delete"
                       onClick={(e) => {
                         e.stopPropagation();
                         deletePresetMutation.mutate(preset.id);

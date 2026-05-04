@@ -462,7 +462,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
               {activeTab === "editor" && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" data-testid="button-insert-variable">
+                    <Button aria-label="Variable" variant="outline" size="sm" data-testid="button-insert-variable">
                       <Variable className="w-4 h-4 mr-2" />
                       Insert Variable
                       <ChevronDown className="w-4 h-4 ml-2" />

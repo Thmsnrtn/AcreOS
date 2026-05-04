@@ -996,6 +996,20 @@
 /* macOS-style focus rings */
 *:focus-visible {
   @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+  /* WCAG 2.2 SC 2.4.11 — Focus Not Obscured (Minimum). When a focusable
+     element is scrolled into view, leave room above for the sticky topbar
+     (PageTopbar ~56px) and below for the mobile bottom nav (~64px) so the
+     focus ring is never hidden by chrome. `scroll-margin-*` is honored by
+     scrollIntoView and by browser auto-scroll on Tab. */
+  scroll-margin-top: 5rem;
+  scroll-margin-bottom: 5rem;
+}
+
+/* Sticky chrome — topbars, command-palette overlays, dynamic islands — must
+   not obscure focused content. Authors should add `data-sticky-chrome` so
+   children inherit predictable scroll margins on Tab navigation. */
+[data-sticky-chrome] :focus-visible {
+  scroll-margin-top: 6rem;
 }
 
 /* Smooth page transitions */
@@ -1616,4 +1630,85 @@ textarea:focus-visible,
   .max-w-4xl {
     max-width: 100% !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   WAVE B ACCESSIBILITY ACCOMMODATIONS — Phase 4 Week 23-26
+   Driven by <html data-*> attributes set by AccessibilityProvider.
+   See client/src/contexts/accessibility-context.tsx.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Beck §2 — Lexend (dyslexia-friendly). The font file is loaded by
+   fonts.css; here we only flip the family. */
+html[data-font="lexend"] body,
+html[data-font="lexend"] {
+  font-family: "Lexend", "Lexend Variable", system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Beck §3-§4 — reading density. Drives line-height + base font-size scale. */
+html[data-density="compact"] {
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+html[data-density="comfortable"] {
+  /* default — no override */
+}
+html[data-density="spacious"] {
+  font-size: 17px;
+  line-height: 1.7;
+}
+html[data-density="spacious"] p,
+html[data-density="spacious"] li {
+  line-height: 1.75;
+}
+html[data-density="spacious"] h1,
+html[data-density="spacious"] h2,
+html[data-density="spacious"] h3 {
+  line-height: 1.3;
+  margin-top: 1.25em;
+}
+
+/* Tobias §1 — cognitive a11y mode: more padding, fewer simultaneous things. */
+html[data-cognitive-a11y] .density-aware,
+html[data-cognitive-a11y] [data-density-aware] {
+  padding: 1.25rem;
+}
+html[data-cognitive-a11y] .stack-tight {
+  gap: 1rem !important;
+}
+/* Hide ambient cards flagged as "secondary" so the foreground stays simple. */
+html[data-cognitive-a11y] [data-cog-hide] {
+  display: none !important;
+}
+
+/* Mavis §1 — older-user mode: 56px tap targets, button affordance shadow. */
+html[data-larger-taps] button,
+html[data-larger-taps] [role="button"],
+html[data-larger-taps] a.btn,
+html[data-larger-taps] input[type="button"],
+html[data-larger-taps] input[type="submit"] {
+  min-height: 56px !important;
+  min-width: 44px;
+  font-size: calc(1em + 2pt);
+}
+html[data-larger-taps] button[data-variant="outline"],
+html[data-larger-taps] .btn-outline {
+  box-shadow: 0 1px 0 0 hsl(var(--border)), 0 2px 6px -2px hsla(0, 0%, 0%, 0.12);
+}
+
+/* Earl §1 — picture-first parcel cards. The card variant queries this
+   attribute to swap layout (photo on top vs side thumbnail). */
+html[data-picture-first] [data-parcel-card] {
+  /* selector hook only — actual swap lives in the component */
+}
+
+/* Yelena §1 — focus mode: hide notifications + bell badge + Pax rail. */
+html[data-focus-mode] [data-bell-badge],
+html[data-focus-mode] [data-notif-badge] {
+  display: none !important;
+}
+html[data-focus-mode] [data-pax-rail] {
+  visibility: hidden;
+  pointer-events: none;
 }

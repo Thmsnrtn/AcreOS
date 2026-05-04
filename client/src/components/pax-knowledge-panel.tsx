@@ -191,7 +191,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
                     onCheckedChange={(v) => toggleMutation.mutate({ id: file.id, isActive: v })}
                     className="scale-75"
                   />
-                  <button
+                  <button aria-label="Delete"
                     onClick={() => deleteMutation.mutate(file.id)}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >

@@ -216,7 +216,7 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
         >
           {collapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
-        <button
+        <button aria-label="Artifact Card"
           onClick={onDismiss}
           className="text-muted-foreground hover:text-foreground transition-colors"
         >

@@ -28,6 +28,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { GitBranch, TrendingUp, Users } from "lucide-react";
 
 type CohortSegment = "source" | "state" | "county" | "campaign" | "import_month" | "import_quarter";
@@ -184,9 +185,9 @@ export function CohortAnalytics() {
                         labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName ?? label}
                       />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="Contacted" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="Offer Sent" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="Closed" fill="#22c55e" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Contacted" fill={chartColor(0)} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Offer Sent" fill={chartColor(1)} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Closed" fill={chartColor(2)} radius={[2, 2, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

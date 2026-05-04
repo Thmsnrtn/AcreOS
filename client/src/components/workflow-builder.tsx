@@ -1184,7 +1184,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                           <p className="text-xs font-medium text-foreground">{panelGetActionLabel(action.type)}</p>
                           {summary && <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{summary}</p>}
                         </div>
-                        <button
+                        <button aria-label="Panel Action Form"
                           onClick={() => handleRemoveAction(action.id)}
                           className="text-muted-foreground/40 hover:text-destructive transition-colors shrink-0 mt-0.5"
                         >

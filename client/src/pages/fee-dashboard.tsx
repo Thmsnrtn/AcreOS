@@ -14,6 +14,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -158,7 +159,7 @@ function AnalyticsChart({ analytics }: { analytics: FeeAnalytics | null }) {
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
                 <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
-                <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill={chartColor(0)} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

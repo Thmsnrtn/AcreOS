@@ -187,7 +187,7 @@ function IntegrationCard({
                 )}
                 Test Connection
               </Button>
-              <Button 
+              <Button aria-label="Delete" 
                 variant="ghost" 
                 size="sm"
                 onClick={() => onDelete(provider.id)}

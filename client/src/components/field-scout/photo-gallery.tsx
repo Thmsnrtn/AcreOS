@@ -169,7 +169,7 @@ export function PhotoGallery({
                   <MapPin className="w-3 h-3 mr-1" />
                   Info
                 </Button>
-                <Button
+                <Button aria-label="Delete"
                   variant="ghost"
                   size="sm"
                   onClick={() => {

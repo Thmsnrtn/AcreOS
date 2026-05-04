@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureFlagsRefresh } from "@/contexts/feature-flags-context";
 import { Flag, Search } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 /**
  * Founder UI — `/founder/features`. Design-system §8.2.
@@ -53,6 +54,8 @@ const STATE_BADGE_TONE: Record<string, string> = {
 };
 
 function fmtChanged(when?: string | null): string {
+  useDocumentTitle("Feature management");
+
   if (!when) return "—";
   try {
     return new Date(when).toLocaleString();
