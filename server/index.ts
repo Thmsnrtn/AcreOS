@@ -1055,6 +1055,18 @@ app.use("/api", apiLimiter);
       // Wave 10: Per-customer unit economics (daily, self-rescheduling)
       startCustomerUnitEconomicsJob();
 
+      // Phase 8 Months 10-11 (Ingrid §1): vision-AI scheduled re-imaging
+      // Scans properties on a configurable cadence (default 90 days),
+      // captures fresh aerial imagery, runs vision analysis, raises a
+      // system_alert when change-detection score crosses the threshold.
+      import("./jobs/propertyVisionReimaging")
+        .then(({ startPropertyVisionReimagingJob }) => {
+          startPropertyVisionReimagingJob();
+        })
+        .catch((err) =>
+          log(`Vision re-imaging scheduler import failed: ${err}`, "vision-reimaging"),
+        );
+
       // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
       startAutonomousDecisionExecutorJob();
 

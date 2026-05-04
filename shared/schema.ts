@@ -17007,3 +17007,70 @@ export const offerApprovals = pgTable("offer_approvals", {
 
 export type OfferApproval = typeof offerApprovals.$inferSelect;
 export type InsertOfferApproval = typeof offerApprovals.$inferInsert;
+
+// =================================================================
+// PROPERTY VISION SNAPSHOTS — Ingrid §1 Vision-AI scheduled re-imaging
+// =================================================================
+// Periodic aerial/satellite imagery capture per property with vision-AI
+// change detection. Distinct from satelliteSnapshots (raw imagery feed):
+// these rows represent scheduled vision-AI runs that compare against the
+// prior snapshot for the same property and raise system_alerts when the
+// changeDetectionScore exceeds the configured threshold.
+//
+// Re-imaging cadence defaults to 90 days, override via env
+// VISION_REIMAGING_INTERVAL_DAYS (per-org override is a future iteration).
+export const propertyVisionSnapshots = pgTable("property_vision_snapshots", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  propertyId: integer("property_id")
+    .references(() => properties.id, { onDelete: "cascade" })
+    .notNull(),
+
+  // Capture metadata
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+  imageS3Key: text("image_s3_key").notNull(),
+  imageUrl: text("image_url"), // optional public/signed URL
+  provider: text("provider"), // mapbox, google_earth, sentinel, mock
+  resolution: numeric("resolution"), // metres per pixel
+
+  // Vision-AI analysis
+  analysisJsonb: jsonb("analysis_jsonb").$type<{
+    detectedFeatures?: Array<{
+      label: string;
+      confidence: number;
+      bbox?: [number, number, number, number];
+    }>;
+    structureCount?: number;
+    vegetationCoveragePct?: number;
+    notableChanges?: string[];
+    rawModelResponse?: Record<string, any>;
+  }>(),
+
+  // Change detection (vs. prior snapshot for same property)
+  priorSnapshotId: integer("prior_snapshot_id"),
+  changeDetectionScore: numeric("change_detection_score"), // 0-100
+  changeSummary: text("change_summary"),
+
+  // Alerting
+  alertedToOrg: boolean("alerted_to_org").notNull().default(false),
+  systemAlertId: integer("system_alert_id").references(() => systemAlerts.id, {
+    onDelete: "set null",
+  }),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("property_vision_snapshots_org_idx").on(table.organizationId),
+  index("property_vision_snapshots_property_idx").on(table.propertyId),
+  index("property_vision_snapshots_captured_idx").on(table.capturedAt),
+]);
+
+export const insertPropertyVisionSnapshotSchema = createInsertSchema(propertyVisionSnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPropertyVisionSnapshot = z.infer<typeof insertPropertyVisionSnapshotSchema>;
+export type PropertyVisionSnapshot = typeof propertyVisionSnapshots.$inferSelect;

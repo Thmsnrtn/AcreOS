@@ -41,11 +41,16 @@
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android",
     "cap:run:ios": "npx cap run ios --livereload --external",
-    "cap:run:android": "npx cap run android --livereload --external"
+    "cap:run:android": "npx cap run android --livereload --external",
+    "mobile:ios:dev": "npm run build && npx cap copy ios && npx cap open ios",
+    "mobile:android:dev": "npm run build && npx cap copy android && npx cap open android",
+    "mobile:ios:build": "npm run build && npx cap copy ios && cd ios/App && xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build clean build",
+    "mobile:android:build": "npm run build && npx cap copy android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@aws-sdk/client-ses": "^3.1019.0",
+    "@capacitor/android": "^8.3.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/camera": "^8.0.2",
     "@capacitor/cli": "^8.3.0",
@@ -53,6 +58,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/geolocation": "^8.1.0",
     "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.3.0",
     "@capacitor/keyboard": "^8.0.2",
     "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1",
