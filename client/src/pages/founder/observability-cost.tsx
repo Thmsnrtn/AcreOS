@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AlertTriangle, CheckCircle2, Gauge } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface Rates {
   tracesSampleRate: number;
@@ -59,6 +60,8 @@ interface ObservabilityCostResponse {
 }
 
 function fmtNum(n: number): string {
+  useDocumentTitle("Observability cost");
+
   return n.toLocaleString();
 }
 

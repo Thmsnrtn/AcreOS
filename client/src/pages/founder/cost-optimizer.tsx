@@ -43,6 +43,7 @@ import {
   RefreshCw,
   TrendingUp,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types (mirror server/jobs/costOptimizer.ts) ────────────────────────────
 
@@ -93,6 +94,8 @@ interface RunsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
+  useDocumentTitle("Cost optimizer");
+
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

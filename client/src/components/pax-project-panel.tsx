@@ -234,7 +234,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                       <CheckCircle2 className="w-3 h-3" /> Set as active
                     </button>
                   )}
-                  <button
+                  <button aria-label="Delete"
                     onClick={() => deleteMutation.mutate(currentProject.id)}
                     className="text-muted-foreground hover:text-destructive"
                   >
@@ -291,7 +291,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                       <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                       <span className="flex-1 truncate">{f.fileName}</span>
                       <span className="text-muted-foreground text-[10px]">{fmtBytes(f.sizeBytes)}</span>
-                      <button
+                      <button aria-label={`Remove ${f.fileName}`}
                         onClick={() => deleteFileMutation.mutate({ projectId: currentProject.id, fileId: f.id })}
                         className="text-muted-foreground hover:text-destructive"
                       >

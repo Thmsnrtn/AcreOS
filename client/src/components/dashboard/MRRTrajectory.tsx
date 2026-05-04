@@ -5,6 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
@@ -193,7 +194,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
             {goalCents && goalCents > 0 && (
               <ReferenceLine
                 y={goalCents}
-                stroke="#f59e0b"
+                stroke={chartColor(0)}
                 strokeDasharray="4 3"
                 strokeWidth={1.5}
                 label={{ value: `Goal ${formatCents(goalCents)}`, position: "insideTopRight", fontSize: 10, fill: "#f59e0b" }}
@@ -202,7 +203,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
             <Area
               type="monotone"
               dataKey="revenue"
-              stroke="#3b82f6"
+              stroke={chartColor(1)}
               strokeWidth={2}
               fill="url(#mrrGrad)"
               dot={false}
@@ -212,7 +213,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
             <Area
               type="monotone"
               dataKey="forecast"
-              stroke="#a855f7"
+              stroke={chartColor(2)}
               strokeWidth={2}
               strokeDasharray="6 4"
               fill="url(#fcastGrad)"

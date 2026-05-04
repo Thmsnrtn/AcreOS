@@ -12,6 +12,7 @@ import {
   LineChart, Line, BarChart, Bar, ComposedChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useId } from "react";
@@ -134,7 +135,7 @@ export default function MarketplaceAnalytics() {
                       <XAxis dataKey="month" />
                       <YAxis tickFormatter={v => `$${(v/1000).toFixed(0)}K`} />
                       <Tooltip formatter={(v: any) => usd(Number(v))} />
-                      <Bar dataKey="volume" fill="#6366f1" name="Volume" />
+                      <Bar dataKey="volume" fill={chartColor(0)} name="Volume" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -150,7 +151,7 @@ export default function MarketplaceAnalytics() {
                       <XAxis dataKey="month" />
                       <YAxis tickFormatter={v => `$${(v/1000).toFixed(0)}K`} />
                       <Tooltip formatter={(v: any) => usd(Number(v))} />
-                      <Line type="monotone" dataKey="fees" stroke="#10b981" strokeWidth={2} name="Fees" />
+                      <Line type="monotone" dataKey="fees" stroke={chartColor(1)} strokeWidth={2} name="Fees" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -168,9 +169,9 @@ export default function MarketplaceAnalytics() {
                       <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} />
                       <Tooltip />
                       <Legend />
-                      <Bar yAxisId="left" dataKey="deals" fill="#6366f1" name="Deals" />
-                      <Bar yAxisId="left" dataKey="bids" fill="#e5e7eb" name="Bids" />
-                      <Line yAxisId="right" type="monotone" dataKey="closeRate" stroke="#f59e0b" strokeWidth={2} name="Close rate %" dot />
+                      <Bar yAxisId="left" dataKey="deals" fill={chartColor(0)} name="Deals" />
+                      <Bar yAxisId="left" dataKey="bids" fill={chartColor(2)} name="Bids" />
+                      <Line yAxisId="right" type="monotone" dataKey="closeRate" stroke={chartColor(3)} strokeWidth={2} name="Close rate %" dot />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -186,8 +187,8 @@ export default function MarketplaceAnalytics() {
                       <XAxis dataKey="month" />
                       <YAxis unit="d" />
                       <Tooltip formatter={(v: any) => `${v} days`} />
-                      <Area type="monotone" dataKey="avgDaysToClose" fill="#ddd6fe" stroke="#8b5cf6" strokeWidth={2} name="Avg days to close" />
-                      <Line type="monotone" dataKey="avgDaysToClose" stroke="#8b5cf6" strokeWidth={2} name="Avg days to close" dot />
+                      <Area type="monotone" dataKey="avgDaysToClose" fill={chartColor(4)} stroke={chartColor(5)} strokeWidth={2} name="Avg days to close" />
+                      <Line type="monotone" dataKey="avgDaysToClose" stroke={chartColor(5)} strokeWidth={2} name="Avg days to close" dot />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

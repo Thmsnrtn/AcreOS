@@ -16,6 +16,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+import { chartColor } from "@/lib/chartPalette";
 export default function DataMoatDashboard() {
   useDocumentTitle("Data moat");
   const partnerNameId = useId();
@@ -161,7 +162,7 @@ export default function DataMoatDashboard() {
                     <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={4} />
                     <YAxis />
                     <Tooltip />
-                    <Area type="monotone" dataKey="requests" stroke="#6366f1" fill="#6366f120" name="Requests" />
+                    <Area type="monotone" dataKey="requests" stroke={chartColor(0)} fill={chartColor(1)} name="Requests" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -181,8 +182,8 @@ export default function DataMoatDashboard() {
                     <YAxis yAxisId="left" tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
                     <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} />
                     <Tooltip />
-                    <Line yAxisId="left" type="monotone" dataKey="mae" stroke="#6366f1" name="MAE" strokeWidth={2} />
-                    <Line yAxisId="right" type="monotone" dataKey="mape" stroke="#10b981" name="MAPE %" strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="mae" stroke={chartColor(0)} name="MAE" strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="mape" stroke={chartColor(2)} name="MAPE %" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

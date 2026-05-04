@@ -24,6 +24,7 @@ import {
   YAxis,
   CartesianGrid,
 } from 'recharts';
+import { chartColor } from "@/lib/chartPalette";
 import {
   Shield,
   TrendingUp,
@@ -136,8 +137,8 @@ function DimensionRadar({ factors }: { factors: Record<string, any> }) {
           <Radar
             name="Score"
             dataKey="score"
-            stroke="#d97541"
-            fill="#d97541"
+            stroke={chartColor(0)}
+            fill={chartColor(0)}
             fillOpacity={0.25}
           />
           <Tooltip
@@ -569,7 +570,7 @@ export default function LandCreditPage() {
                           <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                           <YAxis domain={[300, 850]} />
                           <Tooltip />
-                          <Line type="monotone" dataKey="score" stroke="#d97541" strokeWidth={2} dot={{ r: 4 }} />
+                          <Line type="monotone" dataKey="score" stroke={chartColor(0)} strokeWidth={2} dot={{ r: 4 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>

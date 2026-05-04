@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface FeatureFlag {
   key: string;
@@ -45,7 +46,9 @@ const FLAG_CATEGORIES: Record<string, string[]> = {
   "Analytics": ["market_analysis"],
 };
 
-function categorizeFlags(flags: FeatureFlag[]): { category: string; flags: FeatureFlag[] }[] {
+function categorizeFlags(flags: FeatureFlag[]): {
+  useDocumentTitle("Feature flags");
+ category: string; flags: FeatureFlag[] }[] {
   const categorized = new Map<string, FeatureFlag[]>();
   const assigned = new Set<string>();
 

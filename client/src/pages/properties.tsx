@@ -579,7 +579,7 @@ export default function PropertiesPage() {
                 <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
                   <Trash2 className="w-4 h-4 mr-1" /> Delete
                 </Button>
-                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
+                <Button aria-label="Checkbox" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
                   <X className="w-4 h-4" />
                 </Button>
               </div>

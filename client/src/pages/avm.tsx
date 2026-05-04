@@ -26,6 +26,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
+import { chartColor } from "@/lib/chartPalette";
 import {
   TrendingUp,
   MapPin,
@@ -217,7 +218,7 @@ function PricePerAcreTrendChart({ history }: { history: any[] }) {
               <Tooltip formatter={((v: any, name: string) => [`${formatDollar(Number(v))}/acre`, name === 'pricePerAcre' ? 'Price per acre' : name === 'high' ? 'Upper bound (CI)' : 'Lower bound (CI)']) as any} />
               <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
               <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
-              <Line type="monotone" dataKey="pricePerAcre" stroke="#4f8ef7" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="pricePerAcre" stroke={chartColor(0)} strokeWidth={2} dot={{ r: 3 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -624,8 +625,8 @@ export default function AVMPage() {
                             name === 'pricePerAcre' ? 'Price/Acre' : 'Similarity',
                           ]) as any}
                         />
-                        <ReferenceLine y={latest.pricePerAcre} stroke="#d97541" strokeDasharray="5 5" label="Subject" />
-                        <Bar dataKey="pricePerAcre" fill="#4f8ef7" radius={[4, 4, 0, 0]} name="pricePerAcre" />
+                        <ReferenceLine y={latest.pricePerAcre} stroke={chartColor(1)} strokeDasharray="5 5" label="Subject" />
+                        <Bar dataKey="pricePerAcre" fill={chartColor(0)} radius={[4, 4, 0, 0]} name="pricePerAcre" />
                       </BarChart>
                     </ResponsiveContainer>
                     </div>
@@ -681,11 +682,11 @@ export default function AVMPage() {
                       <XAxis type="number" tickFormatter={(v) => `${v > 0 ? '+' : ''}${v}%`} />
                       <YAxis type="category" dataKey="factor" width={140} tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(v: any) => [`${v > 0 ? '+' : ''}${v}%`, 'Adjustment']} />
-                      <ReferenceLine x={0} stroke="#888" />
+                      <ReferenceLine x={0} stroke={chartColor(2)} />
                       <Bar
                         dataKey="adjustment"
                         radius={[0, 4, 4, 0]}
-                        fill="#d97541"
+                        fill={chartColor(1)}
                       />
                     </BarChart>
                   </ResponsiveContainer>

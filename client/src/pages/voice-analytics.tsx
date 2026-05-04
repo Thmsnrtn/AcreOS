@@ -21,6 +21,7 @@ import {
   LineChart,
   Line,
 } from 'recharts';
+import { chartColor } from "@/lib/chartPalette";
 import {
   Phone,
   PhoneCall,
@@ -270,7 +271,7 @@ export default function VoiceAnalyticsPage() {
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={2} />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#d97541" radius={[4, 4, 0, 0]} name="Calls" />
+                  <Bar dataKey="count" fill={chartColor(0)} radius={[4, 4, 0, 0]} name="Calls" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -296,7 +297,7 @@ export default function VoiceAnalyticsPage() {
                   <Line
                     type="monotone"
                     dataKey="sentiment"
-                    stroke="#10b981"
+                    stroke={chartColor(1)}
                     strokeWidth={2}
                     dot={false}
                   />

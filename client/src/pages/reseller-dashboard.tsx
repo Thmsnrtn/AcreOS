@@ -19,6 +19,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, Users, DollarSign, Zap, Plus, TrendingUp, CheckCircle2,
@@ -434,8 +435,8 @@ function RevenueTrendChart({ data, loading }: { data: RevenueTrendPoint[]; loadi
                   name === "Revenue" ? fmtCurrency(val) : val
                 ) as any} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line yAxisId="rev" type="monotone" dataKey="revenue" name="Revenue" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
-                <Line yAxisId="ten" type="monotone" dataKey="newTenants" name="New tenants" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="rev" type="monotone" dataKey="revenue" name="Revenue" stroke={chartColor(0)} strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="ten" type="monotone" dataKey="newTenants" name="New tenants" stroke={chartColor(1)} strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -474,7 +475,7 @@ function UsageBreakdown({ tenants }: { tenants: Tenant[] }) {
               <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
               <Tooltip formatter={((val: number) => [val.toLocaleString(), "Credits"]) as any} />
-              <Bar dataKey="credits" name="AI credits" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="credits" name="AI credits" fill={chartColor(2)} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

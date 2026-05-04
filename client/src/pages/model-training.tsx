@@ -26,6 +26,7 @@ import {
 import { format } from "date-fns";
 import { relative } from "@/lib/format";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -273,7 +274,7 @@ export default function ModelTrainingPage() {
                           <XAxis dataKey="state" tick={{ fontSize: 12 }} />
                           <YAxis tick={{ fontSize: 12 }} />
                           <Tooltip />
-                          <Bar dataKey="count" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                          <Bar dataKey="count" fill={chartColor(0)} radius={[3, 3, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>

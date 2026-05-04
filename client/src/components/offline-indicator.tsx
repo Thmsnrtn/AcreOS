@@ -52,7 +52,7 @@ export function OfflineIndicator() {
     >
       <WifiOff className="w-4 h-4" />
       <span>You're offline. Changes will sync when reconnected.</span>
-      <Button
+      <Button aria-label="Dismiss offline notice"
         size="sm"
         variant="ghost"
         className="ml-2 text-acr-warn"

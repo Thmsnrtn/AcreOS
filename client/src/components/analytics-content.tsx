@@ -37,7 +37,9 @@ import {
   ReferenceLine,
 } from "recharts";
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+import { chartColor, chartPalette } from "@/lib/chartPalette";
+// CVD-safe Wong palette (WCAG 2.2 SC 1.4.11). Pair with strokeDash/shape for grayscale.
+const COLORS = chartPalette;
 
 function formatCurrency(value: number): string {
   if (value >= 1000000) {
@@ -181,9 +183,9 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
                   <XAxis dataKey="label" fontSize={10} tick={false} />
                   <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
                   <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                  <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke="#888" strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
-                  <Line type="monotone" dataKey="revenue" stroke="#0088FE" strokeWidth={2} dot={false} name="Actual" />
-                  <Line type="monotone" dataKey="projected" stroke="#00C49F" strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
+                  <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke={chartColor(0)} strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
+                  <Line type="monotone" dataKey="revenue" stroke={chartColor(1)} strokeWidth={2} dot={false} name="Actual" />
+                  <Line type="monotone" dataKey="projected" stroke={chartColor(2)} strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -381,7 +383,7 @@ export function AnalyticsContent() {
                     <Line
                       type="monotone"
                       dataKey="revenue"
-                      stroke="#0088FE"
+                      stroke={chartColor(1)}
                       strokeWidth={2}
                       dot={false}
                     />
@@ -459,7 +461,7 @@ export function AnalyticsContent() {
                     <XAxis dataKey="stageName" fontSize={12} />
                     <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
                     <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                    <Bar dataKey="value" fill="#00C49F" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="value" fill={chartColor(2)} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -498,7 +500,7 @@ export function AnalyticsContent() {
                       <Tooltip />
                       <Bar
                         dataKey="avgDays"
-                        fill="#8884d8"
+                        fill={chartColor(3)}
                         radius={[0, 4, 4, 0]}
                       />
                     </BarChart>

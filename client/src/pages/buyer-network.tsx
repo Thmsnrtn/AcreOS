@@ -17,6 +17,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { usd } from "@/lib/format";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
+import { chartColor } from "@/lib/chartPalette";
 // ─── Match Score Panel ────────────────────────────────────────────────────────
 function MatchScoreSection({ matches }: { matches: any[] }) {
   if (!matches || matches.length === 0) {
@@ -302,7 +303,7 @@ export default function BuyerNetwork() {
                           <Cell key={index} fill={entry.fill} />
                         ))}
                       </Bar>
-                      <Bar dataKey="buyers" fill="#10b981" name="Active buyers" />
+                      <Bar dataKey="buyers" fill={chartColor(0)} name="Active buyers" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

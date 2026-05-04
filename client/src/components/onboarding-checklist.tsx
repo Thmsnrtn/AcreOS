@@ -124,7 +124,7 @@ export function OnboardingChecklist() {
             {completedCount}/{STEPS.length} steps complete
           </p>
         </div>
-        <Button
+        <Button aria-label="Card Content"
           variant="ghost"
           size="sm"
           className="h-7 w-7 p-0 text-muted-foreground"

@@ -591,7 +591,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
             <Key className="h-3.5 w-3.5" />
             Platform Setup
           </Button>
-          <Button
+          <Button aria-label="Keyboard"
             size="sm"
             variant="ghost"
             className="gap-1.5 text-xs h-8 px-2"
@@ -733,7 +733,7 @@ function SystemActivityPanel() {
           <div className="flex items-center gap-2">
             {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             <span className="text-xs text-muted-foreground">Last 48h · auto-refreshes every 30s</span>
-            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+            <Button aria-label="Refresh" variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
               <RefreshCw className="w-3 h-3" />
             </Button>
           </div>
@@ -793,7 +793,7 @@ function JobHealthPanel() {
           </CardTitle>
           <div className="flex items-center gap-2">
             {hasIssues && <Badge variant="destructive" className="text-xs">Issues Detected</Badge>}
-            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+            <Button aria-label="Refresh" variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
               <RefreshCw className="w-3 h-3" />
             </Button>
           </div>
@@ -4924,7 +4924,7 @@ function SystemApiKeysSection() {
                   >
                     {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
+                  <Button aria-label="Button" type="button" size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
                     <X className="w-3 h-3" />
                   </Button>
                 </form>
@@ -5914,7 +5914,7 @@ function GrowthSection() {
                     </div>
                     <div className="flex gap-1 shrink-0">
                       {c.externalCampaignId && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                        <Button aria-label="Refresh" size="sm" variant="ghost" className="h-7 w-7 p-0"
                           onClick={() => syncStatsMutation.mutate(c.id)} disabled={syncStatsMutation.isPending}>
                           <RefreshCw className="w-3 h-3" />
                         </Button>
@@ -6700,7 +6700,7 @@ function LaunchReadinessSection() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button
+          <Button aria-label="Refresh"
             size="sm"
             variant="ghost"
             className="h-7 text-xs"
@@ -6920,7 +6920,7 @@ function CompanyBriefingPanel() {
               Company Health: {briefing.healthScore >= 80 ? "Excellent" : briefing.healthScore >= 60 ? "Good" : briefing.healthScore >= 40 ? "Needs attention" : "Critical"}
             </span>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => refetch()}>
+          <Button aria-label="Refresh" size="sm" variant="ghost" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -7203,7 +7203,7 @@ function AgentTeamPanel() {
                     <MessageSquare className="w-3 h-3 mr-1" />
                     Chat
                   </Button>
-                  <Button
+                  <Button aria-label="Target"
                     size="sm"
                     variant="ghost"
                     className="h-7 text-xs text-acr-accent"
@@ -7327,7 +7327,7 @@ function AgentTeamPanel() {
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
               disabled={chatPending}
             />
-            <Button onClick={sendChat} disabled={chatPending || !chatMessage.trim()} size="sm">
+            <Button aria-label="Send" onClick={sendChat} disabled={chatPending || !chatMessage.trim()} size="sm">
               <Send className="w-4 h-4" />
             </Button>
           </div>

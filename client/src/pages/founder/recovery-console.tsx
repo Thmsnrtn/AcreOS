@@ -81,6 +81,7 @@ import {
   Upload,
   ScrollText,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,8 @@ const PROOF_LABEL: Record<ProofType, string> = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function FounderRecoveryConsolePage() {
+  useDocumentTitle("Recovery console");
+
   const { toast } = useToast();
   const [tab, setTab] = useState<string>("find");
   const [selected, setSelected] = useState<UserHit | null>(null);

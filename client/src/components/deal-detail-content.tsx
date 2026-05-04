@@ -606,7 +606,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             <TabsContent value="documents" className="space-y-4 md:space-y-6">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
-                <Button asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
+                <Button aria-label="Copy link" asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
                   <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
                     <FolderPlus className="w-4 h-4 mr-2" aria-hidden="true" />
                     <span className="sr-only sm:not-sr-only sm:inline">Create package</span>

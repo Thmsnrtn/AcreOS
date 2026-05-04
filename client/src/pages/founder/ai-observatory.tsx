@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { relative } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,8 @@ interface ModelCatalogResponse {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatCents(cents: number): string {
+  useDocumentTitle("AI observatory");
+
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

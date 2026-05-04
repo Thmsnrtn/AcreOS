@@ -13,6 +13,7 @@ import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
+import { AccessibilityProvider } from "@/contexts/accessibility-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
@@ -1146,6 +1147,7 @@ function App() {
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
       <ThemeProvider>
+        <AccessibilityProvider>
         <SidebarProvider>
           <PaxRailProvider>
           <DynamicIslandProvider>
@@ -1170,6 +1172,7 @@ function App() {
           </DynamicIslandProvider>
           </PaxRailProvider>
         </SidebarProvider>
+        </AccessibilityProvider>
       </ThemeProvider>
       </MotionConfig>
     </ErrorBoundary>

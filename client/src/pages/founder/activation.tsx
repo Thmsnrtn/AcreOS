@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, TrendingUp, Clock } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type WindowDays = 7 | 30 | 90;
 
@@ -53,6 +54,8 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 function labelFor(eventName: string): string {
+  useDocumentTitle("Activation telemetry");
+
   if (EVENT_LABELS[eventName]) return EVENT_LABELS[eventName];
   const m = eventName.match(/^onboarding_step_(\d+)_completed$/);
   if (m) return `Onboarding step ${m[1]} completed`;

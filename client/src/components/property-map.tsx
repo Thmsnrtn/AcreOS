@@ -326,7 +326,7 @@ function ElevationProfileOverlay({
             ({formatDistance(totalDistance, units)})
           </span>
         </div>
-        <button
+        <button aria-label="Close"
           onClick={onClose}
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -489,7 +489,7 @@ function SunControlPanel({
           <Sun className="h-3.5 w-3.5 text-acr-warn" />
           <span className="text-xs font-semibold">Solar Simulation</span>
         </div>
-        <button
+        <button aria-label="Close"
           onClick={onClose}
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -573,7 +573,7 @@ function SunControlPanel({
             </>
           )}
         </Button>
-        <Button
+        <Button aria-label="Clock"
           size="sm"
           variant="ghost"
           className="h-7 text-xs px-2"

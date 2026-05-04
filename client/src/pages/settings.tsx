@@ -54,6 +54,7 @@ import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
 // the full Settings → Appearance surface uses AppearancePanel below.
 import { AppearancePanel } from "@/components/settings/appearance-panel";
+import { AccessibilityPanel } from "@/components/settings/accessibility-panel";
 import { PersonaPanel } from "@/components/settings/persona-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
 import { AutonomyPanel } from "@/components/settings/autonomy-panel";
@@ -1784,7 +1785,7 @@ export default function Settings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button
+                  <Button aria-label="File text"
                     variant="outline"
                     onClick={() => setLocation("/settings/tax-identity")}
                     data-testid="button-tax-compliance-open-tax-identity"
@@ -1851,6 +1852,10 @@ export default function Settings() {
                     path. Sits in Workspace cluster alongside appearance
                     because both shape how the workspace feels. */}
                 <PersonaPanel />
+                {/* Wave B accessibility & comfort accommodations:
+                    Lexend, reading density, cognitive a11y, larger taps,
+                    picture-first parcels, focus mode + quiet hours. */}
+                <AccessibilityPanel />
               </div>
             </TabsContent>
 

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldAlert, Lock, Unlock, AlertTriangle } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type LegalHoldScope = "org_wide" | "lead_specific" | "property_specific" | "user_specific";
 type LegalHoldStatus = "active" | "released";
@@ -73,6 +74,8 @@ interface ReleaseForm {
 const RELEASE_CONFIRM_PHRASE = "RELEASE LEGAL HOLD";
 
 export default function FounderLegalHoldsPage() {
+  useDocumentTitle("Legal holds");
+
   const { toast } = useToast();
   const [placeForm, setPlaceForm] = useState<PlaceForm>({
     organizationId: "",

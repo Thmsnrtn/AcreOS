@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -414,7 +415,7 @@ export default function PredictionsPage() {
                         type="monotone"
                         dataKey="actual"
                         name="Actual"
-                        stroke="#6366f1"
+                        stroke={chartColor(0)}
                         strokeWidth={2}
                         dot={{ r: 3 }}
                         connectNulls={false}
@@ -423,7 +424,7 @@ export default function PredictionsPage() {
                         type="monotone"
                         dataKey="predicted"
                         name="Predicted"
-                        stroke="#f59e0b"
+                        stroke={chartColor(1)}
                         strokeWidth={2}
                         strokeDasharray="5 3"
                         dot={{ r: 3 }}
@@ -432,7 +433,7 @@ export default function PredictionsPage() {
                         type="monotone"
                         dataKey="upper"
                         name="Upper bound (90% CI)"
-                        stroke="#d1d5db"
+                        stroke={chartColor(2)}
                         strokeWidth={1}
                         strokeDasharray="2 2"
                         dot={false}
@@ -441,7 +442,7 @@ export default function PredictionsPage() {
                         type="monotone"
                         dataKey="lower"
                         name="Lower bound (90% CI)"
-                        stroke="#d1d5db"
+                        stroke={chartColor(2)}
                         strokeWidth={1}
                         strokeDasharray="2 2"
                         dot={false}

@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldAlert, CheckCircle2, XCircle, Download, Trash2, ShieldCheck, Inbox } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type DsarStatus = "pending" | "verified" | "fulfilling" | "completed" | "denied";
 type DsarType = "access" | "erasure" | "portability" | "rectification";
@@ -54,6 +55,8 @@ const TYPE_LABEL: Record<DsarType, string> = {
 };
 
 export default function FounderDsarPage() {
+  useDocumentTitle("DSAR queue");
+
   const { toast } = useToast();
   const [denyReasonById, setDenyReasonById] = useState<Record<string, string>>({});
 

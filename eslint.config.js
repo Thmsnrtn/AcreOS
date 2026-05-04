@@ -90,6 +90,10 @@ export default [
       // entry in `client/src/lib/labels.ts`. Set to "warn" so it's a
       // review hint, not a blocker.
       "acreos/prefer-verbs-canon": "warn",
+      // Phase 4 Week 23-26: WCAG 2.2 SC 4.1.2 — every icon-only button
+      // must expose an accessible name. Bulk-applied 25+ aria-labels
+      // during the full a11y pass; this rule prevents regressions.
+      "acreos/icon-button-needs-aria-label": "error",
     },
   },
 ];

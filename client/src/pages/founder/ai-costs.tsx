@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DollarSign, Activity, BarChart3, Layers, Sparkles } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,8 @@ interface CostsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
+  useDocumentTitle("AI costs");
+
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

@@ -219,7 +219,7 @@ export function SourceAttributionPanel({
                       </div>
 
                       {onRefreshField && (
-                        <Button
+                        <Button aria-label="Refresh"
                           variant="ghost"
                           size="sm"
                           onClick={() => onRefreshField(field.label)}
