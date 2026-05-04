@@ -1108,6 +1108,12 @@ app.use("/api", apiLimiter);
       // at 12:00 UTC) so the customer wave is not in the same burst.
       startCustomerLetterJob();
 
+      // Wenzeslaus ETL orchestrator — every 5m, sweep etl_jobs and run
+      // the ones whose schedule cadence has elapsed. Per-job concurrency
+      // is enforced via withJobLock; per-record failures dead-letter to
+      // outbox_dlq for /founder/etl replay.
+      startEtlOrchestratorJob();
+
       // Onboarding journeys — hourly sweeper fires any due step for
       // any org walking the 30-day activation sequence. Each step is
       // pre-scheduled at journey-start time; this just picks up the
@@ -2234,6 +2240,49 @@ function startCustomerUnitEconomicsJob() {
       },
     });
   }).catch(err => log(`Unit economics scheduler import failed: ${err}`, 'unit-economics'));
+}
+
+// ============================================================================
+// Wenzeslaus ETL orchestrator — Phase 8 Months 11.
+//
+// Sweeps etl_jobs every 5 minutes and runs every job whose cron cadence
+// has elapsed since lastSuccessAt. Reference handlers (Regrid, FEMA) are
+// registered up front; additional handlers can register themselves
+// during their own service init. Per-job concurrency is enforced inside
+// runDueJobs() via withJobLock, so this 5-minute outer cadence is safe.
+// ============================================================================
+function startEtlOrchestratorJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  log('Registering ETL orchestrator job (every 5m)', 'etl');
+
+  // Register reference handlers eagerly so manual /run-now from the
+  // founder UI works even before the first scheduler tick.
+  import('./services/etlHandlers')
+    .then(({ registerReferenceEtlHandlers }) => {
+      registerReferenceEtlHandlers();
+    })
+    .catch((err) => log(`ETL handler registration failed: ${err}`, 'etl'));
+
+  import('./jobs/scheduler').then(({ scheduleSelfRescheduling }) => {
+    scheduleSelfRescheduling({
+      name: 'etl_orchestrator',
+      intervalMs: FIVE_MINUTES,
+      initialDelayMs: 90_000,
+      run: async () => {
+        const { runDueJobs } = await import('./services/etlOrchestrator');
+        const results = await runDueJobs();
+        const successes = results.filter((r) => r.status === 'success').length;
+        const failures = results.filter((r) => r.status === 'failure').length;
+        if (results.length > 0) {
+          log(
+            `ETL tick: ran=${results.length} ok=${successes} failed=${failures}`,
+            'etl',
+          );
+        }
+        return results.length;
+      },
+    });
+  }).catch((err) => log(`ETL orchestrator scheduler import failed: ${err}`, 'etl'));
 }
 
 // ============================================================================
