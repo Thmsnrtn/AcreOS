@@ -16756,3 +16756,89 @@ export const vmResourceUsage = pgTable("vm_resource_usage", {
 
 export type VmResourceUsage = typeof vmResourceUsage.$inferSelect;
 export type InsertVmResourceUsage = typeof vmResourceUsage.$inferInsert;
+
+// ============================================================================
+// LIFECYCLE PROGRAM — Phase 4 Week 17-18
+// ----------------------------------------------------------------------------
+// Backed by migrations/0064_lifecycle_program.sql. See
+// server/services/lifecycleProgram.ts for the dispatcher and
+// shared/lifecycle/messages.ts for the canonical key registry.
+// ============================================================================
+
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: serial("id").primaryKey(),
+    key: text("key").notNull(),
+    version: integer("version").notNull().default(1),
+    channel: text("channel").notNull().default("email"), // email | sms
+    subject: text("subject"),
+    body: text("body").notNull(),
+    category: text("category").notNull().default("lifecycle.general"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("email_templates_key_active_idx").on(table.key, table.active),
+    index("email_templates_category_idx").on(table.category),
+  ],
+);
+
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type InsertEmailTemplate = typeof emailTemplates.$inferInsert;
+
+export const lifecycleMessageSends = pgTable(
+  "lifecycle_message_sends",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").notNull(),
+    userId: varchar("user_id"),
+    templateKey: text("template_key").notNull(),
+    templateVersion: integer("template_version"),
+    channel: text("channel").notNull().default("email"),
+    recipientEmail: text("recipient_email"),
+    recipientPhone: text("recipient_phone"),
+    category: text("category").notNull().default("lifecycle.general"),
+    status: text("status").notNull().default("queued"), // queued | sent | suppressed | skipped
+    outboxId: integer("outbox_id"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    sentAt: timestamp("sent_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("lifecycle_message_sends_org_template_idx").on(
+      table.organizationId,
+      table.templateKey,
+      table.sentAt,
+    ),
+    index("lifecycle_message_sends_org_category_idx").on(
+      table.organizationId,
+      table.category,
+      table.sentAt,
+    ),
+    index("lifecycle_message_sends_recipient_idx").on(table.recipientEmail),
+  ],
+);
+
+export type LifecycleMessageSend = typeof lifecycleMessageSends.$inferSelect;
+export type InsertLifecycleMessageSend = typeof lifecycleMessageSends.$inferInsert;
+
+export const reactivationTokens = pgTable(
+  "reactivation_tokens",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    issuedAt: timestamp("issued_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    redeemedAt: timestamp("redeemed_at"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => [
+    index("reactivation_tokens_org_idx").on(table.organizationId),
+    index("reactivation_tokens_expires_idx").on(table.expiresAt),
+  ],
+);
+
+export type ReactivationToken = typeof reactivationTokens.$inferSelect;
+export type InsertReactivationToken = typeof reactivationTokens.$inferInsert;

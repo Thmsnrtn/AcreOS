@@ -262,6 +262,7 @@ const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
+const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 // Shown during route-level auth resolution and React.lazy() chunk loads.
@@ -425,6 +426,13 @@ function Router() {
       {/* Onboarding V2 wizard */}
       <Route path="/onboarding-v2">
         {() => <ProtectedRoute component={OnboardingV2Page} />}
+      </Route>
+
+      {/* Renoir reactivation surface — destination of post-cancel
+          win-back deep-links. Auth-required so we can pre-fill plan
+          + tenure, but reachable via signed token in the email. */}
+      <Route path="/welcome-back">
+        {() => <ProtectedRoute component={WelcomeBackPage} />}
       </Route>
 
       {/* Home: landing page (unauth) or today hub (auth) */}
