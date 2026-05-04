@@ -43,6 +43,15 @@ export function serveStatic(app: Express) {
         res.setHeader("Pragma", "no-cache");
         res.setHeader("Expires", "0");
       }
+      // Service worker file must NOT be cached as immutable. Browsers check
+      // /sw.js on every page load to detect SW updates; a 1-year immutable
+      // cache pins users to whatever SW they first installed and prevents
+      // bug fixes from propagating. See PERFORMANCE-DIAGNOSTIC.md §4.
+      if (filePath.endsWith("/sw.js") || filePath.endsWith("\\sw.js")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
     },
   }));
 
