@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
+import viteCompression from "vite-plugin-compression";
 
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
@@ -35,6 +36,29 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // Pre-compress build output (gzip + brotli) so static-serve can deliver
+    // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
+    // middleware bug where compression negotiation fails under H2 (verified
+    // 2026-05-04: `content-encoding` missing on /assets/*.js under H2 but
+    // works under H1.1). See PERFORMANCE-DIAGNOSTIC.md §3.
+    //
+    // Threshold: 1024 bytes — same as the runtime middleware. ext: includes
+    // js/mjs/css/html/json/svg. The `disable: false` is the default; kept
+    // explicit so anyone reading sees the toggle.
+    viteCompression({
+      algorithm: "gzip",
+      ext: ".gz",
+      threshold: 1024,
+      deleteOriginFile: false,
+      disable: false,
+    }),
+    viteCompression({
+      algorithm: "brotliCompress",
+      ext: ".br",
+      threshold: 1024,
+      deleteOriginFile: false,
+      disable: false,
+    }),
     // Bundle analyzer — only active in --analyze mode. Emits
     // `dist/bundle-stats.html` (treemap) so we can identify the
     // largest chunks. Run `ANALYZE=1 npm run build` then open the file.

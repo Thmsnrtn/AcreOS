@@ -196,6 +196,7 @@
     "tsx": "^4.20.5",
     "typescript": "6.0.2",
     "vite": "^7.3.0",
+    "vite-plugin-compression": "0.5.1",
     "vitest": "^4.0.18"
   },
   "overrides": {

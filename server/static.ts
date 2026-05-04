@@ -1,6 +1,77 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+
+/**
+ * HTTP/2-safe pre-compressed asset middleware. Sidesteps the
+ * compression@1.8 + Node http2 negotiation bug by serving statically
+ * pre-compressed `.br` / `.gz` files (emitted by vite-plugin-compression
+ * during `npm run build`) when the client advertises support.
+ *
+ * Order matters: this must run BEFORE express.static so it gets first
+ * crack at /assets/* requests. If the client doesn't support br/gzip,
+ * or no pre-compressed sibling file exists, it calls next() and the
+ * regular static middleware serves the original.
+ *
+ * Verified by curl after deploy: `curl -sI -H 'Accept-Encoding: br' …`
+ * should return `content-encoding: br` for /assets/*.js | .css.
+ */
+function preCompressedAssets(distPath: string) {
+  const CONTENT_TYPES: Record<string, string> = {
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+  };
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    const accept = String(req.headers["accept-encoding"] ?? "");
+    const wantsBrotli = /\bbr\b/i.test(accept);
+    const wantsGzip = /\bgzip\b/i.test(accept);
+    if (!wantsBrotli && !wantsGzip) return next();
+
+    // Resolve safely; reject any path traversal attempt.
+    const requested = decodeURIComponent(req.path);
+    if (requested.includes("..")) return next();
+    const filePath = path.join(distPath, requested);
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = CONTENT_TYPES[ext];
+    if (!contentType) return next(); // not a type we pre-compress
+
+    const candidates: Array<{ enc: "br" | "gzip"; ext: string }> = [];
+    if (wantsBrotli) candidates.push({ enc: "br", ext: ".br" });
+    if (wantsGzip) candidates.push({ enc: "gzip", ext: ".gz" });
+
+    for (const { enc, ext: cmpExt } of candidates) {
+      const cmpPath = filePath + cmpExt;
+      try {
+        const stat = fs.statSync(cmpPath);
+        if (!stat.isFile()) continue;
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Content-Encoding", enc);
+        res.setHeader("Content-Length", String(stat.size));
+        res.setHeader("Vary", "Accept-Encoding");
+        // Match express.static long-cache semantics for hashed assets.
+        // Same logic as the wrapping express.static call below — content-
+        // hashed filenames are immutable for one year.
+        const isHashedAsset = /\/assets\//.test(requested);
+        if (process.env.NODE_ENV === "production" && isHashedAsset) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+        const stream = fs.createReadStream(cmpPath);
+        stream.on("error", () => res.end());
+        stream.pipe(res);
+        return;
+      } catch {
+        // file not found — try next candidate
+      }
+    }
+    return next();
+  };
+}
 
 /** Public config injected into index.html as window.__ENV__ so the SPA
  *  can read runtime env vars that weren't available at Vite build time. */
@@ -28,6 +99,13 @@ export function serveStatic(app: Express) {
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
   }
+
+  // F1 (PERFORMANCE-DIAGNOSTIC.md): pre-compressed asset middleware runs
+  // first, serving .br/.gz siblings for browsers that support them.
+  // Sidesteps the HTTP/2 + compression middleware bug. Falls through to
+  // the normal express.static below when no pre-compressed file exists
+  // or the client doesn't advertise br/gzip.
+  app.use(preCompressedAssets(distPath));
 
   // Task #193: Static assets with content-hash filenames (e.g., main.abc123.js)
   // get 1-year max-age with immutable flag. The HTML shell is served with no-cache
