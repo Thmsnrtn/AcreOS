@@ -216,7 +216,7 @@ async function claimBatch(): Promise<Array<{
     WHERE id IN (
       SELECT id FROM outbox
       WHERE status IN ('pending', 'retry')
-        AND event_type = ANY(${HANDLED_EVENT_TYPES as unknown as string[]})
+        AND event_type = ANY(${HANDLED_EVENT_TYPES}::text[])
       ORDER BY created_at
       FOR UPDATE SKIP LOCKED
       LIMIT ${BATCH_SIZE}
