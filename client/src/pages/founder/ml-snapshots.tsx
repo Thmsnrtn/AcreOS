@@ -78,9 +78,7 @@ const WIRING_INFO: Record<SnapshotType, string> = {
   offer_acceptance: "server/routes-deals.ts → PUT /api/deals/:id (offer_sent → accepted/countered/cancelled)",
 };
 
-function ProgressBar({
-  useDocumentTitle("ML snapshots");
- value, max }: { value: number; max: number }) {
+function ProgressBar({ value, max }: { value: number; max: number }) {
   const pct = Math.max(0, Math.min(100, max > 0 ? (value / max) * 100 : 0));
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -238,6 +236,7 @@ function RecentSection() {
 }
 
 export default function FounderMlSnapshotsPage() {
+  useDocumentTitle("ML snapshots");
   return (
     <PageShell>
       <div className="space-y-6">

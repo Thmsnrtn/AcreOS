@@ -2,6 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { execSync } from "child_process";
+import { visualizer } from "rollup-plugin-visualizer";
+
+// Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
+// Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
+// In normal builds the plugin is excluded so the prod bundle is unaffected.
+const ANALYZE = process.env.ANALYZE === "1" || process.env.ANALYZE === "true";
 
 // Resolve the git SHA at config time so the value is baked into the
 // client bundle as `import.meta.env.VITE_GIT_SHA`. CI overrides this
@@ -29,6 +35,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // Bundle analyzer — only active in --analyze mode. Emits
+    // `dist/bundle-stats.html` (treemap) so we can identify the
+    // largest chunks. Run `ANALYZE=1 npm run build` then open the file.
+    ...(ANALYZE
+      ? [
+          visualizer({
+            filename: path.resolve(import.meta.dirname, "dist/bundle-stats.html"),
+            gzipSize: true,
+            brotliSize: true,
+            template: "treemap",
+            open: false,
+          }),
+        ]
+      : []),
   ],
   resolve: {
     alias: {

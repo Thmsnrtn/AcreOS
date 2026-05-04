@@ -46,9 +46,7 @@ const FLAG_CATEGORIES: Record<string, string[]> = {
   "Analytics": ["market_analysis"],
 };
 
-function categorizeFlags(flags: FeatureFlag[]): {
-  useDocumentTitle("Feature flags");
- category: string; flags: FeatureFlag[] }[] {
+function categorizeFlags(flags: FeatureFlag[]): { category: string; flags: FeatureFlag[] }[] {
   const categorized = new Map<string, FeatureFlag[]>();
   const assigned = new Set<string>();
 
@@ -69,6 +67,7 @@ function categorizeFlags(flags: FeatureFlag[]): {
 }
 
 export default function FeatureFlagsPage() {
+  useDocumentTitle("Feature flags");
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [pendingToggle, setPendingToggle] = useState<{ key: string; enabled: boolean } | null>(null);
