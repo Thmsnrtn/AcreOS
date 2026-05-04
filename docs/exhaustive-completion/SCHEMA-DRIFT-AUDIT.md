@@ -6,6 +6,26 @@
 
 ---
 
+## Sweep status
+
+| Batch | Scope | Status | Notes |
+|---|---|---|---|
+| 1 | `outbox` + `outbox_dlq` + `job_runs` | ✅ **clean** (2026-05-04) | tables landed via migrate.mjs; worker `ANY(arr)` query bug surfaced + fixed (commit 14e87630, see §"Worker query notes" below) |
+| 2 | compliance + audit (legal_holds, dsar_requests, data_processing_agreements, compliance_validations, prompt_versions, ai_injection_attempts, ai_routing_overrides, critical_alert_acks) | pending | next |
+| 3-9 | see plan | pending | |
+
+---
+
+## Worker query notes
+
+The first attempt to fix the worker's array-binding bug (`AND event_type = ANY(${arr}::text[])`, commit b22055c7) **did not work**: Drizzle's `sql\`${arr}\`` template expands a JS array as N positional placeholders *before* the cast applies, so the rendered SQL became `ANY(($1, $2, ..., $6)::text[])` — Postgres treats `(1,2,...)` as a record, and casting record-to-array fails with 42809.
+
+The working fix (commit 14e87630) replaces `ANY(arr)` with `IN (...)` via `sql.join(arr.map(t => sql\`${t}\`), sql\`, \`)`, producing `event_type IN ($1, $2, ..., $6)`. Each value gets its own positional placeholder, no array-binding ambiguity. Semantically equivalent for small constant sets.
+
+**General rule for Drizzle sql templates:** prefer `IN (sql.join(...))` over `ANY($::text[])` when binding a JS array of values. The `::text[]` cast doesn't reach the array because the array is already expanded by the time the cast applies.
+
+---
+
 ## Summary
 
 | Category | Count |
