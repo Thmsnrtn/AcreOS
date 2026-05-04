@@ -16842,3 +16842,77 @@ export const reactivationTokens = pgTable(
 
 export type ReactivationToken = typeof reactivationTokens.$inferSelect;
 export type InsertReactivationToken = typeof reactivationTokens.$inferInsert;
+
+// ─── Compliance Validations (Phase 4 W21-22 — Theo §8 / Sayuri §2.3) ─────────
+// Append-only log of every post-validator run on a customer-facing AI surface
+// that touches a regulated domain. See server/services/complianceValidator.ts.
+export const complianceValidations = pgTable("compliance_validations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id"),
+  surface: text("surface").notNull(),
+  domain: text("domain").notNull(),
+  inputHash: text("input_hash").notNull(),
+  verdict: text("verdict").notNull(), // 'pass' | 'block' | 'amend' | 'error'
+  missingPhrases: jsonb("missing_phrases").$type<string[]>(),
+  prependedDisclosure: text("prepended_disclosure"),
+  validatorModel: text("validator_model").notNull(),
+  thinkingBudget: integer("thinking_budget"),
+  latencyMs: integer("latency_ms"),
+  rationale: text("rationale"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("compliance_validations_org_idx").on(table.organizationId, table.createdAt),
+  index("compliance_validations_surface_idx").on(table.surface, table.createdAt),
+  index("compliance_validations_verdict_idx").on(table.verdict, table.createdAt),
+]);
+
+export type ComplianceValidation = typeof complianceValidations.$inferSelect;
+export type InsertComplianceValidation = typeof complianceValidations.$inferInsert;
+
+// ─── Prompt Versions (Phase 4 W21-22 — Nadia-AI §2.A) ────────────────────────
+// One row per (prompt_name, version). The promptRegistry rolls weighted dice
+// at request time and stamps the chosen version onto every response.
+export const promptVersions = pgTable("prompt_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  promptName: text("prompt_name").notNull(),
+  version: text("version").notNull(),
+  system: text("system").notNull(),
+  tier: text("tier").notNull().default("standard"),
+  hash: text("hash").notNull(),
+  weight: integer("weight").notNull().default(0),
+  evalScore: numeric("eval_score", { precision: 5, scale: 4 }),
+  evalRunAt: timestamp("eval_run_at", { withTimezone: true }),
+  active: boolean("active").notNull().default(true),
+  isCandidate: boolean("is_candidate").notNull().default(false),
+  promotedFrom: varchar("promoted_from"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("prompt_versions_name_version_unique").on(table.promptName, table.version),
+  index("prompt_versions_active_idx").on(table.promptName, table.active),
+]);
+
+export type PromptVersionRow = typeof promptVersions.$inferSelect;
+export type InsertPromptVersion = typeof promptVersions.$inferInsert;
+
+// ─── AI Injection Attempts (Phase 4 W21-22 — Sayuri §2.3 hardening) ──────────
+// Per-user log of detected indirect-prompt-injection attempts. The rate
+// limiter scans the last hour and blocks new AI calls when a user crosses
+// the threshold.
+export const aiInjectionAttempts = pgTable("ai_injection_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id"),
+  organizationId: integer("organization_id"),
+  surface: text("surface").notNull(),
+  matchedPatterns: jsonb("matched_patterns").$type<string[]>(),
+  inputPreview: text("input_preview"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("ai_injection_attempts_user_idx").on(table.userId, table.createdAt),
+  index("ai_injection_attempts_org_idx").on(table.organizationId, table.createdAt),
+]);
+
+export type AiInjectionAttempt = typeof aiInjectionAttempts.$inferSelect;
+export type InsertAiInjectionAttempt = typeof aiInjectionAttempts.$inferInsert;

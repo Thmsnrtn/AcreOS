@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { validateCompliance } from "../services/complianceValidator";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -5347,8 +5348,27 @@ export async function processSupportChat(
     assistantMessage = response.choices[0].message;
   }
   
-  const finalResponse = assistantMessage.content || "I apologize, but I'm having trouble processing your request. Let me escalate this to our support team.";
-  
+  const rawFinal = assistantMessage.content || "I apologize, but I'm having trouble processing your request. Let me escalate this to our support team.";
+
+  // Phase 4 W21-22 — compliance post-validator. Customer-support auto-resolver
+  // routinely answers questions that brush against tax / contract / lender
+  // territory; route through Opus extended-thinking before persisting.
+  let finalResponse = rawFinal;
+  try {
+    const compliance = await validateCompliance({
+      candidate: rawFinal,
+      domain: "general",
+      surface: "support.auto-resolve",
+      organizationId: org.id,
+      userPrompt: message,
+    });
+    finalResponse = compliance.response;
+  } catch (err) {
+    logger.warn("[support-agent] compliance validator failed — using raw response", {
+      metadata: { detail: err instanceof Error ? err.message : err },
+    });
+  }
+
   await db.insert(supportTicketMessages).values({
     ticketId,
     role: "agent",

@@ -822,6 +822,13 @@ export interface AIResponse {
     totalTokens: number;
   };
   estimatedCost?: number;
+  /**
+   * Phase 4 W21-22 — prompt versioning A/B harness (Nadia-AI §2.A).
+   * Stamped onto every response when the caller used routeWithRegisteredPrompt.
+   * Tells downstream observers (eval harness, analytics) which prompt version
+   * served the request so A/B deltas can be computed.
+   */
+  promptVersion?: { promptName: string; version: string; hash: string; isCandidate: boolean };
 }
 
 const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; cachedInput?: number }> = {
@@ -1345,6 +1352,46 @@ export async function applyEvalQualityGate(input: EvalGateInput): Promise<EvalGa
     logger.error(`[AIRouter] Eval quality gate write failed for ${input.taskType}`, err as Error);
     return { rolledBack: false, reason: `db_error:${(err as Error)?.message || "unknown"}`, ratio };
   }
+}
+
+// ============================================================================
+// Phase 4 W21-22 — prompt-versioning A/B harness (Nadia-AI §2.A).
+// Wires the promptRegistry into routeAITask so callsites that opt in get a
+// weighted-random version pick + a `promptVersion` stamp on the response.
+// ============================================================================
+
+/**
+ * Route an AI task using a *registered* prompt name. The registry rolls
+ * weighted dice across the active versions for `promptName` and uses the
+ * chosen version's `system` text in place of the caller's. The chosen
+ * version is stamped onto the response so downstream eval / analytics can
+ * compute per-version score deltas.
+ *
+ * Falls back to the builtin baseline if the registry is empty for that name.
+ */
+export async function routeWithRegisteredPrompt(
+  promptName: string,
+  taskType: string,
+  userPrompt: string,
+  config: AIRouterConfig = {},
+): Promise<AIResponse> {
+  const { selectVersion } = await import("./promptRegistry");
+  const pick = await selectVersion(promptName);
+  const messages = [
+    { role: "system" as const, content: pick.version.system },
+    { role: "user" as const, content: userPrompt },
+  ];
+  const complexity = classifyFromMessages(taskType, messages);
+  const response = await routeAITask(
+    {
+      taskType,
+      complexity,
+      messages,
+      taskTier: pick.version.tier,
+    },
+    config,
+  );
+  return { ...response, promptVersion: pick.stamp };
 }
 
 function recordAITelemetry(payload: TelemetryPayload): void {
