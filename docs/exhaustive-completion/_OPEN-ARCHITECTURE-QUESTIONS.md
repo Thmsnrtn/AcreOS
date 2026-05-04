@@ -81,12 +81,40 @@ Either trigger fires:
 
 ### Status
 
+**2026-05-04 (Workstream E) — PARKED for 90 days, founder directive.**
+
+Architecture A (current behavior — white-label always wins) is held in
+place for the 90-day window. No code change. The org #1 backup at
+`_org-1-whitelabel-backup.json` stays preserved but **NOT restored** —
+Kim Demo is test data and does not constitute reseller demand.
+
+**Revisit triggers (2026-07-15 or earlier):**
+- A real (non-Kim) reseller signs a contract and asks for end-user
+  personalization within their white-labeled tenant
+- A non-reseller customer complains that the theme picker doesn't
+  apply on certain surfaces
+- Founder explicitly decides to revisit
+
+**Tracked in:** GitHub issue "[Architecture] White-label 90-day revisit"
+target date 2026-07-15.
+
+**Why parked rather than resolved:**
+- Vertical expansion (Note Investor → Tax-Delinquent → Wholesale) does
+  not yet require the white-label conflict to be resolved
+- Resolving it (especially Architecture C) is a 2-3 day refactor across
+  every `bg-primary` / `text-primary` site — work that compounds with
+  vertical expansion if rushed
+- 90 days gives time for either a real reseller signal or a customer
+  pain signal to inform A vs B vs C
+
+**Original analysis (still valid):**
+
 - **Not blocking** vertical expansion or any current launch work
 - **Not blocking** the port (the port is correct; white-label override
   is the only reason the founder couldn't see it visually pre-cleanup)
 - **Backup of org #1 white-label config** stored at
-  `_org-1-whitelabel-backup.json` — restore via PATCH when Kim's demo
-  branding needs to come back
+  `_org-1-whitelabel-backup.json` — DO NOT restore until a real
+  reseller signs (Kim Demo is test data per founder)
 
 ### Implementation pointers (when a decision is made)
 
