@@ -128,6 +128,7 @@ import {
 import { prefetchRoute } from "@/lib/queryClient";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { useContextProfile, type InvestorType } from "@/hooks/use-context-profile";
+import { resolveHiddenRoutes, type OrgInvestorType } from "@/lib/sidebar-hidden-routes";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
@@ -570,54 +571,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Main Sidebar component
-// Routes hidden for certain business types (legacy — from the onboarding
-// wizard's manual selection). New verticals should hook in via
-// INVESTOR_TYPE_HIDDEN_ROUTES below, which uses the auto-detected
-// ContextProfile instead of onboarding self-report.
-const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
-  // Land-centric routes hidden for specific business types
-  residential_wholesaler: ["/maps", "/land-credit"],
-  fix_and_flip:           ["/maps", "/land-credit"],
-  buy_and_hold:           ["/maps", "/land-credit"],
-  commercial:             ["/maps", "/land-credit"],
-  short_term_rental:      ["/maps", "/land-credit"],
-  multifamily:            ["/maps", "/land-credit"],
-  mobile_home:            ["/land-credit"],
-  agent_investor:         ["/land-credit"],
-  creative_finance:       ["/land-credit"],
-  // land_flipper, note_investor, hybrid, developer, tax_lien_deed: all routes visible
-};
-
-// Routes hidden based on the auto-detected investor type from
-// contextProfile.ts. Lets the sidebar adapt even for orgs that skipped
-// the onboarding business-type step. Intersection with the legacy map
-// above means a route hidden by EITHER source stays hidden.
-const INVESTOR_TYPE_HIDDEN_ROUTES: Record<InvestorType, string[]> = {
-  wholesaler:        ["/maps", "/land-credit", "/finance/cash-flow-forecaster"],
-  fix_and_flip:     ["/maps", "/land-credit", "/borrower-portal"],
-  portfolio_builder: ["/land-credit", "/deal-hunter"],
-  auction_hunter:   [],
-  developer:        ["/land-credit"],
-  note_investor:    [],
-  new_investor:     [],
-};
-
-// Note Investor vertical (Phase 5 §5). Hides driven by the explicit
-// org.investorType column ('land' | 'notes' | 'both'), captured during
-// onboarding. Pure-notes orgs hide land-only marketing modules; the
-// /notes surface is hidden for pure-land orgs (added by inverse below).
-const ORG_INVESTOR_TYPE_HIDDEN_ROUTES: Record<"land" | "notes" | "both", string[]> = {
-  // Pure-land orgs: hide the Notes module (it's empty for them).
-  land: ["/notes"],
-  // Pure-notes orgs: hide land-marketing modules. They don't run direct
-  // mail to landowners, don't import lead lists, don't run land
-  // campaigns. Properties + leads are still reachable via the CRM
-  // module — they're useful for collateral lookups even for note
-  // investors — but the outreach surfaces are hidden.
-  notes: ["/campaigns", "/direct-mail", "/sequences", "/blind-offer-wizard", "/offers/batches"],
-  // Mixed-strategy: everything visible.
-  both: [],
-};
+//
+// Sidebar route-hiding logic moved to `client/src/lib/sidebar-hidden-routes.ts`
+// per Workstream B.6 (2026-05-04). All three hide-axes (businessType,
+// detectedInvestorType, orgInvestorType) live in one registry with a
+// single `resolveHiddenRoutes()` entry point and documented precedence.
 
 // ─────────────────────────────────────────────────────────────────────
 export function Sidebar() {
@@ -635,17 +593,14 @@ export function Sidebar() {
   // onboarding step 0. Distinct from `investorType` above which is
   // auto-detected from the user's behaviour. The org-level value takes
   // priority because the user actively declared it.
-  const orgInvestorType = ((organization as any)?.investorType ?? "land") as "land" | "notes" | "both";
-  // Hidden routes = legacy manual business-type hides ∪ auto-detected
-  // investor-type hides ∪ org-level note-investor fork hides. Any
-  // source gets a vote.
-  const hiddenForType = Array.from(
-    new Set([
-      ...(businessType ? BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? [] : []),
-      ...(INVESTOR_TYPE_HIDDEN_ROUTES[investorType] ?? []),
-      ...(ORG_INVESTOR_TYPE_HIDDEN_ROUTES[orgInvestorType] ?? []),
-    ]),
-  );
+  const orgInvestorType = ((organization as any)?.investorType ?? "land") as OrgInvestorType;
+  // Hidden routes = union of all three axes. See sidebar-hidden-routes.ts
+  // for the registry and precedence documentation.
+  const hiddenForType = resolveHiddenRoutes({
+    businessType,
+    detectedInvestorType: investorType,
+    orgInvestorType,
+  });
 
   // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
   // or hidden for the user's investor type.
