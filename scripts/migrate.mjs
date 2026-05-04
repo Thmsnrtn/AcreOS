@@ -161,6 +161,191 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "job_runs_job_name_started_idx" ON "job_runs" ("job_name", "started_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "job_runs_status_idx" ON "job_runs" ("status")',
 
+  // ── §3 Batch 2 — compliance + audit tables ──────────────────────────────
+  // Migrations 0049 (dsar_requests, data_processing_agreements),
+  // 0053 (critical_alert_acks — support_saved_replies deferred to a later
+  // batch as out-of-domain), 0057 (legal_holds), 0060 (ai_routing_overrides),
+  // 0065 (compliance_validations, prompt_versions, ai_injection_attempts).
+  //
+  // Excluded from this batch: the audit_events lockdown triggers/view in
+  // 0049 part 3. audit_events table already exists in prod (Batch 1 / §3.1);
+  // the append-only enforcement is a separate compliance-posture decision
+  // and is a behavioural change, not a missing-schema fix. Will be added in
+  // a follow-on commit if/when the founder authorizes.
+  //
+  // FK prereqs (verified present in prod): organizations, users, notifications.
+  // gen_random_uuid() requires PG ≥ 13 (we're on 16); no extension needed.
+
+  // legal_holds — 0057
+  `CREATE TABLE IF NOT EXISTS "legal_holds" (
+     "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id"  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+     "case_ref"         TEXT NOT NULL,
+     "scope"            TEXT NOT NULL,
+     "scope_ids"        TEXT[] NOT NULL DEFAULT '{}'::TEXT[],
+     "placed_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "placed_by"        VARCHAR REFERENCES users(id) ON DELETE SET NULL,
+     "released_at"      TIMESTAMPTZ,
+     "release_reason"   TEXT,
+     "notes"            TEXT,
+     "status"           TEXT NOT NULL DEFAULT 'active',
+     "created_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT legal_holds_scope_chk CHECK (scope IN ('org_wide','lead_specific','property_specific','user_specific')),
+     CONSTRAINT legal_holds_status_chk CHECK (status IN ('active','released'))
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_legal_holds_org_active ON legal_holds (organization_id) WHERE status = 'active'`,
+  'CREATE INDEX IF NOT EXISTS idx_legal_holds_status ON legal_holds(status)',
+  'CREATE INDEX IF NOT EXISTS idx_legal_holds_placed_at ON legal_holds(placed_at DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_legal_holds_case_ref ON legal_holds(case_ref)',
+  'CREATE INDEX IF NOT EXISTS idx_legal_holds_scope_ids ON legal_holds USING GIN (scope_ids)',
+
+  // dsar_requests — 0049
+  `CREATE TABLE IF NOT EXISTS "dsar_requests" (
+     "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "request_type"    TEXT NOT NULL CHECK (request_type IN ('access','erasure','portability','rectification')),
+     "email"           TEXT NOT NULL,
+     "full_name"       TEXT NOT NULL,
+     "organization_id" INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+     "organization"    TEXT,
+     "justification"   TEXT,
+     "status"          TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending','verified','fulfilling','completed','denied')),
+     "verification_token"   TEXT,
+     "verified_at"     TIMESTAMPTZ,
+     "completed_at"    TIMESTAMPTZ,
+     "denied_reason"   TEXT,
+     "ip"              TEXT,
+     "user_agent"      TEXT,
+     "metadata"        JSONB DEFAULT '{}'::jsonb,
+     "created_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_dsar_requests_email ON dsar_requests(email)',
+  'CREATE INDEX IF NOT EXISTS idx_dsar_requests_status ON dsar_requests(status)',
+  'CREATE INDEX IF NOT EXISTS idx_dsar_requests_created_at ON dsar_requests(created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_dsar_requests_org ON dsar_requests(organization_id)',
+
+  // data_processing_agreements — 0049 (incl. 8-row seed; ON CONFLICT idempotent)
+  `CREATE TABLE IF NOT EXISTS "data_processing_agreements" (
+     "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "vendor_name"     TEXT NOT NULL UNIQUE,
+     "status"          TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending','negotiating','signed','expired')),
+     "signed_date"     DATE,
+     "expires_at"      DATE,
+     "contact_email"   TEXT,
+     "scope"           TEXT,
+     "evidence_url"    TEXT,
+     "notes"           TEXT,
+     "created_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_dpa_status ON data_processing_agreements(status)',
+  `INSERT INTO data_processing_agreements (vendor_name, status, scope, contact_email) VALUES
+     ('Stripe',    'pending', 'Billing PII, payment methods, invoices, tax identity', 'privacy@stripe.com'),
+     ('Twilio',    'pending', 'Phone numbers, SMS bodies, voice-call recordings & transcripts', 'privacy@twilio.com'),
+     ('SendGrid',  'pending', 'Email addresses, message bodies, delivery events', 'privacy@sendgrid.com'),
+     ('Clerk',     'pending', 'Auth identities, sessions, MFA factors, email/phone', 'privacy@clerk.com'),
+     ('Anthropic', 'pending', 'Prompt content (incl. lead/property text), Claude completions', 'privacy@anthropic.com'),
+     ('OpenAI',    'pending', 'Prompt content for embeddings + completions', 'privacy@openai.com'),
+     ('Lob',       'pending', 'Recipient mailing addresses, postcard imagery', 'privacy@lob.com'),
+     ('AWS',       'pending', 'All at-rest customer data (S3, RDS, KMS-encrypted)', 'aws-privacy@amazon.com')
+   ON CONFLICT (vendor_name) DO NOTHING`,
+
+  // compliance_validations — 0065
+  `CREATE TABLE IF NOT EXISTS "compliance_validations" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer,
+     "surface" text NOT NULL,
+     "domain" text NOT NULL,
+     "input_hash" text NOT NULL,
+     "verdict" text NOT NULL,
+     "missing_phrases" jsonb,
+     "prepended_disclosure" text,
+     "validator_model" text NOT NULL,
+     "thinking_budget" integer,
+     "latency_ms" integer,
+     "rationale" text,
+     "metadata" jsonb,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     CONSTRAINT "compliance_validations_verdict_check" CHECK ("verdict" IN ('pass', 'block', 'amend', 'error'))
+   )`,
+  'CREATE INDEX IF NOT EXISTS "compliance_validations_org_idx" ON "compliance_validations" ("organization_id", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "compliance_validations_surface_idx" ON "compliance_validations" ("surface", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "compliance_validations_verdict_idx" ON "compliance_validations" ("verdict", "created_at" DESC)',
+
+  // prompt_versions — 0065
+  `CREATE TABLE IF NOT EXISTS "prompt_versions" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "prompt_name" text NOT NULL,
+     "version" text NOT NULL,
+     "system" text NOT NULL,
+     "tier" text NOT NULL DEFAULT 'standard',
+     "hash" text NOT NULL,
+     "weight" integer NOT NULL DEFAULT 0,
+     "eval_score" numeric(5,4),
+     "eval_run_at" timestamptz,
+     "active" boolean NOT NULL DEFAULT true,
+     "is_candidate" boolean NOT NULL DEFAULT false,
+     "promoted_from" varchar,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now(),
+     CONSTRAINT "prompt_versions_tier_check" CHECK ("tier" IN ('critical', 'standard', 'background')),
+     CONSTRAINT "prompt_versions_weight_check" CHECK ("weight" >= 0 AND "weight" <= 100)
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "prompt_versions_name_version_unique" ON "prompt_versions" ("prompt_name", "version")',
+  `CREATE INDEX IF NOT EXISTS "prompt_versions_active_idx" ON "prompt_versions" ("prompt_name", "active") WHERE "active" = true`,
+
+  // ai_injection_attempts — 0065
+  `CREATE TABLE IF NOT EXISTS "ai_injection_attempts" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "user_id" text,
+     "organization_id" integer,
+     "surface" text NOT NULL,
+     "matched_patterns" jsonb,
+     "input_preview" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_injection_attempts_user_idx" ON "ai_injection_attempts" ("user_id", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "ai_injection_attempts_org_idx" ON "ai_injection_attempts" ("organization_id", "created_at" DESC)',
+
+  // ai_routing_overrides — 0060
+  `CREATE TABLE IF NOT EXISTS "ai_routing_overrides" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "task_type" text NOT NULL,
+     "original_tier" text NOT NULL,
+     "override_tier" text NOT NULL,
+     "override_model" text,
+     "reason" text NOT NULL,
+     "previous_eval_score" numeric(5,4),
+     "new_eval_score" numeric(5,4),
+     "active" boolean NOT NULL DEFAULT true,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "expires_at" timestamptz,
+     CONSTRAINT "ai_routing_overrides_tier_check" CHECK ("override_tier" IN ('critical', 'standard', 'background')),
+     CONSTRAINT "ai_routing_overrides_orig_tier_check" CHECK ("original_tier" IN ('critical', 'standard', 'background'))
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ai_routing_overrides_active_unique" ON "ai_routing_overrides" ("task_type") WHERE "active" = true`,
+  'CREATE INDEX IF NOT EXISTS "ai_routing_overrides_created_idx" ON "ai_routing_overrides" ("created_at" DESC)',
+
+  // critical_alert_acks — 0053
+  `CREATE TABLE IF NOT EXISTS "critical_alert_acks" (
+     "id"              SERIAL PRIMARY KEY,
+     "notification_id" INTEGER REFERENCES notifications(id) ON DELETE CASCADE,
+     "severity"        TEXT NOT NULL CHECK (severity IN ('P0','P1')),
+     "fired_at"        TIMESTAMPTZ NOT NULL,
+     "ack_deadline_at" TIMESTAMPTZ NOT NULL,
+     "acked_at"        TIMESTAMPTZ,
+     "acked_by"        TEXT,
+     "escalated_at"    TIMESTAMPTZ,
+     "escalation_target" TEXT,
+     "created_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_critical_alert_acks_unacked ON critical_alert_acks (ack_deadline_at) WHERE acked_at IS NULL AND escalated_at IS NULL`,
+  'CREATE INDEX IF NOT EXISTS idx_critical_alert_acks_notification ON critical_alert_acks (notification_id)',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
