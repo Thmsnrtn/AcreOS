@@ -24,7 +24,11 @@ const VOCABULARY = {
   // Entities — what the user calls the things in their pipeline.
   "entity.lead": {
     land_investor: "Lead",
-    note_investor: "Note seller",
+    // Note Investor vertical (Phase 5 §5): leads → note opportunities (a
+    // tape entry / a single note offered for sale) rather than note
+    // sellers. The seller of the tape is a relationship, not a pipeline
+    // entity for note investors.
+    note_investor: "Note opportunity",
     tax_delinquent: "Tax-delinquent owner",
     wholesaler: "Motivated seller",
     subdivider: "Lead",
@@ -33,7 +37,7 @@ const VOCABULARY = {
   },
   "entity.lead.plural": {
     land_investor: "Leads",
-    note_investor: "Note sellers",
+    note_investor: "Note opportunities",
     tax_delinquent: "Tax-delinquent owners",
     wholesaler: "Motivated sellers",
     subdivider: "Leads",
@@ -42,7 +46,9 @@ const VOCABULARY = {
   },
   "entity.property": {
     land_investor: "Property",
-    note_investor: "Note",
+    // Note investors think of the secured asset as collateral, not a
+    // property — the collateral is the parcel that backs the note.
+    note_investor: "Collateral",
     tax_delinquent: "Property",
     wholesaler: "Subject property",
     subdivider: "Parent parcel",
@@ -51,7 +57,7 @@ const VOCABULARY = {
   },
   "entity.property.plural": {
     land_investor: "Properties",
-    note_investor: "Notes",
+    note_investor: "Collateral",
     tax_delinquent: "Properties",
     wholesaler: "Subject properties",
     subdivider: "Parent parcels",
@@ -76,6 +82,16 @@ const VOCABULARY = {
     fix_flipper: "Flips",
     landlord: "Acquisitions",
   },
+  // Pipeline scope — what the user thinks of as "their pipeline".
+  "pipeline.label": {
+    land_investor: "Pipeline",
+    note_investor: "Note pipeline",
+    tax_delinquent: "Pipeline",
+    wholesaler: "Pipeline",
+    subdivider: "Pipeline",
+    fix_flipper: "Pipeline",
+    landlord: "Pipeline",
+  },
   // Pipeline stages — final-stage label varies most across personas.
   "pipeline.stage.closed": {
     land_investor: "Closed",
@@ -85,6 +101,53 @@ const VOCABULARY = {
     subdivider: "Closed",
     fix_flipper: "Sold",
     landlord: "Leased",
+  },
+  // Outreach artefacts. Yellow letters are land-flipper specific (paper
+  // letters mailed to landowners) — note investors don't use them. We
+  // expose the key for parity but pages should hide the surface entirely
+  // when the persona is note_investor rather than translate.
+  "outreach.yellow_letter": {
+    land_investor: "Yellow letter",
+    note_investor: "Yellow letter", // n/a — surface is hidden upstream
+    tax_delinquent: "Yellow letter",
+    wholesaler: "Yellow letter",
+    subdivider: "Yellow letter",
+    fix_flipper: "Yellow letter",
+    landlord: "Yellow letter",
+  },
+  // Discovery / enrichment actions.
+  "action.skip_trace": {
+    land_investor: "Skip trace",
+    // Borrower-locate is the note-industry term for what land investors
+    // call skip tracing. Same provider stack underneath.
+    note_investor: "Borrower locate",
+    tax_delinquent: "Skip trace",
+    wholesaler: "Skip trace",
+    subdivider: "Skip trace",
+    fix_flipper: "Skip trace",
+    landlord: "Skip trace",
+  },
+  // Valuation product.
+  "product.avm": {
+    land_investor: "AVM",
+    // BPO (Broker Price Opinion) is the note-industry equivalent of an
+    // AVM — a valuation of the collateral by an independent broker.
+    note_investor: "BPO",
+    tax_delinquent: "AVM",
+    wholesaler: "AVM",
+    subdivider: "AVM",
+    fix_flipper: "AVM",
+    landlord: "AVM",
+  },
+  // Comparables — the supporting evidence under a valuation.
+  "product.comp": {
+    land_investor: "Comp",
+    note_investor: "Recent comparable note sale",
+    tax_delinquent: "Comp",
+    wholesaler: "Comp",
+    subdivider: "Comp",
+    fix_flipper: "Comp",
+    landlord: "Comp",
   },
   // Display names of the persona itself — for settings + onboarding.
   "persona.name": {
@@ -117,3 +180,18 @@ export const PERSONAS: readonly Persona[] = [
   "fix_flipper",
   "landlord",
 ];
+
+/**
+ * Map the org-level `investorType` column ('land' | 'notes' | 'both') to
+ * the persona key the vocabulary registry expects. 'both' resolves to
+ * note_investor on note-specific surfaces; surfaces that are mixed
+ * (dashboard, founder views) call getTerm() with land_investor and
+ * fall through to land copy. Surfaces that opt into note vocabulary
+ * (e.g. /notes) pass note_investor explicitly.
+ */
+export function personaForInvestorType(
+  investorType: string | null | undefined,
+): Persona {
+  if (investorType === "notes" || investorType === "both") return "note_investor";
+  return "land_investor";
+}

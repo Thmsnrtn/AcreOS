@@ -53,6 +53,11 @@ const updateOrganizationSchema = z.object({
   autoTopUpEnabled: z.boolean().optional(),
   autoTopUpThresholdCents: z.number().int().min(0).optional(),
   autoTopUpAmountCents: z.number().int().min(0).optional(),
+  // Note Investor vertical (Phase 5 §5). Captured during onboarding step 0;
+  // also editable later from Settings for orgs that pivot. Constrained to
+  // the three canonical values so the sidebar / persona registry can read
+  // it without defensive parsing.
+  investorType: z.enum(["land", "notes", "both"]).optional(),
 }).strict();
 
 export function registerOrganizationRoutes(app: Express): void {

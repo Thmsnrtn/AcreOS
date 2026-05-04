@@ -372,6 +372,19 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
+  // ── Note Investor vertical (Phase 5 §5) ───────────────────────────
+  // Primary entry for orgs that selected "Buying notes" or "Both" during
+  // onboarding. The /notes surface lists acquired notes with status
+  // pills + filter controls. Hidden for pure-land orgs by
+  // INVESTOR_TYPE_PRIMARY_HIDDEN_ROUTES below.
+  {
+    id: "notes",
+    label: "Notes",
+    icon: FileText,
+    href: "/notes",
+    description: "Acquired notes — performing, late, default, paid off",
+  },
+
   // ── Outreach ──────────────────────────────────────────────────────
   {
     id: "campaigns",
@@ -589,6 +602,23 @@ const INVESTOR_TYPE_HIDDEN_ROUTES: Record<InvestorType, string[]> = {
   new_investor:     [],
 };
 
+// Note Investor vertical (Phase 5 §5). Hides driven by the explicit
+// org.investorType column ('land' | 'notes' | 'both'), captured during
+// onboarding. Pure-notes orgs hide land-only marketing modules; the
+// /notes surface is hidden for pure-land orgs (added by inverse below).
+const ORG_INVESTOR_TYPE_HIDDEN_ROUTES: Record<"land" | "notes" | "both", string[]> = {
+  // Pure-land orgs: hide the Notes module (it's empty for them).
+  land: ["/notes"],
+  // Pure-notes orgs: hide land-marketing modules. They don't run direct
+  // mail to landowners, don't import lead lists, don't run land
+  // campaigns. Properties + leads are still reachable via the CRM
+  // module — they're useful for collateral lookups even for note
+  // investors — but the outreach surfaces are hidden.
+  notes: ["/campaigns", "/direct-mail", "/sequences", "/blind-offer-wizard", "/offers/batches"],
+  // Mixed-strategy: everything visible.
+  both: [],
+};
+
 // ─────────────────────────────────────────────────────────────────────
 export function Sidebar() {
   const [location] = useLocation();
@@ -601,12 +631,19 @@ export function Sidebar() {
 
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const { investorType } = useContextProfile();
+  // Note Investor vertical (Phase 5 §5) — explicit org-level fork from
+  // onboarding step 0. Distinct from `investorType` above which is
+  // auto-detected from the user's behaviour. The org-level value takes
+  // priority because the user actively declared it.
+  const orgInvestorType = ((organization as any)?.investorType ?? "land") as "land" | "notes" | "both";
   // Hidden routes = legacy manual business-type hides ∪ auto-detected
-  // investor-type hides. Either source gets a vote.
+  // investor-type hides ∪ org-level note-investor fork hides. Any
+  // source gets a vote.
   const hiddenForType = Array.from(
     new Set([
       ...(businessType ? BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? [] : []),
       ...(INVESTOR_TYPE_HIDDEN_ROUTES[investorType] ?? []),
+      ...(ORG_INVESTOR_TYPE_HIDDEN_ROUTES[orgInvestorType] ?? []),
     ]),
   );
 
