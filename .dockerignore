@@ -23,6 +23,8 @@ vite.config.ts.*
 # 6+ minutes of context upload to under 30 seconds.
 .git
 .gitignore
+.claude/
+.cursor/
 docs/
 attached_assets/
 acreos/
@@ -31,6 +33,9 @@ acreos-landing/
 ios/
 android/
 evals/
+tests/
+acreos-picker/
+client/public/images/
 
 # Local env / secrets
 .env
