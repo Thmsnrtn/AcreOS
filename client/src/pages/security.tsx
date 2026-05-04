@@ -33,6 +33,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import { securityPageSchema, organizationSchema, SITE } from "@/lib/jsonld-schemas";
 
 interface SubProcessor {
   vendor: string;
@@ -101,6 +104,14 @@ export default function SecurityPage() {
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
+      <OpenGraph
+        url={`${SITE.url}/security`}
+        title="Security · AcreOS"
+        description="How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, vulnerability disclosure, and SOC 2 posture."
+        type="website"
+      />
+      <JsonLd id="ld-security-webpage" data={securityPageSchema()} />
+      <JsonLd id="ld-security-org" data={organizationSchema()} />
 
       {/* Top nav — same pattern as /pricing, /privacy */}
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">

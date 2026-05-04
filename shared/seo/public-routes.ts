@@ -1,0 +1,51 @@
+/**
+ * Single source of truth for the public AcreOS marketing routes.
+ *
+ * Used by:
+ *  - `script/generate-sitemap.ts` to regenerate `client/public/sitemap.xml`
+ *  - `script/prerender.ts` to know which routes to pre-render
+ *  - any future "what does the search engine see" tooling
+ *
+ * Each entry should be:
+ *  - publicly accessible without authentication
+ *  - safe to crawl (no PII / no per-tenant data)
+ *  - intentionally indexable (we set noindex via robots.txt for the rest)
+ */
+
+export interface PublicRoute {
+  /** Path including leading slash. Use `/` for the root. */
+  path: string;
+  /** Sitemap changefreq hint. */
+  changefreq:
+    | "always"
+    | "hourly"
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "yearly"
+    | "never";
+  /** Sitemap priority (0.0 — 1.0). */
+  priority: number;
+  /** Short human label — useful for build logs and tests. */
+  label: string;
+  /**
+   * Whether this route should be statically pre-rendered at build time
+   * (script/prerender.ts). Set false for routes that genuinely need the
+   * client app to mount (auth, /status — pings live infra).
+   */
+  prerender: boolean;
+}
+
+export const PUBLIC_ROUTES: PublicRoute[] = [
+  { path: "/", changefreq: "weekly", priority: 1.0, label: "Landing", prerender: true },
+  { path: "/pricing", changefreq: "monthly", priority: 0.9, label: "Pricing", prerender: true },
+  { path: "/security", changefreq: "monthly", priority: 0.7, label: "Security", prerender: true },
+  { path: "/glossary", changefreq: "monthly", priority: 0.7, label: "Glossary", prerender: true },
+  { path: "/changelog", changefreq: "weekly", priority: 0.6, label: "Changelog", prerender: true },
+  { path: "/auth", changefreq: "monthly", priority: 0.5, label: "Sign in", prerender: false },
+  { path: "/status", changefreq: "daily", priority: 0.5, label: "Status", prerender: false },
+  { path: "/terms", changefreq: "yearly", priority: 0.3, label: "Terms", prerender: false },
+  { path: "/privacy", changefreq: "yearly", priority: 0.3, label: "Privacy", prerender: false },
+];
+
+export const SITE_BASE_URL = "https://acreos.io";

@@ -18,6 +18,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import { blogPostingSchema, SITE } from "@/lib/jsonld-schemas";
 import {
   CUSTOMER_CHANGELOG,
   type ChangelogEntryType,
@@ -73,6 +76,31 @@ export default function ChangelogPage() {
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
+      <OpenGraph
+        url={`${SITE.url}/changelog`}
+        title="Changelog · AcreOS"
+        description="Recent updates, new features, and improvements to AcreOS — written for Land Investors using the platform."
+        type="website"
+      />
+      {/* Each release gets its own BlogPosting structured-data record so
+          search engines can surface release notes individually. */}
+      {entries.map((entry) => (
+        <JsonLd
+          key={entry.date}
+          id={`changelog-${entry.date}`}
+          data={blogPostingSchema({
+            title: entry.version
+              ? `AcreOS ${entry.version} (${entry.date})`
+              : `AcreOS update — ${entry.date}`,
+            description: entry.changes
+              .map((c) => `${c.title}: ${c.body}`)
+              .join(" · ")
+              .slice(0, 280),
+            datePublished: entry.date,
+            url: `${SITE.url}/changelog#${entry.date}`,
+          })}
+        />
+      ))}
 
       {/* Top nav — same pattern as /pricing, /security, /privacy */}
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
@@ -112,7 +140,7 @@ export default function ChangelogPage() {
         ) : (
           <ol className="space-y-10" aria-label="Changelog entries">
             {entries.map((entry) => (
-              <li key={entry.date}>
+              <li key={entry.date} id={entry.date} className="scroll-mt-20">
                 {/* Date header */}
                 <div className="flex items-baseline gap-3 mb-4 flex-wrap">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground tabular-nums">

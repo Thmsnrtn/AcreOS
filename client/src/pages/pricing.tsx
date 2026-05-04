@@ -11,6 +11,9 @@ import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
 
 // Tier labels here ("Starter / Pro / Scale") are the public marketing names
 // for the canonical solo / operator / empire pricing tiers. Prices come from
@@ -110,6 +113,13 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
+      <OpenGraph
+        url={`${SITE.url}/pricing`}
+        title="Pricing · AcreOS"
+        description="Transparent plans for Land Investors — from the free tier to full-team tooling. CRM, direct mail, automated due diligence, and seller financing in one platform."
+        type="product"
+      />
+      <JsonLd id="ld-pricing-product" data={pricingProductSchema()} />
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
