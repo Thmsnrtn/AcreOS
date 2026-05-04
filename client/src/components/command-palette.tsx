@@ -35,7 +35,7 @@
  *   question to AcreOS Intelligence" — production currently relies on the
  *   AI-mode toggle pattern instead
  */
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +45,16 @@ import { telemetry } from "@/lib/telemetry";
 import { queryClient, apiRequest, prefetchRoute } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useProviderStatus } from "@/hooks/use-provider-status";
+import {
+  detectEntity,
+  looksLikeQuestion,
+  parseScope,
+  rankItems,
+  type Scope,
+  VALID_SCOPES,
+} from "@shared/cmdkMatcher";
+import { PALETTE_VERBS, type PaletteVerb } from "@/lib/cmdkVerbs";
+import { readRecents, recordRecency } from "@/lib/cmdkRecency";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Command,
@@ -94,7 +104,24 @@ import {
   ArrowRight,
   CheckCircle,
   Keyboard,
+  Archive,
+  Trash2,
+  Upload,
+  Download,
+  RefreshCw,
+  Tag,
+  ClipboardList,
+  Filter,
 } from "lucide-react";
+
+// Map verb iconKey strings → lucide components. Centralised so the
+// PALETTE_VERBS data records can stay decoupled from React.
+const VERB_ICONS: Record<PaletteVerb["iconKey"], React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>> = {
+  UserPlus, Home, FileText, ListTodo, Mail, Sparkles, MessageSquare, Send,
+  TrendingUp, Search, Phone, CheckCircle, DollarSign, Archive, Trash2,
+  Upload, Download, Settings, RefreshCw, Building2, Handshake, Tag,
+  ClipboardList, Filter, Users,
+};
 
 interface RecentItem {
   id: number;
@@ -171,14 +198,11 @@ const pages = [
   { name: "Settings", icon: Settings, path: "/settings" },
 ];
 
-const quickActions = [
-  { name: "New lead", icon: UserPlus, action: "new-lead", path: "/leads?new=true" },
-  { name: "New property", icon: Home, action: "new-property", path: "/properties?new=true" },
-  { name: "New deal", icon: FileText, action: "new-deal", path: "/deals?new=true" },
-  { name: "New task", icon: ListTodo, action: "new-task", path: "/tasks?action=new" },
-  { name: "Send email", icon: Mail, action: "send-email", path: "/inbox" },
-  { name: "Generate offer", icon: Sparkles, action: "generate-offer", path: "/offers?generate=true" },
-];
+// Phase 4 Week 19-20 (cmdk-v2 / Anya §3): the prior 6-action
+// `quickActions` array was superseded by the 30-verb registry in
+// `client/src/lib/cmdkVerbs.ts`. The verb registry is matcher-aware
+// (acronym + bigram + recency scoring via shared/cmdkMatcher) and
+// scope-filterable, where this static list was neither.
 
 interface AIResponse {
   reply: string;
@@ -242,6 +266,66 @@ export function CommandPalette() {
       return res.json();
     },
   });
+
+  // ── ⌘K v2 derived state ──────────────────────────────────────────────
+  // useDeferredValue lets React drop intermediate renders while the user
+  // is still typing, keeping keystroke latency well under the 100ms
+  // target on the 30-verb + N-page + N-entity haystack.
+  const deferredInput = useDeferredValue(inputValue);
+  const parsed = useMemo(() => parseScope(deferredInput), [deferredInput]);
+  const activeScope: Scope | null = parsed.scope;
+  const matcherQuery = parsed.remainder;
+  const isQuestion = useMemo(
+    () => looksLikeQuestion(deferredInput),
+    [deferredInput],
+  );
+  const detectedEntity = useMemo(
+    () => detectEntity(deferredInput),
+    [deferredInput],
+  );
+  const recents = useMemo(
+    () => (open ? readRecents() : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [open, deferredInput],
+  );
+
+  // Verb matcher — re-ranks PALETTE_VERBS against the current query
+  // every render. Cheap (≤30 items) so no debounce needed beyond the
+  // useDeferredValue above.
+  const matchedVerbs = useMemo(() => {
+    const items = PALETTE_VERBS.filter((v) =>
+      activeScope ? v.scope === activeScope || v.scope === "global" : true,
+    ).map((v) => ({
+      id: v.id,
+      title: v.label,
+      subtitle: v.hint,
+      keywords: v.keywords,
+      kind: "verb" as const,
+      verb: v,
+    }));
+    if (!matcherQuery.trim()) {
+      // No query → surface a stable subset (top-7 by recency) when the
+      // palette opens, instead of an overwhelming dump of all 30.
+      const ranked = rankItems("", items, { recents, keepAll: true });
+      return ranked.slice(0, 7);
+    }
+    return rankItems(matcherQuery, items, { recents }).slice(0, 8);
+  }, [matcherQuery, activeScope, recents]);
+
+  // Page matcher — re-ranks the static `pages` list with the same
+  // scoring logic so acronyms ("tdc" → Tax Delinquent Counties) and
+  // 1-edit substring matches ("leaf" → Leaflet) work for navigation.
+  const matchedPages = useMemo(() => {
+    if (activeScope && activeScope !== "settings") return []; // pages list is the cross-cutting nav surface
+    const items = pages.map((p) => ({
+      id: `page:${p.path}`,
+      title: p.name,
+      kind: "page" as const,
+      page: p,
+    }));
+    if (!matcherQuery.trim()) return [];
+    return rankItems(matcherQuery, items, { recents }).slice(0, 6);
+  }, [matcherQuery, activeScope, recents]);
 
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
@@ -363,7 +447,7 @@ export function CommandPalette() {
   }, [open]);
 
   const handleSelect = useCallback(
-    (path: string) => {
+    (path: string, recencyId?: string) => {
       // Prefetch common API for the target route for perceived speed
       const prefetchMap: Record<string, string[]> = {
         "/leads": ["/api/leads"],
@@ -372,6 +456,9 @@ export function CommandPalette() {
         "/": ["/api/dashboard/stats"],
       };
       (prefetchMap[path] || []).forEach(prefetchRoute);
+      // Phase 4 Week 19-20 (cmdk-v2): persist this selection so the
+      // matcher's recency signal lifts it next time the user opens ⌘K.
+      if (recencyId) recordRecency(recencyId);
       setOpen(false);
       setAiMode(false);
       setAiResponse(null);
@@ -464,7 +551,11 @@ export function CommandPalette() {
             className="fixed left-1/2 top-[14vh] z-50 w-full max-w-[560px] -translate-x-1/2 p-4"
             data-testid="command-palette-dialog"
           >
-            <Command className="palette-modal" shouldFilter={!showAIMode}>
+            {/* shouldFilter=false: we hand-curate results via the
+                cmdkMatcher (acronym/bigram/substring + recency) so
+                the cmdk default fuzzy filter would just remove items
+                we deliberately scored in. */}
+            <Command className="palette-modal" shouldFilter={false}>
               <div className="relative">
                 <CommandInput
                   ref={inputRef}
@@ -474,6 +565,15 @@ export function CommandPalette() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && showAIMode) {
                       e.preventDefault();
+                      handleAISubmit();
+                    }
+                    // Phase 4 Week 19-20: when the query reads like a
+                    // question and the user presses ⌘↵ (or just ↵ if
+                    // there are no other matches), forward straight to
+                    // Pax instead of opening the highlighted item.
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && isQuestion) {
+                      e.preventDefault();
+                      setAiMode(true);
                       handleAISubmit();
                     }
                   }}
@@ -498,11 +598,78 @@ export function CommandPalette() {
                 )}
               </div>
 
+              {/* Scope chip indicator. Active scope filters the verb +
+                  results haystack to one domain ("only leads" / "only
+                  deals"…). Chips are typed into the input as `:leads`
+                  etc. — no extra UI to drive them. */}
+              {activeScope && (
+                <div
+                  className="px-3 py-1.5 text-xs border-b flex items-center gap-2"
+                  data-testid="command-palette-scope-chip"
+                >
+                  <span className="font-medium text-muted-foreground">Scope:</span>
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                    style={{ background: "var(--acr-bg-sunken)", color: "var(--acr-fg)" }}
+                  >
+                    :{activeScope}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Press <Kbd size="sm" className="mx-1">⌫</Kbd> to clear
+                  </span>
+                </div>
+              )}
+
+              {/* Ask Pax inline preview. When the query reads like a
+                  question (ends with "?" or starts with what/why/how/when
+                  per shared/cmdkMatcher#looksLikeQuestion) we pin a
+                  prominent "Ask Pax" affordance to the top of the
+                  palette — Enter sends to the existing /api/realtime/ask
+                  pipeline (same backend as the AI-mode toggle, just
+                  surfaced earlier). */}
+              {!showAIMode && isQuestion && inputValue.trim().length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiMode(true);
+                    aiMutation.mutate(inputValue.trim());
+                  }}
+                  className="w-full px-4 py-3 border-b flex items-start gap-2 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:bg-accent/40"
+                  data-testid="command-palette-ask-pax"
+                  aria-label={`Ask Pax: ${inputValue.trim()}`}
+                >
+                  <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--acr-brand)" }} aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">Ask Pax</div>
+                    <div className="text-xs text-muted-foreground truncate">{inputValue.trim()}</div>
+                  </div>
+                  <Kbd size="sm" className="ml-2 shrink-0">↵</Kbd>
+                </button>
+              )}
+
               {/* AI Mode Hint */}
               {!showAIMode && inputValue.length === 0 && (
-                <div className="px-3 py-1.5 text-xs text-muted-foreground border-b flex items-center gap-1.5">
-                  <MessageSquare className="h-3 w-3" aria-hidden="true" />
-                  <span>Start with <span className="font-mono bg-muted px-1 rounded">?</span> or ask a question for AI assistance</span>
+                <div className="px-3 py-1.5 text-xs text-muted-foreground border-b flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                    <span>Start with <span className="font-mono bg-muted px-1 rounded">?</span> or ask a question for AI assistance</span>
+                  </span>
+                  {/* Scope chip discoverability — shown only when the
+                      palette is empty so it doesn't crowd the results. */}
+                  <span className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider opacity-70">Scope:</span>
+                    {VALID_SCOPES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => { const v = `:${s} `; setInputValue(v); setSearch(v); setQuery(v); }}
+                        className="font-mono text-[10px] px-1 rounded bg-muted hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        data-testid={`command-palette-scope-suggest-${s}`}
+                      >
+                        :{s}
+                      </button>
+                    ))}
+                  </span>
                 </div>
               )}
 
@@ -747,45 +914,142 @@ export function CommandPalette() {
                       </>
                     )}
 
-                    <CommandGroup heading="Pages">
-                      {pages.map((page, idx) => (
+                    {/* Entity-resolution shortcut \u2014 when the query
+                        contains an email or phone, we surface the
+                        contact/lead match first (Anya \u00a76). The actual
+                        contact match is filed under the existing Search
+                        results group above; this affordance gives the
+                        user an explicit "open contact for this
+                        email/phone" target even when the server search
+                        hasn't returned yet. */}
+                    {detectedEntity && (
+                      <CommandGroup heading={`${detectedEntity.kind === "email" ? "Email" : "Phone"} match`}>
                         <CommandItem
-                          key={page.path}
-                          onSelect={() => handleSelect(page.path)}
-                          onMouseEnter={() => ( {"/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
-                          data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
+                          key={`entity-${detectedEntity.kind}-${detectedEntity.value}`}
+                          onSelect={() =>
+                            handleSelect(
+                              `/leads?${detectedEntity.kind === "email" ? "email" : "phone"}=${encodeURIComponent(detectedEntity.value)}`,
+                              `entity:${detectedEntity.kind}:${detectedEntity.value}`,
+                            )
+                          }
                           className="cursor-pointer"
+                          data-testid="command-palette-entity-match"
                         >
-                          <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                          <span>{page.name}</span>
-                          {idx < 9 && (
-                            <CommandShortcut>{`\u2318${idx + 1}`}</CommandShortcut>
+                          {detectedEntity.kind === "email" ? (
+                            <Mail className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          ) : (
+                            <Phone className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           )}
+                          <span>Find lead by {detectedEntity.kind}</span>
+                          <span className="ml-auto text-xs text-muted-foreground truncate max-w-[180px]">{detectedEntity.value}</span>
                         </CommandItem>
-                      ))}
-                    </CommandGroup>
+                      </CommandGroup>
+                    )}
 
-                    <CommandSeparator />
+                    {/* Phase 4 Week 19-20 \u2014 verb-first results when a
+                        query is present, plus the matched-page list.
+                        Verbs are 30-strong (Anya \u00a73) and ranked by the
+                        cmdkMatcher (acronym + bigram + recency), so
+                        "tdc" surfaces "Tax Delinquent Counties" via
+                        page match; "send" surfaces send-letter / text
+                        / email via verb match. */}
+                    {matcherQuery.trim().length > 0 && matchedVerbs.length > 0 && (
+                      <CommandGroup heading="Actions">
+                        {matchedVerbs.map(({ item: m }) => {
+                          const verb: PaletteVerb = (m as { verb: PaletteVerb }).verb;
+                          const Icon = VERB_ICONS[verb.iconKey] ?? Sparkles;
+                          const requiresAI = verb.id === "verb:generate-offer";
+                          const disabled = requiresAI && !isAvailable("ai");
+                          return (
+                            <CommandItem
+                              key={verb.id}
+                              onSelect={() => !disabled && handleSelect(verb.path, verb.id)}
+                              data-testid={`command-verb-${verb.id.replace(/:/g, "-")}`}
+                              className="cursor-pointer"
+                              disabled={disabled}
+                            >
+                              <Icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="flex flex-col min-w-0">
+                                <span>{verb.label}{disabled ? " (AI unavailable)" : ""}</span>
+                                {verb.hint && (
+                                  <span className="text-xs text-muted-foreground truncate">{verb.hint}</span>
+                                )}
+                              </div>
+                              <CommandShortcut>{"\u21b5"}</CommandShortcut>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    )}
 
-                    <CommandGroup heading="Quick actions">
-                      {quickActions.map((action) => {
-                        const requiresAI = action.action === 'generate-offer';
-                        const disabled = requiresAI && !isAvailable('ai');
-                        return (
-                          <CommandItem
-                            key={action.action}
-                            onSelect={() => !disabled && handleSelect(action.path)}
-                            data-testid={`command-item-${action.name.toLowerCase().replace(/\s+/g, "-")}`}
-                            className="cursor-pointer"
-                            disabled={disabled}
-                          >
-                            <action.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                            <span>{action.name}{disabled ? ' (AI unavailable)' : ''}</span>
-                            <CommandShortcut>{"\u21b5"}</CommandShortcut>
-                          </CommandItem>
-                        );
-                      })}
-                    </CommandGroup>
+                    {matcherQuery.trim().length > 0 && matchedPages.length > 0 && (
+                      <CommandGroup heading="Pages">
+                        {matchedPages.map(({ item: m }) => {
+                          const page = (m as { page: typeof pages[number] }).page;
+                          return (
+                            <CommandItem
+                              key={page.path}
+                              onSelect={() => handleSelect(page.path, `page:${page.path}`)}
+                              onMouseEnter={() => ({ "/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
+                              data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
+                              className="cursor-pointer"
+                            >
+                              <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <span>{page.name}</span>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    )}
+
+                    {/* Empty-query state \u2014 show the canonical Pages +
+                        verb-suggestion (top-7 by recency) lists so the
+                        palette is never blank. */}
+                    {matcherQuery.trim().length === 0 && (
+                      <>
+                        <CommandGroup heading={activeScope ? `${activeScope[0].toUpperCase()}${activeScope.slice(1)} actions` : "Quick actions"}>
+                          {matchedVerbs.map(({ item: m }) => {
+                            const verb: PaletteVerb = (m as { verb: PaletteVerb }).verb;
+                            const Icon = VERB_ICONS[verb.iconKey] ?? Sparkles;
+                            const requiresAI = verb.id === "verb:generate-offer";
+                            const disabled = requiresAI && !isAvailable("ai");
+                            return (
+                              <CommandItem
+                                key={verb.id}
+                                onSelect={() => !disabled && handleSelect(verb.path, verb.id)}
+                                data-testid={`command-verb-${verb.id.replace(/:/g, "-")}`}
+                                className="cursor-pointer"
+                                disabled={disabled}
+                              >
+                                <Icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <span>{verb.label}{disabled ? " (AI unavailable)" : ""}</span>
+                                <CommandShortcut>{"\u21b5"}</CommandShortcut>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+
+                        <CommandSeparator />
+
+                        <CommandGroup heading="Pages">
+                          {pages.map((page, idx) => (
+                            <CommandItem
+                              key={page.path}
+                              onSelect={() => handleSelect(page.path, `page:${page.path}`)}
+                              onMouseEnter={() => ({ "/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
+                              data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
+                              className="cursor-pointer"
+                            >
+                              <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <span>{page.name}</span>
+                              {idx < 9 && (
+                                <CommandShortcut>{`\u2318${idx + 1}`}</CommandShortcut>
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </>
+                    )}
 
                     {/* "Ask Your Team" exposes founder-internal agent
                         codenames (Forge, Sophie, Sentinel, ...) and routes

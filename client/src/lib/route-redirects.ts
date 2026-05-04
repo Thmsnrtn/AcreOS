@@ -49,6 +49,41 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     reason:
       "/founder and /founder-home both rendered FounderHomePage. /founder is the canonical founder-surface root.",
   },
+  /* ── Phase 4 Week 19-20 (cmdk-v2 / Anya §8) ─────────────────────────
+   * ⌘K is the discoverability spine. The Pax assistant, AI hub and
+   * agent surfaces are now reached via ⌘K → "Ask Pax" affordance, not
+   * via memorizable URL prefixes that competed with ⌘K for muscle
+   * memory. The legacy paths redirect to the AI hub for 60 days; on
+   * sunsetOn they may be deleted from App.tsx outright.
+   */
+  {
+    legacy: "/pax",
+    canonical: "/ai",
+    sunsetOn: "2026-07-02",
+    reason:
+      "Discoverability promotion: ⌘K is the canonical entry point to Pax. /pax remains aliased to /ai (the AI hub) until 2026-07-02; in-app references replaced with ⌘K hints in cmdk-v2.",
+  },
+  {
+    legacy: "/agents",
+    canonical: "/ai#agents",
+    sunsetOn: "2026-07-02",
+    reason:
+      "Agents tab now lives inside the AI hub at /ai#agents. The standalone /agents URL is kept for old bookmarks; ⌘K is the primary discovery surface.",
+  },
+  {
+    legacy: "/ai-team",
+    canonical: "/ai#agents",
+    sunsetOn: "2026-07-02",
+    reason:
+      "Synonym for /agents — same destination, kept for bookmark/email-link compatibility while in-app references migrate to ⌘K.",
+  },
+  {
+    legacy: "/command-center",
+    canonical: "/ai#chat",
+    sunsetOn: "2026-07-02",
+    reason:
+      "Pre-cmdk-v2 name for the chat hub. Replaced by ⌘K's Ask Pax affordance; redirect kept for 60 days.",
+  },
 ] as const;
 
 /** Lookup helper: returns the canonical path for a legacy path, or null. */
