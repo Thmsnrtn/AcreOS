@@ -102,7 +102,33 @@ const STATEMENTS = [
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+
+// 2026-05-04 (Workstream A.2 follow-on): the release_command had been
+// failing prod deploys silently for ~3 days because 4 specific statements
+// reference tables/columns/extensions that the prod DB doesn't have yet
+// (audit_events table, properties.land_status column, email_events table,
+// pgvector extension). Those failures cause the script to exit 1, which
+// aborts the deploy.
+//
+// The right long-term fix is to add the missing CREATE TABLE / ALTER ADD
+// COLUMN / etc. statements to this list so prod catches up. That's a
+// founder-judgment call (which migrations to apply, in what order, with
+// what risk window) — not a mechanical fix.
+//
+// Short-term unblock: classify failures.
+//   - "expected dependency missing" (column/table/extension does not exist)
+//     → log loudly but don't abort the deploy. The dependent index/feature
+//     simply doesn't get added today; the deploy still ships.
+//   - any other failure → fail loud as before (real schema bug or perms).
+const EXPECTED_FAILURE_PATTERNS = [
+  /column ".*" does not exist/i,
+  /relation ".*" does not exist/i,
+  /extension ".*" is not available/i,
+];
+
 let exitCode = 0;
+const failures = [];
+const skipped = [];
 
 try {
   for (const stmt of STATEMENTS) {
@@ -110,9 +136,22 @@ try {
       await pool.query(stmt);
       console.log(`[migrate] OK: ${stmt}`);
     } catch (err) {
-      console.error(`[migrate] FAILED: ${stmt}\n  ${err.message}`);
-      exitCode = 1;
+      const isExpected = EXPECTED_FAILURE_PATTERNS.some((rx) => rx.test(err.message));
+      if (isExpected) {
+        console.warn(`[migrate] SKIPPED (dependency missing — non-fatal): ${stmt}\n  ${err.message}`);
+        skipped.push({ stmt, message: err.message });
+      } else {
+        console.error(`[migrate] FAILED: ${stmt}\n  ${err.message}`);
+        failures.push({ stmt, message: err.message });
+        exitCode = 1;
+      }
     }
+  }
+  if (skipped.length > 0) {
+    console.warn(`[migrate] ${skipped.length} statement(s) skipped due to missing prerequisite. Apply the underlying migrations from migrations/*.sql, then re-deploy to add these.`);
+  }
+  if (failures.length > 0) {
+    console.error(`[migrate] ${failures.length} statement(s) failed unexpectedly. Aborting deploy.`);
   }
 } finally {
   await pool.end().catch(() => {});
