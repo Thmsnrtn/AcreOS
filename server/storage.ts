@@ -292,6 +292,7 @@ export interface IStorage {
   // Team Members
   getTeamMembers(orgId: number): Promise<TeamMember[]>;
   getTeamMember(orgId: number, userId: string): Promise<TeamMember | undefined>;
+  getTeamMemberByEmail(orgId: number, email: string): Promise<TeamMember | undefined>;
   createTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   updateTeamMember(id: number, updates: Partial<InsertTeamMember>): Promise<TeamMember>;
 
@@ -1166,6 +1167,10 @@ export interface IStorage {
   createFieldScoutPhoto(data: InsertFieldScoutPhoto): Promise<FieldScoutPhoto>;
   getFieldScoutPhotosByVisit(visitId: number): Promise<FieldScoutPhoto[]>;
   getFieldScoutPhotosByLead(leadId: number): Promise<FieldScoutPhoto[]>;
+  // Phase 8 Mo 12 — Yara §1: reverse-image dedup. Returns the existing
+  // record for an org+hash pair so callers can short-circuit re-uploads
+  // of identical content.
+  findFieldScoutPhotoByHash(organizationId: number, imageHash: string): Promise<FieldScoutPhoto | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1298,7 +1303,16 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, userId)));
     return member;
   }
-  
+
+  // Phase 4 Week 15-16 (Magdalena §1) — used by the lead-import worker to
+  // resolve `assignedTo` CSV values (emails of team members) to team_member IDs.
+  async getTeamMemberByEmail(orgId: number, email: string) {
+    const normalized = email.trim().toLowerCase();
+    const [member] = await db.select().from(teamMembers)
+      .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.email, normalized)));
+    return member;
+  }
+
   async createTeamMember(member: InsertTeamMember) {
     const [newMember] = await db.insert(teamMembers).values(member).returning();
     return newMember;
@@ -8723,6 +8737,26 @@ Notary Public</p>
     return await db.select().from(fieldScoutPhotos)
       .where(eq(fieldScoutPhotos.leadId, leadId))
       .orderBy(desc(fieldScoutPhotos.createdAt));
+  }
+
+  // Phase 8 Mo 12 — Yara §1 dedup. Backed by the partial index
+  // `fsp_org_hash_idx (organization_id, image_hash) WHERE image_hash IS NOT NULL`
+  // (migration 0067) so this is O(log n) on every upload.
+  async findFieldScoutPhotoByHash(
+    organizationId: number,
+    imageHash: string,
+  ): Promise<FieldScoutPhoto | undefined> {
+    const [existing] = await db
+      .select()
+      .from(fieldScoutPhotos)
+      .where(
+        and(
+          eq(fieldScoutPhotos.organizationId, organizationId),
+          eq(fieldScoutPhotos.imageHash, imageHash),
+        ),
+      )
+      .limit(1);
+    return existing;
   }
 }
 

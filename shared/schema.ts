@@ -17007,3 +17007,93 @@ export const offerApprovals = pgTable("offer_approvals", {
 
 export type OfferApproval = typeof offerApprovals.$inferSelect;
 export type InsertOfferApproval = typeof offerApprovals.$inferInsert;
+
+// ============================================================================
+// MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
+// ----------------------------------------------------------------------------
+// Backed by migrations/0069_import_export_jobs.sql.
+//
+// import_jobs powers the 50K-row CSV import flow + communications/document
+// history imports. The worker (server/services/migrationJobs.ts) processes
+// rows in chunks of 500 and updates processed_count after each chunk so the
+// UI can show a progress bar.
+//
+// export_jobs powers the consolidated /api/export/everything endpoint which
+// emits a single ZIP per job (replacing the 4 legacy export systems).
+// ============================================================================
+
+export const importJobs = pgTable("import_jobs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: text("user_id").notNull(),
+  // 'leads' | 'properties' | 'deals' | 'notes' | 'communications' | 'documents'
+  kind: text("kind").notNull(),
+  // 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  status: text("status").notNull().default("queued"),
+  filename: text("filename"),
+  payloadRef: text("payload_ref"),
+  fieldMap: jsonb("field_map").$type<Record<string, string>>(),
+  totalRows: integer("total_rows").notNull().default(0),
+  processedCount: integer("processed_count").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  errorCount: integer("error_count").notNull().default(0),
+  duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
+  errors: jsonb("errors").$type<Array<{ row: number; error: string }>>().notNull().default([]),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("import_jobs_org_status_idx").on(table.organizationId, table.status, table.createdAt),
+  index("import_jobs_status_created_idx").on(table.status, table.createdAt),
+]);
+
+export const insertImportJobSchema = createInsertSchema(importJobs).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+export type ImportJob = typeof importJobs.$inferSelect;
+export type InsertImportJob = z.infer<typeof insertImportJobSchema>;
+
+export const exportJobs = pgTable("export_jobs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: text("user_id").notNull(),
+  // 'everything' is canonical. Legacy values are accepted for backward-compat
+  // but should be migrated to 'everything' going forward.
+  kind: text("kind").notNull().default("everything"),
+  // 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  status: text("status").notNull().default("queued"),
+  params: jsonb("params").$type<{
+    entityTypes?: string[];
+    dateRange?: { from?: string; to?: string };
+    includeAttachments?: boolean;
+  }>().notNull().default({}),
+  archivePath: text("archive_path"),
+  archiveSizeBytes: integer("archive_size_bytes"),
+  entityCounts: jsonb("entity_counts").$type<Record<string, number>>(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"),
+}, (table) => [
+  index("export_jobs_org_status_idx").on(table.organizationId, table.status, table.createdAt),
+  index("export_jobs_status_created_idx").on(table.status, table.createdAt),
+]);
+
+export const insertExportJobSchema = createInsertSchema(exportJobs).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+export type ExportJob = typeof exportJobs.$inferSelect;
+export type InsertExportJob = z.infer<typeof insertExportJobSchema>;

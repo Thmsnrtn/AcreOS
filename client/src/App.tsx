@@ -161,6 +161,7 @@ const KPIDashboardPage = React.lazy(() => import("@/pages/kpi-dashboard"));
 const CohortAnalysisPage = React.lazy(() => import("@/pages/cohort-analysis"));
 const AuditLogPage = React.lazy(() => import("@/pages/audit-log"));
 const DataExportPage = React.lazy(() => import("@/pages/data-export"));
+const DataImportPage = React.lazy(() => import("@/pages/data-import"));
 const ModelTrainingPage = React.lazy(() => import("@/pages/model-training"));
 
 // Settings / Compliance
@@ -916,6 +917,9 @@ function Router() {
       </Route>
       <Route path="/data-export">
         {() => <ProtectedRoute component={DataExportPage} />}
+      </Route>
+      <Route path="/import">
+        {() => <ProtectedRoute component={DataImportPage} />}
       </Route>
       <Route path="/model-training">
         {() => <ProtectedRoute component={ModelTrainingPage} />}
