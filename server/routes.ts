@@ -139,6 +139,7 @@ import { requireClerkMFA } from "./middleware/requireClerkMFA";
 // Domain route modules
 import { registerDashboardRoutes } from "./routes-dashboard";
 import { registerOrganizationRoutes } from "./routes-organization";
+import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
 import { registerPropertyRoutes } from "./routes-properties";
 import { registerDealRoutes } from "./routes-deals";
@@ -1693,6 +1694,9 @@ export async function registerRoutes(
   // ============================================
   registerDashboardRoutes(app);
   registerOrganizationRoutes(app);
+  // Phase 5 §5 — team-readiness endpoints (per-seat pricing, lead-assignment
+  // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).
+  registerTeamReadinessRoutes(app);
   registerLeadRoutes(app);
   registerPropertyRoutes(app);
   registerDealRoutes(app);

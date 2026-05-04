@@ -1618,6 +1618,57 @@ export function registerOrganizationRoutes(app: Express): void {
       } else {
         return Errors.validationFailed(res, (bulkParsed.error ?? singleParsed.error).errors);
       }
+      // Phase 5 §5 (team readiness) — backend seat enforcement. If the
+      // pending invite(s) would push (active members + pending invites)
+      // above the org's seatCount, prompt for an upgrade BEFORE persisting
+      // anything. Surfaces upgrade requirement to the UI as a 402.
+      try {
+        const { tierForSubscriptionTier, canAddSeats } = await import("@shared/billing/tier-pricing");
+        const tier = tierForSubscriptionTier(org.subscriptionTier);
+        const seatCount = (org as any).seatCount ?? 1;
+        const { teamMembers: tmTable, organizationInvitations: invTable } = await import("@shared/schema");
+        const [activeRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(tmTable)
+          .where(and(eq(tmTable.organizationId, org.id), eq(tmTable.isActive, true)));
+        const [pendingRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(invTable)
+          .where(and(eq(invTable.organizationId, org.id), eq(invTable.status, "pending")));
+        const projected = (activeRow?.count ?? 0) + (pendingRow?.count ?? 0) + invites.length;
+        if (!tier) {
+          return res.status(402).json({
+            error: "upgrade_required",
+            message: "Free tier cannot invite teammates. Upgrade to Operator or Empire to add seats.",
+            statusCode: 402,
+            details: { projected, seatCount, tier: null },
+          });
+        }
+        if (!canAddSeats(tier, projected)) {
+          return res.status(402).json({
+            error: "upgrade_required",
+            message: tier === "solo"
+              ? "Solo tier is single-user only. Upgrade to Operator or Empire to invite teammates."
+              : `Tier ${tier} is capped at ${projected - 1} seats. Upgrade to add more.`,
+            statusCode: 402,
+            details: { projected, seatCount, tier },
+          });
+        }
+        if (projected > seatCount) {
+          return res.status(402).json({
+            error: "seat_purchase_required",
+            message: `Inviting ${invites.length} teammate(s) would require ${projected} paid seats; you currently have ${seatCount}. Increase your seat count from billing first.`,
+            statusCode: 402,
+            details: { projected, seatCount, tier, additionalSeatsNeeded: projected - seatCount },
+          });
+        }
+      } catch (err) {
+        // Non-fatal: defensive — if the tier-pricing import fails, fall
+        // back to the original rate-limit-only behaviour rather than
+        // wedging the invite path.
+        logger.warn("seat preflight failed (non-fatal)", { error: (err as Error).message });
+      }
+
       // Pelle G/H/I: per-org invite-creation rate limit (100/day).
       // Cost = number of invites in this request so bulk callers can't
       // sneak past with a single API call.

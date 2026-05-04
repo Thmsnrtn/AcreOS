@@ -71,6 +71,16 @@ export const organizations = pgTable("organizations", {
   autoTopUpAmountCents: integer("auto_top_up_amount_cents").default(2500), // Add $25
   // Seat management
   additionalSeats: integer("additional_seats").default(0), // Extra seats purchased beyond tier limit
+  // Per-seat pricing (Phase 5 §5 — team-readiness). seat_count is the
+  // canonical "how many active seats does this org pay for" value. Tier
+  // bundles 1 seat; each additional seat is billed via the per-seat
+  // add-on subscription. additional_seats is retained for legacy callers
+  // and equals max(seat_count - 1, 0) for new flows.
+  seatCount: integer("seat_count").notNull().default(1),
+  // Offer-approval threshold (Phase 5 §5 Part E). When non-null, offers
+  // with cashOffer or termsOffer above this dollar amount route to the
+  // /team/offer-approvals queue instead of going out the door.
+  requiresApprovalOffersOver: numeric("requires_approval_offers_over"),
   // Founder status - bypasses all limits and credit checks
   isFounder: boolean("is_founder").default(false),
   // Onboarding wizard state
@@ -16916,3 +16926,84 @@ export const aiInjectionAttempts = pgTable("ai_injection_attempts", {
 
 export type AiInjectionAttempt = typeof aiInjectionAttempts.$inferSelect;
 export type InsertAiInjectionAttempt = typeof aiInjectionAttempts.$inferInsert;
+
+// ============================================================================
+// TEAM READINESS — Phase 5 §5
+// ============================================================================
+// Per-seat pricing, round-robin lead assignment, Slack/Teams webhooks, and
+// offer-approval queue. See migrations/0066_team_readiness.sql for the
+// rationale and schema definitions.
+
+export const leadAssignmentRules = pgTable("lead_assignment_rules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  // round_robin | territory | random
+  ruleType: text("rule_type").notNull(),
+  // Lower number = higher priority. First match in priority order wins.
+  priority: integer("priority").notNull().default(100),
+  territoryFilter: jsonb("territory_filter").$type<{
+    states?: string[];
+    counties?: string[];
+  }>(),
+  weightedAssignees: jsonb("weighted_assignees").$type<Array<{ teamMemberId: number; weight: number }>>(),
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("lead_assignment_rules_org_idx").on(table.organizationId, table.isActive, table.priority),
+]);
+
+export type LeadAssignmentRule = typeof leadAssignmentRules.$inferSelect;
+export type InsertLeadAssignmentRule = typeof leadAssignmentRules.$inferInsert;
+
+export const orgAssignmentCursor = pgTable("org_assignment_cursor", {
+  ruleId: integer("rule_id").primaryKey().references(() => leadAssignmentRules.id, { onDelete: "cascade" }),
+  cursorIndex: integer("cursor_index").notNull().default(0),
+  lastAssignedTo: integer("last_assigned_to"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type OrgAssignmentCursor = typeof orgAssignmentCursor.$inferSelect;
+export type InsertOrgAssignmentCursor = typeof orgAssignmentCursor.$inferInsert;
+
+export const orgIntegrationsSlack = pgTable("org_integrations_slack", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  // slack | teams
+  provider: text("provider").notNull().default("slack"),
+  webhookUrl: text("webhook_url").notNull(),
+  channelName: text("channel_name"),
+  eventTypes: text("event_types").array().notNull().default(sql`ARRAY['deal_closed','big_lead_arrived']::TEXT[]`),
+  isActive: boolean("is_active").notNull().default(true),
+  lastDispatchedAt: timestamp("last_dispatched_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("org_integrations_slack_org_provider_idx").on(table.organizationId, table.provider),
+]);
+
+export type OrgIntegrationSlack = typeof orgIntegrationsSlack.$inferSelect;
+export type InsertOrgIntegrationSlack = typeof orgIntegrationsSlack.$inferInsert;
+
+export const offerApprovals = pgTable("offer_approvals", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  offerId: integer("offer_id").references(() => offers.id, { onDelete: "cascade" }).notNull(),
+  submittedBy: text("submitted_by").notNull(),
+  // pending | approved | declined
+  status: text("status").notNull().default("pending"),
+  reviewerId: text("reviewer_id"),
+  reviewerNotes: text("reviewer_notes"),
+  thresholdAmount: numeric("threshold_amount").notNull(),
+  offerAmount: numeric("offer_amount").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  decidedAt: timestamp("decided_at"),
+}, (table) => [
+  index("offer_approvals_org_status_idx").on(table.organizationId, table.status, table.createdAt),
+]);
+
+export type OfferApproval = typeof offerApprovals.$inferSelect;
+export type InsertOfferApproval = typeof offerApprovals.$inferInsert;

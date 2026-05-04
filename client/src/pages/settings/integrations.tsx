@@ -1,0 +1,209 @@
+/**
+ * Settings → Integrations — Phase 5 §5 Part D (team readiness).
+ *
+ * Slack & Microsoft Teams incoming-webhook configuration. Admins paste
+ * a webhook URL, choose which events to subscribe to, and the server
+ * will fire JSON payloads on deal-closed / big-lead-arrived / offer
+ * approvals.
+ */
+
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { PageShell } from "@/components/page-shell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Trash2 } from "lucide-react";
+
+interface SlackIntegration {
+  id: number;
+  provider: "slack" | "teams";
+  webhookUrl: string;
+  channelName: string | null;
+  eventTypes: string[];
+  isActive: boolean;
+  lastDispatchedAt: string | null;
+  lastError: string | null;
+}
+
+const ALL_EVENTS = ["deal_closed", "big_lead_arrived", "offer_pending_approval"];
+
+export default function IntegrationsSettingsPage() {
+  useDocumentTitle("Integrations");
+  const { toast } = useToast();
+  const [provider, setProvider] = useState<"slack" | "teams">("slack");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [channelName, setChannelName] = useState("");
+  const [eventTypes, setEventTypes] = useState<string[]>(["deal_closed", "big_lead_arrived"]);
+
+  const { data: integrations = [], isLoading } = useQuery<SlackIntegration[]>({
+    queryKey: ["/api/team-readiness/slack-integrations"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/team-readiness/slack-integrations");
+      const json = await res.json();
+      return json.integrations;
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/team-readiness/slack-integrations", {
+        provider,
+        webhookUrl,
+        channelName: channelName || undefined,
+        eventTypes,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/slack-integrations"] });
+      setWebhookUrl("");
+      setChannelName("");
+      toast({ title: "Integration saved" });
+    },
+    onError: (e: Error) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/team-readiness/slack-integrations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/slack-integrations"] });
+      toast({ title: "Integration removed" });
+    },
+  });
+
+  return (
+    <PageShell isLoading={isLoading} label="Loading integrations">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Integrations</h1>
+          <p className="text-sm text-muted-foreground">
+            Send AcreOS events to Slack or Microsoft Teams via incoming webhooks.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Add webhook</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="provider-select">Provider</Label>
+                <Select value={provider} onValueChange={(v) => setProvider(v as any)}>
+                  <SelectTrigger id="provider-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="slack">Slack</SelectItem>
+                    <SelectItem value="teams">Microsoft Teams</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="channel-input">Channel name (optional)</Label>
+                <Input
+                  id="channel-input"
+                  placeholder="#deals"
+                  value={channelName}
+                  onChange={(e) => setChannelName(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="webhook-input">Webhook URL</Label>
+              <Input
+                id="webhook-input"
+                type="url"
+                placeholder="https://hooks.slack.com/services/T00000/B00000/XXXXXXX"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Events to subscribe</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {ALL_EVENTS.map((evt) => (
+                  <div key={evt} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id={`evt-${evt}`}
+                      checked={eventTypes.includes(evt)}
+                      onChange={(e) => {
+                        setEventTypes(
+                          e.target.checked ? [...eventTypes, evt] : eventTypes.filter((x) => x !== evt),
+                        );
+                      }}
+                    />
+                    <Label htmlFor={`evt-${evt}`}>{evt}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !webhookUrl}
+            >
+              {saveMutation.isPending ? "Saving…" : "Save webhook"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Configured webhooks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {integrations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No webhooks configured yet.</p>
+            ) : (
+              <ul className="divide-y">
+                {integrations.map((i) => (
+                  <li key={i.id} className="flex items-center justify-between py-3">
+                    <div>
+                      <div className="font-medium flex items-center gap-2">
+                        {i.provider === "teams" ? "Microsoft Teams" : "Slack"}
+                        {!i.isActive && <Badge variant="secondary">disabled</Badge>}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {i.webhookUrl} {i.channelName ? `· ${i.channelName}` : ""}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Events: {i.eventTypes.join(", ")}
+                      </div>
+                      {i.lastError && (
+                        <div className="text-xs text-destructive">Last error: {i.lastError}</div>
+                      )}
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Delete webhook"
+                      onClick={() => deleteMutation.mutate(i.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
+  );
+}
