@@ -70,4 +70,3 @@ function stringify(v: unknown): string {
     return String(v);
   }
 }
-// hook test
