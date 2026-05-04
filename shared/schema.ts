@@ -83,6 +83,13 @@ export const organizations = pgTable("organizations", {
   requiresApprovalOffersOver: numeric("requires_approval_offers_over"),
   // Founder status - bypasses all limits and credit checks
   isFounder: boolean("is_founder").default(false),
+  // Note Investor vertical (Phase 5 §5 Q4 2026). The wizard's first question
+  // captures whether this org buys land, buys notes, or both. Drives sidebar
+  // module visibility, onboarding-flow step skipping, and the persona
+  // vocabulary register applied across the surface. Defaults to 'land' to
+  // preserve every legacy org's behavior — they continue to see the land
+  // surface unchanged.
+  investorType: text("investor_type").notNull().default("land"), // 'land' | 'notes' | 'both'
   // Onboarding wizard state
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),
@@ -17007,3 +17014,135 @@ export const offerApprovals = pgTable("offer_approvals", {
 
 export type OfferApproval = typeof offerApprovals.$inferSelect;
 export type InsertOfferApproval = typeof offerApprovals.$inferInsert;
+
+// ============================================
+// NOTE INVESTOR VERTICAL — Phase 5 §5 (Q4 2026)
+// ============================================
+//
+// Note investors are land investors who hold paper (notes) instead of dirt.
+// We share the same brand, persona registry, and tax/1099 plumbing as the
+// land flow — these tables capture the *acquired note* world (notes the org
+// has purchased from somewhere else, where the org is now the lender of
+// record). Distinct from the existing `notes` table, which models notes the
+// org *originated* during a seller-financed land sale.
+//
+// The two worlds intentionally live side-by-side: an org with
+// `investorType = 'both'` will have rows in both tables and our 1099-INT
+// generator aggregates interest income from each. See server/services/
+// form1099Batch.ts for the union read.
+
+export const acquiredNotes = pgTable(
+  "acquired_notes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    // Underlying collateral (the land that secures the note). Optional for
+    // notes that are pre-import (we don't yet have a property row) — the
+    // user can attach a property later from the note detail surface.
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+    // The borrower-of-record. We reuse the leads table (which already carries
+    // borrower fields + encrypted TIN) rather than fork a parallel
+    // note_borrowers table. Optional for the same reason as propertyId.
+    borrowerId: integer("borrower_id").references(() => leads.id, { onDelete: "set null" }),
+    // Org-scoped internal identifier (uniqueness enforced via the index below
+    // in combination with org_id).
+    noteNumber: text("note_number").notNull(),
+    // Amounts — bigint cents to match the rest of AcreOS's money handling.
+    originalPrincipalCents: bigint("original_principal_cents", { mode: "number" }).notNull(),
+    currentBalanceCents: bigint("current_balance_cents", { mode: "number" }).notNull(),
+    // Interest rate in basis points — 800 = 8.00%. Matches the convention used
+    // in `notes.interestRateBps` (originated notes).
+    interestRateBps: integer("interest_rate_bps").notNull(),
+    termMonths: integer("term_months").notNull(),
+    paymentAmountCents: bigint("payment_amount_cents", { mode: "number" }).notNull(),
+    paymentDueDay: integer("payment_due_day").notNull(), // 1-31 (clamped on render for short months)
+    originationDate: date("origination_date").notNull(),
+    maturityDate: date("maturity_date").notNull(),
+    // The day WE bought the note. Can differ (and usually does) from
+    // origination — the note may have been originated years before we
+    // acquired it from the previous holder.
+    acquisitionDate: date("acquisition_date").notNull(),
+    acquisitionPriceCents: bigint("acquisition_price_cents", { mode: "number" }).notNull(),
+    // Status lifecycle. The note diligence + servicer-feedback loops update
+    // this; for the foundation PR we expose the field but don't auto-flip it.
+    status: text("status").notNull().default("performing"), // performing | late | default | paid_off | sold
+    // Payer (borrower-side) snapshot. Mirrors the lead row so the 1099-INT
+    // generator can read either source without a join chain when the lead
+    // record is incomplete (e.g. CSV-imported note with partial borrower
+    // data).
+    payerName: text("payer_name").notNull(),
+    payerAddress: jsonb("payer_address").$type<{
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      country?: string;
+      phone?: string;
+    }>(),
+    // Encrypted TIN (SSN/EIN/ITIN) via fieldEncryption.encrypt(). Tax ID type
+    // mirrors the convention used elsewhere in AcreOS — 'SSN' | 'EIN' | 'ITIN'.
+    payerEncryptedTin: text("payer_encrypted_tin"),
+    payerTinType: text("payer_tin_type"), // 'SSN' | 'EIN' | 'ITIN'
+    // Provenance — who held the note before us. Useful for the diligence
+    // workflow and for tracking servicer-of-record across an assignment.
+    originalLender: text("original_lender"),
+    // S3 key of the assignment paperwork (allonge / assignment of mortgage /
+    // assignment of beneficial interest depending on jurisdiction). The
+    // e-sign template work for note assignments is tracked as a follow-up
+    // (see docs/exhaustive-completion/note-investor-followups.md).
+    assignmentDocS3Key: text("assignment_doc_s3_key"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Pipeline / "what needs servicing" reads.
+    index("acquired_notes_org_status_maturity_idx").on(
+      table.organizationId,
+      table.status,
+      table.maturityDate,
+    ),
+    // Annual / monthly acquisition reporting.
+    index("acquired_notes_org_acquisition_idx").on(table.organizationId, table.acquisitionDate),
+    // Reverse lookup from a property — "what notes are secured by this parcel?"
+    index("acquired_notes_property_idx").on(table.propertyId),
+    // Org-scoped uniqueness on note number — multiple orgs can use the same
+    // internal number; one org cannot reuse a number.
+    uniqueIndex("acquired_notes_org_number_uk").on(table.organizationId, table.noteNumber),
+  ],
+);
+
+export type AcquiredNote = typeof acquiredNotes.$inferSelect;
+export type InsertAcquiredNote = typeof acquiredNotes.$inferInsert;
+
+// Per-payment ledger for acquired notes. Drives the 1099-INT yearly
+// aggregation (sum interestCents per payerName per tax year) and the
+// per-note amortization variance reporting.
+export const notePayments = pgTable(
+  "note_payments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    // Denormalized for query speed on the yearly 1099 aggregation — we
+    // want to filter by org + year without joining every time.
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    paymentDate: date("payment_date").notNull(),
+    principalCents: bigint("principal_cents", { mode: "number" }).notNull().default(0),
+    interestCents: bigint("interest_cents", { mode: "number" }).notNull().default(0),
+    escrowCents: bigint("escrow_cents", { mode: "number" }).notNull().default(0),
+    lateFeeCents: bigint("late_fee_cents", { mode: "number" }).notNull().default(0),
+    paymentMethod: text("payment_method").notNull().default("ach"), // ach | check | wire | cash | other
+    referenceNumber: text("reference_number"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("note_payments_note_date_idx").on(table.noteId, table.paymentDate),
+    // 1099-INT aggregation read path.
+    index("note_payments_org_date_idx").on(table.organizationId, table.paymentDate),
+  ],
+);
+
+export type NotePayment = typeof notePayments.$inferSelect;
+export type InsertNotePayment = typeof notePayments.$inferInsert;

@@ -59,6 +59,18 @@ type BusinessType =
   | "mobile_home"
   | "agent_investor";
 
+// Note Investor vertical fork (Phase 5 §5). Captured in step 0 alongside
+// the granular businessType — this 3-way question controls sidebar
+// modules, persona vocabulary, and which subsequent onboarding steps
+// are skipped. 'land' is the default to preserve historical behavior.
+type InvestorTypeChoice = "land" | "notes" | "both";
+
+const INVESTOR_TYPE_CHOICES: { value: InvestorTypeChoice; label: string; description: string; icon: LucideIcon }[] = [
+  { value: "land", label: "Buying land", description: "Raw parcels — flip, hold, or develop.", icon: Map },
+  { value: "notes", label: "Buying notes", description: "Mortgage notes and seller-financed paper.", icon: FileText },
+  { value: "both", label: "Both", description: "Mixed portfolio — land and notes.", icon: Sparkles },
+];
+
 const INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; description: string }[] = [
   { value: "land_flipper", label: "Land Flipper", icon: Map, description: "Buy raw land at wholesale and resell for profit." },
   { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
@@ -164,6 +176,10 @@ export function OnboardingWizard() {
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
+  // Note Investor vertical (Phase 5 §5) — separate from businessType so
+  // mixed-strategy orgs (Hybrid + buying notes) can still get the note
+  // sidebar / vocabulary while their businessType remains 'hybrid'.
+  const [investorType, setInvestorType] = useState<InvestorTypeChoice>("land");
   const [organizationName, setOrganizationName] = useState("");
 
   // ─── Tax-identity (step 4) state ─────────────────────────────────────────
@@ -199,6 +215,12 @@ export function OnboardingWizard() {
         
         if (onboardingStatus.data.businessType) {
           setBusinessType(onboardingStatus.data.businessType);
+        }
+        // Note Investor vertical — restore the investor-type fork from the
+        // org row so a wizard re-open keeps the user's prior selection.
+        const orgInvestorType = (organization as any)?.investorType;
+        if (orgInvestorType === "land" || orgInvestorType === "notes" || orgInvestorType === "both") {
+          setInvestorType(orgInvestorType);
         }
         if (onboardingStatus.data.organizationName) {
           setOrganizationName(onboardingStatus.data.organizationName);
@@ -341,6 +363,17 @@ export function OnboardingWizard() {
     },
   });
 
+  // Note Investor vertical (Phase 5 §5). When the org self-identifies as
+  // a pure note investor we skip steps that don't apply:
+  //   • step 1 — Add Your First Leads (notes don't have leads in the
+  //     same sense; notes are imported via CSV in a dedicated step that
+  //     we surface from /notes after onboarding completes).
+  //   • step 3 — Create Your First Campaign (notes don't run direct
+  //     mail to landowners; outreach is an entirely different motion).
+  // Mixed-strategy orgs ('both') keep every step.
+  const stepsToSkipForInvestorType = (t: InvestorTypeChoice): Set<number> =>
+    t === "notes" ? new Set([1, 3]) : new Set();
+
   const handleNext = async () => {
     try {
       if (currentStep === 0) {
@@ -350,9 +383,21 @@ export function OnboardingWizard() {
         if (businessType) {
           await provisionMutation.mutateAsync(businessType);
         }
+        // Persist the investor-type fork onto the org. This is what the
+        // sidebar + persona vocabulary + 1099-INT batch read on every
+        // request — onboardingData.businessType is granular UX state but
+        // organizations.investorType is the canonical fork.
+        if (investorType !== "land") {
+          try {
+            await apiRequest("PATCH", "/api/organization", { investorType });
+            queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+          } catch (err) {
+            clientLogger.error("Couldn't persist investorType", err);
+          }
+        }
         await completeStepMutation.mutateAsync({
           stepId: currentStep,
-          data: { businessType, organizationName }
+          data: { businessType, organizationName, investorType }
         });
       } else if (currentStep === 4) {
         // Tax-identity step — submit the form before advancing.
@@ -387,7 +432,21 @@ export function OnboardingWizard() {
       }
 
       if (currentStep < WIZARD_STEPS.length - 1) {
-        setCurrentStep(currentStep + 1);
+        // Skip steps that don't apply to the selected investor type.
+        const skipSet = stepsToSkipForInvestorType(investorType);
+        let nextStep = currentStep + 1;
+        while (nextStep < WIZARD_STEPS.length - 1 && skipSet.has(nextStep)) {
+          // Mark as skipped server-side so the dashboard checklist
+          // doesn't nag the user later about a step we deliberately
+          // routed around.
+          try {
+            await completeStepMutation.mutateAsync({ stepId: nextStep, data: { skipped: true, reason: "investor_type_notes" } });
+          } catch (err) {
+            clientLogger.error("Error skipping step for investor type", err);
+          }
+          nextStep += 1;
+        }
+        setCurrentStep(nextStep);
       } else {
         await completeMutation.mutateAsync();
       }
@@ -516,6 +575,35 @@ export function OnboardingWizard() {
             </div>
 
             <div className="ob-field">
+              <span className="ob-label">Which best describes you?</span>
+              <RadioGroup
+                value={investorType}
+                onValueChange={(value) => setInvestorType(value as InvestorTypeChoice)}
+                className="ob-cards"
+              >
+                {INVESTOR_TYPE_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                  <label
+                    key={value}
+                    htmlFor={`investor-type-${value}`}
+                    className={`ob-card ${investorType === value ? "is-on" : ""}`}
+                    data-testid={`option-investor-type-${value}`}
+                  >
+                    <RadioGroupItem value={value} id={`investor-type-${value}`} className="sr-only" />
+                    <span className="ob-card-glyph">
+                      <Icon className="w-4 h-4" aria-hidden="true" />
+                    </span>
+                    <span className="ob-card-title">{label}</span>
+                    <span className="ob-card-desc">{description}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+              <p className="ob-hint">
+                You can change this later in Settings. Pure note investors get a
+                streamlined setup that skips lead-import and campaign steps.
+              </p>
+            </div>
+
+            <div className="ob-field">
               <span className="ob-label">What kind of investing do you do?</span>
               <RadioGroup
                 value={businessType}
@@ -543,6 +631,72 @@ export function OnboardingWizard() {
         );
 
       case 1:
+        // Note Investor vertical (Phase 5 §5): for orgs that selected
+        // "Buying notes" only, this step is removed entirely from the
+        // flow by stepsToSkipForInvestorType. For 'both' we still show
+        // the lead-import surface — they'll import notes from /notes after
+        // onboarding completes. Pure-notes orgs never reach this branch.
+        if (investorType === "both") {
+          return (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              data-testid="onboarding-step-1-notes-import"
+            >
+              <div className="ob-eyebrow">
+                <span className="ob-eyebrow-dot" aria-hidden="true" />
+                Step 1 · Bring in your existing portfolio
+              </div>
+              <h1 className="ob-title">
+                Import <span className="ob-title-italic">your notes.</span>
+              </h1>
+              <p className="ob-sub">
+                Upload a CSV of your acquired notes — payer, balance, rate,
+                payment, and acquisition details. We'll map your columns to
+                AcreOS's schema. You can also add leads in the same flow.
+              </p>
+
+              <div className="ob-cards">
+                <button
+                  type="button"
+                  className="ob-card"
+                  onClick={() => window.open("/notes?action=import", "_blank")}
+                  data-testid="card-import-notes-csv"
+                >
+                  <span className="ob-card-glyph">
+                    <Upload className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <span className="ob-card-title">Import notes CSV</span>
+                  <span className="ob-card-desc">
+                    Map your columns to acquired_notes — opens in a new tab.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="ob-card"
+                  onClick={() => window.open("/leads?action=import", "_blank")}
+                  data-testid="card-import-leads-csv"
+                >
+                  <span className="ob-card-glyph">
+                    <Upload className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <span className="ob-card-title">Import leads CSV</span>
+                  <span className="ob-card-desc">
+                    Bring in landowner leads from a spreadsheet — opens in
+                    a new tab.
+                  </span>
+                </button>
+              </div>
+
+              <p className="ob-hint" style={{ marginTop: 16 }}>
+                You can do both. Notes and leads live side-by-side for
+                mixed-strategy operators.
+              </p>
+            </motion.div>
+          );
+        }
         return (
           <motion.div
             initial={{ opacity: 0, x: 20 }}

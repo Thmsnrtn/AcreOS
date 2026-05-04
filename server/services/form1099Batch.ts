@@ -21,13 +21,14 @@
  */
 
 import { db } from "../db";
-import { form1099Batches } from "@shared/schema";
+import { form1099Batches, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import {
   generate1099IntForms,
   TaxIdentityError,
   type Form1099Int,
+  type PayerOrRecipientAddress,
 } from "./bookkeeping";
 import {
   buildFireFile,
@@ -37,6 +38,8 @@ import {
   type IssuerRecord,
 } from "./irsFireFormat";
 import { logger } from "../utils/logger";
+import { aggregateAcquiredNoteInterestForYear } from "../routes-notes";
+import { decrypt as decryptField, isAnyEncryptedEnvelope } from "./fieldEncryption";
 
 export interface BatchResult {
   jobId: string;
@@ -151,6 +154,33 @@ async function runForm1099Batch(
     throw err;
   }
 
+  // Note Investor vertical (Phase 5 §5) — union acquired-note interest.
+  // generate1099IntForms() above only walks ORIGINATED notes (`notes` table).
+  // For orgs that *acquired* notes from a previous holder, the interest
+  // they collected lives in `note_payments` keyed by `acquired_notes.id`.
+  // We aggregate that here and append to the form set so a single 1099-INT
+  // batch covers both income sources.
+  try {
+    const acquiredForms = await buildFormsFromAcquiredNotes(orgId, taxYear);
+    if (acquiredForms.length > 0) {
+      // De-dup by recipientName + recipientTin in case the same payer
+      // appears in both originated AND acquired sources (rare — would mean
+      // we sold a note and bought it back). When that happens the interest
+      // sums.
+      forms = mergeFormsByRecipient(forms, acquiredForms);
+    }
+  } catch (err) {
+    if (err instanceof TaxIdentityError) {
+      errors.push(`tax_identity_missing:${err.code}:${err.message}`);
+      throw err;
+    }
+    // Acquired-note aggregation is additive — if it fails, log and
+    // continue with the originated-only set rather than failing the whole
+    // batch. The error is surfaced so a follow-up regeneration can fix it.
+    logger.error("form1099Batch.acquiredNotesAggregationFailed", err instanceof Error ? err : undefined);
+    errors.push(`acquired_notes:${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // ── Per-recipient 1099-INT PDFs ───────────────────────────────────────
   const recipientPdfs = forms.map((f) => ({
     recipientName: f.recipientName,
@@ -190,6 +220,158 @@ async function runForm1099Batch(
     fireFile,
     errors: errors.length > 0 ? errors : undefined,
   };
+}
+
+// ─── Acquired-note 1099 assembly ──────────────────────────────────────────
+
+/**
+ * Build Form1099Int records from acquired-note interest aggregations.
+ *
+ * Mirrors generate1099IntForms() in shape but pulls income from the
+ * note_payments ledger via aggregateAcquiredNoteInterestForYear(). Threshold
+ * filter ($600 min for 1099-INT issuance) is applied here to match the
+ * originated-note path; sub-threshold rows are dropped.
+ *
+ * Throws TaxIdentityError when payer (org) identity is missing — same
+ * contract as generate1099IntForms() so the route handler's failure path
+ * stays uniform.
+ */
+async function buildFormsFromAcquiredNotes(
+  orgId: number,
+  taxYear: number,
+): Promise<Form1099Int[]> {
+  const aggregations = await aggregateAcquiredNoteInterestForYear(orgId, taxYear);
+  if (aggregations.length === 0) return [];
+
+  // Resolve org / payer identity. Mirrors generate1099IntForms() — same
+  // bail conditions, same encrypted-EIN decode path.
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
+  if (!org) {
+    throw new TaxIdentityError(
+      "PAYER_NAME_MISSING",
+      `Organization ${orgId} not found — cannot issue 1099-INTs.`,
+      { orgId },
+    );
+  }
+  const payerName = org.legalEntityName?.trim() || org.name?.trim();
+  if (!payerName) {
+    throw new TaxIdentityError(
+      "PAYER_NAME_MISSING",
+      `Organization ${orgId} has no legal entity name — required for 1099-INT.`,
+      { orgId },
+    );
+  }
+  if (!org.ein) {
+    throw new TaxIdentityError(
+      "PAYER_EIN_MISSING",
+      `Organization ${orgId} has no EIN on file — capture it during onboarding before issuing 1099s.`,
+      { orgId },
+    );
+  }
+  const payerTin = isAnyEncryptedEnvelope(org.ein) ? decryptField(org.ein) : org.ein;
+  const payerTinType = (org.taxIdType as Form1099Int["payerTinType"]) || "EIN";
+  const payerAddress: PayerOrRecipientAddress = {
+    line1: org.taxAddress?.line1 || "",
+    line2: org.taxAddress?.line2,
+    city: org.taxAddress?.city || "",
+    state: org.taxAddress?.state || "",
+    zip: org.taxAddress?.zip || "",
+    country: org.taxAddress?.country,
+  };
+  const payerPhone = org.taxAddress?.phone || "";
+
+  const forms: Form1099Int[] = [];
+  for (const a of aggregations) {
+    const interestDollars = a.interestCents / 100;
+    // 1099-INT threshold: only issue when interest paid is $600+. The
+    // originated-note path applies the same threshold via
+    // generateAnnualInterestReport().
+    if (interestDollars < 600) continue;
+
+    if (!a.payerEncryptedTin) {
+      throw new TaxIdentityError(
+        "RECIPIENT_TIN_MISSING",
+        `Acquired note ${a.noteNumber} (payer "${a.payerName}") has no TIN — collect a W-9 before generating a 1099-INT.`,
+        { orgId },
+      );
+    }
+    const recipientTin = isAnyEncryptedEnvelope(a.payerEncryptedTin)
+      ? decryptField(a.payerEncryptedTin)
+      : a.payerEncryptedTin;
+    const recipientTinType = (a.payerTinType as Form1099Int["recipientTinType"]) || "SSN";
+
+    forms.push({
+      taxYear,
+      // Distinct prefix from originated NOTE-{id} so audit trails keep them
+      // separable on the 1099 PDF + FIRE record.
+      accountNumber: `ANOTE-${a.noteNumber}`,
+      payerName,
+      payerAddress,
+      payerPhone,
+      payerTin,
+      payerTinType,
+      recipientName: a.payerName,
+      recipientAddress: {
+        line1: a.payerAddress?.line1 || "",
+        city: a.payerAddress?.city || "",
+        state: a.payerAddress?.state || "",
+        zip: a.payerAddress?.zip || "",
+      },
+      recipientTin,
+      recipientTinType,
+      box1_interestIncome: Math.round(interestDollars * 100) / 100,
+      box2_earlyWithdrawalPenalty: 0,
+      box3_usSavingsBondInterest: 0,
+      box4_federalIncomeTaxWithheld: 0,
+      box5_investmentExpenses: 0,
+      box6_foreignTaxPaid: 0,
+      box7_foreignCountry: "",
+      box8_taxExemptInterest: 0,
+      box9_privateActivityBondInterest: 0,
+      box10_marketDiscount: 0,
+      box11_bondPremium: 0,
+      box12_bondPremiumOnTreasury: 0,
+      box13_bondPremiumOnTaxExempt: 0,
+      box14_taxExemptBondCusip: "",
+      box15_state: "",
+      box16_statePayerStateNumber: "",
+      box17_stateTaxWithheld: 0,
+      fatcaFilingRequirement: false,
+      secondTinNotice: false,
+    });
+  }
+  return forms;
+}
+
+/**
+ * Merge two Form1099Int sets by (recipientName, recipientTin). When the
+ * same recipient appears in both sources (rare — implies an org both
+ * originated AND later re-acquired a note, OR has split portfolios where
+ * the same borrower owes on multiple notes), interest sums into a single
+ * form rather than emitting two 1099s for the same recipient.
+ */
+function mergeFormsByRecipient(
+  originated: Form1099Int[],
+  acquired: Form1099Int[],
+): Form1099Int[] {
+  const key = (f: Form1099Int) => `${f.recipientTin}::${f.recipientName.toLowerCase().trim()}`;
+  const merged = new Map<string, Form1099Int>();
+  for (const f of originated) merged.set(key(f), f);
+  for (const f of acquired) {
+    const existing = merged.get(key(f));
+    if (existing) {
+      existing.box1_interestIncome =
+        Math.round((existing.box1_interestIncome + f.box1_interestIncome) * 100) / 100;
+      // Append acquired account-number so the audit shows the combined
+      // sources on the 1099 PDF.
+      if (!existing.accountNumber.includes(f.accountNumber)) {
+        existing.accountNumber = `${existing.accountNumber}+${f.accountNumber}`;
+      }
+    } else {
+      merged.set(key(f), f);
+    }
+  }
+  return Array.from(merged.values());
 }
 
 // ─── PDF renderers ────────────────────────────────────────────────────────
