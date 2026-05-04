@@ -37,6 +37,18 @@ export interface TierPricing {
   stripePriceIdYearly?: string;
   /** User-facing tier name. */
   displayName: string;
+  /**
+   * Per-seat add-on price (monthly, in USD cents). Charged on every seat
+   * BEYOND the bundled 1 seat. `null` means the tier is single-user only —
+   * the org must upgrade to add a teammate. Phase 5 §5 (team readiness).
+   */
+  priceMonthlyPerSeatCents: number | null;
+  /** Stripe Price ID for the per-seat add-on, monthly billing. */
+  stripePriceIdSeatMonthly?: string;
+  /** Stripe Price ID for the per-seat add-on, yearly billing. */
+  stripePriceIdSeatYearly?: string;
+  /** Maximum seats allowed on this tier (null = unlimited). */
+  maxSeats: number | null;
 }
 
 /**
@@ -59,6 +71,10 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_SOLO_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_SOLO_YEARLY"),
     displayName: "Solo",
+    // Solo is single-user only. Inviting a teammate must prompt for an
+    // Operator / Empire upgrade rather than charging per-seat.
+    priceMonthlyPerSeatCents: null,
+    maxSeats: 1,
   },
   operator: {
     priceMonthlyCents: 4900,   // $49.00 / mo
@@ -66,6 +82,11 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_OPERATOR_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_OPERATOR_YEARLY"),
     displayName: "Operator",
+    // $20/seat after the first.
+    priceMonthlyPerSeatCents: 2000,
+    stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_MONTHLY"),
+    stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_YEARLY"),
+    maxSeats: null,
   },
   empire: {
     priceMonthlyCents: 7900,   // $79.00 / mo
@@ -73,6 +94,11 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
     displayName: "Empire",
+    // $30/seat after the first.
+    priceMonthlyPerSeatCents: 3000,
+    stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_MONTHLY"),
+    stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_YEARLY"),
+    maxSeats: null,
   },
 };
 
@@ -129,3 +155,73 @@ export function monthlyRevenueCentsFor(
 }
 
 export const TIERS: readonly Tier[] = ["solo", "operator", "empire"] as const;
+
+/**
+ * Per-seat add-on price (cents) for the tier, honoring billing interval.
+ * Returns 0 when the tier is single-user only or seatCount <= 1.
+ *
+ * Phase 5 §5 (team readiness). Solo cannot add seats — callers should call
+ * {@link canAddSeats} BEFORE invoking this and prompt for an upgrade.
+ */
+export function seatAddonCents(
+  tier: Tier,
+  seatCount: number,
+  interval: BillingInterval = "monthly",
+): number {
+  const pricing = TIER_PRICES_CENTS[tier];
+  if (pricing.priceMonthlyPerSeatCents === null) return 0;
+  const extraSeats = Math.max(0, seatCount - 1);
+  const monthlyCents = pricing.priceMonthlyPerSeatCents * extraSeats;
+  // Yearly add-on is 10× monthly (matches base-tier 16% yearly discount).
+  return interval === "yearly" ? monthlyCents * 10 : monthlyCents;
+}
+
+/**
+ * Total monthly bill (in cents) for a tier + seat count, including the
+ * base subscription and per-seat add-on. Used by the billing UI to render
+ * the "$49/mo + 2 extra seats × $20 = $89/mo" math.
+ */
+export function totalMonthlyBillCents(
+  tier: Tier,
+  seatCount: number,
+  interval: BillingInterval = "monthly",
+): number {
+  return tierPriceCents(tier, interval) + seatAddonCents(tier, seatCount, interval);
+}
+
+/**
+ * Whether the tier supports the requested seat count. Solo is hard-capped
+ * at 1; Operator / Empire are unlimited. Callers MUST check this before
+ * creating an invitation that would push seatCount above the limit.
+ */
+export function canAddSeats(tier: Tier, requestedSeats: number): boolean {
+  const max = TIER_PRICES_CENTS[tier].maxSeats;
+  if (max === null) return true;
+  return requestedSeats <= max;
+}
+
+/**
+ * Human-readable seat-pricing breakdown for the billing UI. Renders to
+ * "Operator @ $49/mo + 2 extra seats × $20 = $89/mo" or, for Solo,
+ * "Solo @ $20/mo (single seat)".
+ */
+export function describeSeatPricing(
+  tier: Tier,
+  seatCount: number,
+  interval: BillingInterval = "monthly",
+): string {
+  const pricing = TIER_PRICES_CENTS[tier];
+  const baseDollars = tierPriceCents(tier, interval) / 100;
+  const intervalSuffix = interval === "yearly" ? "/yr" : "/mo";
+  if (pricing.priceMonthlyPerSeatCents === null || seatCount <= 1) {
+    return `${pricing.displayName} @ $${baseDollars}${intervalSuffix}` +
+      (pricing.maxSeats === 1 ? " (single seat)" : "");
+  }
+  const extraSeats = seatCount - 1;
+  const perSeatDollars = (interval === "yearly"
+    ? pricing.priceMonthlyPerSeatCents * 10
+    : pricing.priceMonthlyPerSeatCents) / 100;
+  const totalDollars = totalMonthlyBillCents(tier, seatCount, interval) / 100;
+  return `${pricing.displayName} @ $${baseDollars}${intervalSuffix} + ${extraSeats} extra seat${extraSeats === 1 ? "" : "s"} × $${perSeatDollars} = $${totalDollars}${intervalSuffix}`;
+}
+

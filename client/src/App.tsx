@@ -149,6 +149,11 @@ const TeamDashboardPage = React.lazy(() => import("@/pages/team-dashboard"));
 const TeamInboxPage = React.lazy(() => import("@/pages/team-inbox"));
 const CommissionsPage = React.lazy(() => import("@/pages/commissions"));
 const TeamLeaderboardPage = React.lazy(() => import("@/pages/team-leaderboard"));
+// Phase 5 §5 — team-readiness pages.
+const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
+const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-approvals"));
+const LeadAssignmentSettingsPage = React.lazy(() => import("@/pages/settings/lead-assignment"));
+const IntegrationsSettingsPage = React.lazy(() => import("@/pages/settings/integrations"));
 
 // Analytics / Reporting
 const KPIDashboardPage = React.lazy(() => import("@/pages/kpi-dashboard"));
@@ -480,6 +485,19 @@ function Router() {
       </Route>
       <Route path="/team-dashboard">
         {() => <ProtectedRoute component={TeamDashboardPage} />}
+      </Route>
+      {/* Phase 5 §5 — team-readiness routes. */}
+      <Route path="/team/dashboard">
+        {() => <ProtectedRoute component={TeamManagerDashboardPage} />}
+      </Route>
+      <Route path="/team/offer-approvals">
+        {() => <ProtectedRoute component={TeamOfferApprovalsPage} />}
+      </Route>
+      <Route path="/settings/lead-assignment">
+        {() => <ProtectedRoute component={LeadAssignmentSettingsPage} />}
+      </Route>
+      <Route path="/settings/integrations">
+        {() => <ProtectedRoute component={IntegrationsSettingsPage} />}
       </Route>
       <Route path="/team">
         {() => <ProtectedRoute component={TeamInboxPage} />}

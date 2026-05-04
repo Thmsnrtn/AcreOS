@@ -236,6 +236,45 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         organizationId: org.id,
       });
       const offer = await storage.createOffer(validated);
+
+      // Phase 5 §5 Part E (team readiness) — offer approval workflow.
+      // If org.requiresApprovalOffersOver is set and this offer's max
+      // amount exceeds it, create an offer_approvals row and freeze the
+      // offer in "draft" until an admin approves. The Slack/Teams
+      // dispatcher fires "offer_pending_approval" so reviewers see it
+      // in real time.
+      try {
+        const threshold = (org as any).requiresApprovalOffersOver;
+        const cashOffer = parseFloat(String(validated.cashOffer ?? 0)) || 0;
+        const termsOffer = parseFloat(String(validated.termsOffer ?? 0)) || 0;
+        const offerAmount = Math.max(cashOffer, termsOffer);
+        if (threshold != null && offerAmount > parseFloat(String(threshold))) {
+          const user = (req as any).user;
+          const userId = user?.claims?.sub || user?.id || null;
+          const { db } = await import("./storage");
+          const { offerApprovals } = await import("@shared/schema");
+          await db.insert(offerApprovals).values({
+            organizationId: org.id,
+            offerId: offer.id,
+            submittedBy: userId,
+            status: "pending",
+            thresholdAmount: String(threshold),
+            offerAmount: String(offerAmount),
+          });
+          // Hold the offer until reviewer acts.
+          await storage.updateOffer(org.id, offer.id, { status: "draft" } as any);
+
+          const { dispatchTeamEvent } = await import("./services/teamWebhookDispatcher");
+          await dispatchTeamEvent(org.id, "offer_pending_approval", {
+            title: "Offer awaiting approval",
+            body: `Offer #${offer.id} for $${offerAmount.toLocaleString()} exceeds your $${parseFloat(String(threshold)).toLocaleString()} approval threshold.`,
+            context: { offerId: offer.id, offerAmount, threshold },
+          });
+        }
+      } catch (err) {
+        logger.warn("offer-approval routing failed (non-fatal)", { error: (err as Error).message });
+      }
+
       res.status(201).json(offer);
     } catch (error: any) {
       logger.error("Create offer error", error);

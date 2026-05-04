@@ -348,6 +348,22 @@ export function registerDealRoutes(app: Express): void {
 
       // Track conversion when deal is closed (for lead scoring feedback loop)
       if (validated.status === "closed" && existingDeal.status !== "closed") {
+        // Phase 5 §5 Part D (team readiness) — fire deal_closed Slack/Teams
+        // event. Non-blocking so a misconfigured webhook can never wedge
+        // the deal-close path.
+        try {
+          const { dispatchTeamEvent } = await import("./services/teamWebhookDispatcher");
+          await dispatchTeamEvent(org.id, "deal_closed", {
+            title: "Deal closed",
+            body: `Deal #${deal.id} closed${deal.acceptedAmount ? ` at $${Number(deal.acceptedAmount).toLocaleString()}` : ""}.`,
+            context: {
+              dealId: deal.id,
+              acceptedAmount: deal.acceptedAmount,
+              dealType: deal.dealType,
+            },
+          });
+        } catch { /* non-fatal */ }
+
         try {
           // Get the property to find associated lead
           const property = await storage.getProperty(org.id, deal.propertyId);

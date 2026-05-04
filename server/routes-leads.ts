@@ -339,6 +339,23 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
+
+      // Phase 5 §5 (team readiness) — auto-assign via lead_assignment_rules
+      // when caller did not specify assignedTo. Errors are swallowed inside
+      // assignLead() so a misconfigured rule cannot break lead intake.
+      if (input.assignedTo == null) {
+        try {
+          const { assignLead } = await import("./services/leadAssigner");
+          const autoAssignee = await assignLead(org.id, {
+            state: input.state ?? null,
+            county: (input as any).county ?? null,
+          });
+          if (autoAssignee != null) {
+            (input as any).assignedTo = autoAssignee;
+          }
+        } catch { /* non-fatal */ }
+      }
+
       const lead = await storage.createLead(input);
 
       const user = req.user as any;
@@ -426,6 +443,28 @@ export function registerLeadRoutes(app: Express): void {
           });
         }
       })();
+
+      // Phase 5 §5 Part D (team readiness) — fire big_lead_arrived event
+      // when score >= 80. Non-blocking; failures are swallowed inside the
+      // dispatcher.
+      const leadScore = (lead as any).score ?? null;
+      if (leadScore != null && leadScore >= 80) {
+        void (async () => {
+          try {
+            const { dispatchTeamEvent } = await import("./services/teamWebhookDispatcher");
+            await dispatchTeamEvent(org.id, "big_lead_arrived", {
+              title: "High-score lead arrived",
+              body: `Lead #${lead.id} (${(lead as any).firstName ?? ""} ${(lead as any).lastName ?? ""}) scored ${leadScore}.`,
+              context: {
+                leadId: lead.id,
+                score: leadScore,
+                source: (lead as any).source ?? null,
+                state: (lead as any).state ?? null,
+              },
+            });
+          } catch { /* non-fatal */ }
+        })();
+      }
 
       res.status(201).json(lead);
     } catch (err) {
