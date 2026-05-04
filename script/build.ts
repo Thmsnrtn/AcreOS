@@ -99,8 +99,23 @@ async function buildAll() {
   const release = resolveGitSha();
   process.env.VITE_GIT_SHA = release;
 
+  // Refresh sitemap.xml + robots.txt from the canonical PUBLIC_ROUTES
+  // list so the public asset shipped to dist/public is always in sync
+  // with the React route table. This must run before viteBuild() so the
+  // generated files are picked up as static assets.
+  console.log("[seo] regenerating sitemap.xml and robots.txt...");
+  const { execSync: exec } = await import("child_process");
+  exec("npx tsx script/generate-sitemap.ts", { stdio: "inherit" });
+
   console.log(`building client (release=${release})...`);
   await viteBuild();
+
+  // Pre-render the public marketing routes so /pricing, /security,
+  // /changelog, /glossary serve route-specific <title>, <meta
+  // description>, OG tags, and inline JSON-LD even before the SPA
+  // hydrates. This is the SEO substance step from Wave 23-26.
+  console.log("[prerender] generating per-route index.html shells...");
+  exec("npx tsx script/prerender.ts", { stdio: "inherit" });
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));

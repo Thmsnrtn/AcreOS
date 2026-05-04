@@ -11044,7 +11044,6 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
 export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
-<<<<<<< HEAD
 // ─── AI Routing Overrides ────────────────────────────────────────────────────
 // Wave 8 — eval-gated rollback table. The aiRouter consults this table at
 // routing time and prefers the override tier/model when an active row exists

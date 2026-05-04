@@ -18,11 +18,13 @@ Disallow: /analytics
 # Allow public pages
 Allow: /
 Allow: /pricing
-Allow: /status
+Allow: /security
+Allow: /glossary
 Allow: /changelog
+Allow: /auth
+Allow: /status
 Allow: /terms
 Allow: /privacy
-Allow: /auth
 
 # Sitemap
 Sitemap: https://acreos.io/sitemap.xml

@@ -20,8 +20,16 @@
  * waitlist for adjacent verticals will live on /verticals/waitlist
  * (Phase 8 Coverage Pass) rather than the public landing.
  */
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useDocumentTitle, usePageDescription } from "@/hooks/use-document-title";
 import { SkipToContent } from "@/components/skip-to-content";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import {
+  organizationSchema,
+  websiteSchema,
+  productLandingSchema,
+  SITE,
+} from "@/lib/jsonld-schemas";
 import { LandingNav } from "./landing/LandingNav";
 import { Hero } from "./landing/Hero";
 import { HowItWorks } from "./landing/HowItWorks";
@@ -38,9 +46,21 @@ import "./landing/landing.css";
 
 export default function LandingPage() {
   useDocumentTitle("AcreOS — the operating system for land investors");
+  usePageDescription(
+    "Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf.",
+  );
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
+      <OpenGraph
+        url={`${SITE.url}/`}
+        title="AcreOS — The Operating System for Land Investors"
+        description="Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf."
+        type="website"
+      />
+      <JsonLd id="ld-organization" data={organizationSchema()} />
+      <JsonLd id="ld-website" data={websiteSchema()} />
+      <JsonLd id="ld-product" data={productLandingSchema()} />
       <LandingNav />
       {/* Full landing per /acreos-landing/. Section order matches the
           prototype's app.jsx switch statement. */}

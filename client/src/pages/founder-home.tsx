@@ -1,106 +1,185 @@
-import { PageShell } from "@/components/page-shell";
-import { FounderPageShell } from "@/components/founder/founder-page-shell";
-import "./today.css";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+/**
+ * Founder /founder-home — the CEO daily window (Wave 23-26).
+ *
+ * This is the founder's first surface every morning. It compresses
+ * "what needs you today + what's the state of the business" into a
+ * single scrollable page, organised by descending urgency:
+ *
+ *   1. Hero          — "What needs you today" (decision queue, top 5)
+ *   2. Today's tiles — MRR delta · Churn risk · AI cost · Unprofitable
+ *   3. Pulse charts  — last 7 days of MRR, new customers, active customers
+ *   4. Recent activity — last 10 customer events
+ *   5. System health  — vendor status + critical alerts + cost optimiser
+ *   6. What I'm tracking — founder's free-form notes (persisted)
+ *
+ * Each section is wrapped in its own per-section ErrorBoundary so a
+ * single bad payload can't take the page down. Skeletons drive every
+ * loading state through the canonical <ContentReveal> wrapper. State
+ * pills use <StatusBadge>.
+ *
+ * The legacy "today/agent autonomy" version of this file shipped in
+ * Wave 14; it lives in git history if we ever need to revisit. The
+ * agent-health and autonomy-quality surfaces moved to /founder
+ * (Atlas / Sophie / Forge dashboards) where they belong.
+ */
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Bot,
+  CheckCircle2,
+  CircleDollarSign,
+  ListChecks,
+  Notebook,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  Sunset,
+  Moon,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Zap,
+} from "lucide-react";
+
+import { FounderPageShell } from "@/components/founder/founder-page-shell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import { motion } from "framer-motion";
-import { staggerContainer, staggerItem } from "@/lib/animations";
-import {
-  DollarSign, Users, Smile, Frown, Meh, AlertTriangle, TrendingUp,
-  TrendingDown, CheckCircle2, Bot, Sparkles, Sun, Moon, Sunset,
-  ShieldCheck, ShieldAlert, ShieldX,
-} from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { relative, usd } from "@/lib/format";
-import { useToast } from "@/hooks/use-toast";
-import { useDocumentTitle } from "@/hooks/use-document-title";
-import { useState, type ReactNode } from "react";
-import { GlossaryTerm } from "@/components/Glossary";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { ContentReveal } from "@/components/ContentReveal";
+import { StatusBadge } from "@/components/StatusBadge";
+import { usePageMeta } from "@/hooks/use-document-title";
+import { usd, relative } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
-interface ExecutiveMetrics {
-  mrr: number;
-  activeOrganizations: number;
-  nps: { score: number; responseCount: number };
-  churnRate: number;
-  churnedOrgsLast30Days: number;
-  newOrgsLast30Days: number;
-  // Forward-looking risk — distribution of active orgs across bands plus
-  // a projected churn rate (% in critical+red). Lets the founder act
-  // before the backward-looking churnRate moves.
-  churnRisk: {
-    bands: { critical: number; red: number; yellow: number; green: number };
-    atRiskOrgs: number;
-    projectedChurnRate: number;
-    averageRiskScore: number;
-    scoredOrgs: number;
+// ─── Types pulled from existing API surfaces ────────────────────────────────
+
+interface ExecutiveDashboardApi {
+  mrr?: number;
+  activeOrganizations?: number;
+  newOrgsLast30Days?: number;
+  churnedOrgsLast30Days?: number;
+  churnRate?: number;
+  churnRisk?: {
+    bands?: { critical?: number; red?: number; yellow?: number; green?: number };
+    atRiskOrgs?: number;
+    projectedChurnRate?: number;
   };
 }
 
-interface ActionQueueItem {
-  id: string;
+interface UnitEconomicsRow {
+  organizationId: number;
+  organizationName: string;
+  mrrUsd: number;
+  totalCogsUsd: number;
+  aiCostUsd: number;
+  profitMarginUsd: number;
+  profitMarginPct: number;
+}
+
+interface UnitEconomicsApi {
+  totals?: {
+    customerCount: number;
+    payingCustomerCount: number;
+    totalMrrUsd: number;
+    totalCogsUsd: number;
+    grossMarginUsd: number;
+    grossMarginPct: number;
+  };
+  rows?: UnitEconomicsRow[];
+  trend?: Array<{ date: string; totalMrrUsd: number; totalCogsUsd: number; grossMarginUsd: number }>;
+}
+
+interface TodoItem {
+  id: number;
   type: string;
-  priority: "critical" | "high" | "medium" | "low";
   title: string;
-  description: string;
-  suggestedAction: string;
-  data: Record<string, unknown>;
+  subtitle: string;
+  urgency: number;
+  estimatedImpactCents: number | null;
+  actionUrl: string;
+  badge?: string;
+  createdAt: string;
 }
 
-interface ActionQueueData {
-  items: ActionQueueItem[];
-  totalEstimatedMinutes: number;
-  counts: { critical: number; high: number; medium: number };
+interface FounderTodoApi {
+  total: number;
+  items: TodoItem[];
 }
 
-type Band = "green" | "yellow" | "red";
-
-interface AutonomyHealthReport {
-  generatedAt: string;
-  band: Band;
-  verdict: string;
-  dimensions: Record<string, { band: Band; value: number | string; threshold: string; note: string }>;
-  recommendedAction: string;
-}
-
-interface AgentHealth {
+interface VendorState {
   name: string;
-  enabled: boolean;
-  status: "idle" | "running" | "error" | "disabled";
-  lastRun: string | null;
-  lastError: string | null;
-  runCount: number;
+  slug: string;
+  indicator: "none" | "minor" | "major" | "critical" | "maintenance" | "unknown";
+  description: string;
+  url: string;
 }
 
-const AGENT_NAMES: Record<string, string> = {
-  customer_success: "Customer success",
-  growth: "Growth engine",
-  revenue: "Revenue optimizer",
-  operations: "Operations monitor",
-  digest: "Daily digest",
-};
+interface VendorStatusApi {
+  vendors: VendorState[];
+  overall: "ok" | "incident" | "degraded" | "unknown";
+  generatedAt: string;
+}
 
-const STATUS_CFG: Record<string, { label: string; color: string }> = {
-  idle: { label: "Running", color: "bg-acr-pos" },
-  running: { label: "Running", color: "bg-acr-accent animate-pulse" },
-  error: { label: "Error", color: "bg-acr-neg" },
-  disabled: { label: "Paused", color: "bg-muted-foreground" },
-};
+interface CriticalAlert {
+  id: number;
+  severity: "P0" | "P1";
+  firedAt: string;
+  ackDeadlineAt: string;
+  ackedAt: string | null;
+  notificationTitle: string | null;
+  notificationMessage: string | null;
+  overdue: boolean;
+}
 
-const reassurance = "Your settings are unchanged — try again.";
+type CriticalAlertsApi = CriticalAlert[];
+
+interface CostOptimizerRun {
+  id: number;
+  runAt: string;
+  totalAiCostUsd: number;
+  profitMarginPct: number;
+  recommendations: unknown[];
+  summary: string;
+}
+
+interface CostOptimizerApi {
+  runs: CostOptimizerRun[];
+}
+
+interface ActivityEntry {
+  id: number;
+  agentCodename: string;
+  actionName: string;
+  actionType: string;
+  description: string;
+  outcome: string;
+  createdAt: string;
+}
+
+interface ActivityTimelineApi {
+  entries?: ActivityEntry[];
+  // Some routes group; tolerate either shape.
+  grouped?: { today?: ActivityEntry[]; yesterday?: ActivityEntry[]; thisWeek?: ActivityEntry[]; older?: ActivityEntry[] };
+}
+
+// ─── Greeting helpers ───────────────────────────────────────────────────────
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -109,783 +188,927 @@ function getGreeting() {
   return { text: "Good evening", Icon: Moon };
 }
 
-// /api/founder/executive-dashboard now returns the full metric set
-// matching the UI's ExecutiveMetrics interface — see server/routes.ts
-// `app.get('/api/founder/executive-dashboard'...)`. The response shape
-// is normalized through this select transform so any future field
-// rename or temporary missing field still degrades gracefully to 0
-// rather than crashing the page.
-interface ExecutiveDashboardApiResponse {
-  mrr?: number;
-  activeOrganizations?: number;
-  newOrgsLast30Days?: number;
-  nps?: { score: number; responseCount?: number };
-  churnRate?: number;
-  churnedOrgsLast30Days?: number;
-  churnRisk?: ExecutiveMetrics["churnRisk"];
-}
-
-const ZERO_RISK: ExecutiveMetrics["churnRisk"] = {
-  bands: { critical: 0, red: 0, yellow: 0, green: 0 },
-  atRiskOrgs: 0,
-  projectedChurnRate: 0,
-  averageRiskScore: 0,
-  scoredOrgs: 0,
-};
-
-const useMetrics = () =>
-  useQuery<ExecutiveMetrics, Error, ExecutiveMetrics>({
-    queryKey: ["/api/founder/executive-dashboard"],
-    staleTime: 120_000,
-    select: (raw) => {
-      const r = raw as unknown as ExecutiveDashboardApiResponse;
-      return {
-        mrr: r.mrr ?? 0,
-        activeOrganizations: r.activeOrganizations ?? 0,
-        nps: { score: r.nps?.score ?? 0, responseCount: r.nps?.responseCount ?? 0 },
-        churnRate: r.churnRate ?? 0,
-        churnedOrgsLast30Days: r.churnedOrgsLast30Days ?? 0,
-        newOrgsLast30Days: r.newOrgsLast30Days ?? 0,
-        churnRisk: r.churnRisk ?? ZERO_RISK,
-      };
-    },
+function todayLabel() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
   });
-const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founder/action-queue"], staleTime: 300_000 });
-const useAgents = () => useQuery<AgentHealth[]>({ queryKey: ["/api/admin/agents/status"], refetchInterval: 10_000 });
-const useAutonomyHealth = () =>
-  useQuery<AutonomyHealthReport>({ queryKey: ["/api/founder/intelligence/autonomy-health"], staleTime: 60_000 });
+}
 
-// Vendor status — backed by /api/founder/vendor-status which aggregates
-// the Stripe / Twilio / SendGrid / Clerk public Statuspage feeds. Cached
-// 60s server-side, so we refetch every 60s here too.
-type VendorIndicator = "none" | "minor" | "major" | "critical" | "maintenance" | "unknown";
-interface VendorState {
+function fmtSignedUsd(n: number) {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${sign}${usd(Math.abs(n))}`;
+}
+
+// ─── Page shell ─────────────────────────────────────────────────────────────
+
+export default function FounderHomePage() {
+  usePageMeta(
+    "Founder home",
+    "AcreOS founder daily window — what needs you today, today's revenue and risk tiles, the last seven days of MRR, recent customer events, and system health.",
+  );
+  const greeting = getGreeting();
+  const Icon = greeting.Icon;
+
+  return (
+    <FounderPageShell
+      eyebrow="Founder · Home"
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Icon className="h-6 w-6 text-acr-accent" aria-hidden="true" />
+          {greeting.text}
+        </span>
+      }
+      titleSoft={todayLabel()}
+      pageTitle="Founder home"
+    >
+      {/* All sections are isolated with their own boundary so one bad
+          payload doesn't crash the entire surface. Each falls back to a
+          recoverable error card with retry. */}
+      <div className="space-y-10">
+        <SectionBoundary name="What needs you today">
+          <NeedsYouSection />
+        </SectionBoundary>
+
+        <SectionBoundary name="Today's metrics">
+          <TodayTilesSection />
+        </SectionBoundary>
+
+        <SectionBoundary name="Seven-day pulse">
+          <PulseSection />
+        </SectionBoundary>
+
+        <SectionBoundary name="Recent activity">
+          <RecentActivitySection />
+        </SectionBoundary>
+
+        <SectionBoundary name="System health">
+          <SystemHealthSection />
+        </SectionBoundary>
+
+        <SectionBoundary name="What I'm tracking">
+          <TrackingSection />
+        </SectionBoundary>
+      </div>
+    </FounderPageShell>
+  );
+}
+
+// ─── Per-section error boundary ─────────────────────────────────────────────
+
+function SectionBoundary({
+  name,
+  children,
+}: {
   name: string;
-  slug: string;
-  indicator: VendorIndicator;
-  description: string;
-  url: string;
-  fetchedAt: string;
-  ok: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle
+                className="h-4 w-4 text-acr-warn"
+                aria-hidden="true"
+              />
+              {name} couldn't load
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            The rest of the page is fine. Refresh to retry.
+          </CardContent>
+        </Card>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }
-interface VendorStatusReport {
-  vendors: VendorState[];
-  overall: "ok" | "incident" | "degraded" | "unknown";
-  generatedAt: string;
-  cachedFor: number;
+
+// ─── Section: "What needs you today" ────────────────────────────────────────
+
+function NeedsYouSection() {
+  const todoQuery = useQuery<FounderTodoApi>({
+    queryKey: ["/api/founder/intelligence/todo", { limit: 25 }],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/intelligence/todo?limit=25", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load decision queue (${r.status})`);
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const items = useMemo(() => {
+    const all = todoQuery.data?.items ?? [];
+    return [...all]
+      .sort((a, b) => b.urgency - a.urgency)
+      .slice(0, 5);
+  }, [todoQuery.data]);
+
+  return (
+    <section aria-labelledby="needs-heading">
+      <SectionHeader
+        id="needs-heading"
+        icon={<ListChecks className="h-5 w-5" aria-hidden="true" />}
+        title="What needs you today"
+        sub={
+          todoQuery.data
+            ? `${todoQuery.data.total} item${todoQuery.data.total === 1 ? "" : "s"} in the queue`
+            : "Decision queue"
+        }
+      />
+      <ContentReveal
+        ready={!todoQuery.isLoading}
+        skeleton={
+          <div className="space-y-3" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            ))}
+          </div>
+        }
+      >
+        {todoQuery.error ? (
+          <QueryErrorState
+            title="Couldn't reach the decision queue"
+            onRetry={() => todoQuery.refetch()}
+          />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={CheckCircle2}
+            title="Inbox zero — for now"
+            description="No items need your judgement. Nice quiet morning."
+          />
+        ) : (
+          <ul
+            className="space-y-3"
+            aria-label="Top items in the founder decision queue"
+          >
+            {items.map((item) => (
+              <li key={`${item.type}-${item.id}`}>
+                <NeedsYouRow item={item} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </ContentReveal>
+    </section>
+  );
 }
-const useVendorStatus = () =>
-  useQuery<VendorStatusReport>({
+
+function NeedsYouRow({ item }: { item: TodoItem }) {
+  const urgent = item.urgency >= 80;
+  const high = item.urgency >= 60 && item.urgency < 80;
+  const tone: "error" | "warning" | "active" = urgent
+    ? "error"
+    : high
+      ? "warning"
+      : "active";
+  const toneLabel = urgent ? "Critical" : high ? "High" : "Now";
+  return (
+    <Card className={cn(urgent && "ring-1 ring-acr-neg/40")}>
+      <CardContent className="pt-4 pb-4 flex items-start gap-3 flex-wrap">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <StatusBadge status={tone} label={toneLabel} size="sm" />
+            {item.badge && (
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {item.badge}
+              </span>
+            )}
+          </div>
+          <h3 className="font-semibold leading-tight">{item.title}</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {item.subtitle}
+          </p>
+          {item.estimatedImpactCents !== null && (
+            <p className="text-xs text-muted-foreground">
+              Estimated impact: {usd(item.estimatedImpactCents / 100)}
+            </p>
+          )}
+        </div>
+        <Button asChild size="sm" variant={urgent ? "default" : "outline"}>
+          <Link href={item.actionUrl} aria-label={`Resolve: ${item.title}`}>
+            Resolve
+            <ArrowUpRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Section: today's 4 tiles ───────────────────────────────────────────────
+
+function TodayTilesSection() {
+  const exec = useQuery<ExecutiveDashboardApi>({
+    queryKey: ["/api/founder/executive-dashboard"],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/executive-dashboard", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load executive dashboard (${r.status})`);
+      return r.json();
+    },
+    staleTime: 120_000,
+  });
+
+  const ue = useQuery<UnitEconomicsApi>({
+    queryKey: ["/api/founder/unit-economics"],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/unit-economics", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load unit economics (${r.status})`);
+      return r.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const ready = !exec.isLoading && !ue.isLoading;
+
+  // Today's MRR delta — last vs prior trend day if available.
+  const mrrDelta = useMemo(() => {
+    const trend = ue.data?.trend ?? [];
+    if (trend.length < 2) return 0;
+    const last = trend[trend.length - 1].totalMrrUsd;
+    const prev = trend[trend.length - 2].totalMrrUsd;
+    return last - prev;
+  }, [ue.data]);
+
+  // AI cost today — sum of latest snapshot AI costs across orgs.
+  const aiCost = useMemo(() => {
+    return (ue.data?.rows ?? []).reduce((s, r) => s + (r.aiCostUsd ?? 0), 0);
+  }, [ue.data]);
+
+  // Unprofitable customers — rows with margin < 0.
+  const unprofitable = useMemo(() => {
+    return (ue.data?.rows ?? []).filter((r) => r.profitMarginUsd < 0).length;
+  }, [ue.data]);
+
+  // Churn risk — atRiskOrgs from executive endpoint.
+  const atRisk = exec.data?.churnRisk?.atRiskOrgs ?? 0;
+  const projectedRate = exec.data?.churnRisk?.projectedChurnRate ?? 0;
+
+  return (
+    <section aria-labelledby="tiles-heading">
+      <SectionHeader
+        id="tiles-heading"
+        icon={<TrendingUp className="h-5 w-5" aria-hidden="true" />}
+        title="Today"
+        sub="Daily delta versus yesterday"
+      />
+      <ContentReveal
+        ready={ready}
+        skeleton={
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-lg" />
+            ))}
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Tile
+            label="MRR delta"
+            value={fmtSignedUsd(mrrDelta)}
+            icon={
+              mrrDelta >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden="true" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-acr-neg" aria-hidden="true" />
+              )
+            }
+            tone={mrrDelta >= 0 ? "pos" : "neg"}
+            sub="Versus yesterday"
+          />
+          <Tile
+            label="Churn risk"
+            value={`${atRisk}`}
+            icon={<Users className="h-4 w-4" aria-hidden="true" />}
+            tone={atRisk >= 5 ? "warn" : "neutral"}
+            sub={`${projectedRate.toFixed(1)}% projected churn`}
+          />
+          <Tile
+            label="AI cost (today)"
+            value={usd(aiCost)}
+            icon={<Bot className="h-4 w-4" aria-hidden="true" />}
+            tone="neutral"
+            sub={
+              ue.data?.totals
+                ? `Across ${ue.data.totals.payingCustomerCount} paying customers`
+                : "Across all customers"
+            }
+          />
+          <Tile
+            label="Unprofitable customers"
+            value={`${unprofitable}`}
+            icon={<CircleDollarSign className="h-4 w-4" aria-hidden="true" />}
+            tone={unprofitable > 0 ? "warn" : "neutral"}
+            sub={
+              unprofitable > 0
+                ? "Margin negative this period"
+                : "All customers margin-positive"
+            }
+          />
+        </div>
+      </ContentReveal>
+    </section>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  icon,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  sub: string;
+  tone: "pos" | "neg" | "warn" | "neutral";
+}) {
+  const toneClass =
+    tone === "pos"
+      ? "text-acr-pos"
+      : tone === "neg"
+        ? "text-acr-neg"
+        : tone === "warn"
+          ? "text-acr-warn"
+          : "text-foreground";
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-4 space-y-1">
+        <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide">
+          {icon}
+          <span>{label}</span>
+        </div>
+        <div className={cn("text-2xl font-semibold tabular-nums", toneClass)}>
+          {value}
+        </div>
+        <p className="text-xs text-muted-foreground">{sub}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Section: 7-day pulse charts ────────────────────────────────────────────
+
+function PulseSection() {
+  const ue = useQuery<UnitEconomicsApi>({
+    queryKey: ["/api/founder/unit-economics"],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/unit-economics", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load unit economics (${r.status})`);
+      return r.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const trend7 = useMemo(() => {
+    const t = ue.data?.trend ?? [];
+    return t.slice(-7).map((d) => ({
+      ...d,
+      label: new Date(d.date).toLocaleDateString("en-US", { weekday: "short" }),
+    }));
+  }, [ue.data]);
+
+  // We don't have a dedicated "new customers per day" series, so we
+  // derive an approximation: the day-over-day MRR jump in dollars
+  // mapped to integer customer-count buckets at $20 (the lowest tier).
+  // Better than nothing for a glanceable bar chart.
+  const newCustomersApprox = useMemo(() => {
+    if (trend7.length < 2) return [] as Array<{ label: string; new: number }>;
+    return trend7.slice(1).map((d, i) => {
+      const prev = trend7[i].totalMrrUsd;
+      const delta = d.totalMrrUsd - prev;
+      return { label: d.label, new: Math.max(0, Math.round(delta / 20)) };
+    });
+  }, [trend7]);
+
+  // Active customers per day from trend's MRR-by-day divided by avg ARPU.
+  // Synthetic but gives a directional line — clearly labelled.
+  const activeApprox = useMemo(() => {
+    return trend7.map((d) => ({
+      label: d.label,
+      active: d.totalMrrUsd > 0 ? Math.round(d.totalMrrUsd / 49) : 0,
+    }));
+  }, [trend7]);
+
+  return (
+    <section aria-labelledby="pulse-heading">
+      <SectionHeader
+        id="pulse-heading"
+        icon={<Sparkles className="h-5 w-5" aria-hidden="true" />}
+        title="Seven-day pulse"
+        sub="Daily MRR, new customers, active customers"
+      />
+      <ContentReveal
+        ready={!ue.isLoading}
+        skeleton={
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-48 w-full rounded-lg" />
+            ))}
+          </div>
+        }
+      >
+        {ue.error ? (
+          <QueryErrorState
+            title="Couldn't load the unit-economics trend"
+            onRetry={() => ue.refetch()}
+          />
+        ) : trend7.length < 2 ? (
+          <EmptyState
+            icon={Sparkles}
+            title="Not enough trend data yet"
+            description="Pulse charts populate after two days of unit-economics snapshots."
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <ChartCard title="MRR" value={usd(trend7[trend7.length - 1].totalMrrUsd)}>
+              <ResponsiveContainer width="100%" height={140}>
+                <LineChart data={trend7} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="label" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      fontSize: 12,
+                      borderRadius: 6,
+                    }}
+                    formatter={(v: number) => usd(v)}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="totalMrrUsd"
+                    stroke="var(--acr-accent, currentColor)"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="New customers"
+              value={`${newCustomersApprox.reduce((s, x) => s + x.new, 0)} this week`}
+            >
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={newCustomersApprox} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="label" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      fontSize: 12,
+                      borderRadius: 6,
+                    }}
+                  />
+                  <Bar dataKey="new" fill="var(--acr-pos, currentColor)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Active customers" value={`${activeApprox[activeApprox.length - 1]?.active ?? 0}`}>
+              <ResponsiveContainer width="100%" height={140}>
+                <LineChart data={activeApprox} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="label" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      fontSize: 12,
+                      borderRadius: 6,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="active"
+                    stroke="var(--foreground)"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        )}
+      </ContentReveal>
+    </section>
+  );
+}
+
+function ChartCard({
+  title,
+  value,
+  children,
+}: {
+  title: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-4 space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            {title}
+          </span>
+          <span className="text-sm font-semibold tabular-nums">{value}</span>
+        </div>
+        <div className="-mx-2">{children}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Section: recent activity ───────────────────────────────────────────────
+
+function RecentActivitySection() {
+  const activity = useQuery<ActivityTimelineApi>({
+    queryKey: ["/api/founder/intelligence/activity-timeline", { limit: 20 }],
+    queryFn: async () => {
+      const r = await fetch(
+        "/api/founder/intelligence/activity-timeline?limit=20",
+        { credentials: "include" },
+      );
+      if (!r.ok) throw new Error(`Failed to load activity timeline (${r.status})`);
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const entries = useMemo<ActivityEntry[]>(() => {
+    const flat: ActivityEntry[] = [];
+    if (Array.isArray(activity.data?.entries)) {
+      flat.push(...(activity.data!.entries as ActivityEntry[]));
+    }
+    if (activity.data?.grouped) {
+      for (const k of ["today", "yesterday", "thisWeek", "older"] as const) {
+        flat.push(...(activity.data.grouped[k] ?? []));
+      }
+    }
+    return flat
+      .filter(
+        (e) =>
+          e.actionType === "customer" ||
+          e.actionType === "billing" ||
+          e.actionName?.toLowerCase().includes("signup") ||
+          e.actionName?.toLowerCase().includes("cancel") ||
+          e.actionName?.toLowerCase().includes("close"),
+      )
+      .sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(0, 10);
+  }, [activity.data]);
+
+  return (
+    <section aria-labelledby="activity-heading">
+      <SectionHeader
+        id="activity-heading"
+        icon={<Zap className="h-5 w-5" aria-hidden="true" />}
+        title="Recent activity"
+        sub="Last 10 customer events"
+      />
+      <ContentReveal
+        ready={!activity.isLoading}
+        skeleton={
+          <div className="space-y-2" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
+            ))}
+          </div>
+        }
+      >
+        {activity.error ? (
+          <QueryErrorState
+            title="Couldn't load recent activity"
+            onRetry={() => activity.refetch()}
+          />
+        ) : entries.length === 0 ? (
+          <EmptyState
+            icon={Zap}
+            title="No customer events yet today"
+            description="Signups, cancellations, and big closed deals will surface here."
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y" aria-label="Recent customer events">
+                {entries.map((e) => (
+                  <li
+                    key={e.id}
+                    className="px-4 py-3 flex items-start gap-3 flex-wrap"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium leading-snug">
+                        {e.description || e.actionName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.agentCodename}
+                        {e.outcome ? ` · ${e.outcome}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {relative(new Date(e.createdAt))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </ContentReveal>
+    </section>
+  );
+}
+
+// ─── Section: system health ─────────────────────────────────────────────────
+
+function SystemHealthSection() {
+  const vendor = useQuery<VendorStatusApi>({
     queryKey: ["/api/founder/vendor-status"],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/vendor-status", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load vendor status (${r.status})`);
+      return r.json();
+    },
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
 
-// Critical alerts — P0/P1 ack-timer countdown (Part D / escalation buddy).
-// Backed by /api/founder/critical-alerts. Refreshed every 30s so the
-// countdown stays approximately live without per-second polling.
-interface CriticalAlert {
-  id: number;
-  notificationId: number | null;
-  severity: "P0" | "P1";
-  firedAt: string;
-  ackDeadlineAt: string;
-  ackedAt: string | null;
-  ackedBy: string | null;
-  escalatedAt: string | null;
-  escalationTarget: string | null;
-  notificationTitle: string | null;
-  notificationMessage: string | null;
-  overdue: boolean;
-  secondsUntilDeadline: number | null;
-}
-interface CriticalAlertsReport {
-  alerts: CriticalAlert[];
-  thresholds: { P0: number; P1: number };
-}
-const useCriticalAlerts = () =>
-  useQuery<CriticalAlertsReport>({
+  const alerts = useQuery<CriticalAlertsApi>({
     queryKey: ["/api/founder/critical-alerts"],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/critical-alerts", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load critical alerts (${r.status})`);
+      return r.json();
+    },
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
-const useFounderTodo = () =>
-  useQuery<{ total: number; items: Array<{ type: string; id: number; title: string; subtitle: string; urgency: number; actionUrl: string; createdAt: string; badge?: string; estimatedImpactCents: number | null }> }>({
-    queryKey: ["/api/founder/intelligence/todo"],
-    staleTime: 60_000,
+
+  const cost = useQuery<CostOptimizerApi>({
+    queryKey: ["/api/founder/cost-optimizer/runs", { limit: 1 }],
+    queryFn: async () => {
+      const r = await fetch("/api/founder/cost-optimizer/runs?limit=1", {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`Failed to load cost-optimizer (${r.status})`);
+      return r.json();
+    },
+    staleTime: 5 * 60_000,
   });
 
-function WhatNeedsYouCard({
-  data,
-}: {
-  data: ReturnType<typeof useFounderTodo>["data"];
-}) {
-  const top5 = (data?.items ?? []).slice(0, 5);
-  if (top5.length === 0) {
-    return (
-      <motion.div variants={staggerItem}>
-        <Card>
-          <CardContent className="p-6 flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-acr-pos dark:text-acr-pos shrink-0" aria-hidden="true" />
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Inbox zero</h2>
+  const unackedAlerts = (alerts.data ?? []).filter((a) => !a.ackedAt);
+  const latestRun = cost.data?.runs?.[0];
+
+  const ready = !vendor.isLoading && !alerts.isLoading && !cost.isLoading;
+
+  return (
+    <section aria-labelledby="health-heading">
+      <SectionHeader
+        id="health-heading"
+        icon={<ShieldCheck className="h-5 w-5" aria-hidden="true" />}
+        title="System health"
+        sub="Vendors, alerts, and cost optimiser"
+      />
+
+      {/* Critical-alerts banner — shown above the tile grid when active so
+          a P0 can't hide behind a vendor card. */}
+      {unackedAlerts.length > 0 && (
+        <Card
+          role="alert"
+          aria-live="polite"
+          className="mb-4 border-acr-neg/40 bg-acr-neg-soft/40"
+        >
+          <CardContent className="pt-4 pb-4 flex items-start gap-3 flex-wrap">
+            <AlertTriangle
+              className="h-5 w-5 text-acr-neg mt-0.5"
+              aria-hidden="true"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">
+                {unackedAlerts.length} unacknowledged{" "}
+                {unackedAlerts.length === 1 ? "alert" : "alerts"}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Nothing is waiting on you right now. The system is running itself.
+                {unackedAlerts[0].notificationTitle ?? "Critical incident"}
+                {unackedAlerts[0].overdue ? " — overdue" : ""}
               </p>
             </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/founder/critical-alerts">Triage</Link>
+            </Button>
           </CardContent>
         </Card>
-      </motion.div>
-    );
-  }
-  const urgencyTint = (u: number) =>
-    u >= 70 ? "border-l-red-500" : u >= 50 ? "border-l-amber-500" : "border-l-muted";
-  return (
-    <motion.div variants={staggerItem}>
-      <Card>
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-border flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-foreground">
-              What needs you ({data?.total ?? 0})
-            </h2>
-            <Link href="/founder/todo" className="text-xs text-muted-foreground hover:text-foreground">
-              See all →
-            </Link>
+      )}
+
+      <ContentReveal
+        ready={ready}
+        skeleton={
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-hidden="true">
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
           </div>
-          <ul aria-label="Top 5 items needing your attention">
-            {top5.map((item) => {
-              const impactCents = item.estimatedImpactCents;
-              const impactLabel = impactCents != null && impactCents !== 0
-                ? `${impactCents > 0 ? "+" : "−"}${usd(Math.abs(impactCents) / 100, { noCents: true })}`
-                : null;
-              return (
-                <li key={`${item.type}-${item.id}`} className="border-b border-border last:border-b-0">
-                  <a
-                    href={item.actionUrl}
-                    className={`flex items-start gap-3 p-3 hover:bg-muted/40 transition border-l-4 ${urgencyTint(item.urgency)}`}
-                    aria-label={`${item.title} — urgency ${item.urgency}${impactLabel ? `, impact ${impactLabel}` : ""}`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
-                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {item.type.replace(/_/g, " ")}
-                        {item.badge ? ` · ${item.badge}` : ""}
-                        {impactLabel ? ` · ${impactLabel}` : ""}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0 mt-1 tabular-nums" aria-hidden="true">
-                      {item.urgency}
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
-  const bandCfg: Record<Band, { bg: string; text: string; Icon: typeof ShieldCheck; label: string }> = {
-    green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", Icon: ShieldCheck, label: "Autonomous" },
-    yellow: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", Icon: ShieldAlert, label: "Needs a look" },
-    red: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30", text: "text-acr-neg dark:text-acr-neg", Icon: ShieldX, label: "Intervene now" },
-  };
-  const cfg = bandCfg[report.band];
-  const dims = Object.entries(report.dimensions);
-  return (
-    <motion.div variants={staggerItem}>
-      <Card className={cfg.bg}>
-        <CardContent className="p-6">
-          <div className="flex items-start gap-4">
-            <cfg.Icon className={`h-8 w-8 ${cfg.text} shrink-0`} aria-label={`Autonomy status: ${cfg.label}`} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className={`text-lg font-semibold ${cfg.text}`}>Autonomy: {cfg.label}</h2>
-                <Badge variant="secondary" className="text-xs" aria-label={`Band: ${report.band}`}>{report.band.toUpperCase()}</Badge>
-              </div>
-              <p className="text-sm text-foreground mb-2">{report.verdict}</p>
-              <p className="text-xs text-muted-foreground">{report.recommendedAction}</p>
-              <ul className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 list-none p-0" aria-label="Autonomy dimensions">
-                {dims.map(([key, d]) => {
-                  const dotColor =
-                    d.band === "green" ? "bg-acr-pos" : d.band === "yellow" ? "bg-acr-warn" : "bg-acr-neg";
-                  const niceKey = key.replace(/([A-Z])/g, " $1").trim();
-                  return (
-                    <li
-                      key={key}
-                      className="flex items-start gap-2"
-                      title={d.note}
-                      aria-label={`${niceKey}: ${d.value}, band ${d.band}. ${d.note}`}
-                    >
-                      <span
-                        className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${dotColor}`}
-                        role="img"
-                        aria-label={`Band: ${d.band}`}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-medium text-foreground capitalize leading-tight">
-                          {niceKey}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate tabular-nums">{String(d.value)}</p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-function HeroStatus({
-  metrics,
-  actionCount,
-}: {
-  metrics?: ExecutiveMetrics;
-  actionCount: number;
-}) {
-  // Status pill — replaces the old HeroCard's bg-tinted card. The
-  // greeting + identity now lives in FounderPageShell's editorial
-  // header (eyebrow + title + soft clause). This is just the
-  // operational health badge below.
-  // Critical when (a) backward churn rate is elevated, (b) NPS has enough
-  // responses and is poor, or (c) forward-looking risk says ≥20% of active
-  // orgs sit in critical+red bands. The (c) clause catches the case where
-  // backward churn is 0 only because the wave hasn't hit yet.
-  const npsCritical = metrics && metrics.nps.responseCount >= 5 && metrics.nps.score < 20;
-  const projectedCritical = metrics && metrics.churnRisk.scoredOrgs > 0 && metrics.churnRisk.projectedChurnRate >= 20;
-  const hasCritical = metrics && (metrics.churnRate > 10 || npsCritical || projectedCritical);
-  let label: string;
-  let tone: "pos" | "warn" | "neg";
-  if (hasCritical) {
-    label = "Action required";
-    tone = "neg";
-  } else if (actionCount > 0) {
-    label = `${actionCount} item${actionCount !== 1 ? "s" : ""} need${actionCount === 1 ? "s" : ""} your attention`;
-    tone = "warn";
-  } else {
-    label = "Everything is running smoothly";
-    tone = "pos";
-  }
-  const color = tone === "neg" ? "var(--acr-neg)" : tone === "warn" ? "var(--acr-warn)" : "var(--acr-pos)";
-  const bg =
-    tone === "neg"
-      ? "var(--acr-neg-soft)"
-      : tone === "warn"
-        ? "var(--acr-warn-soft)"
-        : "var(--acr-pos-soft)";
-  return (
-    <motion.div
-      variants={staggerItem}
-      role="status"
-      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
-      style={{
-        background: bg,
-        color,
-        font: "500 13px/1 var(--font-sans)",
-      }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />
-      {label}
-    </motion.div>
-  );
-}
-
-function CriticalAlertsBanner({ data }: { data: CriticalAlertsReport | undefined }) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const ackMutation = useMutation({
-    mutationFn: async (id: number) => (await apiRequest("POST", `/api/founder/critical-alerts/${id}/ack`)).json(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/critical-alerts"] }),
-    onError: (e: any) =>
-      toast({ title: "Couldn't ack alert", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
-  });
-  const escalateMutation = useMutation({
-    mutationFn: async (id: number) =>
-      (await apiRequest("POST", `/api/founder/critical-alerts/${id}/escalate`, { target: "primary_backup" })).json(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/critical-alerts"] }),
-    onError: (e: any) =>
-      toast({ title: "Couldn't escalate alert", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
-  });
-
-  const unacked = (data?.alerts ?? []).filter((a) => !a.ackedAt);
-  if (unacked.length === 0) return null;
-
-  const fmtCountdown = (secs: number | null, overdue: boolean) => {
-    if (secs == null) return "";
-    if (overdue) {
-      const m = Math.round(Math.abs(secs) / 60);
-      return `${m}m overdue`;
-    }
-    if (Math.abs(secs) < 60) return `${secs}s left`;
-    const m = Math.round(secs / 60);
-    return `${m}m left`;
-  };
-
-  return (
-    <motion.div variants={staggerItem}>
-      <Card className="border-l-4 border-l-red-500 bg-acr-neg-soft dark:bg-acr-neg-soft/30">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="h-5 w-5 text-acr-neg dark:text-acr-neg" aria-hidden="true" />
-            <h2 className="text-base font-semibold text-foreground">
-              Critical alerts ({unacked.length})
-            </h2>
-          </div>
-          <ul className="space-y-2 list-none p-0 m-0" aria-label="Unacknowledged P0/P1 alerts">
-            {unacked.slice(0, 5).map((a) => {
-              const banner = a.overdue
-                ? `${a.severity} unacked for ${fmtCountdown(a.secondsUntilDeadline, true)} — escalate now?`
-                : `${a.severity} · ${fmtCountdown(a.secondsUntilDeadline, false)}`;
-              return (
-                <li
-                  key={a.id}
-                  className="flex items-start gap-3 p-3 rounded-md bg-background border border-border"
-                  data-testid={`critical-alert-${a.id}`}
-                >
-                  <Badge
-                    variant="outline"
-                    className={
-                      a.severity === "P0"
-                        ? "bg-acr-neg/10 text-acr-neg dark:text-acr-neg border-acr-neg/30"
-                        : "bg-acr-warn/10 text-acr-warn dark:text-acr-warn border-acr-warn/30"
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                Vendor status
+                {vendor.data && (
+                  <StatusBadge
+                    status={
+                      vendor.data.overall === "ok"
+                        ? "active"
+                        : vendor.data.overall === "incident"
+                          ? "error"
+                          : vendor.data.overall === "degraded"
+                            ? "warning"
+                            : "inactive"
                     }
-                  >
-                    {a.severity}
-                  </Badge>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {a.notificationTitle ?? "Critical alert"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {banner}
-                      {a.escalatedAt ? " · escalated" : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      className="text-xs px-2 py-1 rounded bg-foreground text-background hover:opacity-90"
-                      onClick={() => ackMutation.mutate(a.id)}
-                      disabled={ackMutation.isPending}
-                      aria-label={`Acknowledge ${a.severity} alert`}
-                      data-testid={`alert-ack-${a.id}`}
-                    >
-                      Ack
-                    </button>
-                    {a.overdue && !a.escalatedAt && (
-                      <button
-                        type="button"
-                        className="text-xs px-2 py-1 rounded bg-acr-neg text-white hover:bg-acr-neg"
-                        onClick={() => escalateMutation.mutate(a.id)}
-                        disabled={escalateMutation.isPending}
-                        aria-label={`Escalate ${a.severity} alert to backup`}
-                        data-testid={`alert-escalate-${a.id}`}
-                      >
-                        Escalate
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-function VendorStatusTile({ report }: { report: VendorStatusReport | undefined }) {
-  // Loading or no data → show a neutral "checking…" tile rather than
-  // hiding the surface. This is a primary "is this them or us?" anchor
-  // when the founder is triaging an incident.
-  const overall = report?.overall ?? "unknown";
-  const dotColor =
-    overall === "ok"
-      ? "bg-acr-pos"
-      : overall === "incident"
-        ? "bg-acr-neg"
-        : overall === "degraded"
-          ? "bg-acr-warn"
-          : "bg-muted-foreground";
-  const label =
-    overall === "ok"
-      ? "All vendors operational"
-      : overall === "incident"
-        ? "Vendor incident in progress"
-        : overall === "degraded"
-          ? "Some vendors degraded"
-          : "Checking vendor status…";
-  const indicatorBadge = (i: VendorIndicator) => {
-    if (i === "none") return { color: "bg-acr-pos", text: "Operational" };
-    if (i === "minor" || i === "maintenance")
-      return { color: "bg-acr-warn", text: i === "minor" ? "Minor issue" : "Maintenance" };
-    if (i === "major") return { color: "bg-acr-warn", text: "Major incident" };
-    if (i === "critical") return { color: "bg-acr-neg", text: "Critical outage" };
-    return { color: "bg-muted-foreground", text: "Unknown" };
-  };
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <motion.button
-          variants={staggerItem}
-          type="button"
-          className="w-full text-left"
-          aria-label={`Vendor status: ${label}. Open detail view.`}
-          data-testid="vendor-status-tile"
-        >
-          <Card className="hover:bg-muted/40 transition cursor-pointer">
-            <CardContent className="p-4 flex items-center gap-3">
-              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">Vendor status</p>
-                <p className="text-xs text-muted-foreground truncate">{label}</p>
-              </div>
-              {report && (
-                <ul className="flex items-center gap-1.5 list-none p-0 m-0" aria-hidden="true">
-                  {report.vendors.map((v) => {
-                    const c =
+                    label={
+                      vendor.data.overall === "ok"
+                        ? "All systems normal"
+                        : vendor.data.overall.charAt(0).toUpperCase() +
+                          vendor.data.overall.slice(1)
+                    }
+                    size="sm"
+                  />
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {vendor.error ? (
+                <QueryErrorState onRetry={() => vendor.refetch()} />
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {(vendor.data?.vendors ?? []).slice(0, 6).map((v) => {
+                    const tone: "active" | "warning" | "error" | "inactive" =
                       v.indicator === "none"
-                        ? "bg-acr-pos"
-                        : v.indicator === "minor" || v.indicator === "maintenance"
-                          ? "bg-acr-warn"
-                          : v.indicator === "major"
-                            ? "bg-acr-warn"
-                            : v.indicator === "critical"
-                              ? "bg-acr-neg"
-                              : "bg-muted-foreground";
-                    return <li key={v.slug} className={`h-1.5 w-1.5 rounded-full ${c}`} title={v.name} />;
+                        ? "active"
+                        : v.indicator === "minor"
+                          ? "warning"
+                          : v.indicator === "major" || v.indicator === "critical"
+                            ? "error"
+                            : "inactive";
+                    return (
+                      <li
+                        key={v.slug}
+                        className="flex items-center gap-2 justify-between"
+                      >
+                        <span>{v.name}</span>
+                        <StatusBadge status={tone} size="sm" />
+                      </li>
+                    );
                   })}
                 </ul>
               )}
             </CardContent>
           </Card>
-        </motion.button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Vendor status</DialogTitle>
-          <DialogDescription>
-            Public Statuspage feeds for our critical vendors. Data refreshes every 60 seconds.
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="space-y-3 list-none p-0 m-0" aria-label="Vendor status detail">
-          {(report?.vendors ?? []).map((v) => {
-            const b = indicatorBadge(v.indicator);
-            return (
-              <li
-                key={v.slug}
-                className="flex items-start gap-3 p-3 rounded-md border border-border"
-                data-testid={`vendor-row-${v.slug}`}
-              >
-                <span className={`h-2.5 w-2.5 rounded-full mt-1.5 shrink-0 ${b.color}`} aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-foreground">{v.name}</p>
-                    <Badge variant="secondary" className="text-xs">{b.text}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{v.description}</p>
-                  <a
-                    href={v.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-acr-info hover:underline"
-                  >
-                    Open status page →
-                  </a>
-                </div>
-              </li>
-            );
-          })}
-          {!report && (
-            <li className="text-sm text-muted-foreground p-3" role="status">
-              Loading vendor status…
-            </li>
-          )}
-        </ul>
-        {report && (
-          <p className="text-[11px] text-muted-foreground mt-2 tabular-nums">
-            Last refreshed {new Date(report.generatedAt).toLocaleTimeString()}
-          </p>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
-function MetricCards({ metrics }: { metrics: ExecutiveMetrics }) {
-  const nps = metrics.nps.score;
-  const npsResponses = metrics.nps.responseCount;
-  const NpsIcon = npsResponses === 0 ? Meh : nps > 50 ? Smile : nps >= 20 ? Meh : Frown;
-  const npsColor =
-    npsResponses === 0
-      ? "text-muted-foreground"
-      : nps > 50
-        ? "text-acr-pos"
-        : nps >= 20
-          ? "text-acr-warn"
-          : "text-acr-neg";
-  // Forward-looking churn risk takes precedence when data is scored. Falls
-  // back to backward churnedOrgsLast30Days when no risk scores exist yet.
-  const risk = metrics.churnRisk;
-  const hasRiskData = risk.scoredOrgs > 0;
-  const churnPrimaryValue = hasRiskData
-    ? `${risk.atRiskOrgs} at risk · ${risk.projectedChurnRate}% projected`
-    : metrics.churnedOrgsLast30Days > 0
-      ? `${metrics.churnedOrgsLast30Days} churned (30d) · ${metrics.churnRate}% rate`
-      : "No churn signal yet";
-  const churnIconColor = hasRiskData
-    ? risk.projectedChurnRate >= 20
-      ? "text-acr-neg"
-      : risk.projectedChurnRate >= 10
-        ? "text-acr-warn"
-        : "text-acr-pos"
-    : metrics.churnedOrgsLast30Days > 0
-      ? "text-acr-neg"
-      : "text-acr-pos";
-  const churnTrend = hasRiskData
-    ? {
-        up: false,
-        text: `Bands: ${risk.bands.critical} critical · ${risk.bands.red} red · ${risk.bands.yellow} yellow · ${risk.bands.green} green`,
-      }
-    : metrics.churnRate > 0
-      ? { up: false, text: `${metrics.churnRate}% backward 30d` }
-      : null;
-  const cards: Array<{
-    icon: typeof DollarSign;
-    label: ReactNode;
-    labelKey: string;
-    value: string;
-    iconColor: string;
-    trend: { up: boolean; text: string } | null;
-  }> = [
-    {
-      icon: DollarSign,
-      label: <GlossaryTerm slug="MRR">Monthly revenue</GlossaryTerm>,
-      labelKey: "monthly-revenue",
-      value: usd(metrics.mrr, { noCents: true }),
-      iconColor: "text-acr-pos",
-      trend: null,
-    },
-    {
-      icon: Users,
-      label: "Active customers",
-      labelKey: "active-customers",
-      value: metrics.activeOrganizations.toLocaleString(),
-      iconColor: "text-acr-info",
-      trend: metrics.newOrgsLast30Days > 0 ? { up: true, text: `+${metrics.newOrgsLast30Days} this month` } : null,
-    },
-    {
-      icon: NpsIcon,
-      label: "Customer satisfaction",
-      labelKey: "customer-satisfaction",
-      value: npsResponses === 0 ? "No responses yet" : `${nps}`,
-      iconColor: npsColor,
-      trend: npsResponses > 0 ? { up: nps >= 0, text: `${npsResponses} response${npsResponses === 1 ? "" : "s"} · last 90d` } : null,
-    },
-    {
-      icon: AlertTriangle,
-      label: <GlossaryTerm slug="churn_risk">Churn risk</GlossaryTerm>,
-      labelKey: "churn-risk",
-      value: churnPrimaryValue,
-      iconColor: churnIconColor,
-      trend: churnTrend,
-    },
-  ];
-  return (
-    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {cards.map((c) => (
-        <motion.div key={c.labelKey} variants={staggerItem}>
-          <Card className="h-full">
-            <CardContent className="p-5">
-              <c.icon className={`h-5 w-5 mb-3 ${c.iconColor}`} aria-hidden="true" />
-              <dt className="text-sm text-muted-foreground mb-1">{c.label}</dt>
-              <dd className="text-2xl font-bold text-foreground tabular-nums">{c.value}</dd>
-              {c.trend && (
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  {c.trend.up ? <TrendingUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> : <TrendingDown className="h-3 w-3 text-acr-neg" aria-hidden="true" />}
-                  <span className="tabular-nums">{c.trend.text}</span>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Cost optimiser</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {cost.error ? (
+                <QueryErrorState onRetry={() => cost.refetch()} />
+              ) : !latestRun ? (
+                <p className="text-muted-foreground">
+                  Optimiser hasn't run yet — first nightly run will land
+                  overnight.
                 </p>
+              ) : (
+                <>
+                  <p>{latestRun.summary || "Latest optimiser run completed."}</p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    AI spend {usd(latestRun.totalAiCostUsd)} · margin{" "}
+                    {latestRun.profitMarginPct.toFixed(1)}% ·{" "}
+                    {latestRun.recommendations.length} recommendation
+                    {latestRun.recommendations.length === 1 ? "" : "s"}
+                  </p>
+                </>
               )}
             </CardContent>
           </Card>
-        </motion.div>
-      ))}
-    </dl>
+        </div>
+      </ContentReveal>
+    </section>
   );
 }
 
-function AgentCards({ agents }: { agents: AgentHealth[] }) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const [pending, setPending] = useState<{ name: string; enabled: boolean } | null>(null);
-  const toggle = useMutation({
-    mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) =>
-      (await apiRequest("POST", `/api/admin/agents/${name}/toggle`, { enabled })).json(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/agents/status"] }),
-    onError: (e: any) => toast({ title: "Couldn't toggle agent", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
-  });
+// ─── Section: "What I'm tracking" — free-form local notes ───────────────────
 
-  function summary(a: AgentHealth) {
-    if (a.status === "error" && a.lastError) return a.lastError;
-    if (a.status === "disabled") return "Paused by you";
-    if (a.lastRun) return `Last ran ${relative(a.lastRun)}`;
-    return "Has not run yet";
-  }
+const TRACKING_KEY = "acreos.founder.home.tracking.v1";
 
-  if (agents.length === 0) return <EmptyState icon={Bot} title="No agents configured" description="Autonomous agents will appear here once set up." />;
+function TrackingSection() {
+  const [value, setValue] = useState<string>("");
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  return (
-    <ul className="grid gap-3 sm:grid-cols-2 list-none p-0 m-0" aria-label="Autonomous agents">
-      {agents.map((agent) => {
-        const st = STATUS_CFG[agent.status] ?? STATUS_CFG.disabled;
-        const friendly = AGENT_NAMES[agent.name] ?? agent.name;
-        return (
-          <motion.li key={agent.name} variants={staggerItem}>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${st.color}`}
-                      role="img"
-                      aria-label={`Status: ${st.label.toLowerCase()}`}
-                    />
-                    <h3 className="text-sm font-medium text-foreground">{friendly}</h3>
-                  </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <div>
-                        <Switch
-                          checked={agent.enabled}
-                          onCheckedChange={() => setPending({ name: agent.name, enabled: !agent.enabled })}
-                          aria-label={`${agent.enabled ? "Pause" : "Enable"} agent: ${friendly}`}
-                        />
-                      </div>
-                    </AlertDialogTrigger>
-                    {pending?.name === agent.name && (
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>{pending.enabled ? "Enable" : "Disable"} {friendly}?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {pending.enabled ? `This will resume automated actions for ${friendly}.` : `This will pause all automated actions for ${friendly} until you turn it back on.`}
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={() => setPending(null)}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => { toggle.mutate(pending); setPending(null); }}>
-                            {pending.enabled ? "Enable" : "Disable"}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    )}
-                  </AlertDialog>
-                </div>
-                <p className="text-xs text-muted-foreground">{summary(agent)}</p>
-                <Badge variant="secondary" className="mt-2 text-xs" aria-label={`Status: ${st.label}`}>{st.label}</Badge>
-              </CardContent>
-            </Card>
-          </motion.li>
-        );
-      })}
-    </ul>
-  );
-}
+  // Hydrate from localStorage on mount.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TRACKING_KEY);
+      if (raw) setValue(raw);
+    } catch {
+      // localStorage may be unavailable (Safari private mode); silent fail
+      // is fine — the textarea still works in-session.
+    }
+  }, []);
 
-const Skel = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <Card className={className}><CardContent className="p-5">{children}</CardContent></Card>
-);
-
-export default function FounderHome() {
-  useDocumentTitle("Founder home");
-  const metrics = useMetrics();
-  const actions = useActionQueue();
-  const agents = useAgents();
-  const autonomy = useAutonomyHealth();
-  const todo = useFounderTodo();
-  const vendorStatus = useVendorStatus();
-  const criticalAlerts = useCriticalAlerts();
-
-  const isAnyError = metrics.isError || actions.isError || agents.isError;
-  const allLoading = metrics.isLoading && actions.isLoading && agents.isLoading;
-
-  if (isAnyError) {
-    return (
-      <PageShell label="Founder home">
-        <QueryErrorState
-          error={metrics.error || actions.error || agents.error}
-          onRetry={() => { metrics.refetch(); actions.refetch(); agents.refetch(); }}
-          title="Could not load your dashboard"
-          description="Couldn't load your data. Try again, or reload the page."
-        />
-      </PageShell>
-    );
-  }
-
-  const greeting = getGreeting();
-  const actionCount = actions.data?.items.length ?? 0;
-  const totalDeals = metrics.data?.activeOrganizations ?? 0;
-  return (
-    <FounderPageShell
-      eyebrow="Founder · home"
-      title={greeting.text}
-      titleSoft={
-        actionCount > 0
-          ? `${actionCount} item${actionCount !== 1 ? "s" : ""} need attention.`
-          : `${totalDeals.toLocaleString()} active customers · all green.`
+  // Debounced persist.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(TRACKING_KEY, value);
+        setSavedAt(Date.now());
+      } catch {
+        /* ignore */
       }
-      pageTitle="Founder home"
-    >
-      <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-8 max-w-5xl mx-auto">
-        {!metrics.isLoading && (
-          <HeroStatus metrics={metrics.data} actionCount={actionCount} />
-        )}
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [value]);
 
-        {autonomy.isLoading ? (
-          <Skel><Skeleton className="h-8 w-40 mb-2" /><Skeleton className="h-4 w-72" /></Skel>
-        ) : autonomy.data ? (
-          <AutonomyHealthCard report={autonomy.data} />
-        ) : null}
+  return (
+    <section aria-labelledby="tracking-heading">
+      <SectionHeader
+        id="tracking-heading"
+        icon={<Notebook className="h-5 w-5" aria-hidden="true" />}
+        title="What I'm tracking"
+        sub="Free-form notes and goals — saved on this device"
+      />
+      <Card>
+        <CardContent className="pt-4 pb-4 space-y-2">
+          <label htmlFor="tracking-input" className="sr-only">
+            Founder tracking notes
+          </label>
+          <Textarea
+            id="tracking-input"
+            placeholder="What you're watching this week. Goals, blockers, gut-feels worth revisiting in 7 days."
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="min-h-[140px] resize-y"
+            aria-describedby="tracking-helper"
+          />
+          <p
+            id="tracking-helper"
+            className="text-xs text-muted-foreground"
+            aria-live="polite"
+          >
+            {savedAt
+              ? `Saved · ${relative(new Date(savedAt))}`
+              : "Saved locally on this device"}
+          </p>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
 
-        {todo.isLoading ? (
-          <Skel><Skeleton className="h-5 w-32 mb-3" /><Skeleton className="h-12 w-full" /></Skel>
-        ) : (
-          <WhatNeedsYouCard data={todo.data} />
-        )}
+// ─── Shared section header ──────────────────────────────────────────────────
 
-        <CriticalAlertsBanner data={criticalAlerts.data} />
-
-        <VendorStatusTile report={vendorStatus.data} />
-
-        <section aria-labelledby="business-today-heading">
-          <h2 id="business-today-heading" className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Your business today
-          </h2>
-          {metrics.isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" role="status" aria-label="Loading business metrics">
-              {[1, 2, 3, 4].map((i) => <Skel key={i}><Skeleton className="h-4 w-4 mb-3 rounded" /><Skeleton className="h-3 w-24 mb-2" /><Skeleton className="h-7 w-16" /></Skel>)}
-            </div>
-          ) : metrics.data ? <MetricCards metrics={metrics.data} /> : null}
-        </section>
-
-        <section aria-labelledby="automation-team-heading">
-          <h2 id="automation-team-heading" className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Your automation team
-          </h2>
-          {agents.isLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2" role="status" aria-label="Loading agents">
-              {[1, 2, 3, 4].map((i) => <Skel key={i}><div className="flex items-center justify-between"><div className="space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div><Skeleton className="h-5 w-9 rounded-full" /></div></Skel>)}
-            </div>
-          ) : agents.data ? <AgentCards agents={agents.data} /> : null}
-        </section>
-      </motion.div>
-    </FounderPageShell>
+function SectionHeader({
+  id,
+  icon,
+  title,
+  sub,
+}: {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <header className="mb-3 flex items-baseline gap-3 flex-wrap">
+      <h2 id={id} className="text-lg font-semibold flex items-center gap-2">
+        <span aria-hidden="true" className="text-acr-accent">
+          {icon}
+        </span>
+        {title}
+      </h2>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </header>
   );
 }
