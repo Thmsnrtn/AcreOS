@@ -1495,6 +1495,10 @@ export async function registerRoutes(
     registerSovereignIntegrationRoutes(app);
     const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
     registerFounderIntegrationsRoutes(app);
+    // Phase 7 Months 7: Hartwell title-partner API — POST /title-orders +
+    // inbound webhook + ALTA Pillar 2 wire instructions + partner registry.
+    const { registerTitlePartnerRoutes } = await import("./routes-title-partners");
+    registerTitlePartnerRoutes(app);
     // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
     const { registerAiCostRoutes } = await import("./routes-ai-cost");
     registerAiCostRoutes(app);

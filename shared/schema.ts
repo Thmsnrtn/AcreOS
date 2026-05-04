@@ -17094,6 +17094,99 @@ export type InsertPropertyVisionSnapshot = z.infer<typeof insertPropertyVisionSn
 export type PropertyVisionSnapshot = typeof propertyVisionSnapshots.$inferSelect;
 
 // ============================================
+// HARTWELL TITLE-PARTNER API — Phase 7 Months 7
+// ============================================
+// Partner-tier API: title companies receive title-order requests, send back
+// title-status webhooks, and exchange ALTA-Pillar-2-compliant wire
+// instructions. See migrations/0068_title_partners.sql + docs/api/
+// title-partners-v1.md for the exchange schema.
+
+export const titlePartners = pgTable("title_partners", {
+  id: serial("id").primaryKey(),
+  // NULL = platform-default partner (any org can route to it).
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  partnerName: text("partner_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  contactPhone: text("contact_phone").notNull(),
+  territoryStates: text("territory_states").array().notNull().default(sql`ARRAY[]::TEXT[]`),
+  territoryCounties: text("territory_counties").array().notNull().default(sql`ARRAY[]::TEXT[]`),
+  apiKeyHash: text("api_key_hash").notNull(),
+  hmacSecretEncrypted: text("hmac_secret_encrypted").notNull(),
+  webhookUrl: text("webhook_url").notNull(),
+  // pilot | standard | volume | enterprise
+  volumePricingTier: text("volume_pricing_tier").notNull().default("pilot"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("title_partners_active_idx").on(table.isActive, table.volumePricingTier),
+]);
+
+export type TitlePartner = typeof titlePartners.$inferSelect;
+export type InsertTitlePartner = typeof titlePartners.$inferInsert;
+export const insertTitlePartnerSchema = createInsertSchema(titlePartners).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const titleOrders = pgTable("title_orders", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  dealId: integer("deal_id").references(() => deals.id, { onDelete: "cascade" }).notNull(),
+  titlePartnerId: integer("title_partner_id").references(() => titlePartners.id, { onDelete: "set null" }),
+  // pending | assigned | in_progress | commitment_issued | schedule_b_issued |
+  //   policy_issued | wire_instructions_issued | closed | cancelled
+  status: text("status").notNull().default("pending"),
+  statusDetails: jsonb("status_details").$type<Record<string, unknown>>().notNull().default({}),
+  propertyAddress: jsonb("property_address").$type<{
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    county?: string;
+    zip: string;
+  }>().notNull(),
+  buyerInfo: jsonb("buyer_info").$type<{
+    name: string;
+    email?: string;
+    phone?: string;
+    entityType?: string;
+  }>().notNull(),
+  sellerInfo: jsonb("seller_info").$type<{
+    name: string;
+    email?: string;
+    phone?: string;
+    entityType?: string;
+  }>().notNull(),
+  salePrice: numeric("sale_price").notNull(),
+  expectedClosingDate: date("expected_closing_date").notNull(),
+  estimatedDeliveryDate: date("estimated_delivery_date"),
+  commitmentS3Key: text("commitment_s3_key"),
+  scheduleBS3Key: text("schedule_b_s3_key"),
+  policyS3Key: text("policy_s3_key"),
+  wireInstructionsPdfS3Key: text("wire_instructions_pdf_s3_key"),
+  wireInstructionsPasswordHint: text("wire_instructions_password_hint"),
+  wireInstructionsHmac: text("wire_instructions_hmac"),
+  wireInstructionsIssuedAt: timestamp("wire_instructions_issued_at"),
+  wireConfirmationPhone: text("wire_confirmation_phone"),
+  wireConfirmedAt: timestamp("wire_confirmed_at"),
+  partnerAssignedAt: timestamp("partner_assigned_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("title_orders_org_status_idx").on(table.organizationId, table.status, table.createdAt),
+  index("title_orders_partner_idx").on(table.titlePartnerId, table.status),
+  index("title_orders_deal_idx").on(table.dealId),
+]);
+
+export type TitleOrder = typeof titleOrders.$inferSelect;
+export type InsertTitleOrder = typeof titleOrders.$inferInsert;
+export const insertTitleOrderSchema = createInsertSchema(titleOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// ============================================
 // NOTE INVESTOR VERTICAL — Phase 5 §5 (Q4 2026)
 // ============================================
 //
