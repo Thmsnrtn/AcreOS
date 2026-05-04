@@ -6,12 +6,19 @@
 # this hook runs tsc on the full project but filters output to only report
 # errors in files that are staged for commit. This prevents NEW type errors
 # from being committed while not blocking on pre-existing ones.
+#
+# 2026-05-04 (Workstream B.2): switched from raw `tsc` to
+# `tsc -p tsconfig.check.json` so the hook agrees with `npm run check`
+# (the canonical project type-check). The check.json config excludes
+# legacy directories (activity-*, onboarding/**, ab-tests*) where
+# pre-existing errors made the hook unworkably noisy. Hook still
+# filters output to staged files only — both filters apply.
 
 set -e
 
 echo "Running pre-commit checks..."
 
-# ── 1. TypeScript type-check (staged files only) ─────────────────────────────
+# ── 1. TypeScript type-check (staged files only, via tsconfig.check.json) ──
 
 # Collect staged .ts / .tsx files (Added, Copied, Modified)
 STAGED_TS_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx')
@@ -21,9 +28,9 @@ if [ -z "$STAGED_TS_FILES" ]; then
 else
   echo "  Type checking staged files..."
 
-  # Run tsc on the full project (required for correct resolution) but capture
-  # all output. We then grep for errors only in staged files.
-  TSC_OUTPUT=$(npx tsc --noEmit --pretty false 2>&1 || true)
+  # Run tsc against tsconfig.check.json (the canonical project check) and
+  # capture all output. We then grep for errors only in staged files.
+  TSC_OUTPUT=$(npx tsc --noEmit --pretty false -p tsconfig.check.json 2>&1 || true)
 
   if [ -z "$TSC_OUTPUT" ]; then
     echo "  No TypeScript errors found."
