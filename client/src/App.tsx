@@ -262,6 +262,7 @@ const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
+const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 // Shown during route-level auth resolution and React.lazy() chunk loads.
@@ -425,6 +426,13 @@ function Router() {
       {/* Onboarding V2 wizard */}
       <Route path="/onboarding-v2">
         {() => <ProtectedRoute component={OnboardingV2Page} />}
+      </Route>
+
+      {/* Renoir reactivation surface — destination of post-cancel
+          win-back deep-links. Auth-required so we can pre-fill plan
+          + tenure, but reachable via signed token in the email. */}
+      <Route path="/welcome-back">
+        {() => <ProtectedRoute component={WelcomeBackPage} />}
       </Route>
 
       {/* Home: landing page (unauth) or today hub (auth) */}
@@ -1057,13 +1065,20 @@ function AppContent() {
     }
   }, [user]);
 
-  // One-time hint for command palette
-  if (import.meta.env.DEV && typeof window !== 'undefined') {
+  // One-time first-launch hint for the command palette.
+  // Phase 4 Week 19-20 (cmdk-v2 / Anya §8): promoted from DEV-only to
+  // production so every signed-in user sees the ⌘K hint exactly once.
+  // localStorage key 'hint_cmdk_shown' guarantees idempotency across
+  // navigations and reloads.
+  if (typeof window !== 'undefined') {
     const seen = localStorage.getItem('hint_cmdk_shown');
     if (!seen && user) {
       localStorage.setItem('hint_cmdk_shown', '1');
       setTimeout(() => {
-        toast({ title: 'Tip', description: 'Press ⌘K (or Ctrl+K) to open the command palette.' });
+        toast({
+          title: 'Press ⌘K to do anything in AcreOS',
+          description: 'Search, run actions, ask Pax — all from one place.',
+        });
       }, 800);
     }
   }
