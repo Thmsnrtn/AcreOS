@@ -85,7 +85,54 @@
 
 ---
 
-## §3 · ⚠ CRITICAL FINDING — production deploy chain has been broken
+## §3a · ⚠ CRITICAL FINDING #2 — server refuses to boot post-deploy
+
+After unblocking deploys via §3 below, the actual deploy v5 push got further — image built, pushed, release_command succeeded — but **the new app machines (version 354) refuse to boot**. From `fly logs`:
+
+```
+[startup] Fatal error during server initialization
+Error: Inbound email webhook is mounted but neither
+INBOUND_EMAIL_WEBHOOK_SECRET nor INBOUND_EMAIL_SNS_ONLY=1 is set.
+Refusing to boot — see F2.
+[ INFO] Main child exited normally with code: 1
+machine has reached its max restart count of 10
+```
+
+This is the F2 (Wave 3) "fail-closed at boot" guard kicking in. Either of two env vars makes it pass:
+- `INBOUND_EMAIL_WEBHOOK_SECRET=<32+ char secret>` (HMAC fallback path)
+- `INBOUND_EMAIL_SNS_ONLY=1` (the SES+SNS-only path; auto-verifies AWS SNS signatures using `SigningCertURL`)
+
+Both are valid production configurations. **Neither is currently set on prod.**
+
+### Current production state (unchanged from before deploy)
+
+`fly status`:
+- App machine `e827514ae34de8` — **version 352** (2026-05-01 image), STARTED, healthy. **This is what serves customer traffic.** Customers experience zero impact.
+- App machine `7813202b50e6e8` — **version 354** (today's image), STOPPED after 10 restart attempts.
+- Worker machines on version 354 — both STARTED (worker doesn't run the inbound-email guard).
+
+Fly's rolling-deploy strategy means it took the failing machine down before touching the second app machine. So the production app is **still on version 352** — i.e., still on the pre-stabilization image. The mid-session deploy chain (waves 9-12 all the way through this session's stabilization) has NOT yet reached production.
+
+### Why I cannot ship this autonomously
+
+Per the directive's "NOT AUTHORIZED IN THIS DIRECTIVE" section: *"Modifying CSP, auth flows, or any security infrastructure"* is out of scope. Setting `INBOUND_EMAIL_SNS_ONLY=1` is a security-posture statement (it asserts production uses SES+SNS for inbound email). Setting `INBOUND_EMAIL_WEBHOOK_SECRET` is provisioning a new secret. Both are founder calls.
+
+### Two options
+
+1. **`fly secrets set INBOUND_EMAIL_SNS_ONLY=1`** if production uses SES+SNS for inbound mail (the most likely scenario — that's what `server/services/inboundEmailService.ts` was built around per F2's Wave 3 work)
+2. **`fly secrets set INBOUND_EMAIL_WEBHOOK_SECRET=$(openssl rand -hex 32)`** if production uses an HMAC-signed forwarder
+
+Either takes 30 seconds. After: re-run `fly deploy` and the new image will boot. **No code change needed.**
+
+### Why this hasn't been caught for 3 days
+
+This guard was added in Wave 3 (May 1). It's been in the code ever since. The first deploy that included it was the one I attempted today. Production has been on version 352 (pre-Wave-3) for three days because the migrate.mjs issue (§3 below) failed every prior deploy attempt before they could even reach this boot-time check.
+
+So: §3 (migrate.mjs) caused 3 days of no-deploys. Fixing §3 surfaced §3a. **Both blockers must clear before any new code reaches prod.**
+
+---
+
+## §3 · ⚠ CRITICAL FINDING #1 — production deploy chain has been broken
 
 ### What I observed
 
@@ -216,11 +263,14 @@ e622800  chore(migrations): B.1 — rename 0067_acquired_notes → 0073
 
 ## §8 · Awaiting your direction
 
-**Required to advance to vertical expansion:**
+**Required to advance to vertical expansion (in priority order):**
 
-1. **Decision on §3 schema drift** — Option 1 / 2 / 3 (Option 2 recommended)
-2. **C.1 founder-dashboard v2** — approve plan A / B / C from `FOUNDER-DASHBOARD-V2-PLAN.md`
-3. **C.2 onboarding redesign** — approve `ONBOARDING-V2-REDESIGN-PLAN.md` as-is or with changes
-4. **`storageState.json`** for authenticated F.1 + F.2 verification
+1. **§3a — set inbound-email env var** so version 354 can boot. 30-second `fly secrets set` operation. Almost certainly `INBOUND_EMAIL_SNS_ONLY=1`.
+2. **§3 — schema drift fix** — Option 1 / 2 / 3 (Option 2 recommended). After 1 + 2 land, the deploy will actually serve fresh code.
+3. **C.1 founder-dashboard v2** — approve plan A / B / C from `FOUNDER-DASHBOARD-V2-PLAN.md`
+4. **C.2 onboarding redesign** — approve `ONBOARDING-V2-REDESIGN-PLAN.md` as-is or with changes
+5. **`storageState.json`** for authenticated F.1 + F.2 verification
 
 Standing idle until these arrive.
+
+**One reassurance:** customer impact during this entire session is zero. Production app is still serving from version 352 (the pre-stabilization image). Customer experience is identical to what they had three days ago. The work shipped during this session is sitting in `main` but has never reached production.
