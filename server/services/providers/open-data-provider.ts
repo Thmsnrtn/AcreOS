@@ -1,6 +1,12 @@
 /**
  * Open Data Provider — wraps existing free APIs (FEMA, Census, USGS, USDA, EPA, BLM).
  * Delegates to existing service implementations. Tier: free. Cost: 0.
+ *
+ * Bulk / incremental FEMA flood-zone pulls are owned by the Wenzeslaus
+ * ETL orchestrator — see `server/services/etlHandlers.ts`
+ * (`femaEtlHandler`) and the seeded `fema_flood_zones_v1` row in
+ * `etl_jobs`. This module remains the on-demand lookup surface for
+ * coordinate/address hits.
  */
 import { logger } from "../../utils/logger";
 import type {

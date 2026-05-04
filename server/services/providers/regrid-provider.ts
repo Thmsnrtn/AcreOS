@@ -2,6 +2,14 @@
  * Regrid Provider — extracts from comps.ts and parcel.ts.
  * Uses BYOK pattern. Categories: parcel_data, comps, owner_info, valuation.
  * Tier: starter. Cost: 3–8 cents.
+ *
+ * Bulk / incremental Regrid pulls (boundary-update sync) are owned by the
+ * Wenzeslaus ETL orchestrator — see `server/services/etlHandlers.ts`
+ * (`regridEtlHandler`) and the seeded `regrid_parcels_v1` row in
+ * `etl_jobs`. This module is the on-demand lookup path only (single
+ * APN/coordinate hits initiated by user actions), and intentionally
+ * stays separate so on-demand lookups don't have to wait for a
+ * scheduled tick.
  */
 import { logger } from "../../utils/logger";
 import type {

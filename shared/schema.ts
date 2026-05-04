@@ -17404,3 +17404,65 @@ export const insertExportJobSchema = createInsertSchema(exportJobs).omit({
 });
 export type ExportJob = typeof exportJobs.$inferSelect;
 export type InsertExportJob = z.infer<typeof insertExportJobSchema>;
+// ETL ORCHESTRATOR — Phase 8 Months 11 (Wenzeslaus pattern)
+// ============================================================================
+// Backed by migrations/0070_etl_orchestrator.sql. Every external pull (Regrid
+// boundary updates, FEMA flood-zone updates, etc.) flows through one
+// orchestrator that maintains a watermark per job, dead-letters per-record
+// failures into `outbox_dlq`, and propagates upstream soft-deletes locally.
+// See server/services/etlOrchestrator.ts for the runtime.
+
+export const etlJobs = pgTable("etl_jobs", {
+  id: serial("id").primaryKey(),
+  jobName: text("job_name").notNull().unique(),
+  providerName: text("provider_name").notNull(),
+  sourceUrl: text("source_url"),
+  watermarkColumn: text("watermark_column"),
+  watermarkValue: text("watermark_value"),
+  schedule: text("schedule").notNull().default("*/15 * * * *"),
+  isActive: boolean("is_active").notNull().default(true),
+  softDeleteOnMissing: boolean("soft_delete_on_missing").notNull().default(false),
+  lastSuccessAt: timestamp("last_success_at"),
+  lastErrorAt: timestamp("last_error_at"),
+  lastError: text("last_error"),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("etl_jobs_provider_idx").on(table.providerName),
+  index("etl_jobs_active_idx").on(table.isActive, table.lastSuccessAt),
+]);
+
+export const insertEtlJobSchema = createInsertSchema(etlJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type EtlJob = typeof etlJobs.$inferSelect;
+export type InsertEtlJob = z.infer<typeof insertEtlJobSchema>;
+
+export const etlRuns = pgTable("etl_runs", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => etlJobs.id, { onDelete: "cascade" }),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  status: text("status").notNull().default("running"), // running | success | failure
+  recordsRead: integer("records_read").notNull().default(0),
+  recordsInserted: integer("records_inserted").notNull().default(0),
+  recordsUpdated: integer("records_updated").notNull().default(0),
+  recordsDeleted: integer("records_deleted").notNull().default(0),
+  recordsFailed: integer("records_failed").notNull().default(0),
+  errorMessage: text("error_message"),
+  watermarkBefore: text("watermark_before"),
+  watermarkAfter: text("watermark_after"),
+}, (table) => [
+  index("etl_runs_job_started_idx").on(table.jobId, table.startedAt),
+  index("etl_runs_status_idx").on(table.status),
+]);
+
+export const insertEtlRunSchema = createInsertSchema(etlRuns).omit({
+  id: true,
+  startedAt: true,
+});
+export type EtlRun = typeof etlRuns.$inferSelect;
+export type InsertEtlRun = z.infer<typeof insertEtlRunSchema>;

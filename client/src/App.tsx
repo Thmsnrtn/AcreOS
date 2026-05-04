@@ -205,6 +205,7 @@ const FounderSubProcessorsPage = React.lazy(() => import("@/pages/founder/sub-pr
 const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/recovery-console"));
 const FounderActivationPage = React.lazy(() => import("@/pages/founder/activation"));
 const FounderMlSnapshotsPage = React.lazy(() => import("@/pages/founder/ml-snapshots"));
+const FounderEtlPage = React.lazy(() => import("@/pages/founder/etl"));
 const FounderPromptVersionsPage = React.lazy(() => import("@/pages/founder/prompt-versions"));
 const FounderTitlePartnersPage = React.lazy(() => import("@/pages/founder/title-partners"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -661,6 +662,9 @@ function Router() {
       </Route>
       <Route path="/founder/ml-snapshots">
         {() => <FounderProtectedRoute component={FounderMlSnapshotsPage} />}
+      </Route>
+      <Route path="/founder/etl">
+        {() => <FounderProtectedRoute component={FounderEtlPage} />}
       </Route>
       <Route path="/founder/prompt-versions">
         {() => <FounderProtectedRoute component={FounderPromptVersionsPage} />}
