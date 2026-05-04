@@ -2,7 +2,41 @@
 
 **Date:** 2026-05-04
 **Run:** Autonomous, per Comprehensive Pre-Vertical Stabilization Directive
-**Branch state:** all work merged to `main`; 16 commits this session, all building.
+**Branch state:** all work merged to `main`; 17 commits this session, all building.
+
+---
+
+## 🎯 INFLECTION POINT — 2026-05-04 19:33 UTC
+
+**Production version 356 (image `acreos:deployment-01KQT7BPX4ZX5GYREEXZY5EBP7`) is live on both app machines.** This is the first successful deploy since 2026-05-01 — three days of stabilization work finally reaching customers.
+
+### What got there
+- F1 pre-compression — `content-encoding: br` confirmed live; `index.js` 603 KB → 153 KB Brotli (75% reduction)
+- F2 sw.js cache-control fix
+- B.1-B.6 mechanical infrastructure
+- C.1 + C.2 plans + D + E docs (no behavior change but they ride along)
+- New bundle hash `index-CAqWKXK0.js` serving (was stuck on `index-FbTPfYiN.js`)
+- The two probe routes from prior fixes:
+  - `/api/telemetry` POST → **401** (was 403 on v352) ← Fix #5 LIVE
+  - `/api/founder/v14/autonomy/score` → **401** (was 404 on v352) ← Fix #3 LIVE
+
+### What it took to actually land
+- Deploy attempts v3, v4, v5 all failed (migrate.mjs blocking; the F2 boot guard; Docker layer cache serving stale dist)
+- Required cumulative fixes: migrate.mjs non-fatal classifier (commit `3a3bff4`) + `INBOUND_EMAIL_SNS_ONLY=1` Fly secret (founder-authorized) + `--no-cache` rebuild for v6
+- Fly's secrets-set triggered an automatic redeploy that used the cached image (deploy v5's stale layer); only `--no-cache` produced a real rebuild
+
+### Verification timestamps
+- 19:24:09Z — version 355 attempted (cached image, OLD bundle still on disk despite new image tag)
+- 19:32:36Z — version 356 first app machine started healthy
+- 19:33:10Z — version 356 second app machine started healthy
+- 19:33:15Z — health endpoint confirms all services + 75% compression confirmed
+
+### Live error scan (60 seconds post-deploy)
+- App machines (customer-facing): clean. Single warning `MISSING (production): SENTRY_DSN` — observability env var not set; not customer-impacting.
+- Worker machine: hot-looping every 5s on `UPDATE outbox SET status='running'` — `outbox` table doesn't exist in prod. **This is the §3 schema-drift symptom about to be fixed.**
+
+### What's NOT yet caught up
+- Production DB schema is still missing tables/columns added across waves 7-12 (`outbox`, `audit_events`, `email_events`, `properties.land_status`, `etl_jobs`, etc.). Worker keeps retrying these; customer-facing surfaces gracefully degrade. §3 next.
 
 ---
 
