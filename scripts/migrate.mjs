@@ -116,6 +116,51 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "idx_audit_events_action" ON "audit_events" ("action")',
   'CREATE INDEX IF NOT EXISTS "idx_audit_events_created_at" ON "audit_events" ("created_at" DESC)',
 
+  // ── Phase 3 Week 7-8 (Wave 7): outbox + DLQ + job_runs. Migration 0046. ─
+  // §3 Batch 1 (CANARY) — fixes worker hot-loop. The worker process polls
+  // outbox every 5 seconds; without this table it logs `[worker] poll
+  // cycle failed` ~12 times/min. After this batch lands the canary signal
+  // is: those errors stop. If they don't, the migration didn't take and
+  // we need to investigate before continuing the §3 sweep.
+  `CREATE TABLE IF NOT EXISTS "outbox" (
+     "id" serial PRIMARY KEY,
+     "event_type" text NOT NULL,
+     "payload" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "status" text NOT NULL DEFAULT 'pending',
+     "attempts" integer NOT NULL DEFAULT 0,
+     "last_error_at" timestamp,
+     "last_error_message" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "sent_at" timestamp
+   )`,
+  'CREATE INDEX IF NOT EXISTS "outbox_status_created_idx" ON "outbox" ("status", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "outbox_event_type_idx" ON "outbox" ("event_type")',
+  `CREATE TABLE IF NOT EXISTS "outbox_dlq" (
+     "id" serial PRIMARY KEY,
+     "original_outbox_id" integer,
+     "event_type" text NOT NULL,
+     "payload" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "status" text NOT NULL DEFAULT 'failed',
+     "attempts" integer NOT NULL DEFAULT 0,
+     "last_error_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "failed_at" timestamp NOT NULL DEFAULT now(),
+     "failure_reason" text NOT NULL
+   )`,
+  'CREATE INDEX IF NOT EXISTS "outbox_dlq_event_type_idx" ON "outbox_dlq" ("event_type")',
+  'CREATE INDEX IF NOT EXISTS "outbox_dlq_failed_at_idx" ON "outbox_dlq" ("failed_at" DESC)',
+  `CREATE TABLE IF NOT EXISTS "job_runs" (
+     "id" serial PRIMARY KEY,
+     "job_name" text NOT NULL,
+     "started_at" timestamp NOT NULL DEFAULT now(),
+     "completed_at" timestamp,
+     "status" text NOT NULL DEFAULT 'running',
+     "error_message" text,
+     "records_processed" integer
+   )`,
+  'CREATE INDEX IF NOT EXISTS "job_runs_job_name_started_idx" ON "job_runs" ("job_name", "started_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "job_runs_status_idx" ON "job_runs" ("status")',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
