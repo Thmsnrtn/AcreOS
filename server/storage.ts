@@ -292,6 +292,7 @@ export interface IStorage {
   // Team Members
   getTeamMembers(orgId: number): Promise<TeamMember[]>;
   getTeamMember(orgId: number, userId: string): Promise<TeamMember | undefined>;
+  getTeamMemberByEmail(orgId: number, email: string): Promise<TeamMember | undefined>;
   createTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   updateTeamMember(id: number, updates: Partial<InsertTeamMember>): Promise<TeamMember>;
 
@@ -1300,6 +1301,15 @@ export class DatabaseStorage implements IStorage {
   async getTeamMember(orgId: number, userId: string) {
     const [member] = await db.select().from(teamMembers)
       .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, userId)));
+    return member;
+  }
+
+  // Phase 4 Week 15-16 (Magdalena §1) — used by the lead-import worker to
+  // resolve `assignedTo` CSV values (emails of team members) to team_member IDs.
+  async getTeamMemberByEmail(orgId: number, email: string) {
+    const normalized = email.trim().toLowerCase();
+    const [member] = await db.select().from(teamMembers)
+      .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.email, normalized)));
     return member;
   }
 

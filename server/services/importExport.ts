@@ -105,6 +105,19 @@ const LEAD_COLUMN_MAP: Record<string, string> = {
   status: "status",
   source: "source",
   notes: "notes",
+  // Phase 4 Week 15-16 (Magdalena §1) — history-preserving migration columns.
+  tags: "tags",
+  tag: "tags",
+  labels: "tags",
+  assignedTo: "assignedTo",
+  assigned_to: "assignedTo",
+  "assigned to": "assignedTo",
+  owner: "assignedTo",
+  ownerEmail: "assignedTo",
+  createdAt: "createdAt",
+  created_at: "createdAt",
+  "created at": "createdAt",
+  createdOn: "createdAt",
 };
 
 const PROPERTY_COLUMN_MAP: Record<string, string> = {
@@ -284,9 +297,15 @@ function validateRow(
   return { valid: errors.length === 0, errors };
 }
 
+export interface ImportLeadsOptions {
+  /** Optional user-supplied header → field map (overrides default LEAD_COLUMN_MAP). */
+  fieldMap?: Record<string, string> | null;
+}
+
 export async function importLeads(
   csvData: Array<Record<string, string>>,
-  organizationId: number
+  organizationId: number,
+  options: ImportLeadsOptions = {}
 ): Promise<ImportResult> {
   const result: ImportResult = {
     totalRows: csvData.length,
@@ -296,12 +315,26 @@ export async function importLeads(
     errors: [],
   };
 
+  // Phase 4 Week 15-16: resolve assignedTo emails → team_member.id, once per
+  // distinct email so a 50K-row import doesn't fan out to 50K queries.
+  const assignedEmailLookup = new Map<string, number | null>();
+
   // Phase 1: Validate all rows and collect parsed data
-  const validatedRows: { index: number; data: any; dupCriteria: any }[] = [];
+  const validatedRows: {
+    index: number;
+    data: any;
+    dupCriteria: any;
+    extras: { tags?: string[]; assignedTo?: number; createdAt?: Date };
+  }[] = [];
+
+  // Combined column map: defaults + user-supplied overrides.
+  const effectiveMap = options.fieldMap
+    ? { ...LEAD_COLUMN_MAP, ...options.fieldMap }
+    : LEAD_COLUMN_MAP;
 
   for (let i = 0; i < csvData.length; i++) {
     const rawRow = csvData[i];
-    const row = normalizeRow<Record<string, string>>(rawRow, LEAD_COLUMN_MAP);
+    const row = normalizeRow<Record<string, string>>(rawRow, effectiveMap);
 
     try {
       const parseResult = leadImportSchema.safeParse({
@@ -335,7 +368,29 @@ export async function importLeads(
         dupCriteria.lastName = parseResult.data.lastName;
       }
 
-      validatedRows.push({ index: i, data: parseResult.data, dupCriteria });
+      // ─── History-preserving extras (Magdalena §1) ──────────────────────────
+      const extras: { tags?: string[]; assignedTo?: number; createdAt?: Date } = {};
+      if (row.tags) {
+        extras.tags = row.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+      }
+      if (row.assignedTo) {
+        const email = row.assignedTo.trim().toLowerCase();
+        if (!assignedEmailLookup.has(email)) {
+          const member = await storage.getTeamMemberByEmail?.(organizationId, email);
+          assignedEmailLookup.set(email, member?.id ?? null);
+        }
+        const memberId = assignedEmailLookup.get(email);
+        if (memberId) extras.assignedTo = memberId;
+      }
+      if (row.createdAt) {
+        const d = new Date(row.createdAt);
+        if (!isNaN(d.getTime())) extras.createdAt = d;
+      }
+
+      validatedRows.push({ index: i, data: parseResult.data, dupCriteria, extras });
     } catch (error) {
       result.errorCount++;
       result.errors.push({
@@ -366,14 +421,14 @@ export async function importLeads(
     const chunk = nonDuplicateRows.slice(i, i + BATCH_SIZE);
     try {
       const created = await storage.createLeadsBatch(
-        chunk.map(c => ({ ...c.data, organizationId }))
+        chunk.map((c) => ({ ...c.data, ...c.extras, organizationId }))
       );
       result.successCount += created.length;
     } catch {
       // If batch fails, fall back to individual inserts for this chunk
       for (const item of chunk) {
         try {
-          await storage.createLead({ ...item.data, organizationId });
+          await storage.createLead({ ...item.data, ...item.extras, organizationId });
           result.successCount++;
         } catch (error) {
           result.errorCount++;

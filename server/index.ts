@@ -1276,6 +1276,24 @@ app.use("/api", apiLimiter);
         log(`Failed to import dunning service: ${err}`, "dunning");
       });
 
+      // ─── Migration in/out parity workers (every 10s) ──
+      // Phase 4 Week 15-16 (Magdalena §1, Tobiah §1): drains import_jobs and
+      // export_jobs queues. Each tick claims one queued row via FOR UPDATE
+      // SKIP LOCKED so multiple instances coexist safely.
+      import("./services/migrationJobs").then(({ runMigrationJobsTick }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Migration jobs worker registered (self-rescheduling, 10s)", "migration");
+          scheduleSelfRescheduling({
+            name: "migration_jobs",
+            intervalMs: 10_000,
+            initialDelayMs: 30_000,
+            run: runMigrationJobsTick,
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import migration jobs worker: ${err}`, "migration");
+      });
+
       // ─── Cost: VM resource tracker (every 5 min) ──
       // Persists memory + CPU + event-loop lag samples to vm_resource_usage
       // so the founder can review 7 days of data and decide whether to drop
