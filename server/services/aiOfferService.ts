@@ -12,6 +12,7 @@ import { validateAtlasOutput, AtlasOutputType } from "../ai/validators";
 import { logAgentTrace } from "./agentLlmTraces";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { validateCompliance } from "./complianceValidator";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // Tracing is preserved via logAgentTrace; cost tracking, semantic caching,
@@ -454,9 +455,24 @@ The letter should:
 
     const parsed = JSON.parse(content || "{}");
 
+    // Phase 4 W21-22 — compliance post-validator. Offer letters touch real-
+    // estate-offer wording + sometimes lender disclosure language; route
+    // the body through Opus extended-thinking and prepend a disclosure when
+    // the validator flags missing phrases.
+    const rawLetter = parsed.letter || "";
+    const compliance = rawLetter
+      ? await validateCompliance({
+          candidate: rawLetter,
+          domain: "real_estate_offer",
+          surface: "aiOfferLetter",
+          organizationId: request.organizationId ?? null,
+          userPrompt: `Offer letter for ${request.property.county}, ${request.property.state}`,
+        })
+      : null;
+
     return {
       success: true,
-      letter: parsed.letter || "",
+      letter: compliance ? compliance.response : rawLetter,
       subject: parsed.subject || `Offer to Purchase Property - ${request.property.county}, ${request.property.state}`,
     };
   } catch (error) {

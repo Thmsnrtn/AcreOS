@@ -59,11 +59,50 @@ interface GoldenSet {
 
 interface CliArgs {
   prompts: string;
+  /** Multi-turn conversation set (Phase 4 W21-22). When set, runs the
+   * conversation harness against this file in addition to the single-prompt
+   * golden set. */
+  conversations?: string;
   model: string;
   paxPrompt: "v2" | "v3";
   judge: string;
   reportDir: string;
   limit?: number;
+}
+
+interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+  expectedBehavior?: string;
+  expectedTopics?: string[];
+}
+
+interface Conversation {
+  id: string;
+  category: string;
+  needsCuration?: boolean;
+  turns: ConversationTurn[];
+}
+
+interface ConversationSet {
+  version: string;
+  description: string;
+  conversations: Conversation[];
+}
+
+interface ConversationTurnScore {
+  turnIndex: number;
+  topics: { score: number; matched: string[]; missing: string[] };
+  behavior: ToneResult;
+  output: string;
+}
+
+interface ConversationScore {
+  id: string;
+  category: string;
+  needsCuration: boolean;
+  turns: ConversationTurnScore[];
+  overall: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +117,9 @@ function parseArgs(argv: string[]): CliArgs {
     switch (a) {
       case "--prompts":
         args.prompts = next();
+        break;
+      case "--conversations":
+        args.conversations = next();
         break;
       case "--model":
         args.model = next();
@@ -99,6 +141,7 @@ function parseArgs(argv: string[]): CliArgs {
   const here = dirname(fileURLToPath(import.meta.url));
   return {
     prompts: args.prompts ?? join(here, "golden-set.json"),
+    conversations: args.conversations,
     model: args.model ?? "claude-sonnet-4-6",
     paxPrompt: args.paxPrompt ?? "v3",
     judge: args.judge ?? "claude-haiku-4-5",
@@ -140,11 +183,19 @@ async function callModel(opts: {
   model: string;
   systemPrompt: string;
   userPrompt: string;
+  /** Multi-turn history (Phase 4 W21-22). When provided, the user prompt is
+   * the LATEST turn and `history` is everything before it. */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<string> {
-  const { model, systemPrompt, userPrompt } = opts;
+  const { model, systemPrompt, userPrompt, history } = opts;
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
   const hasOpenRouter = !!process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
+
+  const chatMessages = [
+    ...(history ?? []),
+    { role: "user" as const, content: userPrompt },
+  ];
 
   // Anthropic-native models
   if (model.includes("claude") && hasAnthropic) {
@@ -155,7 +206,7 @@ async function callModel(opts: {
         model: anthropicModelId(model),
         max_tokens: 800,
         system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
+        messages: chatMessages.map((m) => ({ role: m.role, content: m.content })),
       });
       const textBlock = resp.content.find((b: any) => b.type === "text");
       return (textBlock as any)?.text ?? "";
@@ -173,7 +224,7 @@ async function callModel(opts: {
         model: model.replace(/^openai\//, ""),
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          ...chatMessages,
         ],
         max_tokens: 800,
       });
@@ -197,7 +248,7 @@ async function callModel(opts: {
         model: openrouterModelId(model),
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          ...chatMessages,
         ],
         max_tokens: 800,
       });
@@ -353,6 +404,73 @@ interface RunReport {
   entries: EntryScore[];
 }
 
+// ---------------------------------------------------------------------------
+// Multi-turn conversations (Phase 4 W21-22)
+// ---------------------------------------------------------------------------
+
+async function runConversations(args: CliArgs): Promise<ConversationScore[]> {
+  const raw = readFileSync(args.conversations!, "utf8");
+  const set: ConversationSet = JSON.parse(raw);
+  const convos = args.limit ? set.conversations.slice(0, args.limit) : set.conversations;
+  const systemPrompt = composeSystemPrompt(args.paxPrompt);
+  const judge = makeToneJudge(args.judge);
+
+  console.log(
+    `[eval] running ${convos.length} multi-turn conversations • model=${args.model} • paxPrompt=${args.paxPrompt}`,
+  );
+
+  const results: ConversationScore[] = [];
+  for (const c of convos) {
+    const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+    const turnScores: ConversationTurnScore[] = [];
+    for (let i = 0; i < c.turns.length; i++) {
+      const turn = c.turns[i];
+      if (turn.role !== "user") continue;
+      let output = "";
+      try {
+        output = await callModel({
+          model: args.model,
+          systemPrompt,
+          userPrompt: turn.content,
+          history: history.slice(),
+        });
+      } catch (err) {
+        output = stubResponse(turn.content, err as Error);
+      }
+      history.push({ role: "user", content: turn.content });
+      history.push({ role: "assistant", content: output });
+
+      const topics = scoreTopics(output, turn.expectedTopics ?? []);
+      const behavior = await judge.judge({
+        prompt: turn.content,
+        output,
+        expectedTone: turn.expectedBehavior ?? "stays on-task; defers to humans on legal/financial advice",
+      });
+
+      turnScores.push({
+        turnIndex: i,
+        topics: { score: topics.score, matched: topics.matched, missing: topics.missing },
+        behavior,
+        output,
+      });
+    }
+    const overall =
+      turnScores.length === 0
+        ? 0
+        : turnScores.reduce((a, t) => a + (t.topics.score + t.behavior.score) / 2, 0) /
+          turnScores.length;
+    results.push({
+      id: c.id,
+      category: c.category,
+      needsCuration: !!c.needsCuration,
+      turns: turnScores,
+      overall,
+    });
+    process.stdout.write(`  ${c.id}  turns=${turnScores.length}  overall=${overall.toFixed(2)}\n`);
+  }
+  return results;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const raw = readFileSync(args.prompts, "utf8");
@@ -437,6 +555,46 @@ async function main() {
 
   printSummary(report);
   console.log(`\n[eval] report → ${outPath}`);
+
+  // Phase 4 W21-22 — multi-turn conversation harness. Runs after the
+  // single-prompt suite when --conversations <path> is set, and writes a
+  // sibling report. This way `npm run eval` continues to score the existing
+  // golden set while CI can opt into the conversation suite.
+  if (args.conversations) {
+    const convoScores = await runConversations(args);
+    const convoOverall =
+      convoScores.length === 0
+        ? 0
+        : convoScores.reduce((a, c) => a + c.overall, 0) / convoScores.length;
+    const byCategory: Record<string, { count: number; avgOverall: number }> = {};
+    for (const s of convoScores) {
+      const c = (byCategory[s.category] ??= { count: 0, avgOverall: 0 });
+      c.count++;
+      c.avgOverall += s.overall;
+    }
+    for (const k of Object.keys(byCategory)) {
+      byCategory[k].avgOverall /= byCategory[k].count;
+    }
+    const convoReport = {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      model: args.model,
+      paxPromptVersion: args.paxPrompt,
+      judge: args.judge,
+      totals: {
+        count: convoScores.length,
+        avgOverall: convoOverall,
+        needsCurationCount: convoScores.filter((s) => s.needsCuration).length,
+        byCategory,
+      },
+      conversations: convoScores,
+    };
+    const convoPath = join(args.reportDir, `${startedAt.replace(/[:.]/g, "-")}-conversations.json`);
+    writeFileSync(convoPath, JSON.stringify(convoReport, null, 2));
+    writeFileSync(join(args.reportDir, "latest-conversations.json"), JSON.stringify(convoReport, null, 2));
+    console.log(`[eval] conversation overall=${convoOverall.toFixed(3)} (${convoScores.length} convos)`);
+    console.log(`[eval] conversation report → ${convoPath}`);
+  }
 }
 
 function buildReport(opts: {

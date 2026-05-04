@@ -17,6 +17,7 @@ import { eq, and, desc, sql, avg, count } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { voiceLearningService } from "./voiceLearning";
 import { logger } from "../utils/logger";
+import { validateCompliance } from "./complianceValidator";
 
 type ObjectionCategory = "price" | "timing" | "trust" | "emotional" | "competitive";
 type NegotiationStrategy = "empathy" | "logic" | "urgency" | "anchor" | "silence";
@@ -391,7 +392,18 @@ Generate a response using the ${selectedStrategy} strategy.`;
         }),
       });
       void response; // trace consumes it; content is what we use
-      const generatedResponse = content || this.getFallbackResponse(objection.category, selectedStrategy);
+      const rawGenerated = content || this.getFallbackResponse(objection.category, selectedStrategy);
+      // Phase 4 W21-22 — compliance post-validator. Negotiation wording is
+      // squarely in regulated-offer territory; run Opus extended-thinking
+      // before surfacing the suggestion.
+      const compliance = await validateCompliance({
+        candidate: rawGenerated,
+        domain: "real_estate_offer",
+        surface: "negotiation.copilot",
+        organizationId: session.organizationId,
+        userPrompt: `Counter to objection: ${objection.text}`,
+      });
+      const generatedResponse = compliance.response;
 
       const suggestedResponses = (session.suggestedResponses as Array<{
         id: string;

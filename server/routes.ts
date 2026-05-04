@@ -157,6 +157,7 @@ import { registerLegalHoldRoutes } from "./routes-legal-holds";
 import { registerSubProcessorRoutes } from "./routes-sub-processors";
 import { registerActivationRoutes } from "./routes-activation";
 import { registerMlSnapshotsRoutes } from "./routes-ml-snapshots";
+import { registerPromptVersionsRoutes } from "./routes-prompt-versions";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
@@ -1729,6 +1730,8 @@ export async function registerRoutes(
   registerActivationRoutes(app);
   // Phase 3 Week 12: ML training-snapshot instrumentation (Magnus §1)
   registerMlSnapshotsRoutes(app);
+  // Phase 4 W21-22: prompt-versioning A/B harness (Nadia-AI §2.A)
+  registerPromptVersionsRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
   registerCRMExtrasRoutes(app);
