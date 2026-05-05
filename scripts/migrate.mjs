@@ -1213,6 +1213,121 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS note_payments_note_date_idx ON note_payments(note_id, payment_date)',
   'CREATE INDEX IF NOT EXISTS note_payments_org_date_idx ON note_payments(organization_id, payment_date)',
 
+  // ── §3 Batch 7 — derived + legacy (7 tables) ────────────────────────────
+  // 4 derived from shared/schema.ts (no canonical migration):
+  //   adjacent_verticals_waitlist, feedback_submissions, integration_status,
+  //   refund_requests
+  // 3 legacy: nps_responses (0012), field_scout_visits + field_scout_photos
+  //   (0003 + 0072 — migrations have drifted from shared/schema.ts shape;
+  //   built from schema.ts as authoritative).
+
+  // adjacent_verticals_waitlist — derived
+  `CREATE TABLE IF NOT EXISTS "adjacent_verticals_waitlist" (
+     "id" SERIAL PRIMARY KEY,
+     "email" TEXT NOT NULL,
+     "vertical" TEXT NOT NULL,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+
+  // feedback_submissions — derived
+  `CREATE TABLE IF NOT EXISTS "feedback_submissions" (
+     "id" SERIAL PRIMARY KEY,
+     "user_id" TEXT NOT NULL,
+     "user_email" TEXT NOT NULL,
+     "category" TEXT NOT NULL,
+     "message" TEXT NOT NULL,
+     "allow_follow_up" BOOLEAN NOT NULL DEFAULT TRUE,
+     "page_url" TEXT,
+     "user_agent" TEXT,
+     "status" TEXT NOT NULL DEFAULT 'new',
+     "founder_notes" TEXT,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+
+  // integration_status — derived
+  `CREATE TABLE IF NOT EXISTS "integration_status" (
+     "id" SERIAL PRIMARY KEY,
+     "integration_key" TEXT NOT NULL UNIQUE,
+     "display_name" TEXT NOT NULL,
+     "is_configured" BOOLEAN NOT NULL DEFAULT FALSE,
+     "is_critical" BOOLEAN NOT NULL DEFAULT FALSE,
+     "last_verified_at" TIMESTAMP,
+     "last_verification_status" TEXT NOT NULL DEFAULT 'never_tested',
+     "setup_docs_url" TEXT,
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+
+  // refund_requests — derived
+  `CREATE TABLE IF NOT EXISTS "refund_requests" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id),
+     "user_id" TEXT,
+     "stripe_charge_id" TEXT,
+     "stripe_payment_intent_id" TEXT,
+     "amount_cents" INTEGER NOT NULL,
+     "reason" TEXT,
+     "status" TEXT NOT NULL DEFAULT 'pending',
+     "auto_approved" BOOLEAN DEFAULT FALSE,
+     "processed_at" TIMESTAMP,
+     "processed_by" TEXT,
+     "stripe_refund_id" TEXT,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+
+  // nps_responses — 0012
+  `CREATE TABLE IF NOT EXISTS "nps_responses" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id),
+     "user_id" TEXT NOT NULL,
+     "score" INTEGER NOT NULL CHECK (score >= 0 AND score <= 10),
+     "feedback" TEXT,
+     "trigger" TEXT NOT NULL,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_nps_org ON nps_responses(organization_id)',
+  'CREATE INDEX IF NOT EXISTS idx_nps_trigger ON nps_responses(organization_id, trigger)',
+
+  // field_scout_visits — derived from shared/schema.ts (0003 migration drifted)
+  `CREATE TABLE IF NOT EXISTS "field_scout_visits" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL,
+     "visitor_id" VARCHAR(255) NOT NULL,
+     "lead_id" INTEGER,
+     "property_id" INTEGER,
+     "latitude" REAL,
+     "longitude" REAL,
+     "notes" TEXT,
+     "status" VARCHAR(50) DEFAULT 'completed',
+     "started_at" TIMESTAMP,
+     "completed_at" TIMESTAMP,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS fsv_org_idx ON field_scout_visits(organization_id)',
+  'CREATE INDEX IF NOT EXISTS fsv_visitor_idx ON field_scout_visits(visitor_id)',
+
+  // field_scout_photos — derived from shared/schema.ts (0003+0072 drifted)
+  `CREATE TABLE IF NOT EXISTS "field_scout_photos" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL,
+     "visit_id" INTEGER NOT NULL,
+     "lead_id" INTEGER,
+     "url" TEXT NOT NULL,
+     "caption" TEXT,
+     "latitude" REAL,
+     "longitude" REAL,
+     "image_hash" VARCHAR(64),
+     "thumbnail_url" TEXT,
+     "card_url" TEXT,
+     "full_url" TEXT,
+     "bytes" INTEGER,
+     "mime" VARCHAR(64),
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS fsp_visit_idx ON field_scout_photos(visit_id)',
+  'CREATE INDEX IF NOT EXISTS fsp_lead_idx ON field_scout_photos(lead_id)',
+  'CREATE INDEX IF NOT EXISTS fsp_org_hash_idx ON field_scout_photos(organization_id, image_hash)',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
