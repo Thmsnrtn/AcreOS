@@ -12,7 +12,9 @@
 |---|---|---|---|
 | 1 | `outbox` + `outbox_dlq` + `job_runs` | ✅ **clean** (2026-05-04) | tables landed via migrate.mjs; worker `ANY(arr)` query bug surfaced + fixed (commit 14e87630, see §"Worker query notes" below) |
 | 2 | compliance + audit (legal_holds, dsar_requests, data_processing_agreements, compliance_validations, prompt_versions, ai_injection_attempts, ai_routing_overrides, critical_alert_acks) | ✅ **clean** (2026-05-04) | 8 tables landed in v361 deploy; data_processing_agreements seeded with 8 sub-processor rows; verified via `to_regclass` per table. audit_events lockdown triggers/view (0049 part 3) explicitly excluded — pending founder approval as a behavioural change |
-| 3-9 | see plan | pending | |
+| 3 | email/lifecycle/team (support_saved_replies, org_co_owners, org_email_identities, email_warmup_state, unsubscribe_tokens, email_reputation_snapshot, email_templates, lifecycle_message_sends, reactivation_tokens, lead_assignment_rules, org_assignment_cursor, org_integrations_slack, offer_approvals, cancellation_surveys) | ✅ **clean** (2026-05-05) | 14 tables; support_saved_replies folded in from B2 deferral (email-domain fit). cancellation_surveys derived from shared/schema.ts (no canonical migration). Table-creation order encoded so org_assignment_cursor.rule_id FK→lead_assignment_rules resolves |
+| 4 | finance + economics + recognition (chart_of_accounts, account_ledger_entries, ai_usage_daily, customer_concentration, deferred_revenue, customer_unit_economics, cost_optimization_runs, recognition_schedules, recognition_runs, form_1099_batches) | ✅ **clean** (2026-05-05) | 10/10 verified. chart_of_accounts uses self-FK (parent_account_id); account_ledger_entries FK→chart_of_accounts (creation order encoded) |
+| 5-9 | see plan | pending | |
 
 ---
 

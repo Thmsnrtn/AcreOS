@@ -769,6 +769,207 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "form_1099_batches_org_year_idx" ON "form_1099_batches" ("organization_id", "tax_year")',
 
+  // ── §3 Batch 5 — SCP memory + activation/retention + observability ──────
+  // 0022 (5 SCP tables — semantic_facts, procedures, golden_cases,
+  // shared_memory, evolution_metrics), 0055 (activation_events,
+  // retention_events, cohort_assignments, churn_reasons), 0061 (vm_resource_usage).
+  // No inter-batch FKs; all org_id refs use INTEGER (no FK constraint in source).
+
+  // scp_semantic_facts — 0022
+  `CREATE TABLE IF NOT EXISTS "scp_semantic_facts" (
+     "id" SERIAL PRIMARY KEY,
+     "fact_id" TEXT NOT NULL UNIQUE,
+     "agent_codename" TEXT NOT NULL,
+     "subject" TEXT NOT NULL,
+     "predicate" TEXT NOT NULL,
+     "object" TEXT NOT NULL,
+     "natural_language" TEXT NOT NULL,
+     "source_episode_ids" JSONB NOT NULL DEFAULT '[]',
+     "confidence" INTEGER NOT NULL DEFAULT 50,
+     "valid_from" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "valid_until" TIMESTAMP,
+     "version" INTEGER NOT NULL DEFAULT 1,
+     "previous_version_id" TEXT,
+     "category" TEXT NOT NULL DEFAULT 'domain_knowledge',
+     "tags" JSONB NOT NULL DEFAULT '[]',
+     "org_id" INTEGER,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS ssf_agent_idx ON scp_semantic_facts(agent_codename)',
+  'CREATE INDEX IF NOT EXISTS ssf_subject_idx ON scp_semantic_facts(subject)',
+  'CREATE INDEX IF NOT EXISTS ssf_category_idx ON scp_semantic_facts(category)',
+  'CREATE INDEX IF NOT EXISTS ssf_confidence_idx ON scp_semantic_facts(confidence)',
+  'CREATE INDEX IF NOT EXISTS ssf_valid_idx ON scp_semantic_facts(valid_until)',
+
+  // scp_procedures — 0022
+  `CREATE TABLE IF NOT EXISTS "scp_procedures" (
+     "id" SERIAL PRIMARY KEY,
+     "procedure_id" TEXT NOT NULL UNIQUE,
+     "agent_codename" TEXT NOT NULL,
+     "name" TEXT NOT NULL,
+     "description" TEXT NOT NULL,
+     "trigger" TEXT NOT NULL,
+     "steps" JSONB NOT NULL DEFAULT '[]',
+     "preconditions" JSONB NOT NULL DEFAULT '[]',
+     "postconditions" JSONB NOT NULL DEFAULT '[]',
+     "parameters" JSONB NOT NULL DEFAULT '{}',
+     "source_episode_ids" JSONB NOT NULL DEFAULT '[]',
+     "success_count" INTEGER NOT NULL DEFAULT 0,
+     "failure_count" INTEGER NOT NULL DEFAULT 0,
+     "last_used_at" TIMESTAMP,
+     "confidence" INTEGER NOT NULL DEFAULT 50,
+     "version" INTEGER NOT NULL DEFAULT 1,
+     "org_id" INTEGER,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS sp_agent_idx ON scp_procedures(agent_codename)',
+  'CREATE INDEX IF NOT EXISTS sp_name_idx ON scp_procedures(name)',
+  'CREATE INDEX IF NOT EXISTS sp_confidence_idx ON scp_procedures(confidence)',
+
+  // scp_golden_cases — 0022
+  `CREATE TABLE IF NOT EXISTS "scp_golden_cases" (
+     "id" SERIAL PRIMARY KEY,
+     "case_id" TEXT NOT NULL UNIQUE,
+     "agent_codename" TEXT NOT NULL,
+     "description" TEXT NOT NULL,
+     "lesson" TEXT NOT NULL,
+     "session_id" TEXT NOT NULL,
+     "context" JSONB NOT NULL DEFAULT '{}',
+     "org_id" INTEGER,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS sgc_agent_idx ON scp_golden_cases(agent_codename)',
+  'CREATE INDEX IF NOT EXISTS sgc_session_idx ON scp_golden_cases(session_id)',
+
+  // scp_shared_memory — 0022
+  `CREATE TABLE IF NOT EXISTS "scp_shared_memory" (
+     "id" SERIAL PRIMARY KEY,
+     "memory_id" TEXT NOT NULL UNIQUE,
+     "written_by_agent" TEXT NOT NULL,
+     "category" TEXT NOT NULL,
+     "subject" TEXT NOT NULL,
+     "content" TEXT NOT NULL,
+     "confidence" INTEGER NOT NULL DEFAULT 70,
+     "validated_at" TIMESTAMP,
+     "validation_gates_passed" JSONB NOT NULL DEFAULT '[]',
+     "read_by_agents" JSONB NOT NULL DEFAULT '[]',
+     "org_id" INTEGER,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS ssm_agent_idx ON scp_shared_memory(written_by_agent)',
+  'CREATE INDEX IF NOT EXISTS ssm_category_idx ON scp_shared_memory(category)',
+
+  // scp_evolution_metrics — 0022
+  `CREATE TABLE IF NOT EXISTS "scp_evolution_metrics" (
+     "id" SERIAL PRIMARY KEY,
+     "agent_codename" TEXT NOT NULL,
+     "total_sessions" INTEGER NOT NULL DEFAULT 0,
+     "success_rate" INTEGER NOT NULL DEFAULT 0,
+     "correction_rate" INTEGER NOT NULL DEFAULT 0,
+     "override_rate" INTEGER NOT NULL DEFAULT 0,
+     "escalation_accuracy" INTEGER NOT NULL DEFAULT 0,
+     "golden_suite_size" INTEGER NOT NULL DEFAULT 0,
+     "current_version" INTEGER NOT NULL DEFAULT 1,
+     "evolution_cadence" TEXT NOT NULL DEFAULT 'aggressive',
+     "last_evolved_at" TIMESTAMP,
+     "last_rollback_at" TIMESTAMP,
+     "rollback_count" INTEGER NOT NULL DEFAULT 0,
+     "org_id" INTEGER,
+     "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS sem_agent_idx ON scp_evolution_metrics(agent_codename)',
+
+  // activation_events — 0055
+  `CREATE TABLE IF NOT EXISTS "activation_events" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" TEXT,
+     "event_name" TEXT NOT NULL,
+     "event_value" JSONB DEFAULT '{}'::jsonb,
+     "occurred_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT activation_events_org_event_unique UNIQUE (organization_id, event_name)
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_activation_events_org ON activation_events(organization_id)',
+  'CREATE INDEX IF NOT EXISTS idx_activation_events_event ON activation_events(event_name)',
+  'CREATE INDEX IF NOT EXISTS idx_activation_events_occurred_at ON activation_events(occurred_at DESC)',
+
+  // retention_events — 0055
+  `CREATE TABLE IF NOT EXISTS "retention_events" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" TEXT,
+     "event_type" TEXT NOT NULL,
+     "cohort_name" TEXT,
+     "metadata" JSONB DEFAULT '{}'::jsonb,
+     "occurred_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_retention_events_org ON retention_events(organization_id)',
+  'CREATE INDEX IF NOT EXISTS idx_retention_events_type ON retention_events(event_type)',
+  'CREATE INDEX IF NOT EXISTS idx_retention_events_cohort ON retention_events(cohort_name)',
+  'CREATE INDEX IF NOT EXISTS idx_retention_events_occurred_at ON retention_events(occurred_at DESC)',
+
+  // cohort_assignments — 0055
+  `CREATE TABLE IF NOT EXISTS "cohort_assignments" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" TEXT,
+     "cohort_name" TEXT NOT NULL,
+     "variant" TEXT NOT NULL DEFAULT 'control',
+     "attributes" JSONB DEFAULT '{}'::jsonb,
+     "assigned_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT cohort_assignments_org_cohort_unique UNIQUE (organization_id, cohort_name)
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_cohort_assignments_org ON cohort_assignments(organization_id)',
+  'CREATE INDEX IF NOT EXISTS idx_cohort_assignments_user ON cohort_assignments(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_cohort_assignments_name ON cohort_assignments(cohort_name)',
+  'CREATE INDEX IF NOT EXISTS idx_cohort_assignments_variant ON cohort_assignments(cohort_name, variant)',
+
+  // churn_reasons — 0055
+  `CREATE TABLE IF NOT EXISTS "churn_reasons" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" TEXT,
+     "churned_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "primary_reason" TEXT NOT NULL,
+     "free_text" TEXT,
+     "survey_response" JSONB DEFAULT '{}'::jsonb,
+     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_churn_reasons_org ON churn_reasons(organization_id)',
+  'CREATE INDEX IF NOT EXISTS idx_churn_reasons_primary ON churn_reasons(primary_reason)',
+  'CREATE INDEX IF NOT EXISTS idx_churn_reasons_churned_at ON churn_reasons(churned_at DESC)',
+
+  // vm_resource_usage — 0061
+  `CREATE TABLE IF NOT EXISTS "vm_resource_usage" (
+     "id"                   bigserial PRIMARY KEY,
+     "machine_id"           text        NOT NULL,
+     "region"               text,
+     "process_group"        text,
+     "captured_at"          timestamptz NOT NULL DEFAULT now(),
+     "rss_bytes"            bigint      NOT NULL,
+     "heap_used_bytes"      bigint      NOT NULL,
+     "heap_total_bytes"     bigint      NOT NULL,
+     "external_bytes"       bigint      NOT NULL,
+     "array_buffers_bytes"  bigint      NOT NULL,
+     "cpu_user_us"          bigint      NOT NULL,
+     "cpu_system_us"        bigint      NOT NULL,
+     "cpu_percent"          numeric(5,2) NOT NULL,
+     "cpu_count"            integer     NOT NULL,
+     "load_avg_1m"          numeric(6,2),
+     "event_loop_lag_ms"    numeric(8,2),
+     "total_memory_bytes"   bigint,
+     "uptime_seconds"       integer     NOT NULL,
+     "node_version"         text,
+     "app_version"          text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "vm_resource_usage_machine_time_idx" ON "vm_resource_usage" ("machine_id", "captured_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "vm_resource_usage_time_idx" ON "vm_resource_usage" ("captured_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "vm_resource_usage_process_group_idx" ON "vm_resource_usage" ("process_group", "captured_at" DESC)',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
