@@ -568,6 +568,207 @@ const STATEMENTS = [
      "created_at" TIMESTAMP DEFAULT now()
    )`,
 
+  // ── §3 Batch 4 — finance + economics + recognition (10 tables) ──────────
+  // Migrations 0042 (chart_of_accounts, account_ledger_entries),
+  // 0047 (ai_usage_daily), 0048 (customer_concentration, deferred_revenue),
+  // 0059 (recognition_schedules, recognition_runs, form_1099_batches),
+  // 0062 (cost_optimization_runs), 0063 (customer_unit_economics).
+  //
+  // Order: chart_of_accounts first (self-referencing FK + base for ledger).
+  //
+  // Excluded: 0047 ALTER organizations ADD org_ai_quota_daily_usd, 0048
+  // ALTER dunning_events ADD sms_sent_at — column ALTERs deferred to B8.
+
+  // chart_of_accounts — 0042 (self-FK on parent_account_id, idempotent in same statement)
+  `CREATE TABLE IF NOT EXISTS "chart_of_accounts" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "account_number" text NOT NULL,
+     "account_name" text NOT NULL,
+     "account_type" text NOT NULL,
+     "parent_account_id" uuid REFERENCES chart_of_accounts(id) ON DELETE SET NULL,
+     "is_active" boolean NOT NULL DEFAULT true,
+     "description" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "chart_of_accounts_org_number_unique" ON "chart_of_accounts" ("organization_id", "account_number")',
+  'CREATE INDEX IF NOT EXISTS "chart_of_accounts_org_type_idx" ON "chart_of_accounts" ("organization_id", "account_type")',
+
+  // account_ledger_entries — 0042 (FK→chart_of_accounts)
+  `CREATE TABLE IF NOT EXISTS "account_ledger_entries" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "account_id" uuid NOT NULL REFERENCES chart_of_accounts(id) ON DELETE RESTRICT,
+     "debit" bigint NOT NULL DEFAULT 0,
+     "credit" bigint NOT NULL DEFAULT 0,
+     "description" text,
+     "reference_type" text,
+     "reference_id" text,
+     "booking_date" date NOT NULL,
+     "posted_at" timestamptz NOT NULL DEFAULT now(),
+     CONSTRAINT "account_ledger_entries_debit_xor_credit"
+       CHECK (("debit" > 0 AND "credit" = 0) OR ("debit" = 0 AND "credit" > 0)),
+     CONSTRAINT "account_ledger_entries_non_negative" CHECK ("debit" >= 0 AND "credit" >= 0)
+   )`,
+  'CREATE INDEX IF NOT EXISTS "account_ledger_entries_org_booking_idx" ON "account_ledger_entries" ("organization_id", "booking_date" DESC)',
+  'CREATE INDEX IF NOT EXISTS "account_ledger_entries_account_booking_idx" ON "account_ledger_entries" ("account_id", "booking_date" DESC)',
+  'CREATE INDEX IF NOT EXISTS "account_ledger_entries_reference_idx" ON "account_ledger_entries" ("reference_type", "reference_id")',
+
+  // ai_usage_daily — 0047
+  `CREATE TABLE IF NOT EXISTS "ai_usage_daily" (
+     "id"              serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "date"            date NOT NULL,
+     "total_usd"       numeric(12, 6) NOT NULL DEFAULT 0,
+     "call_count"      integer NOT NULL DEFAULT 0,
+     "by_feature"      jsonb DEFAULT '{}'::jsonb,
+     "updated_at"      timestamp DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ai_usage_daily_org_date_uniq" ON "ai_usage_daily" ("organization_id", "date")',
+  'CREATE INDEX IF NOT EXISTS "ai_usage_daily_date_idx" ON "ai_usage_daily" ("date")',
+
+  // customer_concentration — 0048
+  `CREATE TABLE IF NOT EXISTS "customer_concentration" (
+     "id"                    SERIAL PRIMARY KEY,
+     "computed_at"           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "top_mrr_pct_single"    NUMERIC(5,2) NOT NULL DEFAULT 0,
+     "top_mrr_pct_top3"      NUMERIC(5,2) NOT NULL DEFAULT 0,
+     "total_mrr_cents"       BIGINT NOT NULL DEFAULT 0,
+     "active_org_count"      INTEGER NOT NULL DEFAULT 0,
+     "snapshot"              JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "alert_triggered"       BOOLEAN NOT NULL DEFAULT FALSE,
+     "alert_severity"        TEXT,
+     "created_at"            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_customer_concentration_computed_at" ON "customer_concentration" ("computed_at" DESC)',
+  `CREATE INDEX IF NOT EXISTS "idx_customer_concentration_alert" ON "customer_concentration" ("alert_triggered", "computed_at" DESC) WHERE "alert_triggered" = TRUE`,
+
+  // deferred_revenue — 0048
+  `CREATE TABLE IF NOT EXISTS "deferred_revenue" (
+     "id"                  SERIAL PRIMARY KEY,
+     "organization_id"     INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "subscription_id"     TEXT,
+     "invoice_id"          TEXT,
+     "period_start"        TIMESTAMPTZ NOT NULL,
+     "period_end"          TIMESTAMPTZ NOT NULL,
+     "amount_cents"        BIGINT NOT NULL,
+     "recognized_cents"    BIGINT NOT NULL DEFAULT 0,
+     "as_of_date"          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "currency"            TEXT NOT NULL DEFAULT 'usd',
+     "metadata"            JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "created_at"          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT "deferred_revenue_period_chk" CHECK ("period_end" >= "period_start"),
+     CONSTRAINT "deferred_revenue_recognized_chk" CHECK ("recognized_cents" >= 0 AND "recognized_cents" <= "amount_cents")
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_deferred_revenue_org" ON "deferred_revenue" ("organization_id", "period_start" DESC)',
+  `CREATE INDEX IF NOT EXISTS "idx_deferred_revenue_subscription" ON "deferred_revenue" ("subscription_id") WHERE "subscription_id" IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS "idx_deferred_revenue_unrecognized" ON "deferred_revenue" ("period_end") WHERE "recognized_cents" < "amount_cents"`,
+
+  // customer_unit_economics — 0063
+  `CREATE TABLE IF NOT EXISTS "customer_unit_economics" (
+     "id"                          SERIAL PRIMARY KEY,
+     "organization_id"             INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "computed_at"                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "computed_date"               DATE        NOT NULL DEFAULT CURRENT_DATE,
+     "window_days"                 INTEGER     NOT NULL DEFAULT 30,
+     "mrr_usd"                     NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "ai_cost_usd"                 NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "direct_mail_cost_usd"        NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "sms_cost_usd"                NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "email_cost_usd"              NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "skip_trace_cost_usd"         NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "fixed_cost_share_usd"        NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "total_cogs_usd"              NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "profit_margin_usd"           NUMERIC(12, 6) NOT NULL DEFAULT 0,
+     "profit_margin_pct"           NUMERIC(7,  2) NOT NULL DEFAULT 0,
+     "ai_call_count"               INTEGER NOT NULL DEFAULT 0,
+     "sms_count"                   INTEGER NOT NULL DEFAULT 0,
+     "email_count"                 INTEGER NOT NULL DEFAULT 0,
+     "direct_mail_pieces"          INTEGER NOT NULL DEFAULT 0,
+     "skip_trace_count"            INTEGER NOT NULL DEFAULT 0,
+     "breakdown"                   JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "consecutive_unprofitable_days" INTEGER NOT NULL DEFAULT 0,
+     CONSTRAINT customer_unit_economics_window_positive CHECK (window_days > 0),
+     CONSTRAINT customer_unit_economics_costs_non_negative CHECK (
+       ai_cost_usd >= 0 AND direct_mail_cost_usd >= 0 AND sms_cost_usd >= 0
+       AND email_cost_usd >= 0 AND skip_trace_cost_usd >= 0
+       AND fixed_cost_share_usd >= 0
+     )
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS customer_unit_economics_org_date_uniq ON customer_unit_economics (organization_id, computed_date)',
+  'CREATE INDEX IF NOT EXISTS customer_unit_economics_org_computed_idx ON customer_unit_economics (organization_id, computed_at DESC)',
+  'CREATE INDEX IF NOT EXISTS customer_unit_economics_computed_date_idx ON customer_unit_economics (computed_date DESC)',
+  'CREATE INDEX IF NOT EXISTS customer_unit_economics_margin_idx ON customer_unit_economics (profit_margin_usd ASC)',
+
+  // cost_optimization_runs — 0062
+  `CREATE TABLE IF NOT EXISTS "cost_optimization_runs" (
+     "id" SERIAL PRIMARY KEY,
+     "run_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+     "total_ai_cost_usd" NUMERIC(12, 4) NOT NULL DEFAULT 0,
+     "total_fly_cost_usd" NUMERIC(12, 4) NOT NULL DEFAULT 0,
+     "customer_count" INTEGER NOT NULL DEFAULT 0,
+     "mrr_usd" NUMERIC(12, 2) NOT NULL DEFAULT 0,
+     "profit_margin_pct" NUMERIC(6, 2) NOT NULL DEFAULT 0,
+     "recommendations" JSONB NOT NULL DEFAULT '[]'::jsonb,
+     "auto_applied_actions" JSONB NOT NULL DEFAULT '[]'::jsonb,
+     "summary" TEXT NOT NULL DEFAULT ''
+   )`,
+  'CREATE INDEX IF NOT EXISTS "cost_optimization_runs_run_at_idx" ON "cost_optimization_runs" ("run_at" DESC)',
+
+  // recognition_schedules — 0059
+  `CREATE TABLE IF NOT EXISTS "recognition_schedules" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "source_type" text NOT NULL,
+     "source_id" text NOT NULL,
+     "total_cents" bigint NOT NULL,
+     "balance_remaining_cents" bigint NOT NULL,
+     "period_start" date NOT NULL,
+     "period_end" date NOT NULL,
+     "months_total" integer NOT NULL,
+     "months_recognised" integer NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'active',
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now(),
+     CONSTRAINT "recognition_schedules_balance_non_negative" CHECK ("balance_remaining_cents" >= 0),
+     CONSTRAINT "recognition_schedules_months_valid"
+       CHECK ("months_total" > 0 AND "months_recognised" >= 0 AND "months_recognised" <= "months_total")
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "recognition_schedules_source_unique" ON "recognition_schedules" ("organization_id", "source_type", "source_id")',
+  `CREATE INDEX IF NOT EXISTS "recognition_schedules_active_idx" ON "recognition_schedules" ("organization_id", "status") WHERE "status" = 'active'`,
+
+  // recognition_runs — 0059
+  `CREATE TABLE IF NOT EXISTS "recognition_runs" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer REFERENCES organizations(id) ON DELETE CASCADE,
+     "run_started_at" timestamptz NOT NULL DEFAULT now(),
+     "run_completed_at" timestamptz,
+     "as_of_date" date NOT NULL,
+     "schedules_processed" integer NOT NULL DEFAULT 0,
+     "entries_posted" integer NOT NULL DEFAULT 0,
+     "cents_recognised" bigint NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'running',
+     "error_message" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "recognition_runs_org_started_idx" ON "recognition_runs" ("organization_id", "run_started_at" DESC)',
+
+  // form_1099_batches — 0059
+  `CREATE TABLE IF NOT EXISTS "form_1099_batches" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "tax_year" integer NOT NULL,
+     "status" text NOT NULL DEFAULT 'queued',
+     "form_count" integer NOT NULL DEFAULT 0,
+     "total_interest_cents" bigint NOT NULL DEFAULT 0,
+     "result_blob" jsonb,
+     "error_message" text,
+     "started_at" timestamptz,
+     "completed_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "form_1099_batches_org_year_idx" ON "form_1099_batches" ("organization_id", "tax_year")',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
