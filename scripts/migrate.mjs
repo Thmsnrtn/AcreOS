@@ -1387,6 +1387,9 @@ const STATEMENTS = [
   `ALTER TABLE deal_patterns ADD COLUMN IF NOT EXISTS embedding_refreshed_at timestamp`,
   `CREATE INDEX IF NOT EXISTS deal_patterns_embedding_refreshed_at_idx ON deal_patterns (embedding_refreshed_at NULLS FIRST)`,
 
+  // properties: land_status fork (0038) — automation blocker for tribal/trust
+  `ALTER TABLE properties ADD COLUMN IF NOT EXISTS land_status TEXT NOT NULL DEFAULT 'unknown'`,
+
   // ── §3 Batch 9 — extensions ─────────────────────────────────────────────
   // unaccent only. pgvector deferred (image upgrade required).
   `CREATE EXTENSION IF NOT EXISTS unaccent`,
