@@ -16,7 +16,8 @@
 | 4 | finance + economics + recognition (chart_of_accounts, account_ledger_entries, ai_usage_daily, customer_concentration, deferred_revenue, customer_unit_economics, cost_optimization_runs, recognition_schedules, recognition_runs, form_1099_batches) | ✅ **clean** (2026-05-05) | 10/10 verified. chart_of_accounts uses self-FK (parent_account_id); account_ledger_entries FK→chart_of_accounts (creation order encoded) |
 | 5 | SCP memory + activation/retention + observability (scp_semantic_facts, scp_procedures, scp_golden_cases, scp_shared_memory, scp_evolution_metrics, activation_events, retention_events, cohort_assignments, churn_reasons, vm_resource_usage) | ✅ **clean** (2026-05-05) | 10/10 verified. SCP tables use `org_id INTEGER` (no FK constraint in source migration 0022). vm_resource_usage rolled in here as observability companion to fill the batch to 10 |
 | 6 | features (ml_training_snapshots, property_vision_snapshots, title_partners, title_orders, import_jobs, export_jobs, etl_jobs, etl_runs, acquired_notes, note_payments) | ✅ **clean** (2026-05-05) | 10/10 verified. Order encoded for FK chains: title_partners → title_orders, etl_jobs → etl_runs, acquired_notes → note_payments. Excluded 0070 etl_jobs INSERT seed (operator credentials required) |
-| 7-9 | see plan | pending | |
+| 7 | derived + legacy (adjacent_verticals_waitlist, feedback_submissions, integration_status, refund_requests, nps_responses, field_scout_visits, field_scout_photos) | ✅ **clean** (2026-05-05) | 7/7 verified. 4 derived from shared/schema.ts (no canonical migration); field_scout_* derived too because 0003+0072 had drifted from schema.ts |
+| 8-9 | see plan | pending | |
 
 ---
 

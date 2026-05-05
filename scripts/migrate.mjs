@@ -1328,6 +1328,69 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS fsp_lead_idx ON field_scout_photos(lead_id)',
   'CREATE INDEX IF NOT EXISTS fsp_org_hash_idx ON field_scout_photos(organization_id, image_hash)',
 
+  // ── §3 Batch 8 — column ALTERs (25 columns) ─────────────────────────────
+  // organizations (13 cols), email_suppressions (4), leads (3), team_members,
+  // signatures, deal_patterns, dunning_events.
+  // ADD COLUMN IF NOT EXISTS is idempotent. Each statement runs standalone.
+
+  // organizations: tax / 1099 identity (0035)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ein text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tax_id_type text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tax_address jsonb`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS legal_entity_name text`,
+  // organizations: billing interval (0037)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_interval TEXT NOT NULL DEFAULT 'monthly'`,
+  // organizations: autopay-frozen (0040)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS autopay_frozen BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS autopay_frozen_at TIMESTAMPTZ`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS autopay_frozen_reason TEXT`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS autopay_frozen_until TIMESTAMPTZ`,
+  // organizations: AI quota cap (0047)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS org_ai_quota_daily_usd numeric(10, 2) NOT NULL DEFAULT 50.00`,
+  // organizations: team-readiness (0066 Part A)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS seat_count INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS requires_approval_offers_over NUMERIC`,
+  // organizations: investor-type fork (0073 Part A)
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS investor_type TEXT NOT NULL DEFAULT 'land'`,
+
+  // email_suppressions: deliverability extensions (0056 Part 4)
+  `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS bounce_category text`,
+  `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS organization_id integer REFERENCES organizations(id) ON DELETE SET NULL`,
+  `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS soft_bounce_count integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS last_soft_bounce_at timestamptz`,
+  `CREATE INDEX IF NOT EXISTS idx_email_suppressions_org ON email_suppressions (organization_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_email_suppressions_category ON email_suppressions (bounce_category)`,
+
+  // leads: tax identity (0035)
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS tax_id text`,
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS tax_id_type text`,
+  // leads: phone normalization (0051) — GENERATED column requires pg_trgm
+  // for the gin_trgm_ops index. If pg_trgm absent, the index will be
+  // SKIPPED non-fatally.
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone_normalized text
+     GENERATED ALWAYS AS (regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')) STORED`,
+  `CREATE INDEX IF NOT EXISTS leads_phone_normalized_trgm_idx ON leads USING GIN (phone_normalized gin_trgm_ops)`,
+
+  // team_members: VA flag (0054 part 2)
+  `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS view_only_assigned_leads BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  // signatures: tamper-evidence (0033)
+  `ALTER TABLE signatures ADD COLUMN IF NOT EXISTS document_content_hash text`,
+
+  // dunning_events: SMS throttle (0048 part 3)
+  `ALTER TABLE dunning_events ADD COLUMN IF NOT EXISTS sms_sent_at TIMESTAMPTZ`,
+  `CREATE INDEX IF NOT EXISTS idx_dunning_events_sms_sent ON dunning_events (organization_id, sms_sent_at) WHERE sms_sent_at IS NOT NULL`,
+
+  // deal_patterns: embedding refresh tracker (0052) — pgvector column-type
+  // change + IVFFlat index intentionally excluded; pgvector unavailable
+  // on the current Fly Postgres image. Only the timestamp + btree ship.
+  `ALTER TABLE deal_patterns ADD COLUMN IF NOT EXISTS embedding_refreshed_at timestamp`,
+  `CREATE INDEX IF NOT EXISTS deal_patterns_embedding_refreshed_at_idx ON deal_patterns (embedding_refreshed_at NULLS FIRST)`,
+
+  // ── §3 Batch 9 — extensions ─────────────────────────────────────────────
+  // unaccent only. pgvector deferred (image upgrade required).
+  `CREATE EXTENSION IF NOT EXISTS unaccent`,
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
