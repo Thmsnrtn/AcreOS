@@ -17,7 +17,45 @@
 | 5 | SCP memory + activation/retention + observability (scp_semantic_facts, scp_procedures, scp_golden_cases, scp_shared_memory, scp_evolution_metrics, activation_events, retention_events, cohort_assignments, churn_reasons, vm_resource_usage) | ✅ **clean** (2026-05-05) | 10/10 verified. SCP tables use `org_id INTEGER` (no FK constraint in source migration 0022). vm_resource_usage rolled in here as observability companion to fill the batch to 10 |
 | 6 | features (ml_training_snapshots, property_vision_snapshots, title_partners, title_orders, import_jobs, export_jobs, etl_jobs, etl_runs, acquired_notes, note_payments) | ✅ **clean** (2026-05-05) | 10/10 verified. Order encoded for FK chains: title_partners → title_orders, etl_jobs → etl_runs, acquired_notes → note_payments. Excluded 0070 etl_jobs INSERT seed (operator credentials required) |
 | 7 | derived + legacy (adjacent_verticals_waitlist, feedback_submissions, integration_status, refund_requests, nps_responses, field_scout_visits, field_scout_photos) | ✅ **clean** (2026-05-05) | 7/7 verified. 4 derived from shared/schema.ts (no canonical migration); field_scout_* derived too because 0003+0072 had drifted from schema.ts |
-| 8-9 | see plan | pending | |
+| 8 | column ALTERs (organizations 13, email_suppressions 4, leads 3, team_members 1, signatures 1, dunning_events 1, deal_patterns 1, properties 1) | ✅ **clean** (2026-05-05) | 25/25 columns present. leads.phone_normalized GENERATED column + trgm index landed (pg_trgm extension already installed in prod). deal_patterns pgvector column-type change + IVFFlat index excluded; only the timestamp column + btree shipped |
+| 9 | extensions (unaccent) | ✅ **clean** (2026-05-05) | unaccent installed. vector deferred — Fly Postgres image upgrade required separately |
+
+---
+
+## Final state — 2026-05-05
+
+**87/87 schema items reconciled** (62 tables + 25 columns + 1 extension).
+
+Verified live in prod via `to_regclass` + `information_schema.columns` +
+`pg_extension`:
+
+```
+Tables:     62/62 present
+Columns:    25/25 present
+Extensions: unaccent=OK, vector=DEFERRED
+```
+
+Surfaced and resolved during the sweep:
+- **Worker `ANY(arr)` query bug** — Drizzle's sql template expands JS
+  arrays as N positional placeholders before any cast applies. Fixed via
+  `IN (sql.join(...))` in commit `14e87630`. See "Worker query notes"
+  above for the rule of thumb.
+- **field_scout_visits + field_scout_photos drift** — canonical
+  migrations (0003, 0072) declared a different shape than
+  `shared/schema.ts`. Built from schema.ts as authoritative.
+
+Parked (need founder approval before shipping):
+- audit_events row-lockdown triggers + immutable view (0049 part 3).
+  Behavioural change. Documented in REMAINING-WORK-INVENTORY.md.
+- pgvector extension + `deal_patterns.embedding_vector` type change
+  + IVFFlat index. Requires Fly Postgres image upgrade.
+
+Not folded into this sweep:
+- `etl_jobs` regrid/fema seed rows (0070) — operator credentials required.
+- `support_saved_replies` was originally bucketed in compliance B2 but
+  routed to email-domain B3 instead.
+
+
 
 ---
 
