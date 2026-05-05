@@ -346,6 +346,228 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_critical_alert_acks_unacked ON critical_alert_acks (ack_deadline_at) WHERE acked_at IS NULL AND escalated_at IS NULL`,
   'CREATE INDEX IF NOT EXISTS idx_critical_alert_acks_notification ON critical_alert_acks (notification_id)',
 
+  // ── §3 Batch 3 — email/lifecycle/team (14 tables) ───────────────────────
+  // Migrations 0053 (support_saved_replies), 0054 (org_co_owners),
+  // 0056 (org_email_identities, email_warmup_state, unsubscribe_tokens,
+  // email_reputation_snapshot), 0064 (email_templates, lifecycle_message_sends,
+  // reactivation_tokens), 0066 (lead_assignment_rules, org_assignment_cursor,
+  // org_integrations_slack, offer_approvals). cancellation_surveys derived
+  // from shared/schema.ts (no canonical migration — pre-existing schema gap).
+  //
+  // FK prereqs verified present in prod (organizations, users, offers,
+  // lead_assignment_rules added in this batch — order-dependent: rules
+  // must come before assignment_cursor).
+  //
+  // Excluded:
+  //   - 0054 parts 1+2 (UPDATE team_members.role, ALTER TABLE ADD COLUMN
+  //     view_only_assigned_leads) — column ALTERs land in Batch 8.
+  //   - 0056 part 4 (email_suppressions ADD COLUMN bounce_category etc.)
+  //     — same reason; Batch 8.
+  //   - 0066 Part A (organizations seat_count + requires_approval_offers_over)
+  //     — same reason; Batch 8.
+
+  // support_saved_replies — 0053 part 1 (folded in from Batch 2 deferral)
+  `CREATE TABLE IF NOT EXISTS "support_saved_replies" (
+     "id"              SERIAL PRIMARY KEY,
+     "organization_id" INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+     "name"            TEXT NOT NULL,
+     "body"            TEXT NOT NULL,
+     "created_by"      TEXT NOT NULL,
+     "created_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_support_saved_replies_org ON support_saved_replies (organization_id) WHERE organization_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_support_saved_replies_global ON support_saved_replies (created_at DESC) WHERE organization_id IS NULL`,
+
+  // org_co_owners — 0054 part 3
+  `CREATE TABLE IF NOT EXISTS "org_co_owners" (
+     "id"              SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id"         TEXT NOT NULL,
+     "added_at"        TIMESTAMP NOT NULL DEFAULT NOW(),
+     "added_by"        TEXT NOT NULL
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_org_co_owners_org_user ON org_co_owners (organization_id, user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_org_co_owners_org ON org_co_owners (organization_id)',
+
+  // org_email_identities — 0056 part 1
+  `CREATE TABLE IF NOT EXISTS "org_email_identities" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "from_address" text NOT NULL,
+     "dkim_domain" text NOT NULL,
+     "dkim_selector" text NOT NULL DEFAULT 'acreos1',
+     "dkim_public_key" text NOT NULL,
+     "dkim_private_key_encrypted" text NOT NULL,
+     "spf_record" text NOT NULL,
+     "dmarc_record" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'provisioning',
+     "sendgrid_domain_id" text,
+     "verification_error" text,
+     "verified_at" timestamptz,
+     "created_at" timestamptz DEFAULT now() NOT NULL,
+     "updated_at" timestamptz DEFAULT now() NOT NULL
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "idx_org_email_identities_org_domain" ON "org_email_identities" ("organization_id", "dkim_domain")',
+  'CREATE INDEX IF NOT EXISTS "idx_org_email_identities_status" ON "org_email_identities" ("status")',
+
+  // email_warmup_state — 0056 part 2
+  `CREATE TABLE IF NOT EXISTS "email_warmup_state" (
+     "organization_id" integer PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+     "first_send_at" timestamptz,
+     "days_since_first_send" integer NOT NULL DEFAULT 0,
+     "daily_send_limit" integer NOT NULL DEFAULT 50,
+     "current_day_used" integer NOT NULL DEFAULT 0,
+     "current_day_reset_at" timestamptz NOT NULL DEFAULT now(),
+     "warmup_complete" boolean NOT NULL DEFAULT false,
+     "updated_at" timestamptz DEFAULT now() NOT NULL
+   )`,
+
+  // unsubscribe_tokens — 0056 part 3
+  `CREATE TABLE IF NOT EXISTS "unsubscribe_tokens" (
+     "token" text PRIMARY KEY,
+     "email" text NOT NULL,
+     "organization_id" integer REFERENCES organizations(id) ON DELETE CASCADE,
+     "created_at" timestamptz DEFAULT now() NOT NULL,
+     "used_at" timestamptz
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_unsubscribe_tokens_email" ON "unsubscribe_tokens" ("email")',
+
+  // email_reputation_snapshot — 0056 part 5
+  `CREATE TABLE IF NOT EXISTS "email_reputation_snapshot" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "window_days" integer NOT NULL DEFAULT 30,
+     "sent_count" integer NOT NULL DEFAULT 0,
+     "bounce_count" integer NOT NULL DEFAULT 0,
+     "complaint_count" integer NOT NULL DEFAULT 0,
+     "bounce_rate" numeric(5, 4) NOT NULL DEFAULT 0,
+     "complaint_rate" numeric(5, 4) NOT NULL DEFAULT 0,
+     "deliverability_score" integer NOT NULL DEFAULT 100,
+     "health_status" text NOT NULL DEFAULT 'healthy',
+     "computed_at" timestamptz DEFAULT now() NOT NULL
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_email_reputation_org_computed" ON "email_reputation_snapshot" ("organization_id", "computed_at" DESC)',
+
+  // email_templates — 0064 part 1
+  `CREATE TABLE IF NOT EXISTS "email_templates" (
+     "id" serial PRIMARY KEY,
+     "key" text NOT NULL,
+     "version" integer NOT NULL DEFAULT 1,
+     "channel" text NOT NULL DEFAULT 'email',
+     "subject" text,
+     "body" text NOT NULL,
+     "category" text NOT NULL DEFAULT 'lifecycle.general',
+     "active" boolean NOT NULL DEFAULT true,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now(),
+     CONSTRAINT "email_templates_key_version_uq" UNIQUE ("key", "version")
+   )`,
+  'CREATE INDEX IF NOT EXISTS "email_templates_key_active_idx" ON "email_templates" ("key", "active")',
+  'CREATE INDEX IF NOT EXISTS "email_templates_category_idx" ON "email_templates" ("category")',
+
+  // lifecycle_message_sends — 0064 part 2
+  `CREATE TABLE IF NOT EXISTS "lifecycle_message_sends" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "user_id" varchar,
+     "template_key" text NOT NULL,
+     "template_version" integer,
+     "channel" text NOT NULL DEFAULT 'email',
+     "recipient_email" text,
+     "recipient_phone" text,
+     "category" text NOT NULL DEFAULT 'lifecycle.general',
+     "status" text NOT NULL DEFAULT 'queued',
+     "outbox_id" integer,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "sent_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "lifecycle_message_sends_org_template_idx" ON "lifecycle_message_sends" ("organization_id", "template_key", "sent_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "lifecycle_message_sends_org_category_idx" ON "lifecycle_message_sends" ("organization_id", "category", "sent_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "lifecycle_message_sends_recipient_idx" ON "lifecycle_message_sends" ("recipient_email")',
+
+  // reactivation_tokens — 0064 part 3
+  `CREATE TABLE IF NOT EXISTS "reactivation_tokens" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "token_hash" text NOT NULL UNIQUE,
+     "issued_at" timestamp NOT NULL DEFAULT now(),
+     "expires_at" timestamp NOT NULL,
+     "redeemed_at" timestamp,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+   )`,
+  'CREATE INDEX IF NOT EXISTS "reactivation_tokens_org_idx" ON "reactivation_tokens" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "reactivation_tokens_expires_idx" ON "reactivation_tokens" ("expires_at")',
+
+  // lead_assignment_rules — 0066 Part B (must precede org_assignment_cursor)
+  `CREATE TABLE IF NOT EXISTS "lead_assignment_rules" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "name" TEXT NOT NULL,
+     "rule_type" TEXT NOT NULL,
+     "priority" INTEGER NOT NULL DEFAULT 100,
+     "territory_filter" JSONB,
+     "weighted_assignees" JSONB,
+     "is_default" BOOLEAN NOT NULL DEFAULT false,
+     "is_active" BOOLEAN NOT NULL DEFAULT true,
+     "created_at" TIMESTAMP DEFAULT now(),
+     "updated_at" TIMESTAMP DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS lead_assignment_rules_org_idx ON lead_assignment_rules(organization_id, is_active, priority)',
+
+  // org_assignment_cursor — 0066 Part B (FK→lead_assignment_rules)
+  `CREATE TABLE IF NOT EXISTS "org_assignment_cursor" (
+     "rule_id" INTEGER PRIMARY KEY REFERENCES lead_assignment_rules(id) ON DELETE CASCADE,
+     "cursor_index" INTEGER NOT NULL DEFAULT 0,
+     "last_assigned_to" INTEGER,
+     "updated_at" TIMESTAMP DEFAULT now()
+   )`,
+
+  // org_integrations_slack — 0066 Part D
+  `CREATE TABLE IF NOT EXISTS "org_integrations_slack" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "provider" TEXT NOT NULL DEFAULT 'slack',
+     "webhook_url" TEXT NOT NULL,
+     "channel_name" TEXT,
+     "event_types" TEXT[] NOT NULL DEFAULT ARRAY['deal_closed','big_lead_arrived']::TEXT[],
+     "is_active" BOOLEAN NOT NULL DEFAULT true,
+     "last_dispatched_at" TIMESTAMP,
+     "last_error" TEXT,
+     "created_at" TIMESTAMP DEFAULT now(),
+     "updated_at" TIMESTAMP DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS org_integrations_slack_org_provider_idx ON org_integrations_slack(organization_id, provider)',
+
+  // offer_approvals — 0066 Part E (FK→offers, present in prod)
+  `CREATE TABLE IF NOT EXISTS "offer_approvals" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "offer_id" INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+     "submitted_by" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'pending',
+     "reviewer_id" TEXT,
+     "reviewer_notes" TEXT,
+     "threshold_amount" NUMERIC NOT NULL,
+     "offer_amount" NUMERIC NOT NULL,
+     "created_at" TIMESTAMP DEFAULT now(),
+     "decided_at" TIMESTAMP
+   )`,
+  'CREATE INDEX IF NOT EXISTS offer_approvals_org_status_idx ON offer_approvals(organization_id, status, created_at)',
+
+  // cancellation_surveys — derived from shared/schema.ts (no canonical migration)
+  `CREATE TABLE IF NOT EXISTS "cancellation_surveys" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id),
+     "user_id" TEXT,
+     "reason" TEXT NOT NULL,
+     "feedback" TEXT,
+     "previous_tier" TEXT,
+     "offered_downgrade" BOOLEAN DEFAULT false,
+     "accepted_downgrade" BOOLEAN DEFAULT false,
+     "created_at" TIMESTAMP DEFAULT now()
+   )`,
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.

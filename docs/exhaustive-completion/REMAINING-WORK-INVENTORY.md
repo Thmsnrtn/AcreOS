@@ -275,6 +275,36 @@ expansion. The polish pass and feature project (F.4, F.6) can wait.
 
 ---
 
+## Compliance posture decisions (parked — needs founder approval)
+
+### audit_events row lockdown (from migration 0049 part 3)
+
+Migration `0049_dsar_audit_subprocessors.sql` parts 3 contains an
+append-only enforcement layer for `audit_events`:
+
+- `audit_events_deny_mutation()` PL/pgSQL function that raises on
+  UPDATE/DELETE unless a privileged session GUC `acreos.allow_audit_mutation = 'on'`
+  is set (production runtime never sets it).
+- Two BEFORE triggers (`audit_events_no_update`, `audit_events_no_delete`)
+  wired to the function.
+- A read-only view `audit_events_immutable_view` for dashboards to
+  consume instead of the underlying table.
+
+**Status:** parked. The `audit_events` table itself shipped clean in §3.1
+and is functioning. The lockdown is a behavioural change (it makes
+audit_events un-deletable except via DBA session GUC) and should not
+ship without explicit founder approval. Compliance/legal counsel may
+want this on the SOC 2 path.
+
+**To ship later:** lift the three `CREATE OR REPLACE FUNCTION` /
+`CREATE TRIGGER` / `CREATE OR REPLACE VIEW` statements from
+`migrations/0049_dsar_audit_subprocessors.sql` lines 79-120 into
+`scripts/migrate.mjs`. All three are idempotent (`OR REPLACE` /
+`DROP IF EXISTS` + recreate). Verify no deploy-time DELETE/UPDATE
+paths exist in app code first (the lockdown will break them).
+
+---
+
 ## Appendix — Files referenced
 
 - `docs/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md` — full audit
