@@ -970,6 +970,249 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "vm_resource_usage_time_idx" ON "vm_resource_usage" ("captured_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "vm_resource_usage_process_group_idx" ON "vm_resource_usage" ("process_group", "captured_at" DESC)',
 
+  // ── §3 Batch 6 — features (10 tables) ───────────────────────────────────
+  // 0058 (ml_training_snapshots), 0067 (property_vision_snapshots), 0068
+  // (title_partners, title_orders), 0069 (import_jobs, export_jobs),
+  // 0070 (etl_jobs, etl_runs), 0073 (acquired_notes, note_payments).
+  //
+  // Order: title_partners before title_orders, etl_jobs before etl_runs,
+  // acquired_notes before note_payments (FK chains).
+  // FK targets verified present: organizations, properties, deals,
+  // system_alerts, leads.
+  // Excluded: 0070 etl_jobs INSERT seed (orchestrator credentials are
+  // operator-set; seeding stub rows when the worker hasn't been wired up
+  // adds noise to the founder /etl UI). Excluded: 0073 part A
+  // (organizations.investor_type ALTER) — column → B8.
+
+  // ml_training_snapshots — 0058
+  `CREATE TABLE IF NOT EXISTS "ml_training_snapshots" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "snapshot_type" TEXT NOT NULL,
+     "subject_type" TEXT NOT NULL,
+     "subject_id" TEXT NOT NULL,
+     "organization_id" INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+     "labels" JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "features" JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "decision_at" TIMESTAMPTZ NOT NULL,
+     "outcome_at" TIMESTAMPTZ,
+     "metadata" JSONB NOT NULL DEFAULT '{}'::jsonb,
+     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT ml_training_snapshots_unique UNIQUE (snapshot_type, subject_type, subject_id, decision_at)
+   )`,
+  'CREATE INDEX IF NOT EXISTS idx_ml_snapshots_type_org_created ON ml_training_snapshots (snapshot_type, organization_id, created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_ml_snapshots_type_decision ON ml_training_snapshots (snapshot_type, decision_at DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_ml_snapshots_subject ON ml_training_snapshots (subject_type, subject_id)',
+  `CREATE INDEX IF NOT EXISTS idx_ml_snapshots_outcome_at ON ml_training_snapshots (outcome_at) WHERE outcome_at IS NOT NULL`,
+
+  // property_vision_snapshots — 0067 (FK→system_alerts, properties, organizations)
+  `CREATE TABLE IF NOT EXISTS "property_vision_snapshots" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "property_id" INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+     "captured_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+     "image_s3_key" TEXT NOT NULL,
+     "image_url" TEXT,
+     "provider" TEXT,
+     "resolution" NUMERIC,
+     "analysis_jsonb" JSONB,
+     "prior_snapshot_id" INTEGER,
+     "change_detection_score" NUMERIC,
+     "change_summary" TEXT,
+     "alerted_to_org" BOOLEAN NOT NULL DEFAULT FALSE,
+     "system_alert_id" INTEGER REFERENCES system_alerts(id) ON DELETE SET NULL,
+     "created_at" TIMESTAMP DEFAULT NOW(),
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS property_vision_snapshots_org_idx ON property_vision_snapshots(organization_id)',
+  'CREATE INDEX IF NOT EXISTS property_vision_snapshots_property_idx ON property_vision_snapshots(property_id)',
+  'CREATE INDEX IF NOT EXISTS property_vision_snapshots_captured_idx ON property_vision_snapshots(captured_at)',
+
+  // title_partners — 0068 (must precede title_orders)
+  `CREATE TABLE IF NOT EXISTS "title_partners" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+     "partner_name" TEXT NOT NULL,
+     "contact_email" TEXT NOT NULL,
+     "contact_phone" TEXT NOT NULL,
+     "territory_states" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+     "territory_counties" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+     "api_key_hash" TEXT NOT NULL,
+     "hmac_secret_encrypted" TEXT NOT NULL,
+     "webhook_url" TEXT NOT NULL,
+     "volume_pricing_tier" TEXT NOT NULL DEFAULT 'pilot',
+     "is_active" BOOLEAN NOT NULL DEFAULT true,
+     "created_at" TIMESTAMP NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS title_partners_active_idx ON title_partners(is_active, volume_pricing_tier)',
+  `CREATE INDEX IF NOT EXISTS title_partners_org_idx ON title_partners(organization_id) WHERE organization_id IS NOT NULL`,
+
+  // title_orders — 0068 (FK→title_partners, deals, organizations)
+  `CREATE TABLE IF NOT EXISTS "title_orders" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "deal_id" INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+     "title_partner_id" INTEGER REFERENCES title_partners(id) ON DELETE SET NULL,
+     "status" TEXT NOT NULL DEFAULT 'pending',
+     "status_details" JSONB NOT NULL DEFAULT '{}'::JSONB,
+     "property_address" JSONB NOT NULL,
+     "buyer_info" JSONB NOT NULL,
+     "seller_info" JSONB NOT NULL,
+     "sale_price" NUMERIC NOT NULL,
+     "expected_closing_date" DATE NOT NULL,
+     "estimated_delivery_date" DATE,
+     "commitment_s3_key" TEXT,
+     "schedule_b_s3_key" TEXT,
+     "policy_s3_key" TEXT,
+     "wire_instructions_pdf_s3_key" TEXT,
+     "wire_instructions_password_hint" TEXT,
+     "wire_instructions_hmac" TEXT,
+     "wire_instructions_issued_at" TIMESTAMP,
+     "wire_confirmation_phone" TEXT,
+     "wire_confirmed_at" TIMESTAMP,
+     "partner_assigned_at" TIMESTAMP,
+     "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+     "updated_at" TIMESTAMP NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS title_orders_org_status_idx ON title_orders(organization_id, status, created_at DESC)',
+  `CREATE INDEX IF NOT EXISTS title_orders_partner_idx ON title_orders(title_partner_id, status) WHERE title_partner_id IS NOT NULL`,
+  'CREATE INDEX IF NOT EXISTS title_orders_deal_idx ON title_orders(deal_id)',
+
+  // import_jobs — 0069
+  `CREATE TABLE IF NOT EXISTS "import_jobs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" text NOT NULL,
+     "kind" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'queued',
+     "filename" text,
+     "payload_ref" text,
+     "field_map" jsonb,
+     "total_rows" integer NOT NULL DEFAULT 0,
+     "processed_count" integer NOT NULL DEFAULT 0,
+     "success_count" integer NOT NULL DEFAULT 0,
+     "error_count" integer NOT NULL DEFAULT 0,
+     "duplicates_skipped" integer NOT NULL DEFAULT 0,
+     "errors" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "result" jsonb,
+     "error_message" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "started_at" timestamp,
+     "completed_at" timestamp
+   )`,
+  'CREATE INDEX IF NOT EXISTS "import_jobs_org_status_idx" ON "import_jobs" ("organization_id", "status", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "import_jobs_status_created_idx" ON "import_jobs" ("status", "created_at")',
+
+  // export_jobs — 0069
+  `CREATE TABLE IF NOT EXISTS "export_jobs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "user_id" text NOT NULL,
+     "kind" text NOT NULL DEFAULT 'everything',
+     "status" text NOT NULL DEFAULT 'queued',
+     "params" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "archive_path" text,
+     "archive_size_bytes" integer,
+     "entity_counts" jsonb,
+     "error_message" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "started_at" timestamp,
+     "completed_at" timestamp,
+     "expires_at" timestamp
+   )`,
+  'CREATE INDEX IF NOT EXISTS "export_jobs_org_status_idx" ON "export_jobs" ("organization_id", "status", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "export_jobs_status_created_idx" ON "export_jobs" ("status", "created_at")',
+
+  // etl_jobs — 0070 (must precede etl_runs)
+  `CREATE TABLE IF NOT EXISTS "etl_jobs" (
+     "id" serial PRIMARY KEY,
+     "job_name" text NOT NULL UNIQUE,
+     "provider_name" text NOT NULL,
+     "source_url" text,
+     "watermark_column" text,
+     "watermark_value" text,
+     "schedule" text NOT NULL DEFAULT '*/15 * * * *',
+     "is_active" boolean NOT NULL DEFAULT true,
+     "soft_delete_on_missing" boolean NOT NULL DEFAULT false,
+     "last_success_at" timestamp,
+     "last_error_at" timestamp,
+     "last_error" text,
+     "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "etl_jobs_provider_idx" ON "etl_jobs" ("provider_name")',
+  'CREATE INDEX IF NOT EXISTS "etl_jobs_active_idx" ON "etl_jobs" ("is_active", "last_success_at")',
+
+  // etl_runs — 0070 (FK→etl_jobs)
+  `CREATE TABLE IF NOT EXISTS "etl_runs" (
+     "id" serial PRIMARY KEY,
+     "job_id" integer NOT NULL REFERENCES etl_jobs(id) ON DELETE CASCADE,
+     "started_at" timestamp NOT NULL DEFAULT now(),
+     "completed_at" timestamp,
+     "status" text NOT NULL DEFAULT 'running',
+     "records_read" integer NOT NULL DEFAULT 0,
+     "records_inserted" integer NOT NULL DEFAULT 0,
+     "records_updated" integer NOT NULL DEFAULT 0,
+     "records_deleted" integer NOT NULL DEFAULT 0,
+     "records_failed" integer NOT NULL DEFAULT 0,
+     "error_message" text,
+     "watermark_before" text,
+     "watermark_after" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "etl_runs_job_started_idx" ON "etl_runs" ("job_id", "started_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "etl_runs_status_idx" ON "etl_runs" ("status")',
+
+  // acquired_notes — 0073 part B (must precede note_payments)
+  `CREATE TABLE IF NOT EXISTS "acquired_notes" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "property_id" INTEGER REFERENCES properties(id) ON DELETE SET NULL,
+     "borrower_id" INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+     "note_number" TEXT NOT NULL,
+     "original_principal_cents" BIGINT NOT NULL,
+     "current_balance_cents" BIGINT NOT NULL,
+     "interest_rate_bps" INTEGER NOT NULL,
+     "term_months" INTEGER NOT NULL,
+     "payment_amount_cents" BIGINT NOT NULL,
+     "payment_due_day" INTEGER NOT NULL,
+     "origination_date" DATE NOT NULL,
+     "maturity_date" DATE NOT NULL,
+     "acquisition_date" DATE NOT NULL,
+     "acquisition_price_cents" BIGINT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'performing',
+     "payer_name" TEXT NOT NULL,
+     "payer_address" JSONB,
+     "payer_encrypted_tin" TEXT,
+     "payer_tin_type" TEXT,
+     "original_lender" TEXT,
+     "assignment_doc_s3_key" TEXT,
+     "notes" TEXT,
+     "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS acquired_notes_org_status_maturity_idx ON acquired_notes(organization_id, status, maturity_date)',
+  'CREATE INDEX IF NOT EXISTS acquired_notes_org_acquisition_idx ON acquired_notes(organization_id, acquisition_date)',
+  'CREATE INDEX IF NOT EXISTS acquired_notes_property_idx ON acquired_notes(property_id)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS acquired_notes_org_number_uk ON acquired_notes(organization_id, note_number)',
+
+  // note_payments — 0073 part C (FK→acquired_notes)
+  `CREATE TABLE IF NOT EXISTS "note_payments" (
+     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     "note_id" UUID NOT NULL REFERENCES acquired_notes(id) ON DELETE CASCADE,
+     "organization_id" INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     "payment_date" DATE NOT NULL,
+     "principal_cents" BIGINT NOT NULL DEFAULT 0,
+     "interest_cents" BIGINT NOT NULL DEFAULT 0,
+     "escrow_cents" BIGINT NOT NULL DEFAULT 0,
+     "late_fee_cents" BIGINT NOT NULL DEFAULT 0,
+     "payment_method" TEXT NOT NULL DEFAULT 'ach',
+     "reference_number" TEXT,
+     "notes" TEXT,
+     "created_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS note_payments_note_date_idx ON note_payments(note_id, payment_date)',
+  'CREATE INDEX IF NOT EXISTS note_payments_org_date_idx ON note_payments(organization_id, payment_date)',
+
   // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
   // CONCURRENTLY is safe because pool.query runs each statement outside an
   // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
