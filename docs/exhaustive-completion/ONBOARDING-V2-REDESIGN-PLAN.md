@@ -2,7 +2,42 @@
 
 **Date:** 2026-05-04
 **Workstream:** C.2 (per Comprehensive Pre-Vertical Stabilization Directive)
-**Status:** **PLAN ONLY — awaiting founder approval before implementation.**
+**Status:** ⏸ **DEFERRED** — see DECISION section below.
+
+---
+
+## DECISION — 2026-05-06
+
+**Outcome:** **Deferred.** Not "complete," not "resolved." The redesign reference is real and the prototype is substantial; what's missing is the data to choose *what* to redesign. Shipping a 3-4 day rebuild against an unknown drop-off step is redesigning blind.
+
+**What was considered:** Three options — (1) full prototype-faithful rebuild (~3-4 days, not the originally framed 2), (2) staged tone/density variant rollout against the current page, (3) defer until per-step funnel telemetry exists.
+
+**What was decided:** **Option 3 — defer.** The grounding facts that drove the call:
+
+- **Volume is too low to read signal.** ~8 signups/month with a 75% drop-off rate is n=8. Any per-step inference is anecdotal until volume grows or instrumentation lands.
+- **The drop-off step is unknown.** No per-step funnel telemetry exists. We don't know whether users bail at Markets, Buy-Box, Connections, Billing, or somewhere else — so we can't say which screens the prototype actually fixes.
+- **Prototype JSX is 100% mock.** The 992 lines in `acreos-onboarding/screens-{1,2,3,4}.jsx` contain zero API calls. A faithful rebuild has to wire markets persistence, buy-box persistence, autonomy persistence, phone capture, provider connections, and billing — that's the 3-4 day reality, not 2.
+- **The Wave 12 investor-type fork has no users.** Zero orgs have used the `notes` or `both` branches. Redesigning the fork before any customer has touched it is solving a problem we haven't observed.
+
+**Rationale:** Onboarding redesigns return on usage volume × measurable friction. Both inputs are currently weak. Deferring preserves the prototype as a reference for when the inputs improve.
+
+### Revisit triggers
+
+Any one of these flips the decision back to "do it now":
+
+1. **Signup volume crosses ~30/month sustained** — enough to read funnel signal even without per-step instrumentation.
+2. **Per-step telemetry shows a single step >50% bail rate** — instrumentation work is queued separately below; once it lands and the data accumulates, a specific friction point would justify a targeted redesign rather than a wholesale rebuild.
+3. **Any `notes` or `both` customer reports specific onboarding friction** — qualitative signal from the investor-type fork can substitute for volume signal.
+4. **The Note Investor vertical ships and creates real demand for the redesign** — e.g., the note flow needs surface area the current page can't accommodate.
+
+### Pre-condition workstream — onboarding-v2 step instrumentation
+
+**Add to follow-ups, low priority, ~½ day, do whenever.** Wire per-step `audit_events` writes (or the equivalent telemetry sink) to `client/src/pages/onboarding-v2.tsx` step transitions. This is the data-collection precondition that turns trigger #2 from "we'd need to instrument first" into "we already have the numbers." No redesign should be authorized until this has been live long enough to read.
+
+### Pending work (canonical references)
+
+- The prototype reference is preserved at `acreos-onboarding/screens-{1,2,3,4}.jsx` (992 lines). It remains the reference design when the redesign is reactivated.
+- The current shipping page is `client/src/pages/onboarding-v2.tsx` (1,543 lines). The Wave 12 investor-type fork (Step 0 land/notes/both) must be preserved through any future redesign per the original directive constraint.
 
 ---
 

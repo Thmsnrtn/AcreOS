@@ -308,6 +308,44 @@ route first (~1.5-2 days for GrowthSection-shaped extraction; less for
 smaller panels). Adding to the monolith makes the eventual extraction
 strictly more expensive. CLAUDE.md flags this rule for future contributors.
 
+### Onboarding v2 redesign (C.2)
+
+**Status:** ⏸ Deferred 2026-05-06 after option review. Not resolved, not in
+flight; documented as a known redesign opportunity awaiting trigger.
+
+`client/src/pages/onboarding-v2.tsx` (1,543 lines) is the current shipping
+onboarding. The prototype redesign reference at
+`acreos-onboarding/screens-{1,2,3,4}.jsx` (992 lines) is structurally
+different — workspace-arrival voice, US-map markets picker, visual deal-glyph
+buy-box, per-agent autonomy slider, tone (founder/plain/coach) and density
+(minimal/helpful/verbose) variants. The prototype JSX is 100% mock; a
+faithful rebuild realistically takes 3-4 days, not 2.
+
+**Decision rationale + revisit triggers:** see
+[ONBOARDING-V2-REDESIGN-PLAN.md → DECISION section](./ONBOARDING-V2-REDESIGN-PLAN.md).
+
+Summary of why deferred: ~8 signups/month (n=8) is too low to read funnel
+signal; no per-step telemetry exists to know which step the 75% drop-off
+happens on; the Wave 12 investor-type fork has zero `notes`/`both` orgs
+yet. Redesigning under those conditions would be redesigning blind.
+
+**Revisit triggers** (any one flips the decision):
+
+1. Signup volume crosses ~30/month sustained.
+2. Per-step telemetry shows a single step >50% bail rate.
+3. Any `notes`/`both` customer reports specific onboarding friction.
+4. Note Investor vertical ships and creates new demand for the redesign.
+
+**Pre-condition workstream — onboarding-v2 step instrumentation:**
+~½ day, low priority. Wire per-step `audit_events` writes to
+`client/src/pages/onboarding-v2.tsx` step transitions so revisit trigger
+#2 becomes legible. No redesign should be authorized until this has been
+live long enough to read.
+
+**Important note when adding to this file:** the Wave 12 investor-type
+fork (Step 0 land/notes/both) must be preserved through any future
+redesign per the original directive constraint.
+
 ---
 
 ## Compliance posture decisions (parked — needs founder approval)

@@ -179,17 +179,17 @@ Migration 0052 changes `deal_patterns.embedding_vector` from `jsonb` to `vector(
 
 ## §6 · Readiness assessment for vertical expansion
 
-**Honest read: ready, modulo the C.1 / C.2 plan calls.**
+**Honest read: ready.** C.1 and C.2 both formally deferred 2026-05-06 with revisit triggers documented.
 
 | Prerequisite | State |
 |---|---|
 | Performance fixes (F1 + F2) | ✅ shipped + verified live (74.6% Brotli reduction) |
 | Production DB schema catch-up | ✅ §3 sweep complete; 87/87 reconciled |
-| Founder-dashboard v2 path | ⏸ awaiting your call on plan A/B/C from `FOUNDER-DASHBOARD-V2-PLAN.md` |
-| Onboarding v2 redesign | ⏸ awaiting your call on `ONBOARDING-V2-REDESIGN-PLAN.md` |
+| Founder-dashboard v2 path | ⏸ deferred 2026-05-06 — see `FOUNDER-DASHBOARD-V2-PLAN.md` DECISION section |
+| Onboarding v2 redesign | ⏸ deferred 2026-05-06 — see `ONBOARDING-V2-REDESIGN-PLAN.md` DECISION section |
 | F verification (post-deploy) | F.3 ready; F.1 + F.2 need `storageState.json` |
 
-After C.1, C.2, and F verification clear, vertical expansion (Note Investor first) is unblocked.
+Vertical expansion (Note Investor first) is unblocked. Remaining stabilization tail: A.2 F3 re-measure, F.1/F.2 verification, optional `field_scout` cleanup.
 
 ---
 
@@ -198,15 +198,16 @@ After C.1, C.2, and F verification clear, vertical expansion (Note Investor firs
 ### Decided 2026-05-06
 
 - **C.1 founder-dashboard v2 — DEFERRED.** Reviewed four options against current state; chose C with honest framing. Note Investor work is orthogonal to `founder-dashboard.tsx` (verified via grep — zero references to `investorType`/`acquired_notes`/note concepts in either dashboard file). Extraction queue preserved as canonical pending work with 5 explicit revisit triggers. See [FOUNDER-DASHBOARD-V2-PLAN.md → DECISION section](./FOUNDER-DASHBOARD-V2-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
+- **C.2 onboarding-v2 redesign — DEFERRED.** Reviewed three options against current state; chose to defer. Volume is too low (~8 signups/month, n=8) to read funnel signal, and no per-step telemetry exists to identify which screen the 75% drop-off is happening on — so a 3-4 day prototype-faithful rebuild would be redesigning blind. Prototype JSX is 100% mock (zero API calls in 992 lines), so realistic effort is 3-4 days, not 2. Wave 12 investor-type fork shipped but zero `notes`/`both` orgs exist yet. Four explicit revisit triggers documented (volume crosses ~30/month, per-step telemetry shows >50% step bail, qualitative friction reports from notes/both customers, or Note Investor vertical creates new demand). Pre-condition workstream queued: ~½ day to instrument per-step `audit_events` writes — should land before any future redesign decision. See [ONBOARDING-V2-REDESIGN-PLAN.md → DECISION section](./ONBOARDING-V2-REDESIGN-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
 
 ### What next
 
 In rough priority order:
 
-1. **C.2 onboarding-v2 redesign plan review** — smaller scope than C.1; same neutral-presentation pattern.
-2. **A.2 F3 preload trim** — re-measure cold load now that F1+F2 are verified live; ship F3 only if cold load > 3s.
-3. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
-4. **Optional cleanup**: retire stale 0003/0072 field_scout_* CREATE TABLE statements; document the migration-vs-schema drift more broadly.
+1. **A.2 F3 preload trim** — re-measure cold load now that F1+F2 are verified live; ship F3 only if cold load > 3s.
+2. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
+3. **Optional cleanup**: retire stale 0003/0072 field_scout_* CREATE TABLE statements; document the migration-vs-schema drift more broadly.
+4. **Onboarding-v2 step instrumentation** (low priority, ~½ day, do whenever) — wire per-step `audit_events` writes to `client/src/pages/onboarding-v2.tsx` step transitions. Pre-condition for the C.2 revisit-trigger #2.
 
 ---
 
