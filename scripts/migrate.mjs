@@ -53,6 +53,25 @@ const STATEMENTS = [
   // Nullable so existing users transparently get client-side defaults.
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "appearance_preferences" jsonb',
 
+  // 2026-05-07 — incident patch. The users-hydration query was 500-ing
+  // every ~3s in prod for any authenticated request because Drizzle's
+  // .select() includes all 17 declared columns, but prod only had 14.
+  // The §3 schema-drift sweep missed the users table; surfaced when
+  // running F.1/F.2 path. Reconciles `users` with shared/models/auth.ts.
+  //
+  //   autonomy_preferences  (jsonb, nullable) — migration 0030 (Per-agent
+  //     autonomy matrix, split from appearance_preferences).
+  //   persona               (text NOT NULL DEFAULT 'land_investor') —
+  //     JC#7 / VERTICAL-EXPANSION-PLAN. Drives onboarding routing,
+  //     vocabulary substitution, persona-gated surfaces. Existing rows
+  //     back-fill to the default; PG11+ does not rewrite the table for
+  //     ADD COLUMN with non-volatile DEFAULT.
+  //   notification_prefs    (jsonb, nullable) — JC#11 (Per-user
+  //     notification matrix). Null = service applies category defaults.
+  'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "autonomy_preferences" jsonb',
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "persona" text NOT NULL DEFAULT 'land_investor'`,
+  'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notification_prefs" jsonb',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
