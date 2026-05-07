@@ -25,6 +25,9 @@ vite.config.ts.*
 tests/e2e/.auth/
 playwright-report/
 test-results/
+# Auth state captured for F.1/F.2 audits — contains live __session JWT
+storageState.json
+/storage-state*.json
 
 # Simulation / audit artifacts
 /*.pdf
