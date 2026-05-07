@@ -193,15 +193,20 @@ After C.1, C.2, and F verification clear, vertical expansion (Note Investor firs
 
 ---
 
-## §7 · What next
+## §7 · Decisions made + what next
+
+### Decided 2026-05-06
+
+- **C.1 founder-dashboard v2 — DEFERRED.** Reviewed four options against current state; chose C with honest framing. Note Investor work is orthogonal to `founder-dashboard.tsx` (verified via grep — zero references to `investorType`/`acquired_notes`/note concepts in either dashboard file). Extraction queue preserved as canonical pending work with 5 explicit revisit triggers. See [FOUNDER-DASHBOARD-V2-PLAN.md → DECISION section](./FOUNDER-DASHBOARD-V2-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
+
+### What next
 
 In rough priority order:
 
-1. **C.1 founder-dashboard v2 plan review** — highest-judgment workstream; recommended next while context is fresh. Read `FOUNDER-DASHBOARD-V2-PLAN.md`, decide A/B/C, authorize implementation.
-2. **C.2 onboarding-v2 redesign plan review** — smaller scope; same decision pattern.
-3. **A.2 F3 preload trim** — re-measure cold load now that F1+F2 are verified live; ship F3 only if cold load > 3s.
-4. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
-5. **Optional cleanup**: retire stale 0003/0072 field_scout_* CREATE TABLE statements; document the migration-vs-schema drift more broadly.
+1. **C.2 onboarding-v2 redesign plan review** — smaller scope than C.1; same neutral-presentation pattern.
+2. **A.2 F3 preload trim** — re-measure cold load now that F1+F2 are verified live; ship F3 only if cold load > 3s.
+3. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
+4. **Optional cleanup**: retire stale 0003/0072 field_scout_* CREATE TABLE statements; document the migration-vs-schema drift more broadly.
 
 ---
 

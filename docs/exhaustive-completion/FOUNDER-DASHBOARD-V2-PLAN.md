@@ -2,7 +2,39 @@
 
 **Date:** 2026-05-04
 **Workstream:** C.1 (per Comprehensive Pre-Vertical Stabilization Directive)
-**Status:** **PLAN ONLY — awaiting founder approval before implementation.**
+**Status:** ⏸ **DEFERRED** — see DECISION section below.
+
+---
+
+## DECISION — 2026-05-06
+
+**Outcome:** **Deferred.** Not "complete," not "resolved." The monolith is real; it is not blocking upcoming Note Investor work, so the 7-9 days of full extraction (Option A) is not paid now.
+
+**What was considered:** Four options — A (full extraction queue), B (literal LiveFeed wrapper), C (defer with honest framing), D (single-panel surgery on GrowthSection).
+
+**What was decided:** **Option C, with honest framing.** Two corrections from the original plan informed the call:
+- **Plan claim "GrowthSection ~2,000 lines" was wrong.** Actual size: ~774 lines including adjacent type defs. Single-panel extraction (Option D) reduces the file by ~10%, not the framed ~28%. Not a meaningful stepping stone unless followed by all 5 extractions.
+- **Note Investor work is orthogonal to this file.** Verified via grep: zero references to `investorType`, `acquired_notes`, or note concepts in `founder-dashboard.tsx` or `founder-home.tsx`. The Note Investor foundation PR shipped without touching either dashboard. The 7 follow-up items in `note-investor-followups.md` and Linnea's persona walkthrough all target customer-facing surfaces (`/notes`, `/finance`, `/pax`, e-sign templates) — never `/founder-dashboard`.
+
+**Rationale:** The dashboard is a maintainability concern, not a velocity blocker. No measurable perf pain attributable to the file specifically (full-project tsc takes ~4:50 but cannot be cleanly attributed). The mechanical hygiene work has already shipped (Wave 9 `acr-*` token codemod, Wave 1 persona-leak ESLint, verb-canon labels). The remaining problem is identity confusion + density, neither of which is in the path of upcoming verticals.
+
+### Revisit triggers
+
+Any one of these flips the decision back to "do it now":
+
+1. **OrgHealth needs note-investor-specific segmentation** — the highest-likelihood organic-growth path; if you start adding `investorType`-aware metrics to `ChurnRiskPanel` or `OrgHealthMonitor`, extract them first instead.
+2. **ActionQueuePanel needs note-specific event types** — same logic; if you'd add ≥100 lines of note-routing to the existing panel, extract it first.
+3. **Any single panel grows by >200 lines** during normal feature work, regardless of vertical.
+4. **Measurable perf pain emerges** — Vite HMR > 2s on this file, IDE goto-definition lag, or `tsc` timing visibly worse with the file present.
+5. **You find yourself avoiding the file when reading patterns** — i.e., copy-pasting from elsewhere because the dashboard is too dense to navigate.
+
+### Pending work (canonical references)
+
+- The 5-item extraction queue is preserved in [`founder-dashboard-extraction-queue.md`](./founder-dashboard-extraction-queue.md) as the canonical to-do.
+- `<LiveFeed />` prototype (47 lines, fake-feed only) — `acreos/round3-features.jsx:398-444`. If shipped later, it'd consume from `agent_llm_traces` or `system_activity` and need ~2-3 days of real wiring (backend endpoint + restyle + auth gate).
+- The "ops console design treatment" from Brief §14 (in `PORT-AUDIT-TIER-5.md`) is directional, not a defined visual system — needs designer judgment when revisited.
+
+---
 
 ---
 

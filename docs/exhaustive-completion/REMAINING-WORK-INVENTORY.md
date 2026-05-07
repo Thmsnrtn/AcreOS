@@ -275,6 +275,41 @@ expansion. The polish pass and feature project (F.4, F.6) can wait.
 
 ---
 
+## Deferred architectural work
+
+### Founder dashboard monolith (C.1)
+
+**Status:** ⏸ Deferred 2026-05-06 after option review. Not resolved, not in
+flight; documented as a known monolith awaiting trigger.
+
+`client/src/pages/founder-dashboard.tsx` is 7,379 lines, 28 top-level
+functions in one file. The page conflates a CEO daily-window surface
+with an operations console (feature flags, A/B tests, endpoint manager,
+agent traces, LLM cost dashboard, ~5 customer-health panels, growth
+campaign management, launch readiness, briefing, agent team panel).
+
+**Decision rationale + revisit triggers:** see
+[FOUNDER-DASHBOARD-V2-PLAN.md → DECISION section](./FOUNDER-DASHBOARD-V2-PLAN.md).
+
+**Canonical pending work:** the 5-item extraction queue lives in
+[founder-dashboard-extraction-queue.md](./founder-dashboard-extraction-queue.md):
+1. API keys + system keys → `/founder/keys`
+2. LaunchReadiness checklist → `/founder/readiness`
+3. ActionQueuePanel → merge into `/founder/todo`
+4. OrgHealth + ChurnRisk + MRRTrajectory → `/founder/customers/health`
+5. GrowthSection (~774 lines incl. adjacent types) → `/founder/growth/campaigns`
+
+Estimated full effort if revisited: 7-9 days (per FOUNDER-DASHBOARD-V2-PLAN
+Option A, including the design-judgment hidden in Phase B).
+
+**Important note when adding to this file:** if a new feature would add
+>100 lines to any of the 5 listed panels, extract that panel into its own
+route first (~1.5-2 days for GrowthSection-shaped extraction; less for
+smaller panels). Adding to the monolith makes the eventual extraction
+strictly more expensive. CLAUDE.md flags this rule for future contributors.
+
+---
+
 ## Compliance posture decisions (parked — needs founder approval)
 
 ### audit_events row lockdown (from migration 0049 part 3)

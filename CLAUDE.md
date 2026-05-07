@@ -52,6 +52,10 @@ Providers are registered by category and priority. The registry handles:
 - Circuit breaking (3 failures in 5 min = skip)
 - Response caching via `provider_cache` table
 
+## Known monoliths
+
+- `client/src/pages/founder-dashboard.tsx` is a deliberately-deferred 7,379-line monolith (C.1 deferral, 2026-05-06 — see `docs/exhaustive-completion/FOUNDER-DASHBOARD-V2-PLAN.md`). **Before adding ≥100 lines to any panel in this file**, extract that panel into its own route first per the 5-item queue in `docs/exhaustive-completion/founder-dashboard-extraction-queue.md`. Adding to the monolith strictly raises the cost of the eventual extraction.
+
 ## Commands
 
 - `npm test` — run all tests
