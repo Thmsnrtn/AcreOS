@@ -220,6 +220,62 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
   }
 });
 
+// Track onboarding-v2 step ENTRY (paired with the existing /progress endpoint
+// which records step completion). Together, entered + completed events let
+// the funnel compute per-step bail rate as orgs_with_entered_N MINUS
+// orgs_with_completed_N. Pre-condition for the C.2 redesign revisit trigger
+// "per-step telemetry shows >50% bail rate at a single step."
+//
+// Idempotent (first-occurrence wins) per the activation_events unique
+// constraint. Safe to call from a useEffect that fires on every step change.
+router.post("/step-entered", async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const { step, path } = req.body || {};
+    if (typeof step !== "number" || step < 1) {
+      res.json({ recorded: false, reason: "step must be a positive number" });
+      return;
+    }
+    const { recordActivationEventAsync, onboardingStepEnteredEvent } = await import("./services/activation");
+    const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+    recordActivationEventAsync({
+      orgId: org.id,
+      userId,
+      eventName: onboardingStepEnteredEvent(step),
+      eventValue: { step, ...(path ? { path } : {}) },
+    });
+    res.json({ recorded: true, step });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Track onboarding-v2 path selection (the Wave 12 land/notes/both fork).
+// Fires once on first path pick. Drives the C.2 revisit trigger #3:
+// "any notes/both customer reports onboarding friction" — without this we
+// can't even tell which orgs took which fork.
+router.post("/path-selected", async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const { path } = req.body || {};
+    if (typeof path !== "string" || !path) {
+      res.json({ recorded: false, reason: "path must be a non-empty string" });
+      return;
+    }
+    const { recordActivationEventAsync } = await import("./services/activation");
+    const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+    recordActivationEventAsync({
+      orgId: org.id,
+      userId,
+      eventName: "onboarding_path_selected",
+      eventValue: { path },
+    });
+    res.json({ recorded: true, path });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Track onboarding v2 step progress
 router.patch("/progress", async (req: Request, res: Response) => {
   try {

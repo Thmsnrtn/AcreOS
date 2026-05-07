@@ -1012,6 +1012,23 @@ export default function OnboardingV2() {
     onSuccess: () => navigate("/dashboard"),
   });
 
+  // Per-step entry telemetry. Fires once on every step landing; the server
+  // dedupes per (org, event) so subsequent visits to the same step are no-op.
+  // Paired with the existing step_completed events written by /progress —
+  // together they let the funnel compute per-step bail rate as
+  // entered_N AND NOT completed_N. Drives the C.2 redesign revisit trigger.
+  // Best-effort; never blocks the flow.
+  useEffect(() => {
+    if (!selectedPath) return;
+    const stepNumber = currentStepIndex + 1;
+    fetch("/api/onboarding/step-entered", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step: stepNumber, path: selectedPath }),
+    }).catch(() => { /* telemetry is best-effort */ });
+  }, [selectedPath, currentStepIndex]);
+
   const advance = (data?: Record<string, any>) => {
     if (data) setFormData((prev) => ({ ...prev, ...data }));
     setIsAnimating(true);
@@ -1115,6 +1132,15 @@ export default function OnboardingV2() {
                 onClick={() => {
                   setSelectedPath(path);
                   setCurrentStepIndex(0);
+                  // Path-selection telemetry — Wave 12 fork visibility
+                  // (land/notes/both/enterprise). Drives C.2 revisit
+                  // trigger #3. Best-effort fire-and-forget.
+                  fetch("/api/onboarding/path-selected", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path }),
+                  }).catch(() => { /* telemetry is best-effort */ });
                 }}
                 className={cn(
                   "text-left p-6 rounded-2xl border-2 transition-all hover:scale-[1.01]",

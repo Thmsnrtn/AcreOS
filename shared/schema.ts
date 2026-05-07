@@ -4721,8 +4721,11 @@ export type DpaStatus = typeof DPA_STATUSES[number];
 
 // Canonical activation events. recordActivationEvent() is idempotent on
 // (organizationId, eventName) so the FIRST occurrence wins. Onboarding step
-// completions use the `onboarding_step_${n}_completed` pattern (see
-// onboardingStepCompletedEvent() helper in server/services/activation.ts).
+// transitions use the `onboarding_step_${n}_entered` and
+// `onboarding_step_${n}_completed` patterns (see onboardingStepEnteredEvent()
+// + onboardingStepCompletedEvent() helpers in server/services/activation.ts).
+// Per-step bail rate = orgs with `_entered` AND NOT `_completed` for step N.
+// Drives the C.2 onboarding-v2 redesign revisit trigger.
 export const ACTIVATION_EVENTS = [
   "org_created",
   "first_lead_added",
@@ -4734,8 +4737,12 @@ export const ACTIVATION_EVENTS = [
   "first_borrower_payment_received",
   "first_1099_generated",
   "first_team_member_invited",
+  "onboarding_path_selected",
 ] as const;
-export type ActivationEvent = typeof ACTIVATION_EVENTS[number] | `onboarding_step_${number}_completed`;
+export type ActivationEvent =
+  | typeof ACTIVATION_EVENTS[number]
+  | `onboarding_step_${number}_entered`
+  | `onboarding_step_${number}_completed`;
 
 export const activationEvents = pgTable("activation_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

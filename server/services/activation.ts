@@ -31,6 +31,16 @@ export function onboardingStepCompletedEvent(stepNumber: number): ActivationEven
 }
 
 /**
+ * Returns the canonical event name for an entered onboarding step.
+ * Pair-fired with the corresponding `_completed` event so per-step bail
+ * rate is computable as `entered_N AND NOT completed_N`. Step numbers are
+ * 1-indexed and align with the wizard's currentStepIndex+1.
+ */
+export function onboardingStepEnteredEvent(stepNumber: number): ActivationEvent {
+  return `onboarding_step_${stepNumber}_entered` as ActivationEvent;
+}
+
+/**
  * Record a first-occurrence activation event. Safe to call from anywhere —
  * fires-and-forgets, never throws into the caller.
  */
