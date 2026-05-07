@@ -1,4 +1,22 @@
 -- ============================================================================
+-- ⚠ STALE — DO NOT RUN AGAINST A FRESH DB.
+-- ============================================================================
+-- This file ALTERs field_scout_photos to add the photo-hash columns and
+-- creates a (organization_id, image_hash) index. But the original 0003
+-- CREATE TABLE for field_scout_photos NEVER added an organization_id column
+-- — so against a freshly-bootstrapped DB this file's CREATE INDEX would
+-- error: column "organization_id" does not exist.
+--
+-- In prod this works because scripts/migrate.mjs (lines 1309-1329 as of
+-- 2026-05-06) recreates field_scout_photos with the canonical shape
+-- (organization_id present), derived from shared/schema.ts. migrate.mjs is
+-- the authoritative apply path; this .sql file is preserved for history.
+--
+-- See: shared/schema-migration-guide.md → "Drift catalog" for full context.
+-- Do not edit in place — Drizzle journal alignment.
+-- ============================================================================
+
+-- ============================================================================
 -- Field-scout photo pipeline — Phase 8 Mo 12 (Yara §1).
 -- ============================================================================
 --

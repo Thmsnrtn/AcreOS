@@ -1,6 +1,6 @@
 # Schema Migration Guide
 
-**Last updated:** 2026-05-04
+**Last updated:** 2026-05-06
 **Owner:** Thomas (founder) until otherwise delegated.
 
 ## Current state — two parallel migration mechanisms
@@ -45,6 +45,19 @@ When you are ready:
 - `migrations/*.sql` files are documentation + the future-Drizzle baseline.
 - DO NOT trust `migrations/meta/_journal.json` for migration order.
 - New migrations: add a `.sql` file AND add the equivalent `IF NOT EXISTS` statements to `migrate.mjs`.
+
+## Drift catalog — migrations that disagree with `shared/schema.ts`
+
+The schema-drift §3 sweep (2026-05-05) reconciled 87 items into prod. Of those, two tables had migration files that *declared a different shape* than the canonical `shared/schema.ts`. For these, the canonical `CREATE TABLE` lives in `scripts/migrate.mjs` (derived from schema.ts), not in the original migration file. The original SQL files are kept for history but are **stale** — running them against a fresh DB without `migrate.mjs` would produce wrong-shape tables and a downstream `CREATE INDEX` failure.
+
+| Table | Stale source | Canonical now | Drift summary |
+|---|---|---|---|
+| `field_scout_visits` | `migrations/0003_robust_namora.sql:511-522` | `scripts/migrate.mjs:1290-1307` | 0003 has no `organization_id`, no `status`/`started_at`/`completed_at`/`updated_at`; declares `duration` + `checklist_results` columns that don't exist in schema.ts. Lat/long types differ (numeric vs real). |
+| `field_scout_photos` | `migrations/0003_robust_namora.sql:498-509` + `migrations/0072_field_scout_photo_hash.sql` | `scripts/migrate.mjs:1309-1329` | 0003 has no `organization_id`/`url`/`caption`; declares `filename`/`mime_type`/`size_bytes`/`captured_at` columns that don't exist in schema.ts. 0072's `CREATE INDEX ... ON field_scout_photos (organization_id, image_hash)` would fail against the 0003-shape table because `organization_id` was never added by either file. |
+
+**Why not edit 0003/0072 in place?** Drizzle's `_journal.json` records 0003 as applied (in the journal that *is* present, up through 0017). Mutating an already-applied migration risks (a) journal-hash mismatch errors when the journal is regenerated, (b) future ambiguity about what shape was actually applied to which prod-vs-fresh DB. Both files are annotated in-line with deprecation headers pointing to `migrate.mjs`; the bodies are otherwise frozen.
+
+**When the Drizzle-canonical migration cutover happens** (per "Recommended next step" above): regenerate `_journal.json` from a fresh introspect of prod, then add a single new migration that captures the field_scout shape from `shared/schema.ts` and retire the stale 0003/0072 statements. Do NOT do this until the staging-test workflow is in place.
 
 ## Why this is OK to defer
 

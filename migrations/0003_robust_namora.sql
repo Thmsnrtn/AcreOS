@@ -495,6 +495,26 @@ CREATE TABLE "fee_payout_schedules" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
+-- ============================================================================
+-- ⚠ STALE — DO NOT TRUST THIS SHAPE.
+-- ============================================================================
+-- The two CREATE TABLE statements below (field_scout_photos, field_scout_visits)
+-- drifted from shared/schema.ts well before the schema-drift §3 sweep. They are
+-- preserved here for historical/journal-integrity reasons but the CANONICAL
+-- shape is created by scripts/migrate.mjs (lines 1290-1329 as of 2026-05-06),
+-- which is derived directly from shared/schema.ts.
+--
+-- Specific drifts vs. canonical:
+--   field_scout_photos: missing organization_id, url, caption; declares
+--     filename/mime_type/size_bytes/captured_at that aren't in schema.ts.
+--   field_scout_visits: missing organization_id, status, started_at,
+--     completed_at, updated_at; declares duration/checklist_results that
+--     aren't in schema.ts. Lat/long types differ (numeric vs real).
+--
+-- See: shared/schema-migration-guide.md → "Drift catalog" for full context
+-- and the cutover plan. Do not edit in place — Drizzle journal records this
+-- migration as applied; mutation risks a journal-hash mismatch.
+-- ============================================================================
 CREATE TABLE "field_scout_photos" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"visit_id" integer,

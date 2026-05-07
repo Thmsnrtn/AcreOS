@@ -32,7 +32,17 @@ Any one of these flips the decision back to "do it now":
 
 ### Pre-condition workstream — onboarding-v2 step instrumentation
 
-**Add to follow-ups, low priority, ~½ day, do whenever.** Wire per-step `audit_events` writes (or the equivalent telemetry sink) to `client/src/pages/onboarding-v2.tsx` step transitions. This is the data-collection precondition that turns trigger #2 from "we'd need to instrument first" into "we already have the numbers." No redesign should be authorized until this has been live long enough to read.
+**✅ Shipped 2026-05-06.** Wired into existing `activation_events` (which already records `onboarding_step_${n}_completed`); added complementary `onboarding_step_${n}_entered` events plus a Wave-12-fork-aware `onboarding_path_selected` event. Per-step bail rate is now computable as `orgs_with_entered_N MINUS orgs_with_completed_N`. No redesign should be authorized until events have accumulated enough to read signal — interpret the numbers cautiously at the current ~8 signups/month volume.
+
+**What the data will tell you:**
+- `onboarding_path_selected` (with `eventValue.path`) — first-occurrence fork visibility. Lets you answer "have any orgs taken the notes/both fork?" today (revisit trigger #3).
+- `onboarding_step_${n}_entered` AND NOT `onboarding_step_${n}_completed` — orgs that landed on step N but never advanced. This is the bail-rate signal (revisit trigger #2).
+- Funnel query lives in `server/services/activation.ts::getActivationFunnel()` — the existing `/founder/activation` surface picks these up automatically without further wiring because it just reads all activation_events.
+
+**Implementation pointers** (for revisiting this work):
+- `server/services/activation.ts::onboardingStepEnteredEvent()` — the helper.
+- `server/routes-onboarding.ts` — `POST /api/onboarding/step-entered` and `POST /api/onboarding/path-selected`.
+- `client/src/pages/onboarding-v2.tsx` — useEffect on `[selectedPath, currentStepIndex]` fires the entered event; path-selection click handler fires the path event. Both best-effort.
 
 ### Pending work (canonical references)
 

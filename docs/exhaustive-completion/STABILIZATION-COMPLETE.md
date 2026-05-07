@@ -16,13 +16,13 @@ Production AcreOS now matches what's declared in the codebase. Three blockers we
 2. **Schema drift fully reconciled** (2026-05-05) — 62 missing tables + 25 missing columns + unaccent extension all landed across §3 Batches 1-9. Verified live in prod via `to_regclass` + `information_schema.columns` + `pg_extension`. **87/87 schema items present.** See [SCHEMA-DRIFT-AUDIT.md](./SCHEMA-DRIFT-AUDIT.md) for the per-batch table and parked items.
 3. **Worker hot-loop resolved** — the outbox-poll loop went from `~12 errors/min` (B1) → `~10/min` (B1+stale schema) → `~9/min` (the ::text[] cast attempt) → **0/min** after switching to `IN (sql.join(...))`. See §3b below for the Drizzle-specific finding.
 
-**Remaining work in the original directive:** C.1 (founder-dashboard v2 plan), C.2 (onboarding-v2 redesign plan), A.2 F3 (preload trim). All three are intentionally founder-judgment-gated and unblocked once you weigh in.
+**Remaining work in the original directive:** all three founder-judgment-gated items (C.1, C.2, A.2 F3) **resolved 2026-05-06** — all deferred with explicit revisit triggers. Hard floor and soft floor both closed; vertical expansion (Note Investor) is unblocked modulo F.1/F.2 visual verification (which needs `storageState.json` from a logged-in session).
 
 ---
 
 ## TL;DR
 
-**Stabilization is complete.** Hard floor (B-series mechanical fixes + A.2 perf fixes + E white-label park + D schema decision + §3 schema sweep) all shipped and live in prod. Soft floor (C.1 founder-dashboard, C.2 onboarding-v2 redesign) **plans written, awaiting your approval** per directive ("STOP and present plan to founder before implementing"). A.2 F3 (preload trim) deferred per the original sequencing rule ("only ship if F1+F2 don't get cold load under 3s") — re-measure now that the dust has settled.
+**Stabilization is complete.** Hard floor (B-series mechanical fixes + A.2 perf fixes + E white-label park + D schema decision + §3 schema sweep) all shipped and live in prod. Soft floor (C.1 founder-dashboard, C.2 onboarding-v2 redesign) reviewed 2026-05-06 and both formally **deferred with explicit revisit triggers**. A.2 F3 (preload trim) re-measured 2026-05-06 — cold load ~0.8-1.0s TTI on broadband, ~3× under the 3s threshold; F3 deferred per sequencing rule. F.1/F.2 visual verification still needs `storageState.json` from a logged-in browser session.
 
 **Customer impact during this entire session: zero.** Production app served from version 352 throughout the migrate.mjs blockage; once unblocked (v6), the catch-up was additive-only and no downtime occurred.
 
@@ -39,7 +39,7 @@ Production AcreOS now matches what's declared in the codebase. Three blockers we
 | **A.2 F1 pre-compress + serve override** | ✅ shipped + verified live | `6157644` | `vite-plugin-compression` + static-serve middleware; live `index.js` 603 KB → 153 KB Brotli (74.6% reduction) |
 | **A.2 follow-on Docker context** | ✅ shipped | `73ce06a` `0f69fd6` | `.dockerignore` exclusions; build context dropped from **3+ GB → 42 MB** (70× faster deploys) |
 | **A.2 follow-on migrate.mjs** | ✅ shipped | `3a3bff4` | **Critical unblock** — see §3 narrative |
-| **A.2 F3 preload trim** | ⏸ pending re-measure | — | Per A.2 sequencing rule: only ship if F1+F2 don't get cold load under 3s. Re-measure now that prod is stable. |
+| **A.2 F3 preload trim** | ⏸ deferred 2026-05-06 | — | Re-measured cold load against acreos.io: ~680 ms bytes-on-wire critical path (median of 3 runs, HTTP/2 parallel, Brotli verified) → ~0.8-1.0s estimated TTI on broadband. F1+F2 cleared the 3s threshold with ~3× margin, so F3 not shipped per sequencing rule. See §7 for revisit triggers. |
 
 ### Workstream B — Mechanical infrastructure
 
@@ -199,15 +199,22 @@ Vertical expansion (Note Investor first) is unblocked. Remaining stabilization t
 
 - **C.1 founder-dashboard v2 — DEFERRED.** Reviewed four options against current state; chose C with honest framing. Note Investor work is orthogonal to `founder-dashboard.tsx` (verified via grep — zero references to `investorType`/`acquired_notes`/note concepts in either dashboard file). Extraction queue preserved as canonical pending work with 5 explicit revisit triggers. See [FOUNDER-DASHBOARD-V2-PLAN.md → DECISION section](./FOUNDER-DASHBOARD-V2-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
 - **C.2 onboarding-v2 redesign — DEFERRED.** Reviewed three options against current state; chose to defer. Volume is too low (~8 signups/month, n=8) to read funnel signal, and no per-step telemetry exists to identify which screen the 75% drop-off is happening on — so a 3-4 day prototype-faithful rebuild would be redesigning blind. Prototype JSX is 100% mock (zero API calls in 992 lines), so realistic effort is 3-4 days, not 2. Wave 12 investor-type fork shipped but zero `notes`/`both` orgs exist yet. Four explicit revisit triggers documented (volume crosses ~30/month, per-step telemetry shows >50% step bail, qualitative friction reports from notes/both customers, or Note Investor vertical creates new demand). Pre-condition workstream queued: ~½ day to instrument per-step `audit_events` writes — should land before any future redesign decision. See [ONBOARDING-V2-REDESIGN-PLAN.md → DECISION section](./ONBOARDING-V2-REDESIGN-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
+- **A.2 F3 preload trim — DEFERRED.** Re-measured cold load against `acreos.io` (logged-out, cold cache, HTTP/2 parallel, Brotli verified). Methodology: `curl --http2 --parallel` for 11 critical-path assets (1 entry script + 7 modulepreload chunks + 1 stylesheet + 2 woff2 fonts). Median bytes-on-wire critical path: **679 ms** (range 664-753 ms across 3 runs). Slowest single asset: `index.js` entry chunk at ~360 ms — pdf+charts finish in the same window, so they are *not* the long pole on broadband. Adding a 150-300 ms desktop V8 parse/exec budget for 1.95 MB raw JS → estimated TTI **~0.8-1.0s** on broadband, ~3× under the 3s threshold. F1+F2 cleared the bar; F3 sequencing rule says don't ship. **Compression sanity check passes:** 503.9 KB Brotli wire / 1950.8 KB raw JS = 74% reduction, matching the 74.6% F1 deploy claim.
+  - **Slow-4G envelope (honest caveat):** worst-case bandwidth-bound simulation (1.5 Mbps aggregate, no multiplexing) puts bytes-on-wire at ~3.4s, borderline over 3s for constrained connections. F3 would save ~32% wire bytes (~205 KB Brotli / ~800 KB raw) and bring slow-4G cases to ~2.6s wire / ~3.0s TTI. Doesn't justify shipping now — Land Investors are predominantly desk-based and broadband is the dominant cold-load condition.
+  - **Revisit triggers** (any one flips the decision): (a) RUM data shows >5% of cold loads on connections worse than fast 4G; (b) a mobile-heavy vertical ships and shifts user-mix toward constrained connections; (c) total cold-load JS wire grows materially (e.g., > 700 KB) such that broadband margin shrinks; (d) the static-import bug suspected in PERFORMANCE-DIAGNOSTIC §N1 surfaces another way and you want to clean up the preload list anyway.
+
+### Also shipped 2026-05-06
+
+- **Onboarding-v2 step instrumentation — SHIPPED.** Wired complementary `onboarding_step_${n}_entered` and `onboarding_path_selected` events into the existing `activation_events` system. Per-step bail rate now computable as `entered_N MINUS completed_N`. Server: `POST /api/onboarding/step-entered` + `POST /api/onboarding/path-selected` in `server/routes-onboarding.ts`. Client: best-effort fetch from `client/src/pages/onboarding-v2.tsx` (useEffect on step change + path-click handler). Type check clean. Drives C.2 revisit triggers #2 and #3 — events will accumulate in the background; interpret cautiously at ~8 signups/month volume.
+- **field_scout migration drift — DOCUMENTED.** Annotated `migrations/0003_robust_namora.sql` and `migrations/0072_field_scout_photo_hash.sql` with deprecation headers pointing to `scripts/migrate.mjs:1290-1329` as canonical (derived from `shared/schema.ts`). Added a "Drift catalog" section to `shared/schema-migration-guide.md` with the full per-table drift summary and the cutover plan. Original migration files left structurally untouched to preserve Drizzle journal alignment.
 
 ### What next
 
-In rough priority order:
+The only founder-input-gated item left:
 
-1. **A.2 F3 preload trim** — re-measure cold load now that F1+F2 are verified live; ship F3 only if cold load > 3s.
-2. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
-3. **Optional cleanup**: retire stale 0003/0072 field_scout_* CREATE TABLE statements; document the migration-vs-schema drift more broadly.
-4. **Onboarding-v2 step instrumentation** (low priority, ~½ day, do whenever) — wire per-step `audit_events` writes to `client/src/pages/onboarding-v2.tsx` step transitions. Pre-condition for the C.2 revisit-trigger #2.
+1. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
+
+After F.1/F.2 clear, vertical expansion (Note Investor first) is fully unblocked.
 
 ---
 

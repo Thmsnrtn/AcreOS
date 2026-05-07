@@ -337,10 +337,12 @@ yet. Redesigning under those conditions would be redesigning blind.
 4. Note Investor vertical ships and creates new demand for the redesign.
 
 **Pre-condition workstream — onboarding-v2 step instrumentation:**
-~½ day, low priority. Wire per-step `audit_events` writes to
-`client/src/pages/onboarding-v2.tsx` step transitions so revisit trigger
-#2 becomes legible. No redesign should be authorized until this has been
-live long enough to read.
+✅ Shipped 2026-05-06. Wired complementary `onboarding_step_${n}_entered`
+and `onboarding_path_selected` events into the existing `activation_events`
+system; per-step bail rate now computable as `entered_N MINUS completed_N`.
+See ONBOARDING-V2-REDESIGN-PLAN.md DECISION section for implementation
+pointers and how to read the data. Events will accumulate in the
+background; interpret cautiously at the current ~8 signups/month volume.
 
 **Important note when adding to this file:** the Wave 12 investor-type
 fork (Step 0 land/notes/both) must be preserved through any future
