@@ -156,6 +156,7 @@ import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
 import { registerQuietTitleRoutes } from "./routes-quiet-title";
+import { registerWholesalerRuleRoutes } from "./routes-wholesaler-rules";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1732,6 +1733,8 @@ export async function registerRoutes(
   registerTaxRuleRoutes(app);
   // Tax-Delinquent vertical TD-6 — quiet-title workflow.
   registerQuietTitleRoutes(app);
+  // Wholesaler vertical W-1 — per-state assignment-legality rules.
+  registerWholesalerRuleRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

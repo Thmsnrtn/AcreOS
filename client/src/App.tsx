@@ -86,6 +86,8 @@ const AuctionWorksheetPage = React.lazy(() => import("@/pages/auction-worksheet"
 const CountyDetailPage = React.lazy(() => import("@/pages/county-detail"));
 // Tax-Delinquent vertical TD-6 — quiet-title workflow.
 const QuietTitlePage = React.lazy(() => import("@/pages/quiet-title"));
+// Wholesaler vertical W-1 — assignment-legality state rules.
+const WholesalerStateRulesPage = React.lazy(() => import("@/pages/wholesaler-state-rules"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -587,6 +589,12 @@ function Router() {
       </Route>
       <Route path="/quiet-title/:id">
         {() => <ProtectedRoute component={QuietTitlePage} />}
+      </Route>
+      <Route path="/wholesaler-state-rules">
+        {() => <ProtectedRoute component={WholesalerStateRulesPage} />}
+      </Route>
+      <Route path="/wholesaler-state-rules/:state">
+        {() => <ProtectedRoute component={WholesalerStateRulesPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

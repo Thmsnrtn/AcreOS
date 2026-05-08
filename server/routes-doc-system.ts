@@ -703,8 +703,8 @@ export function registerDocSystemRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const { templateId, dealId, propertyId, name, variables } = req.body;
-      
+      const { templateId, dealId, propertyId, name, variables, ackComplianceWarning } = req.body;
+
       if (!templateId) {
         return Errors.badRequest(res, "Template ID is required");
       }
@@ -720,6 +720,39 @@ export function registerDocSystemRoutes(app: Express): void {
         ...resolvedCtx,
         ...(variables && typeof variables === 'object' ? variables : {}),
       };
+
+      // ── W-1: Wholesaler state-rule compliance gate ─────────────────────
+      // Trey's deal-killer: "If AcreOS lets me generate and send an
+      // assignment-of-contract document in a regulated state without a
+      // warning, the platform is materially complicit." Block when the
+      // state requires a license; warn (with ack) when restrictions apply
+      // but assignment may still be permissible.
+      if (template.type === "assignment_of_contract") {
+        const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
+        const result = await checkAssignmentCompliance(mergedVars.state);
+        if (result.blocked) {
+          return res.status(409).json({
+            error: "wholesaler_compliance_blocked",
+            message: result.summary,
+            recommendation: result.recommendation,
+            citation: result.citation,
+            attorneyReviewed: result.attorneyReviewed,
+            statusCode: 409,
+          });
+        }
+        if (result.warn && !ackComplianceWarning) {
+          return res.status(409).json({
+            error: "wholesaler_compliance_warn",
+            message: result.summary,
+            recommendation: result.recommendation,
+            citation: result.citation,
+            attorneyReviewed: result.attorneyReviewed,
+            actionRequired: "set ackComplianceWarning=true in the request to acknowledge and proceed",
+            statusCode: 409,
+          });
+        }
+      }
+
       let generatedContent = template.content;
       for (const [key, value] of Object.entries(mergedVars)) {
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');

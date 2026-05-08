@@ -17981,6 +17981,50 @@ export type QuietTitleStep = typeof quietTitleSteps.$inferSelect;
 export type InsertQuietTitleStep = typeof quietTitleSteps.$inferInsert;
 
 // ============================================================================
+// WHOLESALER STATE RULES — assignment legality by jurisdiction
+// ----------------------------------------------------------------------------
+// Trey's deal-killer §7: "If AcreOS lets me generate and send an assignment-
+// of-contract document in a regulated state without a warning, and I get
+// caught, the platform is materially complicit in my legal exposure. […]
+// The fix is small: a JSON file of state rules, a check in the assignment-
+// template generator, and a warning banner."
+//
+// This table is the JSON-file replacement — paralegal-updateable without
+// code deploys. Same shape as tax_jurisdiction_rules (TD-3) — review
+// stamps + citation + recommendation.
+// ============================================================================
+
+export const WHOLESALER_RULE_STATUSES = [
+  "unrestricted",            // assignment-for-fee fine
+  "license_required",        // need a real-estate license to assign for a fee
+  "advertising_restricted",  // can't market property you don't own
+  "pending_legislation",     // bill in flight; behavior may change
+] as const;
+export type WholesalerRuleStatus = typeof WHOLESALER_RULE_STATUSES[number];
+
+export const wholesalerStateRules = pgTable(
+  "wholesaler_state_rules",
+  {
+    state: text("state").primaryKey(), // 2-letter
+    status: text("status").$type<WholesalerRuleStatus>().notNull(),
+    licenseRequired: boolean("license_required").notNull().default(false),
+    advertisingRestricted: boolean("advertising_restricted").notNull().default(false),
+    // Recommendation surfaced to the operator: 'unrestricted' | 'double_close_only'
+    // | 'license_required' | 'consult_counsel'.
+    recommendation: text("recommendation").notNull().default("unrestricted"),
+    citation: text("citation"),
+    summary: text("summary"),       // 1-2 sentence what's restricted
+    detail: text("detail"),         // long-form notes
+    attorneyReviewedAt: timestamp("attorney_reviewed_at", { withTimezone: true }),
+    attorneyReviewedBy: text("attorney_reviewed_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+export type WholesalerStateRule = typeof wholesalerStateRules.$inferSelect;
+export type InsertWholesalerStateRule = typeof wholesalerStateRules.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

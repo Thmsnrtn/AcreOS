@@ -403,6 +403,67 @@ const STATEMENTS = [
   'CREATE UNIQUE INDEX IF NOT EXISTS "quiet_title_steps_case_step_uk" ON "quiet_title_steps" ("case_id", "step_key")',
   'CREATE INDEX IF NOT EXISTS "quiet_title_steps_org_idx" ON "quiet_title_steps" ("organization_id", "required_by_date")',
 
+  // Wholesaler vertical W-1 — per-state assignment-legality rules.
+  // Trey's deal-killer §7. Replaces a hardcoded JSON file so paralegals
+  // can update without deploys.
+  `CREATE TABLE IF NOT EXISTS "wholesaler_state_rules" (
+     "state" text PRIMARY KEY,
+     "status" text NOT NULL,
+     "license_required" boolean NOT NULL DEFAULT false,
+     "advertising_restricted" boolean NOT NULL DEFAULT false,
+     "recommendation" text NOT NULL DEFAULT 'unrestricted',
+     "citation" text,
+     "summary" text,
+     "detail" text,
+     "attorney_reviewed_at" timestamptz,
+     "attorney_reviewed_by" text,
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  // Seed the states Trey explicitly called out + a few additional
+  // commonly-cited restrictions. attorney_reviewed_at NULL for now —
+  // UI marks them preliminary.
+  `INSERT INTO "wholesaler_state_rules"
+     ("state","status","license_required","advertising_restricted","recommendation","citation","summary","detail")
+     VALUES
+     ('IL','license_required',true,true,'double_close_only','225 ILCS 454/10-5; 765 ILCS 605/3','Illinois requires a real-estate license to assign a contract for a fee. Marketing a property you do not own is also restricted.','HB 2398 (effective 2019) added wholesale assignment to the licensed-activities list. Penalty: misdemeanor + administrative fine.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary","detail")
+     VALUES ('OK','license_required',true,true,'double_close_only','OK ST 59 §858-102 (as amended by HB 2496, eff. 2021)','Oklahoma added wholesaling to licensed activities. Marketing properties under contract for assignment requires a license.','License-required state. The legal-safe path is double-close (you take title, sell title) — see /double-close.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary","detail")
+     VALUES ('SC','advertising_restricted',false,true,'consult_counsel','S.C. Code §40-57-30','South Carolina restricts marketing of properties you do not own; assignment for a fee may trigger licensing requirements.','Advertising restrictions are particular to SC: cannot market a property in which you do not hold title or an enforceable contract.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary","detail")
+     VALUES ('PA','pending_legislation',false,false,'consult_counsel','PA HB 1158 (2025 session)','Pennsylvania has pending legislation that would require wholesaler licensing. Bill not yet enacted as of 2026.','Watch list. Confirm current status with PA Real Estate Commission before relying on assignment-for-fee in PA.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('AZ','unrestricted',false,false,'unrestricted','A.R.S. §32-2122','Arizona permits assignment-for-fee without licensing.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('TX','unrestricted',false,false,'unrestricted','Tex. Occ. Code §1101.0045','Texas permits wholesaling but requires the wholesaler to disclose equitable interest, not the property itself, when marketing.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('FL','unrestricted',false,false,'unrestricted','Fla. Stat. §475.011','Florida permits assignment-for-fee without licensing.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('GA','unrestricted',false,false,'unrestricted','O.C.G.A. §43-40-29','Georgia permits assignment-for-fee.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('CA','advertising_restricted',false,true,'consult_counsel','Cal. Bus. & Prof. Code §10131','California advertising restrictions can apply to wholesale marketing in some configurations.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('NV','unrestricted',false,false,'unrestricted','Nev. Rev. Stat. §645.0445','Nevada permits assignment-for-fee.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('OH','unrestricted',false,false,'unrestricted','Ohio Rev. Code §4735.01','Ohio permits wholesaling.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('NC','unrestricted',false,false,'unrestricted','N.C. Gen. Stat. §93A-2','North Carolina permits assignment-for-fee with disclosure.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "wholesaler_state_rules" ("state","status","license_required","advertising_restricted","recommendation","citation","summary")
+     VALUES ('TN','unrestricted',false,false,'unrestricted','Tenn. Code Ann. §62-13-103','Tennessee permits assignment-for-fee.')
+     ON CONFLICT (state) DO NOTHING`,
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
