@@ -176,6 +176,7 @@ import { registerBidEstimateRoutes } from "./routes-bid-estimates";
 import { registerConstructionDrawRoutes } from "./routes-construction-draws";
 import { registerRentalRoutes } from "./routes-rentals";
 import { registerRentLedgerRoutes } from "./routes-rent-ledger";
+import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1792,6 +1793,8 @@ export async function registerRoutes(
   registerRentalRoutes(app);
   // Buy-and-hold vertical BH-3 — rent ledger + state late-fee engine.
   registerRentLedgerRoutes(app);
+  // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
+  registerMoveInspectionRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
