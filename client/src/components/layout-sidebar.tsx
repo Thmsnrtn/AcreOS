@@ -108,6 +108,10 @@ import {
   Calendar,
   Ruler,
   Wallet,
+  Key,
+  ListChecks,
+  Heart,
+  Megaphone,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
@@ -593,6 +597,13 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       // Periodic / specialized surfaces — accessible from sidebar but not
       // crowding the daily list. Founder hits these weekly or less.
+      // F-D #1..#5 extractions — focused routes carved out of the legacy
+      // operations console. Every entry below points at a self-contained
+      // page that previously lived in /founder-dashboard.tsx.
+      { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
+      { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
+      { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
+      { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", description: "Meta ads, AI campaign wizard, attribution" },
       { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
       { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
       { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
