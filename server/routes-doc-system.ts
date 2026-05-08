@@ -981,6 +981,80 @@ export function registerDocSystemRoutes(app: Express): void {
     }
   });
 
+  // FW-HARLOWE-1 (push-forward 2026-05-08): ESIGN integrity Phase 2 —
+  // completion certificate. Returns the legal artifact: doc identity,
+  // captured content-hash, hash re-verification (tamper detection), and
+  // every signature row with name + email + IP + UA + timestamp +
+  // consent text.
+  //
+  // Harlowe's lead recommendation: "ESIGN content-hash integrity layer +
+  // ASC 606 subscription ledger — non-negotiable for acquirer diligence
+  // or Series-A." Sam, Wynne, Indira all converged. Post-sign immutability
+  // (route-level) + BEFORE-trigger (DB-level, this same migration) +
+  // completion certificate (this route) + content-hash re-verification
+  // form the four-part ESIGN evidentiary stack.
+  //
+  // GET /api/generated-documents/:id/completion-certificate
+  api.get("/api/generated-documents/:id/completion-certificate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return Errors.badRequest(res, "Invalid document ID");
+      }
+
+      const document = await storage.getGeneratedDocument(org.id, documentId);
+      if (!document) {
+        return Errors.notFound(res, "Document");
+      }
+
+      const signatures = await storage.getDocumentSignatures(documentId);
+      const currentContentHash = document.content
+        ? crypto.createHash("sha256").update(document.content).digest("hex")
+        : null;
+
+      // Tamper detection: every signature captures the doc's hash at sign
+      // time. If any signature's captured hash differs from the current
+      // content hash, the document was mutated post-signature (a route-level
+      // and DB-trigger guard SHOULD make this impossible — this check is
+      // belt-and-suspenders).
+      const tamperEvidence = signatures.map((sig: any) => ({
+        signatureId: sig.id,
+        signerName: sig.signerName,
+        signerEmail: sig.signerEmail,
+        signerRole: sig.signerRole,
+        signedAt: sig.createdAt,
+        ipAddress: sig.ipAddress,
+        userAgent: sig.userAgent,
+        consentGiven: sig.consentGiven,
+        consentText: sig.consentText,
+        capturedContentHash: sig.documentContentHash,
+        currentContentHash,
+        hashMatchesNow: !!sig.documentContentHash
+          && sig.documentContentHash === currentContentHash,
+      }));
+
+      const allHashesMatch = tamperEvidence.length > 0
+        && tamperEvidence.every((s) => s.hashMatchesNow);
+
+      return res.json({
+        documentId: document.id,
+        documentName: document.name,
+        documentType: document.type,
+        documentStatus: document.status,
+        currentContentHash,
+        signatureCount: signatures.length,
+        allSignatureHashesMatchCurrentContent: allHashesMatch,
+        signatures: tamperEvidence,
+        certificateGeneratedAt: new Date().toISOString(),
+        certificateAuthority: "AcreOS",
+      });
+    } catch (error) {
+      logger.error("Completion certificate error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
   // POST /api/generated-documents/:id/request-signature - Request signatures (native system)
   api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {

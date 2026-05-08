@@ -2587,6 +2587,36 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
 
+  // FW-HARLOWE-1 (push-forward 2026-05-08): ESIGN integrity layer Phase 2.
+  // Defense-in-depth Postgres-level immutability guard. The route-level
+  // check in PUT /api/generated-documents/:id (R2) stops API mutations,
+  // but ad-hoc DB writes / ORM bypasses / future routes could still
+  // mutate a signed document's content, breaking the SHA-256 hash
+  // captured on the signature row. This BEFORE-trigger raises at the
+  // database level, so the protection holds no matter how the write
+  // arrives.
+  `CREATE OR REPLACE FUNCTION acreos_block_signed_doc_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     IF OLD.status IN ('signed', 'partially_signed', 'final') THEN
+       IF (NEW.content IS DISTINCT FROM OLD.content)
+          OR (NEW.variables IS DISTINCT FROM OLD.variables)
+          OR (NEW.signers IS DISTINCT FROM OLD.signers) THEN
+         RAISE EXCEPTION
+           'generated_documents % is in immutable status %; content/variables/signers cannot be modified',
+           OLD.id, OLD.status
+           USING ERRCODE = 'restrict_violation';
+       END IF;
+     END IF;
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS acreos_block_signed_doc_mutation_trigger ON "generated_documents"`,
+  `CREATE TRIGGER acreos_block_signed_doc_mutation_trigger
+     BEFORE UPDATE ON "generated_documents"
+     FOR EACH ROW
+     EXECUTE FUNCTION acreos_block_signed_doc_mutation()`,
+
   // FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure.
   // Async (not Slack/Discord), weekly cadence, top-of-funnel acquisition.
   `CREATE TABLE IF NOT EXISTS "community_letters" (
