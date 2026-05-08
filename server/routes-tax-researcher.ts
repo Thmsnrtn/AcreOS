@@ -261,6 +261,94 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
   }
 });
 
+// GET /tax-researcher/county-summary?state=TN&county=Shelby
+// Aggregates counts for the county hub (TD-5). Marcus: "Click a county,
+// see its auction schedule, its delinquent-owner list, its redemption
+// clock, its mailer drops."
+router.get('/county-summary', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const state = (req.query.state as string | undefined)?.toUpperCase();
+    const county = req.query.county as string | undefined;
+    if (!state || !county) {
+      return res.status(400).json({ error: "state + county query params required" });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const in90 = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+
+    // We need: leads (drizzle), tax_certificates, tax_sale_listings,
+    // tax_sale_auctions counts. Use sql tagged for COUNT readability.
+    const { sql: sqlTag } = await import("drizzle-orm");
+    const { leads: leadsTbl, taxCertificates, taxSaleListings, taxSaleAuctions } = await import("@shared/schema");
+
+    const [{ leadsCount = 0 } = {}] = await drizzleDb
+      .select({ leadsCount: sqlTag<number>`COUNT(*)::int` })
+      .from(leadsTbl)
+      .where(and(
+        eq(leadsTbl.organizationId, org.id),
+        eq(leadsTbl.taxDelinquent, true),
+        eq(leadsTbl.state, state),
+        eq(leadsTbl.county, county),
+      ));
+
+    const [{ activeCerts = 0 } = {}] = await drizzleDb
+      .select({ activeCerts: sqlTag<number>`COUNT(*)::int` })
+      .from(taxCertificates)
+      .where(and(
+        eq(taxCertificates.organizationId, org.id),
+        eq(taxCertificates.status, "active"),
+        eq(taxCertificates.state, state),
+        eq(taxCertificates.county, county),
+      ));
+
+    const [{ overdueCerts = 0 } = {}] = await drizzleDb
+      .select({ overdueCerts: sqlTag<number>`COUNT(*)::int` })
+      .from(taxCertificates)
+      .where(and(
+        eq(taxCertificates.organizationId, org.id),
+        eq(taxCertificates.status, "active"),
+        eq(taxCertificates.state, state),
+        eq(taxCertificates.county, county),
+        sqlTag`${taxCertificates.redemptionDeadline} < ${today}`,
+      ));
+
+    const [{ upcomingAuctions = 0 } = {}] = await drizzleDb
+      .select({ upcomingAuctions: sqlTag<number>`COUNT(*)::int` })
+      .from(taxSaleAuctions)
+      .where(and(
+        eq(taxSaleAuctions.organizationId, org.id),
+        eq(taxSaleAuctions.state, state),
+        eq(taxSaleAuctions.county, county),
+        sqlTag`${taxSaleAuctions.auctionDate} >= ${today}::timestamp`,
+        sqlTag`${taxSaleAuctions.auctionDate} <= ${in90}::timestamp`,
+      ));
+
+    const [{ worksheetCount = 0 } = {}] = await drizzleDb
+      .select({ worksheetCount: sqlTag<number>`COUNT(*)::int` })
+      .from(taxSaleListings)
+      .where(and(
+        eq(taxSaleListings.organizationId, org.id),
+        eq(taxSaleListings.state, state),
+        eq(taxSaleListings.county, county),
+        sqlTag`${taxSaleListings.maxBidCents} IS NOT NULL`,
+      ));
+
+    res.json({
+      state,
+      county,
+      asOf: today,
+      delinquentLeadsCount: Number(leadsCount),
+      activeCertsCount: Number(activeCerts),
+      overdueCertsCount: Number(overdueCerts),
+      upcomingAuctions90dCount: Number(upcomingAuctions),
+      worksheetItemsCount: Number(worksheetCount),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /tax-researcher/auction-worksheet — flat list optionally filtered by auctionId
 router.get('/auction-worksheet', async (req: Request, res: Response) => {
   try {

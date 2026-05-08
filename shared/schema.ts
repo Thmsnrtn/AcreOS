@@ -5011,6 +5011,22 @@ export const targetCounties = pgTable("target_counties", {
   status: text("status").notNull().default("researching"), // researching, active, paused, exhausted
   priority: integer("priority").default(1), // 1-5, 1 being highest
   notes: text("notes"),
+  // Marcus TD-5: "Per-county 'clerk profile' notes. Free-text notes I add:
+  // 'Shelby clerk's office accepts wires only, deposit due 24h before sale,
+  // opens at 10 AM Tuesday, lot list posted at 9:30 AM, no proxy bidding,
+  // deeds recorded next-day if paid by 2 PM.' Every operator has these."
+  // Structured so the UI can render labeled fields, but freeform 'general'
+  // captures the long-tail.
+  clerkProfile: jsonb("clerk_profile").$type<{
+    acceptedPaymentMethods?: string[];   // wires_only, cash, certified_check, etc.
+    depositTimingHours?: number;          // hrs before sale deposit due
+    opensAt?: string;                     // "10:00" local
+    lotListPostedAt?: string;             // "09:30" local
+    proxyBiddingAllowed?: boolean;
+    deedRecordationLagHours?: number;     // hours after payment
+    clerkContact?: { name?: string; phone?: string; email?: string };
+    general?: string;                     // freeform overflow
+  }>(),
   dataSources: jsonb("data_sources").$type<{
     name: string;
     type: string; // tax_delinquent, probate, vacant, absentee

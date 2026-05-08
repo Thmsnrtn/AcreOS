@@ -356,6 +356,11 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "auction_bid_log_listing_idx" ON "auction_bid_log" ("listing_id", "performed_at")',
   'CREATE INDEX IF NOT EXISTS "auction_bid_log_org_idx" ON "auction_bid_log" ("organization_id", "performed_at")',
 
+  // Tax-Delinquent vertical TD-5 — clerk profile per county. Marcus:
+  // "Putting them on the county detail page — searchable, mine, private —
+  // is a feature I'd notice within a week."
+  'ALTER TABLE "target_counties" ADD COLUMN IF NOT EXISTS "clerk_profile" jsonb',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
