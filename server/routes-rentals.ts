@@ -410,6 +410,91 @@ export function registerRentalRoutes(app: Express): void {
     }
   });
 
+  // BH-8 — landlord dashboard endpoint. Imelda §3 today: "rent-roll
+  // snapshot (collected this month / outstanding / late), a maintenance
+  // queue count, a lease expirations next-30-days widget, and a vacancy
+  // count. None of those concepts exist in this app yet."
+  app.get("/api/landlord/dashboard", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      const monthStartStr = monthStart.toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      const in30Days = new Date(); in30Days.setDate(in30Days.getDate() + 30);
+      const in30DaysStr = in30Days.toISOString().slice(0, 10);
+
+      // Active leases count.
+      const leasesActive = await db.execute(sql`
+        SELECT COUNT(*) AS c FROM rental_leases
+        WHERE organization_id = ${orgId} AND status = 'active'
+      `);
+      const activeLeases = Number(((leasesActive as any).rows?.[0]?.c) ?? 0);
+
+      if (activeLeases === 0) return res.json({ hasData: false });
+
+      // MTD rent collected.
+      const collectedRow = await db.execute(sql`
+        SELECT COALESCE(SUM(amount_cents), 0) AS total FROM rent_payments
+        WHERE organization_id = ${orgId}
+          AND received_at >= ${monthStartStr}::date
+      `);
+      const mtdCollected = Number(((collectedRow as any).rows?.[0]?.total) ?? 0);
+
+      // MTD billed.
+      const billedRow = await db.execute(sql`
+        SELECT COALESCE(SUM(amount_cents), 0) AS total FROM rent_charges
+        WHERE organization_id = ${orgId}
+          AND charged_for_month = ${monthStartStr}::date
+      `);
+      const mtdBilled = Number(((billedRow as any).rows?.[0]?.total) ?? 0);
+
+      // Late count.
+      const lateRow = await db.execute(sql`
+        SELECT COUNT(*) AS c FROM rent_charges
+        WHERE organization_id = ${orgId}
+          AND balance_cents > 0
+          AND due_date < ${today}::date
+      `);
+      const lateCount = Number(((lateRow as any).rows?.[0]?.c) ?? 0);
+
+      // Maintenance open.
+      const maintOpenRow = await db.execute(sql`
+        SELECT COUNT(*) AS c FROM maintenance_tickets
+        WHERE organization_id = ${orgId}
+          AND status NOT IN ('completed', 'cancelled')
+      `);
+      const maintOpen = Number(((maintOpenRow as any).rows?.[0]?.c) ?? 0);
+
+      // Lease expirations in next 30 days.
+      const expiringRow = await db.execute(sql`
+        SELECT COUNT(*) AS c FROM rental_leases
+        WHERE organization_id = ${orgId}
+          AND status = 'active'
+          AND end_date IS NOT NULL
+          AND end_date <= ${in30DaysStr}::date
+          AND end_date >= ${today}::date
+      `);
+      const expiringCount = Number(((expiringRow as any).rows?.[0]?.c) ?? 0);
+
+      return res.json({
+        hasData: true,
+        activeLeases,
+        rent: {
+          mtdCollectedCents: mtdCollected,
+          mtdBilledCents: mtdBilled,
+          mtdCollectedPct: mtdBilled > 0 ? Math.round((mtdCollected / mtdBilled) * 100) : 0,
+          lateCount,
+        },
+        maintenanceOpenCount: maintOpen,
+        expiringNext30Count: expiringCount,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   // Renew = create a new lease referencing the parent. Imelda §2.7: "the
   // renewal isn't a new lease in Texas, it's an addendum to the original."
   app.post("/api/leases/:id/renew", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {

@@ -548,9 +548,43 @@ function FlipperWidgets() {
   );
 }
 
-function BuyAndHoldWidgets() {
-  const data = BUY_AND_HOLD_MOCK;
+interface LandlordDashboard {
+  hasData: boolean;
+  activeLeases?: number;
+  rent?: {
+    mtdCollectedCents: number;
+    mtdBilledCents: number;
+    mtdCollectedPct: number;
+    lateCount: number;
+  };
+  maintenanceOpenCount?: number;
+  expiringNext30Count?: number;
+}
 
+function fmtUsdK(cents: number): string {
+  if (cents === 0) return "$0";
+  if (cents >= 100_000_00) return `$${(cents / 100_000).toFixed(0)}K`;
+  return `$${(cents / 100).toLocaleString()}`;
+}
+
+function BuyAndHoldWidgets() {
+  // BH-8 — replaces BUY_AND_HOLD_MOCK with real data. Imelda §3 today:
+  // "rent-roll snapshot (collected this month / outstanding / late), a
+  // maintenance queue count, a lease expirations next-30-days widget,
+  // and a vacancy count."
+  const { data: live, isLoading } = useQuery<LandlordDashboard>({
+    queryKey: ["/api/landlord/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/landlord/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-32" />;
+  if (!live?.hasData) return null;  // Trey's W-5 lesson: hide widget when empty
+
+  const collectedPct = live.rent?.mtdCollectedPct ?? 0;
   return (
     <motion.div
       variants={staggerContainer}
@@ -563,13 +597,13 @@ function BuyAndHoldWidgets() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Wallet className="w-4 h-4 text-acr-pos" />
-              Portfolio Cash Flow
+              Rent MTD
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">${data.monthlyCashFlow.toLocaleString()}</p>
+            <p className="text-2xl font-bold">{fmtUsdK(live.rent?.mtdCollectedCents ?? 0)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {data.totalUnits} units / monthly
+              {collectedPct}% of {fmtUsdK(live.rent?.mtdBilledCents ?? 0)} billed
             </p>
           </CardContent>
         </Card>
@@ -579,25 +613,13 @@ function BuyAndHoldWidgets() {
         <Card className="floating-window h-full">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Droplets className="w-4 h-4 text-acr-accent" />
-              Vacancy Rate
+              <Droplets className="w-4 h-4 text-acr-warn" />
+              Late
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold">{data.vacancyRate}%</p>
-              <Badge
-                variant="outline"
-                className={`text-xs ${
-                  data.vacancyRate <= 5
-                    ? "border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
-                    : "border-acr-warn-soft text-acr-warn dark:border-acr-warn-soft dark:text-acr-warn"
-                }`}
-              >
-                {data.vacancyRate <= 5 ? "Healthy" : "Watch"}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">portfolio-wide</p>
+            <p className="text-2xl font-bold">{live.rent?.lateCount ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">unpaid past due date</p>
           </CardContent>
         </Card>
       </motion.div>
@@ -607,12 +629,12 @@ function BuyAndHoldWidgets() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Percent className="w-4 h-4 text-primary" />
-              Avg Cap Rate
+              Maintenance
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{data.avgCapRate}%</p>
-            <p className="text-xs text-muted-foreground mt-1">across portfolio</p>
+            <p className="text-2xl font-bold">{live.maintenanceOpenCount ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">tickets open</p>
           </CardContent>
         </Card>
       </motion.div>
@@ -622,12 +644,12 @@ function BuyAndHoldWidgets() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <CalendarClock className="w-4 h-4 text-acr-warn" />
-              Lease Expirations
+              Expirations 30d
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <LeaseExpirationTimeline data={data.leaseExpirations} />
-            <p className="text-xs text-muted-foreground mt-2">next 6 months</p>
+            <p className="text-2xl font-bold">{live.expiringNext30Count ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">{live.activeLeases ?? 0} active leases</p>
           </CardContent>
         </Card>
       </motion.div>

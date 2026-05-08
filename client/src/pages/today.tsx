@@ -500,6 +500,7 @@ export default function TodayPage() {
   const isWholesalerOrg = businessType === "residential_wholesaler";
   const isSubdividerOrg = businessType === "subdivider";
   const isFlipperOrg = businessType === "fix_and_flip";
+  const isLandlordOrg = businessType === "buy_and_hold";
 
   return (
     <PageShell label="Today">
@@ -531,6 +532,37 @@ export default function TodayPage() {
               </Button>
               <Button asChild size="sm" variant="outline">
                 <Link href="/wholesaler-state-rules">State rules</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Landlord quick-jump — visible for buy_and_hold business type.
+          Imelda §3 today: "did anyone's rent hit overnight, are any
+          maintenance tickets sitting older than 48 hours, and did the
+          eviction filing on the duplex go through." */}
+      {isLandlordOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Landlord surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Tenants, leases, rent roll, maintenance, portfolio analytics.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/rent-roll">Rent roll</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/maintenance">Maintenance</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/leases">Leases</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/investor-analytics">Analytics</Link>
               </Button>
             </div>
           </CardContent>
