@@ -35,6 +35,7 @@ import { NoteBasisSchedule } from "@/components/note-basis-schedule";
 import { NoteTinEditor } from "@/components/note-tin-editor";
 import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
+import { NoteComplianceCard } from "@/components/note-compliance-card";
 
 export interface AcquiredNote {
   id: string;
@@ -59,6 +60,17 @@ export interface AcquiredNote {
   payerTinType: string | null;
   originalLender: string | null;
   assignmentDocS3Key: string | null;
+  // Compliance (PR-11)
+  insuranceStatus: "verified" | "expiring_soon" | "lapsed" | "force_placed";
+  insuranceCarrier: string | null;
+  insurancePolicyNumber: string | null;
+  insuranceExpiresAt: string | null;
+  insuranceAnnualPremiumCents: number | null;
+  taxEscrowEnabled: boolean;
+  taxEscrowBalanceCents: number;
+  taxDisbursementDueDate: string | null;
+  taxDisbursementAmountCents: number | null;
+  taxAuthorityName: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -404,6 +416,20 @@ export default function NoteDetailPage() {
       {/* Basis schedule — Pub 1212 market-discount accretion. Renders empty
           state for face-value purchases / premium-paid notes. */}
       <NoteBasisSchedule noteId={note.id} />
+
+      {/* Compliance — hazard insurance + property-tax escrow. */}
+      <NoteComplianceCard
+        noteId={note.id}
+        insuranceStatus={note.insuranceStatus}
+        insuranceCarrier={note.insuranceCarrier}
+        insurancePolicyNumber={note.insurancePolicyNumber}
+        insuranceExpiresAt={note.insuranceExpiresAt}
+        taxEscrowEnabled={note.taxEscrowEnabled}
+        taxEscrowBalanceCents={note.taxEscrowBalanceCents}
+        taxDisbursementDueDate={note.taxDisbursementDueDate}
+        taxDisbursementAmountCents={note.taxDisbursementAmountCents}
+        taxAuthorityName={note.taxAuthorityName}
+      />
 
       {/* Pool / fractional ownership splits. */}
       <NoteSplitsCard noteId={note.id} currentBalanceCents={note.currentBalanceCents} />

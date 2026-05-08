@@ -158,6 +158,22 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "note_splits_org_note_idx" ON "note_ownership_splits" ("organization_id", "note_id")',
   'CREATE INDEX IF NOT EXISTS "note_splits_org_investor_idx" ON "note_ownership_splits" ("organization_id", "investor_lead_id")',
 
+  // Note Investor — compliance tracking on acquired_notes (PR-11). Hazard
+  // insurance status + property-tax escrow with disbursement-due workflow.
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "insurance_status" text NOT NULL DEFAULT 'verified'`,
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "insurance_carrier" text',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "insurance_policy_number" text',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "insurance_expires_at" date',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "insurance_annual_premium_cents" bigint',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "tax_escrow_enabled" boolean NOT NULL DEFAULT false',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "tax_escrow_balance_cents" bigint NOT NULL DEFAULT 0',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "tax_disbursement_due_date" date',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "tax_disbursement_amount_cents" bigint',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "tax_authority_name" text',
+  // Indexes for the watch-list queries.
+  'CREATE INDEX IF NOT EXISTS "acquired_notes_org_insurance_idx" ON "acquired_notes" ("organization_id", "insurance_status")',
+  'CREATE INDEX IF NOT EXISTS "acquired_notes_org_tax_due_idx" ON "acquired_notes" ("organization_id", "tax_disbursement_due_date")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

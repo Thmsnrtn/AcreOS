@@ -16,7 +16,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileText, AlertTriangle, CheckCircle2, Download, Loader2, Users } from "lucide-react";
+import { useLocation } from "wouter";
+import { FileText, AlertTriangle, CheckCircle2, Download, Loader2, Users, Shield, Landmark, ChevronRight } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -149,6 +150,9 @@ export default function NotesTaxReadinessPage() {
           blockers — fix those before you generate.
         </p>
       </div>
+
+      {/* Compliance watch — insurance + tax-escrow disbursements within 60 days. */}
+      <ComplianceWatchSection />
 
       {/* Year picker */}
       <div className="flex items-center gap-3 mb-6">
@@ -448,6 +452,110 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
             </div>
           </>
         )}
+      </div>
+    </Card>
+  );
+}
+
+function ComplianceWatchSection() {
+  const [, navigate] = useLocation();
+
+  const insuranceQuery = useQuery<{ notes: Array<{ id: string; noteNumber: string; payerName: string; insuranceStatus: string; insuranceExpiresAt: string | null }> }>({
+    queryKey: ["/api/notes/insurance-watch"],
+    queryFn: async () => {
+      const res = await fetch("/api/notes/insurance-watch", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const escrowQuery = useQuery<{ notes: Array<{ id: string; noteNumber: string; payerName: string; taxDisbursementDueDate: string | null; taxDisbursementAmountCents: number | null; taxAuthorityName: string | null }>; withinDays: number }>({
+    queryKey: ["/api/notes/escrow-disbursements"],
+    queryFn: async () => {
+      const res = await fetch("/api/notes/escrow-disbursements?withinDays=60", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const insuranceIssues = insuranceQuery.data?.notes ?? [];
+  const escrowDue = escrowQuery.data?.notes ?? [];
+
+  if (insuranceIssues.length === 0 && escrowDue.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="mb-6 border-acr-warning/30 bg-acr-warning/5">
+      <div className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className="w-4 h-4 text-acr-warning" aria-hidden="true" />
+          <h2 className="text-sm font-semibold">Compliance watch</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Insurance */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Shield className="w-3.5 h-3.5 text-acr-warning" aria-hidden="true" />
+              <span className="text-xs font-semibold">
+                Insurance — {insuranceIssues.length} note{insuranceIssues.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {insuranceIssues.length === 0 ? (
+              <p className="text-xs text-muted-foreground">All policies current.</p>
+            ) : (
+              <ul className="space-y-1">
+                {insuranceIssues.slice(0, 6).map((n) => (
+                  <li key={n.id}>
+                    <button
+                      onClick={() => navigate(`/notes/${n.id}`)}
+                      className="text-left text-xs hover:underline w-full flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate">{n.payerName} <span className="text-muted-foreground">({n.noteNumber})</span></span>
+                      <span className="text-muted-foreground capitalize whitespace-nowrap">{n.insuranceStatus.replace("_", " ")}</span>
+                    </button>
+                  </li>
+                ))}
+                {insuranceIssues.length > 6 && (
+                  <li className="text-xs text-muted-foreground italic">…and {insuranceIssues.length - 6} more</li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          {/* Tax escrow disbursements */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Landmark className="w-3.5 h-3.5 text-acr-warning" aria-hidden="true" />
+              <span className="text-xs font-semibold">
+                Tax disbursements due ≤ 60d — {escrowDue.length} note{escrowDue.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {escrowDue.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No upcoming disbursements.</p>
+            ) : (
+              <ul className="space-y-1">
+                {escrowDue.slice(0, 6).map((n) => (
+                  <li key={n.id}>
+                    <button
+                      onClick={() => navigate(`/notes/${n.id}`)}
+                      className="text-left text-xs hover:underline w-full flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate">{n.payerName} <span className="text-muted-foreground">({n.noteNumber})</span></span>
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        {n.taxDisbursementDueDate} · {n.taxDisbursementAmountCents ? fmtUsd(n.taxDisbursementAmountCents) : "—"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {escrowDue.length > 6 && (
+                  <li className="text-xs text-muted-foreground italic">…and {escrowDue.length - 6} more</li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </Card>
   );

@@ -65,6 +65,17 @@ const createNoteSchema = z.object({
   payerTinType: z.enum(["SSN", "EIN", "ITIN"]).optional(),
   originalLender: z.string().max(240).optional(),
   assignmentDocS3Key: z.string().max(512).optional(),
+  // Compliance fields (PR-11)
+  insuranceStatus: z.enum(["verified", "expiring_soon", "lapsed", "force_placed"]).optional(),
+  insuranceCarrier: z.string().max(240).optional(),
+  insurancePolicyNumber: z.string().max(120).optional(),
+  insuranceExpiresAt: z.string().optional(),
+  insuranceAnnualPremiumCents: z.number().int().nonnegative().optional(),
+  taxEscrowEnabled: z.boolean().optional(),
+  taxEscrowBalanceCents: z.number().int().nonnegative().optional(),
+  taxDisbursementDueDate: z.string().optional(),
+  taxDisbursementAmountCents: z.number().int().nonnegative().optional(),
+  taxAuthorityName: z.string().max(240).optional(),
   notes: z.string().max(8_000).optional(),
 });
 
@@ -576,6 +587,17 @@ export function registerNoteRoutes(app: Express): void {
         if (patch.payerTinType !== undefined) update.payerTinType = patch.payerTinType ?? null;
         if (patch.originalLender !== undefined) update.originalLender = patch.originalLender ?? null;
         if (patch.assignmentDocS3Key !== undefined) update.assignmentDocS3Key = patch.assignmentDocS3Key ?? null;
+        // Compliance fields (PR-11)
+        if (patch.insuranceStatus !== undefined) update.insuranceStatus = patch.insuranceStatus;
+        if (patch.insuranceCarrier !== undefined) update.insuranceCarrier = patch.insuranceCarrier ?? null;
+        if (patch.insurancePolicyNumber !== undefined) update.insurancePolicyNumber = patch.insurancePolicyNumber ?? null;
+        if (patch.insuranceExpiresAt !== undefined) update.insuranceExpiresAt = patch.insuranceExpiresAt ?? null;
+        if (patch.insuranceAnnualPremiumCents !== undefined) update.insuranceAnnualPremiumCents = patch.insuranceAnnualPremiumCents ?? null;
+        if (patch.taxEscrowEnabled !== undefined) update.taxEscrowEnabled = patch.taxEscrowEnabled;
+        if (patch.taxEscrowBalanceCents !== undefined) update.taxEscrowBalanceCents = patch.taxEscrowBalanceCents;
+        if (patch.taxDisbursementDueDate !== undefined) update.taxDisbursementDueDate = patch.taxDisbursementDueDate ?? null;
+        if (patch.taxDisbursementAmountCents !== undefined) update.taxDisbursementAmountCents = patch.taxDisbursementAmountCents ?? null;
+        if (patch.taxAuthorityName !== undefined) update.taxAuthorityName = patch.taxAuthorityName ?? null;
         if (patch.notes !== undefined) update.notes = patch.notes ?? null;
 
         const [row] = await db
@@ -1034,6 +1056,91 @@ export function registerNoteRoutes(app: Express): void {
         return res.json({ assignment: row });
       } catch (err) {
         logger.error("notes.assignments.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Compliance watch lists ───────────────────────────────────────────────
+  // GET /api/notes/insurance-watch
+  // Returns notes whose insurance_status is not 'verified', plus notes
+  // whose insurance_expires_at falls within the next 60 days.
+  app.get(
+    "/api/notes/insurance-watch",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const today = new Date();
+        const horizon = new Date(today.getTime() + 60 * 86_400_000);
+        const horizonIso = horizon.toISOString().slice(0, 10);
+        const todayIso = today.toISOString().slice(0, 10);
+
+        const rows = await db
+          .select({
+            id: acquiredNotes.id,
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            insuranceStatus: acquiredNotes.insuranceStatus,
+            insuranceCarrier: acquiredNotes.insuranceCarrier,
+            insurancePolicyNumber: acquiredNotes.insurancePolicyNumber,
+            insuranceExpiresAt: acquiredNotes.insuranceExpiresAt,
+            currentBalanceCents: acquiredNotes.currentBalanceCents,
+          })
+          .from(acquiredNotes)
+          .where(and(
+            eq(acquiredNotes.organizationId, orgId),
+            sql`(${acquiredNotes.insuranceStatus} <> 'verified' OR (${acquiredNotes.insuranceExpiresAt} IS NOT NULL AND ${acquiredNotes.insuranceExpiresAt} <= ${horizonIso} AND ${acquiredNotes.insuranceExpiresAt} >= ${todayIso}))`,
+          ))
+          .orderBy(acquiredNotes.insuranceExpiresAt);
+
+        return res.json({ notes: rows, horizonIso });
+      } catch (err) {
+        logger.error("notes.insurance-watch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/notes/escrow-disbursements?withinDays=60
+  // Linnea's "tax disbursements due in the next 60 days" view.
+  app.get(
+    "/api/notes/escrow-disbursements",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const withinDays = Math.min(365, Math.max(1, parseInt(String(req.query.withinDays ?? "60"), 10) || 60));
+        const today = new Date();
+        const horizon = new Date(today.getTime() + withinDays * 86_400_000);
+        const horizonIso = horizon.toISOString().slice(0, 10);
+
+        const rows = await db
+          .select({
+            id: acquiredNotes.id,
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            taxEscrowBalanceCents: acquiredNotes.taxEscrowBalanceCents,
+            taxDisbursementDueDate: acquiredNotes.taxDisbursementDueDate,
+            taxDisbursementAmountCents: acquiredNotes.taxDisbursementAmountCents,
+            taxAuthorityName: acquiredNotes.taxAuthorityName,
+          })
+          .from(acquiredNotes)
+          .where(and(
+            eq(acquiredNotes.organizationId, orgId),
+            eq(acquiredNotes.taxEscrowEnabled, true),
+            sql`${acquiredNotes.taxDisbursementDueDate} IS NOT NULL`,
+            sql`${acquiredNotes.taxDisbursementDueDate} <= ${horizonIso}`,
+          ))
+          .orderBy(acquiredNotes.taxDisbursementDueDate);
+
+        return res.json({ notes: rows, withinDays, horizonIso });
+      } catch (err) {
+        logger.error("notes.escrow-disbursements failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

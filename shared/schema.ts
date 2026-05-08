@@ -17275,6 +17275,28 @@ export const acquiredNotes = pgTable(
     // e-sign template work for note assignments is tracked as a follow-up
     // (see docs/exhaustive-completion/note-investor-followups.md).
     assignmentDocS3Key: text("assignment_doc_s3_key"),
+    // ── Compliance: hazard insurance ─────────────────────────────────────
+    // Linnea: "When a borrower lets their hazard policy lapse, I have to
+    // force-place coverage and add the premium to escrow. The consequences
+    // of getting it wrong are five figures of uninsured loss."
+    // Status: 'verified' | 'expiring_soon' | 'lapsed' | 'force_placed'.
+    insuranceStatus: text("insurance_status").notNull().default("verified"),
+    insuranceCarrier: text("insurance_carrier"),
+    insurancePolicyNumber: text("insurance_policy_number"),
+    insuranceExpiresAt: date("insurance_expires_at"),
+    insuranceAnnualPremiumCents: bigint("insurance_annual_premium_cents", { mode: "number" }),
+    // ── Compliance: property-tax escrow ──────────────────────────────────
+    // Linnea: "Half my notes collect tax escrow. Twice a year I have to
+    // disburse to the county. Without [a disbursement-due workflow] I
+    // miss a tax payment and lose lien priority."
+    taxEscrowEnabled: boolean("tax_escrow_enabled").notNull().default(false),
+    taxEscrowBalanceCents: bigint("tax_escrow_balance_cents", { mode: "number" }).notNull().default(0),
+    // The next disbursement: amount due + due date + the authority that
+    // gets paid. When a disbursement is recorded, the user advances these
+    // to the next cycle (most counties are semi-annual or annual).
+    taxDisbursementDueDate: date("tax_disbursement_due_date"),
+    taxDisbursementAmountCents: bigint("tax_disbursement_amount_cents", { mode: "number" }),
+    taxAuthorityName: text("tax_authority_name"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
