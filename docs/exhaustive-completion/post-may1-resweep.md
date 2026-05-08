@@ -155,10 +155,10 @@ These are P1 items — not launch-blocking — but together they're the differen
 | RS-1 | Tenant screening permissible-purpose attestation | Cordelia §3 + Caspian §1 | 3-4d | Blocks tenant-screening launch + E&O subjectivity |
 | RS-2 | Adverse-action notice real send | Imelda §3.5 | 2-3d | Blocks tenant-screening launch + statutory exposure |
 | RS-3 | Legal-hold tenant + lease scope verification | Saskia P0-23 follow-up | 1-2d | Compliance correctness |
-| RS-4 | `/account/security` user-facing twin | P1-50 | 3d | Customer-side incident response |
-| RS-5 | Email-on-new-location detector | P1-50 | 3d | Customer-side incident response |
-| RS-6 | Email-change confirmation step to original | P1-50 | 2d | Asher-takeover root cause |
-| RS-7 | `/api/leads/export` rate-limit + burst detect | P1-50 | 2d | Asher-takeover root cause |
+| RS-4 | `/account/security` user-facing twin | P1-50 | 3d | ✅ shipped 2026-05-08 (server + client) |
+| RS-5 | Email-on-new-location detector | P1-50 | 3d | ✅ shipped 2026-05-08 (prod-applied) |
+| RS-6 | Email-change confirmation step to original | P1-50 | 2d | ✅ shipped 2026-05-08 (Clerk-vs-DB diff + dual-address alert) |
+| RS-7 | `/api/leads/export` rate-limit + burst detect | P1-50 | 2d | ✅ shipped 2026-05-08 |
 | RS-8 | Estate-executor review queue | Martin §1-3 + Coriander §1 | 5d | Recovery-console depth gap |
 | RS-9 | 1096 transmittal + FIRE for 1099-NEC | Olympia + Devon | 4d | When customers ask for IRS e-filing |
 
@@ -171,10 +171,10 @@ These are P1 items — not launch-blocking — but together they're the differen
 The reconciliation doc accurately captured the P0 status. This re-sweep
 adds a "Phase 3 follow-ups" section to the Phase 4 sequencing:
 
-- **Pre-launch P1 (must ship before tenant-screening customers):** RS-1, RS-2, RS-3
-- **Customer-side security P1 (P1-50 cluster):** RS-4, RS-5, RS-6, RS-7
-- **Recovery-console depth (Coriander follow-up):** RS-8
-- **IRS e-filing follow-up (when ask arrives):** RS-9
+- **Pre-launch P1 (must ship before tenant-screening customers):** RS-1, RS-2, RS-3 — ✅ all shipped 2026-05-08
+- **Customer-side security P1 (P1-50 cluster):** RS-4, RS-5, RS-6, RS-7 — ✅ all shipped 2026-05-08. Asher-takeover surface area is now alert-at-minute-1 instead of 6h/9-actions/0-friction.
+- **Recovery-console depth (Coriander follow-up):** RS-8 — open
+- **IRS e-filing follow-up (when ask arrives):** RS-9 — open (defer until customer ask)
 
 ---
 
