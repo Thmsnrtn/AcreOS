@@ -3458,22 +3458,11 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  /** Action Queue — prioritized list of items that need founder attention.
-   *  Implementation moved to server/services/founderActionQueue.ts so the
-   *  unified /api/founder/intelligence/todo endpoint can read from the same
-   *  source (F-D #3). Endpoint kept live-but-deprecated for one release —
-   *  remove after the founder-home WhatNeedsYouCard is verified to render
-   *  the merged feed correctly. */
-  api.get("/api/founder/action-queue", isAuthenticated, isFounderAdmin, async (_req, res) => {
-    try {
-      const { getActionQueueItems } = await import("./services/founderActionQueue");
-      const result = await getActionQueueItems();
-      res.json(result);
-    } catch (err: any) {
-      res.json({ items: [], totalPending: 0, categories: { high: 0, medium: 0 } });
-    }
-  });
-
+  // /api/founder/action-queue removed (FW-3) — consumers now read from the
+  // unified /api/founder/intelligence/todo feed which merges in action-queue
+  // items via getActionQueueAsTodos(). The service file
+  // server/services/founderActionQueue.ts stays — it's still consumed by
+  // the unified-todo endpoint.
 
   // POST /api/monitor/alerts/:id/resolve — resolve an alert
   api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
