@@ -444,6 +444,23 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
+  // ── Fix-and-flip vertical (FF-1..FF-9) ───────────────────────────
+  // Devon §7: "Until then I'm just running comps in here while Builders
+  // Cloud does the real work." Five surfaces operators actually open.
+  {
+    id: "flipper",
+    label: "Flip",
+    icon: Hammer,
+    href: "/rehabs",
+    description: "Active rehabs, contractors, ARV, bids, draws",
+    businessTypeOnly: ["fix_and_flip"],
+    children: [
+      { label: "Active rehabs", icon: Hammer, href: "/rehabs", description: "Project list + kanban board" },
+      { label: "Contractors", icon: Users, href: "/contractors", description: "Sub bench w/ YTD totals" },
+      { label: "1099-NEC batch", icon: FileText, href: "/contractors/1099-nec", description: "Year-end Copy B PDF generator" },
+    ],
+  },
+
   // ── Subdivider vertical (SD-1..SD-9) ──────────────────────────────
   // Brigid: "My left-rail nav: /maps, /parcels/:id 'Subdivision' tab,
   // /permits (new), /lots (new), /plats (new). Five entries. Nothing else.
