@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { staggerContainer, fadeInUp } from "@/lib/animations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DollarSign,
   Clock,
@@ -281,10 +283,57 @@ function LandWidgets() {
   );
 }
 
+interface WholesalerDashboard {
+  hasData: boolean;
+  assignmentFeesCents: number;
+  avgAssignmentFeeCents: number;
+  speedToCloseDays: number | null;
+  buyerListHealth: { total: number; active: number; stale: number };
+  dealFunnel: Array<{ stage: string; count: number }>;
+}
+
 function WholesalerWidgets() {
-  const data = WHOLESALER_MOCK;
+  // W-5: Real data replacing the WHOLESALER_MOCK constant. Trey's
+  // "If I see those exact numbers and I have zero deals, I lose
+  // trust in everything around it" — the API returns hasData=false
+  // for empty orgs and we suppress the widget block entirely.
+  const { data: live, isLoading } = useQuery<WholesalerDashboard>({
+    queryKey: ["/api/wholesaler/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/wholesaler/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
+      </div>
+    );
+  }
+
+  if (!live || !live.hasData) {
+    // Hide the widget when we have nothing real to show — Trey's
+    // explicit ask. The dashboard already renders other tiles; this
+    // section just disappears until the org has at least one deal.
+    return null;
+  }
+
+  // Render shape kept compatible with the prior MOCK so the templates
+  // below need no changes.
+  const data = {
+    assignmentFees: live.assignmentFeesCents / 100,
+    avgAssignmentFee: live.avgAssignmentFeeCents / 100,
+    speedToClose: live.speedToCloseDays ?? 0,
+    buyerListHealth: live.buyerListHealth,
+    dealFunnel: live.dealFunnel,
+  };
   const maxFunnel = data?.dealFunnel?.length ? Math.max(...data.dealFunnel.map((d) => d.count), 1) : 1;
-  const healthPct = Math.round((data.buyerListHealth.active / data.buyerListHealth.total) * 100);
+  const healthPct = data.buyerListHealth.total > 0
+    ? Math.round((data.buyerListHealth.active / data.buyerListHealth.total) * 100)
+    : 0;
 
   return (
     <motion.div
@@ -319,8 +368,12 @@ function WholesalerWidgets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{data.speedToClose}</p>
-            <p className="text-xs text-muted-foreground mt-1">days average</p>
+            <p className="text-2xl font-bold">
+              {live.speedToCloseDays === null ? "—" : data.speedToClose}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {live.speedToCloseDays === null ? "no closed deals yet" : "days from offer to close"}
+            </p>
           </CardContent>
         </Card>
       </motion.div>

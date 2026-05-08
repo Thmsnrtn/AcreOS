@@ -160,6 +160,7 @@ import { registerWholesalerRuleRoutes } from "./routes-wholesaler-rules";
 import { registerEarnestMoneyRoutes } from "./routes-earnest-money";
 import { registerDoubleCloseRoutes } from "./routes-double-close";
 import { registerBuyerBlastRoutes } from "./routes-buyer-blasts";
+import { registerWholesalerDashboardRoutes } from "./routes-wholesaler-dashboard";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1744,6 +1745,8 @@ export async function registerRoutes(
   registerDoubleCloseRoutes(app);
   // Wholesaler vertical W-4 — push-to-buyer-list one-click blast.
   registerBuyerBlastRoutes(app);
+  // Wholesaler vertical W-5 — wholesaler dashboard endpoint (real data).
+  registerWholesalerDashboardRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
