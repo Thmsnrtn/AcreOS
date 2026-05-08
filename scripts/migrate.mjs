@@ -487,6 +487,36 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "emd_org_status_refundable_idx" ON "earnest_money_holds" ("organization_id", "status", "refundable_until_at")',
   'CREATE INDEX IF NOT EXISTS "emd_org_deal_idx" ON "earnest_money_holds" ("organization_id", "deal_id")',
 
+  // Wholesaler vertical W-3 — double-close primitive (A→B + B→C).
+  // Trey: "I have to buy at 9 AM and sell at 9:01 AM through a transactional
+  // funder. […] That's a missing primitive."
+  `CREATE TABLE IF NOT EXISTS "double_close_deals" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+     "reason" text NOT NULL DEFAULT 'operator_choice',
+     "a_seller_name" text NOT NULL,
+     "a_side_purchase_price_cents" bigint NOT NULL,
+     "a_side_contract_date" date,
+     "a_side_closing_date" date,
+     "a_side_title_company" text,
+     "bc_buyer_name" text,
+     "bc_side_purchase_price_cents" bigint,
+     "bc_side_contract_date" date,
+     "bc_side_closing_date" date,
+     "bc_side_title_company" text,
+     "transactional_funder_name" text,
+     "transactional_funder_fee_cents" bigint,
+     "transactional_funder_rate_bps" integer,
+     "status" text NOT NULL DEFAULT 'planned',
+     "state" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "double_close_org_status_idx" ON "double_close_deals" ("organization_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "double_close_org_property_idx" ON "double_close_deals" ("organization_id", "property_id")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

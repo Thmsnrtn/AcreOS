@@ -90,6 +90,8 @@ const QuietTitlePage = React.lazy(() => import("@/pages/quiet-title"));
 const WholesalerStateRulesPage = React.lazy(() => import("@/pages/wholesaler-state-rules"));
 // Wholesaler vertical W-2 — EMD inspection-period timer.
 const EarnestMoneyPage = React.lazy(() => import("@/pages/earnest-money"));
+// Wholesaler vertical W-3 — double-close primitive.
+const DoubleClosePage = React.lazy(() => import("@/pages/double-close"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -600,6 +602,12 @@ function Router() {
       </Route>
       <Route path="/earnest-money">
         {() => <ProtectedRoute component={EarnestMoneyPage} />}
+      </Route>
+      <Route path="/double-close">
+        {() => <ProtectedRoute component={DoubleClosePage} />}
+      </Route>
+      <Route path="/double-close/:id">
+        {() => <ProtectedRoute component={DoubleClosePage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

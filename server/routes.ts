@@ -158,6 +158,7 @@ import { registerTaxRuleRoutes } from "./routes-tax-rules";
 import { registerQuietTitleRoutes } from "./routes-quiet-title";
 import { registerWholesalerRuleRoutes } from "./routes-wholesaler-rules";
 import { registerEarnestMoneyRoutes } from "./routes-earnest-money";
+import { registerDoubleCloseRoutes } from "./routes-double-close";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1738,6 +1739,8 @@ export async function registerRoutes(
   registerWholesalerRuleRoutes(app);
   // Wholesaler vertical W-2 — EMD inspection-period state machine.
   registerEarnestMoneyRoutes(app);
+  // Wholesaler vertical W-3 — double-close primitive (A→B + B→C).
+  registerDoubleCloseRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

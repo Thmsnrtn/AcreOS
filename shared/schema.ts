@@ -18091,6 +18091,77 @@ export type EarnestMoneyHold = typeof earnestMoneyHolds.$inferSelect;
 export type InsertEarnestMoneyHold = typeof earnestMoneyHolds.$inferInsert;
 
 // ============================================================================
+// DOUBLE-CLOSE DEALS — A→B + B→C linked structure (W-3)
+// ----------------------------------------------------------------------------
+// Trey: "Some deals you can't legally assign (FHA-financed seller, IL/OK/SC,
+// MLS-listed property where the seller agent flagged the contract non-
+// assignable). I have to buy at 9 AM and sell at 9:01 AM through a
+// transactional funder. AcreOS doesn't have a double-close flow. […]
+// Double-close needs A-B contract + B-C contract + transactional funding
+// tracking. That's a missing primitive."
+//
+// One row per double-close transaction. Models the two-contract structure
+// directly so the UI can show both legs side-by-side and compute the
+// wholesaler's net (B-C price minus A-B price minus transactional funder fee).
+// ============================================================================
+
+export const DOUBLE_CLOSE_STATUSES = [
+  "planned",                // wholesaler considering double-close path
+  "a_side_under_contract",  // A-B contract executed; B-C in flight
+  "bc_side_under_contract", // both contracts executed
+  "a_side_closed",          // wholesaler took title; B-C still pending
+  "both_closed",            // double-close complete
+  "dead",                   // deal collapsed
+] as const;
+export type DoubleCloseStatus = typeof DOUBLE_CLOSE_STATUSES[number];
+
+export const doubleCloseDeals = pgTable(
+  "double_close_deals",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+
+    // Why this is double-close (instead of assignment) — drives compliance
+    // narrative; useful for audit trail when the wholesaler is asked
+    // "why didn't you assign?"
+    reason: text("reason").$type<"state_restriction" | "non_assignable_contract" | "fha_financed" | "operator_choice" | "other">().notNull().default("operator_choice"),
+
+    // ── A side (seller → wholesaler) ─────────────────────────────────────
+    aSellerName: text("a_seller_name").notNull(),
+    aSidePurchasePriceCents: bigint("a_side_purchase_price_cents", { mode: "number" }).notNull(),
+    aSideContractDate: date("a_side_contract_date"),
+    aSideClosingDate: date("a_side_closing_date"),
+    aSideTitleCompany: text("a_side_title_company"),
+
+    // ── B-C side (wholesaler → end buyer) ────────────────────────────────
+    bcBuyerName: text("bc_buyer_name"),
+    bcSidePurchasePriceCents: bigint("bc_side_purchase_price_cents", { mode: "number" }),
+    bcSideContractDate: date("bc_side_contract_date"),
+    bcSideClosingDate: date("bc_side_closing_date"),
+    bcSideTitleCompany: text("bc_side_title_company"),
+
+    // ── Transactional funding ────────────────────────────────────────────
+    transactionalFunderName: text("transactional_funder_name"),
+    transactionalFunderFeeCents: bigint("transactional_funder_fee_cents", { mode: "number" }),
+    transactionalFunderRateBps: integer("transactional_funder_rate_bps"),
+
+    status: text("status").$type<DoubleCloseStatus>().notNull().default("planned"),
+    state: text("state"),    // 2-letter — for surfacing the W-1 rule that triggered this path
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("double_close_org_status_idx").on(table.organizationId, table.status),
+    index("double_close_org_property_idx").on(table.organizationId, table.propertyId),
+  ],
+);
+
+export type DoubleCloseDeal = typeof doubleCloseDeals.$inferSelect;
+export type InsertDoubleCloseDeal = typeof doubleCloseDeals.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.
