@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { insertLeadSchema, insertPropertySchema, insertDealSchema } from "@shared/schema";
+import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes } from "@shared/schema";
 import { storage } from "../storage";
+import { db } from "../db";
 
 export interface ImportResult {
   totalRows: number;
@@ -1126,6 +1127,58 @@ export const NOTE_COLUMN_MAP: Record<string, string> = {
   notes: "internalNotes",
   comment: "internalNotes",
   comments: "internalNotes",
+
+  // Acquisition fields — populated when importing into acquired_notes
+  // (i.e. notes the user *bought* from a prior holder, not originated).
+  // The originated importer ignores these silently.
+  "Acquisition Price": "acquisitionPrice",
+  "acquisition price": "acquisitionPrice",
+  acquisitionPrice: "acquisitionPrice",
+  acquisition_price: "acquisitionPrice",
+  "Purchase Price": "acquisitionPrice",
+  "purchase price": "acquisitionPrice",
+  "Cost Basis": "acquisitionPrice",
+  "cost basis": "acquisitionPrice",
+
+  "Acquisition Date": "acquisitionDate",
+  "acquisition date": "acquisitionDate",
+  acquisitionDate: "acquisitionDate",
+  acquisition_date: "acquisitionDate",
+  "Purchase Date": "acquisitionDate",
+  "purchase date": "acquisitionDate",
+  "Date Acquired": "acquisitionDate",
+  "date acquired": "acquisitionDate",
+
+  "Origination Date": "originationDate",
+  "origination date": "originationDate",
+  originationDate: "originationDate",
+  origination_date: "originationDate",
+  "Note Date": "originationDate",
+  "note date": "originationDate",
+  "Original Note Date": "originationDate",
+  "original note date": "originationDate",
+
+  "Maturity Date": "maturityDate",
+  "maturity date": "maturityDate",
+  maturityDate: "maturityDate",
+  maturity_date: "maturityDate",
+
+  "Original Lender": "originalLender",
+  "original lender": "originalLender",
+  originalLender: "originalLender",
+  original_lender: "originalLender",
+  "Prior Holder": "originalLender",
+  "prior holder": "originalLender",
+  Seller: "originalLender",
+  seller: "originalLender",
+
+  "Note Number": "noteNumber",
+  "note number": "noteNumber",
+  noteNumber: "noteNumber",
+  note_number: "noteNumber",
+  "Loan Number": "noteNumber",
+  "loan number": "noteNumber",
+  loan_number: "noteNumber",
 };
 
 // Note status mapping: normalize external status strings to AcreOS enum values
@@ -1251,6 +1304,174 @@ export async function importNotesFromCSV(
         autoPayEnabled: false,
         internalNotes: row.internalNotes || null,
       } as any);
+
+      result.successCount++;
+    } catch (error) {
+      result.errorCount++;
+      result.errors.push({
+        row: i + 2,
+        data: rawRow,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
+// ACQUIRED NOTES IMPORT — for notes the user *bought* from a prior holder
+// (the dominant case for note investors per the persona walkthrough —
+//  Linnea: "75% of my book, I did not originate. I bought paper.").
+//
+// Targets the acquired_notes table directly (not the originated `notes`
+// table). Captures acquisition price + date separately from original
+// face value — required for correct basis/yield/tax computation.
+// Sub-$600-interest 1099-INT logic and OID/MD accretion ride follow-up
+// PRs; this handles the data-model entry only.
+// ============================================================
+
+function parseMoneyToCents(raw: string | undefined | null): number | null {
+  if (!raw) return null;
+  const cleaned = String(raw).replace(/[$,\s]/g, "");
+  const n = parseFloat(cleaned);
+  if (!isFinite(n)) return null;
+  return Math.round(n * 100);
+}
+
+function parseDate(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Accept ISO (YYYY-MM-DD), US (MM/DD/YYYY), or anything Date.parse handles.
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function normalizeAcquiredNoteStatus(raw: string | undefined): "performing" | "late" | "default" | "paid_off" | "sold" {
+  const lower = (raw || "").toLowerCase().trim();
+  if (lower === "current" || lower === "performing" || lower === "active") return "performing";
+  if (lower === "late") return "late";
+  if (lower === "default" || lower === "defaulted") return "default";
+  if (lower === "paid off" || lower === "paid_off" || lower === "closed") return "paid_off";
+  if (lower === "sold") return "sold";
+  return "performing";
+}
+
+export async function importAcquiredNotesFromCSV(
+  csvData: Array<Record<string, string>>,
+  organizationId: number,
+  userFieldMap?: NoteImportFieldMap,
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    totalRows: csvData.length,
+    successCount: 0,
+    errorCount: 0,
+    duplicatesSkipped: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < csvData.length; i++) {
+    const rawRow = csvData[i];
+    const effectiveMap: Record<string, string> = { ...NOTE_COLUMN_MAP };
+    if (userFieldMap) {
+      for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
+        if (acreosField) effectiveMap[csvCol] = acreosField;
+      }
+    }
+    const row = normalizeRow<Record<string, string>>(rawRow, effectiveMap);
+
+    try {
+      const firstName = row.borrowerFirstName?.trim() ?? "";
+      const lastName = row.borrowerLastName?.trim() ?? "";
+      const payerName = `${firstName} ${lastName}`.trim();
+      if (!payerName) {
+        throw new Error("Borrower name is required (first name or last name)");
+      }
+
+      const originalPrincipalCents = parseMoneyToCents(row.originalPrincipal);
+      if (originalPrincipalCents === null) {
+        throw new Error("Original principal (face value) is required and must be a number");
+      }
+
+      const acquisitionPriceCents = parseMoneyToCents(row.acquisitionPrice);
+      if (acquisitionPriceCents === null) {
+        throw new Error(
+          "Acquisition price is required for purchased notes. If you originated this note, use the Originated import path instead.",
+        );
+      }
+
+      const currentBalanceCents = parseMoneyToCents(row.currentBalance) ?? originalPrincipalCents;
+
+      const interestRatePct = row.interestRate
+        ? parseFloat(row.interestRate.replace(/[%\s]/g, ""))
+        : 0;
+      const interestRateBps = Math.round(interestRatePct * 100); // 8.5% → 850
+
+      const termMonths = row.termMonths ? parseInt(row.termMonths, 10) : 360;
+      const paymentAmountCents = parseMoneyToCents(row.monthlyPayment) ?? 0;
+      const paymentDueDay = row.paymentDayOfMonth
+        ? Math.min(31, Math.max(1, parseInt(row.paymentDayOfMonth, 10) || 1))
+        : 1;
+
+      const originationDate = parseDate(row.originationDate);
+      const acquisitionDate = parseDate(row.acquisitionDate);
+      let maturityDate = parseDate(row.maturityDate);
+
+      if (!originationDate) {
+        throw new Error("Origination date is required (when the note was originally created)");
+      }
+      if (!acquisitionDate) {
+        throw new Error("Acquisition date is required (when you bought the note)");
+      }
+      if (!maturityDate) {
+        // Derive maturity from origination + term as a last-ditch fallback.
+        const od = new Date(originationDate);
+        if (!isNaN(od.getTime()) && termMonths > 0) {
+          od.setUTCMonth(od.getUTCMonth() + termMonths);
+          maturityDate = od.toISOString().slice(0, 10);
+        } else {
+          throw new Error("Maturity date is required (or supply origination date + term in months)");
+        }
+      }
+
+      // Note number — user-supplied or generated. Org-scoped uniqueness is
+      // enforced at the DB index level; collisions surface as errors below.
+      const noteNumber = (row.noteNumber || "").trim() || `IMP-${Date.now()}-${i + 1}`;
+
+      const payerAddress = row.propertyAddress
+        ? { line1: row.propertyAddress.trim() }
+        : null;
+
+      // Optional borrower TIN — encrypt on the way in. Currently the
+      // importer doesn't expose a TIN column (most servicer exports
+      // don't include it for security); leave null and let the user
+      // patch via /api/notes/:id when they have a W-9 on file.
+
+      await db.insert(acquiredNotes).values({
+        organizationId,
+        propertyId: null,
+        borrowerId: null,
+        noteNumber,
+        originalPrincipalCents,
+        currentBalanceCents,
+        interestRateBps,
+        termMonths,
+        paymentAmountCents,
+        paymentDueDay,
+        originationDate,
+        maturityDate,
+        acquisitionDate,
+        acquisitionPriceCents,
+        status: normalizeAcquiredNoteStatus(row.status),
+        payerName,
+        payerAddress,
+        payerEncryptedTin: null,
+        payerTinType: null,
+        originalLender: row.originalLender?.trim() || null,
+        notes: row.internalNotes?.trim() || null,
+      });
 
       result.successCount++;
     } catch (error) {

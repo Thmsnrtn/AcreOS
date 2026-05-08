@@ -21,8 +21,36 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 
-const ACREOS_NOTE_FIELDS = [
+type ImportIntent = "acquired" | "originated";
+
+// Field set varies by intent. Acquired imports require acquisition price /
+// dates / original lender — the IRS basis line. Originated doesn't.
+const ACQUIRED_NOTE_FIELDS = [
+  { value: "borrowerFirstName", label: "Borrower First Name *" },
+  { value: "borrowerLastName", label: "Borrower Last Name *" },
+  { value: "borrowerEmail", label: "Borrower Email" },
+  { value: "borrowerPhone", label: "Borrower Phone" },
+  { value: "noteNumber", label: "Note / Loan Number" },
+  { value: "originalPrincipal", label: "Original Face Value *" },
+  { value: "currentBalance", label: "Current Balance" },
+  { value: "acquisitionPrice", label: "Acquisition Price *" },
+  { value: "acquisitionDate", label: "Acquisition Date *" },
+  { value: "originationDate", label: "Origination Date *" },
+  { value: "maturityDate", label: "Maturity Date" },
+  { value: "interestRate", label: "Interest Rate" },
+  { value: "termMonths", label: "Term (Months)" },
+  { value: "monthlyPayment", label: "Monthly Payment" },
+  { value: "paymentDayOfMonth", label: "Payment Day of Month" },
+  { value: "originalLender", label: "Original Lender / Seller" },
+  { value: "status", label: "Status" },
+  { value: "propertyAddress", label: "Property Address" },
+  { value: "internalNotes", label: "Internal Notes" },
+  { value: "__skip__", label: "— Skip this column —" },
+];
+
+const ORIGINATED_NOTE_FIELDS = [
   { value: "borrowerFirstName", label: "Borrower First Name *" },
   { value: "borrowerLastName", label: "Borrower Last Name *" },
   { value: "borrowerEmail", label: "Borrower Email" },
@@ -43,21 +71,37 @@ const ACREOS_NOTE_FIELDS = [
 ];
 
 // Auto-detect AcreOS field from a raw CSV column header
-function autoDetectField(csvCol: string): string {
+function autoDetectField(csvCol: string, intent: ImportIntent): string {
   const lower = csvCol.toLowerCase().replace(/[_\s-]+/g, "");
   if (lower.includes("borrowerfirst") || lower === "firstname") return "borrowerFirstName";
   if (lower.includes("borrowerlast") || lower === "lastname") return "borrowerLastName";
   if (lower.includes("email")) return "borrowerEmail";
   if (lower.includes("phone")) return "borrowerPhone";
-  if (lower.includes("notea") || lower.includes("originalprincipal") || lower === "principal" || lower === "amount") return "originalPrincipal";
-  if (lower.includes("currentbalance") || lower === "balance") return "currentBalance";
+
+  // Acquired-only fields take priority when intent is 'acquired' so that
+  // ambiguous headers like "purchase date" or "cost basis" map correctly.
+  if (intent === "acquired") {
+    if (lower.includes("acquisitionprice") || lower.includes("purchaseprice") || lower === "costbasis" || lower === "basis") return "acquisitionPrice";
+    if (lower.includes("acquisitiondate") || lower.includes("purchasedate") || lower === "dateacquired") return "acquisitionDate";
+    if (lower.includes("originationdate") || lower === "notedate" || lower === "originalnotedate") return "originationDate";
+    if (lower.includes("maturitydate") || lower === "maturity") return "maturityDate";
+    if (lower.includes("originallender") || lower === "priorholder" || lower === "seller") return "originalLender";
+    if (lower === "facevalue" || lower === "originalface" || lower.includes("originalprincipal") || lower === "principal" || lower === "amount") return "originalPrincipal";
+    if (lower.includes("notenumber") || lower.includes("loannumber")) return "noteNumber";
+  } else {
+    if (lower.includes("notea") || lower.includes("originalprincipal") || lower === "principal" || lower === "amount") return "originalPrincipal";
+  }
+
+  if (lower.includes("currentbalance") || lower === "balance" || lower === "upb") return "currentBalance";
   if (lower.includes("interestrate") || lower === "rate") return "interestRate";
   if (lower.includes("term")) return "termMonths";
-  if (lower.includes("monthlypayment") || lower === "payment") return "monthlyPayment";
-  if (lower.includes("paymentday")) return "paymentDayOfMonth";
-  if (lower.includes("servicefee")) return "serviceFee";
-  if (lower.includes("latefee")) return "lateFeeAmount";
-  if (lower.includes("grace")) return "gracePeriodDays";
+  if (lower.includes("monthlypayment") || lower === "payment" || lower === "pi" || lower === "pandi") return "monthlyPayment";
+  if (lower.includes("paymentday") || lower === "duedate" || lower === "dueday") return "paymentDayOfMonth";
+  if (intent === "originated") {
+    if (lower.includes("servicefee")) return "serviceFee";
+    if (lower.includes("latefee")) return "lateFeeAmount";
+    if (lower.includes("grace")) return "gracePeriodDays";
+  }
   if (lower === "status") return "status";
   if (lower.includes("address")) return "propertyAddress";
   if (lower === "notes" || lower === "comments" || lower === "comment") return "internalNotes";
@@ -81,14 +125,18 @@ interface Props {
 export function NotesImportDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
   const [step, setStep] = useState<Step>("upload");
+  const [intent, setIntent] = useState<ImportIntent>("acquired");
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
   const [fieldMap, setFieldMap] = useState<Record<string, string>>({});
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
 
+  const fieldChoices = intent === "acquired" ? ACQUIRED_NOTE_FIELDS : ORIGINATED_NOTE_FIELDS;
+
   const reset = () => {
     setStep("upload");
+    // Don't reset intent — it's a workspace-level decision the user just made.
     setCsvColumns([]);
     setPreviewRows([]);
     setFieldMap({});
@@ -128,9 +176,10 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
       }
       setPreviewRows(rows);
 
-      // Auto-detect field mappings
+      // Auto-detect field mappings (intent-aware: acquisition headers
+      // outrank ambiguous fallbacks when intent is 'acquired').
       const detected: Record<string, string> = {};
-      cols.forEach((col) => { detected[col] = autoDetectField(col); });
+      cols.forEach((col) => { detected[col] = autoDetectField(col, intent); });
       setFieldMap(detected);
       setStep("map");
     };
@@ -142,6 +191,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
       if (!file) throw new Error("No file selected");
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("intent", intent);
       // Exclude __skip__ mappings
       const effectiveMap: Record<string, string> = {};
       for (const [col, field] of Object.entries(fieldMap)) {
@@ -165,6 +215,8 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
     onSuccess: (data) => {
       setResult(data);
       setStep("done");
+      // Both query keys cover both list surfaces (the /notes list reads
+      // /api/notes, the legacy money panel reads /api/money/notes).
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/money/notes"] });
     },
@@ -196,6 +248,50 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
         {/* Step: Upload */}
         {step === "upload" && (
           <div className="space-y-4 py-4">
+            {/* Intent picker — acquired vs originated. Determines which table
+                the importer writes to and which columns are required. */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">How did you get these notes?</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIntent("acquired")}
+                  data-testid="notes-import-intent-acquired"
+                  className={cn(
+                    "text-left rounded-xl border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    intent === "acquired"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40",
+                  )}
+                  aria-pressed={intent === "acquired"}
+                >
+                  <div className="text-sm font-semibold">I bought these notes</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Acquired from a prior holder. Captures acquisition price + date
+                    separately from face value (required for basis / 1099-INT).
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIntent("originated")}
+                  data-testid="notes-import-intent-originated"
+                  className={cn(
+                    "text-left rounded-xl border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    intent === "originated"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40",
+                  )}
+                  aria-pressed={intent === "originated"}
+                >
+                  <div className="text-sm font-semibold">I originated these notes</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Carried paper from selling a parcel. Single principal +
+                    payment terms; no separate basis tracking.
+                  </div>
+                </button>
+              </div>
+            </div>
+
             <button
               type="button"
               className="w-full border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -260,7 +356,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {ACREOS_NOTE_FIELDS.map((f) => (
+                        {fieldChoices.map((f) => (
                           <SelectItem key={f.value} value={f.value} className="text-xs">
                             {f.label}
                           </SelectItem>

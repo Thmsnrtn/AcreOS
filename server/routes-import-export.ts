@@ -7,7 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import {
   parseCSV, previewImport, importLeads, importProperties, importDeals,
-  importNotesFromCSV, NOTE_COLUMN_MAP,
+  importNotesFromCSV, importAcquiredNotesFromCSV, NOTE_COLUMN_MAP,
   exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV,
   getLeadsData, getPropertiesData, getDealsData, getNotesData,
   createBackupZip, getExpectedColumns, type ExportFilters,
@@ -232,7 +232,15 @@ export function registerImportExportRoutes(app: Express): void {
         }
       }
 
-      const result = await importNotesFromCSV(data, org.id, userFieldMap);
+      // Intent fork — 'acquired' (default) targets acquired_notes; 'originated'
+      // targets the legacy notes table for self-originated paper. Note
+      // investors per persona walkthrough are 75%+ acquired, so default
+      // matches the dominant case.
+      const intent = req.body?.intent === "originated" ? "originated" : "acquired";
+
+      const result = intent === "acquired"
+        ? await importAcquiredNotesFromCSV(data, org.id, userFieldMap)
+        : await importNotesFromCSV(data, org.id, userFieldMap);
 
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -240,11 +248,12 @@ export function registerImportExportRoutes(app: Express): void {
         organizationId: org.id,
         userId,
         action: "import",
-        entityType: "notes",
+        entityType: intent === "acquired" ? "acquired_notes" : "notes",
         entityId: 0,
         changes: {
           before: {},
           after: {
+            intent,
             totalRows: data.length,
             imported: result.successCount,
             errors: result.errorCount,
