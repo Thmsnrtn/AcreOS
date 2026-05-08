@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileText, AlertTriangle, CheckCircle2, Download, Loader2 } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle2, Download, Loader2, Users } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -259,6 +259,11 @@ export default function NotesTaxReadinessPage() {
         </Card>
       )}
 
+      {/* Investor statements — per-LP income per tax year. Only renders
+          when the org has at least one acquired note with ownership splits
+          configured (the endpoint returns [] if there are no splits). */}
+      <InvestorStatementsSection taxYear={taxYear} />
+
       {/* Batch result */}
       {batchResult && batchResult.status === "success" && (
         <Card className="border-acr-pos/30 bg-acr-pos/5">
@@ -299,6 +304,152 @@ export default function NotesTaxReadinessPage() {
         </Card>
       )}
     </PageShell>
+  );
+}
+
+interface InvestorStatementPreview {
+  investorName: string;
+  investorEmail: string | null;
+  totalInterestCents: number;
+  perNote: Array<{
+    noteNumber: string;
+    payerName: string;
+    noteYearInterestCents: number;
+    percentageBps: number;
+    investorShareCents: number;
+  }>;
+}
+
+interface InvestorBatchResponse {
+  taxYear: number;
+  statements: InvestorStatementPreview[];
+  totalInvestorInterestCents: number;
+  pdfs?: Array<{ investorName: string; pdfBase64: string; totalCents: number }>;
+}
+
+function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
+  const { toast } = useToast();
+  const [pdfs, setPdfs] = useState<InvestorBatchResponse["pdfs"]>([]);
+
+  const previewQuery = useQuery<InvestorBatchResponse>({
+    queryKey: ["/api/accounting/investor-income", taxYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/accounting/investor-income?taxYear=${taxYear}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed" }));
+        throw new Error(err.message || `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
+      const res = await fetch(`/api/accounting/investor-statements?taxYear=${taxYear}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "x-csrf-token": decodeURIComponent(csrfToken) },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Generate failed" }));
+        throw new Error(err.message || "Generate failed");
+      }
+      return res.json() as Promise<InvestorBatchResponse>;
+    },
+    onSuccess: (data) => {
+      setPdfs(data.pdfs ?? []);
+      toast({ title: "Statements generated", description: `${data.statements.length} per-investor PDFs ready.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Generate failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const previews = previewQuery.data?.statements ?? [];
+
+  if (previewQuery.isLoading) {
+    return <Card className="mb-6"><div className="p-5"><Skeleton className="h-20 w-full" /></div></Card>;
+  }
+
+  // Section is conditional: hide entirely when there's no pool ownership.
+  if (previews.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="mb-6">
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" aria-hidden="true" />
+            <div>
+              <h2 className="text-sm font-semibold">Investor statements ({taxYear})</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Per-LP share of interest income across pool-owned notes. Form choice
+                (1099-INT vs. K-1) is your CPA's call based on pool legal structure.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            data-testid="generate-investor-statements"
+          >
+            {generateMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Generating…</>
+            ) : (
+              <><FileText className="w-4 h-4 mr-1.5" /> Generate statements</>
+            )}
+          </Button>
+        </div>
+        <Separator className="mb-3" />
+
+        <div className="overflow-x-auto -mx-2">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-muted-foreground">
+                <th className="px-2 py-2 text-left font-medium">Investor</th>
+                <th className="px-2 py-2 text-left font-medium">Email</th>
+                <th className="px-2 py-2 text-right font-medium">Notes</th>
+                <th className="px-2 py-2 text-right font-medium">{taxYear} interest share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {previews.map((s) => (
+                <tr key={`${s.investorName}|${s.investorEmail ?? ""}`} className="border-t border-border/40">
+                  <td className="px-2 py-2 font-medium">{s.investorName}</td>
+                  <td className="px-2 py-2 text-xs text-muted-foreground">{s.investorEmail || "—"}</td>
+                  <td className="px-2 py-2 text-right font-mono text-xs">{s.perNote.length}</td>
+                  <td className="px-2 py-2 text-right font-mono">{fmtUsd(s.totalInterestCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {pdfs && pdfs.length > 0 && (
+          <>
+            <Separator className="my-4" />
+            <p className="text-xs font-medium mb-2">Download:</p>
+            <div className="space-y-1">
+              {pdfs.map((p, idx) => (
+                <DownloadLine
+                  key={idx}
+                  label={`${p.investorName} — ${fmtUsd(p.totalCents)}`}
+                  filename={`investor-statement-${p.investorName.replace(/[^A-Za-z0-9]+/g, "-")}-${taxYear}.pdf`}
+                  base64={p.pdfBase64}
+                  mime="application/pdf"
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 

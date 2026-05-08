@@ -24,9 +24,13 @@ import {
   generate1099Batch,
   getForm1099BatchStatus,
 } from "./services/form1099Batch";
+import {
+  generateInvestorStatementBatch,
+  aggregateInvestorIncomeForYear,
+} from "./services/investorStatementBatch";
 import { TaxIdentityError } from "./services/bookkeeping";
 import { db } from "./db";
-import { outbox } from "@shared/schema";
+import { outbox, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -38,6 +42,21 @@ function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Org-scoped customer-data gate. Owner / admin / founder can use it.
+ * Distinct from requireFounder — applied to endpoints that produce
+ * the customer's own org-scoped accounting outputs (their own 1099
+ * forms, their own investor statements). Trial balance + GL stay
+ * founder-only because they're cross-org introspection.
+ */
+function requireOrgOwnerOrAdmin(req: AuthenticatedRequest, res: Response): boolean {
+  if (req.isFounder) return true;
+  const role = (req.permissionContext as any)?.role as string | undefined;
+  if (role === "owner" || role === "admin") return true;
+  Errors.forbidden(res, "Owner or admin role required");
+  return false;
 }
 
 // ── GET /trial-balance ────────────────────────────────────────────────────
@@ -195,7 +214,7 @@ router.get("/qbo-export", async (req: AuthenticatedRequest, res: Response) => {
 // id; clients poll the existing /1099-batch/:jobId surface via the
 // resolved internal jobId once the worker writes it back.
 router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireFounder(req, res)) return;
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
     const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
@@ -262,7 +281,7 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
 
 // ── GET /1099-batch/job/:outboxId — poll outbox status for async batch ───
 router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireFounder(req, res)) return;
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const outboxId = parseInt(req.params.outboxId, 10);
     if (Number.isNaN(outboxId)) return Errors.badRequest(res, "outboxId must be numeric");
@@ -286,7 +305,7 @@ router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: R
 
 // ── GET /1099-batch/:jobId ────────────────────────────────────────────────
 router.get("/1099-batch/:jobId", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireFounder(req, res)) return;
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
     const jobId = req.params.jobId;
@@ -306,6 +325,57 @@ router.get("/1099-batch/:jobId", async (req: AuthenticatedRequest, res: Response
       errorMessage: row.errorMessage,
       result: row.resultBlob,
     });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── GET /investor-income — preview per-LP income for a tax year ──────────
+// Read-only aggregation; surfaces what the batch generator would produce.
+router.get("/investor-income", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  try {
+    const org = getOrganization(req);
+    const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
+    if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
+      return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
+    }
+    const statements = await aggregateInvestorIncomeForYear(org.id, taxYear);
+    const totalCents = statements.reduce((s, x) => s + x.totalInterestCents, 0);
+    res.json({ taxYear, statements, totalInvestorInterestCents: totalCents });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── POST /investor-statements — generate per-LP statement PDFs ───────────
+// Linnea: "AcreOS computes each investor's share of every payment,
+// generates per-investor 1099-INTs." This is that surface — the
+// downstream form-1099-vs-K-1 choice still belongs to the user's CPA
+// because pool legal structure determines it.
+router.post("/investor-statements", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  try {
+    const org = getOrganization(req);
+    const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
+    if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
+      return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
+    }
+    const [orgRow] = await db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, org.id))
+      .limit(1);
+    const orgName = orgRow?.name ?? "Note Holder";
+
+    const result = await generateInvestorStatementBatch(org.id, orgName, taxYear);
+    logger.info("accounting.investorStatements.completed", {
+      organizationId: org.id,
+      taxYear,
+      statements: result.statements.length,
+      totalCents: result.totalInvestorInterestCents,
+    });
+    res.json(result);
   } catch (err) {
     Errors.internal(res, err);
   }
