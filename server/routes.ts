@@ -174,6 +174,7 @@ import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
 import { registerBidEstimateRoutes } from "./routes-bid-estimates";
 import { registerConstructionDrawRoutes } from "./routes-construction-draws";
+import { registerRentalRoutes } from "./routes-rentals";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1786,6 +1787,8 @@ export async function registerRoutes(
   registerBidEstimateRoutes(app);
   // Fix-and-flip vertical FF-6 — construction draws + holding-cost meter.
   registerConstructionDrawRoutes(app);
+  // Buy-and-hold vertical BH-2 — tenant + lease CRUD.
+  registerRentalRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
