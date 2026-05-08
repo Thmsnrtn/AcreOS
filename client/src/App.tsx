@@ -220,6 +220,7 @@ const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-fla
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
 const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
 const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"));
+const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integrations"));
 const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
@@ -770,6 +771,9 @@ function Router() {
       </Route>
       <Route path="/founder/readiness">
         {() => <FounderProtectedRoute component={FounderReadinessPage} />}
+      </Route>
+      <Route path="/founder/customers/health">
+        {() => <FounderProtectedRoute component={FounderCustomersHealthPage} />}
       </Route>
       <Route path="/founder/integrations">
         {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}

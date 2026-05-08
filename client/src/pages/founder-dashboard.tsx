@@ -841,87 +841,6 @@ function JobHealthPanel() {
   );
 }
 
-/** At-Risk Orgs (Churn Engine) Panel */
-function ChurnRiskPanel() {
-  const { toast } = useToast();
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["/api/admin/churn-risk"],
-    queryFn: () => apiRequest("GET", "/api/admin/churn-risk?minScore=40").then(r => r.json()),
-    refetchInterval: 5 * 60_000,
-  });
-
-  const orgs: any[] = data?.orgs ?? [];
-
-  const triggerRescue = async (orgId: number, orgName: string) => {
-    try {
-      await apiRequest("POST", `/api/admin/churn-risk/${orgId}/rescue`);
-      toast({ title: "Rescue triggered", description: `Pax will reach out to ${orgName}` });
-      refetch();
-    } catch {
-      toast({ title: "Couldn't trigger rescue", description: "No outreach was queued. Try again or check the system status.", variant: "destructive" });
-    }
-  };
-
-  const riskColor = (score: number) =>
-    score >= 80 ? "text-acr-neg font-bold" :
-    score >= 60 ? "text-acr-warn font-semibold" :
-    "text-muted-foreground";
-
-  return (
-    <Card className="col-span-full md:col-span-1">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-acr-neg" />
-          Churn Risk Radar
-        </CardTitle>
-        <CardDescription className="text-xs">Paying orgs with elevated churn risk — Pax auto-rescues at 85+</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-        ) : orgs.length === 0 ? (
-          <div className="flex flex-col items-center py-6 gap-1">
-            <CircleCheck className="w-8 h-8 text-acr-pos" />
-            <p className="text-sm text-muted-foreground">No orgs at elevated churn risk</p>
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">
-            {orgs.map((org: any) => (
-              <div key={org.id} className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0 gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{org.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <Badge variant="outline" className="text-xs py-0">{org.subscriptionTier}</Badge>
-                    {org.churnRescueSentAt && (
-                      <span className="text-xs text-acr-brand flex items-center gap-1">
-                        <BrainCircuit className="w-3 h-3" /> Pax intervened
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-lg font-mono ${riskColor(org.churnRiskScore)}`}>
-                    {org.churnRiskScore}
-                  </span>
-                  {!org.churnRescueSentAt && org.churnRiskScore >= 60 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => triggerRescue(org.id, org.name)}
-                    >
-                      Rescue
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 /** Pax's Eyes — observations and cross-org learnings */
 const ACTION_LABELS: Record<string, string> = {
@@ -2218,7 +2137,20 @@ export default function FounderDashboard() {
           {/* ═══ TAB: GROWTH ═══ */}
           {activeTab === "growth" && (
             <div className="space-y-6">
-              <MRRTrajectory goalCents={goalCents > 0 ? goalCents : undefined} />
+              {/* MRRTrajectory moved to /founder/customers/health (F-D #4)
+                  alongside ChurnRiskPanel + OrgHealthMonitor. */}
+              <Link href="/founder/customers/health" className="block p-4 rounded-xl border bg-card hover:border-primary/40 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold text-sm">Customer health → /founder/customers/health</p>
+                      <p className="text-xs text-muted-foreground">MRR trajectory, churn risk, org health.</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-xs">Open →</Badge>
+                </div>
+              </Link>
               <Card className="overflow-hidden">
                 <CardHeader className="pb-2 border-b">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -2274,7 +2206,7 @@ export default function FounderDashboard() {
                 <SystemActivityPanel />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <JobHealthPanel />
-                  <ChurnRiskPanel />
+                  {/* ChurnRiskPanel moved to /founder/customers/health (F-D #4) */}
                   <PaxEyesPanel />
                 </div>
               </div>
@@ -4737,7 +4669,21 @@ export default function FounderDashboard() {
       <div id="section-growth" className="scroll-mt-16"><GrowthSection /></div>
 
       {/* Org Health Monitor */}
-      <div id="section-org-health" className="scroll-mt-16"><OrgHealthMonitor /></div>
+      {/* OrgHealthMonitor moved to /founder/customers/health (F-D #4) */}
+      <div id="section-org-health" className="scroll-mt-16">
+        <Link href="/founder/customers/health" className="block p-4 rounded-xl border bg-card hover:border-primary/40 transition-colors">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" aria-hidden="true" />
+              <div>
+                <p className="font-semibold text-sm">Customer health</p>
+                <p className="text-xs text-muted-foreground">Per-org health scores, MRR waterfall by tier — open the dedicated page.</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="text-xs">Open →</Badge>
+          </div>
+        </Link>
+      </div>
 
       {/* AI Models + System API Keys = Config */}
       <AIModelsSection />
@@ -5979,173 +5925,6 @@ function TodaysBriefing() {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ORG HEALTH MONITOR
-// Per-org health score (0-100) surfacing at-risk customers.
-// Sorted: critical → at_risk → watch → healthy
-// ─────────────────────────────────────────────────────────────────────
-
-interface OrgHealthItem {
-  id: number;
-  name: string;
-  subscriptionTier: string;
-  subscriptionStatus: string;
-  dunningStage: string | null;
-  healthScore: number;
-  healthStatus: "healthy" | "watch" | "at_risk" | "critical" | "founder";
-  issues: string[];
-  mrr: number;
-}
-
-const HEALTH_CONFIG = {
-  critical: { label: "Critical", bg: "bg-acr-neg/10", text: "text-acr-neg", bar: "bg-acr-neg", dot: "bg-acr-neg" },
-  at_risk: { label: "At Risk", bg: "bg-acr-warn/10", text: "text-acr-warn", bar: "bg-acr-warn", dot: "bg-acr-warn" },
-  watch: { label: "Watch", bg: "bg-acr-warn/10", text: "text-acr-warn", bar: "bg-acr-warn", dot: "bg-acr-warn" },
-  healthy: { label: "Healthy", bg: "bg-acr-pos/10", text: "text-acr-pos", bar: "bg-acr-pos", dot: "bg-acr-pos" },
-  founder: { label: "Founder", bg: "bg-primary/10", text: "text-primary", bar: "bg-primary", dot: "bg-primary" },
-};
-
-function OrgHealthMonitor() {
-  const [showAll, setShowAll] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>("all");
-
-  const { data: orgs, isLoading } = useQuery<OrgHealthItem[]>({
-    queryKey: ["/api/founder/org-health"],
-    refetchInterval: 10 * 60 * 1000,
-  });
-
-  const { data: waterfallData } = useQuery<{
-    tiers: Array<{ tier: string; label: string; count: number; activeCount: number; atRiskCount: number; mrr: number; atRiskMrr: number }>;
-    totalMrr: number;
-    atRiskMrr: number;
-    totalOrgs: number;
-  }>({
-    queryKey: ["/api/founder/revenue/waterfall"],
-  });
-
-  if (isLoading) return (
-    <div className="mt-8 p-6 border rounded-xl bg-card space-y-3">
-      <div className="h-5 bg-muted animate-pulse rounded w-1/4" />
-      {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
-    </div>
-  );
-
-  const allOrgs = orgs || [];
-  const filtered = filterStatus === "all" ? allOrgs : allOrgs.filter(o => o.healthStatus === filterStatus);
-  const displayed = showAll ? filtered : filtered.slice(0, 12);
-
-  const counts = allOrgs.reduce<Record<string, number>>((acc, o) => {
-    acc[o.healthStatus] = (acc[o.healthStatus] || 0) + 1;
-    return acc;
-  }, {});
-
-  const atRiskCount = (counts.critical || 0) + (counts.at_risk || 0);
-  const totalMrr = waterfallData?.totalMrr || 0;
-  const atRiskMrr = waterfallData?.atRiskMrr || 0;
-
-  return (
-    <div className="mt-8 p-6 border rounded-xl bg-card space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Activity className="w-5 h-5 text-primary" />
-            Customer Health
-          </h2>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {allOrgs.length} organizations · {usd(totalMrr, { noCents: Number.isInteger(totalMrr) })} MRR
-            {atRiskMrr > 0 && <span className="text-acr-neg ml-2">· {usd(atRiskMrr, { noCents: Number.isInteger(atRiskMrr) })} at risk</span>}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {Object.entries(counts).filter(([k]) => k !== 'founder').map(([status, count]) => {
-            const cfg = HEALTH_CONFIG[status as keyof typeof HEALTH_CONFIG] || HEALTH_CONFIG.healthy;
-            return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setFilterStatus(filterStatus === status ? "all" : status)}
-                aria-pressed={filterStatus === status}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  filterStatus === status ? `${cfg.bg} ${cfg.text} ${cfg.bg}` : "border-border text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${cfg.dot}`} aria-hidden="true" />
-                {cfg.label} {count}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* MRR waterfall by tier */}
-      {waterfallData && (
-        <div className="grid grid-cols-5 gap-2">
-          {waterfallData.tiers.filter(t => t.tier !== 'free').map((t) => (
-            <div key={t.tier} className="p-3 border rounded-lg text-center">
-              <div className="text-sm font-semibold">{t.label}</div>
-              <div className="text-lg font-bold text-primary mt-0.5 tabular-nums">{usd(t.mrr, { noCents: Number.isInteger(t.mrr) })}</div>
-              <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
-              {t.atRiskCount > 0 && (
-                <div className="text-xs text-acr-neg font-medium">{t.atRiskCount} at risk</div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {atRiskCount > 0 && (
-        <div className="flex items-center gap-2 p-2.5 bg-acr-neg/5 border border-acr-neg/30 rounded-lg text-sm text-acr-neg">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          {atRiskCount} organization{atRiskCount > 1 ? 's' : ''} at risk — check Action Queue for recommended responses
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        {displayed.map((org) => {
-          const cfg = HEALTH_CONFIG[org.healthStatus] || HEALTH_CONFIG.healthy;
-          return (
-            <div key={org.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/20 transition-colors group">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm truncate">{org.name}</span>
-                  <Badge variant="outline" className="text-xs shrink-0">{org.subscriptionTier}</Badge>
-                  {org.issues.length > 0 && (
-                    <span className={`text-xs ${cfg.text} truncate`}>{org.issues[0]}</span>
-                  )}
-                </div>
-              </div>
-              {/* Health score bar */}
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${cfg.bar}`}
-                    style={{ width: `${org.healthScore}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground w-7 text-right">{org.healthScore}</span>
-              </div>
-              {org.mrr > 0 && (
-                <span className="text-xs text-muted-foreground shrink-0 w-10 text-right">${org.mrr}/mo</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {filtered.length > 12 && (
-        <button
-          type="button"
-          onClick={() => setShowAll(!showAll)}
-          className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-          aria-expanded={showAll}
-        >
-          {showAll ? "Show less" : `Show ${filtered.length - 12} more`}
-        </button>
-      )}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // AUTOPILOT STATUS BAR
