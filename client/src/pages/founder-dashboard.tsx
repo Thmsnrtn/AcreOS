@@ -4712,7 +4712,22 @@ export default function FounderDashboard() {
 
       {/* AI Models + System API Keys = Config */}
       <AIModelsSection />
-      <SystemApiKeysSection />
+      {/* SystemApiKeysSection extracted to /founder/keys (F-D #1).
+          Link card preserves discoverability for founders who scroll. */}
+      <Link href="/founder/keys" className="block mt-6 mb-8 p-6 border rounded-xl bg-card hover:border-primary/40 transition-colors">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Key className="w-5 h-5 text-primary" aria-hidden="true" />
+              System API keys
+            </h2>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Platform-wide API keys, BYOK overrides. Open the dedicated page to rotate.
+            </p>
+          </div>
+          <Badge variant="outline" className="text-xs">Open →</Badge>
+        </div>
+      </Link>
 
       {/* Monthly Check-In Dashboard */}
       <MonthlyCheckin />
@@ -4822,138 +4837,6 @@ function AIModelsSection() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// System API Keys section
-// ─────────────────────────────────────────────────────────────────────
-const COMMON_PROVIDERS = [
-  { provider: "openai", displayName: "OpenAI", description: "GPT models for AI features" },
-  { provider: "openrouter", displayName: "OpenRouter", description: "Multi-model routing (recommended)" },
-  { provider: "anthropic", displayName: "Anthropic", description: "Claude models" },
-  { provider: "stripe", displayName: "Stripe", description: "Payment processing" },
-  { provider: "sendgrid", displayName: "SendGrid", description: "Email delivery" },
-  { provider: "twilio", displayName: "Twilio", description: "SMS & voice" },
-  { provider: "lob", displayName: "Lob", description: "Direct mail campaigns" },
-  { provider: "regrid", displayName: "Regrid", description: "Parcel & property data" },
-  { provider: "mapbox", displayName: "Mapbox", description: "Maps & geocoding" },
-];
-
-function SystemApiKeysSection() {
-  const { data: keys = [], isLoading, refetch } = useQuery<any[]>({
-    queryKey: ["/api/admin/system-api-keys"],
-  });
-  const { toast } = useToast();
-  const [editProvider, setEditProvider] = useState<string | null>(null);
-  const [newKey, setNewKey] = useState("");
-  const [addingProvider, setAddingProvider] = useState(false);
-  const [customProvider, setCustomProvider] = useState("");
-  const [customDisplayName, setCustomDisplayName] = useState("");
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) =>
-      apiRequest("PUT", `/api/admin/system-api-keys/${provider}`, { apiKey }),
-    onSuccess: () => {
-      refetch();
-      setEditProvider(null);
-      setNewKey("");
-      toast({ title: "API key saved" });
-    },
-    onError: () => toast({ title: "Couldn't save API key", description: "The previous key is still in use.", variant: "destructive" }),
-  });
-
-  // Build display list: merge DB rows with common providers that aren't set yet
-  const existingProviders = new Set((keys as any[]).map((k: any) => k.provider));
-  const missingProviders = COMMON_PROVIDERS.filter(p => !existingProviders.has(p.provider));
-  const allProviders = [
-    ...(keys as any[]).map((k: any) => ({ ...k, fromDb: true })),
-    ...missingProviders.map(p => ({
-      id: p.provider,
-      provider: p.provider,
-      displayName: p.displayName,
-      hasKey: false,
-      fromDb: false,
-      description: p.description,
-    })),
-  ];
-
-  return (
-    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4 scroll-mt-16" data-testid="section-system-api-keys">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Key className="w-5 h-5 text-primary" />
-            System API Keys
-          </h2>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Platform-wide API keys. Users' BYOK keys override these for their own usage.
-          </p>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="animate-pulse h-20 rounded-lg bg-muted/50" />
-      ) : (
-        <div className="space-y-2">
-          {allProviders.map((key) => (
-            <div key={key.provider} className="flex items-center gap-3 p-3 border rounded-lg">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{key.displayName}</span>
-                  <Badge variant={key.hasKey ? "default" : "outline"} className={`text-xs ${key.hasKey ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20" : ""}`}>
-                    {key.hasKey ? "Configured" : "Not set"}
-                  </Badge>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  <span className="font-mono">{key.provider}</span>
-                  {key.description && <span className="ml-2">— {key.description}</span>}
-                </div>
-              </div>
-              {editProvider === key.provider ? (
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (newKey && !updateMutation.isPending) updateMutation.mutate({ provider: key.provider, apiKey: newKey });
-                  }}
-                >
-                  <Input
-                    type="password"
-                    placeholder="Paste API key…"
-                    value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    className="h-8 w-56 text-xs font-mono"
-                    autoComplete="off"
-                    aria-label={`API key for ${key.provider}`}
-                    autoFocus
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    className="h-8"
-                    disabled={updateMutation.isPending || !newKey}
-                  >
-                    {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
-                  </Button>
-                  <Button aria-label="Button" type="button" size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
-                    <X className="w-3 h-3" />
-                  </Button>
-                </form>
-              ) : (
-                <Button
-                  size="sm"
-                  variant={key.hasKey ? "outline" : "default"}
-                  className="h-8 text-xs shrink-0"
-                  onClick={() => { setEditProvider(key.provider); setNewKey(""); }}
-                >
-                  {key.hasKey ? "Update" : "Set Key"}
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // FEATURE FLAGS SECTION
