@@ -104,6 +104,9 @@ import {
   Gavel,
   BookOpen,
   Scale,
+  ClipboardList,
+  Calendar,
+  Ruler,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
@@ -438,6 +441,27 @@ const NAV_MODULES: NavModule[] = [
       { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
       { label: "Double-close", icon: GitBranch, href: "/double-close", description: "A→B + B→C linked transactions" },
       { label: "Assignment legality", icon: Scale, href: "/wholesaler-state-rules", description: "Per-state wholesaler-licensing rules" },
+    ],
+  },
+
+  // ── Subdivider vertical (SD-1..SD-9) ──────────────────────────────
+  // Brigid: "My left-rail nav: /maps, /parcels/:id 'Subdivision' tab,
+  // /permits (new), /lots (new), /plats (new). Five entries. Nothing else.
+  // The current nav has thirty-something entries and most of them don't
+  // apply to my model. A persona-driven nav that hides what I don't need
+  // would do more for my onboarding than any AI feature."
+  {
+    id: "subdivider",
+    label: "Subdivision",
+    icon: Layers,
+    href: "/permits",
+    description: "Lots, permits, plans, pricing grid, county timelines",
+    businessTypeOnly: ["subdivider"],
+    children: [
+      { label: "Permits", icon: ClipboardList, href: "/permits", description: "County-by-county permit checklists w/ stalled-gate alerts" },
+      { label: "County timelines", icon: Calendar, href: "/county-timelines", description: "Subdivision approval lead times by county" },
+      { label: "Lot pricing", icon: Ruler, href: "/lot-pricing", description: "Premium-rule grid for child lots (open from a parent parcel)" },
+      { label: "CC&R templates", icon: FileText, href: "/ccr-templates", description: "Restrictive covenants + road maintenance + HOA bylaws" },
     ],
   },
 

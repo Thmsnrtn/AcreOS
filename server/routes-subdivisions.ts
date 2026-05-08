@@ -358,6 +358,83 @@ export function registerSubdivisionRoutes(app: Express): void {
     },
   );
 
+  // GET /api/subdivider/dashboard — type-specific dashboard widget data.
+  // Following the wholesaler-W5 pattern: real org-scoped queries, hasData=
+  // false when no parent parcels are tracked yet (suppress the widget).
+  app.get(
+    "/api/subdivider/dashboard",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+
+        // Parents = properties with no parent_parcel_id but at least one
+        // child referencing them.
+        const parentRows = await db.execute(sql`
+          SELECT
+            p.id,
+            p.purchase_price,
+            (SELECT COUNT(*) FROM properties c WHERE c.parent_parcel_id = p.id AND c.organization_id = ${orgId} AND c.deleted_at IS NULL) AS child_count,
+            (SELECT COUNT(*) FROM properties c WHERE c.parent_parcel_id = p.id AND c.status = 'sold') AS sold_count,
+            (SELECT COALESCE(SUM(c.sold_price::numeric * 100), 0) FROM properties c WHERE c.parent_parcel_id = p.id AND c.status = 'sold') AS sold_proceeds_cents
+          FROM properties p
+          WHERE p.organization_id = ${orgId}
+            AND p.parent_parcel_id IS NULL
+            AND p.deleted_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM properties c WHERE c.parent_parcel_id = p.id
+            )
+        `);
+
+        const parents = (parentRows as any).rows ?? [];
+        if (parents.length === 0) {
+          return res.json({ hasData: false });
+        }
+
+        let totalChildren = 0;
+        let soldChildren = 0;
+        let totalParentBasisCents = 0;
+        let totalSoldProceedsCents = 0;
+        for (const p of parents) {
+          totalChildren += Number(p.child_count) || 0;
+          soldChildren += Number(p.sold_count) || 0;
+          if (p.purchase_price) {
+            totalParentBasisCents += Math.round(parseFloat(p.purchase_price) * 100);
+          }
+          totalSoldProceedsCents += Number(p.sold_proceeds_cents) || 0;
+        }
+
+        // Stalled permit gates count.
+        const today = new Date().toISOString().slice(0, 10);
+        const stalledRows = await db.execute(sql`
+          SELECT COUNT(*) AS c
+          FROM permit_gates
+          WHERE organization_id = ${orgId}
+            AND status IN ('submitted','in_review')
+            AND expected_return_at IS NOT NULL
+            AND expected_return_at <= ${today}::date
+        `);
+        const stalledGates = Number(((stalledRows as any).rows?.[0]?.c) ?? 0);
+
+        return res.json({
+          hasData: true,
+          parentCount: parents.length,
+          totalChildLots: totalChildren,
+          soldChildLots: soldChildren,
+          totalParentBasisCents,
+          totalSoldProceedsCents,
+          recoveredPct: totalParentBasisCents > 0
+            ? Math.round((totalSoldProceedsCents / totalParentBasisCents) * 100)
+            : 0,
+          stalledGates,
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // DELETE /api/lots/:childId — detach (do NOT hard-delete the property row).
   app.delete(
     "/api/lots/:childId",

@@ -498,6 +498,7 @@ export default function TodayPage() {
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const isTaxDelinquentOrg = businessType === "tax_lien_deed";
   const isWholesalerOrg = businessType === "residential_wholesaler";
+  const isSubdividerOrg = businessType === "subdivider";
 
   return (
     <PageShell label="Today">
@@ -529,6 +530,35 @@ export default function TodayPage() {
               </Button>
               <Button asChild size="sm" variant="outline">
                 <Link href="/wholesaler-state-rules">State rules</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Subdivider quick-jump — visible for subdivider business type.
+          Brigid: "Build that 'subdivider /today' and the surface starts
+          earning its real estate. […] which permits are stalled past
+          their SLA, which lots have offers waiting on me." */}
+      {isSubdividerOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Subdivider surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Permits, county timelines, lot pricing grid, CC&amp;R templates —
+                tuned for one-parent-into-many-children workflows.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/permits">Permits</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/county-timelines">County timelines</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/ccr-templates">CC&amp;R templates</Link>
               </Button>
             </div>
           </CardContent>

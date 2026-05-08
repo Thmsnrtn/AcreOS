@@ -23,6 +23,9 @@ import {
   ArrowUpRight,
   Home,
   Landmark,
+  Layers,
+  ClipboardList,
+  AlertTriangle,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -32,7 +35,7 @@ export interface TypeSpecificWidgetsProps {
   organizationId: number;
 }
 
-type BusinessCategory = "land" | "wholesaler" | "flipper" | "buy_and_hold" | "commercial";
+type BusinessCategory = "land" | "wholesaler" | "flipper" | "buy_and_hold" | "commercial" | "subdivider";
 
 // ── Mock data structures (to be wired to API later) ────────────────────
 
@@ -108,6 +111,8 @@ function resolveCategory(businessType: string): BusinessCategory {
       return "land";
     case "residential_wholesaler":
       return "wholesaler";
+    case "subdivider":
+      return "subdivider";
     case "fix_and_flip":
       return "flipper";
     case "buy_and_hold":
@@ -681,6 +686,118 @@ function CommercialWidgets() {
   );
 }
 
+// ── Subdivider widgets (SD-9) ──────────────────────────────────────────
+
+interface SubdividerDashboard {
+  hasData: boolean;
+  parentCount?: number;
+  totalChildLots?: number;
+  soldChildLots?: number;
+  totalParentBasisCents?: number;
+  totalSoldProceedsCents?: number;
+  recoveredPct?: number;
+  stalledGates?: number;
+}
+
+function fmtUsdCentsCompact(cents: number | undefined): string {
+  if (cents === undefined) return "—";
+  if (cents >= 1_000_000_00) return `$${(cents / 100_000_000).toFixed(1)}M`;
+  if (cents >= 1_000_00) return `$${(cents / 100_000).toFixed(0)}K`;
+  return `$${(cents / 100).toLocaleString()}`;
+}
+
+function SubdividerWidgets() {
+  const { data: live, isLoading } = useQuery<SubdividerDashboard>({
+    queryKey: ["/api/subdivider/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/subdivider/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-32" />;
+  if (!live?.hasData) return null;  // Trey's lesson: hide widget when empty.
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+    >
+      <motion.div variants={fadeInUp}>
+        <Card className="floating-window h-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Layers className="w-4 h-4 text-primary" />
+              Subdivisions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{live.parentCount}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {live.totalChildLots} child lots tracked
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={fadeInUp}>
+        <Card className="floating-window h-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <DollarSign className="w-4 h-4 text-acr-pos" />
+              Basis recovered
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{live.recoveredPct ?? 0}%</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {fmtUsdCentsCompact(live.totalSoldProceedsCents)} of {fmtUsdCentsCompact(live.totalParentBasisCents)}
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={fadeInUp}>
+        <Card className="floating-window h-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <TrendingUp className="w-4 h-4 text-acr-accent" />
+              Lots sold
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{live.soldChildLots} <span className="text-sm font-normal text-muted-foreground">/ {live.totalChildLots}</span></p>
+            <p className="text-xs text-muted-foreground mt-1">across all subdivisions</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={fadeInUp}>
+        <Card className="floating-window h-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <ClipboardList className="w-4 h-4 text-acr-warn" />
+              Stalled gates
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold flex items-center gap-2">
+              {live.stalledGates ?? 0}
+              {live.stalledGates && live.stalledGates > 0 ? (
+                <AlertTriangle className="w-4 h-4 text-acr-warn" />
+              ) : null}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">past expected return date</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────
 
 export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecificWidgetsProps) {
@@ -692,6 +809,7 @@ export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecif
     flipper: { title: "Fix & Flip", icon: <Hammer className="w-4 h-4" /> },
     buy_and_hold: { title: "Buy & Hold", icon: <Building className="w-4 h-4" /> },
     commercial: { title: "Commercial", icon: <Landmark className="w-4 h-4" /> },
+    subdivider: { title: "Subdivision", icon: <Building className="w-4 h-4" /> },
   };
 
   const { title, icon } = labels[category];
@@ -710,6 +828,7 @@ export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecif
       {category === "flipper" && <FlipperWidgets />}
       {category === "buy_and_hold" && <BuyAndHoldWidgets />}
       {category === "commercial" && <CommercialWidgets />}
+      {category === "subdivider" && <SubdividerWidgets />}
     </div>
   );
 }

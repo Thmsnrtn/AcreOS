@@ -54,6 +54,7 @@ type BusinessType =
   | "short_term_rental"
   | "creative_finance"
   | "developer"
+  | "subdivider"
   | "tax_lien_deed"
   | "multifamily"
   | "mobile_home"
@@ -81,7 +82,8 @@ const INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; de
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
   { value: "note_investor", label: "Note Investor", icon: FileText, description: "Buy, sell, and service mortgage notes and seller-financed paper." },
-  { value: "developer", label: "Developer / Subdivider", icon: Warehouse, description: "Land development, entitlements, subdivisions, and new construction." },
+  { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
+  { value: "subdivider", label: "Subdivider", icon: Warehouse, description: "Buy 40-200 acre parents, cut into 5-50 child lots, sell over 18-36 months." },
   { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
   { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
   { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },

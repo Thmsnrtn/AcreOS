@@ -53,6 +53,26 @@ const REGISTRY: HiddenRouteRegistry = {
     mobile_home:            ["/land-credit"],
     agent_investor:         ["/land-credit"],
     creative_finance:       ["/land-credit"],
+    // Subdivider vertical SD-9 — Brigid: "I have no notes. […] depreciation
+    // doesn't apply to me — lots held as inventory aren't depreciated.
+    // /portfolio, /money, /capital-markets, /forecasting are dead weight.
+    // /tax-optimizer / /tax-optimization are about depreciation strategy,
+    // wrong tax chapter for inventory COGS."
+    subdivider: [
+      "/notes",
+      "/notes/pipeline",
+      "/depreciation",
+      "/depreciation-calculator",
+      "/dunning",
+      "/exchange-1031",
+      "/borrower-portal",
+      "/capital-markets",
+      "/forecasting",
+      "/cash-flow",
+      "/tax-optimization",
+      "/tax-optimizer",
+      "/land-credit",
+    ],
     // land_flipper / note_investor / hybrid / developer / tax_lien_deed:
     // all routes visible.
   },
