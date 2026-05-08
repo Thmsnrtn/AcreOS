@@ -210,15 +210,28 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // RS-5: fire-and-forget new-location detector. Bounded by an in-memory
   // Set keyed on sessionId so it touches the DB at most once per session
   // per process — not on every authenticated request.
+  // RS-6: same memo pattern, detects an email change in Clerk vs our
+  // local DB row and alerts both addresses.
   try {
     const sessionId = (req as any).auth?.sessionId ?? null;
+    const ip = req.ip ?? null;
+    const userAgent = (req.headers["user-agent"] as string) ?? null;
     void import("../services/loginAnomalyDetector").then((m) =>
       m.recordAndAlertIfNew({
         userId,
         sessionId,
-        ip: req.ip ?? null,
-        userAgent: (req.headers["user-agent"] as string) ?? null,
+        ip,
+        userAgent,
         headers: req.headers as Record<string, any>,
+      }).catch(() => {/* fail-open */}),
+    ).catch(() => {/* fail-open */});
+    void import("../services/emailChangeDetector").then((m) =>
+      m.detectAndAlertEmailChange({
+        userId,
+        clerkUserId: (user as any).clerkUserId ?? null,
+        sessionId,
+        ip,
+        userAgent,
       }).catch(() => {/* fail-open */}),
     ).catch(() => {/* fail-open */});
   } catch {/* fail-open */}
