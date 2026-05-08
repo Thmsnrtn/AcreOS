@@ -31,6 +31,8 @@ import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
 import { NoteRecordPaymentModal } from "@/components/note-record-payment-modal";
 import { NotePayoffCalculator } from "@/components/note-payoff-calculator";
 import { NoteYieldPanel } from "@/components/note-yield-panel";
+import { NoteBasisSchedule } from "@/components/note-basis-schedule";
+import { NoteTinEditor } from "@/components/note-tin-editor";
 
 export interface AcquiredNote {
   id: string;
@@ -338,11 +340,14 @@ export default function NoteDetailPage() {
               value={note.originalLender || "—"}
               sub={note.originalLender ? "Prior holder" : undefined}
             />
-            <KV
-              label="Tax ID type"
-              value={note.payerTinType || "—"}
-              sub={note.payerTinType ? "On file" : "Add a W-9 to enable 1099-INT"}
-            />
+            <div>
+              <div className="text-xs text-muted-foreground">Tax ID type</div>
+              <div className="text-sm font-medium mt-0.5">{note.payerTinType || "—"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {note.payerTinType ? "On file" : "Add a W-9 to enable 1099-INT"}
+              </div>
+              <NoteTinEditor noteId={note.id} currentTinType={note.payerTinType as any} />
+            </div>
           </div>
         </div>
       </Card>
@@ -393,6 +398,10 @@ export default function NoteDetailPage() {
         onOpenChange={setRecordPaymentOpen}
         note={note}
       />
+
+      {/* Basis schedule — Pub 1212 market-discount accretion. Renders empty
+          state for face-value purchases / premium-paid notes. */}
+      <NoteBasisSchedule noteId={note.id} />
 
       {/* Internal notes */}
       {note.notes && (

@@ -295,6 +295,118 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
   };
 }
 
+// ─── Basis schedule (IRS Pub 1212 — market-discount accretion) ───────────────
+
+interface BasisScheduleRow {
+  year: number;
+  startingBasisCents: number;
+  accretedDiscountCents: number;
+  principalReceivedCents: number;
+  endingBasisCents: number;
+}
+
+interface BasisScheduleInput {
+  acquisitionPriceCents: number;
+  originalPrincipalCents: number; // face value at acquisition
+  acquisitionDate: string;
+  maturityDate: string;
+  payments: Array<{ paymentDate: string; principalCents: number }>;
+  // Method per Pub 1212. 'ratable' = straight-line over remaining term.
+  // 'constant_yield' = bond-accounting style; not yet implemented (the
+  // ratable election is what most non-bond note investors use).
+  method?: "ratable" | "constant_yield";
+}
+
+/**
+ * Compute the per-year basis schedule for a purchased note.
+ *
+ * For notes bought at a discount (face > acquisition), the IRS requires
+ * market-discount accretion as ordinary income over the remaining life
+ * (Pub 1212). Without this, basis at sale is wrong, gain/loss is wrong,
+ * and Linnea gets an IRS letter — her exact concern.
+ *
+ * Ratable method (the default): each year accrues
+ *   total_discount × (months_in_year / total_months_remaining_at_acquisition)
+ * with months capped to the term ending at maturity.
+ */
+export function computeBasisSchedule(input: BasisScheduleInput): BasisScheduleRow[] {
+  const {
+    acquisitionPriceCents,
+    originalPrincipalCents,
+    acquisitionDate,
+    maturityDate,
+    payments,
+  } = input;
+
+  const totalDiscountCents = originalPrincipalCents - acquisitionPriceCents;
+
+  // Premium (acquisition > face) is a separate code path — bond premium
+  // amortization elections under §171 — we don't auto-accrete in that
+  // direction; just flat-line the basis.
+  if (totalDiscountCents <= 0) {
+    return [];
+  }
+
+  const acqDate = new Date(acquisitionDate);
+  const matDate = new Date(maturityDate);
+  const totalMonthsRemainingAtAcquisition = Math.max(
+    1,
+    (matDate.getUTCFullYear() - acqDate.getUTCFullYear()) * 12 +
+      (matDate.getUTCMonth() - acqDate.getUTCMonth()),
+  );
+
+  // For each year between acquisition and maturity (inclusive), compute
+  // the months that fell in that year. Multiply by per-month accretion.
+  const accretionPerMonthCents = totalDiscountCents / totalMonthsRemainingAtAcquisition;
+
+  // Bucket payments by year (only principal — interest is already taxed).
+  const principalByYear = new Map<number, number>();
+  for (const p of payments) {
+    const y = new Date(p.paymentDate).getUTCFullYear();
+    principalByYear.set(y, (principalByYear.get(y) ?? 0) + p.principalCents);
+  }
+
+  const rows: BasisScheduleRow[] = [];
+  let runningBasis = acquisitionPriceCents;
+
+  const startYear = acqDate.getUTCFullYear();
+  const endYear = matDate.getUTCFullYear();
+
+  for (let y = startYear; y <= endYear; y++) {
+    // Months of this year that fall within (acqDate, matDate].
+    const yearStart = new Date(Date.UTC(y, 0, 1));
+    const yearEnd = new Date(Date.UTC(y, 11, 31));
+    const periodStart = acqDate > yearStart ? acqDate : yearStart;
+    const periodEnd = matDate < yearEnd ? matDate : yearEnd;
+    const monthsInYear = Math.max(
+      0,
+      (periodEnd.getUTCFullYear() - periodStart.getUTCFullYear()) * 12 +
+        (periodEnd.getUTCMonth() - periodStart.getUTCMonth()) +
+        1, // inclusive
+    );
+
+    const accretedThisYearCents = Math.round(accretionPerMonthCents * monthsInYear);
+    const principalReceivedThisYear = principalByYear.get(y) ?? 0;
+    const startingBasis = runningBasis;
+    const endingBasis = Math.max(
+      0,
+      startingBasis + accretedThisYearCents - principalReceivedThisYear,
+    );
+
+    rows.push({
+      year: y,
+      startingBasisCents: startingBasis,
+      accretedDiscountCents: accretedThisYearCents,
+      principalReceivedCents: principalReceivedThisYear,
+      endingBasisCents: endingBasis,
+    });
+
+    runningBasis = endingBasis;
+  }
+
+  return rows;
+}
+
 // ─── Route registration ──────────────────────────────────────────────────────
 
 export function registerNoteRoutes(app: Express): void {
@@ -656,6 +768,63 @@ export function registerNoteRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("notes.recordPayment failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Basis schedule (Pub 1212 market-discount accretion) ──────────────────
+  app.get(
+    "/api/notes/:id/basis",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const id = req.params.id;
+        const method = (req.query.method === "constant_yield" ? "constant_yield" : "ratable") as
+          | "ratable"
+          | "constant_yield";
+
+        const [note] = await db
+          .select()
+          .from(acquiredNotes)
+          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+          .limit(1);
+        if (!note) return Errors.notFound(res, "Note");
+
+        const payments = await db
+          .select({
+            paymentDate: notePayments.paymentDate,
+            principalCents: notePayments.principalCents,
+          })
+          .from(notePayments)
+          .where(eq(notePayments.noteId, id))
+          .orderBy(notePayments.paymentDate);
+
+        const schedule = computeBasisSchedule({
+          acquisitionPriceCents: note.acquisitionPriceCents,
+          originalPrincipalCents: note.originalPrincipalCents,
+          acquisitionDate: note.acquisitionDate as unknown as string,
+          maturityDate: note.maturityDate as unknown as string,
+          payments: payments.map((p) => ({
+            paymentDate: p.paymentDate as unknown as string,
+            principalCents: p.principalCents,
+          })),
+          method,
+        });
+
+        const totalDiscountCents = note.originalPrincipalCents - note.acquisitionPriceCents;
+        return res.json({
+          noteId: id,
+          method,
+          totalDiscountCents,
+          isPremium: totalDiscountCents < 0,
+          schedule,
+        });
+      } catch (err) {
+        logger.error("notes.basis failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },
