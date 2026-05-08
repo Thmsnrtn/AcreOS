@@ -9,13 +9,14 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle2, PlusCircle } from "lucide-react";
+import { CheckCircle2, PlusCircle, Sparkles, AlertTriangle } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -79,6 +80,10 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
   const [showAdd, setShowAdd] = useState(false);
   const [contractorId, setContractorId] = useState("");
   const [breakdown, setBreakdown] = useState<Record<string, string>>({});
+  const [extractText, setExtractText] = useState("");
+  const [extractWarnings, setExtractWarnings] = useState<string[]>([]);
+  const [extractConfidence, setExtractConfidence] = useState<number | null>(null);
+  const [extractNotes, setExtractNotes] = useState<string | null>(null);
 
   const bidsQuery = useQuery<BidsResponse>({
     queryKey: ["/api/rehabs", rehabId, "bids"],
@@ -125,6 +130,34 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
     },
   });
 
+  const extract = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/rehabs/${rehabId}/bids/extract`, {
+        method: "POST", credentials: "include", headers: csrf(),
+        body: JSON.stringify({ text: extractText }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (r: any) => {
+      const e = r.extracted;
+      // Pre-fill the breakdown form (cents → dollars).
+      const dollarBreakdown: Record<string, string> = {};
+      for (const [k, cents] of Object.entries(e.categoryBreakdown ?? {})) {
+        dollarBreakdown[k] = String(Math.round((cents as number) / 100));
+      }
+      setBreakdown(dollarBreakdown);
+      setExtractWarnings(e.warnings ?? []);
+      setExtractConfidence(e.confidence ?? null);
+      setExtractNotes(e.notes ?? null);
+      toast({ title: "Estimate parsed", description: `Confidence: ${Math.round((e.confidence ?? 0) * 100)}%` });
+    },
+    onError: (err: any) => toast({ title: "Extraction failed", description: err.message, variant: "destructive" }),
+  });
+
   const accept = useMutation({
     mutationFn: async (bidId: string) => {
       const res = await fetch(`/api/bids/${bidId}/accept`, { method: "POST", credentials: "include", headers: csrf() });
@@ -157,6 +190,50 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
       <CardContent className="space-y-4">
         {showAdd && (
           <div className="border border-dashed rounded p-3 space-y-3">
+            {/* CT-3: paste-and-extract */}
+            <div className="space-y-2 pb-3 border-b border-border/40">
+              <Label className="text-xs flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-primary" aria-hidden="true" />
+                Paste contractor estimate text (PDF body, email, OCR…)
+              </Label>
+              <Textarea
+                value={extractText}
+                onChange={(e) => setExtractText(e.target.value)}
+                placeholder="Paste the contractor's full estimate here. The LLM will extract a category breakdown that you can review and edit before saving."
+                className="text-xs h-32 font-mono"
+              />
+              <div className="flex items-center justify-between">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  disabled={extractText.trim().length < 30 || extract.isPending}
+                  onClick={() => extract.mutate()}
+                >
+                  <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
+                  {extract.isPending ? "Extracting…" : "Extract breakdown"}
+                </Button>
+                {extractConfidence !== null && (
+                  <Badge variant={extractConfidence >= 0.7 ? "default" : "outline"} className="text-xs">
+                    {Math.round(extractConfidence * 100)}% confidence
+                  </Badge>
+                )}
+              </div>
+              {extractNotes && (
+                <p className="text-xs text-muted-foreground italic">{extractNotes}</p>
+              )}
+              {extractWarnings.length > 0 && (
+                <ul className="space-y-1">
+                  {extractWarnings.map((w, i) => (
+                    <li key={i} className="text-xs text-acr-warning flex items-start gap-1">
+                      <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div>
               <Label className="text-xs">Contractor</Label>
               <Select value={contractorId} onValueChange={setContractorId}>

@@ -170,6 +170,36 @@ export function registerBidEstimateRoutes(app: Express): void {
     }
   });
 
+  // CT-3: LLM extract a contractor estimate text → bid shape (preview only;
+  // operator confirms before persistence). Devon §2.2: "drop three contractor
+  // PDFs into a job, LLM-extract line items, normalize to your scope template,
+  // show a side-by-side."
+  app.post("/api/rehabs/:id/bids/extract", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const rawText = typeof req.body?.text === "string" ? req.body.text : null;
+      if (!rawText || rawText.trim().length < 30) {
+        return Errors.badRequest(res, "Estimate text is required (paste at least 30 chars from the PDF/email).");
+      }
+      const { extractBidEstimate } = await import("./services/bidEstimateExtractor");
+      try {
+        const extracted = await extractBidEstimate(rawText, orgId);
+        logger.info("[FF-5/CT-3] bid extracted", {
+          orgId, userId, rehabId: req.params.id,
+          totalCents: extracted.totalCents,
+          confidence: extracted.confidence,
+          warningCount: extracted.warnings.length,
+        });
+        return res.json({ extracted });
+      } catch (err: any) {
+        return Errors.badRequest(res, err.message ?? "Extraction failed");
+      }
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   app.delete("/api/bids/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
