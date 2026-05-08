@@ -92,6 +92,8 @@ const WholesalerStateRulesPage = React.lazy(() => import("@/pages/wholesaler-sta
 const EarnestMoneyPage = React.lazy(() => import("@/pages/earnest-money"));
 // Wholesaler vertical W-3 — double-close primitive.
 const DoubleClosePage = React.lazy(() => import("@/pages/double-close"));
+// Wholesaler vertical W-4 — push-to-buyer-list one-click blast.
+const BuyerBlastsPage = React.lazy(() => import("@/pages/buyer-blasts"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -608,6 +610,12 @@ function Router() {
       </Route>
       <Route path="/double-close/:id">
         {() => <ProtectedRoute component={DoubleClosePage} />}
+      </Route>
+      <Route path="/buyer-blasts">
+        {() => <ProtectedRoute component={BuyerBlastsPage} />}
+      </Route>
+      <Route path="/buyer-blasts/:id">
+        {() => <ProtectedRoute component={BuyerBlastsPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

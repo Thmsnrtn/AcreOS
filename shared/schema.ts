@@ -18162,6 +18162,91 @@ export type DoubleCloseDeal = typeof doubleCloseDeals.$inferSelect;
 export type InsertDoubleCloseDeal = typeof doubleCloseDeals.$inferInsert;
 
 // ============================================================================
+// BUYER BLASTS — push-to-buyer-list (W-4)
+// ----------------------------------------------------------------------------
+// Trey: "Hit a button, AcreOS pulls matched cash buyers from
+// buyer_property_matches, sends an email + SMS with property card and
+// photos, tracks who opens, who replies, who books a walkthrough. […]
+// This is the single feature that flips me from $20 trial to $49/mo paying."
+//
+// One blast row per (property, push). Recipient rows track per-buyer
+// delivery + response. Channel is 'email' for now — SMS rides a follow-up
+// that hooks into the existing TCPA-aware send infrastructure.
+// ============================================================================
+
+export const BUYER_BLAST_STATUSES = [
+  "queued",       // recipients selected; sends in flight
+  "sent",         // all recipient sends attempted
+  "completed",    // sent + at least one response logged
+  "cancelled",    // user aborted before send completion
+] as const;
+export type BuyerBlastStatus = typeof BUYER_BLAST_STATUSES[number];
+
+export const buyerBlasts = pgTable(
+  "buyer_blasts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    subject: text("subject").notNull(),
+    bodySnapshot: text("body_snapshot"),
+    // What we sent: 'email' for now; future expansion: 'sms', 'mixed'.
+    channel: text("channel").notNull().default("email"),
+    status: text("status").$type<BuyerBlastStatus>().notNull().default("queued"),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    sentCount: integer("sent_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    repliedCount: integer("replied_count").notNull().default(0),
+    sentByUserId: text("sent_by_user_id"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("buyer_blasts_org_idx").on(table.organizationId, table.createdAt),
+    index("buyer_blasts_property_idx").on(table.propertyId),
+  ],
+);
+
+export const BUYER_BLAST_RECIPIENT_STATUSES = [
+  "queued",
+  "sent",
+  "delivered",
+  "opened",
+  "replied_interested",
+  "replied_not_interested",
+  "bounced",
+  "failed",
+] as const;
+export type BuyerBlastRecipientStatus = typeof BUYER_BLAST_RECIPIENT_STATUSES[number];
+
+export const buyerBlastRecipients = pgTable(
+  "buyer_blast_recipients",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    blastId: varchar("blast_id").references(() => buyerBlasts.id, { onDelete: "cascade" }).notNull(),
+    buyerProfileId: integer("buyer_profile_id").references(() => buyerProfiles.id, { onDelete: "cascade" }).notNull(),
+    matchScore: integer("match_score"), // copy from buyer_property_matches at send time
+    email: text("email"),
+    status: text("status").$type<BuyerBlastRecipientStatus>().notNull().default("queued"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    responseNotes: text("response_notes"),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("buyer_blast_recipients_blast_buyer_uk").on(table.blastId, table.buyerProfileId),
+    index("buyer_blast_recipients_status_idx").on(table.organizationId, table.status),
+  ],
+);
+
+export type BuyerBlast = typeof buyerBlasts.$inferSelect;
+export type InsertBuyerBlast = typeof buyerBlasts.$inferInsert;
+export type BuyerBlastRecipient = typeof buyerBlastRecipients.$inferSelect;
+export type InsertBuyerBlastRecipient = typeof buyerBlastRecipients.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

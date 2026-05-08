@@ -517,6 +517,43 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "double_close_org_status_idx" ON "double_close_deals" ("organization_id", "status")',
   'CREATE INDEX IF NOT EXISTS "double_close_org_property_idx" ON "double_close_deals" ("organization_id", "property_id")',
 
+  // Wholesaler vertical W-4 — push-to-buyer-list. Trey: "the single feature
+  // that flips me from $20 trial to $49/mo paying."
+  `CREATE TABLE IF NOT EXISTS "buyer_blasts" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "subject" text NOT NULL,
+     "body_snapshot" text,
+     "channel" text NOT NULL DEFAULT 'email',
+     "status" text NOT NULL DEFAULT 'queued',
+     "recipient_count" integer NOT NULL DEFAULT 0,
+     "sent_count" integer NOT NULL DEFAULT 0,
+     "failed_count" integer NOT NULL DEFAULT 0,
+     "replied_count" integer NOT NULL DEFAULT 0,
+     "sent_by_user_id" text,
+     "completed_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "buyer_blasts_org_idx" ON "buyer_blasts" ("organization_id", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "buyer_blasts_property_idx" ON "buyer_blasts" ("property_id")',
+  `CREATE TABLE IF NOT EXISTS "buyer_blast_recipients" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "blast_id" uuid NOT NULL REFERENCES "buyer_blasts"("id") ON DELETE CASCADE,
+     "buyer_profile_id" integer NOT NULL REFERENCES "buyer_profiles"("id") ON DELETE CASCADE,
+     "match_score" integer,
+     "email" text,
+     "status" text NOT NULL DEFAULT 'queued',
+     "sent_at" timestamptz,
+     "responded_at" timestamptz,
+     "response_notes" text,
+     "failure_reason" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "buyer_blast_recipients_blast_buyer_uk" ON "buyer_blast_recipients" ("blast_id", "buyer_profile_id")',
+  'CREATE INDEX IF NOT EXISTS "buyer_blast_recipients_status_idx" ON "buyer_blast_recipients" ("organization_id", "status")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
