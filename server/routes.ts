@@ -168,6 +168,7 @@ import { registerLotBasisRoutes } from "./routes-lot-basis";
 import { registerLotPricingRoutes } from "./routes-lot-pricing";
 import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
+import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1768,6 +1769,8 @@ export async function registerRoutes(
   registerCountyTimelineRoutes(app);
   // Subdivider vertical SD-7 — subdivision plans (GeoJSON storage + A/B).
   registerSubdivisionPlanRoutes(app);
+  // Subdivider vertical SD-8 — CC&R / covenant template library.
+  registerCcrTemplateRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

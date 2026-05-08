@@ -731,6 +731,46 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "ccr_templates_org_kind_idx" ON "cc_r_templates" ("organization_id", "kind")',
   'CREATE INDEX IF NOT EXISTS "ccr_templates_state_kind_idx" ON "cc_r_templates" ("state", "kind")',
 
+  // Subdivider SD-8 seed: two generic CC&R templates. Org-null = visible to
+  // every org. Brigid: "no AI here, please" — these are pure merge-field
+  // templates. Run them past your attorney; we do not ship legally
+  // reviewed templates by default. Operators can clone & edit org-scoped.
+  // Idempotent via (organization_id IS NULL, name) uniqueness — but the
+  // schema's index is non-unique, so we only insert if no global with
+  // that name exists yet.
+  `INSERT INTO "cc_r_templates" ("organization_id", "kind", "name", "body_markdown", "merge_fields", "notes")
+     SELECT NULL, 'restrictive_covenants', 'Generic restrictive covenants v1',
+       E'# DECLARATION OF RESTRICTIVE COVENANTS\\n\\nFOR {{project_name}}\\n\\nRecorded in {{recording_county}} County, {{state}}\\n\\n## 1. Purpose\\n\\nThe undersigned {{declarant_name}}, owner of {{lot_count}} lot{{s_or_blank}} in {{project_name}}, hereby declares the following covenants run with the land.\\n\\n## 2. Use restrictions\\n\\n2.1 Each lot shall be used solely for residential purposes.\\n\\n2.2 No manufactured home, mobile home, or modular structure shall be placed on any lot.\\n\\n2.3 Minimum heated square footage of any primary residence: {{min_square_feet}} sq ft.\\n\\n## 3. Architectural review\\n\\n3.1 An Architectural Review Board ("ARB") composed of {{arb_committee_size}} member(s) shall review and approve all plans before construction.\\n\\n## 4. Assessments\\n\\n4.1 Each lot owner shall pay an annual assessment of {{annual_assessment}} for road and common-area maintenance.\\n\\n## 5. Term\\n\\nThese covenants shall run for thirty (30) years and automatically renew for successive ten-year periods.\\n\\nDated: {{recording_date}}\\n\\n_______________________________\\n{{declarant_name}}',
+       '[
+         {"key":"project_name","label":"Project name","type":"string","required":true},
+         {"key":"recording_county","label":"Recording county","type":"string","required":true},
+         {"key":"state","label":"State","type":"string","required":true},
+         {"key":"declarant_name","label":"Declarant","type":"string","required":true},
+         {"key":"lot_count","label":"Number of lots","type":"number","required":true},
+         {"key":"s_or_blank","label":"Plural ''s'' (or blank)","type":"string","required":false,"placeholder":"s"},
+         {"key":"min_square_feet","label":"Minimum sq ft","type":"number","required":true},
+         {"key":"arb_committee_size","label":"ARB committee size","type":"number","required":true},
+         {"key":"annual_assessment","label":"Annual assessment (cents)","type":"currency_cents","required":true},
+         {"key":"recording_date","label":"Recording date","type":"date","required":true}
+       ]'::jsonb,
+       'GENERIC TEMPLATE — review with a licensed attorney before recording. AcreOS does not warrant fitness for any specific jurisdiction.'
+   WHERE NOT EXISTS (SELECT 1 FROM "cc_r_templates" WHERE organization_id IS NULL AND name = 'Generic restrictive covenants v1')`,
+  `INSERT INTO "cc_r_templates" ("organization_id", "kind", "name", "body_markdown", "merge_fields", "notes")
+     SELECT NULL, 'road_maintenance_agreement', 'Generic road maintenance agreement v1',
+       E'# ROAD MAINTENANCE AGREEMENT\\n\\nProject: {{project_name}} | County: {{recording_county}}, {{state}}\\n\\nEach lot owner served by the private road known as {{road_name}} shall contribute pro-rata to the cost of grading, gravel resurfacing, drainage, and snow clearing.\\n\\n## Cost share\\n\\nCosts are split equally among the {{lot_count}} lots served by {{road_name}}.\\n\\nAnnual contribution: {{annual_contribution}} per lot.\\n\\n## Special assessments\\n\\nIn the event of a major repair (washout, culvert replacement, repaving) costing more than {{special_threshold}}, all lot owners shall vote and a majority shall bind the minority.\\n\\nDated: {{recording_date}}',
+       '[
+         {"key":"project_name","label":"Project name","type":"string","required":true},
+         {"key":"recording_county","label":"Recording county","type":"string","required":true},
+         {"key":"state","label":"State","type":"string","required":true},
+         {"key":"road_name","label":"Road name","type":"string","required":true},
+         {"key":"lot_count","label":"Number of lots served","type":"number","required":true},
+         {"key":"annual_contribution","label":"Annual contribution (cents)","type":"currency_cents","required":true},
+         {"key":"special_threshold","label":"Special-assessment threshold (cents)","type":"currency_cents","required":true},
+         {"key":"recording_date","label":"Recording date","type":"date","required":true}
+       ]'::jsonb,
+       'GENERIC TEMPLATE — review with a licensed attorney before recording.'
+   WHERE NOT EXISTS (SELECT 1 FROM "cc_r_templates" WHERE organization_id IS NULL AND name = 'Generic road maintenance agreement v1')`,
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

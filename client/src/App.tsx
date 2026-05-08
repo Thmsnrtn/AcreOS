@@ -268,6 +268,7 @@ const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
 const CountyTimelinesPage = React.lazy(() => import("@/pages/county-timelines"));
+const CcrTemplatesPage = React.lazy(() => import("@/pages/ccr-templates"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -525,6 +526,9 @@ function Router() {
       </Route>
       <Route path="/county-timelines">
         {() => <ProtectedRoute component={CountyTimelinesPage} />}
+      </Route>
+      <Route path="/ccr-templates">
+        {() => <ProtectedRoute component={CcrTemplatesPage} />}
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
