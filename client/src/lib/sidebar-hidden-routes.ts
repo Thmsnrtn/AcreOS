@@ -45,6 +45,17 @@ interface HiddenRouteRegistry {
 const REGISTRY: HiddenRouteRegistry = {
   byBusinessType: {
     residential_wholesaler: ["/maps", "/land-credit"],
+    // Buy-and-hold vertical BH-9 — Imelda §3 finance/notes:
+    // "I have zero notes. I have 25 leases." Hide note-investor surfaces
+    // and land-flavored maps. /borrower-portal and /exchange-1031
+    // (1031 exchange) is acquisition-side, not operations.
+    buy_and_hold: [
+      "/maps",
+      "/land-credit",
+      "/notes",
+      "/notes/pipeline",
+      "/borrower-portal",
+    ],
     // Fix-and-flip vertical FF-9 — Devon §4: "Lots held as inventory aren't
     // depreciated; they're cost-of-goods-sold when sold. Different chapter
     // of the IRS code." So hide /depreciation. /notes is for note investors,
@@ -60,7 +71,6 @@ const REGISTRY: HiddenRouteRegistry = {
       "/exchange-1031",
       "/borrower-portal",
     ],
-    buy_and_hold:           ["/maps", "/land-credit"],
     commercial:             ["/maps", "/land-credit"],
     short_term_rental:      ["/maps", "/land-credit"],
     multifamily:            ["/maps", "/land-credit"],

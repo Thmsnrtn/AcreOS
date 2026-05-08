@@ -107,6 +107,7 @@ import {
   ClipboardList,
   Calendar,
   Ruler,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
@@ -441,6 +442,27 @@ const NAV_MODULES: NavModule[] = [
       { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
       { label: "Double-close", icon: GitBranch, href: "/double-close", description: "A→B + B→C linked transactions" },
       { label: "Assignment legality", icon: Scale, href: "/wholesaler-state-rules", description: "Per-state wholesaler-licensing rules" },
+    ],
+  },
+
+  // ── Buy-and-hold vertical (BH-1..BH-9) ────────────────────────────
+  // Imelda §7: "AcreOS is an acquisition platform with a landlord persona
+  // painted on the wall. […] If those six items ship in the next 12
+  // months, I'd cancel Buildium." We've shipped tenants, leases, rent
+  // ledger, maintenance, inspections, analytics. Surface them.
+  {
+    id: "landlord",
+    label: "Rentals",
+    icon: Home,
+    href: "/rent-roll",
+    description: "Tenants, leases, rent roll, maintenance, analytics",
+    businessTypeOnly: ["buy_and_hold"],
+    children: [
+      { label: "Rent roll", icon: Wallet, href: "/rent-roll", description: "Org-wide aging buckets + open balances" },
+      { label: "Tenants", icon: Users, href: "/tenants", description: "Tenant CRM (separate from acquisition leads)" },
+      { label: "Leases", icon: FileText, href: "/leases", description: "Lease lineage w/ renewal-as-addendum" },
+      { label: "Maintenance", icon: Hammer, href: "/maintenance", description: "Ticket queue → contractor dispatch" },
+      { label: "Analytics", icon: TrendingUp, href: "/investor-analytics", description: "NOI / cap rate / DSCR / vacancy" },
     ],
   },
 
