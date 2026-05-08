@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { SubdivisionPlanEditor } from "@/components/parcels/subdivision-plan-editor";
 
 interface ChildLot {
   id: number;
@@ -826,6 +827,7 @@ function planStatusBadge(s: string): "default" | "secondary" | "outline" | "dest
 function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number }) {
   const { toast } = useToast();
   const [newName, setNewName] = useState("");
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
 
   const plans = useQuery<{ plans: SubdivisionPlanRow[] }>({
     queryKey: ["/api/parcels", parentParcelId, "plans"],
@@ -901,22 +903,35 @@ function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number })
                     {p.totalRoadFeet ? ` · ${p.totalRoadFeet} ft road` : ""}
                   </p>
                 </div>
-                <Select value={p.status} onValueChange={(s) => updateStatus.mutate({ planId: p.id, status: s })}>
-                  <SelectTrigger className="h-7 w-[160px] text-xs">
-                    <SelectValue>
-                      <Badge variant={planStatusBadge(p.status)} className="text-xs">{p.status.replace(/_/g, " ")}</Badge>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PLAN_STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setEditingPlanId(editingPlanId === p.id ? null : p.id)}
+                  >
+                    {editingPlanId === p.id ? "Close map" : "Edit on map"}
+                  </Button>
+                  <Select value={p.status} onValueChange={(s) => updateStatus.mutate({ planId: p.id, status: s })}>
+                    <SelectTrigger className="h-7 w-[160px] text-xs">
+                      <SelectValue>
+                        <Badge variant={planStatusBadge(p.status)} className="text-xs">{p.status.replace(/_/g, " ")}</Badge>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PLAN_STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">No plans yet.</p>
         )}
+
+        {/* CT-2: mapbox-gl-draw editor renders inline when a plan is opened. */}
+        {editingPlanId && <SubdivisionPlanEditor planId={editingPlanId} />}
 
         <div className="flex gap-2 pt-2 border-t border-border/40">
           <Input
