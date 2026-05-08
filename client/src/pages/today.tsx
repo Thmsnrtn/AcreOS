@@ -52,6 +52,7 @@ import { ClearedEmpty } from "@/components/empty-states";
 import { GlossaryTerm } from "@/components/Glossary";
 import { ContentReveal } from "@/components/ContentReveal";
 import "./today.css";
+import { resolveVerticalSurfaces } from "@/lib/today-vertical-surfaces";
 
 interface GoalWithProgress {
   id: number;
@@ -494,193 +495,39 @@ export default function TodayPage() {
   // Tax-Delinquent flagged it). Until a full per-persona /today rebuild
   // lands, surface fast links to each persona's actual workspace.
   const investorType = (organization as any)?.investorType as string | undefined;
-  const isNoteOrg = investorType === "notes" || investorType === "both";
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
-  const isTaxDelinquentOrg = businessType === "tax_lien_deed";
-  const isWholesalerOrg = businessType === "residential_wholesaler";
-  const isSubdividerOrg = businessType === "subdivider";
-  const isFlipperOrg = businessType === "fix_and_flip";
-  const isLandlordOrg = businessType === "buy_and_hold";
+  // FW-10: collapse the 6 stacked vertical banners into one registry-driven
+  // card. Imelda §3 today: "Most days as a landlord do not look like
+  // AcreOS's /today" — we shouldn't pile 6 cards on the same view.
+  const verticalClusters = resolveVerticalSurfaces({ businessType, investorType });
 
   return (
     <PageShell label="Today">
-      {/* Wholesaler quick-jump — visible for residential_wholesaler business
-          type. Trey: "/today is wrong default for me. Built for a portfolio
-          holder, not a transactional wholesaler." Banner unblocks the
-          immediate "where do I go" friction; full per-persona /today
-          rebuild is a separate workstream. */}
-      {isWholesalerOrg && (
+      {/* FW-10: single "Your surfaces" card driven by the vertical-surfaces
+          registry. Replaces 6 stacked banners. An org that fingerprints to
+          multiple verticals (e.g. land + notes) gets multiple sections in
+          one card instead of multiple stacked cards. */}
+      {verticalClusters.length > 0 && (
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Wholesaler surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Buyer blasts, EMD timer, double-close, assignment legality —
-                tuned for transactional wholesalers (no inventory, no cash
-                flow).
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/buyer-blasts">Buyer blasts</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/earnest-money">EMD</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/double-close">Double-close</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/wholesaler-state-rules">State rules</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Landlord quick-jump — visible for buy_and_hold business type.
-          Imelda §3 today: "did anyone's rent hit overnight, are any
-          maintenance tickets sitting older than 48 hours, and did the
-          eviction filing on the duplex go through." */}
-      {isLandlordOrg && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Landlord surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Tenants, leases, rent roll, maintenance, portfolio analytics.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/rent-roll">Rent roll</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/maintenance">Maintenance</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/leases">Leases</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/investor-analytics">Analytics</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Fix-and-flip quick-jump — visible for fix_and_flip business type.
-          Devon §2: "A flipper's morning is two questions: 'are any of my
-          active rehabs behind schedule?' and 'did the inspector clear the
-          framing on Oak Street so I can release Draw 2?' Neither shows up
-          here. The dashboard treats me like I'm a land flipper running a
-          pipeline of cold leads. I'm not." */}
-      {isFlipperOrg && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Fix-and-flip surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Active rehabs, contractor 1099-NECs, ARV calculator, bid
-                comparison, draw schedule.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/rehabs">Active rehabs</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/contractors">Contractors</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/contractors/1099-nec">1099-NEC</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Subdivider quick-jump — visible for subdivider business type.
-          Brigid: "Build that 'subdivider /today' and the surface starts
-          earning its real estate. […] which permits are stalled past
-          their SLA, which lots have offers waiting on me." */}
-      {isSubdividerOrg && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Subdivider surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Permits, county timelines, lot pricing grid, CC&amp;R templates —
-                tuned for one-parent-into-many-children workflows.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/permits">Permits</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/county-timelines">County timelines</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/ccr-templates">CC&amp;R templates</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tax-delinquent quick-jump — visible for tax_lien_deed business type. */}
-      {isTaxDelinquentOrg && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Tax-delinquent surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Redemption clock, auction worksheet, state rules, quiet-title
-                workflow — the surfaces tuned for tax-deed and tax-lien
-                operators.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/redemption-clock">Redemption clock</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/auction-worksheet">Auction worksheet</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/counties">Counties</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/state-rules">State rules</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Note investor quick-jump — visible for notes/both orgs only. */}
-      {isNoteOrg && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-sm">Note investor surfaces</h3>
-              <p className="text-sm text-muted-foreground">
-                Servicing book, acquisition pipeline, and 1099-INT readiness — all
-                tuned for note-investor workflows.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/notes">Servicing book</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/notes/pipeline">Pipeline</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/notes/tax-readiness">Tax readiness</Link>
-              </Button>
-            </div>
+          <CardContent className="p-4 space-y-4">
+            {verticalClusters.map((cluster, idx) => (
+              <div
+                key={cluster.id}
+                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${idx > 0 ? "pt-3 border-t border-border/40" : ""}`}
+              >
+                <div>
+                  <h3 className="font-semibold text-sm">{cluster.title}</h3>
+                  <p className="text-sm text-muted-foreground">{cluster.description}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {cluster.links.map((l) => (
+                    <Button key={l.href} asChild size="sm" variant="outline">
+                      <Link href={l.href}>{l.label}</Link>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
