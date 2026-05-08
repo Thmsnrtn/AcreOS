@@ -44,6 +44,7 @@ import { InspectionChecklist, type ChecklistResults } from "@/components/field-s
 import { PhotoGallery, type ScoutPhoto } from "@/components/field-scout/photo-gallery";
 import { ScoutReportCard, type FieldScoutVisit } from "@/components/field-scout/scout-report-card";
 import { OfflineSyncBanner, type SyncState } from "@/components/field-scout/offline-sync-banner";
+import { SaveAsInspection } from "@/components/field-scout/save-as-inspection";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1081,6 +1082,22 @@ export default function FieldScout() {
               <Save className="w-4 h-4 mr-2" />
               {saveVisitMutation.isPending ? "Saving Visit..." : "Complete Visit"}
             </Button>
+          )}
+
+          {/* CT-1: Save as BH-4 move-in/move-out inspection. Imelda §6.2:
+              "Best surface for me, for a use case AcreOS didn't intend." */}
+          {(scoutPhotos.length > 0 || checklistResults) && (
+            <SaveAsInspection
+              photos={scoutPhotos}
+              checklist={checklistResults}
+              notes={currentNote}
+              onSaved={() => {
+                setScoutPhotos([]);
+                setChecklistResults(undefined);
+                setShowChecklist(false);
+                setCurrentNote("");
+              }}
+            />
           )}
 
           {/* Quick Actions for selected lead */}
