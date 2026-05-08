@@ -19026,6 +19026,519 @@ export type ArvCalculation = typeof arvCalculations.$inferSelect;
 export type InsertArvCalculation = typeof arvCalculations.$inferInsert;
 
 // ============================================================================
+// BUY-AND-HOLD VERTICAL — BH-1 schema foundation (Imelda)
+// ----------------------------------------------------------------------------
+// Imelda's deal-killer (imelda-landlord.md §9): no tenant entity, no lease
+// entity, no rent ledger, no maintenance ticketing. "About 80% of my
+// operational day has nothing to map onto in this product."
+//
+// Imelda explicitly warns: "don't half-build this. The middle path —
+// shipping a thin tenant table and a fake rent ledger to *say* you do
+// landlord — gets people sued."
+//
+// What we ship in BH-1..BH-9 (and what we explicitly defer):
+//
+//   SHIP:
+//     1. tenants               — minimum-viable entity (Imelda §8.3)
+//     2. leases                — including renewal-as-addendum modeling
+//     3. lease_addendums       — pet, lead-paint, mold, Section 8 etc.
+//     4. rent_charges          — recurring rent obligation per lease
+//     5. rent_payments         — partial-payment-aware ledger
+//     6. late_fee_rules        — state-specific (TX/CA/NY/FL/GA seed)
+//     7. maintenance_tickets   — tenant → landlord → vendor
+//     8. move_inspections      — move-in/move-out w/ photos + signature
+//     9. security_deposits     — held/applied ledger w/ statutory timing
+//
+//   DEFER (explicit; Imelda flags each as legally fraught):
+//     - Tenant screening + FCRA adverse-action notices
+//     - Eviction notice generator (state-specific legal forms)
+//     - Section 8 / HAP contract handling
+//     - Plaid bank-account aggregation
+//
+// The deferred surfaces will land when the platform has dedicated legal
+// review. Shipping them carelessly (Imelda §2.16: "you've helped a
+// landlord file a defective notice") is worse than shipping nothing.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// TENANTS — Imelda §2.6: "When I'm talking to a tenant applicant, anything
+// I write down is FCRA-discoverable in an adverse-action dispute. […]
+// Cramming both into one `leads` table is how you end up with a
+// fair-housing complaint."
+//
+// Tenants live in their own table, separate from leads. FCRA-relevant
+// fields (consumer-report flags, applicant outcome) are explicitly
+// scoped — operators record only structured outcomes, not free-form
+// "seems unstable" notes.
+// ----------------------------------------------------------------------------
+
+export const TENANT_STATUSES = [
+  "applicant",          // pre-screening
+  "approved",           // approved, pre-lease
+  "active",             // currently leased
+  "former",             // moved out
+  "denied",             // application denied (FCRA adverse-action triggered)
+  "eviction",           // eviction filed
+] as const;
+export type TenantStatus = typeof TENANT_STATUSES[number];
+
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+
+    // Identity
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    // SMS/TCPA consent — Imelda §3 inbox: "TCPA exposure on landlord SMS
+    // is real, and several PMs have been sued."
+    smsConsent: boolean("sms_consent").notNull().default(false),
+    smsConsentAt: timestamp("sms_consent_at", { withTimezone: true }),
+
+    // Encrypted Tax ID for 1099 if vendor (rare for tenants but supported)
+    dateOfBirth: date("date_of_birth"),  // for screening + age verification
+    governmentIdLast4: text("government_id_last4"),  // mask only
+
+    // Pipeline
+    status: text("status").$type<TenantStatus>().notNull().default("applicant"),
+    sourceChannel: text("source_channel"),  // 'zillow' | 'apartments_com' | 'avail' | 'website' | 'referral' | 'walk_in'
+
+    // Structured screening result — Imelda §2.6: "I cannot write 'seems
+    // unstable' in a tenant-applicant note. I can write 'credit score 612,
+    // prior eviction 2022, denied per company criteria.'"
+    screeningCompletedAt: timestamp("screening_completed_at", { withTimezone: true }),
+    screeningCreditScore: integer("screening_credit_score"),
+    screeningHasPriorEviction: boolean("screening_has_prior_eviction"),
+    screeningHasCriminalRecord: boolean("screening_has_criminal_record"),
+    screeningIncomeMonthlyCents: bigint("screening_income_monthly_cents", { mode: "number" }),
+    screeningCriteriaMet: boolean("screening_criteria_met"),
+    // FCRA adverse-action: when status='denied', this is the timestamp of
+    // the adverse-action notice send (Imelda §2.5: "$100-1,000 per violation
+    // plus attorney fees").
+    adverseActionNoticeSentAt: timestamp("adverse_action_notice_sent_at", { withTimezone: true }),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("tenants_org_status_idx").on(table.organizationId, table.status),
+    index("tenants_org_email_idx").on(table.organizationId, table.email),
+  ],
+);
+
+export type Tenant = typeof tenants.$inferSelect;
+export type InsertTenant = typeof tenants.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// LEASES — Imelda §2.7: "the renewal isn't a new lease in Texas, it's an
+// addendum to the original. The signing system needs to model 'lease +
+// amendments over time' and let me see version 1, 2, 3 of a tenancy
+// without losing the original."
+// ----------------------------------------------------------------------------
+
+export const LEASE_STATUSES = [
+  "draft",
+  "pending_signature",
+  "active",
+  "ended",
+  "terminated",        // ended early — eviction or break-lease
+  "renewed",           // superseded by a renewal lease (parent)
+] as const;
+export type LeaseStatus = typeof LEASE_STATUSES[number];
+
+export const LEASE_LIABILITY_MODELS = [
+  "joint_and_several",  // 3 grad students share, all liable for full rent
+  "per_unit",           // 4-plex: tenant per unit, separately liable
+] as const;
+export type LeaseLiabilityModel = typeof LEASE_LIABILITY_MODELS[number];
+
+// Note: there's a pre-existing thin `leases` stub at line ~12886 that
+// predates the buy-and-hold vertical. We name the new full-fidelity table
+// `rental_leases` to avoid the collision; the legacy `leases` table stays
+// for the routes-maintenance.ts reference and can be removed in a future
+// cleanup PR.
+export const rentalLeases = pgTable(
+  "rental_leases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+
+    // For multi-unit: which unit on the property. Null for SFR.
+    unitLabel: text("unit_label"),
+
+    // Lease lineage — renewals reference the parent lease.
+    parentLeaseId: varchar("parent_lease_id"),  // soft FK to self
+    versionNumber: integer("version_number").notNull().default(1),
+
+    status: text("status").$type<LeaseStatus>().notNull().default("draft"),
+    liabilityModel: text("liability_model").$type<LeaseLiabilityModel>().notNull().default("joint_and_several"),
+
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),  // null = month-to-month
+
+    monthlyRentCents: bigint("monthly_rent_cents", { mode: "number" }).notNull(),
+    rentDueDayOfMonth: integer("rent_due_day_of_month").notNull().default(1),
+    securityDepositCents: bigint("security_deposit_cents", { mode: "number" }).notNull().default(0),
+    petDepositCents: bigint("pet_deposit_cents", { mode: "number" }).notNull().default(0),
+
+    // Section 8 — Imelda §2.10: "the housing authority pays me a HAP
+    // portion (say $1,100) directly via ACH on the 1st. The tenant pays me
+    // a tenant portion (say $300)." Two payors with different schedules.
+    // We model the splits but do NOT ship the HUD-specific recert /
+    // failed-inspection workflow in this PR (Imelda's deferred list).
+    isSection8: boolean("is_section_8").notNull().default(false),
+    hapPortionCents: bigint("hap_portion_cents", { mode: "number" }),
+    tenantPortionCents: bigint("tenant_portion_cents", { mode: "number" }),
+
+    state: text("state").notNull(),  // for late-fee rule lookup
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rental_leases_org_status_idx").on(table.organizationId, table.status),
+    index("rental_leases_property_idx").on(table.propertyId, table.status),
+    index("rental_leases_parent_idx").on(table.parentLeaseId),
+  ],
+);
+
+export type RentalLease = typeof rentalLeases.$inferSelect;
+export type InsertRentalLease = typeof rentalLeases.$inferInsert;
+
+// Many-to-many between tenants and leases (joint-and-several has multiple
+// tenants per lease). The percentage column lets per-unit liability
+// allocate rent across separately-liable tenants.
+export const leaseTenants = pgTable(
+  "lease_tenants",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").notNull(),
+    tenantId: varchar("tenant_id").notNull(),
+    rentSharePct: numeric("rent_share_pct").notNull().default("1"),  // 1.0 for joint, 0.5/0.5 etc for per_unit
+    isPrimary: boolean("is_primary").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("lease_tenants_lease_tenant_uk").on(table.leaseId, table.tenantId),
+    index("lease_tenants_org_idx").on(table.organizationId),
+  ],
+);
+
+export type LeaseTenant = typeof leaseTenants.$inferSelect;
+export type InsertLeaseTenant = typeof leaseTenants.$inferInsert;
+
+export const LEASE_ADDENDUM_KINDS = [
+  "lead_paint",         // FEDERAL — pre-1978 properties, EPA $16K/violation
+  "pet",
+  "smoking",
+  "mold",
+  "bedbug",
+  "smoke_detector",
+  "section_8_hap",
+  "renewal",            // amendment extending the original lease
+  "rent_increase",
+  "early_termination",
+  "other",
+] as const;
+export type LeaseAddendumKind = typeof LEASE_ADDENDUM_KINDS[number];
+
+export const leaseAddendums = pgTable(
+  "lease_addendums",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").notNull(),
+    kind: text("kind").$type<LeaseAddendumKind>().notNull(),
+    title: text("title").notNull(),
+    bodyMarkdown: text("body_markdown"),
+    documentPath: text("document_path"),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    effectiveDate: date("effective_date"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("lease_addendums_lease_idx").on(table.leaseId, table.kind),
+  ],
+);
+
+export type LeaseAddendum = typeof leaseAddendums.$inferSelect;
+export type InsertLeaseAddendum = typeof leaseAddendums.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// RENT LEDGER — Imelda §2.4: "Maria in Unit 3B owes $1,400 and pays $700
+// on the 5th and $700 on the 18th, my system needs to know that the first
+// $700 doesn't satisfy the rent and doesn't stop the late-fee clock unless
+// I say so."
+// ----------------------------------------------------------------------------
+
+export const rentCharges = pgTable(
+  "rent_charges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").notNull(),
+
+    // The month the rent is charged for (always day 1).
+    chargedForMonth: date("charged_for_month").notNull(),
+    dueDate: date("due_date").notNull(),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    // For Section 8: hap_portion + tenant_portion when applicable.
+    hapPortionCents: bigint("hap_portion_cents", { mode: "number" }),
+    tenantPortionCents: bigint("tenant_portion_cents", { mode: "number" }),
+
+    // Updated as payments come in. balance_cents = amount_cents -
+    // sum(payments).
+    paidCents: bigint("paid_cents", { mode: "number" }).notNull().default(0),
+    balanceCents: bigint("balance_cents", { mode: "number" }).notNull(),
+
+    // Late-fee accrual.
+    lateFeeCents: bigint("late_fee_cents", { mode: "number" }).notNull().default(0),
+    lateFeeAppliedAt: timestamp("late_fee_applied_at", { withTimezone: true }),
+
+    // Imelda §2.5: "accepting partial rent after filing a notice to vacate
+    // can void the notice and force me to start over." Track legal posture.
+    legalPosture: text("legal_posture").notNull().default("ok"),  // 'ok' | 'late' | 'notice_served' | 'eviction_filed'
+    legalPostureAt: timestamp("legal_posture_at", { withTimezone: true }),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("rent_charges_lease_month_uk").on(table.leaseId, table.chargedForMonth),
+    index("rent_charges_org_balance_idx").on(table.organizationId, table.balanceCents, table.dueDate),
+  ],
+);
+
+export type RentCharge = typeof rentCharges.$inferSelect;
+export type InsertRentCharge = typeof rentCharges.$inferInsert;
+
+export const rentPayments = pgTable(
+  "rent_payments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").notNull(),
+    rentChargeId: varchar("rent_charge_id"),  // nullable — payment may not apply to a specific month yet
+
+    // Source: 'tenant' | 'hap' (housing authority for Section 8)
+    payorType: text("payor_type").notNull().default("tenant"),
+    payorTenantId: varchar("payor_tenant_id"),  // for joint leases — which tenant paid
+
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    receivedAt: date("received_at").notNull(),
+    method: text("method"),  // 'ach' | 'check' | 'cash' | 'card' | 'money_order' | 'other'
+    referenceNumber: text("reference_number"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+
+    // Partial payment handling — operator confirms acceptance.
+    isPartial: boolean("is_partial").notNull().default(false),
+    acceptedDespitePartial: boolean("accepted_despite_partial"),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rent_payments_lease_idx").on(table.leaseId, table.receivedAt),
+    index("rent_payments_charge_idx").on(table.rentChargeId),
+    index("rent_payments_org_received_idx").on(table.organizationId, table.receivedAt),
+  ],
+);
+
+export type RentPayment = typeof rentPayments.$inferSelect;
+export type InsertRentPayment = typeof rentPayments.$inferInsert;
+
+// State late-fee rules — Imelda §2.4: "in Texas, late fees are now capped
+// at 12% of monthly rent for properties with 4+ units, 10% for fewer,
+// after a 2-day grace. That's a state-specific rule."
+export const lateFeeRules = pgTable(
+  "late_fee_rules",
+  {
+    state: text("state").primaryKey(),  // 2-letter
+    capPctSmallProperty: numeric("cap_pct_small_property"),    // < 4 units
+    capPctLargeProperty: numeric("cap_pct_large_property"),    // 4+ units
+    capFlatCents: bigint("cap_flat_cents", { mode: "number" }),  // some states cap absolute
+    graceDays: integer("grace_days").notNull().default(0),
+    initialFeeCents: bigint("initial_fee_cents", { mode: "number" }),  // optional flat initial
+    perDayCents: bigint("per_day_cents", { mode: "number" }),          // optional per-day after grace
+    citation: text("citation"),
+    summary: text("summary"),
+    attorneyReviewedAt: timestamp("attorney_reviewed_at", { withTimezone: true }),
+    attorneyReviewedBy: text("attorney_reviewed_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+export type LateFeeRule = typeof lateFeeRules.$inferSelect;
+export type InsertLateFeeRule = typeof lateFeeRules.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// MAINTENANCE TICKETS — Imelda §2.8: "Buildium has a tenant portal where my
+// tenant submits a leaky disposal with a photo, it routes to me, I dispatch
+// to my plumber Roberto, Roberto closes the ticket with an invoice, the
+// invoice posts to that property's expense ledger. That's a four-actor
+// workflow (tenant, landlord, vendor, accountant). AcreOS has none of
+// those actors except landlord."
+//
+// FF-3 already shipped contractors (vendor entity + W-9 + 1099-NEC), so we
+// reuse that here as the vendor side.
+// ----------------------------------------------------------------------------
+
+export const TICKET_STATUSES = [
+  "open",
+  "triaging",
+  "dispatched",
+  "in_progress",
+  "awaiting_parts",
+  "completed",
+  "cancelled",
+] as const;
+export type TicketStatus = typeof TICKET_STATUSES[number];
+
+export const TICKET_SEVERITIES = [
+  "emergency",       // no heat / no water / sewage backup / fire risk
+  "urgent",          // appliance fail, locked out
+  "standard",        // routine repair
+  "cosmetic",        // paint, scuff
+] as const;
+export type TicketSeverity = typeof TICKET_SEVERITIES[number];
+
+export const maintenanceTickets = pgTable(
+  "maintenance_tickets",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id"),
+    submittedByTenantId: varchar("submitted_by_tenant_id"),
+
+    title: text("title").notNull(),
+    description: text("description"),
+    category: text("category"),  // 'plumbing' | 'hvac' | 'electrical' | 'appliance' | 'roof' | 'landscaping' | 'pest' | 'other'
+    severity: text("severity").$type<TicketSeverity>().notNull().default("standard"),
+    status: text("status").$type<TicketStatus>().notNull().default("open"),
+
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
+    triagedAt: timestamp("triaged_at", { withTimezone: true }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+
+    assignedContractorId: varchar("assigned_contractor_id"),  // FK to contractors (FF-3)
+    repairNotes: text("repair_notes"),
+    invoiceCents: bigint("invoice_cents", { mode: "number" }),
+    invoicePaidAt: timestamp("invoice_paid_at", { withTimezone: true }),
+
+    photos: jsonb("photos").$type<Array<{ url: string; caption?: string; timestamp?: string }>>().default([]),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("maintenance_tickets_org_status_idx").on(table.organizationId, table.status, table.severity),
+    index("maintenance_tickets_property_idx").on(table.propertyId, table.status),
+    index("maintenance_tickets_contractor_idx").on(table.assignedContractorId),
+  ],
+);
+
+export type MaintenanceTicket = typeof maintenanceTickets.$inferSelect;
+export type InsertMaintenanceTicket = typeof maintenanceTickets.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// MOVE-IN / MOVE-OUT INSPECTIONS — Imelda §8.1: "Lowest effort, highest
+// visible value. The infra exists. Add a 'tenant signature' step (use the
+// existing HMAC signing) and an attachment to a property record."
+// ----------------------------------------------------------------------------
+
+export const INSPECTION_KINDS = ["move_in", "move_out", "annual", "drive_by"] as const;
+export type InspectionKind = typeof INSPECTION_KINDS[number];
+
+export const moveInspections = pgTable(
+  "move_inspections",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id"),
+    tenantId: varchar("tenant_id"),
+
+    kind: text("kind").$type<InspectionKind>().notNull(),
+    inspectionDate: date("inspection_date").notNull(),
+    conductedBy: text("conducted_by"),
+
+    // Checklist items per area: { area: string; condition: 'good'|'fair'|'damaged'; notes?: string; photoCount?: number }
+    checklist: jsonb("checklist").$type<Array<{
+      area: string;
+      condition: "excellent" | "good" | "fair" | "damaged";
+      notes?: string;
+      photoCount?: number;
+    }>>().notNull().default([]),
+    photos: jsonb("photos").$type<Array<{ url: string; caption?: string; area?: string; timestamp?: string }>>().notNull().default([]),
+
+    tenantSignedAt: timestamp("tenant_signed_at", { withTimezone: true }),
+    landlordSignedAt: timestamp("landlord_signed_at", { withTimezone: true }),
+    signingPacketId: varchar("signing_packet_id"),  // HMAC signing flow id
+
+    // Move-out: damages tally for security-deposit deduction.
+    damagesTotalCents: bigint("damages_total_cents", { mode: "number" }),
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("move_inspections_property_idx").on(table.propertyId, table.kind),
+    index("move_inspections_lease_idx").on(table.leaseId),
+  ],
+);
+
+export type MoveInspection = typeof moveInspections.$inferSelect;
+export type InsertMoveInspection = typeof moveInspections.$inferInsert;
+
+// Security-deposit ledger — Texas has 30-day statutory return + itemized
+// deduction list, etc.
+export const securityDeposits = pgTable(
+  "security_deposits",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").notNull(),
+    tenantId: varchar("tenant_id").notNull(),
+
+    heldCents: bigint("held_cents", { mode: "number" }).notNull(),
+    receivedAt: date("received_at"),
+
+    // Move-out reconciliation
+    moveOutInspectionId: varchar("move_out_inspection_id"),
+    deductions: jsonb("deductions").$type<Array<{
+      description: string;
+      amountCents: number;
+      category?: string;
+    }>>().default([]),
+    deductionsTotalCents: bigint("deductions_total_cents", { mode: "number" }).default(0),
+    refundCents: bigint("refund_cents", { mode: "number" }),
+    refundedAt: date("refunded_at"),
+
+    statutoryDeadline: date("statutory_deadline"),  // state-driven (Texas 30d)
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("security_deposits_lease_uk").on(table.leaseId),
+  ],
+);
+
+export type SecurityDeposit = typeof securityDeposits.$inferSelect;
+export type InsertSecurityDeposit = typeof securityDeposits.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

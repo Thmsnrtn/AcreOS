@@ -946,6 +946,234 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "arv_calculations_property_idx" ON "arv_calculations" ("property_id", "is_current")',
   'CREATE INDEX IF NOT EXISTS "arv_calculations_org_idx" ON "arv_calculations" ("organization_id")',
 
+  // ── Buy-and-hold vertical BH-1 ──────────────────────────────────────────
+  // Imelda's deal-killer: no tenant entity, no lease entity, no rent ledger,
+  // no maintenance ticketing.
+  `CREATE TABLE IF NOT EXISTS "tenants" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "first_name" text NOT NULL,
+     "last_name" text NOT NULL,
+     "email" text,
+     "phone" text,
+     "sms_consent" boolean NOT NULL DEFAULT false,
+     "sms_consent_at" timestamptz,
+     "date_of_birth" date,
+     "government_id_last4" text,
+     "status" text NOT NULL DEFAULT 'applicant',
+     "source_channel" text,
+     "screening_completed_at" timestamptz,
+     "screening_credit_score" integer,
+     "screening_has_prior_eviction" boolean,
+     "screening_has_criminal_record" boolean,
+     "screening_income_monthly_cents" bigint,
+     "screening_criteria_met" boolean,
+     "adverse_action_notice_sent_at" timestamptz,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "tenants_org_status_idx" ON "tenants" ("organization_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "tenants_org_email_idx" ON "tenants" ("organization_id", "email")',
+
+  // BH-1 uses `rental_leases` as the table name to avoid colliding with a
+  // pre-existing thin `leases` stub.
+  `CREATE TABLE IF NOT EXISTS "rental_leases" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "unit_label" text,
+     "parent_lease_id" uuid,
+     "version_number" integer NOT NULL DEFAULT 1,
+     "status" text NOT NULL DEFAULT 'draft',
+     "liability_model" text NOT NULL DEFAULT 'joint_and_several',
+     "start_date" date NOT NULL,
+     "end_date" date,
+     "monthly_rent_cents" bigint NOT NULL,
+     "rent_due_day_of_month" integer NOT NULL DEFAULT 1,
+     "security_deposit_cents" bigint NOT NULL DEFAULT 0,
+     "pet_deposit_cents" bigint NOT NULL DEFAULT 0,
+     "is_section_8" boolean NOT NULL DEFAULT false,
+     "hap_portion_cents" bigint,
+     "tenant_portion_cents" bigint,
+     "state" text NOT NULL,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "rental_leases_org_status_idx" ON "rental_leases" ("organization_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "rental_leases_property_idx" ON "rental_leases" ("property_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "rental_leases_parent_idx" ON "rental_leases" ("parent_lease_id")',
+
+  `CREATE TABLE IF NOT EXISTS "lease_tenants" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+     "tenant_id" uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+     "rent_share_pct" numeric NOT NULL DEFAULT 1,
+     "is_primary" boolean NOT NULL DEFAULT true,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "lease_tenants_lease_tenant_uk" ON "lease_tenants" ("lease_id", "tenant_id")',
+  'CREATE INDEX IF NOT EXISTS "lease_tenants_org_idx" ON "lease_tenants" ("organization_id")',
+
+  `CREATE TABLE IF NOT EXISTS "lease_addendums" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+     "kind" text NOT NULL,
+     "title" text NOT NULL,
+     "body_markdown" text,
+     "document_path" text,
+     "signed_at" timestamptz,
+     "effective_date" date,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "lease_addendums_lease_idx" ON "lease_addendums" ("lease_id", "kind")',
+
+  `CREATE TABLE IF NOT EXISTS "rent_charges" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+     "charged_for_month" date NOT NULL,
+     "due_date" date NOT NULL,
+     "amount_cents" bigint NOT NULL,
+     "hap_portion_cents" bigint,
+     "tenant_portion_cents" bigint,
+     "paid_cents" bigint NOT NULL DEFAULT 0,
+     "balance_cents" bigint NOT NULL,
+     "late_fee_cents" bigint NOT NULL DEFAULT 0,
+     "late_fee_applied_at" timestamptz,
+     "legal_posture" text NOT NULL DEFAULT 'ok',
+     "legal_posture_at" timestamptz,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "rent_charges_lease_month_uk" ON "rent_charges" ("lease_id", "charged_for_month")',
+  'CREATE INDEX IF NOT EXISTS "rent_charges_org_balance_idx" ON "rent_charges" ("organization_id", "balance_cents", "due_date")',
+
+  `CREATE TABLE IF NOT EXISTS "rent_payments" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+     "rent_charge_id" uuid REFERENCES "rent_charges"("id") ON DELETE SET NULL,
+     "payor_type" text NOT NULL DEFAULT 'tenant',
+     "payor_tenant_id" uuid REFERENCES "tenants"("id") ON DELETE SET NULL,
+     "amount_cents" bigint NOT NULL,
+     "received_at" date NOT NULL,
+     "method" text,
+     "reference_number" text,
+     "stripe_payment_intent_id" text,
+     "is_partial" boolean NOT NULL DEFAULT false,
+     "accepted_despite_partial" boolean,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "rent_payments_lease_idx" ON "rent_payments" ("lease_id", "received_at")',
+  'CREATE INDEX IF NOT EXISTS "rent_payments_charge_idx" ON "rent_payments" ("rent_charge_id")',
+  'CREATE INDEX IF NOT EXISTS "rent_payments_org_received_idx" ON "rent_payments" ("organization_id", "received_at")',
+
+  `CREATE TABLE IF NOT EXISTS "late_fee_rules" (
+     "state" text PRIMARY KEY,
+     "cap_pct_small_property" numeric,
+     "cap_pct_large_property" numeric,
+     "cap_flat_cents" bigint,
+     "grace_days" integer NOT NULL DEFAULT 0,
+     "initial_fee_cents" bigint,
+     "per_day_cents" bigint,
+     "citation" text,
+     "summary" text,
+     "attorney_reviewed_at" timestamptz,
+     "attorney_reviewed_by" text,
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+
+  // Late-fee rule seeds — Imelda §2.4. Verify with state counsel before
+  // shipping. Numbers below are public-statute summaries as of 2024-2026.
+  `INSERT INTO "late_fee_rules" ("state","cap_pct_small_property","cap_pct_large_property","grace_days","citation","summary")
+     VALUES ('TX', 0.10, 0.12, 2, 'Tex. Prop. Code §92.019', 'Cap 10% small / 12% 4+ unit; 2-day grace; partial-rent acceptance after notice voids the notice.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "late_fee_rules" ("state","cap_pct_small_property","cap_pct_large_property","grace_days","citation","summary")
+     VALUES ('CA', 0.06, 0.06, 5, 'Cal. Civ. Code §1671 (reasonable estimate doctrine)', 'No statutory cap, but courts enforce ''reasonable'' — 6% of monthly rent is the safe ceiling. 3-day notice to pay or quit standard.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "late_fee_rules" ("state","cap_pct_small_property","cap_pct_large_property","grace_days","citation","summary")
+     VALUES ('NY', 0.05, 0.05, 5, 'N.Y. RPL §238-a(2) (HSTPA 2019)', 'Cap 5% of monthly rent or \$50, whichever less. Mandatory 5-day grace. 14-day notice before nonpayment proceeding.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "late_fee_rules" ("state","cap_pct_small_property","cap_pct_large_property","grace_days","citation","summary")
+     VALUES ('FL', null, null, 0, 'Fla. Stat. §83.43-83.595', 'No statutory cap. Late-fee enforceable per lease terms. 3-day notice to pay or vacate.')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "late_fee_rules" ("state","cap_pct_small_property","cap_pct_large_property","grace_days","citation","summary")
+     VALUES ('GA', null, null, 0, 'O.C.G.A. §44-7 (no specific cap)', 'No statutory cap but lease-stated fee enforceable if reasonable. No statutory grace period.')
+     ON CONFLICT (state) DO NOTHING`,
+
+  `CREATE TABLE IF NOT EXISTS "maintenance_tickets" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "lease_id" uuid REFERENCES "rental_leases"("id") ON DELETE SET NULL,
+     "submitted_by_tenant_id" uuid REFERENCES "tenants"("id") ON DELETE SET NULL,
+     "title" text NOT NULL,
+     "description" text,
+     "category" text,
+     "severity" text NOT NULL DEFAULT 'standard',
+     "status" text NOT NULL DEFAULT 'open',
+     "submitted_at" timestamptz NOT NULL DEFAULT now(),
+     "triaged_at" timestamptz,
+     "dispatched_at" timestamptz,
+     "completed_at" timestamptz,
+     "assigned_contractor_id" uuid REFERENCES "contractors"("id") ON DELETE SET NULL,
+     "repair_notes" text,
+     "invoice_cents" bigint,
+     "invoice_paid_at" timestamptz,
+     "photos" jsonb DEFAULT '[]'::jsonb,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "maintenance_tickets_org_status_idx" ON "maintenance_tickets" ("organization_id", "status", "severity")',
+  'CREATE INDEX IF NOT EXISTS "maintenance_tickets_property_idx" ON "maintenance_tickets" ("property_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "maintenance_tickets_contractor_idx" ON "maintenance_tickets" ("assigned_contractor_id")',
+
+  `CREATE TABLE IF NOT EXISTS "move_inspections" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "lease_id" uuid REFERENCES "rental_leases"("id") ON DELETE SET NULL,
+     "tenant_id" uuid REFERENCES "tenants"("id") ON DELETE SET NULL,
+     "kind" text NOT NULL,
+     "inspection_date" date NOT NULL,
+     "conducted_by" text,
+     "checklist" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "photos" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "tenant_signed_at" timestamptz,
+     "landlord_signed_at" timestamptz,
+     "signing_packet_id" uuid,
+     "damages_total_cents" bigint,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "move_inspections_property_idx" ON "move_inspections" ("property_id", "kind")',
+  'CREATE INDEX IF NOT EXISTS "move_inspections_lease_idx" ON "move_inspections" ("lease_id")',
+
+  `CREATE TABLE IF NOT EXISTS "security_deposits" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+     "tenant_id" uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+     "held_cents" bigint NOT NULL,
+     "received_at" date,
+     "move_out_inspection_id" uuid REFERENCES "move_inspections"("id") ON DELETE SET NULL,
+     "deductions" jsonb DEFAULT '[]'::jsonb,
+     "deductions_total_cents" bigint DEFAULT 0,
+     "refund_cents" bigint,
+     "refunded_at" date,
+     "statutory_deadline" date,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "security_deposits_lease_uk" ON "security_deposits" ("lease_id")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
