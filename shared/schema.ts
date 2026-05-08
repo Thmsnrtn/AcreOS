@@ -19769,6 +19769,35 @@ export const insertEtlRunSchema = createInsertSchema(etlRuns).omit({
 export type EtlRun = typeof etlRuns.$inferSelect;
 export type InsertEtlRun = z.infer<typeof insertEtlRunSchema>;
 
+// ─── FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure ──
+// Diego-Marchetti's lead recommendation: founder-led community as the SMB
+// acquisition flywheel. Weekly cadence, async (not Slack/Discord), one
+// hour/week of founder time forever. Each row is one published letter:
+// subject, body (HTML), public slug, sent_at, recipient_count, archive_url.
+// Customer-facing /letters page reads from `published_at` desc.
+export const communityLetters = pgTable(
+  "community_letters",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: text("slug").notNull().unique(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body").notNull(),
+    plainBody: text("plain_body"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    senderUserId: text("sender_user_id"),
+    senderEmail: text("sender_email"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("community_letters_published_idx").on(table.publishedAt),
+  ],
+);
+export type CommunityLetter = typeof communityLetters.$inferSelect;
+export type InsertCommunityLetter = typeof communityLetters.$inferInsert;
+
 // ─── RS-5 (post-may1-resweep): email-on-new-location detector ─────────────
 // Asher-takeover §3 root cause: "no email-on-new-location, no exfil alarm".
 // One row per (user, ip-prefix, ua-family) tuple. First time we see a new

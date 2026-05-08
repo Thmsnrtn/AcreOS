@@ -2587,6 +2587,24 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
 
+  // FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure.
+  // Async (not Slack/Discord), weekly cadence, top-of-funnel acquisition.
+  `CREATE TABLE IF NOT EXISTS "community_letters" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "slug" text NOT NULL UNIQUE,
+     "subject" text NOT NULL,
+     "html_body" text NOT NULL,
+     "plain_body" text,
+     "published_at" timestamptz,
+     "sent_at" timestamptz,
+     "recipient_count" integer NOT NULL DEFAULT 0,
+     "sender_user_id" text,
+     "sender_email" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
+
   // FW-WYNNE-1 (push-forward 2026-05-08): skip-trace permissible-purpose
   // gate. Adds purpose_of_use / justification / attesting_user_id /
   // attestation_version to skip_traces. Persisted for class-action defense
