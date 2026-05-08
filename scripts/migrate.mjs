@@ -2527,6 +2527,21 @@ const STATEMENTS = [
   'CREATE INDEX CONCURRENTLY IF NOT EXISTS "messages_org_conversation_created_idx" ON "messages" ("organization_id", "conversation_id", "created_at" DESC)',
   'CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_events_action_created_idx" ON "audit_events" ("action", "created_at" DESC)',
   'CREATE INDEX CONCURRENTLY IF NOT EXISTS "email_events_event_created_idx" ON "email_events" ("event", "created_at" DESC)',
+
+  // ── P0-10 (master findings): Dropbox Sign webhook event-level idempotency ──
+  // Mirrors stripe_processed_events. Atomic claim via INSERT ON CONFLICT
+  // DO NOTHING so duplicate Dropbox Sign deliveries (the spec retries on
+  // 5xx) never double-process.
+  `CREATE TABLE IF NOT EXISTS "esign_webhook_events" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL DEFAULT 'dropbox_sign',
+     "event_id" text NOT NULL UNIQUE,
+     "event_type" text NOT NULL,
+     "signature_request_id" text,
+     "processed_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "esign_webhook_events_event_id_idx" ON "esign_webhook_events" ("event_id")',
+  'CREATE INDEX IF NOT EXISTS "esign_webhook_events_sig_req_idx" ON "esign_webhook_events" ("signature_request_id")',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

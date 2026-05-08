@@ -11044,6 +11044,25 @@ export const stripeProcessedEvents = pgTable("stripe_processed_events", {
   index("stripe_processed_events_event_id_idx").on(table.stripeEventId),
 ]);
 
+// P0-10 (master findings): Dropbox Sign / HelloSign webhook events claimed
+// before processing. Mirrors the stripeProcessedEvents pattern: an INSERT
+// ON CONFLICT DO NOTHING claim guarantees exactly-once dispatch even when
+// Dropbox Sign retries the same event under load. eventId derives from
+// the Dropbox Sign payload's `event.event_hash` (HMAC of timestamp +
+// event_time + event_type per their spec); falls back to a synthesized
+// id when missing so old/replayed events can't slip through.
+export const esignWebhookEvents = pgTable("esign_webhook_events", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().default("dropbox_sign"),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  signatureRequestId: text("signature_request_id"),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+}, (table) => [
+  index("esign_webhook_events_event_id_idx").on(table.eventId),
+  index("esign_webhook_events_sig_req_idx").on(table.signatureRequestId),
+]);
+
 // ===========================
 // AI TELEMETRY
 // ===========================

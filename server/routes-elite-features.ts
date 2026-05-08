@@ -295,13 +295,28 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Webhook from Dropbox Sign — verify HMAC signature (DEFECT-0008)
+  // Webhook from Dropbox Sign — verify HMAC signature (DEFECT-0008).
+  // P0-10 (master findings): fail-closed on missing webhook key, atomic
+  // event claim, state-machine guard, signed-PDF pin on completion all
+  // implemented inside processDropboxSignWebhook().
   app.post("/api/webhooks/dropbox-sign", async (req: Request, res: Response) => {
     try {
-      // Verify Dropbox Sign webhook signature
       const signature = req.headers["x-dropbox-sign-signature"] as string;
       const webhookKey = process.env.DROPBOX_SIGN_WEBHOOK_KEY;
-      if (webhookKey && signature) {
+      // Fail-closed: production MUST have a webhook key. Without one we
+      // can't authenticate the request and must reject — anything else
+      // lets a forged event mutate signed-document status.
+      if (!webhookKey) {
+        if (process.env.NODE_ENV === "production") {
+          logger.error("[dropbox-sign] DROPBOX_SIGN_WEBHOOK_KEY not configured in production — rejecting");
+          return res.status(503).json({ message: "Webhook handler not configured" });
+        }
+        logger.warn("[dropbox-sign] DROPBOX_SIGN_WEBHOOK_KEY not configured (non-prod) — accepting unsigned for development");
+      } else {
+        if (!signature) {
+          logger.warn("[dropbox-sign] Webhook received without signature header — rejecting");
+          return res.status(401).json({ message: "Missing signature" });
+        }
         const crypto = await import("crypto");
         const expected = crypto.createHmac("sha256", webhookKey)
           .update(JSON.stringify(req.body))
@@ -310,9 +325,6 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
           logger.warn("[dropbox-sign] Webhook signature mismatch — rejecting");
           return res.status(401).json({ message: "Invalid signature" });
         }
-      } else if (webhookKey) {
-        logger.warn("[dropbox-sign] Webhook received without signature header");
-        return res.status(401).json({ message: "Missing signature" });
       }
       await eSigningService.processDropboxSignWebhook(req.body);
       res.json({ success: true });

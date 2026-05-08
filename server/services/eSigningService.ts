@@ -10,8 +10,9 @@
  */
 
 import { db, withTransaction } from "../db";
-import { generatedDocuments, notes, leads, properties, organizations } from "@shared/schema";
+import { generatedDocuments, notes, leads, properties, organizations, esignWebhookEvents } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { createHash } from "crypto";
 import { logger } from "../utils/logger";
 import {
   checkDisclosure,
@@ -378,53 +379,133 @@ export async function getSignatureRequestStatus(
 // WEBHOOK PROCESSOR — call from POST /api/webhooks/dropbox-sign
 // ============================================
 
-export async function processDropboxSignWebhook(payload: any): Promise<void> {
-  const event = payload.event;
-  const sigRequest = payload.signature_request;
+/**
+ * Atomically claim an event id for processing. Returns true if this delivery
+ * is the first the platform has seen, false if it was already claimed.
+ * Mirrors the Stripe pattern in `server/webhookHandlers.ts:claimEvent`.
+ */
+async function claimEsignEvent(eventId: string, eventType: string, signatureRequestId: string | null): Promise<boolean> {
+  try {
+    const result = await db.insert(esignWebhookEvents).values({
+      provider: "dropbox_sign",
+      eventId,
+      eventType,
+      signatureRequestId,
+    }).onConflictDoNothing().returning({ id: esignWebhookEvents.id });
+    return result.length > 0;
+  } catch (err) {
+    // Table may not exist yet during migration window — allow processing
+    logger.warn(`[esign-webhook] Failed to claim event ${eventId}, allowing processing`, err instanceof Error ? err : undefined);
+    return true;
+  }
+}
 
+/**
+ * Status states a `generatedDocuments` row passes through. The webhook
+ * handler refuses to regress (e.g. an out-of-order "signed" event after
+ * "completed" is dropped) so duplicate or late deliveries can't undo
+ * forward progress.
+ */
+const STATUS_RANK: Record<string, number> = {
+  pending: 0,
+  pending_signature: 1,
+  partially_signed: 2,
+  signed: 3,
+  archived: 4,  // declined/expired terminal
+};
+
+function statusRank(status: string | null | undefined): number {
+  if (!status) return 0;
+  return STATUS_RANK[status] ?? 0;
+}
+
+/**
+ * Pin the signed PDF on completion (P0-10 spec). Overwrites the document's
+ * `pdfUrl` column with the Dropbox Sign signed-version URL so the URL on
+ * record is always the post-sign artifact. Tamper-evidence at signing time
+ * is already covered by `signatures.documentContentHash` (P0-3).
+ */
+async function pinSignedPdf(docId: number, sigRequestId: string): Promise<void> {
+  try {
+    const url = `${DROPBOX_SIGN_API_BASE}/signature_request/files/${sigRequestId}?file_type=pdf&get_url=true`;
+    const r = await fetch(url, { headers: { Authorization: buildAuthHeader() } });
+    if (!r.ok) return;
+    const json = await r.json() as any;
+    const pdfUrl = json?.file_url ?? json?.url;
+    if (typeof pdfUrl === "string" && pdfUrl.length > 0) {
+      await db.update(generatedDocuments).set({ pdfUrl }).where(eq(generatedDocuments.id, docId));
+    }
+  } catch (err) {
+    logger.warn(`[esign-webhook] Failed to pin signed PDF for ${sigRequestId}`, err instanceof Error ? err : undefined);
+  }
+}
+
+export async function processDropboxSignWebhook(payload: any): Promise<void> {
+  const event = payload?.event;
+  const sigRequest = payload?.signature_request;
   if (!sigRequest?.signature_request_id) return;
+
+  const eventType: string | undefined = event?.event_type;
+  if (!eventType) return;
+
+  // Synthesize a stable event id. Dropbox Sign provides `event.event_hash`
+  // (HMAC of api_key + event_time + event_type) plus `event.event_time`.
+  // If both are present, use them. Fall back to a sha256 of
+  // (signatureRequestId + eventType + event_time) so old replays still
+  // collide on the unique index.
+  const rawHash = typeof event?.event_hash === "string" ? event.event_hash : null;
+  const eventTime = typeof event?.event_time === "string" || typeof event?.event_time === "number"
+    ? String(event.event_time)
+    : null;
+  const eventId = rawHash
+    ? `${rawHash}-${eventTime ?? "0"}`
+    : createHash("sha256")
+        .update(`${sigRequest.signature_request_id}|${eventType}|${eventTime ?? ""}`)
+        .digest("hex");
+
+  // Atomic claim — duplicate deliveries silently no-op.
+  const claimed = await claimEsignEvent(eventId, eventType, sigRequest.signature_request_id);
+  if (!claimed) {
+    logger.info(`[esign-webhook] Skipping duplicate event ${eventId} (${eventType})`);
+    return;
+  }
 
   // Find the document by envelope ID
   const [doc] = await db
     .select()
     .from(generatedDocuments)
     .where(eq(generatedDocuments.esignEnvelopeId, sigRequest.signature_request_id));
-
   if (!doc) return;
 
-  const eventType = event?.event_type;
+  const currentRank = statusRank(doc.status as string | null);
 
   if (eventType === "signature_request_signed") {
-    // Check if all signers have signed
     const allSigned = sigRequest.signatures?.every((s: any) => s.status_code === "signed");
-    await db
-      .update(generatedDocuments)
-      .set({
-        esignStatus: allSigned ? "completed" : "partially_signed",
-        status: allSigned ? "signed" : "pending_signature",
-        signedAt: allSigned ? new Date() : undefined,
-        completedAt: allSigned ? new Date() : undefined,
-      })
-      .where(eq(generatedDocuments.id, doc.id));
+    const newStatus = allSigned ? "signed" : "pending_signature";
+    if (statusRank(newStatus) < currentRank) return;  // state-machine guard
+    await db.update(generatedDocuments).set({
+      esignStatus: allSigned ? "completed" : "partially_signed",
+      status: newStatus,
+      signedAt: allSigned ? new Date() : undefined,
+      completedAt: allSigned ? new Date() : undefined,
+    }).where(eq(generatedDocuments.id, doc.id));
+    if (allSigned) await pinSignedPdf(doc.id, sigRequest.signature_request_id);
   } else if (eventType === "signature_request_all_signed" || eventType === "signature_request_completed") {
-    await db
-      .update(generatedDocuments)
-      .set({
-        esignStatus: "completed",
-        status: "signed",
-        signedAt: new Date(),
-        completedAt: new Date(),
-      })
-      .where(eq(generatedDocuments.id, doc.id));
+    if (statusRank("signed") < currentRank) return;
+    await db.update(generatedDocuments).set({
+      esignStatus: "completed",
+      status: "signed",
+      signedAt: new Date(),
+      completedAt: new Date(),
+    }).where(eq(generatedDocuments.id, doc.id));
+    await pinSignedPdf(doc.id, sigRequest.signature_request_id);
   } else if (eventType === "signature_request_declined") {
-    await db
-      .update(generatedDocuments)
-      .set({ esignStatus: "declined", status: "archived" })
+    if (statusRank("archived") < currentRank && doc.status !== "signed") return;
+    await db.update(generatedDocuments).set({ esignStatus: "declined", status: "archived" })
       .where(eq(generatedDocuments.id, doc.id));
   } else if (eventType === "signature_request_expired") {
-    await db
-      .update(generatedDocuments)
-      .set({ esignStatus: "expired", status: "archived" })
+    if (statusRank("archived") < currentRank && doc.status !== "signed") return;
+    await db.update(generatedDocuments).set({ esignStatus: "expired", status: "archived" })
       .where(eq(generatedDocuments.id, doc.id));
   }
 }
