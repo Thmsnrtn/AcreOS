@@ -355,9 +355,16 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
       {/* Permit checklists (SD-3) */}
       <PermitChecklistsSection parentParcelId={parentParcelId} />
 
+      {/* Cost-basis allocation (SD-4) */}
+      <BasisAllocationSection
+        parentParcelId={parentParcelId}
+        parentBasisCents={data.metrics.parentBasisCents}
+        children={data.children}
+      />
+
       <Separator />
       <p className="text-xs text-muted-foreground">
-        Basis allocation, asking-price grid, and saved subdivision plans land in upcoming PRs.
+        Asking-price grid and saved subdivision plans land in upcoming PRs.
       </p>
     </div>
   );
@@ -614,6 +621,155 @@ function PermitChecklistsSection({ parentParcelId }: { parentParcelId: number })
             Create
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------- SD-4: cost-basis allocation section ----------
+
+interface AllocationRow {
+  id: string;
+  childParcelId: number;
+  method: string;
+  numerator: string;
+  denominator: string;
+  sharePct: string;
+  allocatedBasisCents: number;
+  realizedAt: string | null;
+  realizedSalePriceCents: number | null;
+  realizedCogsCents: number | null;
+}
+
+function BasisAllocationSection({
+  parentParcelId,
+  parentBasisCents,
+  children,
+}: {
+  parentParcelId: number;
+  parentBasisCents: number | null;
+  children: ChildLot[];
+}) {
+  const { toast } = useToast();
+  const [method, setMethod] = useState<"acreage" | "frontage" | "appraisal" | "override">("acreage");
+
+  const allocs = useQuery<{ allocations: AllocationRow[] }>({
+    queryKey: ["/api/parcels", parentParcelId, "basis-allocation"],
+    queryFn: async () => {
+      const res = await fetch(`/api/parcels/${parentParcelId}/basis-allocation`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const allocate = useMutation({
+    mutationFn: async () => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
+      const res = await fetch(`/api/parcels/${parentParcelId}/basis-allocation`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrf },
+        body: JSON.stringify({ method }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Basis allocated", description: `Method: ${method}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "basis-allocation"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "subdivision"] });
+    },
+    onError: (err: any) => toast({ title: "Could not allocate", description: err.message, variant: "destructive" }),
+  });
+
+  const allocByChild = useMemo(() => {
+    const m = new Map<number, AllocationRow>();
+    for (const a of allocs.data?.allocations ?? []) m.set(a.childParcelId, a);
+    return m;
+  }, [allocs.data]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Basis allocation (COGS at sale)</CardTitle>
+        <CardDescription>
+          Splits the parent's purchase price across child lots so your CPA gets
+          basis-per-lot at every closing. Lots held as inventory aren't depreciated —
+          basis converts to COGS when the lot sells.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {parentBasisCents === null ? (
+          <p className="text-sm text-muted-foreground">
+            Add a purchase price on the parent parcel before allocating basis.
+          </p>
+        ) : children.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Add child lots first.</p>
+        ) : (
+          <>
+            <div className="flex items-end gap-2">
+              <div>
+                <Label className="text-xs">Method</Label>
+                <Select value={method} onValueChange={(v) => setMethod(v as any)}>
+                  <SelectTrigger className="h-9 w-[180px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="acreage">Acreage (default)</SelectItem>
+                    <SelectItem value="frontage" disabled>Frontage (typed input)</SelectItem>
+                    <SelectItem value="appraisal" disabled>Appraisal (typed input)</SelectItem>
+                    <SelectItem value="override" disabled>Override (typed shares)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => allocate.mutate()}
+                disabled={allocate.isPending}
+              >
+                {allocs.data?.allocations.length ? "Re-allocate" : "Allocate"} basis
+              </Button>
+            </div>
+
+            {allocs.data && allocs.data.allocations.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground border-b border-border/60">
+                      <th className="px-2 py-1 text-left font-medium">Lot</th>
+                      <th className="px-2 py-1 text-right font-medium">Share</th>
+                      <th className="px-2 py-1 text-right font-medium">Allocated basis</th>
+                      <th className="px-2 py-1 text-right font-medium">Sale</th>
+                      <th className="px-2 py-1 text-right font-medium">Gain</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {children.map((c) => {
+                      const a = allocByChild.get(c.id);
+                      const gain = a?.realizedSalePriceCents != null && a.realizedCogsCents != null
+                        ? a.realizedSalePriceCents - a.realizedCogsCents
+                        : null;
+                      return (
+                        <tr key={c.id} className="border-b border-border/40">
+                          <td className="px-2 py-1 font-medium">{c.childLotNumber ?? c.apn}</td>
+                          <td className="px-2 py-1 text-right">{a ? `${(parseFloat(a.sharePct) * 100).toFixed(2)}%` : "—"}</td>
+                          <td className="px-2 py-1 text-right">{fmtUsdCents(a?.allocatedBasisCents ?? null)}</td>
+                          <td className="px-2 py-1 text-right">{fmtUsdCents(a?.realizedSalePriceCents ?? null)}</td>
+                          <td className={`px-2 py-1 text-right ${gain != null && gain > 0 ? "text-acr-pos" : gain != null && gain < 0 ? "text-acr-neg" : ""}`}>
+                            {gain != null ? fmtUsdCents(gain) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );

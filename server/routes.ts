@@ -164,6 +164,7 @@ import { registerWholesalerDashboardRoutes } from "./routes-wholesaler-dashboard
 import { registerBuyerAnalyticsRoutes } from "./routes-buyer-analytics";
 import { registerSubdivisionRoutes } from "./routes-subdivisions";
 import { registerPermitTrackerRoutes } from "./routes-permit-tracker";
+import { registerLotBasisRoutes } from "./routes-lot-basis";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1756,6 +1757,8 @@ export async function registerRoutes(
   registerSubdivisionRoutes(app);
   // Subdivider vertical SD-3 — permit-tracker workflow.
   registerPermitTrackerRoutes(app);
+  // Subdivider vertical SD-4 — cost-basis allocation engine.
+  registerLotBasisRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
