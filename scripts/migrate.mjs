@@ -208,6 +208,37 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "loss_mit_actions_case_idx" ON "note_loss_mit_actions" ("case_id", "performed_at")',
   'CREATE INDEX IF NOT EXISTS "loss_mit_actions_org_type_idx" ON "note_loss_mit_actions" ("organization_id", "action_type")',
 
+  // Tax-Delinquent vertical TD-2 — tax_certificates table for the
+  // redemption-clock dashboard. Marcus's deal-killer surface.
+  `CREATE TABLE IF NOT EXISTS "tax_certificates" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "listing_id" integer REFERENCES "tax_sale_listings"("id") ON DELETE SET NULL,
+     "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "apn" text NOT NULL,
+     "certificate_number" text,
+     "sale_type" text NOT NULL,
+     "sale_date" date NOT NULL,
+     "purchase_amount_cents" bigint NOT NULL,
+     "bid_down_rate_bps" integer,
+     "owner_name" text,
+     "owner_address" jsonb,
+     "redemption_deadline" date NOT NULL,
+     "owner_occupied_at_sale" boolean,
+     "scra_tolling_applied" boolean,
+     "status" text NOT NULL DEFAULT 'active',
+     "redeemed_at" date,
+     "redeemed_amount_cents" bigint,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "tax_certificates_org_status_deadline_idx" ON "tax_certificates" ("organization_id", "status", "redemption_deadline")',
+  'CREATE INDEX IF NOT EXISTS "tax_certificates_org_state_county_idx" ON "tax_certificates" ("organization_id", "state", "county")',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "tax_certificates_natural_key_uk" ON "tax_certificates" ("organization_id", "state", "county", "apn", "sale_date")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

@@ -17657,6 +17657,125 @@ export type NoteLossMitAction = typeof noteLossMitActions.$inferSelect;
 export type InsertNoteLossMitAction = typeof noteLossMitActions.$inferInsert;
 
 // ============================================================================
+// TAX CERTIFICATES — the redemption-clock surface
+// ----------------------------------------------------------------------------
+// Marcus's deal-killer: "If AcreOS tells me 'redemption window closes
+// 2027-05-01' and the actual statutory deadline was 2027-04-15 because
+// Alabama counts from the *first Monday after the sale* and not the sale
+// date, I lose a $40,000 property. Once. Not twice. Once and I'm gone."
+//
+// Captures every certificate / deed acquired at a tax sale, with the
+// per-state interest model + redemption math driven by tax_jurisdiction_rules
+// (TD-3). The dashboard at /redemption-clock sorts by days-remaining
+// ascending so the closest-to-expiry items lead.
+// ============================================================================
+
+export const TAX_CERT_SALE_TYPES = ["lien", "deed", "redeemable_deed"] as const;
+export type TaxCertSaleType = typeof TAX_CERT_SALE_TYPES[number];
+
+export const TAX_CERT_STATUSES = [
+  "active",          // pre-redemption; redeemer can still pay us off
+  "redeemed",        // owner redeemed; we got principal + interest
+  "expired_to_deed", // FL/AZ etc — redemption window closed; we apply for deed
+  "deed_obtained",   // we now own the parcel outright
+  "cancelled",       // certificate cancelled (county error, refund issued)
+] as const;
+export type TaxCertStatus = typeof TAX_CERT_STATUSES[number];
+
+export const taxCertificates = pgTable(
+  "tax_certificates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    // Optional FK to the auction/listing that produced this certificate
+    // (when bought via the in-platform auction worksheet — TD-4). Null
+    // when the cert was hand-entered (most users today).
+    listingId: integer("listing_id").references(() => taxSaleListings.id, { onDelete: "set null" }),
+    // Optional FK to the underlying parcel — set when the user has
+    // attached the property record to the certificate.
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+
+    // Identification.
+    state: text("state").notNull(),           // 2-letter
+    county: text("county").notNull(),
+    apn: text("apn").notNull(),
+    certificateNumber: text("certificate_number"), // county's reference
+
+    // Sale details.
+    saleType: text("sale_type").$type<TaxCertSaleType>().notNull(),
+    saleDate: date("sale_date").notNull(),
+    // What we PAID at sale. For deeds, this is the bid amount; for liens,
+    // the principal we advanced (back-tax + penalties + fees).
+    purchaseAmountCents: bigint("purchase_amount_cents", { mode: "number" }).notNull(),
+    // Florida bid-down: the interest rate we won at (in bps). For
+    // non-bid-down states, falls back to the state default from
+    // tax_jurisdiction_rules. Example: 14.25% won = 1425 bps.
+    bidDownRateBps: integer("bid_down_rate_bps"),
+
+    // Owner-of-record at sale (for outreach + statutory notice).
+    ownerName: text("owner_name"),
+    ownerAddress: jsonb("owner_address").$type<{
+      line1?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    }>(),
+
+    // Redemption math.
+    // The deadline is computed at insert time per the state's rule
+    // (sale_date + period, with adjustments for first-Monday-after-sale,
+    // recordation-date counting, etc). Stored to avoid recomputing on
+    // every page load and to support backfill when rule attorney-review
+    // dates shift.
+    redemptionDeadline: date("redemption_deadline").notNull(),
+    // Owner-occupied vs vacant: Marcus: "TX uses 6mo / 24mo redemption
+    // depending on owner-occupied + agricultural; AL counts SCRA-tolling".
+    ownerOccupiedAtSale: boolean("owner_occupied_at_sale"),
+    // SCRA tolling — borrower active-duty extends redemption per federal
+    // Servicemembers Civil Relief Act.
+    scraTollingApplied: boolean("scra_tolling_applied"),
+
+    // Resolution.
+    status: text("status").$type<TaxCertStatus>().notNull().default("active"),
+    redeemedAt: date("redeemed_at"),
+    redeemedAmountCents: bigint("redeemed_amount_cents", { mode: "number" }),
+
+    // Notes / clerk-flagged anomalies.
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-wide redemption-clock list, sorted by deadline. The dashboard
+    // hits this index every page load.
+    index("tax_certificates_org_status_deadline_idx").on(
+      table.organizationId,
+      table.status,
+      table.redemptionDeadline,
+    ),
+    // Per-county view (Marcus: "the county is the fundamental unit").
+    index("tax_certificates_org_state_county_idx").on(
+      table.organizationId,
+      table.state,
+      table.county,
+    ),
+    // Composite uniqueness on the natural key — one cert per
+    // (state, county, apn, sale_date) combination.
+    uniqueIndex("tax_certificates_natural_key_uk").on(
+      table.organizationId,
+      table.state,
+      table.county,
+      table.apn,
+      table.saleDate,
+    ),
+  ],
+);
+
+export type TaxCertificate = typeof taxCertificates.$inferSelect;
+export type InsertTaxCertificate = typeof taxCertificates.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

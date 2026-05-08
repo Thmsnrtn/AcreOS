@@ -153,6 +153,7 @@ import { registerSubscriptionRoutes } from "./routes-subscription";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
+import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1723,6 +1724,8 @@ export async function registerRoutes(
   registerNoteRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
+  // Tax-Delinquent vertical TD-2 — redemption-clock surface.
+  registerTaxCertificateRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
