@@ -5263,14 +5263,14 @@ export const skipTraces = pgTable("skip_traces", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   leadId: integer("lead_id").references(() => leads.id),
-  
+
   inputData: jsonb("input_data").$type<{
     name?: string;
     address?: string;
     apn?: string;
     mailingAddress?: string;
   }>(),
-  
+
   results: jsonb("results").$type<{
     phones?: { number: string; type: string; verified: boolean }[];
     emails?: { email: string; verified: boolean }[];
@@ -5279,15 +5279,25 @@ export const skipTraces = pgTable("skip_traces", {
     employer?: { name: string; address?: string };
     ageRange?: string;
   }>(),
-  
+
   provider: text("provider"), // realskip, tloxp, batchskip
   status: text("status").notNull().default("pending"), // pending, processing, completed, failed, no_results
-  
+
   costCents: integer("cost_cents"),
   requestedAt: timestamp("requested_at").defaultNow(),
   completedAt: timestamp("completed_at"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
+
+  // FW-WYNNE-1 (push-forward 2026-05-08): permissible-purpose gate.
+  // Wynne-Ohaegbu §1: skip-trace is FCRA-adjacent under §1681b(a)(3)(F)
+  // legitimate-business-need but the AcreOS operator must claim a purpose
+  // and a justification at query time. Gate at route entry, persist here
+  // for class-action defense audit trail.
+  purposeOfUse: text("purpose_of_use"), // collection|legitimate_business_need|written_consent|account_review
+  justification: text("justification"), // free-text, ≥10 chars
+  attestingUserId: text("attesting_user_id"),
+  attestationVersion: text("attestation_version"),
 });
 
 export const insertSkipTraceSchema = createInsertSchema(skipTraces).omit({

@@ -1183,10 +1183,41 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { leadId, inputData } = req.body;
+      const userId = (req as any).user?.id;
+      const { leadId, inputData, purposeOfUse, justification } = req.body;
 
       if (!leadId) {
         return Errors.badRequest(res, "Lead ID is required");
+      }
+
+      // FW-WYNNE-1 (push-forward 2026-05-08): permissible-purpose gate.
+      // Wynne-Ohaegbu §1: skip-trace is FCRA-adjacent under §1681b(a)(3)(F).
+      // Operator must claim purpose + justification at query time AND have
+      // a current annual FCRA attestation. Persist both for class-action
+      // defense audit trail.
+      const { assertSkipTracePermitted, FcraAttestationStaleError, SkipTracePurposeRequiredError } =
+        await import("./services/fcraAttestation");
+      let attestationVersion: string;
+      try {
+        const result = await assertSkipTracePermitted({
+          organizationId: org.id,
+          userId,
+          purposeOfUse,
+          justification,
+        });
+        attestationVersion = result.attestationVersion;
+      } catch (err) {
+        if (err instanceof SkipTracePurposeRequiredError) {
+          return Errors.badRequest(res, err.message, { code: err.code });
+        }
+        if (err instanceof FcraAttestationStaleError) {
+          return res.status(403).json({
+            error: "FCRA_ATTESTATION_REQUIRED",
+            message: err.message,
+            statusCode: 403,
+          });
+        }
+        throw err;
       }
 
       // Check if lead exists
@@ -1206,6 +1237,10 @@ export function registerLeadRoutes(app: Express): void {
         status: "processing",
         costCents: 50,
         requestedAt: new Date(),
+        purposeOfUse,
+        justification,
+        attestingUserId: userId,
+        attestationVersion,
       });
 
       // Simulate async processing with mock data after 1 second

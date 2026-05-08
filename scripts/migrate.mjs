@@ -2587,6 +2587,15 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
 
+  // FW-WYNNE-1 (push-forward 2026-05-08): skip-trace permissible-purpose
+  // gate. Adds purpose_of_use / justification / attesting_user_id /
+  // attestation_version to skip_traces. Persisted for class-action defense
+  // audit trail (FCRA §1681b(a)(3)).
+  'ALTER TABLE "skip_traces" ADD COLUMN IF NOT EXISTS "purpose_of_use" text',
+  'ALTER TABLE "skip_traces" ADD COLUMN IF NOT EXISTS "justification" text',
+  'ALTER TABLE "skip_traces" ADD COLUMN IF NOT EXISTS "attesting_user_id" text',
+  'ALTER TABLE "skip_traces" ADD COLUMN IF NOT EXISTS "attestation_version" text',
+
   // RS-5 (post-may1-resweep): email-on-new-location detector.
   // One row per (user, ipPrefix, uaFamily). Insert-on-conflict-bumps
   // last_seen_at; the first insert per tuple triggers an alert email.

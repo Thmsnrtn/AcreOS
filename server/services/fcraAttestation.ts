@@ -32,14 +32,73 @@ export type PurposeOfUse =
   | "tenant_screening"
   | "account_review"
   | "written_consent"
-  | "legitimate_business_need";
+  | "legitimate_business_need"
+  | "collection";
 
 export const ALL_PURPOSES_OF_USE: PurposeOfUse[] = [
   "tenant_screening",
   "account_review",
   "written_consent",
   "legitimate_business_need",
+  "collection",
 ];
+
+export type SkipTracePurposeOfUse = Extract<
+  PurposeOfUse,
+  "collection" | "legitimate_business_need" | "written_consent" | "account_review"
+>;
+
+export const SKIP_TRACE_PURPOSES: SkipTracePurposeOfUse[] = [
+  "collection",
+  "legitimate_business_need",
+  "written_consent",
+  "account_review",
+];
+
+export class SkipTracePurposeRequiredError extends Error {
+  readonly code = "SKIP_TRACE_PURPOSE_REQUIRED" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "SkipTracePurposeRequiredError";
+  }
+}
+
+/**
+ * FW-WYNNE-1 (push-forward 2026-05-08): permissible-purpose gate for
+ * skip-trace lookups. Mirrors `assertScreeningPermitted` but does not
+ * require a per-tenant pre-row — instead the caller passes purpose +
+ * justification inline and we assert the org-level annual attestation.
+ *
+ * Throws `FcraAttestationStaleError` if the org+user is not attested,
+ * `SkipTracePurposeRequiredError` if purpose/justification are missing.
+ */
+export async function assertSkipTracePermitted(opts: {
+  organizationId: number;
+  userId: string;
+  purposeOfUse: string | null | undefined;
+  justification: string | null | undefined;
+}): Promise<{ attestationVersion: string }> {
+  if (!opts.purposeOfUse || !SKIP_TRACE_PURPOSES.includes(opts.purposeOfUse as SkipTracePurposeOfUse)) {
+    throw new SkipTracePurposeRequiredError(
+      `Skip-trace requires purposeOfUse ∈ {${SKIP_TRACE_PURPOSES.join(", ")}}. ` +
+      `FCRA §1681b(a)(3) — operator must claim a permissible purpose at query time.`,
+    );
+  }
+  if (!opts.justification || opts.justification.trim().length < 10) {
+    throw new SkipTracePurposeRequiredError(
+      `Skip-trace requires a justification ≥10 characters describing the purpose. ` +
+      `Required for class-action defense audit trail.`,
+    );
+  }
+  const orgAttestation = await getCurrentAttestation(opts.organizationId, opts.userId);
+  if (!orgAttestation) {
+    throw new FcraAttestationStaleError(
+      `Annual FCRA attestation required (current version ${CURRENT_FCRA_ATTESTATION_VERSION}). ` +
+      `Visit /account/fcra-attestation to attest before running skip-traces.`,
+    );
+  }
+  return { attestationVersion: orgAttestation.attestationVersion };
+}
 
 export class FcraAttestationStaleError extends Error {
   readonly code = "FCRA_ATTESTATION_REQUIRED" as const;
