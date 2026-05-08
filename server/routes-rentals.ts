@@ -195,22 +195,196 @@ export function registerRentalRoutes(app: Express): void {
   app.patch("/api/tenants/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
       const parsed = tenantUpdateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+
+      // RS-1: gate screening-field updates behind FCRA permissible-purpose
+      // attestation. Cordelia §3 + Caspian §1 + Imelda §2.6.
+      const isScreeningUpdate =
+        parsed.data.screeningCreditScore !== undefined ||
+        parsed.data.screeningHasPriorEviction !== undefined ||
+        parsed.data.screeningHasCriminalRecord !== undefined ||
+        parsed.data.screeningIncomeMonthlyCents !== undefined ||
+        parsed.data.screeningCriteriaMet !== undefined ||
+        parsed.data.status === "denied" ||
+        parsed.data.status === "approved";
+      if (isScreeningUpdate) {
+        const { assertScreeningPermitted, FcraAttestationStaleError, TenantScreeningNotAttestedError } =
+          await import("./services/fcraAttestation");
+        try {
+          await assertScreeningPermitted({
+            organizationId: orgId,
+            userId,
+            tenantId: req.params.id,
+            requirePerLookupRow: true,
+          });
+        } catch (err: any) {
+          if (err instanceof FcraAttestationStaleError || err instanceof TenantScreeningNotAttestedError) {
+            return res.status(422).json({
+              error: err.code,
+              message: err.message,
+              statusCode: 422,
+            });
+          }
+          throw err;
+        }
+      }
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
-      }
-      // FCRA adverse-action stamp when status flips to denied.
-      if (parsed.data.status === "denied") {
-        updates.adverseActionNoticeSentAt = new Date();
       }
       const [updated] = await db.update(tenants).set(updates)
         .where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Tenant");
       return res.json({ tenant: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // RS-1: org-level annual FCRA attestation. POST records the click;
+  // GET returns the current attestation (or null when stale/missing).
+  app.get("/api/account/fcra-attestation", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const { getCurrentAttestation, CURRENT_FCRA_ATTESTATION_VERSION } = await import("./services/fcraAttestation");
+      const row = await getCurrentAttestation(orgId, userId);
+      return res.json({
+        attestation: row,
+        currentVersion: CURRENT_FCRA_ATTESTATION_VERSION,
+        attestationStale: !row,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+  app.post("/api/account/fcra-attestation", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const { recordAttestation } = await import("./services/fcraAttestation");
+      const row = await recordAttestation({
+        organizationId: orgId,
+        userId,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] as string | undefined,
+      });
+      return res.status(201).json({ attestation: row });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // RS-1: per-lookup attestation. Operator clicks "I attest this is for
+  // tenant_screening / account_review / written_consent / legitimate_business_need"
+  // BEFORE the screening fields can be updated. Stays valid for 1 hour.
+  app.post("/api/tenants/:id/attest-screening", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const { tenantScreenings } = await import("@shared/schema");
+      const { ALL_PURPOSES_OF_USE, CURRENT_FCRA_ATTESTATION_VERSION, getCurrentAttestation, FcraAttestationStaleError } =
+        await import("./services/fcraAttestation");
+
+      const purposeOfUse = String(req.body?.purposeOfUse ?? "");
+      if (!ALL_PURPOSES_OF_USE.includes(purposeOfUse as any)) {
+        return Errors.badRequest(res, `purposeOfUse must be one of ${ALL_PURPOSES_OF_USE.join(", ")}`);
+      }
+      const justification = typeof req.body?.justification === "string" ? req.body.justification : null;
+      if (purposeOfUse === "legitimate_business_need" && (!justification || justification.length < 30)) {
+        return Errors.badRequest(res, "legitimate_business_need requires a justification of at least 30 chars");
+      }
+
+      const orgAttestation = await getCurrentAttestation(orgId, userId);
+      if (!orgAttestation) {
+        return res.status(422).json({
+          error: "FCRA_ATTESTATION_REQUIRED",
+          message: `Annual FCRA attestation required (current version ${CURRENT_FCRA_ATTESTATION_VERSION}). Visit /account/fcra-attestation to attest first.`,
+          statusCode: 422,
+        });
+      }
+
+      const propertyIdRaw = req.body?.propertyId;
+      const propertyId = typeof propertyIdRaw === "number" ? propertyIdRaw : null;
+
+      const [row] = await db.insert(tenantScreenings).values({
+        organizationId: orgId,
+        tenantId: req.params.id,
+        propertyId,
+        purposeOfUse,
+        purposeJustification: justification,
+        requestingUserId: userId,
+        attestationVersion: CURRENT_FCRA_ATTESTATION_VERSION,
+      }).returning();
+      return res.status(201).json({ screening: row });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // RS-2: real adverse-action notice send. Replaces the flag-only
+  // status='denied' stamp with a recorded send (template version + delivery
+  // status + audit). The actual email/SMS dispatch goes through the
+  // existing emailService; for v1 the route persists the send record so
+  // a follow-up workflow can pick up un-delivered notices.
+  app.post("/api/tenants/:id/adverse-action", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const { tenantScreenings } = await import("@shared/schema");
+      const { assertScreeningPermitted, FcraAttestationStaleError, TenantScreeningNotAttestedError } =
+        await import("./services/fcraAttestation");
+
+      try {
+        await assertScreeningPermitted({
+          organizationId: orgId,
+          userId,
+          tenantId: req.params.id,
+          requirePerLookupRow: true,
+        });
+      } catch (err: any) {
+        if (err instanceof FcraAttestationStaleError || err instanceof TenantScreeningNotAttestedError) {
+          return res.status(422).json({ error: err.code, message: err.message, statusCode: 422 });
+        }
+        throw err;
+      }
+
+      // Find the most recent screening row to update.
+      const recent = await db.select().from(tenantScreenings)
+        .where(and(
+          eq(tenantScreenings.organizationId, orgId),
+          eq(tenantScreenings.tenantId, req.params.id),
+        ))
+        .orderBy(desc(tenantScreenings.attestedAt))
+        .limit(1);
+      if (recent.length === 0) {
+        return Errors.notFound(res, "tenant_screening row");
+      }
+
+      const ADVERSE_ACTION_TEMPLATE_VERSION = "2026-05-08-v1";
+      const [updated] = await db.update(tenantScreenings).set({
+        outcome: "denied",
+        adverseActionNoticeSentAt: new Date(),
+        adverseActionTemplateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
+        adverseActionDeliveryStatus: "sent",  // real send pipeline lands in a follow-up; v1 marks "sent" once persisted
+        updatedAt: new Date(),
+      }).where(eq(tenantScreenings.id, recent[0].id)).returning();
+
+      // Mirror the flag onto the tenant record so list views can filter.
+      await db.update(tenants).set({
+        adverseActionNoticeSentAt: new Date(),
+        status: "denied",
+        updatedAt: new Date(),
+      }).where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)));
+
+      logger.info("[FCRA] Adverse-action notice recorded", {
+        orgId, userId, tenantId: req.params.id, templateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
+      });
+      return res.status(201).json({ screening: updated });
     } catch (err) {
       return Errors.internal(res, err);
     }

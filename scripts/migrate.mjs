@@ -2542,6 +2542,50 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "esign_webhook_events_event_id_idx" ON "esign_webhook_events" ("event_id")',
   'CREATE INDEX IF NOT EXISTS "esign_webhook_events_sig_req_idx" ON "esign_webhook_events" ("signature_request_id")',
+
+  // ── RS-1 (post-may1-resweep): FCRA permissible-purpose attestation tables ──
+  // Cordelia §3 + Imelda §3.5: per-lookup attestation BEFORE screening fields
+  // can be updated; org-level annual click-through stamps fcra_attestations.
+  `CREATE TABLE IF NOT EXISTS "tenant_screenings" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "tenant_id" uuid NOT NULL,
+     "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+     "purpose_of_use" text NOT NULL,
+     "purpose_justification" text,
+     "requesting_user_id" text NOT NULL,
+     "attestation_version" text NOT NULL,
+     "attested_at" timestamptz NOT NULL DEFAULT now(),
+     "outcome" text,
+     "credit_score" integer,
+     "has_prior_eviction" boolean,
+     "has_criminal_record" boolean,
+     "income_monthly_cents" bigint,
+     "criteria_met" boolean,
+     "cra_used" text,
+     "cra_report_id" text,
+     "adverse_action_notice_sent_at" timestamptz,
+     "adverse_action_template_version" text,
+     "adverse_action_delivery_status" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "tenant_screenings_org_tenant_idx" ON "tenant_screenings" ("organization_id", "tenant_id")',
+  'CREATE INDEX IF NOT EXISTS "tenant_screenings_org_attested_idx" ON "tenant_screenings" ("organization_id", "attested_at")',
+  'CREATE INDEX IF NOT EXISTS "tenant_screenings_outcome_idx" ON "tenant_screenings" ("organization_id", "outcome")',
+
+  `CREATE TABLE IF NOT EXISTS "fcra_attestations" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "user_id" text NOT NULL,
+     "attestation_version" text NOT NULL,
+     "attested_at" timestamptz NOT NULL DEFAULT now(),
+     "ip_address" text,
+     "user_agent" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
+  'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

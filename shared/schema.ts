@@ -19075,6 +19075,85 @@ export const TENANT_STATUSES = [
 ] as const;
 export type TenantStatus = typeof TENANT_STATUSES[number];
 
+// RS-1 (post-may1-resweep): per-lookup permissible-purpose attestation
+// table. Cordelia §3 + Caspian §1: every tenant-screening lookup must
+// record purpose + requesting user + attestation version BEFORE the
+// screening fields on `tenants` are updated. Without this row the route
+// guards reject the screening update.
+//
+// FCRA permissible purposes (15 USC §1681b):
+//   - tenant_screening   — application for residential lease
+//   - account_review     — periodic review of existing tenant
+//   - written_consent    — applicant gave explicit written consent
+//   - legitimate_business_need — narrow; document the need
+export const tenantScreenings = pgTable(
+  "tenant_screenings",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    tenantId: varchar("tenant_id").notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+
+    // Cordelia §3 attestation
+    purposeOfUse: text("purpose_of_use").notNull(),  // tenant_screening | account_review | written_consent | legitimate_business_need
+    purposeJustification: text("purpose_justification"),  // free text when purpose=legitimate_business_need
+    requestingUserId: text("requesting_user_id").notNull(),  // id of operator who attested
+    attestationVersion: text("attestation_version").notNull(),  // bumped when terms-of-use change
+    attestedAt: timestamp("attested_at", { withTimezone: true }).defaultNow().notNull(),
+
+    // Outcome (set after the lookup completes)
+    outcome: text("outcome"),  // approved | denied | pending
+    creditScore: integer("credit_score"),
+    hasPriorEviction: boolean("has_prior_eviction"),
+    hasCriminalRecord: boolean("has_criminal_record"),
+    incomeMonthlyCents: bigint("income_monthly_cents", { mode: "number" }),
+    criteriaMet: boolean("criteria_met"),
+
+    // CRA / vendor — when integrated. For self-input today, leave null.
+    craUsed: text("cra_used"),  // e.g. 'transunion_smartmove'
+    craReportId: text("cra_report_id"),
+
+    // FCRA adverse-action notice tracking
+    adverseActionNoticeSentAt: timestamp("adverse_action_notice_sent_at", { withTimezone: true }),
+    adverseActionTemplateVersion: text("adverse_action_template_version"),
+    adverseActionDeliveryStatus: text("adverse_action_delivery_status"),  // sent | delivered | bounced | undeliverable
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("tenant_screenings_org_tenant_idx").on(table.organizationId, table.tenantId),
+    index("tenant_screenings_org_attested_idx").on(table.organizationId, table.attestedAt),
+    index("tenant_screenings_outcome_idx").on(table.organizationId, table.outcome),
+  ],
+);
+
+export type TenantScreening = typeof tenantScreenings.$inferSelect;
+export type InsertTenantScreening = typeof tenantScreenings.$inferInsert;
+
+// RS-1: org-level FCRA attestation timestamp + version. Operators
+// re-attest annually (>365d-stale rejects the screening route).
+export const fcraAttestations = pgTable(
+  "fcra_attestations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    userId: text("user_id").notNull(),
+    attestationVersion: text("attestation_version").notNull(),
+    attestedAt: timestamp("attested_at", { withTimezone: true }).defaultNow().notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("fcra_attestations_org_user_idx").on(table.organizationId, table.userId),
+    index("fcra_attestations_attested_idx").on(table.organizationId, table.attestedAt),
+  ],
+);
+
+export type FcraAttestation = typeof fcraAttestations.$inferSelect;
+export type InsertFcraAttestation = typeof fcraAttestations.$inferInsert;
+
 export const tenants = pgTable(
   "tenants",
   {
