@@ -17494,6 +17494,57 @@ export type NoteAssignment = typeof noteAssignments.$inferSelect;
 export type InsertNoteAssignment = typeof noteAssignments.$inferInsert;
 
 // ============================================================================
+// NOTE OWNERSHIP SPLITS — pool / fractional ownership
+// ----------------------------------------------------------------------------
+// Linnea: "Three of my LP investors share a $180K commercial note 50/30/20.
+// Does AcreOS support fractional ownership of a single note? I see no
+// 'investors' relation on notes. This is a pool tracker problem and it's
+// where a lot of small note shops live. Without it I'm back in the
+// spreadsheet for those four pool notes immediately."
+//
+// One row per investor per note. percentageBps is in basis points
+// (0-10000); the rows for a given note must sum to <= 10000. The 'role'
+// distinguishes the org-itself row (when the org holds part of its own
+// note) from external LP investors. investorLeadId references the leads
+// table (which we already use as the borrower-side identity store) when
+// the LP investor has a profile in the system; otherwise the free-form
+// investorName + investorEmail keep things workable for one-off LPs.
+// ============================================================================
+
+export const noteOwnershipSplits = pgTable(
+  "note_ownership_splits",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    // Either ref a lead row (preferred — TIN, address, contact info live
+    // there) or supply free-form name/email for one-off LPs.
+    investorLeadId: integer("investor_lead_id").references(() => leads.id, { onDelete: "set null" }),
+    investorName: text("investor_name").notNull(),
+    investorEmail: text("investor_email"),
+    // 'org' = the holding org's own slice (when self-funded). 'lp' = an
+    // external limited partner. We don't model 'co_owner' separately;
+    // the role plus percentageBps captures the relationship.
+    role: text("role").notNull().default("lp"), // 'org' | 'lp'
+    percentageBps: integer("percentage_bps").notNull(), // 0-10000 (100% = 10000)
+    // Optional date the LP joined / left. Closed-end LP rotations track
+    // both timestamps; open-ended pools just set effectiveFrom.
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("note_splits_org_note_idx").on(table.organizationId, table.noteId),
+    index("note_splits_org_investor_idx").on(table.organizationId, table.investorLeadId),
+  ],
+);
+
+export type NoteOwnershipSplit = typeof noteOwnershipSplits.$inferSelect;
+export type InsertNoteOwnershipSplit = typeof noteOwnershipSplits.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

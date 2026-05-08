@@ -137,6 +137,27 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "note_assignments_org_note_idx" ON "note_assignments" ("organization_id", "note_id")',
   'CREATE INDEX IF NOT EXISTS "note_assignments_org_status_idx" ON "note_assignments" ("organization_id", "status")',
 
+  // Note Investor — pool / fractional ownership splits (PR-9). One row per
+  // investor per note; percentageBps for a note must sum to <= 10000.
+  // note_id is uuid (matches acquired_notes.id prod-inferred type).
+  `CREATE TABLE IF NOT EXISTS "note_ownership_splits" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "note_id" uuid NOT NULL REFERENCES "acquired_notes"("id") ON DELETE CASCADE,
+     "investor_lead_id" integer REFERENCES "leads"("id") ON DELETE SET NULL,
+     "investor_name" text NOT NULL,
+     "investor_email" text,
+     "role" text NOT NULL DEFAULT 'lp',
+     "percentage_bps" integer NOT NULL,
+     "effective_from" date,
+     "effective_to" date,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "note_splits_org_note_idx" ON "note_ownership_splits" ("organization_id", "note_id")',
+  'CREATE INDEX IF NOT EXISTS "note_splits_org_investor_idx" ON "note_ownership_splits" ("organization_id", "investor_lead_id")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

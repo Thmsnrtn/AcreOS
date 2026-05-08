@@ -16,7 +16,7 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { acquiredNotes, notePayments, noteAssignments } from "@shared/schema";
+import { acquiredNotes, notePayments, noteAssignments, noteOwnershipSplits } from "@shared/schema";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
@@ -1034,6 +1034,164 @@ export function registerNoteRoutes(app: Express): void {
         return res.json({ assignment: row });
       } catch (err) {
         logger.error("notes.assignments.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Ownership splits (pool / fractional) ─────────────────────────────────
+  // GET    /api/notes/:id/splits
+  // POST   /api/notes/:id/splits
+  // PATCH  /api/note-splits/:id
+  // DELETE /api/note-splits/:id
+  app.get(
+    "/api/notes/:id/splits",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const rows = await db
+          .select()
+          .from(noteOwnershipSplits)
+          .where(and(eq(noteOwnershipSplits.organizationId, orgId), eq(noteOwnershipSplits.noteId, noteId)))
+          .orderBy(desc(noteOwnershipSplits.percentageBps));
+        const totalBps = rows.reduce((s, r) => s + r.percentageBps, 0);
+        return res.json({ splits: rows, totalBps, unallocatedBps: 10_000 - totalBps });
+      } catch (err) {
+        logger.error("notes.splits.list failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/notes/:id/splits",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const parsed = z.object({
+          investorLeadId: z.number().int().positive().optional(),
+          investorName: z.string().min(1).max(240),
+          investorEmail: z.string().email().optional(),
+          role: z.enum(["org", "lp"]).default("lp"),
+          percentageBps: z.number().int().min(1).max(10_000),
+          effectiveFrom: z.string().optional(),
+          effectiveTo: z.string().optional(),
+          notes: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        // Ensure summed bps for the note doesn't exceed 10000 after this insert.
+        const existing = await db
+          .select({ bps: noteOwnershipSplits.percentageBps })
+          .from(noteOwnershipSplits)
+          .where(and(eq(noteOwnershipSplits.organizationId, orgId), eq(noteOwnershipSplits.noteId, noteId)));
+        const usedBps = existing.reduce((s, r) => s + r.bps, 0);
+        if (usedBps + parsed.data.percentageBps > 10_000) {
+          return Errors.badRequest(
+            res,
+            `Adding ${parsed.data.percentageBps} bps would exceed 100% (already allocated: ${usedBps} bps; available: ${10_000 - usedBps} bps)`,
+          );
+        }
+
+        const [row] = await db
+          .insert(noteOwnershipSplits)
+          .values({
+            organizationId: orgId,
+            noteId,
+            ...parsed.data,
+          })
+          .returning();
+        return res.status(201).json({ split: row });
+      } catch (err) {
+        logger.error("notes.splits.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/note-splits/:id",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const splitId = req.params.id;
+        const parsed = z.object({
+          investorName: z.string().min(1).max(240).optional(),
+          investorEmail: z.string().email().optional(),
+          percentageBps: z.number().int().min(1).max(10_000).optional(),
+          effectiveFrom: z.string().optional(),
+          effectiveTo: z.string().optional(),
+          notes: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        // If changing percentageBps, validate the new sum.
+        if (parsed.data.percentageBps !== undefined) {
+          const [current] = await db
+            .select()
+            .from(noteOwnershipSplits)
+            .where(and(eq(noteOwnershipSplits.id, splitId), eq(noteOwnershipSplits.organizationId, orgId)))
+            .limit(1);
+          if (!current) return Errors.notFound(res, "Split");
+          const others = await db
+            .select({ bps: noteOwnershipSplits.percentageBps })
+            .from(noteOwnershipSplits)
+            .where(and(
+              eq(noteOwnershipSplits.organizationId, orgId),
+              eq(noteOwnershipSplits.noteId, current.noteId),
+            ));
+          const otherBps = others
+            .filter((_, i) => others[i] !== current as any) // crude; we'll subtract by id below
+            .reduce((s, r) => s + r.bps, 0);
+          // Recompute properly by excluding the current row.
+          const recomputed = others.reduce((s, r) => s + r.bps, 0) - current.percentageBps;
+          if (recomputed + parsed.data.percentageBps > 10_000) {
+            return Errors.badRequest(res, `Update would exceed 100% (other splits: ${recomputed} bps)`);
+          }
+          void otherBps;
+        }
+
+        const [row] = await db
+          .update(noteOwnershipSplits)
+          .set({ ...parsed.data, updatedAt: new Date() })
+          .where(and(eq(noteOwnershipSplits.id, splitId), eq(noteOwnershipSplits.organizationId, orgId)))
+          .returning();
+        if (!row) return Errors.notFound(res, "Split");
+        return res.json({ split: row });
+      } catch (err) {
+        logger.error("notes.splits.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/note-splits/:id",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const [row] = await db
+          .delete(noteOwnershipSplits)
+          .where(and(eq(noteOwnershipSplits.id, req.params.id), eq(noteOwnershipSplits.organizationId, orgId)))
+          .returning();
+        if (!row) return Errors.notFound(res, "Split");
+        return res.json({ deleted: true });
+      } catch (err) {
+        logger.error("notes.splits.delete failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

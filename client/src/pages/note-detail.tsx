@@ -34,6 +34,7 @@ import { NoteYieldPanel } from "@/components/note-yield-panel";
 import { NoteBasisSchedule } from "@/components/note-basis-schedule";
 import { NoteTinEditor } from "@/components/note-tin-editor";
 import { NoteAssignmentsCard } from "@/components/note-assignments-card";
+import { NoteSplitsCard } from "@/components/note-splits-card";
 
 export interface AcquiredNote {
   id: string;
@@ -403,6 +404,9 @@ export default function NoteDetailPage() {
       {/* Basis schedule — Pub 1212 market-discount accretion. Renders empty
           state for face-value purchases / premium-paid notes. */}
       <NoteBasisSchedule noteId={note.id} />
+
+      {/* Pool / fractional ownership splits. */}
+      <NoteSplitsCard noteId={note.id} currentBalanceCents={note.currentBalanceCents} />
 
       {/* Assignment paperwork — Allonge + Assignment of Mortgage. */}
       <NoteAssignmentsCard noteId={note.id} noteNumber={note.noteNumber} />
