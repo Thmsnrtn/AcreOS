@@ -92,20 +92,22 @@ guardrail (ESLint + voice anchors + style guide).
 
 ### Next 30 days (through 2026-06-08)
 
-| # | Item | Effort | Memos |
-|---|---|---|---|
-| 30-1 | Client-mutation retry footgun fix + `Idempotency-Key` wiring | small (1.5d) | ines-travers, sam-reyes |
-| 30-2 | Close P0-10 Dropbox idempotency (atomic claim + state-machine guard) | small (1d) | ines-travers, theo-okuda |
-| 30-3 | Fix broken pre-commit hook + re-enable migration validation | small (2h) | ines-travers |
-| 30-4 | ESIGN integrity layer (content hash + immutability + completion cert) | medium (2w) | harlowe-stone, sam-reyes, wynne-ohaegbu |
-| 30-5 | Skip-trace permissible-purpose gate (BH pre-pilot blocker) | small (2d) | wynne-ohaegbu |
-| 30-6 | Encrypt `skip_traces.results` JSONB + backfill | small (1d) | sam-reyes |
-| 30-7 | Customer-concentration alert on `/founder-home` (>20% MRR) | small (1.5d) | marisol-vega, ashok-bhatt, harlowe-stone |
-| 30-8 | Persona-aware checklist + delete duplicate `OnboardingChecklist.tsx` | medium (2w) | yuna-park, asher-klein |
-| 30-9 | ESLint `no-founder-codenames-in-customer-jsx` as hard error | small (4h) | asher-klein |
-| 30-10 | Stripe Tax + tax_id_collection enabled | small (1d) | marisol-vega |
-| 30-11 | Write the missing 8 runbooks (Clerk/SES/Twilio/e-sign/GDPR/agent/founder/Fly) | medium (5d) | olu-adebayo |
-| 30-12 | Founder-letter infrastructure (route + email template + archive) | small (1w) | diego-marchetti, asher-klein |
+**Status as of 2026-05-08 end-of-session: 10/12 ✅ shipped.**
+
+| # | Item | Effort | Memos | Status |
+|---|---|---|---|---|
+| 30-1 | Client-mutation retry footgun fix + `Idempotency-Key` wiring | small (1.5d) | ines-travers, sam-reyes | ✅ already shipped (queryClient.ts:397, line 232+) |
+| 30-2 | Close P0-10 Dropbox idempotency (atomic claim + state-machine guard) | small (1d) | ines-travers, theo-okuda | ✅ shipped 2026-05-08 (eSigningService.ts:387) |
+| 30-3 | Fix broken pre-commit hook + re-enable migration validation | small (2h) | ines-travers | ✅ already healthy (.githooks/pre-commit) |
+| 30-4 | ESIGN integrity layer (content hash + immutability + completion cert) | medium (2w) | harlowe-stone, sam-reyes, wynne-ohaegbu | ✅ FW-HARLOWE-1 shipped 2026-05-08 (DB trigger + completion-cert route) |
+| 30-5 | Skip-trace permissible-purpose gate (BH pre-pilot blocker) | small (2d) | wynne-ohaegbu | ✅ FW-WYNNE-1 shipped 2026-05-08 |
+| 30-6 | Encrypt `skip_traces.results` JSONB + backfill | small (1d) | sam-reyes | ✅ already shipped (skipTraceEncryption.ts) |
+| 30-7 | Customer-concentration alert on `/founder-home` (>20% MRR) | small (1.5d) | marisol-vega, ashok-bhatt, harlowe-stone | ✅ FW-MARISOL-1 shipped 2026-05-08 |
+| 30-8 | Persona-aware checklist + delete duplicate `OnboardingChecklist.tsx` | medium (2w) | yuna-park, asher-klein | 🟥 open |
+| 30-9 | ESLint `no-founder-codenames-in-customer-jsx` as hard error | small (4h) | asher-klein | ✅ already shipped (eslint.config.js:83 = "error") |
+| 30-10 | Stripe Tax + tax_id_collection enabled | small (1d) | marisol-vega | ✅ already shipped (stripeService.ts:44+103) |
+| 30-11 | Write the missing 8 runbooks (Clerk/SES/Twilio/e-sign/GDPR/agent/founder/Fly) | medium (5d) | olu-adebayo | 🟥 open |
+| 30-12 | Founder-letter infrastructure (route + email template + archive) | small (1w) | diego-marchetti, asher-klein | ✅ FW-DIEGO-1 shipped 2026-05-08 (community_letters table + 6 routes) |
 
 ### Next 90 days (through 2026-08-08)
 
