@@ -13,7 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Layers, PlusCircle, AlertTriangle, ArrowRight } from "lucide-react";
+import { Layers, PlusCircle, AlertTriangle, ArrowRight, ClipboardList, CheckCircle2, Clock } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -349,11 +352,270 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
         </CardContent>
       </Card>
 
+      {/* Permit checklists (SD-3) */}
+      <PermitChecklistsSection parentParcelId={parentParcelId} />
+
       <Separator />
       <p className="text-xs text-muted-foreground">
-        Permit tracker, basis allocation, asking-price grid, and saved subdivision plans land in upcoming PRs.
+        Basis allocation, asking-price grid, and saved subdivision plans land in upcoming PRs.
       </p>
     </div>
+  );
+}
+
+// ---------- SD-3: permit checklists section ----------
+
+interface PermitGate {
+  id: string;
+  sequence: number;
+  gateKey: string;
+  label: string;
+  status: string;
+  submittedAt: string | null;
+  expectedReturnAt: string | null;
+  completedAt: string | null;
+  feeCents: number | null;
+  contactName: string | null;
+  notes: string | null;
+}
+
+interface PermitChecklist {
+  id: string;
+  title: string | null;
+  countyState: string;
+  countyName: string;
+  templateKey: string | null;
+  completedAt: string | null;
+  completedCount: number;
+  stalledCount: number;
+  gates: PermitGate[];
+}
+
+interface PermitTemplate {
+  templateKey: string;
+  state: string;
+  county: string;
+  description: string;
+  gateCount: number;
+}
+
+const GATE_STATUS_OPTIONS = [
+  "not_started", "submitted", "in_review", "approved", "rejected", "on_hold", "skipped",
+] as const;
+
+function gateBadge(status: string): { label: string; tone: "default" | "secondary" | "outline" | "destructive" } {
+  if (status === "approved") return { label: "Approved", tone: "secondary" };
+  if (status === "submitted") return { label: "Submitted", tone: "default" };
+  if (status === "in_review") return { label: "In review", tone: "default" };
+  if (status === "rejected") return { label: "Rejected", tone: "destructive" };
+  if (status === "on_hold") return { label: "On hold", tone: "destructive" };
+  if (status === "skipped") return { label: "N/A", tone: "outline" };
+  return { label: "Not started", tone: "outline" };
+}
+
+function isStalled(g: PermitGate): boolean {
+  if (!g.expectedReturnAt) return false;
+  if (g.status !== "submitted" && g.status !== "in_review") return false;
+  return new Date(g.expectedReturnAt).getTime() < Date.now();
+}
+
+function PermitChecklistsSection({ parentParcelId }: { parentParcelId: number }) {
+  const { toast } = useToast();
+  const [templateKey, setTemplateKey] = useState<string>("");
+
+  const checklists = useQuery<{ checklists: PermitChecklist[] }>({
+    queryKey: ["/api/parcels", parentParcelId, "permits"],
+    queryFn: async () => {
+      const res = await fetch(`/api/parcels/${parentParcelId}/permits`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const templates = useQuery<{ templates: PermitTemplate[] }>({
+    queryKey: ["/api/permit-templates"],
+    queryFn: async () => {
+      const res = await fetch("/api/permit-templates", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const createChecklist = useMutation({
+    mutationFn: async (key: string) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
+      const res = await fetch(`/api/parcels/${parentParcelId}/permits`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrf },
+        body: JSON.stringify({ templateKey: key }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Permit checklist created" });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "permits"] });
+      setTemplateKey("");
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const updateGate = useMutation({
+    mutationFn: async (vars: { gateId: string; updates: Partial<PermitGate & { submittedAtIso: string }> }) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
+      const res = await fetch(`/api/permit-gates/${vars.gateId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrf },
+        body: JSON.stringify(vars.updates),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "permits"] });
+    },
+    onError: (err: any) => toast({ title: "Could not update gate", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ClipboardList className="w-4 h-4" aria-hidden="true" />
+          Permit checklists
+        </CardTitle>
+        <CardDescription>
+          County-by-county subdivision gates. Status flips here propagate to the
+          org-wide /permits dashboard.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {checklists.isLoading ? (
+          <Skeleton className="h-24" />
+        ) : checklists.data && checklists.data.checklists.length > 0 ? (
+          <div className="space-y-4">
+            {checklists.data.checklists.map((cl) => (
+              <div key={cl.id} className="border rounded-md p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">{cl.title ?? `${cl.countyName}, ${cl.countyState}`}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {cl.completedCount} / {cl.gates.length} done
+                    </Badge>
+                    {cl.stalledCount > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {cl.stalledCount} stalled
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-muted-foreground border-b border-border/60">
+                        <th className="px-2 py-1 text-left font-medium w-12">#</th>
+                        <th className="px-2 py-1 text-left font-medium">Gate</th>
+                        <th className="px-2 py-1 text-left font-medium">Status</th>
+                        <th className="px-2 py-1 text-left font-medium">Submitted</th>
+                        <th className="px-2 py-1 text-left font-medium">Expected back</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cl.gates.map((g) => {
+                        const b = gateBadge(g.status);
+                        const stalled = isStalled(g);
+                        return (
+                          <tr key={g.id} className="border-b border-border/40">
+                            <td className="px-2 py-1 text-muted-foreground">{g.sequence}</td>
+                            <td className="px-2 py-1">
+                              <span className="font-medium">{g.label}</span>
+                              {g.feeCents !== null && (
+                                <span className="text-muted-foreground ml-2">${(g.feeCents / 100).toLocaleString()}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1">
+                              <Select
+                                value={g.status}
+                                onValueChange={(next) => {
+                                  const updates: any = { status: next };
+                                  if (next === "submitted" && !g.submittedAt) {
+                                    updates.submittedAt = new Date().toISOString().slice(0, 10);
+                                  }
+                                  if (next === "approved" && !g.completedAt) {
+                                    updates.completedAt = new Date().toISOString().slice(0, 10);
+                                  }
+                                  updateGate.mutate({ gateId: g.id, updates });
+                                }}
+                              >
+                                <SelectTrigger className="h-7 w-[140px] text-xs">
+                                  <SelectValue>
+                                    <Badge variant={b.tone} className="text-xs">{b.label}</Badge>
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {GATE_STATUS_OPTIONS.map((s) => (
+                                    <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-2 py-1 text-muted-foreground">{g.submittedAt ?? "—"}</td>
+                            <td className={`px-2 py-1 ${stalled ? "text-acr-warning font-semibold" : "text-muted-foreground"}`}>
+                              {g.expectedReturnAt ?? "—"}
+                              {stalled && (
+                                <span className="ml-1 inline-flex items-center"><Clock className="w-3 h-3" aria-hidden="true" /></span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-3">
+            No permit checklists yet. Pick a county template below to instantiate one.
+          </p>
+        )}
+
+        <div className="flex items-end gap-2 pt-2 border-t border-border/40">
+          <div className="flex-1">
+            <Label className="text-xs">Add checklist from template</Label>
+            <Select value={templateKey} onValueChange={setTemplateKey}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Pick a template…" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.data?.templates.map((t) => (
+                  <SelectItem key={t.templateKey} value={t.templateKey}>
+                    {t.state === "*" ? "Generic" : `${t.county}, ${t.state}`} — {t.gateCount} gates
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            disabled={!templateKey || createChecklist.isPending}
+            onClick={() => createChecklist.mutate(templateKey)}
+          >
+            <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
+            Create
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

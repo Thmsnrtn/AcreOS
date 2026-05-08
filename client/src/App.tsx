@@ -265,6 +265,7 @@ const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const PricingPage = React.lazy(() => import("@/pages/pricing"));
 const WhyPage = React.lazy(() => import("@/pages/why"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
+const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -513,6 +514,9 @@ function Router() {
           one route Land Investors can land on per parcel. */}
       <Route path="/parcels/:id">
         {() => <ProtectedRoute component={ParcelDetailPage} />}
+      </Route>
+      <Route path="/permits">
+        {() => <ProtectedRoute component={PermitsPage} />}
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
