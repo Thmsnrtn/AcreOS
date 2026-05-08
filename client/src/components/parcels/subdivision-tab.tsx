@@ -362,9 +362,28 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
         children={data.children}
       />
 
+      {/* SD-5: pricing grid link */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Asking-price grid</CardTitle>
+          <CardDescription>
+            Define premium rules (corner +10%, frontage &gt; 150ft +8%, water +15%, …)
+            and apply them across every child lot.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a
+            href={`/lot-pricing?parcelId=${parentParcelId}`}
+            className="text-sm text-primary inline-flex items-center gap-1"
+          >
+            Open pricing rules editor <ArrowRight className="w-3 h-3" aria-hidden="true" />
+          </a>
+        </CardContent>
+      </Card>
+
       <Separator />
       <p className="text-xs text-muted-foreground">
-        Asking-price grid and saved subdivision plans land in upcoming PRs.
+        Saved subdivision plans + GeoJSON storage land in SD-7.
       </p>
     </div>
   );
