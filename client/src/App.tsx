@@ -94,6 +94,8 @@ const EarnestMoneyPage = React.lazy(() => import("@/pages/earnest-money"));
 const DoubleClosePage = React.lazy(() => import("@/pages/double-close"));
 // Wholesaler vertical W-4 — push-to-buyer-list one-click blast.
 const BuyerBlastsPage = React.lazy(() => import("@/pages/buyer-blasts"));
+// Wholesaler vertical W-6 — buyer match analytics + freshness.
+const BuyerAnalyticsPage = React.lazy(() => import("@/pages/buyer-analytics"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -616,6 +618,9 @@ function Router() {
       </Route>
       <Route path="/buyer-blasts/:id">
         {() => <ProtectedRoute component={BuyerBlastsPage} />}
+      </Route>
+      <Route path="/buyer-analytics">
+        {() => <ProtectedRoute component={BuyerAnalyticsPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}
