@@ -100,6 +100,10 @@ import {
   FileCode,
   X,
   Send,
+  Clock,
+  Gavel,
+  BookOpen,
+  Scale,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
@@ -329,6 +333,10 @@ interface NavModule {
   description?: string;
   showUnreadBadge?: boolean;
   founderOnly?: boolean;
+  // Hide unless the user's businessType matches one of these values.
+  // Used for sub-vertical modules (tax-delinquent, etc.) that only
+  // make sense for that operator profile.
+  businessTypeOnly?: string[];
   children?: NavChild[];
   // Secondary children — rendered behind a "Show more" disclosure. Lets the
   // primary list stay scannable while the long tail (admin, niche surfaces)
@@ -387,6 +395,27 @@ const NAV_MODULES: NavModule[] = [
       { label: "Servicing book", icon: FileText, href: "/notes", description: "Acquired notes ledger" },
       { label: "Pipeline", icon: Layers, href: "/notes/pipeline", description: "Pre-book diligence — sourcing → BPO → diligence → offer → escrow" },
       { label: "Tax readiness", icon: Receipt, href: "/notes/tax-readiness", description: "1099-INT pre-flight — eligible recipients, blockers, batch generation" },
+    ],
+  },
+
+  // ── Tax-Delinquent vertical (TD-1..TD-7) ──────────────────────────
+  // Visible to operators whose businessType is 'tax_lien_deed' (Marcus's
+  // profile). Surfaces the redemption clock, auction worksheet, state-rules
+  // library, and quiet-title workflow. Marcus: "the redemption clock is a
+  // fiduciary obligation. Build a tax-delinquent variant of /today that the
+  // persona registry can swap in."
+  {
+    id: "tax-delinquent",
+    label: "Tax-delinquent",
+    icon: Clock,
+    href: "/redemption-clock",
+    description: "Certificates, auctions, state rules, quiet title",
+    businessTypeOnly: ["tax_lien_deed"],
+    children: [
+      { label: "Redemption clock", icon: Clock, href: "/redemption-clock", description: "Active certificates sorted by days to deadline" },
+      { label: "Auction worksheet", icon: Gavel, href: "/auction-worksheet", description: "Pre-auction max-bid + day-of bid log" },
+      { label: "State rules", icon: BookOpen, href: "/state-rules", description: "Per-state redemption math, statutes, notice procedures" },
+      { label: "Quiet title", icon: Scale, href: "/quiet-title", description: "10-step post-deed legal workflow with deadline math" },
     ],
   },
 
@@ -622,6 +651,12 @@ export function Sidebar() {
       })).filter((module) => {
         // Hide founder-only modules for non-founders
         if (module.founderOnly && !isFounder) return false;
+        // Hide businessType-gated modules for non-matching operators.
+        // Tax-delinquent module is the first user — only visible when
+        // businessType is 'tax_lien_deed'.
+        if (module.businessTypeOnly && module.businessTypeOnly.length > 0) {
+          if (!businessType || !module.businessTypeOnly.includes(businessType)) return false;
+        }
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
         if (hiddenForType.includes(module.href)) return false;

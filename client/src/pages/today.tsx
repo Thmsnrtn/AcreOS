@@ -489,17 +489,47 @@ export default function TodayPage() {
 
   const userName = user?.firstName || organization?.name || "";
 
-  // Note Investor vertical — quick-jump banner for orgs whose investorType
-  // is 'notes' or 'both'. /today's panel layout is parcel-flip-shaped
-  // (per Linnea's persona walkthrough — "wrong default for me. Should
-  // switch on persona to: payments due today, late buckets…"). Until that
-  // page-shape rebuild ships, surface a fast link out so note investors
-  // aren't stranded on a parcel dashboard.
+  // Persona-aware quick-jump banners. /today's parcel-flip layout doesn't
+  // serve sub-vertical operators (Linnea/Note Investor flagged it; Marcus/
+  // Tax-Delinquent flagged it). Until a full per-persona /today rebuild
+  // lands, surface fast links to each persona's actual workspace.
   const investorType = (organization as any)?.investorType as string | undefined;
   const isNoteOrg = investorType === "notes" || investorType === "both";
+  const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
+  const isTaxDelinquentOrg = businessType === "tax_lien_deed";
 
   return (
     <PageShell label="Today">
+      {/* Tax-delinquent quick-jump — visible for tax_lien_deed business type. */}
+      {isTaxDelinquentOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Tax-delinquent surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Redemption clock, auction worksheet, state rules, quiet-title
+                workflow — the surfaces tuned for tax-deed and tax-lien
+                operators.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/redemption-clock">Redemption clock</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/auction-worksheet">Auction worksheet</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/counties">Counties</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/state-rules">State rules</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Note investor quick-jump — visible for notes/both orgs only. */}
       {isNoteOrg && (
         <Card className="border-primary/20 bg-primary/5">
