@@ -84,6 +84,8 @@ const StateRulesPage = React.lazy(() => import("@/pages/state-rules"));
 const AuctionWorksheetPage = React.lazy(() => import("@/pages/auction-worksheet"));
 // Tax-Delinquent vertical TD-5 — county hub detail page.
 const CountyDetailPage = React.lazy(() => import("@/pages/county-detail"));
+// Tax-Delinquent vertical TD-6 — quiet-title workflow.
+const QuietTitlePage = React.lazy(() => import("@/pages/quiet-title"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -579,6 +581,12 @@ function Router() {
       </Route>
       <Route path="/counties/:id">
         {() => <ProtectedRoute component={CountyDetailPage} />}
+      </Route>
+      <Route path="/quiet-title">
+        {() => <ProtectedRoute component={QuietTitlePage} />}
+      </Route>
+      <Route path="/quiet-title/:id">
+        {() => <ProtectedRoute component={QuietTitlePage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

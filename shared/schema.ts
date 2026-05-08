@@ -17884,6 +17884,103 @@ export type AuctionBidLogEntry = typeof auctionBidLog.$inferSelect;
 export type InsertAuctionBidLogEntry = typeof auctionBidLog.$inferInsert;
 
 // ============================================================================
+// QUIET-TITLE CASES — post-deed legal workflow
+// ----------------------------------------------------------------------------
+// Marcus: "A tax-deed buyer's quiet-title workflow is: notify all interested
+// parties of record (heirs, lienholders, neighbors with adverse-possession
+// claims), publish notice, wait the statutory period, file petition, get
+// judgment, record. That's six tracked stages with deadlines on each.
+// AcreOS could be the first platform to actually run that workflow."
+//
+// One case per acquired tax certificate / deed (FK → tax_certificates).
+// The action log captures each stage transition + document attachments.
+// Per-state deadline math comes from tax_jurisdiction_rules (TD-3).
+// ============================================================================
+
+export const QUIET_TITLE_STATUS = [
+  "open",
+  "notice_phase",       // sending notices
+  "publication_phase",  // statutory publication waiting period
+  "petition_phase",     // drafting / filing petition
+  "hearing_pending",    // hearing scheduled
+  "judgment_pending",   // hearing held, awaiting judgment
+  "completed",          // judgment recorded
+  "abandoned",          // dropped (rare)
+] as const;
+export type QuietTitleStatus = typeof QUIET_TITLE_STATUS[number];
+
+export const noteQuietTitleCases = pgTable(
+  "quiet_title_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    // FK target uses uuid because tax_certificates.id is uuid in prod.
+    certificateId: varchar("certificate_id").notNull(),
+    state: text("state").notNull(),
+    county: text("county").notNull(),
+    apn: text("apn").notNull(),
+    status: text("status").$type<QuietTitleStatus>().notNull().default("open"),
+    deedRecordationDate: date("deed_recordation_date"),
+    // Attorney handling the case (free text for now).
+    attorneyName: text("attorney_name"),
+    attorneyContact: text("attorney_contact"),
+    // Petition + hearing context.
+    petitionFiledAt: date("petition_filed_at"),
+    courtCaseNumber: text("court_case_number"),
+    hearingScheduledAt: timestamp("hearing_scheduled_at", { withTimezone: true }),
+    judgmentEnteredAt: date("judgment_entered_at"),
+    judgmentRecordedAt: date("judgment_recorded_at"),
+    summary: text("summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("quiet_title_org_status_idx").on(table.organizationId, table.status),
+    index("quiet_title_org_cert_idx").on(table.organizationId, table.certificateId),
+  ],
+);
+
+export const QUIET_TITLE_STEP_KEYS = [
+  "notice_to_lienholders",
+  "notice_to_heirs",
+  "notice_publication",
+  "statutory_waiting_period",
+  "petition_drafted",
+  "petition_filed",
+  "hearing_scheduled",
+  "hearing_held",
+  "judgment_entered",
+  "judgment_recorded",
+] as const;
+export type QuietTitleStepKey = typeof QUIET_TITLE_STEP_KEYS[number];
+
+export const quietTitleSteps = pgTable(
+  "quiet_title_steps",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    caseId: varchar("case_id").notNull(),
+    stepKey: text("step_key").$type<QuietTitleStepKey>().notNull(),
+    requiredByDate: date("required_by_date"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedByUserId: text("completed_by_user_id"),
+    documentS3Key: text("document_s3_key"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("quiet_title_steps_case_step_uk").on(table.caseId, table.stepKey),
+    index("quiet_title_steps_org_idx").on(table.organizationId, table.requiredByDate),
+  ],
+);
+
+export type NoteQuietTitleCase = typeof noteQuietTitleCases.$inferSelect;
+export type InsertNoteQuietTitleCase = typeof noteQuietTitleCases.$inferInsert;
+export type QuietTitleStep = typeof quietTitleSteps.$inferSelect;
+export type InsertQuietTitleStep = typeof quietTitleSteps.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

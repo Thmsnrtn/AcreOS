@@ -361,6 +361,48 @@ const STATEMENTS = [
   // is a feature I'd notice within a week."
   'ALTER TABLE "target_counties" ADD COLUMN IF NOT EXISTS "clerk_profile" jsonb',
 
+  // Tax-Delinquent vertical TD-6 — quiet-title workflow + steps.
+  // Marcus: "AcheOS could be the first platform to actually run that
+  // workflow. […] 90-day-to-build feature that 100% of Tier-2 buyers
+  // would pay $30/mo more for."
+  `CREATE TABLE IF NOT EXISTS "quiet_title_cases" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "certificate_id" uuid NOT NULL,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "apn" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "deed_recordation_date" date,
+     "attorney_name" text,
+     "attorney_contact" text,
+     "petition_filed_at" date,
+     "court_case_number" text,
+     "hearing_scheduled_at" timestamptz,
+     "judgment_entered_at" date,
+     "judgment_recorded_at" date,
+     "summary" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "quiet_title_org_status_idx" ON "quiet_title_cases" ("organization_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "quiet_title_org_cert_idx" ON "quiet_title_cases" ("organization_id", "certificate_id")',
+  `CREATE TABLE IF NOT EXISTS "quiet_title_steps" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "case_id" uuid NOT NULL REFERENCES "quiet_title_cases"("id") ON DELETE CASCADE,
+     "step_key" text NOT NULL,
+     "required_by_date" date,
+     "completed_at" timestamptz,
+     "completed_by_user_id" text,
+     "document_s3_key" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "quiet_title_steps_case_step_uk" ON "quiet_title_steps" ("case_id", "step_key")',
+  'CREATE INDEX IF NOT EXISTS "quiet_title_steps_org_idx" ON "quiet_title_steps" ("organization_id", "required_by_date")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
