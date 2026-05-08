@@ -362,6 +362,9 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
         children={data.children}
       />
 
+      {/* SD-7: subdivision plans (A/B) */}
+      <SubdivisionPlansSection parentParcelId={parentParcelId} />
+
       {/* SD-5: pricing grid link */}
       <Card>
         <CardHeader>
@@ -789,6 +792,147 @@ function BasisAllocationSection({
             )}
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------- SD-7: subdivision plans section ----------
+
+interface SubdivisionPlanRow {
+  id: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  lotCount: number | null;
+  totalAcres: string | null;
+  totalRoadFeet: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const PLAN_STATUS_OPTIONS = [
+  "draft", "engineer_review", "county_submitted", "recorded", "abandoned",
+] as const;
+
+function planStatusBadge(s: string): "default" | "secondary" | "outline" | "destructive" {
+  if (s === "recorded") return "secondary";
+  if (s === "abandoned") return "destructive";
+  if (s === "county_submitted") return "default";
+  return "outline";
+}
+
+function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number }) {
+  const { toast } = useToast();
+  const [newName, setNewName] = useState("");
+
+  const plans = useQuery<{ plans: SubdivisionPlanRow[] }>({
+    queryKey: ["/api/parcels", parentParcelId, "plans"],
+    queryFn: async () => {
+      const res = await fetch(`/api/parcels/${parentParcelId}/plans`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const csrf = () => decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
+
+  const createPlan = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(`/api/parcels/${parentParcelId}/plans`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrf() },
+        body: JSON.stringify({ name, status: "draft" }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Plan created" });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "plans"] });
+      setNewName("");
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: async (vars: { planId: string; status: string }) => {
+      const res = await fetch(`/api/plans/${vars.planId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrf() },
+        body: JSON.stringify({ status: vars.status }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "plans"] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Subdivision plans (A/B)</CardTitle>
+        <CardDescription>
+          Save multiple lot configurations per parent parcel (e.g. "Plan A — 12 lots,"
+          "Plan B — 8 lots, two estate"). Versions auto-increment when GeoJSON
+          changes so previous plans stay intact.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {plans.isLoading ? (
+          <Skeleton className="h-20" />
+        ) : plans.data && plans.data.plans.length > 0 ? (
+          <div className="space-y-2">
+            {plans.data.plans.map((p) => (
+              <div key={p.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
+                <div className="flex-1">
+                  <p className="font-medium">{p.name} <span className="text-xs text-muted-foreground">v{p.versionNumber}</span></p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.lotCount ?? "—"} lot{p.lotCount === 1 ? "" : "s"}
+                    {p.totalAcres ? ` · ${parseFloat(p.totalAcres).toFixed(2)} ac` : ""}
+                    {p.totalRoadFeet ? ` · ${p.totalRoadFeet} ft road` : ""}
+                  </p>
+                </div>
+                <Select value={p.status} onValueChange={(s) => updateStatus.mutate({ planId: p.id, status: s })}>
+                  <SelectTrigger className="h-7 w-[160px] text-xs">
+                    <SelectValue>
+                      <Badge variant={planStatusBadge(p.status)} className="text-xs">{p.status.replace(/_/g, " ")}</Badge>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLAN_STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No plans yet.</p>
+        )}
+
+        <div className="flex gap-2 pt-2 border-t border-border/40">
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Plan A — 12 lots"
+            className="h-9"
+          />
+          <Button size="sm" disabled={!newName.trim() || createPlan.isPending} onClick={() => createPlan.mutate(newName.trim())}>
+            <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" /> Create plan
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          GeoJSON polygon-draw on the map ships next. Until then, plans are
+          named placeholders — save them now so Earl's comments land in the right spot.
+        </p>
       </CardContent>
     </Card>
   );
