@@ -554,6 +554,183 @@ const STATEMENTS = [
   'CREATE UNIQUE INDEX IF NOT EXISTS "buyer_blast_recipients_blast_buyer_uk" ON "buyer_blast_recipients" ("blast_id", "buyer_profile_id")',
   'CREATE INDEX IF NOT EXISTS "buyer_blast_recipients_status_idx" ON "buyer_blast_recipients" ("organization_id", "status")',
 
+  // ── Subdivider vertical SD-1 — Brigid's deal-killer fix ─────────────────
+  // "One parent parcel becomes many child lots, and AcreOS does not know
+  // that." (brigid-subdivider.md §7) Adds parent/child link on properties +
+  // 7 supporting tables (plans, permits, basis allocations, pricing, county
+  // timelines, CC&R templates).
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "parent_parcel_id" integer REFERENCES "properties"("id") ON DELETE SET NULL`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "child_lot_number" text`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "subdivision_plan_id" uuid`,
+  'CREATE INDEX IF NOT EXISTS "properties_parent_parcel_idx" ON "properties" ("parent_parcel_id") WHERE "parent_parcel_id" IS NOT NULL',
+  'CREATE INDEX IF NOT EXISTS "properties_org_parent_idx" ON "properties" ("organization_id", "parent_parcel_id")',
+
+  `CREATE TABLE IF NOT EXISTS "subdivision_plans" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "name" text NOT NULL,
+     "version_number" integer NOT NULL DEFAULT 1,
+     "status" text NOT NULL DEFAULT 'draft',
+     "geojson" jsonb,
+     "lot_count" integer,
+     "total_road_feet" integer,
+     "total_acres" numeric,
+     "notes" text,
+     "created_by" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "subdivision_plans_org_parent_idx" ON "subdivision_plans" ("organization_id", "parent_parcel_id")',
+  'CREATE INDEX IF NOT EXISTS "subdivision_plans_status_idx" ON "subdivision_plans" ("organization_id", "status")',
+
+  `CREATE TABLE IF NOT EXISTS "permit_checklists" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "county_state" text NOT NULL,
+     "county_name" text NOT NULL,
+     "template_key" text,
+     "title" text,
+     "notes" text,
+     "completed_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "permit_checklists_org_parent_idx" ON "permit_checklists" ("organization_id", "parent_parcel_id")',
+  'CREATE INDEX IF NOT EXISTS "permit_checklists_county_idx" ON "permit_checklists" ("county_state", "county_name")',
+
+  `CREATE TABLE IF NOT EXISTS "permit_gates" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "checklist_id" uuid NOT NULL REFERENCES "permit_checklists"("id") ON DELETE CASCADE,
+     "sequence" integer NOT NULL,
+     "gate_key" text NOT NULL,
+     "label" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'not_started',
+     "submitted_at" date,
+     "expected_return_at" date,
+     "completed_at" date,
+     "fee_cents" bigint,
+     "contact_name" text,
+     "contact_email" text,
+     "contact_phone" text,
+     "reference_number" text,
+     "notes" text,
+     "document_version_id" integer,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "permit_gates_org_checklist_idx" ON "permit_gates" ("organization_id", "checklist_id", "sequence")',
+  'CREATE INDEX IF NOT EXISTS "permit_gates_status_idx" ON "permit_gates" ("organization_id", "status", "expected_return_at")',
+
+  `CREATE TABLE IF NOT EXISTS "lot_basis_allocations" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "child_parcel_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+     "method" text NOT NULL DEFAULT 'acreage',
+     "denominator" numeric NOT NULL,
+     "numerator" numeric NOT NULL,
+     "share_pct" numeric NOT NULL,
+     "allocated_basis_cents" bigint NOT NULL,
+     "override_share" numeric,
+     "notes" text,
+     "realized_at" timestamptz,
+     "realized_sale_price_cents" bigint,
+     "realized_cogs_cents" bigint,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "lot_basis_alloc_parent_child_uk" ON "lot_basis_allocations" ("parent_parcel_id", "child_parcel_id")',
+  'CREATE INDEX IF NOT EXISTS "lot_basis_alloc_org_parent_idx" ON "lot_basis_allocations" ("organization_id", "parent_parcel_id")',
+
+  `CREATE TABLE IF NOT EXISTS "lot_pricing_rules" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer REFERENCES "properties"("id") ON DELETE CASCADE,
+     "name" text NOT NULL,
+     "is_default" boolean NOT NULL DEFAULT false,
+     "base_price_source" text NOT NULL DEFAULT 'avm_per_acre',
+     "fixed_per_acre_cents" bigint,
+     "rules" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "locked_grid" jsonb,
+     "locked_at" timestamptz,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "lot_pricing_rules_org_parent_idx" ON "lot_pricing_rules" ("organization_id", "parent_parcel_id")',
+  `CREATE UNIQUE INDEX IF NOT EXISTS "lot_pricing_rules_org_default_uk" ON "lot_pricing_rules" ("organization_id") WHERE is_default = true`,
+
+  `CREATE TABLE IF NOT EXISTS "county_subdivision_timelines" (
+     "id" serial PRIMARY KEY,
+     "state" text NOT NULL,
+     "county_name" text NOT NULL,
+     "p50_total_days" integer,
+     "p90_total_days" integer,
+     "pre_application_lead_days" integer,
+     "sketch_plan_lead_days" integer,
+     "preliminary_plat_lead_days" integer,
+     "percolation_lead_days" integer,
+     "final_plat_lead_days" integer,
+     "recording_lead_days" integer,
+     "percolation_season_note" text,
+     "typical_revision_rounds" integer,
+     "contact_name" text,
+     "contact_phone" text,
+     "contact_email" text,
+     "planner_site_url" text,
+     "source" text,
+     "source_updated_at" date,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "county_timelines_state_county_uk" ON "county_subdivision_timelines" ("state", "county_name")',
+
+  // Brigid §7 seed: TN counties she actually works.
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
+     VALUES ('TN','Williamson',420,540,14,30,45,90,45,21,'TDEC tester April-May and Sept-Oct only — frozen / saturated ground blocks tests',3,'Williamson Co Planning + Brigid historicals 2024-2026')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
+     VALUES ('TN','Hickman',120,180,7,14,21,120,21,14,'One TDEC tester serves three counties — queue is the bottleneck',2,'Hickman Co Planning')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
+     VALUES ('TN','Maury',180,240,14,21,30,90,30,21,'TDEC seasonal window applies',2,'Maury Co Planning')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
+     VALUES ('TN','Davidson',null,null,30,45,60,null,60,30,'Davidson restricts residential subdivisions in some districts — confirm zoning before bidding',4,'Metro Nashville Planning Dept')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
+     VALUES ('TN','Rutherford',300,420,45,90,45,21,3,'Rutherford Co Planning — Brigid expansion estimate')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+  `INSERT INTO "county_subdivision_timelines"
+     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
+     VALUES ('TN','Marshall',150,210,30,90,30,14,2,'Marshall Co Planning estimate')
+     ON CONFLICT ("state","county_name") DO NOTHING`,
+
+  `CREATE TABLE IF NOT EXISTS "cc_r_templates" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "kind" text NOT NULL,
+     "name" text NOT NULL,
+     "state" text,
+     "body_markdown" text NOT NULL,
+     "merge_fields" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "attorney_reviewed_at" timestamptz,
+     "attorney_reviewed_by" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ccr_templates_org_kind_idx" ON "cc_r_templates" ("organization_id", "kind")',
+  'CREATE INDEX IF NOT EXISTS "ccr_templates_state_kind_idx" ON "cc_r_templates" ("state", "kind")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
