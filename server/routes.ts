@@ -206,8 +206,12 @@ import { registerSupportTicketRoutes } from "./routes-support-tickets";
 import { registerMicroFeatureRoutes } from "./routes-micro-features";
 import { registerClosingRoutes } from "./routes-closing";
 import { registerPlatformFeatureRoutes } from "./routes-platform-features";
-import { registerLeaseRoutes } from "./routes-leases";
-import { registerMaintenanceRoutes } from "./routes-maintenance";
+// FW-7: routes-leases + routes-maintenance deleted. The legacy /api/leases
+// and /api/maintenance handlers were superseded by BH-2 (routes-rentals.ts:
+// /api/leases against rental_leases) and BH-6 (routes-maintenance-tickets.ts:
+// /api/maintenance-tickets). The legacy `leases` and `maintenance_requests`
+// tables remain on disk for any data migration but no application code
+// reads or writes them.
 
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -1845,8 +1849,7 @@ export async function registerRoutes(
   registerMicroFeatureRoutes(app);
   registerClosingRoutes(app);
   registerPlatformFeatureRoutes(app);
-  registerLeaseRoutes(app);
-  registerMaintenanceRoutes(app);
+  // registerLeaseRoutes + registerMaintenanceRoutes removed — see import block.
 
   // Phase 1: Communication features
   registerInboundEmailRoutes(app);

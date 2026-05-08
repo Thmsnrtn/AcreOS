@@ -12882,36 +12882,10 @@ export const processedFeedback = pgTable("processed_feedback", {
 // PLATFORM COMPLETION TABLES
 // ============================================
 
-// Leases — buy-and-hold tenant tracking
-export const leases = pgTable("leases", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id).notNull(),
-  tenantName: text("tenant_name").notNull(),
-  tenantEmail: text("tenant_email"),
-  tenantPhone: text("tenant_phone"),
-  monthlyRent: numeric("monthly_rent").notNull(),
-  securityDeposit: numeric("security_deposit"),
-  leaseStart: date("lease_start").notNull(),
-  leaseEnd: date("lease_end").notNull(),
-  status: text("status").notNull().default("active"), // active, expiring, expired, terminated
-  terms: jsonb("terms").$type<Record<string, unknown>>(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// Maintenance requests — buy-and-hold property maintenance
-export const maintenanceRequests = pgTable("maintenance_requests", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id).notNull(),
-  leaseId: integer("lease_id").references(() => leases.id),
-  description: text("description").notNull(),
-  priority: text("priority").notNull().default("normal"), // low, normal, urgent, emergency
-  status: text("status").notNull().default("open"), // open, in_progress, resolved
-  cost: numeric("cost"),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// Legacy `leases` and `maintenance_requests` schema definitions removed
+// (FW-7). Superseded by BH-1 schema (rental_leases + maintenance_tickets).
+// The underlying database tables remain on disk pending data-migration
+// review; no application code reads or writes them.
 
 // Shared deal links — attorney/partner sharing
 export const sharedDealLinks = pgTable("shared_deal_links", {
