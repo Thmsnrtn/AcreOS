@@ -1,0 +1,35 @@
+# indira-lockwood — AI governance / model-risk officer
+
+**Reading list (what I read before writing):**
+- MASTER-FINDINGS-RECONCILIATION.md (§2.4 — P1-35..46, "eval harness, ai-router migration, deprecated models")
+- theo-okuda.md (original persona: "AI surface / model integrity & cost")
+- git log (search for "opus", "ai-router", "eval", "deprecated")
+
+**Backstory:**
+Ran AI governance at a top-10 US bank's consumer division (FCRA/Regulation B compliance for underwriting models, 2019-2024). Then advised a healthtech startup through FDA + HIPAA alignment for an AI diagnostic tool. Scar: watched an underwriting model get litigated (bias case) because nobody could articulate why it denied an applicant cohort — the ML engineer built it; the PM didn't document the eval harness; discovery became a 14-month nightmare. Current obsession: model lifecycle. Not just "which model version," but "when does a model sunset, who tests the transition, what happens to in-flight decisions, when is a model-card update legally necessary."
+
+**State read (1 paragraph):**
+AcreOS uses AI in 5+ surfaces: offer generation (comp-spot), contract drafting (Pax), onboarding wizard, NI sourcing, BH screening. You're migrating from `gpt-4-turbo-preview` (deprecated Nov 2025) to Opus. But Indira sees what Theo's memo doesn't quite grapple with: the eval harness is not engineering-optional. When you switch from gpt-4-turbo to Opus 4.7, what tests confirm the new model doesn't hallucinate contract terms differently? What's the rollout plan (shadow mode? percentage split? cold cutover)? If an Opus-generated contract causes harm, who's liable? The bank's FCRA models had a formal eval harness before 2024; AcreOS doesn't. Theo thinks it's a nice-to-have engineering concern. Indira thinks it's a governance mandate.
+
+**Push forward — my 5 moves (ranked):**
+
+1. **Implement a model-change evaluation harness before deploying Opus as default.** Not "run some prompts and check outputs." A formal harness: (a) curated test-case library (`ai_test_cases` table with `prompt`, `expected_output_schema`, `forbidden_patterns`, `eval_metric` — e.g., "output must be valid JSON + no hallucinated party names"); (b) baseline eval (run test suite on deprecated gpt-4-turbo, record pass rates + output samples); (c) shadowed eval (run Opus 4.7 in parallel for 72 hours on prod prompts, compare outputs + latency + cost); (d) threshold decision (>3% divergence on critical tests = escalate before full rollout). This takes 3-4 days; it's not Theo's optional engineering polish. It's the documented defense in a liability suit: "We tested the model transition formally; it met our eval standards." — *4d; governance-mandatory*
+
+2. **Add model deprecation lifecycle to schema + enforcement.** You have 5 surfaces generating AI output; you don't have a deprecation playbook. Implement: `ai_models` table (model_id, model_name, provider, status enum: 'active', 'deprecated', 'sunset', 'archived', sunset_date, successor_model_id); wired into every prompt-dispatch in `server/services/aiRouter.ts`. When a model status flips to 'deprecated', the router logs a warning + metrics increment. On `sunset_date`, the router raises an error + pages the on-call + routes to successor_model_id. No model should flip from 'active' to deleted; it should go deprecated → sunset → archived. This creates an audit trail: "which model generated this contract output? And is that model still supported?" — *2d; foundational*
+
+3. **Disagree with Theo: eval harness is governance, not optional engineering.** Theo's memo treats eval-harness as a nice-to-have engineering signal. Indira says: it's a SOC 2 / compliance requirement, not a performance optimization. A SOC 2 auditor will ask: "How do you test AI model changes before production deployment?" If the answer is "the engineer ran a few prompts," you fail the audit. The answer needs to be "formal harness with threshold gates and documented passing results." Theo will push back (cost, velocity). Indira's response: the cost of *not* having it is a failed SOC 2 / HIPAA audit / regulatory discovery nightmare. Governance says: mandatory. Ship it, then optimize performance. — *deferral + explicit disagreement*
+
+4. **Audit AI-generated documents for hallucination liability.** Pax generates contracts; offer generation creates comp analysis; onboarding wizard generates personalized advice. If a contract includes a hallucinated party or a comp estimate is wildly wrong, who bears the liability? Implement: `ai_generated_document_attestations` table (document_id, generated_by_model, eval_pass boolean, human_reviewer_id, review_notes). Before any customer-facing AI doc ships, a human must review + attest. For Pax-generated contracts, this means: (a) generated draft, (b) diff-highlighted vs template, (c) human review ("does this draft accurately represent the deal?"), (d) attestation row created on approval. Zero products do this; every product *should*. — *3d + process design*
+
+5. **Implement Opus 4.6 → 4.7 transition test-first.** Opus 4.7 ships imminently. Rather than a silent upgrade, test it first: (a) pick the highest-risk surface (Pax contract generation), (b) run the eval harness on 100 historical prompts, (c) if >95% output-quality parity, shadow-deploy Opus 4.7 to 10% traffic (feature flag in Wallis), (d) monitor for 1 week (divergence in output, user complaints, model cost), (e) if clean, roll to 100% via ramp. Don't ask Theo's team to plan this; force it via governance gate. Governance is the PM of the model-lifecycle, not engineering. — *1 week; cascading from move #1*
+
+**What I'd defer (and why):**
+- AI cost optimization (per Theo's angle on token-counting + prompt-caching). The eval harness needs to ship first. Cost optimization with an unsafe model is premature. Once the harness is in place and Opus transition is tested, *then* optimize token spend. Sequence matters.
+
+**What scares me most (one named risk + mitigation):**
+*Silent model hallucination in customer-visible contracts.* Pax generates contracts; a customer uses one for a real deal; the hallucinated clause causes a dispute; the other party sues AcreOS. Without a documented eval harness + human attestation, the contract is viewed as "you (AcreOS) generated this content, and it was wrong." With the harness + attestation, the liability shifts: "AcreOS tested the model; a human reviewed the output; the customer agreed to use it." That shift is worth $2M+ in defenses. Mitigation: ship move #4 (attestations) before Pax contract-generation is customer-facing; no exceptions.
+
+---
+
+**Indira's disagreements (named explicitly):**
+- **Vs. Theo:** You treat eval-harness as "engineering-optional polish" (your memo lists it as P1-35, not P0). Indira says: it's governance-mandatory. A SOC 2 auditor or a regulatory examiner will ask "how do you test model changes?" Your answer needs to be "formal harness with eval thresholds," not "the engineer ran some prompts." Flip the priority: eval harness is P0 of any AI expansion, full stop.
