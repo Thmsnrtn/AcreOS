@@ -21,7 +21,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import mapboxgl from "mapbox-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { Save, MapPin, Loader2 } from "lucide-react";
+import * as turf from "@turf/turf";
+import { Save, MapPin, Loader2, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,11 +37,27 @@ interface PlanResponse {
     name: string;
     versionNumber: number;
     status: string;
+    parentParcelId: number;
     geojson: GeoJSON.FeatureCollection | null;
     lotCount: number | null;
     totalAcres: string | null;
     totalRoadFeet: number | null;
   };
+}
+
+interface ZoningInfo {
+  zoningCode: string;
+  zoningDescription: string;
+  setbacks?: { front?: number; rear?: number; side?: number };
+  minimumLotSize?: number;
+}
+
+interface ParcelSummary {
+  id: number;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
 }
 
 function csrfHeader(): Record<string, string> {
@@ -77,6 +94,46 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
       return res.json();
     },
   });
+
+  // Fetch parent parcel address — needed to look up zoning setbacks.
+  const parcelQuery = useQuery<{ properties: ParcelSummary[] }>({
+    queryKey: ["/api/properties", planQuery.data?.plan.parentParcelId],
+    enabled: !!planQuery.data?.plan.parentParcelId,
+    queryFn: async () => {
+      const res = await fetch(`/api/properties?id=${planQuery.data!.plan.parentParcelId}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const parentParcel = parcelQuery.data?.properties?.[0];
+  const fullAddress = parentParcel
+    ? [parentParcel.address, parentParcel.city, parentParcel.state, parentParcel.zip].filter(Boolean).join(", ")
+    : null;
+
+  const zoningQuery = useQuery<ZoningInfo>({
+    queryKey: ["/api/zoning/lookup", fullAddress],
+    enabled: !!fullAddress,
+    queryFn: async () => {
+      const res = await fetch("/api/zoning/lookup", {
+        method: "POST",
+        credentials: "include",
+        headers: csrfHeader(),
+        body: JSON.stringify({ address: fullAddress }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+    staleTime: 30 * 60_000,
+  });
+
+  const setbacks = zoningQuery.data?.setbacks ?? null;
+  // Use the largest of front/rear/side as the buffer distance for visualization.
+  // (A precise treatment would buffer the parent-boundary's edges separately, but
+  // a single-distance inward buffer is the right first cut.)
+  const setbackFt = setbacks
+    ? Math.max(setbacks.front ?? 0, setbacks.rear ?? 0, setbacks.side ?? 0)
+    : null;
 
   const saveMutation = useMutation({
     mutationFn: async (geojson: GeoJSON.FeatureCollection) => {
@@ -152,6 +209,80 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
   const activeKindRef = useRef(activeKind);
   useEffect(() => { activeKindRef.current = activeKind; }, [activeKind]);
 
+  // FW-5: setback buffer + lot/setback intersection count.
+  // Computed reactively from current draw state + zoning setback feet.
+  const [setbackViolations, setSetbackViolations] = useState<number>(0);
+
+  // Render setback buffer layer when zoning setbacks resolve. The buffer is
+  // an inward shrink of the parent_boundary feature; lot polygons that
+  // extend INTO the buffer (i.e. straddle the setback line) are violations.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (setbackFt === null || !planQuery.data?.plan.geojson) return;
+
+    const fc = planQuery.data.plan.geojson;
+    const parentBoundary = fc.features?.find((f: any) => f.properties?.kind === "parent_boundary");
+    if (!parentBoundary || parentBoundary.geometry.type !== "Polygon") {
+      // Without a parent_boundary feature there's nothing to buffer.
+      return;
+    }
+
+    // turf.buffer expects miles or kilometers; convert ft → km.
+    const setbackKm = (setbackFt * 0.3048) / 1000;
+    let setbackPolygon: any = null;
+    try {
+      // Negative distance shrinks the polygon inward.
+      setbackPolygon = turf.buffer(parentBoundary as any, -setbackKm, { units: "kilometers" });
+    } catch {
+      setbackPolygon = null;
+    }
+
+    // Add or update the setback layer.
+    const existing = map.getSource("setback-overlay") as mapboxgl.GeoJSONSource | undefined;
+    const setbackFc: GeoJSON.FeatureCollection = setbackPolygon
+      ? { type: "FeatureCollection", features: [setbackPolygon] }
+      : { type: "FeatureCollection", features: [] };
+    if (existing) {
+      existing.setData(setbackFc);
+    } else {
+      map.addSource("setback-overlay", { type: "geojson", data: setbackFc });
+      // Buildable envelope: parent boundary minus setback.
+      // Render as a translucent purple band.
+      map.addLayer({
+        id: "setback-overlay-fill",
+        type: "fill",
+        source: "setback-overlay",
+        paint: { "fill-color": "#a855f7", "fill-opacity": 0.10 },
+      });
+      map.addLayer({
+        id: "setback-overlay-line",
+        type: "line",
+        source: "setback-overlay",
+        paint: { "line-color": "#a855f7", "line-width": 2, "line-dasharray": [3, 2] },
+      });
+    }
+
+    // Compute lot/setback violations.
+    if (setbackPolygon) {
+      const lots = fc.features.filter((f: any) => f.properties?.kind === "lot");
+      let violations = 0;
+      for (const lot of lots) {
+        try {
+          // A lot violates setback if any part of it is OUTSIDE the buildable
+          // envelope (setbackPolygon) but INSIDE the parent boundary. Easier
+          // formulation: lot intersects the setback band (parent − envelope).
+          if (lot.geometry.type !== "Polygon") continue;
+          const inside = turf.booleanWithin(lot as any, setbackPolygon);
+          if (!inside) violations++;
+        } catch {/* ignore */}
+      }
+      setSetbackViolations(violations);
+    } else {
+      setSetbackViolations(0);
+    }
+  }, [setbackFt, planQuery.data?.plan.geojson]);
+
   // Load existing plan GeoJSON when query resolves.
   useEffect(() => {
     const draw = drawRef.current;
@@ -206,6 +337,26 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
+        {/* FW-5: zoning + setback summary */}
+        {zoningQuery.data && (
+          <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-acr-accent/5 border border-acr-accent/20 text-xs">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">{zoningQuery.data.zoningCode}</Badge>
+              <span className="text-muted-foreground">{zoningQuery.data.zoningDescription}</span>
+              {setbacks && (
+                <span className="text-muted-foreground">
+                  · setbacks F{setbacks.front ?? "—"} / R{setbacks.rear ?? "—"} / S{setbacks.side ?? "—"} ft
+                </span>
+              )}
+            </div>
+            {setbackViolations > 0 && (
+              <span className="flex items-center gap-1 text-acr-warning font-semibold">
+                <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                {setbackViolations} lot{setbackViolations === 1 ? "" : "s"} violate setback
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground">Drawing as:</span>
           {KIND_OPTIONS.map((k) => (
