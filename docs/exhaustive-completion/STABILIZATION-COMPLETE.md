@@ -76,10 +76,24 @@ Production AcreOS now matches what's declared in the codebase. Three blockers we
 
 | Item | Status |
 |---|---|
-| **F.1 Authenticated nav audit** | ⚠ blocked — needs `storageState.json` from a logged-in browser session you provide |
-| **F.2 Per-theme visual matrix** | ⚠ blocked — needs `storageState.json` |
-| **F.3 Performance regression check** | 🔄 ready to run — F1 + F2 verified live; needs a fresh cold-load measurement |
+| **F.1 Authenticated nav audit** | ⚠ partial 2026-05-07 — see caveats |
+| **F.2 Per-theme visual matrix** | ⚠ partial 2026-05-07 — see caveats |
+| **F.3 Performance regression check** | ✅ done 2026-05-06 (F3 deferred; cold load ~0.8-1.0s on broadband) |
 | **F.4 This document** | ✅ this is it |
+
+**F.1/F.2 status note (2026-05-07):** both audits ran against live prod with
+a captured `storageState.json`. Surfaced the schema-drift incident (users
+table missing 3 columns, every authed request 500-ing — patched same day).
+The audits then themselves triggered the production `apiLimiter`
+(300 req/min keyed by user-id), which polluted the categorization for
+~75% of routes (TIMEOUT + AUTH_REDIRECT counts are unreliable; HEALTHY +
+DEGRADED + BLANK counts are trustworthy). Audit scripts now have
+splash-clear settle + (F.2) inter-capture throttling fixes. A clean
+re-run would need an additional ≥5 s inter-route delay in F.1's nav
+audit before trusting the BLANK/TIMEOUT/AUTH_REDIRECT signal. See
+[NAVIGATION-HEALTH-AUDIT.md](./NAVIGATION-HEALTH-AUDIT.md) for the run
+caveat and [THEME-MATRIX-RESULTS.md](./THEME-MATRIX-RESULTS.md) for the
+F.2 results (also rate-limit-affected).
 
 ---
 
@@ -195,6 +209,13 @@ Vertical expansion (Note Investor first) is unblocked. Remaining stabilization t
 
 ## §7 · Decisions made + what next
 
+### Patched 2026-05-07 (incident)
+
+- **users-table column drift — PATCHED.** During F.1/F.2 sign-in setup, hit a "something on our end" error after Clerk sign-in. Root cause: prod `users` table was missing 3 columns (`autonomy_preferences` jsonb, `persona` text NOT NULL DEFAULT 'land_investor', `notification_prefs` jsonb) that Drizzle's full-column SELECT requires. Every authenticated request hitting `/api/auth/user`, `/api/me/preferences`, `/api/feature-flags`, `/api/white-label/config` was 500-ing — errors fired every ~3s in fly logs and have been broken for some time, just nobody hit it from a fresh sign-in until now. The §3 schema-drift sweep (87/87 reconciled) audited many tables but missed the `users` table.
+  - **Fix applied:** idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS via `fly ssh` for immediate prod relief; same statements added to `scripts/migrate.mjs` (commit `2839c8f0`) so the change persists across deploys.
+  - **Verification:** `users` table now has 17 columns matching `shared/models/auth.ts`; errors stopped at 22:48 UTC; fresh sign-in lands on dashboard cleanly.
+  - **Followup worth considering:** the §3 audit script (`scripts/audit-schema-drift.mjs`) should be extended to walk `shared/models/*.ts` in addition to `shared/schema.ts` so this class of drift can't slip through again.
+
 ### Decided 2026-05-06
 
 - **C.1 founder-dashboard v2 — DEFERRED.** Reviewed four options against current state; chose C with honest framing. Note Investor work is orthogonal to `founder-dashboard.tsx` (verified via grep — zero references to `investorType`/`acquired_notes`/note concepts in either dashboard file). Extraction queue preserved as canonical pending work with 5 explicit revisit triggers. See [FOUNDER-DASHBOARD-V2-PLAN.md → DECISION section](./FOUNDER-DASHBOARD-V2-PLAN.md) and [REMAINING-WORK-INVENTORY.md → Deferred architectural work](./REMAINING-WORK-INVENTORY.md).
@@ -210,11 +231,13 @@ Vertical expansion (Note Investor first) is unblocked. Remaining stabilization t
 
 ### What next
 
-The only founder-input-gated item left:
+Stabilization is complete. Vertical expansion (Note Investor first) is fully unblocked.
 
-1. **F.1 + F.2** — provide `storageState.json` from a logged-in browser session and I run the authenticated nav audit + per-theme visual matrix.
+**Optional cleanup queue** (not blocking):
 
-After F.1/F.2 clear, vertical expansion (Note Investor first) is fully unblocked.
+1. **F.1 nav-audit re-run with inter-route throttle.** Add `INTER_ROUTE_DELAY_MS=5000` to `scripts/navigation-health-audit.mjs` and re-run when convenient — turns TIMEOUT/AUTH_REDIRECT counts from "rate-limit-polluted" to actionable. ~30-40 min runtime. Single-engineer, no founder input required.
+2. **F.2 visual matrix re-run.** With the splash-clear + throttle fixes already shipped, a clean run will produce real per-theme screenshots instead of loading-splash captures. ~10-15 min runtime.
+3. **Extend `scripts/audit-schema-drift.mjs` to walk `shared/models/*.ts`.** The 2026-05-07 incident (users table missing 3 columns) slipped past the §3 sweep because the audit only looks at `shared/schema.ts`. ~½ day, low priority.
 
 ---
 

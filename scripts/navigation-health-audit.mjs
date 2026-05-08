@@ -123,8 +123,26 @@ async function auditRoute(context, route) {
     navError = err.message;
   }
 
-  // Settle: wait for SPA hydration, lazy chunks, queries
-  await page.waitForTimeout(SETTLE_MS);
+  // Settle: wait for the "Loading AcreOS..." splash to disappear, then a
+  // small buffer for content stabilization. networkidle is unreliable
+  // because the SPA polls (sessions/touch, telemetry) — it never quiets.
+  // The splash-text wait is the actual "auth bootstrap finished" signal.
+  // Public/auth pages don't render the splash → check returns true
+  // immediately. If splash never clears (genuine timeout), we capture the
+  // splash and the categorizer flags TIMEOUT.
+  let splashCleared = false;
+  try {
+    await page.waitForFunction(
+      () => {
+        const text = document.body?.innerText || "";
+        return !/Loading AcreOS|^Loading\.\.\.$/i.test(text);
+      },
+      null,
+      { timeout: 15000 },
+    );
+    splashCleared = true;
+  } catch { /* splash still showing — fall through */ }
+  await page.waitForTimeout(1500);
 
   // Capture state after settle
   finalUrl = page.url();
@@ -163,6 +181,10 @@ async function auditRoute(context, route) {
   else if (httpStatus && httpStatus >= 500) category = "ERROR";
   else if (pageErrors.length > 0) category = "ERROR";
   else if (isAuthRedirect && route.kind !== "PUBLIC") category = "AUTH_REDIRECT";
+  // TIMEOUT: page is still showing the "Loading AcreOS..." splash after the
+  // 15s wait. Distinct from BLANK (which means content rendered but is
+  // empty) — the page genuinely never finished bootstrapping in time.
+  else if (renderInfo.stillLoadingText) category = "TIMEOUT";
   else if (renderInfo.mainTextLen < 20 && renderInfo.bodyTextLen < 50) category = "BLANK";
   else if (consoleErrors.length > 0 || failedRequests.length > 0) category = "DEGRADED";
   else category = "HEALTHY";
@@ -195,12 +217,15 @@ async function main() {
   const routes = extractRoutes(appTsx);
   console.log(`[audit] extracted ${routes.length} routes from App.tsx`);
   console.log(`[audit] host: ${HOST}`);
-  console.log(`[audit] mode: UNAUTH (no Clerk session)`);
+  const storagePath = process.env.STORAGE_STATE || "";
+  const useAuth = storagePath && fs.existsSync(storagePath);
+  console.log(`[audit] mode: ${useAuth ? `AUTH (storageState=${storagePath})` : "UNAUTH (no storageState)"}`);
 
   const browser = await chromium.launch();
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
+    ...(useAuth ? { storageState: storagePath } : {}),
   });
 
   const results = [];
@@ -227,20 +252,20 @@ async function main() {
   await browser.close();
 
   fs.writeFileSync(RESULTS_JSON, JSON.stringify(results, null, 2));
-  writeReport(results);
+  writeReport(results, useAuth, storagePath);
   console.log(`\n[audit] results → ${path.relative(ROOT, RESULTS_JSON)}`);
   console.log(`[audit] report  → ${path.relative(ROOT, REPORT_MD)}`);
 }
 
-function writeReport(results) {
-  const buckets = { HEALTHY: [], DEGRADED: [], BLANK: [], ERROR: [], AUTH_REDIRECT: [] };
+function writeReport(results, useAuth = false, storagePath = "") {
+  const buckets = { HEALTHY: [], DEGRADED: [], BLANK: [], TIMEOUT: [], ERROR: [], AUTH_REDIRECT: [] };
   for (const r of results) buckets[r.category]?.push(r);
 
   const lines = [];
   lines.push(`# Navigation Health Audit`);
   lines.push("");
   lines.push(`**Host:** ${HOST}`);
-  lines.push(`**Mode:** UNAUTH (no Clerk session)`);
+  lines.push(`**Mode:** ${useAuth ? `AUTH (storageState=\`${storagePath}\`)` : "UNAUTH (no Clerk session)"}`);
   lines.push(`**Date:** ${new Date().toISOString()}`);
   lines.push(`**Routes audited:** ${results.length}`);
   lines.push("");
@@ -248,7 +273,7 @@ function writeReport(results) {
   lines.push("");
   lines.push(`| Category | Count |`);
   lines.push(`|----------|-------|`);
-  for (const k of ["HEALTHY", "AUTH_REDIRECT", "DEGRADED", "BLANK", "ERROR"]) {
+  for (const k of ["HEALTHY", "AUTH_REDIRECT", "DEGRADED", "BLANK", "TIMEOUT", "ERROR"]) {
     lines.push(`| ${k} | ${buckets[k].length} |`);
   }
   lines.push("");
