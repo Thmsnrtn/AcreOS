@@ -419,6 +419,28 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
+  // ── Wholesaler vertical (W-1..W-7) ────────────────────────────────
+  // Visible to operators whose businessType is 'residential_wholesaler'
+  // (Trey's profile). Surfaces buyer blasts, buyer analytics, EMD timer,
+  // double-close, and assignment-legality state rules. Trey:
+  // "AcreOS thinks the world ends at 'seller closed and we recorded the
+  // deed.' I don't ever record a deed. I assign a contract."
+  {
+    id: "wholesaler",
+    label: "Wholesale",
+    icon: Send,
+    href: "/buyer-blasts",
+    description: "Buyer blasts, EMD, double-close, state rules",
+    businessTypeOnly: ["residential_wholesaler"],
+    children: [
+      { label: "Buyer blasts", icon: Send, href: "/buyer-blasts", description: "One-click outreach to matched cash buyers" },
+      { label: "Buyer analytics", icon: TrendingUp, href: "/buyer-analytics", description: "Per-blast funnel + freshness" },
+      { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
+      { label: "Double-close", icon: GitBranch, href: "/double-close", description: "A→B + B→C linked transactions" },
+      { label: "Assignment legality", icon: Scale, href: "/wholesaler-state-rules", description: "Per-state wholesaler-licensing rules" },
+    ],
+  },
+
   // ── Outreach ──────────────────────────────────────────────────────
   {
     id: "campaigns",

@@ -65,6 +65,26 @@ const REGISTRY: HiddenRouteRegistry = {
     developer:        ["/land-credit"],
     note_investor:    [],
     new_investor:     [],
+    // Wholesaler vertical W-7: Trey explicitly flagged /money + /portfolio
+    // as "100% wallpaper for me." Notes / portfolio / capital markets /
+    // forecast are all hold-investor surfaces. Wholesalers flip contracts,
+    // not properties — they keep no inventory and earn no cash flow.
+    residential_wholesaler: [
+      "/money",
+      "/portfolio",
+      "/portfolio-pnl",
+      "/portfolio-health",
+      "/portfolio-optimizer",
+      "/finance",
+      "/capital-markets",
+      "/forecasting",
+      "/cash-flow",
+      "/notes",
+      "/exchange-1031",
+      "/depreciation",
+      "/dunning",
+      "/land-credit",
+    ],
   },
 
   byOrgInvestorType: {

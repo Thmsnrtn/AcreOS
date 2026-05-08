@@ -497,9 +497,44 @@ export default function TodayPage() {
   const isNoteOrg = investorType === "notes" || investorType === "both";
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const isTaxDelinquentOrg = businessType === "tax_lien_deed";
+  const isWholesalerOrg = businessType === "residential_wholesaler";
 
   return (
     <PageShell label="Today">
+      {/* Wholesaler quick-jump — visible for residential_wholesaler business
+          type. Trey: "/today is wrong default for me. Built for a portfolio
+          holder, not a transactional wholesaler." Banner unblocks the
+          immediate "where do I go" friction; full per-persona /today
+          rebuild is a separate workstream. */}
+      {isWholesalerOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Wholesaler surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Buyer blasts, EMD timer, double-close, assignment legality —
+                tuned for transactional wholesalers (no inventory, no cash
+                flow).
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/buyer-blasts">Buyer blasts</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/earnest-money">EMD</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/double-close">Double-close</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/wholesaler-state-rules">State rules</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tax-delinquent quick-jump — visible for tax_lien_deed business type. */}
       {isTaxDelinquentOrg && (
         <Card className="border-primary/20 bg-primary/5">
