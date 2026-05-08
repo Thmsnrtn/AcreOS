@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Hammer, ArrowRight, PlusCircle } from "lucide-react";
+import { Hammer, ArrowRight, PlusCircle, LayoutGrid, List } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -63,6 +63,7 @@ const STATUSES = [
 export default function RehabsPage() {
   useDocumentTitle("Active rehabs — AcreOS");
   const { toast } = useToast();
+  const [view, setView] = useState<"list" | "board">("list");
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [propertyId, setPropertyId] = useState("");
@@ -124,10 +125,18 @@ export default function RehabsPage() {
             holding-cost meter — the morning-dashboard view a flipper actually opens.
           </p>
         </div>
-        <Button onClick={() => setShowCreate((v) => !v)}>
-          <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
-          {showCreate ? "Cancel" : "New rehab"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")} aria-label="List view">
+            <List className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <Button variant={view === "board" ? "secondary" : "ghost"} size="sm" onClick={() => setView("board")} aria-label="Board view">
+            <LayoutGrid className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <Button onClick={() => setShowCreate((v) => !v)}>
+            <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
+            {showCreate ? "Cancel" : "New rehab"}
+          </Button>
+        </div>
       </div>
 
       {showCreate && (
@@ -172,6 +181,9 @@ export default function RehabsPage() {
         </Card>
       )}
 
+      {view === "board" ? (
+        <BoardView rehabs={list.data?.rehabs ?? []} loading={list.isLoading} />
+      ) : (
       <Card>
         <CardContent className="p-0">
           {list.isLoading ? (
@@ -221,6 +233,54 @@ export default function RehabsPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </PageShell>
+  );
+}
+
+// Kanban board view (FF-7) — Devon §3 (per-surface friction): "What's
+// missing for a flipper: a 'Project status' chip per row — Acquired /
+// Demo / Framing / Rough-ins / Drywall / Finishes / Listed / Under
+// Contract / Closed."
+function BoardView({ rehabs, loading }: { rehabs: RehabRow[]; loading: boolean }) {
+  if (loading) return <Skeleton className="h-64" />;
+  const buckets = STATUSES.map((s) => ({
+    status: s,
+    items: rehabs.filter((r) => r.status === s),
+  })).filter((b) => b.items.length > 0 || ["demo", "framing", "rough_ins", "drywall", "finishes"].includes(b.status));
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {buckets.map((b) => (
+        <div key={b.status} className="border rounded-md bg-muted/30">
+          <div className="px-3 py-2 border-b border-border bg-background">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {b.status.replace(/_/g, " ")} <span className="ml-1 font-normal">{b.items.length}</span>
+            </p>
+          </div>
+          <div className="p-2 space-y-2 min-h-[100px]">
+            {b.items.map((r) => {
+              const variance = (r.spentTotalCents ?? 0) - (r.budgetTotalCents ?? 0);
+              return (
+                <Link key={r.id} href={`/rehabs/${r.id}`}>
+                  <div className="border bg-background rounded p-2 text-xs cursor-pointer hover:border-primary transition-colors">
+                    <p className="font-medium truncate">{r.name}</p>
+                    <div className="flex items-center justify-between mt-1 text-muted-foreground">
+                      <span>{fmtUsdCents(r.budgetTotalCents)} budget</span>
+                      <span className={variance > 0 ? "text-acr-warning" : variance < 0 ? "text-acr-pos" : ""}>
+                        {variance !== 0 ? fmtUsdCents(variance) : ""}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+            {b.items.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2 italic">empty</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
