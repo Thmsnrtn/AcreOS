@@ -58,10 +58,10 @@ interface StateRedemptionRule {
 }
 
 /**
- * Per-state redemption rules. NOT YET ATTORNEY-REVIEWED — see file header.
- *
- * This map is the source of truth until tax_jurisdiction_rules (TD-3) lands;
- * at that point this becomes a fallback for states the DB doesn't have yet.
+ * Per-state redemption rules — fallback for states not in
+ * tax_jurisdiction_rules (TD-3). The DB version takes priority via
+ * loadRulesFromDb() in routes-tax-certificates / routes-tax-rules; this
+ * map is the safety net so the math never fails open.
  */
 export const STATE_REDEMPTION_RULES: Record<string, StateRedemptionRule> = {
   TX: {

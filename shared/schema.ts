@@ -17776,6 +17776,55 @@ export type TaxCertificate = typeof taxCertificates.$inferSelect;
 export type InsertTaxCertificate = typeof taxCertificates.$inferInsert;
 
 // ============================================================================
+// TAX JURISDICTION RULES — per-state redemption + statutory data
+// ----------------------------------------------------------------------------
+// Marcus's review §3: "I want a /state-rules/AL page that says: redemption
+// period 3 years, super-priority lien on year 4, foreclosure procedure
+// under §40-10-180 et seq, sample notice-to-redeem template, sample
+// quiet-title petition. That single resource is a real product."
+//
+// One row per state. Updates without code deploys (paralegal-friendly).
+// The redemption-clock service reads from this table; falls back to the
+// in-memory STATE_REDEMPTION_RULES const for states the DB doesn't have
+// yet. attorneyReviewedAt is null until counsel signs off on a state;
+// the UI surfaces the gap explicitly.
+// ============================================================================
+
+export const taxJurisdictionRules = pgTable(
+  "tax_jurisdiction_rules",
+  {
+    state: text("state").primaryKey(), // 2-letter
+    saleType: text("sale_type").$type<TaxCertSaleType>().notNull(),
+    interestModel: text("interest_model").notNull(),
+    redemptionPeriodMonths: integer("redemption_period_months").notNull(),
+    redemptionPeriodMonthsOwnerOccupied: integer("redemption_period_months_owner_occupied"),
+    defaultRateBps: integer("default_rate_bps").notNull(),
+    firstPeriodMonths: integer("first_period_months"),
+    firstPeriodRateBps: integer("first_period_rate_bps"),
+    secondPeriodRateBps: integer("second_period_rate_bps"),
+    yearlyAddOnBps: integer("yearly_add_on_bps"),
+    deadlineAnchor: text("deadline_anchor").notNull().default("sale_date"),
+    citation: text("citation"),
+    // Statutory-notice template references — what notice the certificate
+    // holder must serve before quiet-title can proceed. Free text for
+    // now; TD-6 attaches actual templates.
+    noticeRequirements: text("notice_requirements"),
+    quietTitleProcedure: text("quiet_title_procedure"),
+    foreclosureProcedure: text("foreclosure_procedure"),
+    // Review stamps. These are the crux of Marcus's deal-killer test.
+    attorneyReviewedAt: timestamp("attorney_reviewed_at", { withTimezone: true }),
+    attorneyReviewedBy: text("attorney_reviewed_by"),
+    // Free text for paralegal notes / per-county quirks the rule entry
+    // should remember.
+    notes: text("notes"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+export type TaxJurisdictionRule = typeof taxJurisdictionRules.$inferSelect;
+export type InsertTaxJurisdictionRule = typeof taxJurisdictionRules.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

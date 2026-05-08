@@ -154,6 +154,7 @@ import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
+import { registerTaxRuleRoutes } from "./routes-tax-rules";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1726,6 +1727,8 @@ export async function registerRoutes(
   registerNoteAcquisitionRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
   registerTaxCertificateRoutes(app);
+  // Tax-Delinquent vertical TD-3 — per-state rules database.
+  registerTaxRuleRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

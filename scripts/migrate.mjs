@@ -239,6 +239,101 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "tax_certificates_org_state_county_idx" ON "tax_certificates" ("organization_id", "state", "county")',
   'CREATE UNIQUE INDEX IF NOT EXISTS "tax_certificates_natural_key_uk" ON "tax_certificates" ("organization_id", "state", "county", "apn", "sale_date")',
 
+  // Tax-Delinquent vertical TD-3 — per-state redemption + statutory rules.
+  // Replaces in-memory STATE_REDEMPTION_RULES const for states the DB has;
+  // const stays as fallback for unreviewed states. Marcus: "you need all 50,
+  // not eight."
+  `CREATE TABLE IF NOT EXISTS "tax_jurisdiction_rules" (
+     "state" text PRIMARY KEY,
+     "sale_type" text NOT NULL,
+     "interest_model" text NOT NULL,
+     "redemption_period_months" integer NOT NULL,
+     "redemption_period_months_owner_occupied" integer,
+     "default_rate_bps" integer NOT NULL,
+     "first_period_months" integer,
+     "first_period_rate_bps" integer,
+     "second_period_rate_bps" integer,
+     "yearly_add_on_bps" integer,
+     "deadline_anchor" text NOT NULL DEFAULT 'sale_date',
+     "citation" text,
+     "notice_requirements" text,
+     "quiet_title_procedure" text,
+     "foreclosure_procedure" text,
+     "attorney_reviewed_at" timestamptz,
+     "attorney_reviewed_by" text,
+     "notes" text,
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  // Seed data — top tax-sale states. Marcus called out TN/MS/AL specifically
+  // missing; the seed covers them plus the big-name FL/TX/GA. attorney_reviewed_at
+  // stays NULL — the data is paralegal-quality, not counsel-reviewed. The UI
+  // surfaces the gap. Updating these rows in prod doesn't require a deploy.
+  `INSERT INTO "tax_jurisdiction_rules"
+     ("state","sale_type","interest_model","redemption_period_months","redemption_period_months_owner_occupied","default_rate_bps","first_period_months","first_period_rate_bps","second_period_rate_bps","yearly_add_on_bps","deadline_anchor","citation","notice_requirements","quiet_title_procedure","foreclosure_procedure")
+     VALUES
+     ('TX','deed','flat_first_period',6,24,2500,6,2500,5000,NULL,'sale_date','Tex. Tax Code §34.21','Statutory notice-to-redeem within 30 days of deed; redemption period 6 mo non-homestead / 24 mo homestead/agricultural','Quiet title under Tex. Civ. Prac. & Rem. Code §16.024; service of process on prior owner + lienholders + heirs','Tax sale held by sheriff; redemption with 25% statutory premium first 6 mo')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation","notice_requirements","quiet_title_procedure","foreclosure_procedure")
+     VALUES ('FL','lien','bid_down',24,1800,'sale_date','Fla. Stat. §197.472','Pre-deed-application 30-day notice to owner + lienholders','Quiet title not required for tax-deed buyer; deed itself confirms title','Bid-down rate sale; certificate holder applies for tax deed at month 22 (24-mo redemption then deed sale)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","yearly_add_on_bps","deadline_anchor","citation","notice_requirements","quiet_title_procedure")
+     VALUES ('GA','redeemable_deed','tiered_yearly',12,2000,1000,'sale_date','O.C.G.A. §48-4-42','Notice to redeem 30 days minimum; barment notice required to terminate redemption','Quiet title or barment under §48-4-46')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation","notice_requirements","quiet_title_procedure")
+     VALUES ('AL','lien','simple_annual',36,1200,'sale_date','Code of Ala. §40-10-83','Statutory notice required before quiet-title; super-priority interest after 3 years','Quiet title under §40-10-180 et seq')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation","notice_requirements")
+     VALUES ('TN','deed','simple_annual',12,1200,'sale_date','Tenn. Code Ann. §67-5-2701','Notice to delinquent owner + lienholders; 1-year redemption (owner-occupied) or shorter for vacant (Tenn. Code Ann. §67-5-2702)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation","notice_requirements")
+     VALUES ('MS','lien','simple_annual',24,1800,'sale_date','Miss. Code Ann. §27-45-3','Notice to redeem to all interested parties of record')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('SC','lien','simple_annual',12,1200,'sale_date','S.C. Code §12-51-90')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('NC','deed','no_redemption',0,0,'sale_date','N.C. Gen. Stat. §105-374')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('AZ','lien','bid_down',36,1600,'sale_date','A.R.S. §42-18152')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('IA','lien','monthly',21,200,'sale_date','Iowa Code §447.1')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('OH','lien','simple_annual',12,1800,'sale_date','Ohio Rev. Code §5721.30')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('IL','lien','flat_first_period',30,1800,'sale_date','35 ILCS 200/21-310 (3% per 6 months for first 24 mo, then 6%/6mo)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('NJ','lien','bid_down',24,1800,'sale_date','N.J. Stat. §54:5-32 (bid-down to as low as 0%)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('CA','deed','no_redemption',0,0,'sale_date','Cal. Rev. & Tax. Code §3691 et seq (no post-sale redemption)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('NV','deed','no_redemption',0,0,'sale_date','Nev. Rev. Stat. §361.585 (post-sale; pre-sale 2-year redemption period)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('CO','lien','simple_annual',36,900,'sale_date','C.R.S. §39-12-103 (rate is 9% above federal funds rate)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('OK','deed','simple_annual',12,800,'sale_date','Okla. Stat. tit. 68 §3105')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('AR','deed','simple_annual',24,1000,'sale_date','Ark. Code Ann. §26-37-101')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('LA','lien','simple_annual',36,1200,'sale_date','La. R.S. §47:2241 (3-year redemption)')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('IN','lien','simple_annual',12,1000,'sale_date','Ind. Code §6-1.1-25-1')
+     ON CONFLICT (state) DO NOTHING`,
+  `INSERT INTO "tax_jurisdiction_rules" ("state","sale_type","interest_model","redemption_period_months","default_rate_bps","deadline_anchor","citation")
+     VALUES ('MO','lien','simple_annual',12,1000,'sale_date','Mo. Rev. Stat. §140.260')
+     ON CONFLICT (state) DO NOTHING`,
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

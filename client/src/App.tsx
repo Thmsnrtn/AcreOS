@@ -78,6 +78,8 @@ const NotesPipelinePage = React.lazy(() => import("@/pages/notes-pipeline"));
 const NoteAcquisitionDetailPage = React.lazy(() => import("@/pages/note-acquisition-detail"));
 // Tax-Delinquent vertical TD-2 — redemption clock.
 const RedemptionClockPage = React.lazy(() => import("@/pages/redemption-clock"));
+// Tax-Delinquent vertical TD-3 — state rules database.
+const StateRulesPage = React.lazy(() => import("@/pages/state-rules"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -561,6 +563,12 @@ function Router() {
       </Route>
       <Route path="/redemption-clock">
         {() => <ProtectedRoute component={RedemptionClockPage} />}
+      </Route>
+      <Route path="/state-rules">
+        {() => <ProtectedRoute component={StateRulesPage} />}
+      </Route>
+      <Route path="/state-rules/:state">
+        {() => <ProtectedRoute component={StateRulesPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}
