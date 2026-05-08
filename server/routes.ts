@@ -162,6 +162,7 @@ import { registerDoubleCloseRoutes } from "./routes-double-close";
 import { registerBuyerBlastRoutes } from "./routes-buyer-blasts";
 import { registerWholesalerDashboardRoutes } from "./routes-wholesaler-dashboard";
 import { registerBuyerAnalyticsRoutes } from "./routes-buyer-analytics";
+import { registerSubdivisionRoutes } from "./routes-subdivisions";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1750,6 +1751,8 @@ export async function registerRoutes(
   registerWholesalerDashboardRoutes(app);
   // Wholesaler vertical W-6 — buyer match analytics + freshness.
   registerBuyerAnalyticsRoutes(app);
+  // Subdivider vertical SD-2 — parent/child pipeline + rollup metrics.
+  registerSubdivisionRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

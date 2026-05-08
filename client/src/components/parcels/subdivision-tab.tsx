@@ -1,0 +1,369 @@
+/**
+ * "Subdivision" tab on /parcels/:id (SD-2).
+ *
+ * Brigid §4 (per-surface friction): "A 'Subdivision' tab here would change
+ * my life: plan list, child-lot table, permit checklist, document-version
+ * stack, cost-basis allocation, asking-price grid. One tab. One day, the
+ * most important tab in the app."
+ *
+ * This v1 ships the child-lot table + parent rollup metrics + an inline
+ * "Add lots" form. Permit checklist (SD-3), basis allocation (SD-4),
+ * pricing grid (SD-5), and plans (SD-7) land in subsequent PRs.
+ */
+
+import { useMemo, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Layers, PlusCircle, AlertTriangle, ArrowRight } from "lucide-react";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+
+interface ChildLot {
+  id: number;
+  childLotNumber: string | null;
+  apn: string;
+  sizeAcres: string | null;
+  status: string;
+  listPrice: string | null;
+  soldPrice: string | null;
+  soldDate: string | null;
+  buyerId: number | null;
+  daysOnMarket: number | null;
+  allocatedBasisCents: number | null;
+  allocationMethod: string | null;
+}
+
+interface SubdivisionResponse {
+  parent: {
+    id: number;
+    apn: string;
+    address: string | null;
+    county: string;
+    state: string;
+    sizeAcres: string | null;
+    purchasePrice: string | null;
+    purchaseDate: string | null;
+  };
+  children: ChildLot[];
+  metrics: {
+    childCount: number;
+    totalChildAcres: number;
+    totalParentAcres: number | null;
+    parentBasisCents: number | null;
+    soldChildCount: number;
+    soldProceedsCents: number;
+    remainingChildCount: number;
+    remainingChildAcres: number;
+    blendedCostPerRemainingAcreCents: number | null;
+    breakevenAtCurrentAskingCents: number | null;
+    pipelineCounts: Record<string, number>;
+  };
+}
+
+function fmtUsdCents(cents: number | null): string {
+  if (cents === null || cents === undefined) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+}
+
+function fmtUsdString(s: string | null): string {
+  if (!s) return "—";
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+}
+
+function fmtAcres(s: string | number | null): string {
+  if (s === null || s === undefined) return "—";
+  const n = typeof s === "string" ? parseFloat(s) : s;
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toFixed(2)} ac`;
+}
+
+function statusBadge(status: string): { label: string; tone: "default" | "secondary" | "outline" | "destructive" } {
+  const s = status.toLowerCase();
+  if (s === "sold") return { label: "Sold", tone: "secondary" };
+  if (s === "under_contract") return { label: "Under contract", tone: "default" };
+  if (s === "listed") return { label: "Listed", tone: "outline" };
+  if (s === "owned") return { label: "Held", tone: "outline" };
+  return { label: status, tone: "outline" };
+}
+
+export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
+  const { toast } = useToast();
+  const [showAdd, setShowAdd] = useState(false);
+  const [draftLots, setDraftLots] = useState<Array<{ childLotNumber: string; sizeAcres: string; listPrice: string }>>([
+    { childLotNumber: "", sizeAcres: "", listPrice: "" },
+  ]);
+
+  const { data, isLoading, error } = useQuery<SubdivisionResponse>({
+    queryKey: ["/api/parcels", parentParcelId, "subdivision"],
+    queryFn: async () => {
+      const res = await fetch(`/api/parcels/${parentParcelId}/subdivision`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const createLots = useMutation({
+    mutationFn: async (lots: Array<{ childLotNumber: string; sizeAcres: number; listPrice?: number }>) => {
+      const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
+      const res = await fetch(`/api/parcels/${parentParcelId}/lots`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "x-csrf-token": decodeURIComponent(csrfToken) },
+        body: JSON.stringify({ lots, inheritFromParent: true }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (r) => {
+      toast({ title: `${r.created.length} lot${r.created.length === 1 ? "" : "s"} created` });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "subdivision"] });
+      setShowAdd(false);
+      setDraftLots([{ childLotNumber: "", sizeAcres: "", listPrice: "" }]);
+    },
+    onError: (err: any) => toast({ title: "Could not create lots", description: err.message, variant: "destructive" }),
+  });
+
+  const totalDraftAcres = useMemo(
+    () => draftLots.reduce((sum, l) => sum + (parseFloat(l.sizeAcres) || 0), 0),
+    [draftLots],
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32" />
+        <Skeleton className="h-48" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-sm text-muted-foreground flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
+          Could not load subdivision data.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const m = data.metrics;
+  const remainingPct = m.parentBasisCents
+    ? Math.round((m.soldProceedsCents / m.parentBasisCents) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Rollup metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Layers className="w-4 h-4" aria-hidden="true" />
+            Subdivision rollup
+          </CardTitle>
+          <CardDescription>
+            Parent {fmtAcres(data.parent.sizeAcres)} → {m.childCount} child lot{m.childCount === 1 ? "" : "s"} ({fmtAcres(m.totalChildAcres)} cut)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Tile label="Parent basis" value={fmtUsdCents(m.parentBasisCents)} />
+          <Tile label="Sold proceeds" value={fmtUsdCents(m.soldProceedsCents)} sub={`${m.soldChildCount} of ${m.childCount} sold (${remainingPct}% recovered)`} />
+          <Tile label="Cost / remaining acre" value={fmtUsdCents(m.blendedCostPerRemainingAcreCents)} sub={fmtAcres(m.remainingChildAcres) + " left"} />
+          <Tile
+            label="Breakeven gap"
+            value={fmtUsdCents(m.breakevenAtCurrentAskingCents)}
+            sub={m.breakevenAtCurrentAskingCents !== null && m.breakevenAtCurrentAskingCents <= 0 ? "above breakeven at asking" : "still below breakeven"}
+            tone={m.breakevenAtCurrentAskingCents !== null && m.breakevenAtCurrentAskingCents <= 0 ? "pos" : "warn"}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Pipeline counts */}
+      {Object.keys(m.pipelineCounts).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(m.pipelineCounts).map(([status, count]) => {
+            const b = statusBadge(status);
+            return (
+              <Badge key={status} variant={b.tone}>
+                {b.label}: {count}
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Child lots */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base">Child lots</CardTitle>
+            <CardDescription>One row per recorded child lot.</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setShowAdd((v) => !v)}>
+            <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
+            {showAdd ? "Cancel" : "Add lots"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showAdd && (
+            <div className="border border-dashed rounded-md p-3 space-y-3 bg-muted/30">
+              <p className="text-xs text-muted-foreground">
+                Bulk add. County / state / zoning inherit from the parent. Acreage required; pricing optional.
+              </p>
+              <div className="space-y-2">
+                {draftLots.map((d, idx) => (
+                  <div key={idx} className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">Lot #</Label>
+                      <Input
+                        value={d.childLotNumber}
+                        onChange={(e) => {
+                          const next = [...draftLots]; next[idx] = { ...next[idx], childLotNumber: e.target.value }; setDraftLots(next);
+                        }}
+                        placeholder="Lot 1"
+                        className="h-8"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Acres</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={d.sizeAcres}
+                        onChange={(e) => {
+                          const next = [...draftLots]; next[idx] = { ...next[idx], sizeAcres: e.target.value }; setDraftLots(next);
+                        }}
+                        placeholder="2.5"
+                        className="h-8"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">List price (optional)</Label>
+                      <Input
+                        type="number"
+                        value={d.listPrice}
+                        onChange={(e) => {
+                          const next = [...draftLots]; next[idx] = { ...next[idx], listPrice: e.target.value }; setDraftLots(next);
+                        }}
+                        placeholder="55000"
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDraftLots((d) => [...d, { childLotNumber: "", sizeAcres: "", listPrice: "" }])}
+                >
+                  + another row
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {totalDraftAcres > 0
+                    ? `${totalDraftAcres.toFixed(2)} ac (${
+                        data.parent.sizeAcres
+                          ? `${((totalDraftAcres / parseFloat(data.parent.sizeAcres)) * 100).toFixed(0)}% of parent`
+                          : ""
+                      })`
+                    : ""}
+                </p>
+                <Button
+                  size="sm"
+                  disabled={createLots.isPending || draftLots.some((d) => !d.childLotNumber || !parseFloat(d.sizeAcres))}
+                  onClick={() => {
+                    createLots.mutate(
+                      draftLots.map((d) => ({
+                        childLotNumber: d.childLotNumber.trim(),
+                        sizeAcres: parseFloat(d.sizeAcres),
+                        listPrice: d.listPrice ? parseFloat(d.listPrice) : undefined,
+                      })),
+                    );
+                  }}
+                >
+                  Create {draftLots.length} lot{draftLots.length === 1 ? "" : "s"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {data.children.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              No child lots yet. Add lots above once the plat is recorded (or earlier, with placeholder APNs).
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border">
+                    <th className="px-2 py-2 text-left font-medium">Lot</th>
+                    <th className="px-2 py-2 text-left font-medium">APN</th>
+                    <th className="px-2 py-2 text-right font-medium">Acres</th>
+                    <th className="px-2 py-2 text-left font-medium">Status</th>
+                    <th className="px-2 py-2 text-right font-medium">List</th>
+                    <th className="px-2 py-2 text-right font-medium">Sold</th>
+                    <th className="px-2 py-2 text-right font-medium">Basis</th>
+                    <th className="px-2 py-2 text-right font-medium">DOM</th>
+                    <th className="px-2 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.children.map((c) => {
+                    const b = statusBadge(c.status);
+                    return (
+                      <tr key={c.id} className="border-b border-border/40">
+                        <td className="px-2 py-2 font-medium">{c.childLotNumber ?? "—"}</td>
+                        <td className="px-2 py-2 text-xs font-mono text-muted-foreground truncate max-w-[8rem]">{c.apn}</td>
+                        <td className="px-2 py-2 text-right">{fmtAcres(c.sizeAcres)}</td>
+                        <td className="px-2 py-2"><Badge variant={b.tone}>{b.label}</Badge></td>
+                        <td className="px-2 py-2 text-right">{fmtUsdString(c.listPrice)}</td>
+                        <td className="px-2 py-2 text-right">{fmtUsdString(c.soldPrice)}</td>
+                        <td className="px-2 py-2 text-right text-muted-foreground">{fmtUsdCents(c.allocatedBasisCents)}</td>
+                        <td className="px-2 py-2 text-right text-muted-foreground">{c.daysOnMarket ?? "—"}</td>
+                        <td className="px-2 py-2 text-right">
+                          <a href={`/parcels/${c.id}`} className="text-primary inline-flex items-center text-xs gap-1">
+                            Open <ArrowRight className="w-3 h-3" aria-hidden="true" />
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Separator />
+      <p className="text-xs text-muted-foreground">
+        Permit tracker, basis allocation, asking-price grid, and saved subdivision plans land in upcoming PRs.
+      </p>
+    </div>
+  );
+}
+
+function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "pos" | "warn" }) {
+  const toneClass = tone === "pos" ? "text-acr-pos" : tone === "warn" ? "text-acr-warning" : "";
+  return (
+    <Card className="p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`text-xl font-semibold tracking-tight mt-1 ${toneClass}`}>{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+    </Card>
+  );
+}
