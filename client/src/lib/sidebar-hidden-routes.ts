@@ -70,8 +70,29 @@ const REGISTRY: HiddenRouteRegistry = {
   byOrgInvestorType: {
     // Pure-land orgs: hide the Notes module (empty for them).
     land:  ["/notes"],
-    // Pure-notes orgs: hide land outreach modules.
-    notes: ["/campaigns", "/direct-mail", "/sequences", "/blind-offer-wizard", "/offers/batches"],
+    // Pure-notes orgs: hide land outreach + parcel-only modules.
+    // /leads/dedupe is parcel-list-cleanup; note investors don't run mailings.
+    // /avm + /avm-bulk are parcel-valuation flows; notes use BPO instead
+    //   (see /notes/pipeline for the BPO field).
+    // /skip-tracing is parcel-owner lookup; note investors need borrower
+    //   locate which is queued as separate work in note-investor-followups.
+    // /seller-intent + /deal-hunter are land-deal sourcing surfaces.
+    // REO-relevant surfaces (/properties, /parcels, /portfolio) stay
+    //   visible because Linnea: "useful when I take a property back
+    //   through foreclosure."
+    notes: [
+      "/campaigns",
+      "/direct-mail",
+      "/sequences",
+      "/blind-offer-wizard",
+      "/offers/batches",
+      "/leads/dedupe",
+      "/avm",
+      "/avm-bulk",
+      "/skip-tracing",
+      "/seller-intent",
+      "/deal-hunter",
+    ],
     // Mixed-strategy: everything visible.
     both:  [],
   },

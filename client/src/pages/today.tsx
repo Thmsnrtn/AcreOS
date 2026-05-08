@@ -489,8 +489,43 @@ export default function TodayPage() {
 
   const userName = user?.firstName || organization?.name || "";
 
+  // Note Investor vertical — quick-jump banner for orgs whose investorType
+  // is 'notes' or 'both'. /today's panel layout is parcel-flip-shaped
+  // (per Linnea's persona walkthrough — "wrong default for me. Should
+  // switch on persona to: payments due today, late buckets…"). Until that
+  // page-shape rebuild ships, surface a fast link out so note investors
+  // aren't stranded on a parcel dashboard.
+  const investorType = (organization as any)?.investorType as string | undefined;
+  const isNoteOrg = investorType === "notes" || investorType === "both";
+
   return (
     <PageShell label="Today">
+      {/* Note investor quick-jump — visible for notes/both orgs only. */}
+      {isNoteOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Note investor surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Servicing book, acquisition pipeline, and 1099-INT readiness — all
+                tuned for note-investor workflows.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/notes">Servicing book</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/notes/pipeline">Pipeline</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/notes/tax-readiness">Tax readiness</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Onboarding prompt for new users */}
       {showOnboardingBanner && (
         <Card className="border-primary/30 bg-primary/5">

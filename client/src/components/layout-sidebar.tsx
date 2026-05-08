@@ -375,15 +375,19 @@ const NAV_MODULES: NavModule[] = [
 
   // ── Note Investor vertical (Phase 5 §5) ───────────────────────────
   // Primary entry for orgs that selected "Buying notes" or "Both" during
-  // onboarding. The /notes surface lists acquired notes with status
-  // pills + filter controls. Hidden for pure-land orgs by
-  // INVESTOR_TYPE_PRIMARY_HIDDEN_ROUTES below.
+  // onboarding. Hidden for pure-land orgs via byOrgInvestorType.land
+  // in sidebar-hidden-routes.ts.
   {
     id: "notes",
     label: "Notes",
     icon: FileText,
     href: "/notes",
-    description: "Acquired notes — performing, late, default, paid off",
+    description: "Servicing book — performing, late, default, paid off",
+    children: [
+      { label: "Servicing book", icon: FileText, href: "/notes", description: "Acquired notes ledger" },
+      { label: "Pipeline", icon: Layers, href: "/notes/pipeline", description: "Pre-book diligence — sourcing → BPO → diligence → offer → escrow" },
+      { label: "Tax readiness", icon: Receipt, href: "/notes/tax-readiness", description: "1099-INT pre-flight — eligible recipients, blockers, batch generation" },
+    ],
   },
 
   // ── Outreach ──────────────────────────────────────────────────────
