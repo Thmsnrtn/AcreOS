@@ -17433,6 +17433,67 @@ export type NoteAcquisition = typeof noteAcquisitions.$inferSelect;
 export type InsertNoteAcquisition = typeof noteAcquisitions.$inferInsert;
 
 // ============================================================================
+// NOTE ASSIGNMENTS — paperwork for note sales / transfers
+// ----------------------------------------------------------------------------
+// Linnea: "When I sell a note I need an Allonge + Assignment of Mortgage/
+// Deed of Trust generated and trackable." Captures the metadata for the
+// paperwork; PDF renders to S3 (or inline base64 in the response for small
+// orgs); future PRs will route through the native e-sign rail.
+//
+// Two document types ship per assignment:
+//   - allonge: amends the note itself (endorsed in favor of the new holder)
+//   - assignment: assigns the security instrument (mortgage / deed of trust /
+//                 deed-to-secure-debt depending on state)
+// Both are produced as a single combined PDF with the original note's
+// material terms reproduced. State-specific recordable forms ride a
+// separate workstream with legal counsel per jurisdiction.
+// ============================================================================
+
+export const noteAssignments = pgTable(
+  "note_assignments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    // The party we are ASSIGNING to (the buyer of the note).
+    assigneeName: text("assignee_name").notNull(),
+    assigneeAddress: jsonb("assignee_address").$type<{
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    }>(),
+    // The state whose form template is in use (informational; the generic
+    // template carries the right-shape language for all states but is NOT
+    // automatically county-recordable).
+    state: text("state"), // 2-letter; nullable when generic-only
+    templateVariant: text("template_variant").notNull().default("generic"), // 'generic' | future per-state codes
+    // Sale price — what the assignee paid the assignor for the note.
+    salePriceCents: bigint("sale_price_cents", { mode: "number" }),
+    saleDate: date("sale_date"),
+    // S3 key of the generated combined PDF (allonge + assignment).
+    pdfS3Key: text("pdf_s3_key"),
+    // Status lifecycle. Recording chain is owner-tracked (we don't yet talk
+    // to county recorders directly).
+    status: text("status").notNull().default("generated"), // 'generated' | 'signed' | 'recorded' | 'voided'
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }),
+    recordingNumber: text("recording_number"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("note_assignments_org_note_idx").on(table.organizationId, table.noteId),
+    index("note_assignments_org_status_idx").on(table.organizationId, table.status),
+  ],
+);
+
+export type NoteAssignment = typeof noteAssignments.$inferSelect;
+export type InsertNoteAssignment = typeof noteAssignments.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

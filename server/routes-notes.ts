@@ -16,7 +16,8 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { acquiredNotes, notePayments } from "@shared/schema";
+import { acquiredNotes, notePayments, noteAssignments } from "@shared/schema";
+import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -875,6 +876,164 @@ export function registerNoteRoutes(app: Express): void {
         return res.json({ noteId: id, ...yields });
       } catch (err) {
         logger.error("notes.yield failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Assignment paperwork ─────────────────────────────────────────────────
+  // POST /api/notes/:id/assignments
+  // Generates a combined Allonge + Assignment of Mortgage PDF, persists
+  // the metadata, returns the assignment + base64 PDF for immediate
+  // download. State-specific recordable templates are out of scope for
+  // this PR; the generic template is legally-correct shape but isn't
+  // automatically county-recordable.
+  app.post(
+    "/api/notes/:id/assignments",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const parsed = z.object({
+          assigneeName: z.string().min(1).max(240),
+          assigneeAddress: z.object({
+            line1: z.string().optional(),
+            line2: z.string().optional(),
+            city: z.string().optional(),
+            state: z.string().optional(),
+            zip: z.string().optional(),
+          }).optional(),
+          state: z.string().length(2).optional(),
+          salePriceCents: z.number().int().nonnegative().optional(),
+          saleDate: z.string().min(1),
+          notes: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const data = parsed.data;
+
+        // Pull the note + the org name (assignor on the paperwork is
+        // the organization).
+        const [note] = await db
+          .select()
+          .from(acquiredNotes)
+          .where(and(eq(acquiredNotes.id, noteId), eq(acquiredNotes.organizationId, orgId)))
+          .limit(1);
+        if (!note) return Errors.notFound(res, "Note");
+
+        // Org name lookup — we need it to populate "ASSIGNOR" on the PDF.
+        const { organizations } = await import("@shared/schema");
+        const [org] = await db
+          .select({ name: organizations.name })
+          .from(organizations)
+          .where(eq(organizations.id, orgId))
+          .limit(1);
+        const assignorName = org?.name ?? "Note Holder";
+
+        // Render the PDF (synchronous; jsPDF in-memory).
+        const { pdfBase64 } = renderAssignmentPdf({
+          assignorName,
+          assigneeName: data.assigneeName,
+          assigneeAddress: data.assigneeAddress,
+          noteNumber: note.noteNumber,
+          payerName: note.payerName,
+          payerAddress: (note.payerAddress as any) ?? undefined,
+          originalPrincipalCents: note.originalPrincipalCents,
+          currentBalanceCents: note.currentBalanceCents,
+          interestRateBps: note.interestRateBps,
+          paymentAmountCents: note.paymentAmountCents,
+          originationDate: note.originationDate as unknown as string,
+          maturityDate: note.maturityDate as unknown as string,
+          salePriceCents: data.salePriceCents,
+          saleDate: data.saleDate,
+          state: data.state,
+        });
+
+        // Persist metadata. PDF storage to S3 is queued for a follow-up;
+        // for now we return the base64 inline and don't store the bytes.
+        const [row] = await db
+          .insert(noteAssignments)
+          .values({
+            organizationId: orgId,
+            noteId,
+            assigneeName: data.assigneeName,
+            assigneeAddress: data.assigneeAddress ?? null,
+            state: data.state ?? null,
+            templateVariant: "generic",
+            salePriceCents: data.salePriceCents ?? null,
+            saleDate: data.saleDate,
+            pdfS3Key: null,
+            status: "generated",
+            notes: data.notes ?? null,
+          })
+          .returning();
+
+        return res.status(201).json({ assignment: row, pdfBase64 });
+      } catch (err) {
+        logger.error("notes.assignments.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/notes/:id/assignments — list issued paperwork for this note
+  app.get(
+    "/api/notes/:id/assignments",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const rows = await db
+          .select()
+          .from(noteAssignments)
+          .where(and(eq(noteAssignments.organizationId, orgId), eq(noteAssignments.noteId, noteId)))
+          .orderBy(desc(noteAssignments.createdAt));
+        return res.json({ assignments: rows });
+      } catch (err) {
+        logger.error("notes.assignments.list failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // PATCH /api/notes/assignments/:id — status updates (signed / recorded)
+  app.patch(
+    "/api/note-assignments/:id",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = z.object({
+          status: z.enum(["generated", "signed", "recorded", "voided"]).optional(),
+          signedAt: z.string().optional(),
+          recordedAt: z.string().optional(),
+          recordingNumber: z.string().max(120).optional(),
+          notes: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        const update: Partial<typeof noteAssignments.$inferInsert> = {
+          ...parsed.data,
+          updatedAt: new Date(),
+          signedAt: parsed.data.signedAt ? new Date(parsed.data.signedAt) : undefined,
+          recordedAt: parsed.data.recordedAt ? new Date(parsed.data.recordedAt) : undefined,
+        };
+        const [row] = await db
+          .update(noteAssignments)
+          .set(update)
+          .where(and(eq(noteAssignments.id, req.params.id), eq(noteAssignments.organizationId, orgId)))
+          .returning();
+        if (!row) return Errors.notFound(res, "Assignment");
+        return res.json({ assignment: row });
+      } catch (err) {
+        logger.error("notes.assignments.patch failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

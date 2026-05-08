@@ -110,6 +110,33 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "note_acquisitions_org_stage_idx" ON "note_acquisitions" ("organization_id", "stage")',
   'CREATE INDEX IF NOT EXISTS "note_acquisitions_org_updated_idx" ON "note_acquisitions" ("organization_id", "updated_at")',
 
+  // Note Investor — assignment paperwork (Allonge + Assignment of Mortgage)
+  // for note sales / transfers (PR-7).
+  // Note: acquired_notes.id is `uuid` in prod (Drizzle's varchar+gen_random_uuid()
+  // default created the column as uuid). FK columns must match — same for
+  // note_payments.note_id which is uuid.
+  `CREATE TABLE IF NOT EXISTS "note_assignments" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "note_id" uuid NOT NULL REFERENCES "acquired_notes"("id") ON DELETE CASCADE,
+     "assignee_name" text NOT NULL,
+     "assignee_address" jsonb,
+     "state" text,
+     "template_variant" text NOT NULL DEFAULT 'generic',
+     "sale_price_cents" bigint,
+     "sale_date" date,
+     "pdf_s3_key" text,
+     "status" text NOT NULL DEFAULT 'generated',
+     "signed_at" timestamptz,
+     "recorded_at" timestamptz,
+     "recording_number" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "note_assignments_org_note_idx" ON "note_assignments" ("organization_id", "note_id")',
+  'CREATE INDEX IF NOT EXISTS "note_assignments_org_status_idx" ON "note_assignments" ("organization_id", "status")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
