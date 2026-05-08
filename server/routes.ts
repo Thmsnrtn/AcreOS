@@ -394,6 +394,11 @@ export async function registerRoutes(
   const { httpCacheHeaders: _httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
   app.use("/api", _httpCacheHeaders);
 
+  // FW-9: API telemetry — counts 2xx/4xx/5xx + p50/p95 per route.
+  // Surfaced via GET /api/admin/telemetry (founder-gated below).
+  const { apiTelemetry } = await import("./middleware/apiTelemetry");
+  app.use("/api", apiTelemetry());
+
   // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
   app.get("/api/config/features", async (_req, res) => {
     try {

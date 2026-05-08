@@ -604,6 +604,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
       { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
       { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", description: "Meta ads, AI campaign wizard, attribution" },
+      { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
       { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
       { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
       { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },

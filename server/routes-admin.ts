@@ -688,6 +688,30 @@ export function registerAdminRoutes(app: Express): void {
     next();
   };
 
+  // FW-9: in-process API telemetry readout. Counts 2xx/4xx/5xx + p50/p95
+  // per route. Resets on process restart by design — this is a backstop
+  // for early-warning observability; persistent telemetry belongs in an
+  // APM (Datadog / Honeycomb / etc.).
+  api.get("/api/admin/telemetry", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { getTelemetrySummary } = await import("./middleware/apiTelemetry");
+      const summary = getTelemetrySummary();
+      res.json({ ...summary, generatedAt: new Date().toISOString() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  api.post("/api/admin/telemetry/reset", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { resetTelemetry } = await import("./middleware/apiTelemetry");
+      resetTelemetry();
+      res.json({ reset: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   api.get("/api/admin/check", isAuthenticated, isFounderAdmin, async (req, res) => {
     res.json({ isAdmin: true });
   });
