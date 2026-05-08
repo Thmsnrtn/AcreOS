@@ -170,6 +170,7 @@ import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
+import { registerContractorRoutes } from "./routes-contractors";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1774,6 +1775,8 @@ export async function registerRoutes(
   registerCcrTemplateRoutes(app);
   // Fix-and-flip vertical FF-2 — rehab budget builder.
   registerRehabRoutes(app);
+  // Fix-and-flip vertical FF-3 — contractor management + 1099-NEC.
+  registerContractorRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)
