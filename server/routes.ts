@@ -166,6 +166,7 @@ import { registerSubdivisionRoutes } from "./routes-subdivisions";
 import { registerPermitTrackerRoutes } from "./routes-permit-tracker";
 import { registerLotBasisRoutes } from "./routes-lot-basis";
 import { registerLotPricingRoutes } from "./routes-lot-pricing";
+import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1762,6 +1763,8 @@ export async function registerRoutes(
   registerLotBasisRoutes(app);
   // Subdivider vertical SD-5 — lot-pricing rules editor.
   registerLotPricingRoutes(app);
+  // Subdivider vertical SD-6 — county-timeline + carry-cost projector.
+  registerCountyTimelineRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

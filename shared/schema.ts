@@ -18556,7 +18556,7 @@ export const countySubdivisionTimelines = pgTable(
     recordingLeadDays: integer("recording_lead_days"),
 
     // Operational notes — perc-test seasonal windows, planner caseload, etc.
-    perColationSeasonNote: text("percolation_season_note"),
+    percolationSeasonNote: text("percolation_season_note"),
     typicalRevisionRounds: integer("typical_revision_rounds"),
 
     contactName: text("contact_name"),
