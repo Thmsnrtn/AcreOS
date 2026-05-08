@@ -88,6 +88,8 @@ const CountyDetailPage = React.lazy(() => import("@/pages/county-detail"));
 const QuietTitlePage = React.lazy(() => import("@/pages/quiet-title"));
 // Wholesaler vertical W-1 — assignment-legality state rules.
 const WholesalerStateRulesPage = React.lazy(() => import("@/pages/wholesaler-state-rules"));
+// Wholesaler vertical W-2 — EMD inspection-period timer.
+const EarnestMoneyPage = React.lazy(() => import("@/pages/earnest-money"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -595,6 +597,9 @@ function Router() {
       </Route>
       <Route path="/wholesaler-state-rules/:state">
         {() => <ProtectedRoute component={WholesalerStateRulesPage} />}
+      </Route>
+      <Route path="/earnest-money">
+        {() => <ProtectedRoute component={EarnestMoneyPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

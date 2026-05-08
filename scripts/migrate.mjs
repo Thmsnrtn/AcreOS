@@ -464,6 +464,29 @@ const STATEMENTS = [
      VALUES ('TN','unrestricted',false,false,'unrestricted','Tenn. Code Ann. §62-13-103','Tennessee permits assignment-for-fee.')
      ON CONFLICT (state) DO NOTHING`,
 
+  // Wholesaler vertical W-2 — EMD inspection-period state machine.
+  // Trey: "Saves me $1,000 per blown deal."
+  `CREATE TABLE IF NOT EXISTS "earnest_money_holds" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "deal_id" integer,
+     "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+     "amount_cents" bigint NOT NULL,
+     "title_company" text,
+     "reference_number" text,
+     "deposited_at" date NOT NULL,
+     "inspection_period_days" integer NOT NULL DEFAULT 7,
+     "refundable_until_at" date NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "status_changed_at" timestamptz,
+     "final_disposition_amount_cents" bigint,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "emd_org_status_refundable_idx" ON "earnest_money_holds" ("organization_id", "status", "refundable_until_at")',
+  'CREATE INDEX IF NOT EXISTS "emd_org_deal_idx" ON "earnest_money_holds" ("organization_id", "deal_id")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

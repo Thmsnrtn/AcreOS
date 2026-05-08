@@ -18025,6 +18025,72 @@ export type WholesalerStateRule = typeof wholesalerStateRules.$inferSelect;
 export type InsertWholesalerStateRule = typeof wholesalerStateRules.$inferInsert;
 
 // ============================================================================
+// EARNEST MONEY HOLDS — wholesaler EMD inspection-period state machine (W-2)
+// ----------------------------------------------------------------------------
+// Trey: "EMD goes to the title company on Day 0, sits in escrow during the
+// inspection period (typically 7–10 days), is refundable to me until
+// inspection-period expiration, then becomes non-refundable. […] My biggest
+// financial risk on a wholesale deal is forgetting I'm past inspection and
+// can't get my $1,000 EMD back. Saves me $1,000 per blown deal."
+//
+// One row per (deal, deposit). Most deals have one EMD; some have multiple
+// when an additional deposit lands at inspection-period end to lock the
+// deal beyond cancellation. Status flips:
+//   pending  →  held (in escrow, refundable)  →  non_refundable
+//                                            →  released_to_seller
+//                                            →  refunded_to_buyer
+//                                            →  forfeited
+// ============================================================================
+
+export const EARNEST_MONEY_STATUSES = [
+  "pending",            // recorded but not yet at title
+  "held",               // in escrow, refundable (within inspection period)
+  "non_refundable",     // inspection period expired, EMD no longer refundable
+  "released_to_seller", // closing happened, EMD applied to purchase
+  "refunded_to_buyer",  // we backed out within inspection period
+  "forfeited",          // we backed out after inspection — lost it
+] as const;
+export type EarnestMoneyStatus = typeof EARNEST_MONEY_STATUSES[number];
+
+export const earnestMoneyHolds = pgTable(
+  "earnest_money_holds",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    dealId: integer("deal_id"),  // FK ref omitted — deals.id type inferred at insert; soft FK
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    titleCompany: text("title_company"),
+    referenceNumber: text("reference_number"),  // wire/check ref from title
+
+    // The two timestamps that drive the state machine.
+    depositedAt: date("deposited_at").notNull(),
+    inspectionPeriodDays: integer("inspection_period_days").notNull().default(7),
+    // refundableUntilAt = depositedAt + inspectionPeriodDays. Stored
+    // explicitly so contract-amendment extensions / shortenings persist.
+    refundableUntilAt: date("refundable_until_at").notNull(),
+
+    status: text("status").$type<EarnestMoneyStatus>().notNull().default("pending"),
+    // Filled when status transitions to a terminal state.
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+    // For released_to_seller / refunded_to_buyer / forfeited.
+    finalDispositionAmountCents: bigint("final_disposition_amount_cents", { mode: "number" }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Drives the org-level "EMD at risk" view + per-deal lookup.
+    index("emd_org_status_refundable_idx").on(table.organizationId, table.status, table.refundableUntilAt),
+    index("emd_org_deal_idx").on(table.organizationId, table.dealId),
+  ],
+);
+
+export type EarnestMoneyHold = typeof earnestMoneyHolds.$inferSelect;
+export type InsertEarnestMoneyHold = typeof earnestMoneyHolds.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.
