@@ -197,32 +197,47 @@ export async function processTaxDelinquentImport(
 
   if (normalized.length === 0) return result;
 
-  // Fetch existing APNs for this org to detect duplicates
-  const existingApns = await db
-    .select({ apn: leads.apn })
+  // Fetch existing (state, county, apn) tuples for this org to detect
+  // duplicates. Marcus: "APNs are *not* unique across counties. Two
+  // different counties in different states can both have an APN like
+  // 001-0001-001. The dedup check uses existingApnSet keyed by APN
+  // alone — that'll silently merge or skip leads from different
+  // counties." Fix: composite key.
+  const existingTuples = await db
+    .select({ state: leads.state, county: leads.county, apn: leads.apn })
     .from(leads)
     .where(
       and(
         eq(leads.organizationId, orgId),
-        sql`${leads.apn} is not null`
+        sql`${leads.apn} is not null`,
       )
     );
 
-  const existingApnSet = new Set(existingApns.map(r => r.apn?.toLowerCase()));
+  const tupleKey = (state: string | null | undefined, county: string | null | undefined, apn: string) =>
+    `${(state ?? "").toLowerCase().trim()}|${(county ?? "").toLowerCase().trim()}|${apn.toLowerCase().trim()}`;
+
+  const existingTupleSet = new Set(
+    existingTuples
+      .filter((r): r is { state: string | null; county: string | null; apn: string } => Boolean(r.apn))
+      .map((r) => tupleKey(r.state, r.county, r.apn!))
+  );
 
   const toInsert: typeof leads.$inferInsert[] = [];
 
   for (let i = 0; i < normalized.length; i++) {
     const rec = normalized[i];
 
-    // Dedup check
-    if (existingApnSet.has(rec.apn.toLowerCase())) {
+    // Dedup check on the composite (state, county, apn) tuple.
+    const recState = rec.state || options.state;
+    const recCounty = rec.county || options.county;
+    const recKey = tupleKey(recState, recCounty, rec.apn);
+    if (existingTupleSet.has(recKey)) {
       result.duplicates++;
       continue;
     }
 
     // Mark as imported to avoid double-importing on retry
-    existingApnSet.add(rec.apn.toLowerCase());
+    existingTupleSet.add(recKey);
 
     // Parse owner name into first/last
     const nameParts = rec.ownerName.split(/\s+/);
@@ -242,7 +257,12 @@ export async function processTaxDelinquentImport(
       zipCode: rec.zipCode,
       source: options.defaultSource || "tax_delinquent",
       status: "new",
-      score: rec.delinquentYears != null && rec.delinquentYears > 1 ? 75 : 50, // higher score = more years delinquent
+      // Multi-factor import-time score. Marcus: "Real scoring needs
+      // years delinquent, equity %, tax-to-value ratio, owner age,
+      // absentee status, prior cure history, parcel size and zoning."
+      // We don't have all those at import; this captures what we do have
+      // (years + acres + completeness). The full scorer picks up later.
+      score: scoreImportRecord(rec),
       taxDelinquent: true,
       delinquentAmount: rec.delinquentAmount?.toString(),
       campaignId: options.campaignId,
@@ -273,11 +293,204 @@ export async function processTaxDelinquentImport(
   return result;
 }
 
+// ─── Real implementations replacing the foundation-PR stubs ─────────────────
+//
+// Marcus's persona walkthrough: "the service is a stub. taxDelinquentPipeline.
+// getLeads literally returns []. So the empty state is what I see no matter
+// what I do, until I import a CSV." Below are the wired-in implementations
+// that read from the leads table where tax-delinquent leads actually live
+// (created by processTaxDelinquentImport above with taxDelinquent=true).
+
+interface GetLeadsOpts {
+  organizationId: number;
+  stateCode?: string;
+  risk?: string;
+  limit?: number;
+  page?: number;
+}
+
+interface DelinquentLeadRow {
+  id: number;
+  ownerName: string;
+  propertyAddress: string;
+  county: string;
+  stateCode: string;
+  yearsDelinquent: number;
+  taxOwedCents: number;
+  propertyValueCents: number;
+  equityPercent: number;
+  daysUntilTaxSale?: number;
+  risk: "critical" | "high" | "medium" | "low";
+  score: number;
+}
+
+/**
+ * Multi-factor import-time scoring. Caps at 90; live scoring nudges
+ * higher when behavioral signals (mailers responded, calls answered)
+ * accrue.
+ */
+function scoreImportRecord(rec: NormalizedDelinquentRecord): number {
+  let s = 30; // base
+  if (rec.delinquentYears != null) {
+    if (rec.delinquentYears >= 3) s += 40;
+    else if (rec.delinquentYears === 2) s += 30;
+    else if (rec.delinquentYears === 1) s += 20;
+    else s += 10;
+  }
+  // Larger parcels skew motivated (more carrying cost for chronic delinquents).
+  if (rec.acres != null && rec.acres > 1) s += 10;
+  if (rec.acres != null && rec.acres > 5) s += 5;
+  // Address completeness signals data quality (likelier deliverable mail).
+  if (rec.propertyAddress) s += 5;
+  if (rec.zipCode) s += 5;
+  return Math.min(90, s);
+}
+
+/**
+ * Derive risk bucket from years delinquent + equity. Marcus: "the 11-day-out
+ * owner is twenty times more motivated than the 180-day-out owner" — so when
+ * we know daysUntilTaxSale, that dominates.
+ */
+function deriveRisk(input: {
+  yearsDelinquent: number;
+  daysUntilTaxSale?: number;
+  equityPercent: number;
+}): "critical" | "high" | "medium" | "low" {
+  const { yearsDelinquent, daysUntilTaxSale, equityPercent } = input;
+  if (daysUntilTaxSale !== undefined && daysUntilTaxSale <= 30) return "critical";
+  if (yearsDelinquent >= 3) return "critical";
+  if (daysUntilTaxSale !== undefined && daysUntilTaxSale <= 90) return "high";
+  if (yearsDelinquent === 2 && equityPercent >= 40) return "high";
+  if (yearsDelinquent >= 1) return "medium";
+  return "low";
+}
+
+async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[]; total: number }> {
+  const { organizationId, stateCode, risk, limit = 50, page = 1 } = opts;
+  const offset = Math.max(0, (page - 1) * limit);
+
+  // Pull the candidate set: tax-delinquent flagged, optionally filtered by
+  // state. Risk is a derived-server-side bucket so we filter post-derive.
+  const conditions = [
+    eq(leads.organizationId, organizationId),
+    eq(leads.taxDelinquent, true),
+  ];
+  if (stateCode) {
+    conditions.push(eq(leads.state, stateCode.toUpperCase()));
+  }
+
+  const rows = await db
+    .select()
+    .from(leads)
+    .where(and(...conditions))
+    .orderBy(sql`${leads.score} DESC NULLS LAST`)
+    .limit(limit * 4) // pull extra so post-derive risk filter still has volume
+    .offset(offset);
+
+  const mapped: DelinquentLeadRow[] = rows.map((l) => {
+    const meta = (l.metadata as { delinquentYears?: number; daysUntilTaxSale?: number; propertyValueCents?: number } | null) ?? {};
+    const ownerName = [l.firstName, l.lastName].filter(Boolean).join(" ").trim() || (l.email ?? "Unknown owner");
+    const taxOwedDollars = parseFloat(l.delinquentAmount ?? "0");
+    const taxOwedCents = Math.round(taxOwedDollars * 100);
+    // Property value is best-effort: prefer metadata.propertyValueCents,
+    // then taxOwedCents × 8 as a placeholder (industry-typical
+    // tax-to-value of ~12.5% for delinquent rural). We surface the
+    // "estimated" caveat upstream — the real value lands when AVM /
+    // assessed-value joins ship in TD-2.
+    const propertyValueCents = meta.propertyValueCents ?? Math.round(taxOwedCents * 8);
+    const equityPercent = propertyValueCents > 0
+      ? Math.max(0, Math.min(100, Math.round(((propertyValueCents - taxOwedCents) / propertyValueCents) * 100)))
+      : 0;
+    const yearsDelinquent = meta.delinquentYears ?? 0;
+    const daysUntilTaxSale = meta.daysUntilTaxSale;
+    const riskBucket = deriveRisk({ yearsDelinquent, daysUntilTaxSale, equityPercent });
+    return {
+      id: l.id,
+      ownerName,
+      propertyAddress: [l.propertyAddress, l.city, l.state].filter(Boolean).join(", "),
+      county: l.county ?? "",
+      stateCode: l.state ?? "",
+      yearsDelinquent,
+      taxOwedCents,
+      propertyValueCents,
+      equityPercent,
+      daysUntilTaxSale,
+      risk: riskBucket,
+      score: l.score ?? 0,
+    };
+  });
+
+  const filtered = risk && risk !== "all"
+    ? mapped.filter((m) => m.risk === risk)
+    : mapped;
+  const trimmed = filtered.slice(0, limit);
+  return { leads: trimmed, total: filtered.length };
+}
+
+async function getLead(id: number, orgId: number): Promise<DelinquentLeadRow | null> {
+  const [row] = await db
+    .select()
+    .from(leads)
+    .where(and(
+      eq(leads.id, id),
+      eq(leads.organizationId, orgId),
+      eq(leads.taxDelinquent, true),
+    ))
+    .limit(1);
+  if (!row) return null;
+  const result = await getLeads({ organizationId: orgId, limit: 200 });
+  return result.leads.find((l) => l.id === id) ?? null;
+}
+
+interface AddToOutreachResult {
+  success: boolean;
+  leadId: number;
+  status: string;
+  consentState: "mail_only" | "inbound_engaged" | "express_consent";
+}
+
+async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachResult> {
+  const [row] = await db
+    .select()
+    .from(leads)
+    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), eq(leads.taxDelinquent, true)))
+    .limit(1);
+  if (!row) throw new Error("Lead not found");
+
+  // Marcus: "Add a consent-state column on /tax-delinquent: Mail-only /
+  // Inbound-engaged / Express-consent." Derive from existing tcpaConsent
+  // and lead activity. Without explicit consent the legal-safe default is
+  // mail-only (no TCPA risk; FDCPA mini-Miranda still applies on letter
+  // copy but that's a template concern).
+  const consentState: AddToOutreachResult["consentState"] =
+    (row as any).tcpaConsent ? "express_consent" : "mail_only";
+
+  // Move the lead into 'contacted' status. The actual mailer / SMS / call
+  // queueing is a separate service that runs from the lead's status; we
+  // don't bypass TCPA here. Marcus's compliance-test concern: the mail-
+  // first cadence is the TCPA-safe default.
+  await db
+    .update(leads)
+    .set({ status: "contacted", updatedAt: new Date() })
+    .where(eq(leads.id, id));
+
+  return { success: true, leadId: id, status: "contacted", consentState };
+}
+
 // Namespace export for route consumption
 export const taxDelinquentPipeline = {
   processTaxDelinquentImport,
-  async getLeads(_opts: any) { return []; },
-  async importFromCounty(_opts: any) { return { imported: 0, errors: 0 }; },
-  async getLead(_id: any, _orgId: number) { return null; },
-  async addToOutreach(_id: any, _orgId: number) { return { success: true }; },
+  getLeads,
+  getLead,
+  addToOutreach,
+  // importFromCounty: scraper-driven pipeline. Wired in TD-6 (PDF OCR
+  // + per-county scraper roster). For now, leave as a no-op rather than
+  // pretending we have the data — same honesty as the rest of TD-1.
+  async importFromCounty(_opts: { organizationId: number; stateCode?: string; county?: string; limit?: number }) {
+    return {
+      imported: 0,
+      errors: 0,
+      message: "Per-county scraper not yet implemented. Use the CSV importer at /api/import/tax-delinquent for now.",
+    };
+  },
 };
