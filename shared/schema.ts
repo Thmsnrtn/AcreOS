@@ -17567,6 +17567,96 @@ export type NoteOwnershipSplit = typeof noteOwnershipSplits.$inferSelect;
 export type InsertNoteOwnershipSplit = typeof noteOwnershipSplits.$inferInsert;
 
 // ============================================================================
+// LOSS-MIT CASE FILES — default workflow
+// ----------------------------------------------------------------------------
+// Linnea bonus #7: "When a borrower goes 60+ days late, I have a sequence:
+// outreach call, demand letter, loss-mit options (forbearance, modification,
+// deed-in-lieu, short sale, foreclosure). Each step has paperwork and
+// timeline requirements that vary by state."
+//
+// One open case per delinquent note (uniqueIndex on (noteId) WHERE
+// status='open'). Closes with one of several outcomes that map to how the
+// case resolved.
+// ============================================================================
+
+export const LOSS_MIT_STATUS = [
+  "open",
+  "closed_cured",          // Borrower brought current
+  "closed_modified",       // Note modification (rate / term / forbearance)
+  "closed_dil",            // Deed-in-lieu of foreclosure
+  "closed_short_sale",     // Short sale closed
+  "closed_foreclosed",     // Foreclosure completed
+  "closed_charged_off",    // Written off
+] as const;
+export type LossMitStatus = typeof LOSS_MIT_STATUS[number];
+
+export const noteLossMitCases = pgTable(
+  "note_loss_mit_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    status: text("status").$type<LossMitStatus>().notNull().default("open"),
+    state: text("state"), // US 2-letter — drives timeline rules per jurisdiction
+    daysPastDueAtOpen: integer("days_past_due_at_open"),
+    // SCRA check — required before foreclosure can proceed under federal law.
+    scraCheckedAt: timestamp("scra_checked_at", { withTimezone: true }),
+    scraActiveDuty: boolean("scra_active_duty"), // true if SCRA-protected
+    openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    summary: text("summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("loss_mit_org_status_idx").on(table.organizationId, table.status),
+    index("loss_mit_org_note_idx").on(table.organizationId, table.noteId),
+  ],
+);
+
+export const LOSS_MIT_ACTION_TYPES = [
+  "outreach_call",
+  "outreach_email",
+  "outreach_letter",
+  "demand_letter_sent",
+  "scra_checked",
+  "borrower_response_received",
+  "modification_offered",
+  "modification_accepted",
+  "forbearance_started",
+  "short_sale_listed",
+  "dil_offered",
+  "dil_signed",
+  "foreclosure_filed",
+  "bpo_refresh_ordered",
+  "note", // freeform note
+] as const;
+export type LossMitActionType = typeof LOSS_MIT_ACTION_TYPES[number];
+
+export const noteLossMitActions = pgTable(
+  "note_loss_mit_actions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    caseId: varchar("case_id").references(() => noteLossMitCases.id, { onDelete: "cascade" }).notNull(),
+    actionType: text("action_type").$type<LossMitActionType>().notNull(),
+    performedAt: timestamp("performed_at", { withTimezone: true }).defaultNow().notNull(),
+    notes: text("notes"),
+    performedByUserId: text("performed_by_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("loss_mit_actions_case_idx").on(table.caseId, table.performedAt),
+    index("loss_mit_actions_org_type_idx").on(table.organizationId, table.actionType),
+  ],
+);
+
+export type NoteLossMitCase = typeof noteLossMitCases.$inferSelect;
+export type InsertNoteLossMitCase = typeof noteLossMitCases.$inferInsert;
+export type NoteLossMitAction = typeof noteLossMitActions.$inferSelect;
+export type InsertNoteLossMitAction = typeof noteLossMitActions.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

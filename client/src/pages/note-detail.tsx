@@ -36,6 +36,7 @@ import { NoteTinEditor } from "@/components/note-tin-editor";
 import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
+import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 
 export interface AcquiredNote {
   id: string;
@@ -416,6 +417,9 @@ export default function NoteDetailPage() {
       {/* Basis schedule — Pub 1212 market-discount accretion. Renders empty
           state for face-value purchases / premium-paid notes. */}
       <NoteBasisSchedule noteId={note.id} />
+
+      {/* Loss-mit case file — auto-prominent when status is late/default. */}
+      <NoteLossMitCard noteId={note.id} currentNoteStatus={note.status} />
 
       {/* Compliance — hazard insurance + property-tax escrow. */}
       <NoteComplianceCard

@@ -16,7 +16,16 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { acquiredNotes, notePayments, noteAssignments, noteOwnershipSplits } from "@shared/schema";
+import {
+  acquiredNotes,
+  notePayments,
+  noteAssignments,
+  noteOwnershipSplits,
+  noteLossMitCases,
+  noteLossMitActions,
+  LOSS_MIT_STATUS,
+  LOSS_MIT_ACTION_TYPES,
+} from "@shared/schema";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
@@ -1056,6 +1065,242 @@ export function registerNoteRoutes(app: Express): void {
         return res.json({ assignment: row });
       } catch (err) {
         logger.error("notes.assignments.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Loss-mit case files ──────────────────────────────────────────────────
+  // Linnea bonus #7: "30% of our time on the bottom 10% of our book."
+  // GET    /api/notes/:id/loss-mit-case          — current open case (or null)
+  // POST   /api/notes/:id/loss-mit-case          — open a new case
+  // PATCH  /api/loss-mit-cases/:id               — update / close
+  // GET    /api/loss-mit-cases/:id/actions       — action log
+  // POST   /api/loss-mit-cases/:id/actions       — log a new action
+  // GET    /api/loss-mit-cases?status=open       — org-level dashboard
+  app.get(
+    "/api/notes/:id/loss-mit-case",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const [row] = await db
+          .select()
+          .from(noteLossMitCases)
+          .where(and(
+            eq(noteLossMitCases.organizationId, orgId),
+            eq(noteLossMitCases.noteId, noteId),
+            eq(noteLossMitCases.status, "open"),
+          ))
+          .limit(1);
+        return res.json({ case: row ?? null });
+      } catch (err) {
+        logger.error("notes.lossMit.get failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/notes/:id/loss-mit-case",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = req.params.id;
+        const parsed = z.object({
+          state: z.string().length(2).optional(),
+          daysPastDueAtOpen: z.number().int().nonnegative().optional(),
+          summary: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        // Block opening a second case while one is already open.
+        const [existing] = await db
+          .select({ id: noteLossMitCases.id })
+          .from(noteLossMitCases)
+          .where(and(
+            eq(noteLossMitCases.organizationId, orgId),
+            eq(noteLossMitCases.noteId, noteId),
+            eq(noteLossMitCases.status, "open"),
+          ))
+          .limit(1);
+        if (existing) {
+          return Errors.badRequest(res, "An open case already exists for this note. Close it before opening a new one.");
+        }
+
+        const [row] = await db
+          .insert(noteLossMitCases)
+          .values({ organizationId: orgId, noteId, ...parsed.data })
+          .returning();
+        return res.status(201).json({ case: row });
+      } catch (err) {
+        logger.error("notes.lossMit.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/loss-mit-cases/:id",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = z.object({
+          status: z.enum(LOSS_MIT_STATUS).optional(),
+          state: z.string().length(2).optional(),
+          scraActiveDuty: z.boolean().optional(),
+          scraCheckedAt: z.string().optional(),
+          summary: z.string().max(2_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        const update: Partial<typeof noteLossMitCases.$inferInsert> = {
+          ...parsed.data,
+          updatedAt: new Date(),
+          scraCheckedAt: parsed.data.scraCheckedAt ? new Date(parsed.data.scraCheckedAt) : undefined,
+        };
+        // Closing the case stamps closedAt.
+        if (parsed.data.status && parsed.data.status !== "open") {
+          update.closedAt = new Date();
+        }
+
+        const [row] = await db
+          .update(noteLossMitCases)
+          .set(update)
+          .where(and(eq(noteLossMitCases.id, req.params.id), eq(noteLossMitCases.organizationId, orgId)))
+          .returning();
+        if (!row) return Errors.notFound(res, "Case");
+        return res.json({ case: row });
+      } catch (err) {
+        logger.error("notes.lossMit.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.get(
+    "/api/loss-mit-cases/:id/actions",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const rows = await db
+          .select()
+          .from(noteLossMitActions)
+          .where(and(
+            eq(noteLossMitActions.organizationId, orgId),
+            eq(noteLossMitActions.caseId, req.params.id),
+          ))
+          .orderBy(desc(noteLossMitActions.performedAt));
+        return res.json({ actions: rows });
+      } catch (err) {
+        logger.error("notes.lossMit.actions.list failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/loss-mit-cases/:id/actions",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = z.object({
+          actionType: z.enum(LOSS_MIT_ACTION_TYPES),
+          performedAt: z.string().optional(),
+          notes: z.string().max(4_000).optional(),
+        }).safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+
+        // Ensure the case belongs to the org.
+        const [c] = await db
+          .select({ id: noteLossMitCases.id })
+          .from(noteLossMitCases)
+          .where(and(eq(noteLossMitCases.id, req.params.id), eq(noteLossMitCases.organizationId, orgId)))
+          .limit(1);
+        if (!c) return Errors.notFound(res, "Case");
+
+        const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+
+        const [row] = await db
+          .insert(noteLossMitActions)
+          .values({
+            organizationId: orgId,
+            caseId: req.params.id,
+            actionType: parsed.data.actionType,
+            performedAt: parsed.data.performedAt ? new Date(parsed.data.performedAt) : new Date(),
+            notes: parsed.data.notes ?? null,
+            performedByUserId: userId,
+          })
+          .returning();
+
+        // Auto-update the case when SCRA is checked — convenience for the
+        // common case where a user logs the SCRA check action and expects
+        // the case-level scraCheckedAt + scraActiveDuty to reflect it.
+        if (parsed.data.actionType === "scra_checked") {
+          const isActiveDuty = /active.duty/i.test(parsed.data.notes ?? "");
+          await db
+            .update(noteLossMitCases)
+            .set({ scraCheckedAt: new Date(), scraActiveDuty: isActiveDuty, updatedAt: new Date() })
+            .where(eq(noteLossMitCases.id, req.params.id));
+        }
+
+        return res.status(201).json({ action: row });
+      } catch (err) {
+        logger.error("notes.lossMit.actions.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.get(
+    "/api/loss-mit-cases",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const status = typeof req.query.status === "string" ? req.query.status : "open";
+        const rows = await db
+          .select({
+            caseId: noteLossMitCases.id,
+            noteId: noteLossMitCases.noteId,
+            status: noteLossMitCases.status,
+            state: noteLossMitCases.state,
+            daysPastDueAtOpen: noteLossMitCases.daysPastDueAtOpen,
+            openedAt: noteLossMitCases.openedAt,
+            scraCheckedAt: noteLossMitCases.scraCheckedAt,
+            payerName: acquiredNotes.payerName,
+            noteNumber: acquiredNotes.noteNumber,
+            currentBalanceCents: acquiredNotes.currentBalanceCents,
+          })
+          .from(noteLossMitCases)
+          .innerJoin(acquiredNotes, eq(acquiredNotes.id, noteLossMitCases.noteId))
+          .where(and(
+            eq(noteLossMitCases.organizationId, orgId),
+            (LOSS_MIT_STATUS as readonly string[]).includes(status)
+              ? eq(noteLossMitCases.status, status as any)
+              : eq(noteLossMitCases.status, "open"),
+          ))
+          .orderBy(desc(noteLossMitCases.openedAt));
+        return res.json({ cases: rows });
+      } catch (err) {
+        logger.error("notes.lossMit.list failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

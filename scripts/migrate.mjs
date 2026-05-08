@@ -174,6 +174,40 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "acquired_notes_org_insurance_idx" ON "acquired_notes" ("organization_id", "insurance_status")',
   'CREATE INDEX IF NOT EXISTS "acquired_notes_org_tax_due_idx" ON "acquired_notes" ("organization_id", "tax_disbursement_due_date")',
 
+  // Note Investor — loss-mit case files (PR-12). One case per delinquent
+  // note + an actions log per case. note_id is uuid (matches acquired_notes
+  // prod-inferred type).
+  `CREATE TABLE IF NOT EXISTS "note_loss_mit_cases" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "note_id" uuid NOT NULL REFERENCES "acquired_notes"("id") ON DELETE CASCADE,
+     "status" text NOT NULL DEFAULT 'open',
+     "state" text,
+     "days_past_due_at_open" integer,
+     "scra_checked_at" timestamptz,
+     "scra_active_duty" boolean,
+     "opened_at" timestamptz NOT NULL DEFAULT now(),
+     "closed_at" timestamptz,
+     "summary" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "loss_mit_org_status_idx" ON "note_loss_mit_cases" ("organization_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "loss_mit_org_note_idx" ON "note_loss_mit_cases" ("organization_id", "note_id")',
+
+  `CREATE TABLE IF NOT EXISTS "note_loss_mit_actions" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "case_id" uuid NOT NULL REFERENCES "note_loss_mit_cases"("id") ON DELETE CASCADE,
+     "action_type" text NOT NULL,
+     "performed_at" timestamptz NOT NULL DEFAULT now(),
+     "notes" text,
+     "performed_by_user_id" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "loss_mit_actions_case_idx" ON "note_loss_mit_actions" ("case_id", "performed_at")',
+  'CREATE INDEX IF NOT EXISTS "loss_mit_actions_org_type_idx" ON "note_loss_mit_actions" ("organization_id", "action_type")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
