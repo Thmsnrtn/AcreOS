@@ -925,6 +925,62 @@ export function registerPropertyRoutes(app: Express): void {
       Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk fetch parcel data"));
     }
   });
-  
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /api/properties/:id/detect-land-status (P0-18 Phase B — LAR overlay)
+  //
+  // Runs the parcel's lat/lng through the BIA Land Area Representations
+  // overlay. When the dataset is loaded and the point falls inside a LAR
+  // polygon, returns { status: 'tribal_trust' | ..., confidence: 1, ... }.
+  // When the dataset isn't loaded, returns 'unknown' with source =
+  // 'no_overlay_loaded' so the operator's manual-verification flow stays
+  // authoritative.
+  //
+  // Doesn't auto-WRITE the detected status — surfaces the result so the
+  // existing PATCH /land-status endpoint can take it as input. Audit log
+  // captures every detection for chain-of-custody.
+  // ──────────────────────────────────────────────────────────────────────────
+  api.post("/api/properties/:id/detect-land-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const propertyId = Number(req.params.id);
+      if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
+
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
+
+      const lat = property.latitude != null ? parseFloat(property.latitude as any) : NaN;
+      const lng = property.longitude != null ? parseFloat(property.longitude as any) : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return Errors.badRequest(res, "Property has no lat/lng — geocode it first");
+      }
+
+      const { detectLandStatusFromCoords } = await import("./services/landStatusLAR");
+      const result = detectLandStatusFromCoords(lat, lng);
+
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "detect_land_status",
+        entityType: "property",
+        entityId: propertyId,
+        changes: {
+          coords: { lat, lng },
+          result,
+          regulatoryBasis: ["25 USC §177", "25 CFR §152"],
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+
+      logger.info(`[LAR] Property ${propertyId} detected: ${result.status} (${result.source}, confidence ${result.confidence})`);
+      res.json(result);
+    } catch (err) {
+      logger.error("Land-status detection error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Land-status detection failed"));
+    }
+  });
 
 }
