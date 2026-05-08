@@ -179,6 +179,7 @@ import { registerRentLedgerRoutes } from "./routes-rent-ledger";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
+import { registerInvestorAnalyticsRoutes } from "./routes-investor-analytics";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
@@ -1801,6 +1802,8 @@ export async function registerRoutes(
   registerRentRollImportRoutes(app);
   // Buy-and-hold vertical BH-6 — maintenance ticketing.
   registerMaintenanceTicketRoutes(app);
+  // Buy-and-hold vertical BH-7 — investor analytics (NOI/cap/DSCR).
+  registerInvestorAnalyticsRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this
   // session; high-trust paths (admin recovery, ownership transfer)

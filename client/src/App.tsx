@@ -277,6 +277,7 @@ const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
+const InvestorAnalyticsPage = React.lazy(() => import("@/pages/investor-analytics"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -561,6 +562,9 @@ function Router() {
       </Route>
       <Route path="/maintenance">
         {() => <ProtectedRoute component={MaintenancePage} />}
+      </Route>
+      <Route path="/investor-analytics">
+        {() => <ProtectedRoute component={InvestorAnalyticsPage} />}
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
