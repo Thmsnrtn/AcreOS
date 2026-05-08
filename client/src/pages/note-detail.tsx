@@ -30,6 +30,7 @@ import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
 import { NoteRecordPaymentModal } from "@/components/note-record-payment-modal";
 import { NotePayoffCalculator } from "@/components/note-payoff-calculator";
+import { NoteYieldPanel } from "@/components/note-yield-panel";
 
 export interface AcquiredNote {
   id: string;
@@ -308,6 +309,10 @@ export default function NoteDetailPage() {
           testid="note-detail-discount"
         />
       </div>
+
+      {/* Yield panel — Linnea's "table stakes." Live IRR / YTM / current
+          yield / effective-net computed from the actual ledger. */}
+      <NoteYieldPanel noteId={note.id} />
 
       {/* Servicing snapshot */}
       <Card className="mb-6">

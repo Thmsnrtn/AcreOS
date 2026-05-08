@@ -160,6 +160,141 @@ export function computeAmortization(input: {
   return out;
 }
 
+// ─── Yield math ──────────────────────────────────────────────────────────────
+
+/**
+ * Newton-Raphson IRR. Returns the discount rate that zeroes NPV of the
+ * given cash-flow series. Same algorithm as client/src/components/IRRCalculator.tsx
+ * (1e-7 tolerance, 1000 iter ceiling). Cash flows are in cents; the period
+ * unit (annual vs monthly) is whatever the caller's stream is in — caller
+ * converts to annual.
+ */
+function calcIRR(cashFlows: number[], guess = 0.05): number | null {
+  const MAX_ITER = 1000;
+  const TOLERANCE = 1e-7;
+  let rate = guess;
+  for (let i = 0; i < MAX_ITER; i++) {
+    let npv = 0;
+    let dNpv = 0;
+    for (let t = 0; t < cashFlows.length; t++) {
+      const denom = Math.pow(1 + rate, t);
+      npv += cashFlows[t] / denom;
+      if (t > 0) dNpv -= (t * cashFlows[t]) / Math.pow(1 + rate, t + 1);
+    }
+    if (Math.abs(dNpv) < 1e-12) return null;
+    const newRate = rate - npv / dNpv;
+    if (Math.abs(newRate - rate) < TOLERANCE) return newRate;
+    rate = newRate;
+  }
+  return null;
+}
+
+interface ComputeYieldsInput {
+  acquisitionPriceCents: number;
+  currentBalanceCents: number;
+  interestRateBps: number;
+  paymentAmountCents: number;
+  termMonths: number;
+  acquisitionDate: string; // ISO
+  payments: Array<{ paymentDate: string; principalCents: number; interestCents: number }>;
+}
+
+interface ComputeYieldsResult {
+  // Decimals (0.085 = 8.5%). Null when the IRR didn't converge.
+  currentYield: number;
+  ytmAtAcquisition: number | null;
+  irrToDate: number | null;
+  effectiveNetYield: number | null;
+  // Servicing-cost assumption used in the effective-net calc. Null when
+  // we don't have enough data to estimate; see implementation notes.
+  effectiveNetServicingAssumption: { annualBps: number; note: string } | null;
+}
+
+/**
+ * Compute the four yield metrics Linnea wants on every note detail page.
+ * Pure / unit-testable; called by GET /api/notes/:id/yield.
+ */
+export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
+  const {
+    acquisitionPriceCents,
+    currentBalanceCents,
+    interestRateBps,
+    paymentAmountCents,
+    termMonths,
+    acquisitionDate,
+    payments,
+  } = input;
+
+  // ── Current yield ───────────────────────────────────────────────────────
+  // running coupon on basis: (annual interest payment / acquisition price)
+  // Approximation: rate * currentBalance / acquisitionPrice.
+  const annualInterestCents = (interestRateBps / 10_000) * currentBalanceCents;
+  const currentYield = acquisitionPriceCents > 0
+    ? annualInterestCents / acquisitionPriceCents
+    : 0;
+
+  // ── YTM at acquisition ──────────────────────────────────────────────────
+  // IRR over the original projected cash flows: -acquisitionPrice at t=0,
+  // then paymentAmountCents per month for termMonths. We compute the
+  // monthly IRR, then convert to annual via (1+r_m)^12 - 1.
+  const ytmFlowsMonthly: number[] = [-acquisitionPriceCents];
+  for (let m = 0; m < termMonths; m++) ytmFlowsMonthly.push(paymentAmountCents);
+  const ytmMonthly = calcIRR(ytmFlowsMonthly, 0.005);
+  const ytmAtAcquisition = ytmMonthly === null ? null : Math.pow(1 + ytmMonthly, 12) - 1;
+
+  // ── IRR-to-date ─────────────────────────────────────────────────────────
+  // Actual cash flows from the payment ledger, plus a terminal "if it pays
+  // off today" cash flow equal to the current balance. Periods are months
+  // from acquisition. We bucket by month-from-acquisition so a borrower's
+  // partial-then-make-whole behavior nets correctly within a month.
+  const acqDate = new Date(acquisitionDate);
+  const monthsFromAcquisition = (iso: string): number => {
+    const d = new Date(iso);
+    return (d.getUTCFullYear() - acqDate.getUTCFullYear()) * 12 +
+      (d.getUTCMonth() - acqDate.getUTCMonth());
+  };
+  const monthlyCashIn = new Map<number, number>();
+  let maxMonth = 0;
+  for (const p of payments) {
+    const m = Math.max(0, monthsFromAcquisition(p.paymentDate));
+    const cash = p.principalCents + p.interestCents;
+    monthlyCashIn.set(m, (monthlyCashIn.get(m) ?? 0) + cash);
+    if (m > maxMonth) maxMonth = m;
+  }
+  const irrFlowsMonthly: number[] = [-acquisitionPriceCents];
+  for (let m = 1; m <= Math.max(1, maxMonth); m++) {
+    irrFlowsMonthly.push(monthlyCashIn.get(m) ?? 0);
+  }
+  // Add today's "if-paid-off" terminal value at the next-month bucket.
+  irrFlowsMonthly.push(currentBalanceCents);
+  const irrMonthly = calcIRR(irrFlowsMonthly, 0.005);
+  const irrToDate = irrMonthly === null ? null : Math.pow(1 + irrMonthly, 12) - 1;
+
+  // ── Effective net yield ─────────────────────────────────────────────────
+  // Linnea: "net of servicing costs and tax escrow float."
+  // We don't track servicing costs as structured data yet — this is the
+  // PR-9 / pool-tracking surface where investor-level cost allocation
+  // lives. Until then, apply the documented industry-typical 25 bps
+  // assumption and label it as such so the user can correct it in their
+  // CPA flow. When we add a per-org servicing-cost field, swap the
+  // hardcoded value for the org's setting.
+  const SERVICING_BPS_DEFAULT = 25; // 0.25% — small-balance secondary market typical
+  const effectiveNetYield = irrToDate === null
+    ? null
+    : Math.max(0, irrToDate - SERVICING_BPS_DEFAULT / 10_000);
+  const effectiveNetServicingAssumption = irrToDate === null
+    ? null
+    : { annualBps: SERVICING_BPS_DEFAULT, note: "industry-typical default; will read from org setting once configurable" };
+
+  return {
+    currentYield,
+    ytmAtAcquisition,
+    irrToDate,
+    effectiveNetYield,
+    effectiveNetServicingAssumption,
+  };
+}
+
 // ─── Route registration ──────────────────────────────────────────────────────
 
 export function registerNoteRoutes(app: Express): void {
@@ -521,6 +656,56 @@ export function registerNoteRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("notes.recordPayment failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Yield panel (current / YTM / IRR-to-date / effective net) ────────────
+  // Linnea: "every note's detail page should show all four yield metrics
+  // computed live from its actual payment history. That's table stakes."
+  app.get(
+    "/api/notes/:id/yield",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const id = req.params.id;
+
+        const [note] = await db
+          .select()
+          .from(acquiredNotes)
+          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+          .limit(1);
+        if (!note) return Errors.notFound(res, "Note");
+
+        const payments = await db
+          .select()
+          .from(notePayments)
+          .where(eq(notePayments.noteId, id))
+          .orderBy(notePayments.paymentDate);
+
+        const yields = computeYields({
+          acquisitionPriceCents: note.acquisitionPriceCents,
+          currentBalanceCents: note.currentBalanceCents,
+          interestRateBps: note.interestRateBps,
+          paymentAmountCents: note.paymentAmountCents,
+          termMonths: note.termMonths,
+          acquisitionDate: note.acquisitionDate as unknown as string,
+          payments: payments.map((p) => ({
+            paymentDate: p.paymentDate as unknown as string,
+            principalCents: p.principalCents,
+            interestCents: p.interestCents,
+            // Escrow + late fee don't reduce the asset, so they're excluded
+            // from the IRR cash-flow stream from Linnea's perspective.
+          })),
+        });
+
+        return res.json({ noteId: id, ...yields });
+      } catch (err) {
+        logger.error("notes.yield failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },
