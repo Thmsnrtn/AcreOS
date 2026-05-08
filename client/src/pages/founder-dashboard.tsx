@@ -2159,7 +2159,24 @@ export default function FounderDashboard() {
           {/* ═══ TAB: OPERATIONS ═══ */}
           {activeTab === "operations" && (
             <div className="space-y-6">
-              <ActionQueuePanel />
+              {/* ActionQueuePanel merged into /founder (What needs you today) (F-D #3).
+                  The unified todo feed now also surfaces support escalations,
+                  dunning, expiring trials, hot feature requests, and inactive
+                  campaigns with `source: 'action-queue'` provenance. */}
+              <Link href="/founder" className="block p-4 rounded-xl border bg-card hover:border-primary/40 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ListChecks className="w-5 h-5 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold text-sm">Action queue → /founder</p>
+                      <p className="text-xs text-muted-foreground">
+                        Support escalations, dunning, trial conversions, hot feature requests, inactive campaigns — all merged into the unified What-needs-you-today feed.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-xs">Open →</Badge>
+                </div>
+              </Link>
               <Card className="overflow-hidden">
                 <CardHeader className="pb-2 border-b">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -5961,258 +5978,6 @@ function TodaysBriefing() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// ACTION QUEUE
-// Prioritized inbox of everything needing founder attention.
-// Each item has: priority, description, estimated time, action button.
-// Support escalations show AI-drafted reply with approve/edit/send.
-// ─────────────────────────────────────────────────────────────────────
-
-interface ActionQueueItem {
-  id: string;
-  type: string;
-  priority: "critical" | "high" | "medium" | "low";
-  title: string;
-  description: string;
-  estimatedMinutes: number;
-  suggestedAction: string;
-  data: Record<string, any>;
-}
-
-interface ActionQueueData {
-  items: ActionQueueItem[];
-  totalEstimatedMinutes: number;
-  counts: { critical: number; high: number; medium: number };
-}
-
-const ACTION_PRIORITY_CONFIG = {
-  critical: { label: "Critical", bg: "bg-acr-neg/10", text: "text-acr-neg", border: "border-acr-neg/30", dot: "bg-acr-neg" },
-  high: { label: "High", bg: "bg-acr-warn/10", text: "text-acr-warn", border: "border-acr-warn/30", dot: "bg-acr-warn" },
-  medium: { label: "Medium", bg: "bg-acr-warn/10", text: "text-acr-warn", border: "border-acr-warn/30", dot: "bg-acr-warn" },
-  low: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", border: "border-border", dot: "bg-muted-foreground" },
-};
-
-const ACTION_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  support_escalation: AlertOctagon,
-  dunning_critical: AlertTriangle,
-  expiring_trial: Clock,
-  feature_request: Lightbulb,
-  inactive_campaign: Megaphone,
-};
-
-function ActionQueuePanel() {
-  const { toast } = useToast();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [editingDraft, setEditingDraft] = useState<number | null>(null);
-
-  const { data, isLoading, refetch } = useQuery<ActionQueueData>({
-    queryKey: ["/api/founder/action-queue"],
-    refetchInterval: 5 * 60 * 1000,
-  });
-
-  const draftMutation = useMutation({
-    mutationFn: async (ticketId: number) =>
-      apiRequest("POST", `/api/founder/support/${ticketId}/ai-draft`, {}).then((r) => r.json()),
-    onSuccess: (data: { draft: string; ticketId: number }) => {
-      setDrafts((d) => ({ ...d, [data.ticketId]: data.draft }));
-    },
-    onError: () => toast({ title: "Couldn't generate draft", description: "Compose a reply manually below.", variant: "destructive" }),
-  });
-
-  const replyMutation = useMutation({
-    mutationFn: async ({ ticketId, message }: { ticketId: number; message: string }) =>
-      apiRequest("POST", `/api/founder/support/${ticketId}/reply`, { message, resolve: true }).then((r) => r.json()),
-    onSuccess: () => {
-      refetch();
-      toast({ title: "Reply sent and ticket resolved" });
-    },
-    onError: () => toast({ title: "Couldn't send reply", description: "Your draft is preserved. Try sending again.", variant: "destructive" }),
-  });
-
-  const items = data?.items || [];
-  const totalMinutes = data?.totalEstimatedMinutes || 0;
-
-  if (isLoading) {
-    return (
-      <div className="p-5 rounded-xl border bg-card space-y-2">
-        <div className="h-5 bg-muted animate-pulse rounded w-1/3" />
-        {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
-      </div>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <div className="p-5 rounded-xl border bg-card">
-        <div className="flex items-center gap-2 mb-3">
-          <ListChecks className="w-5 h-5 text-primary" />
-          <h2 className="font-semibold text-lg">Action Queue</h2>
-          <Badge className="bg-acr-pos/10 text-acr-pos border-acr-pos-soft text-xs ml-1">All clear</Badge>
-        </div>
-        <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
-          <CheckCircle2 className="w-5 h-5 text-acr-pos" />
-          Nothing needs your attention right now. The system is running autonomously.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-5 rounded-xl border bg-card space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ListChecks className="w-5 h-5 text-primary" />
-          <h2 className="font-semibold text-lg">Action Queue</h2>
-          <Badge variant="outline" className="text-xs">{items.length} item{items.length !== 1 ? "s" : ""}</Badge>
-          {totalMinutes > 0 && (
-            <span className="text-xs text-muted-foreground">~{totalMinutes} min total</span>
-          )}
-        </div>
-        <button type="button" onClick={() => refetch()} aria-label="Refresh support queue" className="p-1.5 rounded hover:bg-muted text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-      </div>
-
-      {/* Priority summary */}
-      {(data?.counts?.critical || 0) + (data?.counts?.high || 0) > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {(data?.counts?.critical || 0) > 0 && (
-            <Badge className="bg-acr-neg/10 text-acr-neg border-acr-neg/30 text-xs">
-              {data!.counts.critical} critical
-            </Badge>
-          )}
-          {(data?.counts?.high || 0) > 0 && (
-            <Badge className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-xs">
-              {data!.counts.high} high
-            </Badge>
-          )}
-          {(data?.counts?.medium || 0) > 0 && (
-            <Badge className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-xs">
-              {data!.counts.medium} medium
-            </Badge>
-          )}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {items.map((item) => {
-          const cfg = ACTION_PRIORITY_CONFIG[item.priority] || ACTION_PRIORITY_CONFIG.low;
-          const Icon = ACTION_TYPE_ICONS[item.type] || CircleDot;
-          const isExpanded = expandedId === item.id;
-          const ticketId = item.data?.ticketId as number | undefined;
-          const hasDraft = ticketId ? !!drafts[ticketId] : false;
-          const isEditing = ticketId ? editingDraft === ticketId : false;
-
-          return (
-            <div key={item.id} className={`rounded-lg border p-3 ${cfg.bg} ${cfg.border}`}>
-              <div
-                className="flex items-start gap-3 cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : item.id)}
-              >
-                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${cfg.dot}`} />
-                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${cfg.text}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`font-medium text-sm ${cfg.text}`}>{item.title}</span>
-                    <Badge className={`text-xs ${cfg.bg} ${cfg.text} ${cfg.border}`}>{cfg.label}</Badge>
-                    <span className="text-xs text-muted-foreground ml-auto">~{item.estimatedMinutes} min</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                </div>
-                <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-              </div>
-
-              {isExpanded && (
-                <div className="mt-3 pl-9 space-y-3">
-                  <p className="text-xs text-muted-foreground italic">
-                    Suggested: {item.suggestedAction}
-                  </p>
-
-                  {/* Support escalation — AI reply flow */}
-                  {item.type === "support_escalation" && ticketId && (
-                    <div className="space-y-2">
-                      {!hasDraft ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs gap-1.5"
-                          onClick={() => draftMutation.mutate(ticketId)}
-                          disabled={draftMutation.isPending}
-                        >
-                          {draftMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                          Generate AI Reply Draft
-                        </Button>
-                      ) : (
-                        <div className="space-y-2">
-                          <Label htmlFor={`ai-reply-${ticketId}`} className="text-xs font-medium text-muted-foreground">AI-drafted reply <span className="text-muted-foreground/70">(edit if needed)</span></Label>
-                          {isEditing ? (
-                            <Textarea
-                              id={`ai-reply-${ticketId}`}
-                              value={drafts[ticketId]}
-                              onChange={(e) => setDrafts((d) => ({ ...d, [ticketId]: e.target.value }))}
-                              className="text-sm min-h-[120px] resize-none"
-                              rows={5}
-                              autoCapitalize="sentences"
-                            />
-                          ) : (
-                            <div id={`ai-reply-${ticketId}`} className="p-2.5 bg-background rounded border text-sm leading-relaxed whitespace-pre-wrap">
-                              {drafts[ticketId]}
-                            </div>
-                          )}
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => replyMutation.mutate({ ticketId, message: drafts[ticketId] })}
-                              disabled={replyMutation.isPending}
-                            >
-                              {replyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                              Send & Resolve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => setEditingDraft(isEditing ? null : ticketId)}
-                            >
-                              <PencilLine className="w-3 h-3" />
-                              {isEditing ? "Done" : "Edit"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => draftMutation.mutate(ticketId)}
-                              disabled={draftMutation.isPending}
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Regenerate
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Other action types — just a link/note */}
-                  {item.type !== "support_escalation" && (
-                    <div className="text-xs text-muted-foreground bg-background/60 rounded p-2 border">
-                      {item.type === "dunning_critical" && "Org is in a critical payment stage. Review their account and consider a direct call or email."}
-                      {item.type === "expiring_trial" && "Trial conversion window closing. A personal touch often converts — try reaching out directly."}
-                      {item.type === "feature_request" && "High-demand request from your users. Quick triage signal (planned/declined) builds trust with customers."}
-                      {item.type === "inactive_campaign" && "Campaign exists in Meta but is paused. Go to Meta Ads Manager to activate or delete it."}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // ORG HEALTH MONITOR

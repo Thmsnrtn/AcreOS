@@ -116,11 +116,16 @@ interface TodoItem {
   actionUrl: string;
   badge?: string;
   createdAt: string;
+  // F-D #3 — provenance tag added when /todo merges in action-queue items.
+  source?: "todo" | "action-queue";
+  estimatedMinutes?: number;
+  suggestedAction?: string;
 }
 
 interface FounderTodoApi {
   total: number;
   items: TodoItem[];
+  sources?: { todo: number; actionQueue: number };
 }
 
 interface VendorState {

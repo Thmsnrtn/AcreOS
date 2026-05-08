@@ -1932,7 +1932,39 @@ router.get("/todo", requireFounder, async (req: Request, res: Response) => {
     const orgId = (req as any).organization?.id ?? (req as any).organizationId;
     const limit = req.query.limit ? Math.min(200, Number(req.query.limit)) : 100;
     const report = await getFounderTodos(orgId, limit);
-    res.json(report);
+
+    // F-D #3 — merge action-queue items into the unified feed with
+    // `source: 'action-queue' | 'todo'` provenance tags so the founder
+    // sees a single ranked list. The legacy /api/founder/action-queue
+    // endpoint stays live for one release while client-side merges
+    // settle.
+    try {
+      const { getActionQueueAsTodos } = await import("./services/founderActionQueue");
+      const actionQueueItems = await getActionQueueAsTodos();
+      const taggedTodoItems = report.items.map((it) => ({ ...it, source: "todo" as const }));
+      const merged = [...taggedTodoItems, ...actionQueueItems].sort((a, b) => b.urgency - a.urgency);
+      const limited = merged.slice(0, limit);
+      const acByType = actionQueueItems.reduce<Record<string, number>>((acc, it) => {
+        acc[it.type] = (acc[it.type] ?? 0) + 1;
+        return acc;
+      }, {});
+      res.json({
+        ...report,
+        items: limited,
+        total: limited.length,
+        sources: {
+          todo: taggedTodoItems.length,
+          actionQueue: actionQueueItems.length,
+        },
+        byType: { ...report.byType, ...acByType },
+      });
+      return;
+    } catch (err: any) {
+      // Don't let action-queue failures block the todo feed.
+      logger.warn("[founder-todo] Action-queue merge failed", { metadata: { detail: err.message } });
+      res.json(report);
+      return;
+    }
   } catch (err: any) {
     logger.error("[founder-todo] Error", undefined, { metadata: { detail: err.message } });
     res.status(500).json({ error: err.message });
