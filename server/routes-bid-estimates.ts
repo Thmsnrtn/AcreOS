@@ -22,8 +22,13 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+
+// FW-6: PDF estimate upload — 10MB cap. PDFs only.
+const pdfUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["pdf"] });
+const validatePdf = validateFileMiddleware(["pdf"]);
 
 const bidSchema = z.object({
   contractorId: z.string().uuid(),
@@ -199,6 +204,62 @@ export function registerBidEstimateRoutes(app: Express): void {
       return Errors.internal(res, err);
     }
   });
+
+  // FW-6: PDF estimate upload — extracts text from the PDF, then pipes
+  // through the existing extractBidEstimate() LLM extractor.
+  app.post(
+    "/api/rehabs/:id/bids/extract-pdf",
+    isAuthenticated,
+    getOrCreateOrg,
+    pdfUpload.single("pdf"),
+    validatePdf,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const userId = getUserId(req);
+        const file = (req as any).file as { buffer: Buffer; size: number; originalname: string } | undefined;
+        if (!file) return Errors.badRequest(res, "No PDF uploaded.");
+
+        let pdfText: string;
+        try {
+          // pdf-parse 2.x exports a function default that takes a Buffer.
+          const pdfParseMod: any = await import("pdf-parse");
+          const pdfParse = pdfParseMod.default ?? pdfParseMod;
+          const parsed = await pdfParse(file.buffer);
+          pdfText = String(parsed?.text ?? "").trim();
+        } catch (err: any) {
+          return Errors.badRequest(res, `PDF parse failed: ${err.message ?? "unknown error"}`);
+        }
+
+        if (pdfText.length < 30) {
+          return Errors.badRequest(res, "Couldn't extract usable text from the PDF (got " + pdfText.length + " chars). Is it a scanned image? OCR support is on the roadmap.");
+        }
+
+        const { extractBidEstimate } = await import("./services/bidEstimateExtractor");
+        try {
+          const extracted = await extractBidEstimate(pdfText, orgId);
+          logger.info("[FF-5/FW-6] bid extracted from PDF", {
+            orgId, userId, rehabId: req.params.id,
+            filename: file.originalname,
+            pdfChars: pdfText.length,
+            totalCents: extracted.totalCents,
+            confidence: extracted.confidence,
+            warningCount: extracted.warnings.length,
+          });
+          return res.json({
+            extracted,
+            sourceText: pdfText.slice(0, 500),  // preview the parsed text so the UI can show "we read this"
+            sourceCharCount: pdfText.length,
+            filename: file.originalname,
+          });
+        } catch (err: any) {
+          return Errors.badRequest(res, err.message ?? "Extraction failed");
+        }
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
 
   app.delete("/api/bids/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
