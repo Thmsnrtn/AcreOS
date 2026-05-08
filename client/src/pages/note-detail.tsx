@@ -12,9 +12,10 @@
  * follow-up PRs (see docs/exhaustive-completion/note-investor-followups.md).
  */
 
+import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FileText, AlertCircle, MapPin } from "lucide-react";
+import { ArrowLeft, FileText, AlertCircle, MapPin, Plus } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -27,8 +28,10 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
+import { NoteRecordPaymentModal } from "@/components/note-record-payment-modal";
+import { NotePayoffCalculator } from "@/components/note-payoff-calculator";
 
-interface AcquiredNote {
+export interface AcquiredNote {
   id: string;
   organizationId: number;
   propertyId: number | null;
@@ -36,6 +39,7 @@ interface AcquiredNote {
   noteNumber: string;
   originalPrincipalCents: number;
   currentBalanceCents: number;
+  unappliedBalanceCents: number;
   interestRateBps: number;
   termMonths: number;
   paymentAmountCents: number;
@@ -57,6 +61,35 @@ interface AcquiredNote {
 
 interface NoteDetailResponse {
   note: AcquiredNote;
+}
+
+export type NotePaymentType =
+  | "regular"
+  | "partial"
+  | "extra_principal"
+  | "payoff"
+  | "nsf_reversal"
+  | "unapplied_apply";
+
+export interface NotePayment {
+  id: string;
+  noteId: string;
+  paymentDate: string;
+  principalCents: number;
+  interestCents: number;
+  escrowCents: number;
+  lateFeeCents: number;
+  unappliedCents: number;
+  paymentType: NotePaymentType;
+  originalPaymentId: string | null;
+  paymentMethod: "ach" | "check" | "wire" | "cash" | "other";
+  referenceNumber: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+interface PaymentsResponse {
+  payments: NotePayment[];
 }
 
 function fmtUsd(cents: number): string {
@@ -122,21 +155,31 @@ function computeDiscount(note: AcquiredNote): { absCents: number; pct: number } 
 export default function NoteDetailPage() {
   const [, params] = useRoute<{ id: string }>("/notes/:id");
   const id = params?.id ?? null;
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   const { data: organization } = useOrganization();
-  const persona = personaForInvestorType((organization as any)?.investorType);
-  // Persona-aware "back to" copy. The list-page title decision (Acquired
-  // notes vs Notes) keys off entity.property.plural === "Collateral" in
-  // the existing notes.tsx; mirror that for consistency.
-  const isNotePersona = getTerm("entity.property.plural", persona) === "Collateral";
-  const headLabel = isNotePersona ? "Note" : "Note";
-  useDocumentTitle(id ? `${headLabel} ${id.slice(0, 8)} — AcreOS` : `${headLabel} — AcreOS`);
+  // (organization is loaded for any future persona-keyed copy; the list-page
+  // already drives the canonical title swap. Local copy is consistent.)
+  void organization;
+  void getTerm;
+  void personaForInvestorType;
+  useDocumentTitle(id ? `Note ${id.slice(0, 8)} — AcreOS` : "Note — AcreOS");
 
   const { data, isLoading, isError, refetch } = useQuery<NoteDetailResponse>({
     queryKey: ["/api/notes", id],
     queryFn: async () => {
       const res = await fetch(`/api/notes/${id}`, { credentials: "include" });
       if (!res.ok) throw new Error(`Failed to load note (${res.status})`);
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: paymentsData } = useQuery<PaymentsResponse>({
+    queryKey: ["/api/notes", id, "payments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/notes/${id}/payments`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load payments (${res.status})`);
       return res.json();
     },
     enabled: !!id,
@@ -299,25 +342,52 @@ export default function NoteDetailPage() {
         </div>
       </Card>
 
-      {/* Payment ledger placeholder — wired to /api/notes/:id/payments in
-          a follow-up. Surfacing the placeholder + link makes the gap
-          explicit to Linnea-type users who'll want to see ledger first. */}
-      <Card className="mb-6">
-        <div className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Payment ledger</h2>
-            <Link href={`/notes/${note.id}/payments`} className="text-xs text-primary hover:underline">
-              Full ledger →
-            </Link>
+      {/* Unapplied funds banner — Linnea: "If a borrower sends $400 against
+          an $812 payment, that money should sit in unapplied until either
+          the next deposit makes it whole or it ages past a threshold." */}
+      {note.unappliedBalanceCents > 0 && (
+        <Card className="mb-6 border-acr-warning/30 bg-acr-warning/5">
+          <div className="p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-acr-warning shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">
+                {fmtUsd(note.unappliedBalanceCents)} held in unapplied funds
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Borrower has sent partial payments that haven't been applied to a period.
+                Apply via "Record payment" → "Apply held funds" when the borrower tops up
+                or you decide to apply per note terms.
+              </p>
+            </div>
           </div>
-          <Separator className="mb-4" />
-          <p className="text-sm text-muted-foreground">
-            Recent payments roll up here once recorded. Use{" "}
-            <span className="font-mono text-xs">POST /api/notes/{note.id}/record-payment</span>{" "}
-            to log partial / extra-principal / payoff transactions; the ledger updates immediately.
-          </p>
-        </div>
-      </Card>
+        </Card>
+      )}
+
+      {/* Payment ledger + payoff side-by-side on wide screens. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <Card className="lg:col-span-2">
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Payment ledger</h2>
+              <Button size="sm" onClick={() => setRecordPaymentOpen(true)} data-testid="record-payment-button">
+                <Plus className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                Record payment
+              </Button>
+            </div>
+            <Separator className="mb-3" />
+            <PaymentLedger payments={paymentsData?.payments ?? []} />
+          </div>
+        </Card>
+
+        <NotePayoffCalculator noteId={note.id} />
+      </div>
+
+      {/* Modal */}
+      <NoteRecordPaymentModal
+        open={recordPaymentOpen}
+        onOpenChange={setRecordPaymentOpen}
+        note={note}
+      />
 
       {/* Internal notes */}
       {note.notes && (
@@ -369,4 +439,82 @@ function KV({ label, value, sub }: { label: string; value: string; sub?: string 
       {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
+}
+
+const PAYMENT_TYPE_LABEL: Record<NotePaymentType, string> = {
+  regular: "Regular",
+  partial: "Partial",
+  extra_principal: "Extra principal",
+  payoff: "Payoff",
+  nsf_reversal: "NSF reversal",
+  unapplied_apply: "Apply held funds",
+};
+
+const PAYMENT_TYPE_TONE: Record<NotePaymentType, string> = {
+  regular: "bg-acr-pos/10 text-acr-pos",
+  partial: "bg-acr-warning/10 text-acr-warning",
+  extra_principal: "bg-acr-brand/10 text-acr-brand",
+  payoff: "bg-primary/10 text-primary",
+  nsf_reversal: "bg-acr-neg/10 text-acr-neg",
+  unapplied_apply: "bg-muted text-muted-foreground",
+};
+
+function PaymentLedger({ payments }: { payments: NotePayment[] }) {
+  if (payments.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-3">
+        No payments recorded yet. Use "Record payment" above to log the first one.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto -mx-2">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-muted-foreground">
+            <th className="px-2 py-2 text-left font-medium">Date</th>
+            <th className="px-2 py-2 text-left font-medium">Type</th>
+            <th className="px-2 py-2 text-right font-medium">Principal</th>
+            <th className="px-2 py-2 text-right font-medium">Interest</th>
+            <th className="px-2 py-2 text-right font-medium">Escrow</th>
+            <th className="px-2 py-2 text-right font-medium">Late fee</th>
+            <th className="px-2 py-2 text-right font-medium">Unapplied</th>
+            <th className="px-2 py-2 text-right font-medium">Method</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((p) => {
+            const total =
+              p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
+            return (
+              <tr key={p.id} className="border-t border-border/40">
+                <td className="px-2 py-2 whitespace-nowrap">{fmtDate(p.paymentDate)}</td>
+                <td className="px-2 py-2">
+                  <span className={`inline-block rounded-md px-2 py-0.5 text-xs ${PAYMENT_TYPE_TONE[p.paymentType]}`}>
+                    {PAYMENT_TYPE_LABEL[p.paymentType]}
+                  </span>
+                </td>
+                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.principalCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.interestCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.escrowCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.lateFeeCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.unappliedCents)}</td>
+                <td className="px-2 py-2 text-right text-xs uppercase">{p.paymentMethod}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Compact signed-cents formatter for ledger cells. Negative values render
+// with a leading minus + parens (accounting style); zero suppressed to
+// "—" to keep the ledger eye-readable.
+function fmtCents(cents: number): string {
+  if (cents === 0) return "—";
+  const abs = Math.abs(cents);
+  const dollars = (abs / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return cents < 0 ? `($${dollars})` : `$${dollars}`;
 }

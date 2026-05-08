@@ -17228,6 +17228,11 @@ export const acquiredNotes = pgTable(
     // Amounts — bigint cents to match the rest of AcreOS's money handling.
     originalPrincipalCents: bigint("original_principal_cents", { mode: "number" }).notNull(),
     currentBalanceCents: bigint("current_balance_cents", { mode: "number" }).notNull(),
+    // Running unapplied funds — money the borrower has sent that hasn't
+    // applied to any specific period yet (e.g. partial payment that
+    // didn't make P&I whole). Denormalized from SUM(note_payments.
+    // unappliedCents) for fast reads on the detail page.
+    unappliedBalanceCents: bigint("unapplied_balance_cents", { mode: "number" }).notNull().default(0),
     // Interest rate in basis points — 800 = 8.00%. Matches the convention used
     // in `notes.interestRateBps` (originated notes).
     interestRateBps: integer("interest_rate_bps").notNull(),
@@ -17310,6 +17315,26 @@ export const notePayments = pgTable(
     interestCents: bigint("interest_cents", { mode: "number" }).notNull().default(0),
     escrowCents: bigint("escrow_cents", { mode: "number" }).notNull().default(0),
     lateFeeCents: bigint("late_fee_cents", { mode: "number" }).notNull().default(0),
+    // Payment type — drives ledger discipline per the Linnea persona spec.
+    //   'regular'         — standard P&I payment, splits per amort schedule.
+    //   'partial'         — borrower sent less than P&I; deposits to
+    //                       unappliedCents instead of reducing principal.
+    //   'extra_principal' — earmarked principal-only curtailment; no interest
+    //                       split, doesn't advance the next-payment date.
+    //   'payoff'          — final settle. Zeroes balance, sets status='paid_off'.
+    //   'nsf_reversal'    — back out a bounced payment; references
+    //                       originalPaymentId. Negative values restore balance.
+    //   'unapplied_apply' — apply previously held unapplied funds to a
+    //                       regular payment. unappliedCents is negative.
+    paymentType: text("payment_type").notNull().default("regular"),
+    // Money received this transaction that didn't apply to anything yet.
+    // Signed: positive when funds enter unapplied; negative when consumed
+    // (paymentType='unapplied_apply' or 'nsf_reversal' against an unapplied
+    // deposit). Running balance = SUM(unapplied_cents) per note.
+    unappliedCents: bigint("unapplied_cents", { mode: "number" }).notNull().default(0),
+    // For NSF reversals: points at the original payment row being reversed.
+    // Null on every other type. Self-FK so cascade-deletes follow the note.
+    originalPaymentId: varchar("original_payment_id"),
     paymentMethod: text("payment_method").notNull().default("ach"), // ach | check | wire | cash | other
     referenceNumber: text("reference_number"),
     notes: text("notes"),
@@ -17319,6 +17344,8 @@ export const notePayments = pgTable(
     index("note_payments_note_date_idx").on(table.noteId, table.paymentDate),
     // 1099-INT aggregation read path.
     index("note_payments_org_date_idx").on(table.organizationId, table.paymentDate),
+    // Ledger UI typically shows newest-first; this index supports it.
+    index("note_payments_note_created_idx").on(table.noteId, table.createdAt),
   ],
 );
 

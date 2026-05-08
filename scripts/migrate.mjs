@@ -72,6 +72,18 @@ const STATEMENTS = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "persona" text NOT NULL DEFAULT 'land_investor'`,
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notification_prefs" jsonb',
 
+  // 2026-05-08 — Note Investor servicing-ledger discipline (PR-2 of the
+  // vertical completion sweep). Adds the columns the partial / unapplied /
+  // extra-principal / payoff / NSF-reversal flow needs to record correctly
+  // per Linnea's persona walkthrough ("partial payments don't reduce
+  // principal — they sit in unapplied funds until the next payment makes
+  // them whole").
+  `ALTER TABLE "note_payments" ADD COLUMN IF NOT EXISTS "payment_type" text NOT NULL DEFAULT 'regular'`,
+  'ALTER TABLE "note_payments" ADD COLUMN IF NOT EXISTS "unapplied_cents" bigint NOT NULL DEFAULT 0',
+  'ALTER TABLE "note_payments" ADD COLUMN IF NOT EXISTS "original_payment_id" varchar',
+  'CREATE INDEX IF NOT EXISTS "note_payments_note_created_idx" ON "note_payments" ("note_id", "created_at")',
+  'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "unapplied_balance_cents" bigint NOT NULL DEFAULT 0',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
