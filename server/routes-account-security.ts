@@ -40,21 +40,22 @@ async function getClerk() {
 
 async function writeSelfAuditEvent(
   req: AuthenticatedRequest,
-  opts: { action: string; metadata?: Record<string, unknown> },
+  opts: { action: string; metadata?: Record<string, unknown>; targetId?: string },
 ): Promise<void> {
   try {
     const userId = getUserId(req);
     const orgId = getOrganizationId(req);
+    const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     await db.insert(auditEvents).values({
-      organizationId: orgId,
-      userId,
+      actorUserId: userId,
+      actorEmail: u?.email ?? null,
       action: opts.action,
-      entityType: "user",
-      entityId: userId,
-      metadata: opts.metadata ?? null,
-      ipAddress: req.ip ?? null,
+      targetType: "user",
+      targetId: opts.targetId ?? userId,
+      metadata: { ...(opts.metadata ?? {}), organizationId: orgId },
+      ip: req.ip ?? null,
       userAgent: (req.headers["user-agent"] as string) ?? null,
-    } as any);
+    });
   } catch (err) {
     logger.warn(`[account-security] audit write failed for ${opts.action}`, err instanceof Error ? err : undefined);
   }
