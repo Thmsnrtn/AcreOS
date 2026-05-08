@@ -350,6 +350,29 @@ app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
 
+// RS-7 (post-may1-resweep): bulk export endpoints. Asher-takeover §3:
+// "Asher's borrowers exported at 09:04 with no friction." Per-org per-day
+// hard cap at 5 exports — generous for normal use, blocks the burst
+// pattern that takeovers exhibit. Keyed by org first then user (so a
+// hijacked single user can't grind through other orgs).
+const exportLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const orgId = (req as any).organization?.id ?? "unknown-org";
+    const userId = (req as any).auth?.userId ?? req.ip ?? "unknown-user";
+    return `export:${orgId}:${userId}`;
+  },
+  message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
+});
+app.use("/api/leads/export", exportLimiter);
+app.use("/api/properties/export", exportLimiter);
+app.use("/api/notes/export", exportLimiter);
+app.use("/api/contractors/export", exportLimiter);
+app.use("/api/tenants/export", exportLimiter);
+
 // General authenticated API: 300 requests per minute, keyed by session ID (falls
 // back to IP for unauthenticated requests). Prevents a single user behind a
 // shared NAT/proxy from exhausting the per-IP bucket.
