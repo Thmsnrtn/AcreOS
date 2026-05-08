@@ -2586,6 +2586,24 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
+
+  // RS-5 (post-may1-resweep): email-on-new-location detector.
+  // One row per (user, ipPrefix, uaFamily). Insert-on-conflict-bumps
+  // last_seen_at; the first insert per tuple triggers an alert email.
+  `CREATE TABLE IF NOT EXISTS "user_sign_in_locations" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "user_id" text NOT NULL,
+     "ip_prefix" text NOT NULL,
+     "ua_family" text NOT NULL,
+     "country" text,
+     "region" text,
+     "first_seen_at" timestamptz NOT NULL DEFAULT now(),
+     "last_seen_at" timestamptz NOT NULL DEFAULT now(),
+     "notified_at" timestamptz,
+     "session_count" integer NOT NULL DEFAULT 1
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "user_sign_in_locations_unique" ON "user_sign_in_locations" ("user_id", "ip_prefix", "ua_family")',
+  'CREATE INDEX IF NOT EXISTS "user_sign_in_locations_user_last_seen_idx" ON "user_sign_in_locations" ("user_id", "last_seen_at")',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

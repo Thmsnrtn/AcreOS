@@ -19758,3 +19758,42 @@ export const insertEtlRunSchema = createInsertSchema(etlRuns).omit({
 });
 export type EtlRun = typeof etlRuns.$inferSelect;
 export type InsertEtlRun = z.infer<typeof insertEtlRunSchema>;
+
+// ─── RS-5 (post-may1-resweep): email-on-new-location detector ─────────────
+// Asher-takeover §3 root cause: "no email-on-new-location, no exfil alarm".
+// One row per (user, ip-prefix, ua-family) tuple. First time we see a new
+// tuple, we email the user and write an audit row. Subsequent sign-ins
+// from the same tuple just update lastSeenAt — no email spam.
+//
+// ipPrefix: /24 for IPv4, first 4 hextets for IPv6. Covers home/office
+// roaming on the same network without spamming on minor IP rotation.
+// uaFamily: "Chrome/macOS" coarse bucket. Same browser-OS combo on the
+// same network is "this is still me." A new combo is "alert me."
+export const userSignInLocations = pgTable(
+  "user_sign_in_locations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull(),
+    ipPrefix: text("ip_prefix").notNull(),
+    uaFamily: text("ua_family").notNull(),
+    country: text("country"),
+    region: text("region"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    sessionCount: integer("session_count").notNull().default(1),
+  },
+  (table) => [
+    uniqueIndex("user_sign_in_locations_unique").on(
+      table.userId,
+      table.ipPrefix,
+      table.uaFamily,
+    ),
+    index("user_sign_in_locations_user_last_seen_idx").on(
+      table.userId,
+      table.lastSeenAt,
+    ),
+  ],
+);
+export type UserSignInLocation = typeof userSignInLocations.$inferSelect;
+export type InsertUserSignInLocation = typeof userSignInLocations.$inferInsert;

@@ -206,5 +206,22 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   req.organizationId = org.id;
   // Legacy alias — will be removed once all route files use AuthenticatedRequest
   (req as any).org = org;
+
+  // RS-5: fire-and-forget new-location detector. Bounded by an in-memory
+  // Set keyed on sessionId so it touches the DB at most once per session
+  // per process — not on every authenticated request.
+  try {
+    const sessionId = (req as any).auth?.sessionId ?? null;
+    void import("../services/loginAnomalyDetector").then((m) =>
+      m.recordAndAlertIfNew({
+        userId,
+        sessionId,
+        ip: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+        headers: req.headers as Record<string, any>,
+      }).catch(() => {/* fail-open */}),
+    ).catch(() => {/* fail-open */});
+  } catch {/* fail-open */}
+
   next();
 }
