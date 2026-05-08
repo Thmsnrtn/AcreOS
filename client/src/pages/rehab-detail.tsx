@@ -25,6 +25,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { BidsSection } from "@/components/rehabs/bids-section";
 
 const CATEGORIES = [
   "demolition", "framing", "roof", "siding", "windows",
@@ -296,6 +297,9 @@ export default function RehabDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bids comparison */}
+      <BidsSection rehabId={id} />
 
       {/* Line items */}
       <Card>
