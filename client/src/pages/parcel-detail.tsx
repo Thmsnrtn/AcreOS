@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import type { Property, LandStatus } from "@shared/schema";
 import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
+import { ArvCalculator } from "@/components/parcels/arv-calculator";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -288,6 +289,7 @@ export default function ParcelDetailPage() {
             <TabsTrigger value="financial">Financial</TabsTrigger>
             <TabsTrigger value="land-status">Land status</TabsTrigger>
             <TabsTrigger value="subdivision">Subdivision</TabsTrigger>
+            <TabsTrigger value="arv">ARV</TabsTrigger>
             <TabsTrigger value="actions">Actions</TabsTrigger>
           </TabsList>
 
@@ -382,6 +384,10 @@ export default function ParcelDetailPage() {
 
           <TabsContent value="subdivision" className="space-y-4">
             <SubdivisionTab parentParcelId={property.id} />
+          </TabsContent>
+
+          <TabsContent value="arv" className="space-y-4">
+            <ArvCalculator propertyId={property.id} />
           </TabsContent>
 
           <TabsContent value="actions" className="space-y-3">
