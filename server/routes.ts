@@ -176,6 +176,7 @@ import { registerBidEstimateRoutes } from "./routes-bid-estimates";
 import { registerConstructionDrawRoutes } from "./routes-construction-draws";
 import { registerRentalRoutes } from "./routes-rentals";
 import { registerRentLedgerRoutes } from "./routes-rent-ledger";
+import { registerAccountSecurityRoutes } from "./routes-account-security";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
@@ -1805,6 +1806,8 @@ export async function registerRoutes(
   registerRentalRoutes(app);
   // Buy-and-hold vertical BH-3 — rent ledger + state late-fee engine.
   registerRentLedgerRoutes(app);
+  // RS-4 (post-may1-resweep): customer-side /account/security surface.
+  registerAccountSecurityRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
   registerMoveInspectionRoutes(app);
   // Buy-and-hold vertical BH-5 — rent-roll uploader on /parcels/:id.
