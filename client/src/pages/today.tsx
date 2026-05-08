@@ -499,6 +499,7 @@ export default function TodayPage() {
   const isTaxDelinquentOrg = businessType === "tax_lien_deed";
   const isWholesalerOrg = businessType === "residential_wholesaler";
   const isSubdividerOrg = businessType === "subdivider";
+  const isFlipperOrg = businessType === "fix_and_flip";
 
   return (
     <PageShell label="Today">
@@ -530,6 +531,37 @@ export default function TodayPage() {
               </Button>
               <Button asChild size="sm" variant="outline">
                 <Link href="/wholesaler-state-rules">State rules</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fix-and-flip quick-jump — visible for fix_and_flip business type.
+          Devon §2: "A flipper's morning is two questions: 'are any of my
+          active rehabs behind schedule?' and 'did the inspector clear the
+          framing on Oak Street so I can release Draw 2?' Neither shows up
+          here. The dashboard treats me like I'm a land flipper running a
+          pipeline of cold leads. I'm not." */}
+      {isFlipperOrg && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm">Fix-and-flip surfaces</h3>
+              <p className="text-sm text-muted-foreground">
+                Active rehabs, contractor 1099-NECs, ARV calculator, bid
+                comparison, draw schedule.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/rehabs">Active rehabs</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/contractors">Contractors</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/contractors/1099-nec">1099-NEC</Link>
               </Button>
             </div>
           </CardContent>

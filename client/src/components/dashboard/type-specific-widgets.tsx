@@ -436,8 +436,44 @@ function WholesalerWidgets() {
   );
 }
 
+interface FlipperDashboard {
+  hasData: boolean;
+  activeRehabs?: Array<{
+    id: string;
+    name: string;
+    status: string;
+    budgetCents: number;
+    spentCents: number;
+    spentPct: number;
+    arvCents: number | null;
+  }>;
+  totals?: {
+    totalBudgetCents: number;
+    totalSpentCents: number;
+    spentPct: number;
+  };
+  stalledDraws?: number;
+  necEligible?: number;
+}
+
 function FlipperWidgets() {
-  const data = FLIPPER_MOCK;
+  // FF-8 — replaces FLIPPER_MOCK with real org-scoped data. Devon §1:
+  // "The dashboard widget for my persona shows 'Active Rehabs' with three
+  // properties and a BudgetBar — and when I open the file, it's pulling
+  // from FLIPPER_MOCK. Hardcoded mock data."
+  const { data: live, isLoading } = useQuery<FlipperDashboard>({
+    queryKey: ["/api/flipper/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/flipper/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-32" />;
+  if (!live?.hasData) return null;  // suppress widget when empty (Trey's W-5 lesson)
+
+  const totalArvCents = live.activeRehabs?.reduce((s, r) => s + (r.arvCents ?? 0), 0) ?? 0;
 
   return (
     <motion.div
@@ -451,19 +487,23 @@ function FlipperWidgets() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Hammer className="w-4 h-4 text-acr-warn" />
-              Active Rehabs
+              Active rehabs
               <Badge variant="outline" className="ml-auto text-xs">
-                {data.activeRehabs.length} projects
+                {live.activeRehabs?.length ?? 0} projects
               </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {data.activeRehabs.map((rehab) => (
-              <div key={rehab.address}>
-                <p className="text-xs font-medium mb-1">{rehab.address}</p>
-                <BudgetBar label={rehab.label} spent={rehab.spent} budget={rehab.budget} />
-              </div>
-            ))}
+            {(live.activeRehabs ?? []).map((rehab) => {
+              const spentDollars = rehab.spentCents / 100;
+              const budgetDollars = rehab.budgetCents / 100;
+              return (
+                <div key={rehab.id}>
+                  <p className="text-xs font-medium mb-1">{rehab.name} <span className="text-muted-foreground">· {rehab.status.replace(/_/g, " ")}</span></p>
+                  <BudgetBar label={`$${spentDollars.toLocaleString()} / $${budgetDollars.toLocaleString()}`} spent={spentDollars} budget={budgetDollars} />
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       </motion.div>
@@ -477,13 +517,10 @@ function FlipperWidgets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">${(data.totalARV / 1000).toFixed(0)}K</p>
-            <div className="flex items-center gap-1 mt-1">
-              <Timer className="w-3 h-3 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">
-                {data.avgTimeline} day avg timeline
-              </p>
-            </div>
+            <p className="text-2xl font-bold">{totalArvCents > 0 ? `$${(totalArvCents / 100_000).toFixed(0)}K` : "—"}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {live.totals ? `${live.totals.spentPct}% of budget spent` : ""}
+            </p>
           </CardContent>
         </Card>
       </motion.div>
@@ -493,15 +530,17 @@ function FlipperWidgets() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <ArrowUpRight className="w-4 h-4 text-primary" />
-              ROI Trend
+              Tax & draws
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">{data.roiSparkline[data.roiSparkline.length - 1]}%</p>
-              <MiniSparkline data={data.roiSparkline} color="hsl(142, 71%, 45%)" />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">last 6 flips</p>
+            <p className="text-sm">
+              <span className="text-2xl font-bold">{live.necEligible ?? 0}</span>
+              <span className="text-xs text-muted-foreground ml-2">1099-NEC eligible</span>
+            </p>
+            <p className="text-xs text-acr-warn mt-1">
+              {live.stalledDraws ? `${live.stalledDraws} stalled draws` : "draws on track"}
+            </p>
           </CardContent>
         </Card>
       </motion.div>

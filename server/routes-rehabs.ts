@@ -419,6 +419,93 @@ export function registerRehabRoutes(app: Express): void {
     }
   });
 
+  // FF-8 — flipper dashboard widget data (replaces FLIPPER_MOCK).
+  // Devon §1 thirty-second verdict: "The dashboard widget for my persona
+  // shows 'Active Rehabs' with three properties and a BudgetBar — and when
+  // I open the file (type-specific-widgets.tsx), it's pulling from
+  // FLIPPER_MOCK. Hardcoded mock data."
+  app.get("/api/flipper/dashboard", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const activeStatuses = ["planning", "demo", "framing", "rough_ins", "drywall", "finishes", "punch_list", "listed", "under_contract"];
+
+      const rows = await db.execute(sql`
+        SELECT id, name, status, started_at, planned_listing_date,
+               purchase_price_cents, budget_total_cents, spent_total_cents,
+               arv_cents, holding_cost_monthly_cents
+        FROM rehabs
+        WHERE organization_id = ${orgId}
+          AND status = ANY(${activeStatuses}::text[])
+        ORDER BY updated_at DESC
+        LIMIT 5
+      `);
+
+      const activeRehabs = ((rows as any).rows ?? []).map((r: any) => {
+        const budget = Number(r.budget_total_cents) || 0;
+        const spent = Number(r.spent_total_cents) || 0;
+        return {
+          id: r.id,
+          name: r.name,
+          status: r.status,
+          budgetCents: budget,
+          spentCents: spent,
+          spentPct: budget > 0 ? Math.round((spent / budget) * 100) : 0,
+          arvCents: Number(r.arv_cents) || null,
+          plannedListingDate: r.planned_listing_date,
+        };
+      });
+
+      if (activeRehabs.length === 0) {
+        return res.json({ hasData: false });
+      }
+
+      const totalBudget = activeRehabs.reduce((s: number, r: any) => s + r.budgetCents, 0);
+      const totalSpent = activeRehabs.reduce((s: number, r: any) => s + r.spentCents, 0);
+
+      // Stalled draws — past inspection date and not funded yet.
+      const today = new Date().toISOString().slice(0, 10);
+      const stalledRows = await db.execute(sql`
+        SELECT COUNT(*) AS c
+        FROM construction_draws cd
+        WHERE cd.organization_id = ${orgId}
+          AND cd.status IN ('requested', 'inspected')
+          AND cd.inspection_at IS NOT NULL
+          AND cd.inspection_at <= ${today}::date
+          AND cd.funded_at IS NULL
+      `);
+      const stalledDraws = Number(((stalledRows as any).rows?.[0]?.c) ?? 0);
+
+      // YTD-eligible 1099 contractors (over $600 paid this year, not excluded).
+      const taxYear = new Date().getFullYear();
+      const necRows = await db.execute(sql`
+        SELECT COUNT(*) AS c FROM (
+          SELECT contractor_id, SUM(amount_cents) AS total
+          FROM contractor_payments
+          WHERE organization_id = ${orgId}
+            AND tax_year = ${taxYear}
+            AND excluded_from_1099 = false
+          GROUP BY contractor_id
+          HAVING SUM(amount_cents) >= 60000
+        ) t
+      `);
+      const necEligible = Number(((necRows as any).rows?.[0]?.c) ?? 0);
+
+      return res.json({
+        hasData: true,
+        activeRehabs,
+        totals: {
+          totalBudgetCents: totalBudget,
+          totalSpentCents: totalSpent,
+          spentPct: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
+        },
+        stalledDraws,
+        necEligible,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   app.post("/api/rehabs/:id/seed-template", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
