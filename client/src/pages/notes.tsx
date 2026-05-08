@@ -204,6 +204,13 @@ export default function NotesPage() {
             </SelectContent>
           </Select>
           <Button
+            variant="outline"
+            onClick={() => navigate("/notes/tax-readiness")}
+            data-testid="notes-tax-readiness-button"
+          >
+            Tax readiness
+          </Button>
+          <Button
             onClick={() => navigate("/notes?action=new")}
             data-testid="notes-add-button"
           >

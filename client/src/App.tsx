@@ -70,9 +70,10 @@ const DealsPage = React.lazy(() => import("@/pages/deals"));
 const DealDetailPage = React.lazy(() => import("@/pages/deal-detail"));
 const FinancePage = React.lazy(() => import("@/pages/finance"));
 const PortfolioPage = React.lazy(() => import("@/pages/portfolio"));
-// Note Investor vertical (Phase 5 §5) — acquired-notes list + detail.
+// Note Investor vertical (Phase 5 §5) — acquired-notes list + detail + tax.
 const NotesPage = React.lazy(() => import("@/pages/notes"));
 const NoteDetailPage = React.lazy(() => import("@/pages/note-detail"));
+const NotesTaxReadinessPage = React.lazy(() => import("@/pages/notes-tax-readiness"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -541,6 +542,9 @@ function Router() {
       </Route>
       <Route path="/notes">
         {() => <ProtectedRoute component={NotesPage} />}
+      </Route>
+      <Route path="/notes/tax-readiness">
+        {() => <ProtectedRoute component={NotesTaxReadinessPage} />}
       </Route>
       <Route path="/notes/:id">
         {() => <ProtectedRoute component={NoteDetailPage} />}
