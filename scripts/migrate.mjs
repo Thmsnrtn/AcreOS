@@ -84,6 +84,32 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "note_payments_note_created_idx" ON "note_payments" ("note_id", "created_at")',
   'ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "unapplied_balance_cents" bigint NOT NULL DEFAULT 0',
 
+  // 2026-05-08 — Note Investor acquisition pipeline (PR-6 of the vertical
+  // completion sweep). Pre-book diligence stages: sourcing → BPO →
+  // diligence → offer → escrow → funded → on_book.
+  `CREATE TABLE IF NOT EXISTS "note_acquisitions" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "payer_name" text NOT NULL,
+     "property_address" jsonb,
+     "sourced_from" text,
+     "proposed_face_value_cents" bigint,
+     "proposed_acquisition_price_cents" bigint,
+     "bpo_value_cents" bigint,
+     "bpo_ordered_at" timestamptz,
+     "bpo_received_at" timestamptz,
+     "interest_rate_bps" integer,
+     "term_months" integer,
+     "diligence_checklist" jsonb,
+     "stage" text NOT NULL DEFAULT 'sourcing',
+     "internal_notes" text,
+     "promoted_to_note_id" varchar,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "note_acquisitions_org_stage_idx" ON "note_acquisitions" ("organization_id", "stage")',
+  'CREATE INDEX IF NOT EXISTS "note_acquisitions_org_updated_idx" ON "note_acquisitions" ("organization_id", "updated_at")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).

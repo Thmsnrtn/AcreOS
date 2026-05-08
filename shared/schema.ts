@@ -17353,6 +17353,86 @@ export type NotePayment = typeof notePayments.$inferSelect;
 export type InsertNotePayment = typeof notePayments.$inferInsert;
 
 // ============================================================================
+// NOTE ACQUISITIONS — pre-book diligence pipeline
+// ----------------------------------------------------------------------------
+// Tracks notes the user is *considering* acquiring, before they enter the
+// servicing book at acquired_notes. Linnea's persona walkthrough: "When I'm
+// considering buying a note, I order a BPO from a local agent for $75-150,
+// attach it to the deal, and the BPO valuation gates my offer." Parcel
+// /pipeline doesn't fit — note acquisition stages are different.
+//
+// On funding, a row is "promoted" — promotedToNoteId points at the resulting
+// acquired_notes row, the stage flips to 'on_book', and downstream surfaces
+// (the regular notes list, the 1099 batch, the basis schedule) take over.
+// ============================================================================
+
+export const NOTE_ACQUISITION_STAGES = [
+  "sourcing",       // Found the note; no diligence yet
+  "bpo_ordered",    // BPO requested, not received
+  "bpo_received",   // BPO valuation in
+  "diligence",      // Title pull, payment history, borrower verify
+  "offer_made",     // Offer extended to seller
+  "accepted",       // Seller accepted, drafting docs
+  "escrow",         // In escrow with title company
+  "funded",         // Wired; assignment recorded
+  "on_book",        // Promoted to acquired_notes; pipeline row archived
+  "passed",         // Decided not to buy; archive
+] as const;
+export type NoteAcquisitionStage = typeof NOTE_ACQUISITION_STAGES[number];
+
+export const noteAcquisitions = pgTable(
+  "note_acquisitions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    // Eventual borrower / payer name. Free text at sourcing time —
+    // borrower may not yet be located. Promoted to acquiredNotes.payerName
+    // on funding.
+    payerName: text("payer_name").notNull(),
+    propertyAddress: jsonb("property_address").$type<{
+      line1?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    }>(),
+    sourcedFrom: text("sourced_from"), // 'broker' | 'individual' | 'tape' | etc.
+    // What we know at the time of sourcing — refined as diligence progresses.
+    proposedFaceValueCents: bigint("proposed_face_value_cents", { mode: "number" }),
+    proposedAcquisitionPriceCents: bigint("proposed_acquisition_price_cents", { mode: "number" }),
+    bpoValueCents: bigint("bpo_value_cents", { mode: "number" }),
+    bpoOrderedAt: timestamp("bpo_ordered_at", { withTimezone: true }),
+    bpoReceivedAt: timestamp("bpo_received_at", { withTimezone: true }),
+    interestRateBps: integer("interest_rate_bps"),
+    termMonths: integer("term_months"),
+    // Per-stage checklist completion. Schema-flexible; the UI walks the
+    // standard items but free-form keys are accepted.
+    diligenceChecklist: jsonb("diligence_checklist").$type<{
+      noteCopy?: { done?: boolean; note?: string };
+      mortgageOrDot?: { done?: boolean; note?: string };
+      paymentHistory?: { done?: boolean; note?: string };
+      titleCommitment?: { done?: boolean; note?: string };
+      priorAssignments?: { done?: boolean; note?: string };
+      borrowerVerified?: { done?: boolean; note?: string };
+      lienPosition?: { done?: boolean; note?: string };
+    }>(),
+    stage: text("stage").$type<NoteAcquisitionStage>().notNull().default("sourcing"),
+    // Free text — the user's running notes (offer rationale, seller comments).
+    internalNotes: text("internal_notes"),
+    // Set on promotion; links the pipeline row to the funded acquired_note.
+    promotedToNoteId: varchar("promoted_to_note_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("note_acquisitions_org_stage_idx").on(table.organizationId, table.stage),
+    index("note_acquisitions_org_updated_idx").on(table.organizationId, table.updatedAt),
+  ],
+);
+
+export type NoteAcquisition = typeof noteAcquisitions.$inferSelect;
+export type InsertNoteAcquisition = typeof noteAcquisitions.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.
