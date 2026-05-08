@@ -80,6 +80,8 @@ const NoteAcquisitionDetailPage = React.lazy(() => import("@/pages/note-acquisit
 const RedemptionClockPage = React.lazy(() => import("@/pages/redemption-clock"));
 // Tax-Delinquent vertical TD-3 — state rules database.
 const StateRulesPage = React.lazy(() => import("@/pages/state-rules"));
+// Tax-Delinquent vertical TD-4 — auction worksheet + bid log.
+const AuctionWorksheetPage = React.lazy(() => import("@/pages/auction-worksheet"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
@@ -569,6 +571,9 @@ function Router() {
       </Route>
       <Route path="/state-rules/:state">
         {() => <ProtectedRoute component={StateRulesPage} />}
+      </Route>
+      <Route path="/auction-worksheet">
+        {() => <ProtectedRoute component={AuctionWorksheetPage} />}
       </Route>
       <Route path="/portfolio">
         {() => <ProtectedRoute component={PortfolioPage} />}

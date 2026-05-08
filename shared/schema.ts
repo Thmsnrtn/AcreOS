@@ -17825,6 +17825,49 @@ export type TaxJurisdictionRule = typeof taxJurisdictionRules.$inferSelect;
 export type InsertTaxJurisdictionRule = typeof taxJurisdictionRules.$inferInsert;
 
 // ============================================================================
+// AUCTION BID LOG — day-of mobile-friendly bid tracking
+// ----------------------------------------------------------------------------
+// Marcus: "I write it on a clipboard. I would pay $20/mo just for that
+// screen, on its own, if it synced back to AcreOS." Per-listing chronological
+// log of what happened at the auction (passed / bid / won / outbid).
+//
+// max_bid_cents + walk_away_condition + partner_split live on
+// tax_sale_listings (added via migrate.mjs ALTER) — they're per-listing
+// pre-auction worksheet fields. Mid-auction action log is here.
+// ============================================================================
+
+export const AUCTION_BID_ACTIONS = [
+  "passed",     // skipped — didn't bid
+  "bid",        // bid placed (intermediate)
+  "won",        // we won — terminal for this listing
+  "outbid",     // outbid by someone else — terminal for this listing
+  "no_show",    // listing didn't sell at auction (sometimes happens)
+] as const;
+export type AuctionBidAction = typeof AUCTION_BID_ACTIONS[number];
+
+export const auctionBidLog = pgTable(
+  "auction_bid_log",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    listingId: integer("listing_id").references(() => taxSaleListings.id, { onDelete: "cascade" }).notNull(),
+    action: text("action").$type<AuctionBidAction>().notNull(),
+    amountCents: bigint("amount_cents", { mode: "number" }),
+    performedAt: timestamp("performed_at", { withTimezone: true }).defaultNow().notNull(),
+    performedByUserId: text("performed_by_user_id"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("auction_bid_log_listing_idx").on(table.listingId, table.performedAt),
+    index("auction_bid_log_org_idx").on(table.organizationId, table.performedAt),
+  ],
+);
+
+export type AuctionBidLogEntry = typeof auctionBidLog.$inferSelect;
+export type InsertAuctionBidLogEntry = typeof auctionBidLog.$inferInsert;
+
+// ============================================================================
 // MIGRATION IN/OUT PARITY — Phase 4 Week 15-16 (Magdalena §1, Tobiah §1)
 // ----------------------------------------------------------------------------
 // Backed by migrations/0069_import_export_jobs.sql.

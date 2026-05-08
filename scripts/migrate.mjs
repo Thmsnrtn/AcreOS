@@ -334,6 +334,28 @@ const STATEMENTS = [
      VALUES ('MO','lien','simple_annual',12,1000,'sale_date','Mo. Rev. Stat. §140.260')
      ON CONFLICT (state) DO NOTHING`,
 
+  // Tax-Delinquent vertical TD-4 — auction worksheet + bid-log.
+  // Per-listing pre-auction worksheet fields + day-of bid action log.
+  // Marcus: "Today this is paper."
+  'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "max_bid_cents" bigint',
+  'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "walk_away_above_cents" bigint',
+  'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "walk_away_condition" text',
+  // partner_split is jsonb storing array of { investorName, splitBps }
+  'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "partner_split" jsonb',
+  `CREATE TABLE IF NOT EXISTS "auction_bid_log" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "listing_id" integer NOT NULL REFERENCES "tax_sale_listings"("id") ON DELETE CASCADE,
+     "action" text NOT NULL,
+     "amount_cents" bigint,
+     "performed_at" timestamptz NOT NULL DEFAULT now(),
+     "performed_by_user_id" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "auction_bid_log_listing_idx" ON "auction_bid_log" ("listing_id", "performed_at")',
+  'CREATE INDEX IF NOT EXISTS "auction_bid_log_org_idx" ON "auction_bid_log" ("organization_id", "performed_at")',
+
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
