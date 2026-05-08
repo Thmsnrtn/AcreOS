@@ -1576,6 +1576,43 @@ export async function registerRoutes(
         return total + monthlyRevenueCentsFor(org.subscriptionTier, interval) / 100;
       }, 0);
 
+      // FW-MARISOL-1 (push-forward 2026-05-08): customer-concentration alert.
+      // Marisol/Ashok/Harlowe converged: any single org contributing >20% of
+      // total MRR is a Series-A diligence red flag. Surface the top 5 with
+      // their MRR share so the founder can see the concentration shape at a
+      // glance. Threshold is 20% (a common diligence trip-wire).
+      const orgMrrCents = activeOrgs.map((org) => {
+        const interval = (org.billingInterval === "yearly" ? "yearly" : "monthly") as "monthly" | "yearly";
+        return {
+          orgId: org.id,
+          name: org.name,
+          slug: org.slug,
+          mrrCents: monthlyRevenueCentsFor(org.subscriptionTier, interval),
+          tier: org.subscriptionTier,
+        };
+      })
+        .filter((row) => row.mrrCents > 0)
+        .sort((a, b) => b.mrrCents - a.mrrCents);
+      const totalMrrCents = orgMrrCents.reduce((s, r) => s + r.mrrCents, 0);
+      const top5 = orgMrrCents.slice(0, 5).map((row) => ({
+        orgId: row.orgId,
+        name: row.name,
+        slug: row.slug,
+        tier: row.tier,
+        mrrCents: row.mrrCents,
+        sharePct: totalMrrCents > 0
+          ? Math.round((row.mrrCents / totalMrrCents) * 10000) / 100
+          : 0,
+      }));
+      const concentrationFlag = top5.length > 0 && top5[0].sharePct > 20;
+      const concentration = {
+        threshold: 20,
+        flag: concentrationFlag,
+        top1SharePct: top5[0]?.sharePct ?? 0,
+        top5,
+        totalMrrCents,
+      };
+
       // Churn: orgs that cancelled or downgraded in last 30 days
       const churnedOrgs = allOrgs.filter(o =>
         o.subscriptionStatus !== "active" &&
@@ -1670,6 +1707,7 @@ export async function registerRoutes(
           averageRiskScore: riskScoreAvg,
           scoredOrgs: activeRiskRows.length,
         },
+        concentration,
       };
 
       logger.info("[ExecutiveDashboard] Metrics fetched successfully", { mrr, activeOrgs: activeOrgs.length });

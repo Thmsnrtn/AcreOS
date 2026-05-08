@@ -81,6 +81,21 @@ interface ExecutiveDashboardApi {
     atRiskOrgs?: number;
     projectedChurnRate?: number;
   };
+  // FW-MARISOL-1 — customer-concentration alert surface.
+  concentration?: {
+    threshold: number;
+    flag: boolean;
+    top1SharePct: number;
+    top5: Array<{
+      orgId: number;
+      name: string;
+      slug: string;
+      tier: string;
+      mrrCents: number;
+      sharePct: number;
+    }>;
+    totalMrrCents: number;
+  };
 }
 
 interface UnitEconomicsRow {
@@ -459,6 +474,12 @@ function TodayTilesSection() {
   const atRisk = exec.data?.churnRisk?.atRiskOrgs ?? 0;
   const projectedRate = exec.data?.churnRisk?.projectedChurnRate ?? 0;
 
+  // FW-MARISOL-1 — customer-concentration alert.
+  const concentration = exec.data?.concentration;
+  const concentrationFlag = concentration?.flag ?? false;
+  const top1Pct = concentration?.top1SharePct ?? 0;
+  const top1Name = concentration?.top5?.[0]?.name ?? null;
+
   return (
     <section aria-labelledby="tiles-heading">
       <SectionHeader
@@ -521,6 +542,45 @@ function TodayTilesSection() {
             }
           />
         </div>
+        {/* FW-MARISOL-1: customer-concentration alert. Marisol/Ashok/Harlowe
+            converged on >20% top-1 MRR share as Series-A diligence red flag. */}
+        {concentration && top1Pct > 0 && (
+          <div className="mt-3">
+            <Card
+              className={
+                concentrationFlag
+                  ? "border-acr-warn/40 bg-acr-warn/5"
+                  : "border-border/50"
+              }
+            >
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Customer concentration
+                  </div>
+                  {concentrationFlag && (
+                    <span className="text-xs font-medium text-acr-warn">
+                      Above {concentration.threshold}% threshold
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-base font-semibold">
+                  {top1Name
+                    ? `${top1Name} = ${top1Pct.toFixed(1)}% of MRR`
+                    : `${top1Pct.toFixed(1)}% of MRR concentrated in top-1`}
+                </div>
+                {concentration.top5.length > 1 && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Top {concentration.top5.length}:{" "}
+                    {concentration.top5
+                      .map((r) => `${r.name} (${r.sharePct.toFixed(1)}%)`)
+                      .join(", ")}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </ContentReveal>
     </section>
   );
