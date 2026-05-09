@@ -87,6 +87,35 @@ export async function runReconciliation(): Promise<ReconciliationResult[]> {
       );
     }
 
+    // Gap-close: write a system_alerts row on divergent runs so the
+    // founder sees the alert in /admin/alerts. Tolerated if alerts
+    // table is unreachable.
+    if (status === "divergent" && differenceDollars != null) {
+      try {
+        const { systemAlerts } = await import("@shared/schema");
+        await db.insert(systemAlerts).values({
+          type: "reconciliation_divergent",
+          alertType: "system_error",
+          severity: Math.abs(differenceDollars) > 100 ? "critical" : "warning",
+          title: `Reconciliation divergence: ${rule.sourceSystem} ${rule.aggregationKey}`,
+          message:
+            `Source total $${sourceTotal} vs AcreOS total $${acreosTotal} ` +
+            `(diff $${differenceDollars.toFixed(2)}). Tolerance was $${rule.toleranceDollars}.`,
+          metadata: {
+            ruleId: rule.id,
+            sourceSystem: rule.sourceSystem,
+            entityType: rule.entityType,
+            aggregationKey: rule.aggregationKey,
+          },
+        });
+      } catch (alertErr) {
+        logger.warn(
+          "[reconciliation] system_alerts write failed",
+          alertErr instanceof Error ? alertErr : undefined,
+        );
+      }
+    }
+
     results.push({
       ruleId: rule.id,
       status,

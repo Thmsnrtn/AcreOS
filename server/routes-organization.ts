@@ -6,6 +6,7 @@ import { insertOrganizationSchema, leads, deals, properties, npsResponses, organ
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
+import { requireScope } from "./middleware/roleScope";
 import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
@@ -413,7 +414,7 @@ export function registerOrganizationRoutes(app: Express): void {
     res.json(org);
   });
   
-  api.patch("/api/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.patch("/api/organization", isAuthenticated, getOrCreateOrg, requireScope("settings_write"), async (req, res) => {
     const org = req.organization;
     const parsed = updateOrganizationSchema.safeParse(req.body);
     if (!parsed.success) {

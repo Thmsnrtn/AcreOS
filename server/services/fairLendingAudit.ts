@@ -159,6 +159,31 @@ export async function runFairLendingAudit(periodKey?: string): Promise<AuditOutc
         approvalRateOverall: overallRate,
         maxDivergencePct: maxDivergence,
       });
+
+      // Gap-close: alert on divergent so the founder sees it in
+      // /admin/alerts and can call the org for a manual review.
+      if (status === "divergent") {
+        try {
+          const { systemAlerts } = await import("@shared/schema");
+          await db.insert(systemAlerts).values({
+            type: "fair_lending_divergent",
+            alertType: "high_churn",
+            severity: maxDivergence >= 10 ? "critical" : "warning",
+            title: `Fair-lending divergence flagged for org #${org.id}`,
+            message:
+              `Period ${period}: max zip-prefix divergence ${maxDivergence.toFixed(1)}% ` +
+              `from overall approval rate ${(overallRate * 100).toFixed(1)}% ` +
+              `(sample n=${screenings.length}). Manual review recommended before next month.`,
+            organizationId: org.id,
+            metadata: { periodKey: period, sampleSize: screenings.length },
+          });
+        } catch (alertErr) {
+          logger.warn(
+            "[fairLendingAudit] system_alerts write failed",
+            alertErr instanceof Error ? alertErr : undefined,
+          );
+        }
+      }
     } catch (err) {
       logger.warn(
         `[fairLendingAudit] org ${org.id} period ${period} failed`,

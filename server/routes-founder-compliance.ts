@@ -79,6 +79,56 @@ export function registerFounderComplianceRoutes(app: Express): void {
   );
 
   // ── Vendor adoption telemetry ──────────────────────────────────────
+  // POST a vendor metric (founder-gated; admin form posts here).
+  app.post(
+    "/api/founder/compliance/vendor-telemetry",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const schema = z.object({
+          vendor: z.string().min(1).max(80),
+          metricKey: z.string().min(1).max(80),
+          periodKey: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/),
+          value: z.number(),
+          unit: z.string().max(40).optional(),
+          notes: z.string().max(500).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const { vendorAdoptionMetrics } = await import("@shared/schema");
+        const [row] = await db
+          .insert(vendorAdoptionMetrics)
+          .values({
+            vendor: parsed.data.vendor,
+            metricKey: parsed.data.metricKey,
+            periodKey: parsed.data.periodKey,
+            value: String(parsed.data.value),
+            unit: parsed.data.unit ?? null,
+            notes: parsed.data.notes ?? null,
+          })
+          .onConflictDoUpdate({
+            target: [
+              vendorAdoptionMetrics.vendor,
+              vendorAdoptionMetrics.metricKey,
+              vendorAdoptionMetrics.periodKey,
+            ],
+            set: {
+              value: String(parsed.data.value),
+              unit: parsed.data.unit ?? null,
+              notes: parsed.data.notes ?? null,
+              capturedAt: new Date(),
+            },
+          })
+          .returning();
+        return res.json(row);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   app.get(
     "/api/founder/compliance/vendor-telemetry",
     isAuthenticated,

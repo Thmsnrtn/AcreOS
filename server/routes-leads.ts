@@ -7,6 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
+import { requireScope } from "./middleware/roleScope";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
 import { attachPermissionContext, type UserPermissionContext } from "./utils/permissions";
@@ -323,7 +324,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, usageLimitGate("leads"), async (req, res) => {
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
     try {
       const org = req.organization;
       
@@ -1180,7 +1181,7 @@ export function registerLeadRoutes(app: Express): void {
     res.json(trace || null);
   });
 
-  api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_write"), async (req, res) => {
     try {
       const org = req.organization;
       const userId = (req as any).user?.id;

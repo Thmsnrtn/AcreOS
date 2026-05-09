@@ -308,6 +308,7 @@ export default function FounderComplianceOpsPage() {
               <CardDescription>5 vendors instrumented. Referral fees feed the public /transparency/vendor-partnerships page.</CardDescription>
             </CardHeader>
             <CardContent>
+              <VendorMetricForm onSubmit={() => queryClient.invalidateQueries({ queryKey: ["/api/founder/compliance/vendor-telemetry"] })} />
               {vendorTelemetry.isLoading ? <Skeleton className="h-32" /> : vendorTelemetry.data ? (
                 <>
                   <h3 className="text-sm font-medium mb-2">Adoption metrics</h3>
@@ -446,6 +447,55 @@ export default function FounderComplianceOpsPage() {
         </TabsContent>
       </Tabs>
     </PageShell>
+  );
+}
+
+function VendorMetricForm({ onSubmit }: { onSubmit: () => void }) {
+  const { toast } = useToast();
+  const [vendor, setVendor] = useState("");
+  const [metricKey, setMetricKey] = useState("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [value, setValue] = useState("");
+  const [unit, setUnit] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const submit = async () => {
+    setPending(true);
+    try {
+      const r = await fetch("/api/founder/compliance/vendor-telemetry", {
+        method: "POST", credentials: "include", headers: csrf(),
+        body: JSON.stringify({
+          vendor, metricKey, periodKey, value: Number(value), unit: unit || undefined,
+        }),
+      });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => ({}));
+        throw new Error(detail.message ?? `Failed (${r.status})`);
+      }
+      toast({ title: "Vendor metric recorded" });
+      setVendor(""); setMetricKey(""); setPeriodKey(""); setValue(""); setUnit("");
+      onSubmit();
+    } catch (err: any) {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <details className="mb-4 border border-border rounded-md p-3">
+      <summary className="text-sm font-medium cursor-pointer">Add vendor metric</summary>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mt-3">
+        <input className="border border-border rounded-md px-2 py-1 text-sm bg-background" placeholder="vendor (e.g., stripe)" value={vendor} onChange={(e) => setVendor(e.target.value)} />
+        <input className="border border-border rounded-md px-2 py-1 text-sm bg-background" placeholder="metric_key (e.g., adoption_pct)" value={metricKey} onChange={(e) => setMetricKey(e.target.value)} />
+        <input className="border border-border rounded-md px-2 py-1 text-sm bg-background" placeholder="period (YYYY-MM)" value={periodKey} onChange={(e) => setPeriodKey(e.target.value)} />
+        <input type="number" className="border border-border rounded-md px-2 py-1 text-sm bg-background" placeholder="value" value={value} onChange={(e) => setValue(e.target.value)} />
+        <input className="border border-border rounded-md px-2 py-1 text-sm bg-background" placeholder="unit (pct/count/sec)" value={unit} onChange={(e) => setUnit(e.target.value)} />
+      </div>
+      <Button size="sm" className="mt-2" onClick={submit} disabled={pending || !vendor || !metricKey || !periodKey || !value}>
+        {pending ? "Recording…" : "Record metric"}
+      </Button>
+    </details>
   );
 }
 
