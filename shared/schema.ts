@@ -6259,6 +6259,83 @@ export const insertSubscriptionEventSchema = createInsertSchema(subscriptionEven
 export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSchema>;
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
+// ─── FW-WYNNE-3 (push-forward 2026-05-08): data-retention policy ─────────
+// Wynne's 180-day item (180-14). One row per (table_key, retention_kind).
+// Holds the policy that the nightly retention job consults. table_key
+// references actual tables (leads, properties, audit_events, etc).
+// retention_kind ∈ {hard_delete | anonymize | archive}.
+export const retentionPolicies = pgTable(
+  "retention_policies",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tableKey: text("table_key").notNull(), // 'leads' | 'audit_events' | etc
+    retentionKind: text("retention_kind").notNull(), // hard_delete | anonymize | archive
+    retentionDays: integer("retention_days").notNull(),
+    legalBasis: text("legal_basis"), // citation for why we keep this long
+    enabled: boolean("enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("retention_policies_table_idx").on(table.tableKey),
+  ],
+);
+export type RetentionPolicy = typeof retentionPolicies.$inferSelect;
+export type InsertRetentionPolicy = typeof retentionPolicies.$inferInsert;
+
+// ─── FW-CAMILA-2 (push-forward 2026-05-08): D7 NPS micro-survey ──────────
+// Camila's 180-day item (180-7). One row per (org, surveyDate). Score 0-10.
+// Score wired into customer-health rollup downstream.
+export const npsMicroSurveys = pgTable(
+  "nps_micro_surveys",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    userId: text("user_id"),
+    score: integer("score").notNull(), // 0-10
+    comment: text("comment"),
+    surveyTrigger: text("survey_trigger").notNull().default("d7"), // d7 | d30 | adhoc
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("nps_micro_org_idx").on(table.organizationId, table.submittedAt),
+  ],
+);
+export type NpsMicroSurvey = typeof npsMicroSurveys.$inferSelect;
+export type InsertNpsMicroSurvey = typeof npsMicroSurveys.$inferInsert;
+
+// ─── FW-CAMILA-3 (push-forward 2026-05-08): pre-churn ladder automation ──
+// Camila's 180-day item (180-8). Activity-silence escalation: 5d/10d/14d/
+// 21d/30d ladder. One row per (org, rung) so we don't re-fire the same
+// rung. status flips to 'recovered' if activity resumes; 'churned' if
+// 30d hits with no activity.
+export const preChurnRungs = pgTable(
+  "pre_churn_rungs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    rung: text("rung").notNull(), // d5 | d10 | d14 | d21 | d30
+    firedAt: timestamp("fired_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").notNull().default("fired"), // fired | recovered | churned
+    notes: text("notes"),
+  },
+  (table) => [
+    uniqueIndex("pre_churn_rungs_org_rung_idx").on(table.organizationId, table.rung),
+    index("pre_churn_rungs_status_idx").on(table.status),
+  ],
+);
+export type PreChurnRung = typeof preChurnRungs.$inferSelect;
+export type InsertPreChurnRung = typeof preChurnRungs.$inferInsert;
+
+// ─── FW-WYNNE-2 (push-forward 2026-05-08): substantive FCRA attestation ──
+// Wynne's 180-day item (180-15). The current annual attestation is a
+// checkbox; this column captures the structured form: which permissible-
+// purpose category, what specific use-case, what data category. Stored as
+// jsonb on the existing `fcra_attestations` row via a new column. Keeps
+// backward-compat (NULL means legacy checkbox).
+// (column added via ALTER on fcra_attestations in scripts/migrate.mjs)
+
 // ─── FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs ───
 // 5-persona convergence (Tegan + Bryn + Ashok + Caspar + Ana): meter
 // verticals as add-on packs on top of the base tier ($49 / $99 / $199).
@@ -19233,6 +19310,18 @@ export const fcraAttestations = pgTable(
     attestedAt: timestamp("attested_at", { withTimezone: true }).defaultNow().notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
+    // FW-WYNNE-2 (push-forward 2026-05-08): substantive attestation
+    // form. Replaces the bare-checkbox shape with structured intent.
+    // jsonb so we can evolve the form without schema churn. NULL ⇒
+    // legacy checkbox-only attestation.
+    substantiveForm: jsonb("substantive_form").$type<{
+      permissiblePurpose: "tenant_screening" | "skip_trace" | "account_review" | "written_consent" | "legitimate_business_need" | "collection";
+      specificUseCase: string; // free-text 50+ chars
+      dataCategoriesUsed: string[]; // ["credit", "criminal", "eviction", "income", "address", "phone", "email"]
+      operatorRole: string; // "owner" | "property_manager" | "leasing_agent" | "screening_specialist"
+      acknowledgedAdverseActionDuty: boolean;
+      acknowledgedDataRetentionPolicy: boolean;
+    }>(),
   },
   (table) => [
     index("fcra_attestations_org_user_idx").on(table.organizationId, table.userId),

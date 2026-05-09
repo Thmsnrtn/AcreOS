@@ -2662,6 +2662,47 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-WYNNE-3 (push-forward 2026-05-08): data-retention policy.
+  `CREATE TABLE IF NOT EXISTS "retention_policies" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "table_key" text NOT NULL,
+     "retention_kind" text NOT NULL,
+     "retention_days" integer NOT NULL,
+     "legal_basis" text,
+     "enabled" boolean NOT NULL DEFAULT true,
+     "last_run_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "retention_policies_table_idx" ON "retention_policies" ("table_key")',
+
+  // FW-CAMILA-2 (push-forward 2026-05-08): D7 NPS micro-survey.
+  `CREATE TABLE IF NOT EXISTS "nps_micro_surveys" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "user_id" text,
+     "score" integer NOT NULL,
+     "comment" text,
+     "survey_trigger" text NOT NULL DEFAULT 'd7',
+     "submitted_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "nps_micro_org_idx" ON "nps_micro_surveys" ("organization_id", "submitted_at")',
+
+  // FW-CAMILA-3 (push-forward 2026-05-08): pre-churn ladder.
+  `CREATE TABLE IF NOT EXISTS "pre_churn_rungs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "rung" text NOT NULL,
+     "fired_at" timestamptz NOT NULL DEFAULT now(),
+     "status" text NOT NULL DEFAULT 'fired',
+     "notes" text
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "pre_churn_rungs_org_rung_idx" ON "pre_churn_rungs" ("organization_id", "rung")',
+  'CREATE INDEX IF NOT EXISTS "pre_churn_rungs_status_idx" ON "pre_churn_rungs" ("status")',
+
+  // FW-WYNNE-2 (push-forward 2026-05-08): substantive FCRA attestation form.
+  'ALTER TABLE "fcra_attestations" ADD COLUMN IF NOT EXISTS "substantive_form" jsonb',
+
   // FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs.
   // One row per (org, pack_key). Org has a pack active when status='active'
   // AND (cancel_at IS NULL OR cancel_at > now()).
