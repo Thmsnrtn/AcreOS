@@ -2662,6 +2662,14 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-MIREILLE-1 (push-forward 2026-05-08): deal-room growth-loop retrofit.
+  // Adds public share slug + view counter so deal-rooms can serve as
+  // unauthenticated acquisition surface. Loop conversion measured weekly.
+  'ALTER TABLE "deal_rooms" ADD COLUMN IF NOT EXISTS "public_share_slug" text',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "deal_rooms_public_share_slug_idx" ON "deal_rooms" ("public_share_slug") WHERE "public_share_slug" IS NOT NULL',
+  'ALTER TABLE "deal_rooms" ADD COLUMN IF NOT EXISTS "public_share_enabled_at" timestamptz',
+  'ALTER TABLE "deal_rooms" ADD COLUMN IF NOT EXISTS "public_view_count" integer NOT NULL DEFAULT 0',
+
   // FW-WYNNE-1 (push-forward 2026-05-08): skip-trace permissible-purpose
   // gate. Adds purpose_of_use / justification / attesting_user_id /
   // attestation_version to skip_traces. Persisted for class-action defense

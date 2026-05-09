@@ -10150,6 +10150,16 @@ export const dealRooms = pgTable("deal_rooms", {
   closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+
+  // FW-MIREILLE-1 (push-forward 2026-05-08): deal-room growth-loop retrofit.
+  // Mireille's lead: deal-rooms are the only viable acquisition loop on the
+  // platform. Operator opts in by generating a publicShareSlug; an
+  // unauthenticated viewer hits /deal-rooms/share/:slug, sees a sanitized
+  // view (no PII, no internal notes), and gets a signup CTA. View count
+  // tracked for share→signup loop conversion measurement.
+  publicShareSlug: text("public_share_slug").unique(),
+  publicShareEnabledAt: timestamp("public_share_enabled_at"),
+  publicViewCount: integer("public_view_count").notNull().default(0),
 });
 
 export const insertDealRoomSchema = createInsertSchema(dealRooms).omit({ id: true, createdAt: true, updatedAt: true });

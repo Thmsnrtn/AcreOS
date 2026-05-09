@@ -634,4 +634,99 @@ router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest,
   }
 }));
 
+// FW-MIREILLE-1 (push-forward 2026-05-08): deal-room growth-loop retrofit.
+// POST /deal-rooms/:id/share-link — operator opts in to public sharing.
+// Generates a slug (16 hex chars) and stamps publicShareEnabledAt. Idempotent;
+// re-calling returns the existing slug. Operator can opt out by deleting.
+router.post('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const dealRoomId = parseInt(req.params.id);
+  if (isNaN(dealRoomId)) return Errors.badRequest(res, 'Invalid deal room ID');
+  const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+  if (!dealRoom) return;
+
+  const existingSlug = (dealRoom as any).publicShareSlug as string | null | undefined;
+  if (existingSlug) {
+    return res.json({ slug: existingSlug, url: `/deal-rooms/share/${existingSlug}` });
+  }
+
+  const slug = crypto.randomBytes(8).toString('hex');
+  await db
+    .update(dealRooms)
+    .set({
+      publicShareSlug: slug,
+      publicShareEnabledAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(dealRooms.id, dealRoomId));
+
+  return res.json({ slug, url: `/deal-rooms/share/${slug}` });
+}));
+
+// DELETE /deal-rooms/:id/share-link — operator revokes public sharing.
+router.delete('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const dealRoomId = parseInt(req.params.id);
+  if (isNaN(dealRoomId)) return Errors.badRequest(res, 'Invalid deal room ID');
+  const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+  if (!dealRoom) return;
+
+  await db
+    .update(dealRooms)
+    .set({ publicShareSlug: null, publicShareEnabledAt: null, updatedAt: new Date() })
+    .where(eq(dealRooms.id, dealRoomId));
+
+  return res.json({ revoked: true });
+}));
+
 export default router;
+
+// FW-MIREILLE-1: PUBLIC unauthenticated view route.
+// Mounted separately at /api/public/deal-rooms in registerPublicDealRoomRoute
+// (called from server/routes.ts). Returns sanitized deal-room view for the
+// "growth loop" surface — no PII, no internal notes, just enough deal shape
+// to make a viewer think "I'd want this for my own deals" + signup CTA.
+import type { Express } from 'express';
+import { sql } from 'drizzle-orm';
+export function registerPublicDealRoomRoute(app: Express): void {
+  app.get('/api/public/deal-rooms/:slug', async (req: Request, res: Response) => {
+    try {
+      const slug = req.params.slug;
+      if (!slug || !/^[a-f0-9]{16}$/.test(slug)) {
+        return Errors.notFound(res, 'Deal room');
+      }
+      const [room] = await db
+        .select()
+        .from(dealRooms)
+        .where(eq(dealRooms.publicShareSlug, slug))
+        .limit(1);
+      if (!room) return Errors.notFound(res, 'Deal room');
+
+      // Increment view counter; fire-and-forget.
+      db.update(dealRooms)
+        .set({ publicViewCount: sql`${dealRooms.publicViewCount} + 1` })
+        .where(eq(dealRooms.id, room.id))
+        .then(() => undefined)
+        .catch(() => undefined);
+
+      // Sanitized projection — strip participants, internal notes, prices.
+      // The viewer sees "a deal happened on AcreOS" + dealType + status +
+      // documents-shared-count, NOT the actual price or PII.
+      return res.json({
+        slug,
+        dealType: room.dealType,
+        status: room.status,
+        sharedDocumentsCount: Array.isArray(room.sharedDocuments)
+          ? (room.sharedDocuments as unknown[]).length
+          : 0,
+        participantCount: Array.isArray(room.participants)
+          ? (room.participants as unknown[]).length
+          : 0,
+        closedAt: room.closedAt,
+        createdAt: room.createdAt,
+        viewCount: (room.publicViewCount ?? 0) + 1,
+      });
+    } catch (err) {
+      logger.error('[public-deal-rooms] failed', err instanceof Error ? err : undefined);
+      return Errors.internal(res, err);
+    }
+  });
+}
