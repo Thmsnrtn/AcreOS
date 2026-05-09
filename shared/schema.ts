@@ -6281,6 +6281,91 @@ export const syntheticCheckRuns = pgTable(
 export type SyntheticCheckRun = typeof syntheticCheckRuns.$inferSelect;
 export type InsertSyntheticCheckRun = typeof syntheticCheckRuns.$inferInsert;
 
+// ─── Panel-300 #30 — CMA reports + auction-readiness + lien-search ───────
+// Domain-real-estate moats. Each is a workflow surface a domain expert
+// can sign off on; the data row is the legal artifact.
+export const cmaReports = pgTable(
+  "cma_reports",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    propertyId: integer("property_id"),
+    subjectAddress: text("subject_address"),
+    subjectAcres: numeric("subject_acres"),
+    compIds: jsonb("comp_ids").$type<number[]>(), // array of comp property IDs
+    subjectAttributes: jsonb("subject_attributes"),
+    valuationLowCents: integer("valuation_low_cents"),
+    valuationMidCents: integer("valuation_mid_cents"),
+    valuationHighCents: integer("valuation_high_cents"),
+    methodologyNotes: text("methodology_notes"),
+    preparedBy: text("prepared_by"), // user_id
+    domainExpertReviewedAt: timestamp("domain_expert_reviewed_at", { withTimezone: true }),
+    domainExpertReviewer: text("domain_expert_reviewer"),
+    status: text("status").notNull().default("draft"), // draft | reviewed | sent_to_buyer
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("cma_reports_org_idx").on(table.organizationId, table.createdAt),
+    index("cma_reports_property_idx").on(table.propertyId),
+  ],
+);
+export type CmaReport = typeof cmaReports.$inferSelect;
+export type InsertCmaReport = typeof cmaReports.$inferInsert;
+
+export const auctionReadinessChecklists = pgTable(
+  "auction_readiness_checklists",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    propertyId: integer("property_id"),
+    auctionDate: timestamp("auction_date", { withTimezone: true }),
+    titleSearchComplete: boolean("title_search_complete").notNull().default(false),
+    lienSearchComplete: boolean("lien_search_complete").notNull().default(false),
+    occupancyVerified: boolean("occupancy_verified").notNull().default(false),
+    bidStrategyDocumented: boolean("bid_strategy_documented").notNull().default(false),
+    fundsConfirmedCents: integer("funds_confirmed_cents"),
+    redemptionRiskAssessed: boolean("redemption_risk_assessed").notNull().default(false),
+    domainExpertSignoffAt: timestamp("domain_expert_signoff_at", { withTimezone: true }),
+    domainExpertSignoffBy: text("domain_expert_signoff_by"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("auction_readiness_property_unique_idx").on(
+      table.organizationId,
+      table.propertyId,
+    ),
+  ],
+);
+export type AuctionReadinessChecklist = typeof auctionReadinessChecklists.$inferSelect;
+
+export const lienSearchRecords = pgTable(
+  "lien_search_records",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    propertyId: integer("property_id"),
+    lienType: text("lien_type").notNull(), // judgment | tax | mechanic | hoa | irs | child_support | other
+    lienHolder: text("lien_holder"),
+    lienAmountCents: integer("lien_amount_cents"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }),
+    releaseStatus: text("release_status").notNull().default("active"), // active | released | satisfied
+    sourceSystem: text("source_system"), // courthouse | lps | regrid | manual
+    rawData: jsonb("raw_data"),
+    notes: text("notes"),
+    discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("lien_search_property_type_idx").on(table.propertyId, table.lienType),
+    index("lien_search_org_idx").on(table.organizationId),
+    index("lien_search_status_idx").on(table.releaseStatus),
+  ],
+);
+export type LienSearchRecord = typeof lienSearchRecords.$inferSelect;
+export type InsertLienSearchRecord = typeof lienSearchRecords.$inferInsert;
+
 // ─── Panel-300 #25 — vendor adoption telemetry ───────────────────────────
 // Vendor-partners panel: 5 vendors (Stripe, Clerk, Lob, Sentry, Regrid)
 // each have an account-team-level conversation about adoption %, DAU,

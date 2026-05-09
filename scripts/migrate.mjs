@@ -2662,6 +2662,66 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // Panel-300 #30 — CMA reports + auction-readiness + lien-search.
+  `CREATE TABLE IF NOT EXISTS "cma_reports" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "property_id" integer,
+     "subject_address" text,
+     "subject_acres" numeric,
+     "comp_ids" jsonb,
+     "subject_attributes" jsonb,
+     "valuation_low_cents" integer,
+     "valuation_mid_cents" integer,
+     "valuation_high_cents" integer,
+     "methodology_notes" text,
+     "prepared_by" text,
+     "domain_expert_reviewed_at" timestamptz,
+     "domain_expert_reviewer" text,
+     "status" text NOT NULL DEFAULT 'draft',
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "cma_reports_org_idx" ON "cma_reports" ("organization_id", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "cma_reports_property_idx" ON "cma_reports" ("property_id")',
+
+  `CREATE TABLE IF NOT EXISTS "auction_readiness_checklists" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "property_id" integer,
+     "auction_date" timestamptz,
+     "title_search_complete" boolean NOT NULL DEFAULT false,
+     "lien_search_complete" boolean NOT NULL DEFAULT false,
+     "occupancy_verified" boolean NOT NULL DEFAULT false,
+     "bid_strategy_documented" boolean NOT NULL DEFAULT false,
+     "funds_confirmed_cents" integer,
+     "redemption_risk_assessed" boolean NOT NULL DEFAULT false,
+     "domain_expert_signoff_at" timestamptz,
+     "domain_expert_signoff_by" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "auction_readiness_property_unique_idx" ON "auction_readiness_checklists" ("organization_id", "property_id")',
+
+  `CREATE TABLE IF NOT EXISTS "lien_search_records" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "property_id" integer,
+     "lien_type" text NOT NULL,
+     "lien_holder" text,
+     "lien_amount_cents" integer,
+     "recorded_at" timestamptz,
+     "release_status" text NOT NULL DEFAULT 'active',
+     "source_system" text,
+     "raw_data" jsonb,
+     "notes" text,
+     "discovered_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "lien_search_property_type_idx" ON "lien_search_records" ("property_id", "lien_type")',
+  'CREATE INDEX IF NOT EXISTS "lien_search_org_idx" ON "lien_search_records" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "lien_search_status_idx" ON "lien_search_records" ("release_status")',
+
   // Panel-300 #25 — vendor adoption telemetry.
   `CREATE TABLE IF NOT EXISTS "vendor_adoption_metrics" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
