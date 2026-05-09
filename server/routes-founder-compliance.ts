@@ -25,6 +25,7 @@ import {
 import { desc, eq, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requireScope } from "./middleware/roleScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 
@@ -219,10 +220,12 @@ export function registerFounderComplianceRoutes(app: Express): void {
   );
 
   // ── Customer-facing multi-vertical P&L (own org only) ──────────────
+  // Panel-300 #8 wired: financial_read scope required.
   app.get(
     "/api/account/multi-vertical-pnl",
     isAuthenticated,
     getOrCreateOrg,
+    requireScope("financial_read"),
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = req.organization!.id;

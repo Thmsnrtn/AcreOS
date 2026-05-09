@@ -208,6 +208,41 @@ export function registerAccountSecurityRoutes(app: Express): void {
     },
   );
 
+  // GET /api/account/role-scopes — return the requesting user's effective
+  // scopes (panel-300 #8). Lets the UI hide what the user can't use.
+  app.get(
+    "/api/account/role-scopes",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { hasRoleScope } = await import("./middleware/roleScope");
+        const allScopes: Array<
+          | "financial_read" | "financial_write"
+          | "tenant_pii_read" | "tenant_pii_write"
+          | "deal_read" | "deal_write"
+          | "comms_read" | "comms_write"
+          | "settings_write" | "audit_read"
+          | "annotation_only"
+        > = [
+          "financial_read", "financial_write",
+          "tenant_pii_read", "tenant_pii_write",
+          "deal_read", "deal_write",
+          "comms_read", "comms_write",
+          "settings_write", "audit_read",
+          "annotation_only",
+        ];
+        const effective: Record<string, boolean> = {};
+        for (const s of allScopes) {
+          effective[s] = await hasRoleScope(req, s);
+        }
+        return res.json({ scopes: effective });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // GET /api/account/security/summary — at-a-glance security posture.
   app.get(
     "/api/account/security/summary",
