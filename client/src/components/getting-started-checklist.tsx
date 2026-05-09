@@ -23,46 +23,86 @@ interface ChecklistItem {
   description: string;
   icon: typeof Users;
   href: string;
-  statusKey: keyof ChecklistStatus;
 }
 
-const CHECKLIST_ITEMS: Omit<ChecklistItem, "statusKey">[] = [
-  {
-    id: "lead",
-    title: "Add your first lead",
-    description: "Import or manually add a seller or buyer to your CRM",
-    icon: Users,
-    href: "/leads",
-  },
-  {
-    id: "import",
-    title: "Import leads from CSV",
-    description: "Bulk import your existing contacts from a spreadsheet",
-    icon: Upload,
-    href: "/leads",
-  },
-  {
-    id: "campaign",
-    title: "Create a campaign",
-    description: "Set up a mail or outreach campaign to engage leads",
-    icon: Megaphone,
-    href: "/campaigns",
-  },
-  {
-    id: "deal",
-    title: "Track a deal",
-    description: "Start tracking an acquisition or disposition deal",
-    icon: Handshake,
-    href: "/deals",
-  },
-  {
-    id: "notePayment",
-    title: "Record a note payment",
-    description: "Log a payment on a seller-financed note",
-    icon: Banknote,
-    href: "/finance",
-  },
-];
+// FW-YUNA-1 (push-forward 2026-05-08): persona-aware aha checklist.
+// Yuna's lead recommendation: time-to-first-value 7:30 → 2:30 by
+// keying on organizations.investorType. Each persona gets a distinct
+// 3-step aha — only the steps that produce the wow-moment for THAT
+// operator type. Land-investors care about leads → campaign → deal;
+// note-investors care about notes → payments → portfolio; "both" /
+// wholesaler-shaped operators get the hybrid view.
+const PERSONA_CHECKLISTS: Record<"land" | "notes" | "both", Omit<ChecklistItem, "isComplete">[]> = {
+  land: [
+    {
+      id: "lead",
+      title: "Add your first lead",
+      description: "Import a CSV or paste an address — your wedge into the deal pipeline",
+      icon: Users,
+      href: "/leads",
+    },
+    {
+      id: "campaign",
+      title: "Send your first mailer",
+      description: "Pick a template, target your list, watch responses land",
+      icon: Megaphone,
+      href: "/campaigns",
+    },
+    {
+      id: "deal",
+      title: "Track your first deal",
+      description: "Move a lead to deal and see the offer/close pipeline light up",
+      icon: Handshake,
+      href: "/deals",
+    },
+  ],
+  notes: [
+    {
+      id: "import",
+      title: "Import your note portfolio",
+      description: "Upload your existing notes — amortization schedules render automatically",
+      icon: Upload,
+      href: "/finance",
+    },
+    {
+      id: "notePayment",
+      title: "Record your first payment",
+      description: "Log a P&I payment and see the schedule update to the cent",
+      icon: Banknote,
+      href: "/finance",
+    },
+    {
+      id: "deal",
+      title: "Track a note buy or sell",
+      description: "Move a note acquisition or disposition through your pipeline",
+      icon: Handshake,
+      href: "/deals",
+    },
+  ],
+  both: [
+    {
+      id: "lead",
+      title: "Add your first lead or note",
+      description: "Import a CSV — leads, notes, or both. Same pipeline, different surfaces",
+      icon: Users,
+      href: "/leads",
+    },
+    {
+      id: "campaign",
+      title: "Send your first outreach",
+      description: "Mailer for sellers, or direct outreach to note holders",
+      icon: Megaphone,
+      href: "/campaigns",
+    },
+    {
+      id: "notePayment",
+      title: "Record activity",
+      description: "First deal moved, or first note payment logged — pick the win that's closest",
+      icon: Banknote,
+      href: "/finance",
+    },
+  ],
+};
 
 const STATUS_KEYS: Record<string, keyof ChecklistStatus> = {
   lead: "hasLead",
@@ -85,7 +125,9 @@ export function GettingStartedChecklist() {
   const settings = organization?.settings as Record<string, unknown> | null;
   const checklistDismissed = settings?.checklistDismissed === true;
 
-  const items = CHECKLIST_ITEMS.map((item) => ({
+  const investorType = (organization?.investorType as "land" | "notes" | "both" | undefined) ?? "land";
+  const personaItems = PERSONA_CHECKLISTS[investorType] ?? PERSONA_CHECKLISTS.land;
+  const items = personaItems.map((item) => ({
     ...item,
     isComplete: checklistStatus ? checklistStatus[STATUS_KEYS[item.id]] : false,
   }));
