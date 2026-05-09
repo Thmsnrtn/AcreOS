@@ -361,7 +361,52 @@ Format as a professional report.`;
         max_tokens: 2000,
       });
 
-      return completion.choices[0].message.content || 'Disclosure generation failed';
+      const generated = completion.choices[0].message.content || 'Disclosure generation failed';
+
+      // FW-INDIRA-2 (push-forward 2026-05-08): post-validator on
+      // AI-generated disclosures. Indira-Lockwood + theo-okuda +
+      // wynne-ohaegbu converged: AI output has customer-facing legal
+      // blast radius. Run the same disclosureRegistry check that
+      // gates document dispatch — if the AI omitted the required
+      // statutory heading or key phrases, return an explicit error
+      // marker rather than silently shipping a non-compliant draft.
+      try {
+        const { checkDisclosure } = await import("./disclosureRegistry");
+        const stateUsps = (property.state || "").toUpperCase().slice(0, 2);
+        const docType = `${disclosureType}_disclosure`;
+        const result = checkDisclosure(stateUsps, docType, generated);
+        if (!result.ok) {
+          logger.warn(
+            `[complianceAI] post-validator FAILED for prop=${propertyId} state=${stateUsps} doc=${docType}: missing ${result.missingPhrases.length} phrases${result.missingHeading ? " + heading" : ""}`,
+          );
+          return [
+            generated,
+            "",
+            `<<COMPLIANCE-AI POST-VALIDATOR FAILED — DO NOT SEND>>`,
+            `Statute: ${result.missing.statuteCitation}`,
+            `Required heading missing: ${result.missingHeading ? "yes" : "no"}`,
+            result.missingPhrases.length > 0
+              ? `Missing required phrases: ${result.missingPhrases.join(" / ")}`
+              : "",
+            `Operator action: edit the draft to include the heading and phrases above; re-run check via POST /api/compliance/check-disclosure.`,
+          ].filter(Boolean).join("\n");
+        }
+      } catch (validatorErr) {
+        // disclosureRegistry throws on unverified entries (intentional).
+        // Surface that to the operator as a banner — don't silently ship.
+        logger.warn(
+          `[complianceAI] post-validator threw for prop=${propertyId}`,
+          validatorErr instanceof Error ? validatorErr : undefined,
+        );
+        return [
+          generated,
+          "",
+          `<<COMPLIANCE-AI POST-VALIDATOR UNVERIFIED — ATTORNEY REVIEW REQUIRED>>`,
+          validatorErr instanceof Error ? validatorErr.message : String(validatorErr),
+        ].join("\n");
+      }
+
+      return generated;
     } catch (error) {
       logger.error('Failed to generate disclosure', error);
       return 'Error generating disclosure document';
