@@ -37,6 +37,7 @@ import {
   onboardingJourneys,
   onboardingSteps,
   organizations,
+  users,
   leads,
   deals,
   decisionsInboxItems,
@@ -355,6 +356,66 @@ async function handleActivationVerdict(
       updatedAt: new Date(),
     })
     .where(eq(onboardingJourneys.id, journeyId));
+
+  // FW-CAMILA-1 (push-forward 2026-05-08): D30 verdict-branched email arc.
+  // Camila's lead recommendation: at month-1, the moat is CSM ops, not loops.
+  // Each verdict gets its own follow-up email (not the same 7-item drip).
+  // Active customers get a "you're cooking" pulse + ask-for-referral.
+  // At-risk get a "what's blocking you?" survey + 1:1 founder offer.
+  // Churned get a "we noticed you stopped — what'd we miss?" with a 30-day
+  // free extension. Pull the org owner's email; fail-open on send.
+  try {
+    const [orgRow] = await db
+      .select({ ownerId: organizations.ownerId, name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    if (orgRow?.ownerId) {
+      const [ownerRow] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, orgRow.ownerId))
+        .limit(1);
+      if (ownerRow?.email) {
+        const baseUrl = process.env.PUBLIC_APP_URL ?? "https://app.acreos.com";
+        const subject =
+          status === "active"
+            ? "30 days in — your AcreOS pulse"
+            : status === "at_risk"
+              ? "Hey, can we help unblock something?"
+              : "Was AcreOS the wrong fit? (Open invitation)";
+        const body =
+          status === "active"
+            ? `30 days in — ${leadCount} leads, ${dealCount} deals. You're using AcreOS the way it was meant to be used.\n\nIf there's anyone in your network who's still juggling spreadsheets, here's a referral link: ${baseUrl}/referrals\n\nReply to this email with "good" or "bad" — I read every response.`
+            : status === "at_risk"
+              ? `30 days in. We see ${leadCount} leads, ${dealCount} deal — and want to know what's blocking you from going further.\n\nReply to this email or grab 15 minutes with me directly: ${baseUrl}/founder/office-hours\n\nWe also extended your trial by 14 days, no action needed on your end.`
+              : `It's been 30 days and we don't see any activity yet. That's our problem, not yours.\n\nReply with one sentence — "wrong tool", "wrong time", "wrong vertical", or "I just got busy" — and we'll respond accordingly.\n\nIf you'd like to keep the door open, here's an extra 30 days on us: ${baseUrl}/account/extend\n\n— ${process.env.FOUNDER_EMAIL ?? "the AcreOS team"}`;
+        try {
+          const { emailService } = await import("./emailService");
+          await emailService.sendTransactionalEmail("alert", {
+            to: ownerRow.email,
+            subject,
+            templateData: {
+              alertTitle: subject,
+              alertMessage: body,
+              actionUrl: `${baseUrl}/today`,
+              actionText: status === "churned" ? "Extend trial" : "Open AcreOS",
+            },
+          });
+        } catch (err) {
+          logger.warn(
+            `[onboardingAutonomy] D30 ${status} email send failed for org ${organizationId}`,
+            err instanceof Error ? err : undefined,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[onboardingAutonomy] D30 owner email lookup failed for org ${organizationId}`,
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   // If churned or at-risk, surface to founder inbox.
   if (status !== "active") {
