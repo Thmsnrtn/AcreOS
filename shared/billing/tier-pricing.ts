@@ -108,6 +108,98 @@ export function tierPriceCents(tier: Tier, interval: BillingInterval): number {
   return interval === "yearly" ? pricing.priceYearlyCents : pricing.priceMonthlyCents;
 }
 
+// ─── FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs ────
+// 5-persona convergence (Tegan + Bryn + Ashok + Caspar + Ana): meter
+// verticals as +$100–$200/mo packs on top of any base tier. Future-proofs
+// the 4+ vertical roadmap and prevents a second "seven-pricing-tables"
+// drift episode. Each VerticalPack composes additively with the base tier
+// price; an org may activate any subset of packs.
+
+export type VerticalPackKey =
+  | "note_investor"
+  | "buy_and_hold"
+  | "fix_and_flipper"
+  | "subdivision"
+  | "wholesale";
+
+export interface VerticalPack {
+  key: VerticalPackKey;
+  displayName: string;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  stripePriceIdMonthly?: string;
+  stripePriceIdYearly?: string;
+  /** Description shown on the pricing page tile. */
+  tagline: string;
+}
+
+export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
+  note_investor: {
+    key: "note_investor",
+    displayName: "Note Investor pack",
+    priceMonthlyCents: 10000, // $100/mo
+    priceYearlyCents: 100000, // $1,000/yr (~17% off)
+    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_NI_MONTHLY"),
+    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_NI_YEARLY"),
+    tagline: "Amortization, payment ledger, 1098/1099-INT, portfolio dashboard",
+  },
+  buy_and_hold: {
+    key: "buy_and_hold",
+    displayName: "Property management pack",
+    priceMonthlyCents: 20000, // $200/mo
+    priceYearlyCents: 200000,
+    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_BH_MONTHLY"),
+    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_BH_YEARLY"),
+    tagline: "Tenant screening, rent ledger, maintenance tickets, late-fee engine",
+  },
+  fix_and_flipper: {
+    key: "fix_and_flipper",
+    displayName: "Fix-and-flip pack",
+    priceMonthlyCents: 15000, // $150/mo
+    priceYearlyCents: 150000,
+    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_FF_MONTHLY"),
+    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_FF_YEARLY"),
+    tagline: "ARV, rehab budgets, contractor 1099s, construction draws",
+  },
+  subdivision: {
+    key: "subdivision",
+    displayName: "Subdivision pack",
+    priceMonthlyCents: 15000,
+    priceYearlyCents: 150000,
+    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_SD_MONTHLY"),
+    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_SD_YEARLY"),
+    tagline: "Lot subdivision, CC&R templates, permit tracker",
+  },
+  wholesale: {
+    key: "wholesale",
+    displayName: "Wholesale pack",
+    priceMonthlyCents: 10000,
+    priceYearlyCents: 100000,
+    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_W_MONTHLY"),
+    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_W_YEARLY"),
+    tagline: "Assignment-of-contract, buyer-match, double-close, state-rule gate",
+  },
+};
+
+export function packPriceCents(packKey: VerticalPackKey, interval: BillingInterval): number {
+  const pack = VERTICAL_PACKS[packKey];
+  if (!pack) return 0;
+  return interval === "yearly" ? pack.priceYearlyCents : pack.priceMonthlyCents;
+}
+
+export function totalSubscriptionCents(opts: {
+  tier: Tier;
+  interval: BillingInterval;
+  activePacks: VerticalPackKey[];
+}): { tierCents: number; packCents: number; totalCents: number } {
+  const tierCents = tierPriceCents(opts.tier, opts.interval);
+  const packCents = (opts.activePacks ?? []).reduce(
+    (s, k) => s + packPriceCents(k, opts.interval),
+    0,
+  );
+  return { tierCents, packCents, totalCents: tierCents + packCents };
+}
+
 /** Convenience: returns the price in dollars (float) for display contexts. */
 export function tierPriceDollars(tier: Tier, interval: BillingInterval): number {
   return tierPriceCents(tier, interval) / 100;

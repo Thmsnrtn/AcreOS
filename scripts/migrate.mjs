@@ -2662,6 +2662,28 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs.
+  // One row per (org, pack_key). Org has a pack active when status='active'
+  // AND (cancel_at IS NULL OR cancel_at > now()).
+  `CREATE TABLE IF NOT EXISTS "org_vertical_packs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "pack_key" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'active',
+     "activated_at" timestamptz NOT NULL DEFAULT now(),
+     "cancel_at" timestamptz,
+     "cancelled_at" timestamptz,
+     "billing_interval" text NOT NULL DEFAULT 'monthly',
+     "price_cents" integer NOT NULL,
+     "stripe_subscription_item_id" text,
+     "activated_by" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "org_vertical_packs_org_pack_idx" ON "org_vertical_packs" ("organization_id", "pack_key")',
+  'CREATE INDEX IF NOT EXISTS "org_vertical_packs_status_idx" ON "org_vertical_packs" ("status")',
+
   // FW-THEO-1 + FW-INDIRA-1 (push-forward 2026-05-08): eval harness +
   // AI cost ceiling + model lifecycle.
   `CREATE TABLE IF NOT EXISTS "ai_models" (

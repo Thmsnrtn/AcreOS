@@ -6259,6 +6259,39 @@ export const insertSubscriptionEventSchema = createInsertSchema(subscriptionEven
 export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSchema>;
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
+// ─── FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs ───
+// 5-persona convergence (Tegan + Bryn + Ashok + Caspar + Ana): meter
+// verticals as add-on packs on top of the base tier ($49 / $99 / $199).
+// One row per (organization, pack_key) — the org has a pack active when
+// status='active' AND (cancel_at IS NULL OR cancel_at > now()). Stripe
+// subscription IDs stored alongside the local row so we can reconcile
+// nightly against Stripe's own state.
+export const orgVerticalPacks = pgTable(
+  "org_vertical_packs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    packKey: text("pack_key").notNull(), // note_investor | buy_and_hold | etc
+    status: text("status").notNull().default("active"), // active | cancelled | past_due
+    activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().defaultNow(),
+    cancelAt: timestamp("cancel_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    billingInterval: text("billing_interval").notNull().default("monthly"),
+    priceCents: integer("price_cents").notNull(),
+    stripeSubscriptionItemId: text("stripe_subscription_item_id"),
+    activatedBy: text("activated_by"), // user_id
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("org_vertical_packs_org_pack_idx").on(table.organizationId, table.packKey),
+    index("org_vertical_packs_status_idx").on(table.status),
+  ],
+);
+export type OrgVerticalPack = typeof orgVerticalPacks.$inferSelect;
+export type InsertOrgVerticalPack = typeof orgVerticalPacks.$inferInsert;
+
 // ─── FW-MARISOL-2 (push-forward 2026-05-08): ASC 606 revenue recognition ──
 // Marisol/Ashok/Harlowe/Bryn/Tegan all converged: annual subscriptions
 // violate ASC 606 unless we defer + recognize ratably. One row per
