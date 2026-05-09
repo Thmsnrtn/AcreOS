@@ -788,8 +788,8 @@ export function registerDealRoutes(app: Express): void {
       }
 
       const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
-      const { requireOpenAIClient } = await import('./utils/openaiClient');
-      const openai = requireOpenAIClient();
+      // Panel-300 90-15 / gap E: migrated from direct OpenAI to routeAITask.
+      const { routeAITask, TaskComplexity } = await import('./services/aiRouter');
       
       const researchAgent = new ResearchIntelligenceAgent();
       const dealsAgent = new DealsAcquisitionAgent();
@@ -864,16 +864,18 @@ When responding:
 
 ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+      const response = await routeAITask({
+        taskType: "property_analysis_chat",
+        complexity: TaskComplexity.MODERATE,
+        taskTier: "critical", // customer-facing analyst surface
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
         ],
-        max_tokens: 1500,
-      });
+        maxTokens: 1500,
+      }, { orgId: org.id });
 
-      const aiResponse = response.choices[0]?.message?.content || "I couldn't generate a response. Please try again.";
+      const aiResponse = response.content || "I couldn't generate a response. Please try again.";
 
       // Deduct credits after successful AI call
       dealCreditService.deductCredits(org.id, 2, 'Deal AI analysis').catch(() => {});

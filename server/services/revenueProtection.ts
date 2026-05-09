@@ -6,7 +6,7 @@ import {
 import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 import { emailService } from "./emailService";
 import { decisionsInboxService } from "./decisionsInbox";
-import { requireOpenAIClient } from "../utils/openaiClient";
+import { routeAITask, TaskComplexity } from "./aiRouter";
 import { logger } from "../utils/logger";
 
 /** Compute a 0-100 churn risk score for a single org. Returns score + component breakdown. */
@@ -94,15 +94,26 @@ async function scoreOrganization(orgId: number) {
   };
 }
 
-/** Generate a personalized retention email via OpenAI. */
+/**
+ * Generate a personalized retention email via the canonical AI router.
+ * Migrated from direct requireOpenAIClient() — panel-300 90-15 / gap E.
+ *
+ * The router consults the per-org cost ceiling (FW-THEO-1), runs prompt-
+ * caching where available, and respects the AI_HAIKU_DEFAULT_ENABLED
+ * kill-switch. taskTier=standard → Haiku 4.5 by default (60-80% cheaper
+ * than direct gpt-4o-mini for the same task class).
+ */
 async function generateRetentionEmail(
   orgName: string,
   riskBand: string,
-  context: { daysSinceLastActive: number; dunningStage: string; ticketsLast30d: number }
+  context: { daysSinceLastActive: number; dunningStage: string; ticketsLast30d: number },
+  orgId?: number,
 ): Promise<{ subject: string; html: string }> {
-  const response = await requireOpenAIClient().chat.completions.create({
-    model: "gpt-4o-mini",
-    response_format: { type: "json_object" },
+  const response = await routeAITask({
+    taskType: "retention_email",
+    complexity: TaskComplexity.SIMPLE,
+    taskTier: "standard",
+    responseFormat: "json",
     messages: [{
       role: "system",
       content: "You are Pax, the AcreOS assistant. Write personalized, empathetic retention emails for Land Investors. Do not refer to yourself by any other name. Return JSON with subject and html fields.",
@@ -117,10 +128,10 @@ async function generateRetentionEmail(
         instruction: "Write a 3-paragraph retention email. Paragraph 1: acknowledge their business. Paragraph 2: offer specific help. Paragraph 3: clear CTA. Keep it under 200 words. Return { subject, html }",
       }),
     }],
-  });
+  }, { orgId });
 
   try {
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
+    const parsed = JSON.parse(response.content ?? "{}");
     return {
       subject: parsed.subject ?? `Quick check-in from your AcreOS team, ${orgName}`,
       html: parsed.html ?? `<p>Hi ${orgName} team,</p><p>We noticed you haven't logged in recently. Can we help with anything?</p>`,
@@ -211,7 +222,7 @@ async function processOrganization(orgId: number): Promise<void> {
         daysSinceLastActive: scored.daysSinceLastActive,
         dunningStage: scored.dunningStage,
         ticketsLast30d: scored.ticketsLast30d,
-      });
+      }, orgId);
       const emailResult = await emailService.sendEmail({
         to: org.email ?? "",
         subject: emailContent.subject,
@@ -250,7 +261,7 @@ async function processOrganization(orgId: number): Promise<void> {
         daysSinceLastActive: scored.daysSinceLastActive,
         dunningStage: scored.dunningStage,
         ticketsLast30d: scored.ticketsLast30d,
-      });
+      }, orgId);
       const emailResult = await emailService.sendEmail({
         to: org.email ?? "",
         subject: emailContent.subject,
