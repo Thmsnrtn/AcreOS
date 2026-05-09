@@ -2662,6 +2662,18 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // Panel-300 G3 — auth-fail lockout tracker.
+  `CREATE TABLE IF NOT EXISTS "auth_fail_attempts" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "ip" text,
+     "email" text,
+     "attempted_at" timestamptz NOT NULL DEFAULT now(),
+     "failure_reason" text,
+     "user_agent" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "auth_fail_attempts_ip_idx" ON "auth_fail_attempts" ("ip", "attempted_at")',
+  'CREATE INDEX IF NOT EXISTS "auth_fail_attempts_email_idx" ON "auth_fail_attempts" ("email", "attempted_at")',
+
   // FW-OLU-2 (push-forward 2026-05-08): synthetic checks (180-5).
   `CREATE TABLE IF NOT EXISTS "synthetic_check_runs" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

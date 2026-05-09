@@ -6281,6 +6281,29 @@ export const syntheticCheckRuns = pgTable(
 export type SyntheticCheckRun = typeof syntheticCheckRuns.$inferSelect;
 export type InsertSyntheticCheckRun = typeof syntheticCheckRuns.$inferInsert;
 
+// ─── Panel-300 G3 — auth-fail lockout tracker ────────────────────────────
+// Adversarial-stress (Magdalena, Galvin) + security-compliance: record
+// failed auth attempts per (ip, email) tuple; lock after 5 failures within
+// 15 minutes. Service helper reads + writes this table; route layer calls
+// recordAuthFailure() on each failed login.
+export const authFailAttempts = pgTable(
+  "auth_fail_attempts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    ip: text("ip"),
+    email: text("email"),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull().defaultNow(),
+    failureReason: text("failure_reason"), // password | mfa | session | unknown
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("auth_fail_attempts_ip_idx").on(table.ip, table.attemptedAt),
+    index("auth_fail_attempts_email_idx").on(table.email, table.attemptedAt),
+  ],
+);
+export type AuthFailAttempt = typeof authFailAttempts.$inferSelect;
+export type InsertAuthFailAttempt = typeof authFailAttempts.$inferInsert;
+
 // ─── FW-WYNNE-3 (push-forward 2026-05-08): data-retention policy ─────────
 // Wynne's 180-day item (180-14). One row per (table_key, retention_kind).
 // Holds the policy that the nightly retention job consults. table_key

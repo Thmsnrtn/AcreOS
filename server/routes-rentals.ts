@@ -266,14 +266,40 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const { recordAttestation } = await import("./services/fcraAttestation");
+      const { recordAttestation, recordSubstantiveAttestation, SubstantiveAttestationError } =
+        await import("./services/fcraAttestation");
+
+      // Panel-300 G4 — substantive 3-screen form path. If the request
+      // carries a `substantiveForm` key, validate it and persist via
+      // recordSubstantiveAttestation. Otherwise fall back to the legacy
+      // checkbox attestation. New BH customers post-2026-06-08 should
+      // ALWAYS submit the substantive form; the legacy path stays for
+      // skip-trace and other lighter-touch lookups.
+      if (req.body?.substantiveForm) {
+        try {
+          const row = await recordSubstantiveAttestation({
+            organizationId: orgId,
+            userId,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"] as string | undefined,
+            substantiveForm: req.body.substantiveForm,
+          });
+          return res.status(201).json({ attestation: row, substantive: true });
+        } catch (validationErr) {
+          if (validationErr instanceof SubstantiveAttestationError) {
+            return Errors.badRequest(res, validationErr.message, { code: validationErr.code });
+          }
+          throw validationErr;
+        }
+      }
+
       const row = await recordAttestation({
         organizationId: orgId,
         userId,
         ipAddress: req.ip,
         userAgent: req.headers["user-agent"] as string | undefined,
       });
-      return res.status(201).json({ attestation: row });
+      return res.status(201).json({ attestation: row, substantive: false });
     } catch (err) {
       return Errors.internal(res, err);
     }

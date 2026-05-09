@@ -159,6 +159,103 @@ export async function recordAttestation(opts: {
 }
 
 /**
+ * Panel-300 G4 — substantive 3-screen FCRA attestation form.
+ *
+ * Wynne's "theater that works in depositions" standard: the bare
+ * checkbox is replaced by a structured form capturing:
+ *   - permissible-purpose enum (with constrained list)
+ *   - free-text use-case (≥50 chars; the operator must explain WHY)
+ *   - data-categories the operator will use (multi-select)
+ *   - operator role within the organization
+ *   - explicit acknowledgement of adverse-action duty + retention
+ *
+ * Stored on `fcra_attestations.substantive_form` (jsonb column shipped
+ * by FW-WYNNE-2). Replaces the bare-checkbox attestation when the
+ * operator submits the live form.
+ */
+export interface SubstantiveAttestationForm {
+  permissiblePurpose: PurposeOfUse;
+  specificUseCase: string;
+  dataCategoriesUsed: string[];
+  operatorRole: "owner" | "property_manager" | "leasing_agent" | "screening_specialist";
+  acknowledgedAdverseActionDuty: boolean;
+  acknowledgedDataRetentionPolicy: boolean;
+}
+
+export class SubstantiveAttestationError extends Error {
+  readonly code = "FCRA_SUBSTANTIVE_FORM_INVALID" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "SubstantiveAttestationError";
+  }
+}
+
+export function validateSubstantiveForm(input: unknown): SubstantiveAttestationForm {
+  if (!input || typeof input !== "object") {
+    throw new SubstantiveAttestationError("Substantive form is required");
+  }
+  const form = input as Partial<SubstantiveAttestationForm>;
+  if (!form.permissiblePurpose || !ALL_PURPOSES_OF_USE.includes(form.permissiblePurpose as PurposeOfUse)) {
+    throw new SubstantiveAttestationError(
+      `permissiblePurpose must be one of ${ALL_PURPOSES_OF_USE.join(", ")}`,
+    );
+  }
+  if (!form.specificUseCase || form.specificUseCase.trim().length < 50) {
+    throw new SubstantiveAttestationError(
+      "specificUseCase ≥50 chars required — the operator must explain WHY this lookup is permissible",
+    );
+  }
+  if (!Array.isArray(form.dataCategoriesUsed) || form.dataCategoriesUsed.length === 0) {
+    throw new SubstantiveAttestationError(
+      "dataCategoriesUsed must list ≥1 category (credit / criminal / eviction / income / address / phone / email)",
+    );
+  }
+  const VALID_ROLES = ["owner", "property_manager", "leasing_agent", "screening_specialist"];
+  if (!form.operatorRole || !VALID_ROLES.includes(form.operatorRole)) {
+    throw new SubstantiveAttestationError(`operatorRole must be one of ${VALID_ROLES.join(", ")}`);
+  }
+  if (form.acknowledgedAdverseActionDuty !== true) {
+    throw new SubstantiveAttestationError(
+      "acknowledgedAdverseActionDuty must be true — operator confirms the duty to send adverse-action notices",
+    );
+  }
+  if (form.acknowledgedDataRetentionPolicy !== true) {
+    throw new SubstantiveAttestationError(
+      "acknowledgedDataRetentionPolicy must be true — operator confirms data-retention policy",
+    );
+  }
+  return form as SubstantiveAttestationForm;
+}
+
+/**
+ * Record a substantive attestation (panel-300 G4). Replaces the bare-
+ * checkbox `recordAttestation` when the operator goes through the
+ * 3-screen form. Throws SubstantiveAttestationError if the form fails
+ * validation.
+ */
+export async function recordSubstantiveAttestation(opts: {
+  organizationId: number;
+  userId: string;
+  ipAddress?: string;
+  userAgent?: string;
+  substantiveForm: SubstantiveAttestationForm;
+}) {
+  const validated = validateSubstantiveForm(opts.substantiveForm);
+  const [row] = await db.insert(fcraAttestations).values({
+    organizationId: opts.organizationId,
+    userId: opts.userId,
+    attestationVersion: CURRENT_FCRA_ATTESTATION_VERSION,
+    ipAddress: opts.ipAddress ?? null,
+    userAgent: opts.userAgent ?? null,
+    substantiveForm: validated as any,
+  }).returning();
+  logger.info(
+    `[FCRA G4] Substantive attestation recorded for org=${opts.organizationId} user=${opts.userId} purpose=${validated.permissiblePurpose} role=${validated.operatorRole}`,
+  );
+  return row;
+}
+
+/**
  * Assert the operator has a current attestation AND a recent
  * tenant_screenings row exists for this tenant. Throws otherwise.
  *
