@@ -2662,6 +2662,82 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // Panel-300 #25 — vendor adoption telemetry.
+  `CREATE TABLE IF NOT EXISTS "vendor_adoption_metrics" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "vendor" text NOT NULL,
+     "metric_key" text NOT NULL,
+     "period_key" text NOT NULL,
+     "value" numeric NOT NULL,
+     "unit" text,
+     "notes" text,
+     "captured_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "vendor_metrics_unique_idx" ON "vendor_adoption_metrics" ("vendor", "metric_key", "period_key")',
+  'CREATE INDEX IF NOT EXISTS "vendor_metrics_vendor_period_idx" ON "vendor_adoption_metrics" ("vendor", "period_key")',
+
+  // Panel-300 #26 — GDPR DSAR tracking.
+  `CREATE TABLE IF NOT EXISTS "dsar_requests_lifecycle" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "request_type" text NOT NULL,
+     "requester_email" text NOT NULL,
+     "requester_identity_verified" boolean NOT NULL DEFAULT false,
+     "received_at" timestamptz NOT NULL DEFAULT now(),
+     "sla_deadline_at" timestamptz NOT NULL,
+     "fulfilled_at" timestamptz,
+     "delivery_method" text,
+     "bytes_delivered" integer,
+     "audit_notes" text,
+     "is_self_test" boolean NOT NULL DEFAULT false
+   )`,
+  'CREATE INDEX IF NOT EXISTS "dsar_lifecycle_received_idx" ON "dsar_requests_lifecycle" ("received_at")',
+  'CREATE INDEX IF NOT EXISTS "dsar_lifecycle_unfulfilled_idx" ON "dsar_requests_lifecycle" ("fulfilled_at")',
+
+  // Panel-300 #27 — pricing-elasticity A/B test.
+  `CREATE TABLE IF NOT EXISTS "pricing_experiments" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "experiment_key" text NOT NULL,
+     "variant_key" text NOT NULL,
+     "organization_id" integer,
+     "visitor_id" text,
+     "assigned_at" timestamptz NOT NULL DEFAULT now(),
+     "converted_at" timestamptz,
+     "amount_paid_cents" integer,
+     "conversion_event" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "pricing_experiments_key_variant_idx" ON "pricing_experiments" ("experiment_key", "variant_key")',
+  'CREATE INDEX IF NOT EXISTS "pricing_experiments_org_idx" ON "pricing_experiments" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "pricing_experiments_visitor_idx" ON "pricing_experiments" ("visitor_id")',
+
+  // Panel-300 #34 — fair-lending audit + RESPA referral-fee transparency.
+  `CREATE TABLE IF NOT EXISTS "fair_lending_audit_runs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "period_key" text NOT NULL,
+     "sample_size" integer NOT NULL,
+     "approval_rate_overall" numeric,
+     "approval_rate_by_category" jsonb,
+     "max_divergence_pct" numeric,
+     "status" text NOT NULL,
+     "run_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "fair_lending_org_period_idx" ON "fair_lending_audit_runs" ("organization_id", "period_key")',
+
+  `CREATE TABLE IF NOT EXISTS "vendor_referral_fees" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "vendor" text NOT NULL,
+     "relationship_kind" text NOT NULL,
+     "fee_structure" text NOT NULL,
+     "fee_amount_cents" integer,
+     "fee_pct" numeric,
+     "public_disclosed" boolean NOT NULL DEFAULT false,
+     "disclosed_at" timestamptz,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "vendor_referral_fees_vendor_idx" ON "vendor_referral_fees" ("vendor")',
+  'CREATE INDEX IF NOT EXISTS "vendor_referral_fees_disclosed_idx" ON "vendor_referral_fees" ("public_disclosed")',
+
   // Panel-300 #9 — reconciliation rules + run history.
   `CREATE TABLE IF NOT EXISTS "reconciliation_rules" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -6281,6 +6281,132 @@ export const syntheticCheckRuns = pgTable(
 export type SyntheticCheckRun = typeof syntheticCheckRuns.$inferSelect;
 export type InsertSyntheticCheckRun = typeof syntheticCheckRuns.$inferInsert;
 
+// ─── Panel-300 #25 — vendor adoption telemetry ───────────────────────────
+// Vendor-partners panel: 5 vendors (Stripe, Clerk, Lob, Sentry, Regrid)
+// each have an account-team-level conversation about adoption %, DAU,
+// error rate, data freshness. One row per (vendor, period_key, metric_key).
+export const vendorAdoptionMetrics = pgTable(
+  "vendor_adoption_metrics",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    vendor: text("vendor").notNull(), // stripe | clerk | lob | sentry | regrid
+    metricKey: text("metric_key").notNull(), // adoption_pct | dau | error_rate | freshness_minutes
+    periodKey: text("period_key").notNull(), // YYYY-MM-DD or YYYY-MM
+    value: numeric("value").notNull(),
+    unit: text("unit"), // pct | count | seconds
+    notes: text("notes"),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("vendor_metrics_unique_idx").on(
+      table.vendor,
+      table.metricKey,
+      table.periodKey,
+    ),
+    index("vendor_metrics_vendor_period_idx").on(table.vendor, table.periodKey),
+  ],
+);
+export type VendorAdoptionMetric = typeof vendorAdoptionMetrics.$inferSelect;
+export type InsertVendorAdoptionMetric = typeof vendorAdoptionMetrics.$inferInsert;
+
+// ─── Panel-300 #26 — GDPR DSAR tracking ───────────────────────────────────
+// Adversarial-stress (Mei-Lin) + security-compliance: 24h SLA on
+// data-subject access requests. Each request gets a tracking row;
+// quarterly self-DSAR audit verifies the SLA is actually met.
+export const dsarRequestsLifecycle = pgTable(
+  "dsar_requests_lifecycle",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    requestType: text("request_type").notNull(), // access | erasure | portability | rectification
+    requesterEmail: text("requester_email").notNull(),
+    requesterIdentityVerified: boolean("requester_identity_verified").notNull().default(false),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    slaDeadlineAt: timestamp("sla_deadline_at", { withTimezone: true }).notNull(), // received_at + 24h
+    fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+    deliveryMethod: text("delivery_method"), // email | secure_download | in_app
+    bytesDelivered: integer("bytes_delivered"),
+    auditNotes: text("audit_notes"),
+    isSelfTest: boolean("is_self_test").notNull().default(false),
+  },
+  (table) => [
+    index("dsar_lifecycle_received_idx").on(table.receivedAt),
+    index("dsar_lifecycle_unfulfilled_idx").on(table.fulfilledAt),
+  ],
+);
+export type DsarRequestLifecycle = typeof dsarRequestsLifecycle.$inferSelect;
+export type InsertDsarRequestLifecycle = typeof dsarRequestsLifecycle.$inferInsert;
+
+// ─── Panel-300 #27 — pricing-elasticity A/B test instrumentation ──────────
+// Product-leadership + investors-capital: $199 vs $249 Solo before
+// Series-A pitch. One row per assignment; conversion event flips
+// converted_at + amount_paid_cents.
+export const pricingExperiments = pgTable(
+  "pricing_experiments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    experimentKey: text("experiment_key").notNull(), // 'solo_price_2026_05'
+    variantKey: text("variant_key").notNull(), // 'control_249' | 'test_199'
+    organizationId: integer("organization_id"),
+    visitorId: text("visitor_id"), // anonymous-visitor cookie if pre-signup
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
+    amountPaidCents: integer("amount_paid_cents"),
+    conversionEvent: text("conversion_event"), // 'subscribed' | 'upgraded' | 'churned'
+  },
+  (table) => [
+    index("pricing_experiments_key_variant_idx").on(table.experimentKey, table.variantKey),
+    index("pricing_experiments_org_idx").on(table.organizationId),
+    index("pricing_experiments_visitor_idx").on(table.visitorId),
+  ],
+);
+export type PricingExperiment = typeof pricingExperiments.$inferSelect;
+export type InsertPricingExperiment = typeof pricingExperiments.$inferInsert;
+
+// ─── Panel-300 #34 — fair-lending audit + RESPA referral-fee transparency ─
+// Adversarial-stress + security-compliance + customers-verticals.
+// Monthly disparate-impact analysis (>5% divergence in approval rate
+// across protected classes flags). RESPA referral-fee table feeds
+// public /transparency/vendor-partnerships page.
+export const fairLendingAuditRuns = pgTable(
+  "fair_lending_audit_runs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    periodKey: text("period_key").notNull(), // YYYY-MM
+    sampleSize: integer("sample_size").notNull(),
+    approvalRateOverall: numeric("approval_rate_overall"),
+    approvalRateByCategory: jsonb("approval_rate_by_category"), // {protected_class: rate}
+    maxDivergencePct: numeric("max_divergence_pct"),
+    status: text("status").notNull(), // ok | divergent | insufficient_sample
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("fair_lending_org_period_idx").on(table.organizationId, table.periodKey),
+  ],
+);
+export type FairLendingAuditRun = typeof fairLendingAuditRuns.$inferSelect;
+
+export const vendorReferralFees = pgTable(
+  "vendor_referral_fees",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    vendor: text("vendor").notNull(),
+    relationshipKind: text("relationship_kind").notNull(), // affiliate | reseller | referral
+    feeStructure: text("fee_structure").notNull(), // 'flat $X' | 'pct of customer revenue' | 'volume bonus'
+    feeAmountCents: integer("fee_amount_cents"),
+    feePct: numeric("fee_pct"),
+    publicDisclosed: boolean("public_disclosed").notNull().default(false),
+    disclosedAt: timestamp("disclosed_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("vendor_referral_fees_vendor_idx").on(table.vendor),
+    index("vendor_referral_fees_disclosed_idx").on(table.publicDisclosed),
+  ],
+);
+export type VendorReferralFee = typeof vendorReferralFees.$inferSelect;
+
 // ─── Panel-300 #9 — reconciliation rules + run history ──────────────────
 // Adjacent-industries (Yusra) + executive-strategy (Marisol). Nightly
 // cron compares source-system totals against AcreOS DB totals; if

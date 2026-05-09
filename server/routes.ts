@@ -182,6 +182,7 @@ import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
 import { registerApiContractRoutes, registerApiVersionHeader } from "./routes-api-contract";
+import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
@@ -1863,6 +1864,8 @@ export async function registerRoutes(
   // Panel-300 G2: API contract layer (OpenAPI export + X-API-Version header).
   registerApiVersionHeader(app);
   registerApiContractRoutes(app);
+  // Panel-300 #26: GDPR DSAR endpoint with 24h SLA.
+  registerPrivacyDsarRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
   registerMoveInspectionRoutes(app);
   // Buy-and-hold vertical BH-5 — rent-roll uploader on /parcels/:id.
