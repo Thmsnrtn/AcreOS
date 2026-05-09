@@ -363,6 +363,31 @@ Format as a professional report.`;
 
       const generated = completion.choices[0].message.content || 'Disclosure generation failed';
 
+      // Panel-300 G1 — eval-as-gate. Run critical-severity test cases
+      // on the generated output. Throws EvalGateRejectedError if any
+      // critical-severity case fails; route layer converts to 422.
+      // The post-validator below is the LEGACY banner-attach mode for
+      // major/minor severities; G1 adds the strict-reject layer for
+      // critical-severity cases (e.g., "complianceAI must include
+      // FCRA permissible-purpose citation if disclosureType ==
+      // seller for TX/OK/CA").
+      try {
+        const { gateOutputOrThrow } = await import("./aiEvalHarness");
+        await gateOutputOrThrow({
+          surface: "complianceAI_disclosure",
+          modelKey: "gpt-4o",
+          output: generated,
+        });
+      } catch (gateErr: any) {
+        if (gateErr?.code === "EVAL_GATE_REJECTED") {
+          logger.warn(
+            `[complianceAI] G1 eval-gate REJECTED for prop=${propertyId} disclosureType=${disclosureType}: ${gateErr.failures.length} failures`,
+          );
+          // Bubble up — caller (route handler) returns 422.
+          throw gateErr;
+        }
+      }
+
       // FW-INDIRA-2 (push-forward 2026-05-08): post-validator on
       // AI-generated disclosures. Indira-Lockwood + theo-okuda +
       // wynne-ohaegbu converged: AI output has customer-facing legal

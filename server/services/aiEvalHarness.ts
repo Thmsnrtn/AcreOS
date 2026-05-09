@@ -27,6 +27,88 @@ import { aiTestCases, aiTestRuns } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
+/**
+ * Panel-300 G1 — eval-as-gate. Throws when a generated output fails
+ * a critical-severity test case. Caller (route layer) catches and
+ * returns 422 + actionable banner. Combined with the existing
+ * complianceAI post-validator (FW-INDIRA-2), this is the reject-
+ * on-fail surface the panel-300 synthesis prescribed.
+ */
+export class EvalGateRejectedError extends Error {
+  readonly code = "EVAL_GATE_REJECTED" as const;
+  constructor(
+    public readonly surface: string,
+    public readonly modelKey: string,
+    public readonly failures: Array<{ testCaseId: string; name: string; reason: string }>,
+  ) {
+    super(
+      `Eval gate rejected output on ${surface} (${modelKey}): ${failures.length} critical failures`,
+    );
+    this.name = "EvalGateRejectedError";
+  }
+}
+
+/**
+ * Synchronous gate variant — evaluate a single output against the
+ * surface's CRITICAL-severity test cases and throw if any fail.
+ * Intended to wrap a single AI generation, not a model-rollout
+ * batch. The full runEvalSurface() above exists for batch eval.
+ */
+export async function gateOutputOrThrow(opts: {
+  surface: string;
+  modelKey: string;
+  output: string;
+}): Promise<void> {
+  const cases = await db
+    .select()
+    .from(aiTestCases)
+    .where(and(
+      eq(aiTestCases.surface, opts.surface),
+      eq(aiTestCases.isActive, true),
+      eq(aiTestCases.severity, "critical"),
+    ))
+    .limit(50);
+  if (cases.length === 0) return; // no gate cases seeded → no gate
+
+  const lower = opts.output.toLowerCase();
+  const failures: Array<{ testCaseId: string; name: string; reason: string }> = [];
+  for (const tc of cases) {
+    const expected = (tc.expectedTraits as string[] | null) ?? [];
+    const forbidden = (tc.forbiddenTraits as string[] | null) ?? [];
+    let reason: string | null = null;
+    for (const trait of expected) {
+      if (!lower.includes(trait.toLowerCase())) {
+        reason = `Missing expected trait: "${trait}"`;
+        break;
+      }
+    }
+    if (!reason) {
+      for (const trait of forbidden) {
+        if (lower.includes(trait.toLowerCase())) {
+          reason = `Contained forbidden trait: "${trait}"`;
+          break;
+        }
+      }
+    }
+    if (reason) {
+      failures.push({ testCaseId: tc.id, name: tc.name, reason });
+    }
+    // Persist the run regardless of pass/fail so the trend is visible.
+    try {
+      await db.insert(aiTestRuns).values({
+        testCaseId: tc.id,
+        modelKey: opts.modelKey,
+        passed: !reason,
+        output: opts.output.slice(0, 5000),
+        failureReason: reason,
+      });
+    } catch {/* non-fatal */}
+  }
+  if (failures.length > 0) {
+    throw new EvalGateRejectedError(opts.surface, opts.modelKey, failures);
+  }
+}
+
 export interface EvalRunResult {
   surface: string;
   modelKey: string;

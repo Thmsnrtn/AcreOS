@@ -181,6 +181,7 @@ import { registerFounderLetterRoutes } from "./routes-founder-letters";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
+import { registerApiContractRoutes, registerApiVersionHeader } from "./routes-api-contract";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
@@ -1859,6 +1860,9 @@ export async function registerRoutes(
   // FW-CAMILA-2/3 + FW-WYNNE-2/3 (180-day batch): NPS + pre-churn ladder
   // + retention policy + power-user dashboard.
   registerLifecycleRoutes(app);
+  // Panel-300 G2: API contract layer (OpenAPI export + X-API-Version header).
+  registerApiVersionHeader(app);
+  registerApiContractRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
   registerMoveInspectionRoutes(app);
   // Buy-and-hold vertical BH-5 — rent-roll uploader on /parcels/:id.
