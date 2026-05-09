@@ -310,6 +310,49 @@ export function registerLifecycleRoutes(app: Express): void {
     },
   );
 
+  // ─── FW-OLU-2 synthetic checks (180-5) ───────────────────────────
+  app.post(
+    "/api/founder/synthetic-checks/run",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { runAllSyntheticChecks } = await import("./services/syntheticChecks");
+        const results = await runAllSyntheticChecks();
+        const summary = {
+          total: results.length,
+          ok: results.filter((r) => r.status === "ok").length,
+          degraded: results.filter((r) => r.status === "degraded").length,
+          failing: results.filter((r) => r.status === "failing").length,
+        };
+        return res.json({ summary, results });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.get(
+    "/api/founder/synthetic-checks/recent",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { syntheticCheckRuns } = await import("@shared/schema");
+        const rows = await db
+          .select()
+          .from(syntheticCheckRuns)
+          .orderBy(desc(syntheticCheckRuns.runAt))
+          .limit(200);
+        return res.json({ rows });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   app.post(
     "/api/founder/retention/policies",
     isAuthenticated,

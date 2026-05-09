@@ -6259,6 +6259,28 @@ export const insertSubscriptionEventSchema = createInsertSchema(subscriptionEven
 export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSchema>;
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
+// ─── FW-OLU-2 (push-forward 2026-05-08): synthetic checks (180-5) ────────
+// Olu's spec: every 15min, ping the critical vendor surfaces (SES, Twilio,
+// Stripe webhook freshness, Clerk proxy) so the founder gets paged before
+// customers do. One row per (check_key, run_at).
+export const syntheticCheckRuns = pgTable(
+  "synthetic_check_runs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    checkKey: text("check_key").notNull(), // ses_send | twilio_status | stripe_webhook_freshness | clerk_proxy_health | db_writeable
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").notNull(), // ok | degraded | failing
+    latencyMs: integer("latency_ms"),
+    errorMessage: text("error_message"),
+    metadata: jsonb("metadata"),
+  },
+  (table) => [
+    index("synthetic_check_runs_key_run_idx").on(table.checkKey, table.runAt),
+  ],
+);
+export type SyntheticCheckRun = typeof syntheticCheckRuns.$inferSelect;
+export type InsertSyntheticCheckRun = typeof syntheticCheckRuns.$inferInsert;
+
 // ─── FW-WYNNE-3 (push-forward 2026-05-08): data-retention policy ─────────
 // Wynne's 180-day item (180-14). One row per (table_key, retention_kind).
 // Holds the policy that the nightly retention job consults. table_key

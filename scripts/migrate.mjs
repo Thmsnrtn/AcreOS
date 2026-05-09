@@ -2662,6 +2662,18 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-OLU-2 (push-forward 2026-05-08): synthetic checks (180-5).
+  `CREATE TABLE IF NOT EXISTS "synthetic_check_runs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "check_key" text NOT NULL,
+     "run_at" timestamptz NOT NULL DEFAULT now(),
+     "status" text NOT NULL,
+     "latency_ms" integer,
+     "error_message" text,
+     "metadata" jsonb
+   )`,
+  'CREATE INDEX IF NOT EXISTS "synthetic_check_runs_key_run_idx" ON "synthetic_check_runs" ("check_key", "run_at")',
+
   // FW-WYNNE-3 (push-forward 2026-05-08): data-retention policy.
   `CREATE TABLE IF NOT EXISTS "retention_policies" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
