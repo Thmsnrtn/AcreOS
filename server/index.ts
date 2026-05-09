@@ -1365,6 +1365,118 @@ app.use("/api", apiLimiter);
         log("Fly night-mode scheduler skipped (not prod or no FLY_API_TOKEN)", "cost");
       }
 
+      // ─── FW-MARISOL-2: ASC 606 monthly recognition (daily idempotent) ──
+      // Recognition is idempotent per (org, period_key, source) so running
+      // it daily during the month is fine — each run overwrites the row
+      // with current pricing/interval. Production picks up tier/billing
+      // changes within 24h; the row at month-end is the canonical close.
+      import("./services/revenueRecognition").then(
+        ({ runMonthlyRecognition, currentPeriodKey }) => {
+          import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+            log("Revenue recognition scheduler registered (self-rescheduling, 24h)", "billing");
+            scheduleSelfRescheduling({
+              name: "asc606_monthly_recognition",
+              intervalMs: 24 * 60 * 60 * 1000, // daily
+              initialDelayMs: 5 * 60 * 1000, // 5min after boot
+              run: async () => {
+                await runMonthlyRecognition(currentPeriodKey());
+              },
+            });
+          });
+        },
+      ).catch(err => {
+        log(`Failed to import revenue recognition: ${err}`, "billing");
+      });
+
+      // ─── FW-OLU-2: synthetic vendor checks (every 15 min) ──
+      // Five checks (SES, Stripe webhook freshness, Clerk proxy, DB
+      // writeable, Twilio). Persists to synthetic_check_runs. Founder
+      // pulls latest via /api/founder/synthetic-checks/recent.
+      import("./services/syntheticChecks").then(({ runAllSyntheticChecks }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Synthetic checks scheduler registered (self-rescheduling, 15m)", "ops");
+          scheduleSelfRescheduling({
+            name: "synthetic_checks",
+            intervalMs: 15 * 60 * 1000,
+            initialDelayMs: 3 * 60 * 1000, // 3min after boot
+            run: async () => {
+              await runAllSyntheticChecks();
+            },
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import synthetic checks: ${err}`, "ops");
+      });
+
+      // ─── FW-CAMILA-3: pre-churn ladder sweep (daily at boot+10m) ──
+      // Walks active orgs, computes days-silent, fires the highest-numbered
+      // rung that hasn't been fired (unique-index makes the insert
+      // idempotent). The actual outreach for each fired rung is a
+      // separate concern (founder reads pre_churn_rungs.status='fired'
+      // rows from /admin/support and decides who to call).
+      import("./routes-lifecycle").then(() => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Pre-churn ladder sweep registered (self-rescheduling, 24h)", "lifecycle");
+          scheduleSelfRescheduling({
+            name: "pre_churn_ladder_sweep",
+            intervalMs: 24 * 60 * 60 * 1000,
+            initialDelayMs: 10 * 60 * 1000,
+            run: async () => {
+              const { db } = await import("./db");
+              const {
+                organizations,
+                preChurnRungs,
+                leads,
+                deals,
+                notes: notesTable,
+              } = await import("@shared/schema");
+              const { eq, sql } = await import("drizzle-orm");
+              const RUNG_DAYS: Record<string, number> = {
+                d5: 5, d10: 10, d14: 14, d21: 21, d30: 30,
+              };
+              const ladder = ["d30", "d21", "d14", "d10", "d5"] as const;
+              const orgRows = await db.select().from(organizations).limit(10000);
+              const now = Date.now();
+              for (const org of orgRows) {
+                if (org.subscriptionStatus !== "active") continue;
+                try {
+                  const [recentLead] = await db
+                    .select({ at: sql<string>`max(${leads.createdAt})` })
+                    .from(leads)
+                    .where(eq(leads.organizationId, org.id));
+                  const [recentDeal] = await db
+                    .select({ at: sql<string>`max(${deals.createdAt})` })
+                    .from(deals)
+                    .where(eq(deals.organizationId, org.id));
+                  const [recentNote] = await db
+                    .select({ at: sql<string>`max(${notesTable.createdAt})` })
+                    .from(notesTable)
+                    .where(eq(notesTable.organizationId, org.id));
+                  const lastIso = [recentLead?.at, recentDeal?.at, recentNote?.at]
+                    .filter((x): x is string => !!x)
+                    .sort()
+                    .at(-1);
+                  if (!lastIso) continue;
+                  const daysSilent = Math.floor(
+                    (now - new Date(lastIso).getTime()) / (24 * 60 * 60 * 1000),
+                  );
+                  const rung = ladder.find((r) => daysSilent >= RUNG_DAYS[r]);
+                  if (!rung) continue;
+                  await db
+                    .insert(preChurnRungs)
+                    .values({ organizationId: org.id, rung })
+                    .onConflictDoNothing({
+                      target: [preChurnRungs.organizationId, preChurnRungs.rung],
+                    });
+                } catch {/* per-org failure is non-fatal */}
+              }
+            },
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import pre-churn sweep: ${err}`, "lifecycle");
+      });
+
       // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
       import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
         // Delay bootstrap by 30s to ensure DB migrations are complete

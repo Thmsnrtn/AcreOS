@@ -184,11 +184,13 @@ Say: *"After the 14-day trial, it's $49 a month for Solo (you, all the tools). I
 
 ## Call Debrief (you, after they hang up)
 
-1. **Log to `customer_interviews` table:**
+1. **Capture in your founder notes (no `customer_interviews` table yet — post-pilot work):**
    - Customer name, vertical, org_id
    - Wedge articulated (what problem they're solving)
    - One sentence of feedback (e.g., "Wanted map view first instead of table — we need that sooner")
    - Stumbling blocks (e.g., "confused about payment tracking vs lead tracking")
+   - Persist via Diego's weekly community-letter (`POST /api/founder/letters`) for the
+     parts you'd publish, plus a private Notion / Linear ticket for everything else.
 
 2. **Slack note to the team:**
    - Tagging: #customer-1, #customer-2, etc.

@@ -25,13 +25,20 @@ These are your non-negotiable metrics by three horizons. If you hit all five by 
 
 ### Gate 1: Time-to-Aha ≤4:00 (by 2026-06-08)
 
-**Measurement page:** `/api/founder/activation/time-to-aha?groupby=persona`
+**Measurement source:** `/api/founder/executive-dashboard` (existing endpoint —
+returns activation stats nested in `metrics`) + `activation_events` table for
+per-step drop-off diagnosis. A dedicated `/api/founder/activation/time-to-aha`
+endpoint is post-pilot; for the first 5 customers, hand-derive P50 from the
+`activation_events` rows.
 
 **What it is:** Minutes from signup to first artifact (Pax draft, scan result, or note yield calculation).
 
 **Why it matters:** If onboarding is slow, customers churn in week 1 before feeling value. If it's fast, they stick.
 
-**Your job:** Ship the persona-aware checklist (doc 05 Day 1). Measure daily. If P50 is still >4:00 by June 8, diagnose which step has drop-off (via `activation_events` table).
+**Your job:** FW-YUNA-1 already shipped the persona-aware checklist (3 paths
+keyed on `organizations.investorType`). Measure daily by reading
+`activation_events` for the 5 customer org_ids. If P50 is still >4:00 by June 8,
+diagnose which step has drop-off.
 
 **Current baseline:** 7:30 (passive read of scan results). **Target:** ≤4:00 for all personas.
 
@@ -45,10 +52,12 @@ These are your non-negotiable metrics by three horizons. If you hit all five by 
 
 **Why it matters:** If NRR <110%, you're losing more revenue to churn/downgrade than you're gaining from expansion. That's a death spiral at scale.
 
-**Your job:** 
-- Track weekly via `/api/founder/financials/nrr` (updated every Monday).
+**Your job:**
+- Track weekly via `/api/founder/financials/nrr?period=YYYY-MM` (FW-MARISOL-3).
+  Returns `null` until cohort-2 data exists (correct pre-pilot behavior).
 - If it dips below 110%: audit the cohort (which customers churned? when? why?).
-- Log churn reasons in `customer_churn_taxonomy` table (Camila spec).
+- Capture churn reasons in your founder notes for now (a structured
+  `customer_churn_taxonomy` table is post-pilot work).
 - Call churned customers within 24h to understand why.
 
 **Current:** Too early (need 4+ weeks of history). **Target:** ≥110% for the first full cohort by 2026-08-08.
@@ -57,14 +66,22 @@ These are your non-negotiable metrics by three horizons. If you hit all five by 
 
 ### Gate 3: Deal-Room Loop Conversion ≥3% (by 2026-08-08)
 
-**Measurement page:** `/api/founder/deal-room-loop` (weekly waterfall)
+**Measurement source:** Direct query of the `deal_rooms` table —
+`SELECT id, public_share_slug, public_view_count FROM deal_rooms WHERE
+public_share_slug IS NOT NULL` plus signup attribution (UTM `utm_source=deal-room-share`
+will land in `organizations.utmSource`). A dedicated
+`/api/founder/deal-room-loop` waterfall endpoint is post-pilot — for the
+first 5 customers, hand-derive the conversion as views ÷ signups-attributed-to-shares.
 
 **What it is:** Of all deal-rooms shared (unauthenticated link), what % convert to a signup → aha moment → D7 return?
 
 **Why it matters:** This is your growth loop. If it's <3%, it's not a loop; it's a feature. If it's ≥3%, it's your top-of-funnel.
 
 **Your job:**
-- Measure weekly (Monday morning, via `/api/founder/deal-room-loop`).
+- Measure weekly (Monday morning) via the SQL above.
+- FW-MIREILLE-1 ships the share-link generator + view counter. The signup-CTA
+  side of the unauthenticated page is the next ship; once it lands, the
+  attribution flows automatically through `utm_source`.
 - Don't hard-sell the loop until it's ≥3%. If it's <1%, fix UX (CTA copy, signup speed, onboarding for loop-sourced users).
 - If it's 1–2%, optimize (better copy, faster flow, better aha for this cohort).
 - Once it's 3%+, fund paid acquisition.
@@ -93,7 +110,8 @@ These are your non-negotiable metrics by three horizons. If you hit all five by 
 
 ### Gate 5: Founder-Letter Cadence 24 Weeks Unbroken (by 2026-11-08)
 
-**Measurement page:** `/api/founder/community-letters/archive` (published letters + dates)
+**Measurement page:** `/api/letters` (FW-DIEGO-1 — public archive of published
+community letters). Founder-side list at `/api/founder/letters`.
 
 **What it is:** You commit to writing a weekly founder letter (500+ words) for 24 consecutive weeks. Archive is public. No gaps >8 days.
 
@@ -142,30 +160,41 @@ docs/launch/
 - `/api/founder/executive-dashboard` — Org count, signup breakdown.
 
 **Activation & Engagement:**
-- `/api/founder/activation/time-to-aha` — Time from signup to aha (per persona).
-- `/api/organizations/:orgId/today` — Daily activity for a customer org.
-- `/api/organizations/:orgId/activation-summary?period=Xd` — Logins, features used, artifacts.
+- `activation_events` table — per-step drop-off (raw query for now; dedicated
+  endpoint is post-pilot).
+- FW-CAMILA-1 wires the D0/D3/D7/D14/D30 email arc inside
+  `server/services/onboardingAutonomy.ts:handleActivationVerdict()`. Cron sweep
+  fires due steps via `sweepAndFireDueSteps()`.
 
-**Revenue & Metrics:**
-- `/api/founder/financials/nrr` — Net Revenue Retention (monthly).
-- `/api/founder/financials/mrr` — Monthly Recurring Revenue (daily history).
-- `/api/founder/financials/top-n-customers?n=5` — Top 5 customers by MRR.
-- `/api/founder/financials/cogs?category=ai_calls` — Cost of Goods Sold per customer.
-- `/api/founder/financials/churn-detail?period=7d` — Customers who churned.
-- `/api/founder/financials/expansion-detail?period=7d` — Customers who upgraded.
+**Revenue & Metrics (FW-MARISOL-2 + FW-MARISOL-3):**
+- `/api/founder/financials/nrr?period=YYYY-MM` — NRR over trailing 12 months.
+- `/api/founder/financials/periods?from&to` — recognized + deferred totals.
+- `/api/founder/financials/by-org?period=YYYY-MM` — per-org rows joined to org name.
+- `/api/founder/financials/run-recognition?period=YYYY-MM` — POST to refresh.
+- `/api/founder/financials/subscription-events` — subscription event history.
+- `/api/founder-home → metrics.concentration` — top-5 + top-1 share + threshold flag.
 
-**D30 Verdicts:**
-- `/api/founder/financials/d30-verdicts?groupby=cohort_week` — Retention by signup cohort.
+**D30 Verdicts (FW-CAMILA-1):**
+- `onboarding_journeys.activationStatus` ∈ {pending, active, at_risk, churned}.
+  Surfaced by `getActivationStats()` in onboardingAutonomy.ts; raw rows via a
+  founder-only listJourneys() (no public endpoint yet — wire when needed).
 
-**Growth Loops:**
-- `/api/founder/deal-room-loop` — Deal-room conversion funnel (weekly).
+**Growth Loops (FW-MIREILLE-1):**
+- `deal_rooms.public_share_slug` + `deal_rooms.public_view_count` — share +
+  view counter.
+- `GET /api/public/deal-rooms/:slug` — unauthenticated sanitized view.
 
-**Community:**
-- `/api/founder/community-letters/archive` — Published letters + dates.
+**Community (FW-DIEGO-1):**
+- `GET /api/letters` — public archive of published community letters.
+- `GET /api/founder/letters` — founder list (drafts + published).
 
 **Health & NPS:**
-- `server/services/customerHealthScoring.ts:recomputeHealthScore(orgId)` — Customer health score.
-- `server/services/onboardingAutonomy.ts:sendScheduledEmail()` — Automated emails (D0, D3, D7, D14, D30).
+- `server/services/customerHealthScoring.ts` — `getCustomerHealth(orgId)` and
+  `getAllCustomerHealth(limit)`.
+- `POST /api/nps/submit` (customer) + `GET /api/founder/nps/recent` (FW-CAMILA-2).
+- `GET /api/founder/power-users` (FW-CAMILA-1B) — cohort with ≥10 leads OR ≥3
+  deals OR ≥1 note in last 30d.
+- `POST /api/founder/pre-churn/sweep` (FW-CAMILA-3) — fires the rung evaluator.
 
 ---
 

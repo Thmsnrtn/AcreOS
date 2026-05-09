@@ -28,7 +28,7 @@ Open `/founder-home` (your dashboard). You should see:
 2. **Churn risk flag?** (customer health score dropped >10 points in 24h)
    - If yes: open their org profile (`/founder-home` → click org name).
    - Check `/today` activity: did they log in yesterday? Are they stuck on a feature?
-   - Endpoint: health score computed by `server/services/customerHealthScoring.ts:recomputeHealthScore(orgId)`.
+   - Endpoint: health score computed by `server/services/customerHealthScoring.ts:getCustomerHealth(orgId)`.
 
 3. **MRR delta** (did MRR move >5% up or down from yesterday)?
    - If down: audit `subscription_events` table for churn/downgrades.
@@ -58,7 +58,7 @@ Open `/founder/financials`. This is your growth dashboard. You should see:
 | MRR (Monthly Recurring Revenue) | `/api/founder/financials/mrr` | Informational | $500+ |
 | ARR | Computed: MRR × 12 | Informational | $6K+ |
 
-**Action if NRR < 110%:** You're losing more than you're expanding. Audit the cohort (which customers downgraded? when? why?). Log findings in `customer_interviews` table.
+**Action if NRR < 110%:** You're losing more than you're expanding. Audit the cohort (which customers downgraded? when? why?). Log findings in `your founder notes` table.
 
 ### Section 2: Top 5 Customers by MRR
 
@@ -78,7 +78,7 @@ Open `/founder/financials`. This is your growth dashboard. You should see:
 | Hosting costs per org | `/api/founder/financials/cogs?category=hosting_costs` | Pro-rata Fly.io + database per org |
 | **Total COGS per org** | Aggregated | Should be < 30% of MRR |
 
-**Action if COGS > 30% of MRR:** You're burning cash on this customer. Audit why (are they running scans every 6 hours? Are they generating 1000 Pax drafts/month?). Log in `customer_interviews` table ("customer XYZ has high AI usage; understand why").
+**Action if COGS > 30% of MRR:** You're burning cash on this customer. Audit why (are they running scans every 6 hours? Are they generating 1000 Pax drafts/month?). Log in `your founder notes` table ("customer XYZ has high AI usage; understand why").
 
 ### Section 4: Churn & Expansion This Week
 
@@ -119,7 +119,7 @@ This is your full-system health check. You're auditing: activation, retention, d
 | 2026-05-XX | 3 | 2 | 1 | 0 | 67% |
 | 2026-06-XX | (TBD) | | | | |
 
-**Endpoint:** `/api/founder/financials/d30-verdicts?groupby=cohort_week` (returns signup_week, active_count, at_risk_count, churned_count).
+**Endpoint:** `SQL on onboarding_journeys (post-pilot endpoint TBD)` (returns signup_week, active_count, at_risk_count, churned_count).
 
 **SQL query (manual):**
 ```sql
@@ -130,7 +130,7 @@ SELECT
   COUNT(DISTINCT CASE WHEN d.verdict = 'at_risk' THEN o.id END) as d30_at_risk,
   COUNT(DISTINCT CASE WHEN d.verdict = 'churned' THEN o.id END) as d30_churned
 FROM organizations o
-LEFT JOIN d30_verdicts d ON o.id = d.org_id
+LEFT JOIN onboarding_journeys oj ON o.id = oj.organization_id
 WHERE o.created_at >= NOW() - INTERVAL '12 weeks'
 GROUP BY DATE_TRUNC('week', o.created_at)
 ORDER BY cohort_week DESC;
@@ -144,7 +144,7 @@ ORDER BY cohort_week DESC;
 
 **Context:** Mireille's metric. You measure: shares → signups → aha → retention.
 
-**Endpoint:** `/api/founder/deal-room-loop` (returns weekly waterfall).
+**Endpoint:** `direct query of deal_rooms (waterfall endpoint TBD)` (returns weekly waterfall).
 
 | Week | Deal-Rooms Shared | Shares → Signup | Signup → Aha | Aha → D7 Return | % Converting (D7 return / shared) |
 |------|------------------|-----------------|-------------|-----------------|--------------------------------|
@@ -177,7 +177,7 @@ ORDER BY week DESC;
 
 **Context:** Diego's metric. Founder-letter shipped in FW-DIEGO-1. By 2026-11-08 (180d), you need 24 weeks of unbroken founder-letters in the archive.
 
-**Endpoint:** `/api/founder/community-letters/archive` (returns list of published letters + dates).
+**Endpoint:** `/api/letters` (returns list of published letters + dates).
 
 | Week | Letter Published? | Word Count | Themes | Emoji |
 |------|------------------|-----------|--------|-------|
@@ -210,7 +210,7 @@ ORDER BY week DESC;
 
 **Context:** Yuna's metric. By 2026-06-08, time-to-aha should be ≤4:00 (down from 7:30 baseline).
 
-**Endpoint:** `/api/founder/activation/time-to-aha?groupby=persona` (returns percentiles 50th/75th/95th for each persona).
+**Endpoint:** `SQL on activation_events table (endpoint TBD)` (returns percentiles 50th/75th/95th for each persona).
 
 | Persona | P50 TTA | P75 TTA | P95 TTA | Gate (≤4:00?) |
 |---------|---------|---------|---------|---------------|
@@ -239,8 +239,8 @@ GROUP BY o.persona;
 
 By month-end, you should have:
 - 3–4 weekly founder calls done
-- 3–4 interviews logged in `customer_interviews` table
-- 1 churn-reason logged in `customer_churn_taxonomy` table (if applicable)
+- 3–4 interviews logged in `your founder notes` table
+- 1 churn-reason logged in `founder churn-notes` table (if applicable)
 
 **Endpoint:** None (manual table). Query:
 ```sql
@@ -250,7 +250,7 @@ SELECT
   wedge_articulated,
   feedback_one_line,
   stumbling_block
-FROM customer_interviews
+FROM your founder notes
 WHERE created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '1 month'
 ORDER BY created_at DESC;
 ```
@@ -262,18 +262,18 @@ ORDER BY created_at DESC;
 ## Verification Gates Scorecard
 
 **By 2026-06-08 (30d):**
-- [ ] Time-to-aha P50 ≤4:00 for all personas (measured daily via `/api/founder/activation/time-to-aha`)
+- [ ] Time-to-aha P50 ≤4:00 for all personas (measured daily via `SQL on activation_events`)
 - [ ] Persona-aware checklist live (check `/today` for new user → should see 3-item persona-specific list)
-- [ ] D0, D3, D7, D14, D30 emails shipping (audit `onboardingAutonomy.ts:sendScheduledEmail()` cron + check customer inboxes manually for first 5)
+- [ ] D0, D3, D7, D14, D30 emails shipping (audit `onboardingAutonomy.ts:sweepAndFireDueSteps()` cron + check customer inboxes manually for first 5)
 
 **By 2026-08-08 (90d):**
 - [ ] NRR ≥110% (measured via `/api/founder/financials/nrr` for past 4 weeks)
 - [ ] Customer concentration <20% (measured via `/founder/financials` Section 2)
-- [ ] Deal-room loop ≥3% conversion (measured via `/api/founder/deal-room-loop` weekly)
-- [ ] D30 activation verdict ≥40% active rate for cohorts N≥5 (measured via `/api/founder/financials/d30-verdicts`)
+- [ ] Deal-room loop ≥3% conversion (measured via `direct query of deal_rooms (waterfall endpoint TBD)` weekly)
+- [ ] D30 activation verdict ≥40% active rate for cohorts N≥5 (measured via SQL on `onboarding_journeys.activationStatus`)
 
 **By 2026-11-08 (180d):**
-- [ ] Community-letter cadence 24 weeks unbroken (measured via `/api/founder/community-letters/archive`)
+- [ ] Community-letter cadence 24 weeks unbroken (measured via `/api/letters`)
 - [ ] NPS micro-survey D7 wired + response rate ≥40% (measured via `/api/founder/activation/nps?days=7`)
 
 ---

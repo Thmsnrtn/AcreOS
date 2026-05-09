@@ -39,7 +39,7 @@
      [FOUNDER_NAME]
      Founder, AcreOS
      ```
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d0_welcome', orgId)`.
+   - Endpoint: `welcome email is the existing emailService.sendTransactionalEmail("welcome", ...) — no separate scheduled-email function; the D7/D14/D30 cadence fires from sweepAndFireDueSteps() in onboardingAutonomy.ts`.
 
 4. **Start their wedge journey**
    - **If land investor:** Trigger their county scan via `/api/organizations/:orgId/start-scan?county=[COUNTY]`. (Runs tonight.)
@@ -95,7 +95,7 @@
      ```
    - Endpoint: Manual email or `server/services/onboardingAutonomy.ts:sendPersonalizedEmail()`.
 
-4. **Log to `customer_interviews` table:**
+4. **Log to `your founder notes` table:**
    - Date: Day 3
    - Customer: [NAME]
    - Status: "Active" or "Dormant"
@@ -142,9 +142,9 @@
      
      [FOUNDER_NAME]
      ```
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d7_check_in', orgId)`.
+   - Endpoint: `D7 check-in is a manual founder send for now (use template 4 in 04-intro-email-templates.md). Auto-send wires through onboardingAutonomy.ts:sweepAndFireDueSteps()`.
 
-4. **Log to `customer_interviews`:**
+4. **Log to `your founder notes`:**
    - Date: Day 7
    - Customer: [NAME]
    - Usage summary: "3 logins, 1 county scan, 2 pax drafts generated"
@@ -180,7 +180,7 @@
    - **They say "let me think about it":** "Fair. I'll give you 48 hours. I'll follow up Friday morning. If you want to stay on the trial a bit longer to test something specific, let me know — I can extend it."
    - **They say "not right now":** "No problem. Let's keep your data safe for 90 days in case you want to come back. I'll check in with you in 6 weeks."
 
-5. **Log to `customer_interviews`:**
+5. **Log to `your founder notes`:**
    - Date: Day 14
    - Customer: [NAME]
    - Call notes: 3–5 bullet points of what they said.
@@ -190,7 +190,7 @@
 6. **Post-call email:**
    - If converted: *"You're all set. Welcome to paid AcreOS. Your first invoice is attached. Here's [NEXT FEATURE TO TRY]."*
    - If paused: *"I appreciate your honesty. Let's revisit in 6 weeks. I'll check in via email."*
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d14_outcome', orgId, outcome)`.
+   - Endpoint: `D14 is a manual founder send for now (template 4). Wires through sweepAndFireDueSteps() once cron is live`.
 
 ---
 
@@ -240,7 +240,7 @@
    
    [FOUNDER_NAME]
    ```
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d30_active', orgId)`.
+   - Endpoint: `D30 active arc fires automatically inside handleActivationVerdict() (FW-CAMILA-1) when sweepAndFireDueSteps() processes the d30 step`.
    - Follow-up: Schedule a 30-min strategy call in the next week.
 
    **At Risk:**
@@ -259,7 +259,7 @@
    
    [FOUNDER_NAME]
    ```
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d30_at_risk', orgId)`.
+   - Endpoint: `D30 at-risk arc fires automatically inside handleActivationVerdict() (FW-CAMILA-1)`.
    - Follow-up: Founder calls them within 24–48 hours.
 
    **Churned:**
@@ -276,11 +276,11 @@
    
    [FOUNDER_NAME]
    ```
-   - Endpoint: `server/services/onboardingAutonomy.ts:sendScheduledEmail('d30_churned', orgId)`.
-   - Follow-up: If they reply with a reason, log it in `customer_churn_taxonomy` table (Camila's spec).
+   - Endpoint: `D30 churned arc fires automatically inside handleActivationVerdict() (FW-CAMILA-1)`.
+   - Follow-up: If they reply with a reason, log it in `founder notes (a structured churn-taxonomy table is post-pilot).
 
 3. **Log the verdict:**
-   - Table: `d30_verdicts` (org_id, verdict, health_score, logins_count, artifacts_count, verdict_date).
+   - Table: `onboarding_journeys` (organizationId, activationStatus ∈ {pending, active, at_risk, churned}, activationDeterminedAt) — same shape, real table.
    - Endpoint: `server/db/migrations/[timestamp]-d30-verdicts-table.sql` (should already exist from FW-CAMILA-1).
 
 4. **Founder action based on verdict:**
@@ -319,7 +319,7 @@
 | Artifacts generated (count) | Count of pax_drafts, note_uploads, deal_rooms created | Depth of usage |
 | NPS score (D7) | `nps_responses` table WHERE org_id = [:orgId] AND response_date = day7 | Early sentiment signal |
 | Health score (D30) | `customer_health_scores` table WHERE org_id = [:orgId] | Algorithm verdict |
-| D30 verdict | `d30_verdicts` table WHERE org_id = [:orgId] | Retention signal |
+| D30 verdict | `onboarding_journeys.activationStatus` for this org | Retention signal |
 | Time-to-aha | Minutes between signup and first artifact | Onboarding quality |
 
 **Record in `/founder-home` → "Customer #1 Summary" (for your own reference):**
@@ -338,5 +338,5 @@ Next step: [EXPANSION CALL / RETENTION CALL / CHURN RECOVERY]
 
 **Version:** 2026-05-08  
 **Owner:** Founder  
-**Dependency:** `onboardingAutonomy.ts` email transport wired, `customerHealthScoring.ts` live, `d30_verdicts` table + FW-CAMILA-1 logic shipped, `/today` activity page live, `activation_events` telemetry live
+**Dependency:** `onboardingAutonomy.ts` email transport wired, `customerHealthScoring.ts` live, `onboarding_journeys.activationStatus` populated by FW-CAMILA-1 logic, `/today` activity page live, `activation_events` telemetry live
 

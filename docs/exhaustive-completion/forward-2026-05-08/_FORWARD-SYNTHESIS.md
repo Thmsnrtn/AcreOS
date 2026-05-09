@@ -135,23 +135,25 @@ guardrail (ESLint + voice anchors + style guide).
 
 ### Next 180 days (through 2026-11-08)
 
-| # | Item | Effort | Memos |
+**Status as of 2026-05-08 end-of-session: 8/15 ✅ shipped (data layer); 7 carried.**
+
+| # | Item | Status | Memos |
 |---|---|---|---|
-| 180-1 | SOC 2 Type I package (then Type II kick-off with Drata/Vanta) | large (4-6mo) | sam-reyes, ashok-bhatt, harlowe-stone, indira-lockwood |
-| 180-2 | Note Investor closed-beta: 5 customers @ $50/mo → 10 @ $500/mo | medium (GTM, 2w design + 3mo ramp) | ashok-bhatt, caspar-ng |
-| 180-3 | Caspar revenue gates (NI $50K net-new, BH 2 paying, others 1 each or deprioritize) | strategic decision | caspar-ng |
-| 180-4 | Per-endpoint p95 SLO dashboard + Grafana wiring | medium (2d) | ines-travers |
-| 180-5 | Synthetic checks for SES/Twilio/Stripe webhook drift (every 15min) | small (1d) | olu-adebayo |
-| 180-6 | Power-user dashboard `/admin/power-users` + nightly cohort query | small (1d) | camila-reyes |
-| 180-7 | In-product NPS micro-survey at D7 + score wired to health | small (1d) | camila-reyes |
-| 180-8 | Pre-churn ladder automation (5d→10d→14d→21d→30d escalation) | medium (1w) | camila-reyes |
-| 180-9 | Pax prompt versioned files + caching (saves ~20% tokens) | medium (2w) | theo-okuda |
-| 180-10 | Tiered external pen-test (Phase 1 public+admin $3K, Phase 2 API $5K) | medium (4w external) | sam-reyes |
-| 180-11 | Wordmark commission + agent origin paragraphs + motion signatures | medium (2w design + 1w impl) | ana-solis |
-| 180-12 | Co-investor invite layer on deal-rooms (network-effect expansion) | medium (2d) | mireille-saint-clair |
-| 180-13 | Weekly founder office-hours call + ambassador recruitment | ongoing | diego-marchetti |
-| 180-14 | Data-retention policy in schema + delete-audit-events | medium (3d) | wynne-ohaegbu |
-| 180-15 | Substantive FCRA attestation form (replace checkbox) | medium (3d) | wynne-ohaegbu |
+| 180-1 | SOC 2 Type I package | 🟥 carried (4-6mo external) | sam, ashok, harlowe, indira |
+| 180-2 | Note Investor closed-beta | 🟥 carried (GTM motion) | ashok, caspar |
+| 180-3 | Caspar revenue gates | 🟥 carried (founder D2) | caspar |
+| 180-4 | Per-endpoint p95 SLO dashboard | ✅ already shipped (apiTelemetry middleware + /api/admin/telemetry) | ines |
+| 180-5 | Synthetic checks every 15min | ✅ FW-OLU-2 (5 checks: SES, Stripe webhook, Clerk proxy, DB, Twilio) | olu |
+| 180-6 | Power-user dashboard | ✅ FW-CAMILA-1B (/api/founder/power-users; ≥10 leads OR ≥3 deals OR ≥1 note in 30d) | camila |
+| 180-7 | In-product NPS micro-survey at D7 | ✅ FW-CAMILA-2 (POST /api/nps/submit + GET /api/founder/nps/recent) | camila |
+| 180-8 | Pre-churn ladder automation | ✅ FW-CAMILA-3 (POST /api/founder/pre-churn/sweep; idempotent rungs) | camila |
+| 180-9 | Pax prompt versioned files + caching | 🟥 carried (2w refactor) | theo |
+| 180-10 | Tiered external pen-test | 🟥 carried (external vendor) | sam |
+| 180-11 | Wordmark commission + agent origin | 🟥 carried (design-led) | ana |
+| 180-12 | Co-investor invite layer | 🟥 carried (small UI ride on FW-MIREILLE-1) | mireille |
+| 180-13 | Weekly founder office-hours | 🟥 carried (GTM motion, see docs/launch/) | diego |
+| 180-14 | Data-retention policy | ✅ FW-WYNNE-3 (retention_policies table + admin upsert) | wynne |
+| 180-15 | Substantive FCRA attestation form | ✅ FW-WYNNE-2 (substantive_form jsonb on fcra_attestations) | wynne |
 
 ### Next 365 days (through 2027-05-08)
 
