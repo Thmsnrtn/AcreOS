@@ -289,6 +289,7 @@ const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"
 const AccountSecurityPage = React.lazy(() => import("@/pages/account-security"));
 const FounderFinancialsPage = React.lazy(() => import("@/pages/founder-financials"));
 const FcraSubstantiveFormPage = React.lazy(() => import("@/pages/fcra-substantive-form"));
+const FounderComplianceOpsPage = React.lazy(() => import("@/pages/founder-compliance-ops"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -778,6 +779,9 @@ function Router() {
       </Route>
       <Route path="/founder/financials">
         {() => <FounderProtectedRoute component={FounderFinancialsPage} />}
+      </Route>
+      <Route path="/founder/compliance-ops">
+        {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
       </Route>
       {/* Legacy binary-flag page consolidated to /founder/features per
           JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-
