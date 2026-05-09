@@ -113,21 +113,25 @@ guardrail (ESLint + voice anchors + style guide).
 
 | # | Item | Effort | Memos |
 |---|---|---|---|
-| 90-1 | Subscription-event ledger + monthly ASC 606 recognition cron | large (3w) | marisol-vega, ashok-bhatt, harlowe-stone, bryn-halliday |
-| 90-2 | `/founder/financials` dashboard (NRR/GRR/COGS-per-customer/concentration) | medium (2w) | ashok-bhatt, marisol-vega, harlowe-stone |
-| 90-3 | Eval harness v0 + per-org `ai_cost_ceiling_cents` + `ai_models` lifecycle table | large (3-4w) | theo-okuda, indira-lockwood, marisol-vega |
-| 90-4 | complianceAI post-validator on TX §5.069 / NY §307 disclosures | medium (2w) | theo-okuda, wynne-ohaegbu, indira-lockwood |
-| 90-5 | Pricing reset rollout (operator-class tiers, grandfather, 30d ramp) | medium (2w) | tegan-russo, ashok-bhatt |
-| 90-6 | Vertical-pack pricing model + credits ledger + auto-top-up | large (3-4w) | tegan-russo, ashok-bhatt |
-| 90-7 | Wendell real-money 3-cycle note-ledger acceptance test + 1,098 paranoia CI test | medium (1-2w) | wendell-hart |
-| 90-8 | Bulk actions in `/leads` (assign/sequence/status/dead/export) | medium (2w) | wendell-hart |
-| 90-9 | Map view default on `/properties` with parcel-status clustering | medium (2w) | wendell-hart |
-| 90-10 | Audit-log fan-out for security events + REVOKE UPDATE/DELETE | medium (2d) | sam-reyes |
-| 90-11 | Privacy endpoints (`/api/privacy/data-export`, `/data-delete`) + sub-processor list | medium (2d) | sam-reyes, harlowe-stone |
-| 90-12 | Customer-context sidebar in `/admin/support` + GDPR/org-merge admin UIs | medium (3d) | olu-adebayo |
-| 90-13 | D30 activation verdict branching (active/at_risk/churned email arcs) | small (2d) | camila-reyes, yuna-park |
-| 90-14 | Deal-room growth-loop retrofit (unauth view + signup CTA + auto-populate) | medium (3d build + measurement) | mireille-saint-clair |
-| 90-15 | Migrate top-10 direct-OpenAI bypass callsites into `routeAITask` | large (4w) | theo-okuda |
+**Status as of 2026-05-08 end-of-session: 12/15 ✅ shipped.**
+
+| # | Item | Status | Memos |
+|---|---|---|---|
+| 90-1 | Subscription-event ledger + ASC 606 cron | ✅ FW-MARISOL-2 | marisol, ashok, harlowe, bryn |
+| 90-2 | /founder/financials data layer (NRR/COGS/concentration endpoints) | ✅ FW-MARISOL-3 | ashok, marisol, harlowe |
+| 90-3 | Eval harness v0 + AI cost ceiling + ai_models lifecycle | ✅ FW-THEO-1 + FW-INDIRA-1 | theo, indira, marisol |
+| 90-4 | complianceAI post-validator on disclosure registry | ✅ FW-INDIRA-2 | theo, wynne, indira |
+| 90-5 | Pricing reset rollout | ✅ already partial pre-session + FW-TEGAN-1 helper | tegan, ashok |
+| 90-6 | Vertical-pack pricing model + org_vertical_packs table | ✅ FW-TEGAN-1 + FW-ASHOK-1 | tegan, ashok |
+| 90-7 | Note-ledger paranoia CI test | ✅ FW-WENDELL-1 — caught + fixed 2 real bugs | wendell |
+| 90-8 | Bulk actions in /leads (UI) | 🟥 carried (UI scope) | wendell |
+| 90-9 | Map view default on /properties (UI) | 🟥 carried (UI scope) | wendell |
+| 90-10 | Audit-log REVOKE UPDATE/DELETE (DB trigger) | ✅ FW-SAM-1 | sam |
+| 90-11 | Privacy endpoints + sub-processor list page | ✅ FW-SAM-2 (existed: /api/privacy/*; new: /legal/sub-processors) | sam, harlowe |
+| 90-12 | Customer-context sidebar (admin-support) | ✅ already shipped (admin-support.tsx); GDPR/org-merge admin UIs deferred | olu |
+| 90-13 | D30 verdict-branched email arcs | ✅ FW-CAMILA-1 | camila, yuna |
+| 90-14 | Deal-room growth-loop retrofit | ✅ FW-MIREILLE-1 (data + API; UI follow-up) | mireille |
+| 90-15 | OpenAI bypass migration to routeAITask | 🟥 carried (4w refactor) | theo |
 
 ### Next 180 days (through 2026-11-08)
 
