@@ -290,6 +290,7 @@ const AccountSecurityPage = React.lazy(() => import("@/pages/account-security"))
 const FounderFinancialsPage = React.lazy(() => import("@/pages/founder-financials"));
 const FcraSubstantiveFormPage = React.lazy(() => import("@/pages/fcra-substantive-form"));
 const FounderComplianceOpsPage = React.lazy(() => import("@/pages/founder-compliance-ops"));
+const MultiVerticalPnLPage = React.lazy(() => import("@/pages/multi-vertical-pnl"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -589,6 +590,9 @@ function Router() {
       </Route>
       <Route path="/account/fcra-attestation/substantive">
         {() => <ProtectedRoute component={FcraSubstantiveFormPage} />}
+      </Route>
+      <Route path="/money/cross-vertical">
+        {() => <ProtectedRoute component={MultiVerticalPnLPage} />}
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}

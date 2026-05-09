@@ -218,6 +218,46 @@ export function registerFounderComplianceRoutes(app: Express): void {
     },
   );
 
+  // ── Customer-facing multi-vertical P&L (own org only) ──────────────
+  app.get(
+    "/api/account/multi-vertical-pnl",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = req.organization!.id;
+        const { aggregateMultiVerticalPnL } = await import("./services/multiVerticalPnL");
+        const pnl = await aggregateMultiVerticalPnL(orgId);
+        return res.json(pnl);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/account/multi-vertical-pnl/w2-exit",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = req.organization!.id;
+        const parsed = w2ExitSchema.safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const { aggregateMultiVerticalPnL, projectW2Exit } = await import("./services/multiVerticalPnL");
+        const pnl = await aggregateMultiVerticalPnL(orgId);
+        const projection = projectW2Exit({
+          monthlyW2IncomeCents: parsed.data.monthlyW2IncomeCents,
+          monthlyNetRunRateCents: pnl.monthlyNetRunRateCents,
+          monthlyGrowthRatePct: parsed.data.monthlyGrowthRatePct,
+        });
+        return res.json({ pnl, projection });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── List orgs (helper for pages that pick a subject org) ───────────
   app.get(
     "/api/founder/orgs",
