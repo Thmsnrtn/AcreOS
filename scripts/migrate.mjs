@@ -2662,6 +2662,66 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-THEO-1 + FW-INDIRA-1 (push-forward 2026-05-08): eval harness +
+  // AI cost ceiling + model lifecycle.
+  `CREATE TABLE IF NOT EXISTS "ai_models" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "model_key" text NOT NULL UNIQUE,
+     "provider" text NOT NULL,
+     "family" text,
+     "added_at" timestamptz NOT NULL DEFAULT now(),
+     "deprecated_at" timestamptz,
+     "retired_at" timestamptz,
+     "input_token_cost_cents" numeric,
+     "output_token_cost_cents" numeric,
+     "notes" text,
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_models_provider_idx" ON "ai_models" ("provider")',
+  'CREATE INDEX IF NOT EXISTS "ai_models_deprecated_idx" ON "ai_models" ("deprecated_at")',
+
+  `CREATE TABLE IF NOT EXISTS "ai_test_cases" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "surface" text NOT NULL,
+     "name" text NOT NULL,
+     "description" text,
+     "input_prompt" text NOT NULL,
+     "expected_traits" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "forbidden_traits" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "severity" text NOT NULL DEFAULT 'major',
+     "is_active" boolean NOT NULL DEFAULT true,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_test_cases_surface_idx" ON "ai_test_cases" ("surface")',
+  'CREATE INDEX IF NOT EXISTS "ai_test_cases_active_idx" ON "ai_test_cases" ("is_active")',
+
+  `CREATE TABLE IF NOT EXISTS "ai_test_runs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "test_case_id" uuid NOT NULL,
+     "model_key" text NOT NULL,
+     "run_at" timestamptz NOT NULL DEFAULT now(),
+     "passed" boolean NOT NULL,
+     "output" text,
+     "failure_reason" text,
+     "latency_ms" integer,
+     "input_tokens" integer,
+     "output_tokens" integer,
+     "cost_cents" numeric
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_test_runs_case_run_idx" ON "ai_test_runs" ("test_case_id", "run_at")',
+  'CREATE INDEX IF NOT EXISTS "ai_test_runs_model_run_idx" ON "ai_test_runs" ("model_key", "run_at")',
+
+  `CREATE TABLE IF NOT EXISTS "ai_cost_ceiling_overrides" (
+     "organization_id" integer PRIMARY KEY,
+     "daily_ceiling_cents" integer NOT NULL,
+     "monthly_ceiling_cents" integer,
+     "set_by" text,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+
   // FW-MARISOL-2 (push-forward 2026-05-08): ASC 606 revenue recognition.
   // One row per (org, period_key, source). Idempotent — re-running the
   // recognition cron updates rows rather than duplicating them.

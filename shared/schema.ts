@@ -19815,6 +19815,106 @@ export const insertEtlRunSchema = createInsertSchema(etlRuns).omit({
 export type EtlRun = typeof etlRuns.$inferSelect;
 export type InsertEtlRun = z.infer<typeof insertEtlRunSchema>;
 
+// ─── FW-THEO-1 + FW-INDIRA-1 (push-forward 2026-05-08): eval harness + ──
+// AI cost ceiling + model lifecycle.
+//
+// Theo-Okuda + Indira-Lockwood + Marisol-Vega + Ashok-Bhatt + Harlowe-Stone
+// converged: Pax draft + Pax executive + complianceAI disclosure generator
+// have customer-facing blast radius and zero deterministic post-check.
+// Theo frames as cost discipline, Indira frames as governance-mandatory.
+//
+// Three new tables. ai_models tracks the lifecycle of each model we
+// support — when it was added, when Anthropic/OpenAI deprecated it,
+// when we plan to retire it. ai_test_cases is the eval harness corpus
+// — named scenarios that the harness runs after each prompt change.
+// ai_cost_ceiling_overrides lets the founder set a per-org daily cap
+// in cents that overrides the global default; the runaway-job runbook
+// pages when an org hits the cap.
+
+export const aiModels = pgTable(
+  "ai_models",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    modelKey: text("model_key").notNull().unique(), // 'claude-opus-4-7', 'gpt-4o', etc
+    provider: text("provider").notNull(), // 'anthropic' | 'openai' | 'openrouter'
+    family: text("family"), // 'opus' | 'sonnet' | 'haiku' | 'gpt-4' | etc
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    inputTokenCostCents: numeric("input_token_cost_cents"), // per 1M tokens
+    outputTokenCostCents: numeric("output_token_cost_cents"), // per 1M tokens
+    notes: text("notes"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_models_provider_idx").on(table.provider),
+    index("ai_models_deprecated_idx").on(table.deprecatedAt),
+  ],
+);
+export type AiModel = typeof aiModels.$inferSelect;
+export type InsertAiModel = typeof aiModels.$inferInsert;
+
+export const aiTestCases = pgTable(
+  "ai_test_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    surface: text("surface").notNull(), // 'pax_inbox' | 'pax_executive' | 'compliance_disclosure'
+    name: text("name").notNull(),
+    description: text("description"),
+    inputPrompt: text("input_prompt").notNull(),
+    expectedTraits: jsonb("expected_traits").$type<string[]>().notNull().default([] as any), // bullet-list of must-haves
+    forbiddenTraits: jsonb("forbidden_traits").$type<string[]>().notNull().default([] as any), // bullet-list of must-NOT-haves
+    severity: text("severity").notNull().default("major"), // critical | major | minor
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_test_cases_surface_idx").on(table.surface),
+    index("ai_test_cases_active_idx").on(table.isActive),
+  ],
+);
+export type AiTestCase = typeof aiTestCases.$inferSelect;
+export type InsertAiTestCase = typeof aiTestCases.$inferInsert;
+
+export const aiTestRuns = pgTable(
+  "ai_test_runs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    testCaseId: varchar("test_case_id").notNull(),
+    modelKey: text("model_key").notNull(),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    passed: boolean("passed").notNull(),
+    output: text("output"),
+    failureReason: text("failure_reason"),
+    latencyMs: integer("latency_ms"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    costCents: numeric("cost_cents"),
+  },
+  (table) => [
+    index("ai_test_runs_case_run_idx").on(table.testCaseId, table.runAt),
+    index("ai_test_runs_model_run_idx").on(table.modelKey, table.runAt),
+  ],
+);
+export type AiTestRun = typeof aiTestRuns.$inferSelect;
+export type InsertAiTestRun = typeof aiTestRuns.$inferInsert;
+
+export const aiCostCeilingOverrides = pgTable(
+  "ai_cost_ceiling_overrides",
+  {
+    organizationId: integer("organization_id").primaryKey(),
+    dailyCeilingCents: integer("daily_ceiling_cents").notNull(),
+    monthlyCeilingCents: integer("monthly_ceiling_cents"),
+    setBy: text("set_by"), // founder user_id who set it
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+export type AiCostCeilingOverride = typeof aiCostCeilingOverrides.$inferSelect;
+export type InsertAiCostCeilingOverride = typeof aiCostCeilingOverrides.$inferInsert;
+
 // ─── FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure ──
 // Diego-Marchetti's lead recommendation: founder-led community as the SMB
 // acquisition flywheel. Weekly cadence, async (not Slack/Discord), one
