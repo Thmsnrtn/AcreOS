@@ -2662,6 +2662,26 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // FW-MARISOL-2 (push-forward 2026-05-08): ASC 606 revenue recognition.
+  // One row per (org, period_key, source). Idempotent — re-running the
+  // recognition cron updates rows rather than duplicating them.
+  `CREATE TABLE IF NOT EXISTS "revenue_recognition_periods" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "period_key" text NOT NULL,
+     "period_start" timestamptz NOT NULL,
+     "period_end" timestamptz NOT NULL,
+     "source" text NOT NULL,
+     "tier" text,
+     "billing_interval" text,
+     "recognized_cents" integer NOT NULL DEFAULT 0,
+     "deferred_cents" integer NOT NULL DEFAULT 0,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "rev_recog_org_period_source_idx" ON "revenue_recognition_periods" ("organization_id", "period_key", "source")',
+  'CREATE INDEX IF NOT EXISTS "rev_recog_period_idx" ON "revenue_recognition_periods" ("period_key")',
+
   // FW-MIREILLE-1 (push-forward 2026-05-08): deal-room growth-loop retrofit.
   // Adds public share slug + view counter so deal-rooms can serve as
   // unauthenticated acquisition surface. Loop conversion measured weekly.

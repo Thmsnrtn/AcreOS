@@ -6259,6 +6259,42 @@ export const insertSubscriptionEventSchema = createInsertSchema(subscriptionEven
 export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSchema>;
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
+// ─── FW-MARISOL-2 (push-forward 2026-05-08): ASC 606 revenue recognition ──
+// Marisol/Ashok/Harlowe/Bryn/Tegan all converged: annual subscriptions
+// violate ASC 606 unless we defer + recognize ratably. One row per
+// (organization, period_key) — period_key is "YYYY-MM" so we can re-run
+// the recognition cron idempotently. recognized_cents is what hits the
+// P&L this month; deferred_cents is the unrecognized balance carried
+// forward. Source distinguishes monthly_sub / annual_sub / credit_topup
+// so the founder can audit which subscription type drove which row.
+export const revenueRecognitionPeriods = pgTable(
+  "revenue_recognition_periods",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    periodKey: text("period_key").notNull(), // "2026-05"
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    source: text("source").notNull(), // monthly_sub | annual_sub | credit_topup
+    tier: text("tier"),
+    billingInterval: text("billing_interval"), // monthly | yearly
+    recognizedCents: integer("recognized_cents").notNull().default(0),
+    deferredCents: integer("deferred_cents").notNull().default(0),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("rev_recog_org_period_source_idx").on(
+      table.organizationId,
+      table.periodKey,
+      table.source,
+    ),
+    index("rev_recog_period_idx").on(table.periodKey),
+  ],
+);
+export type RevenueRecognitionPeriod = typeof revenueRecognitionPeriods.$inferSelect;
+export type InsertRevenueRecognitionPeriod = typeof revenueRecognitionPeriods.$inferInsert;
+
 // ============================================
 // SUBSCRIPTION HISTORY (Reactivation context — Renoir §1-§2)
 // ============================================

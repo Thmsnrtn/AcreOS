@@ -179,6 +179,7 @@ import { registerRentLedgerRoutes } from "./routes-rent-ledger";
 import { registerAccountSecurityRoutes } from "./routes-account-security";
 import { registerFounderLetterRoutes } from "./routes-founder-letters";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
+import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
@@ -1852,6 +1853,8 @@ export async function registerRoutes(
   registerFounderLetterRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
+  // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
+  registerFounderFinancialsRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
   registerMoveInspectionRoutes(app);
   // Buy-and-hold vertical BH-5 — rent-roll uploader on /parcels/:id.
