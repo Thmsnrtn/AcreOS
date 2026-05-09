@@ -79,15 +79,47 @@ export function calculateAmortization(
     const dueDate = new Date(start);
     dueDate.setMonth(dueDate.getMonth() + i);
 
+    // FW-WENDELL-1 — row-level invariant: payment === principal + interest.
+    // For the early-exit final row (balance hit zero before termMonths) and
+    // for the literal termMonths row, the actual cash applied is just
+    // principal + interest, not the full scheduled `payment`. Recording
+    // the scheduled $X when only $Y was applied was the source of the
+    // sum(payment) ≠ sum(principal) + sum(interest) drift the paranoia
+    // test surfaced.
+    const isFinalRow = i === termMonths || balance <= 0.005;
+    const rowPayment = isFinalRow
+      ? Number((principalPayment + interest).toFixed(2))
+      : payment;
+
     schedule.push({
       paymentNumber: i,
       dueDate: dueDate.toISOString(),
-      payment: i === termMonths ? Number((principalPayment + interest).toFixed(2)) : payment,
+      payment: rowPayment,
       principal: principalPayment,
       interest,
       balance,
       status: "pending",
     });
+  }
+
+  // FW-WENDELL-1 — balance true-up. Per-row rounding accumulates a small
+  // drift between the sum of principal payments and the original principal
+  // ($0.01 to ~$15 over a 30-year schedule, depending on rate + term).
+  // The randomized paranoia test (tests/unit/amortizationParanoia.test.ts)
+  // caught this in 48% of seeds. The fix: roll the residual into the final
+  // payment so sum(principal) === original principal exactly. This is what
+  // real banking software does — the last payment absorbs accumulated
+  // rounding so the borrower's total principal paid matches the loan
+  // amount to the cent.
+  if (schedule.length > 0) {
+    const sumPrincipal = schedule.reduce((s, r) => s + r.principal, 0);
+    const drift = Number((principal - sumPrincipal).toFixed(2));
+    if (Math.abs(drift) >= 0.005) {
+      const last = schedule[schedule.length - 1];
+      last.principal = Number((last.principal + drift).toFixed(2));
+      last.payment = Number((last.payment + drift).toFixed(2));
+      last.balance = 0;
+    }
   }
 
   return schedule;
