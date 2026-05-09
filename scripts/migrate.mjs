@@ -2587,6 +2587,33 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_org_user_idx" ON "fcra_attestations" ("organization_id", "user_id")',
   'CREATE INDEX IF NOT EXISTS "fcra_attestations_attested_idx" ON "fcra_attestations" ("organization_id", "attested_at")',
 
+  // FW-SAM-1 (push-forward 2026-05-08): audit_events tamper-resistance.
+  // Defense-in-depth: a BEFORE-trigger that blocks UPDATE / DELETE on
+  // audit_events, no matter how the write arrives (route, ad-hoc DB
+  // session, future migration, ORM bypass). Inserts remain freely
+  // permitted — the table is append-only by design. Combined with the
+  // existing route-level audit middleware, this closes the "rogue
+  // operator can erase their tracks" surface that Sam-Reyes flagged.
+  `CREATE OR REPLACE FUNCTION acreos_block_audit_event_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION
+       'audit_events is append-only — % blocked on row id=%',
+       TG_OP, COALESCE(OLD.id, NEW.id)
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS acreos_block_audit_event_update ON "audit_events"`,
+  `CREATE TRIGGER acreos_block_audit_event_update
+     BEFORE UPDATE ON "audit_events"
+     FOR EACH ROW
+     EXECUTE FUNCTION acreos_block_audit_event_mutation()`,
+  `DROP TRIGGER IF EXISTS acreos_block_audit_event_delete ON "audit_events"`,
+  `CREATE TRIGGER acreos_block_audit_event_delete
+     BEFORE DELETE ON "audit_events"
+     FOR EACH ROW
+     EXECUTE FUNCTION acreos_block_audit_event_mutation()`,
+
   // FW-HARLOWE-1 (push-forward 2026-05-08): ESIGN integrity layer Phase 2.
   // Defense-in-depth Postgres-level immutability guard. The route-level
   // check in PUT /api/generated-documents/:id (R2) stops API mutations,

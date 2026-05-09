@@ -267,6 +267,7 @@ const AgentCollaborationPage = React.lazy(() => import("@/pages/agent-collaborat
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
+const PublicSubProcessorsPage = React.lazy(() => import("@/pages/sub-processors"));
 const PricingPage = React.lazy(() => import("@/pages/pricing"));
 const WhyPage = React.lazy(() => import("@/pages/why"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
@@ -463,6 +464,8 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/legal/privacy" component={PrivacyPolicy} />
+      <Route path="/legal/sub-processors" component={PublicSubProcessorsPage} />
 
         {/* Competitor comparison pages (public, SEO-targeted) */}
 
