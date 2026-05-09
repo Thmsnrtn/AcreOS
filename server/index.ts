@@ -1408,6 +1408,92 @@ app.use("/api", apiLimiter);
         log(`Failed to import synthetic checks: ${err}`, "ops");
       });
 
+      // ─── Panel-300 #9: reconciliation cron (daily) ──────────────────
+      // Compares Stripe MTD-paid total vs revenue_recognition_periods
+      // recognized_cents. Divergence > $1 → status='divergent' run row.
+      import("./services/reconciliation").then(({ runReconciliation }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Reconciliation cron registered (self-rescheduling, 24h)", "billing");
+          scheduleSelfRescheduling({
+            name: "reconciliation_cron",
+            intervalMs: 24 * 60 * 60 * 1000,
+            initialDelayMs: 8 * 60 * 1000,
+            run: async () => { await runReconciliation(); },
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import reconciliation cron: ${err}`, "billing");
+      });
+
+      // ─── Panel-300 #10: disclosure-timing dispatcher (every 1h) ──────
+      // Picks up disclosure_timing_scheduled rows where send_date ≤ now
+      // AND form is attorney-reviewed; sends + marks 'sent'. TILA timing
+      // becomes impossible to violate by manual workflow.
+      import("./services/disclosureTimingDispatcher").then(({ runDisclosureTimingDispatch }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Disclosure-timing dispatcher registered (self-rescheduling, 1h)", "compliance");
+          scheduleSelfRescheduling({
+            name: "disclosure_timing_dispatch",
+            intervalMs: 60 * 60 * 1000,
+            initialDelayMs: 6 * 60 * 1000,
+            run: async () => { await runDisclosureTimingDispatch(); },
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import disclosure-timing dispatcher: ${err}`, "compliance");
+      });
+
+      // ─── Panel-300 #34: fair-lending audit cron (monthly) ────────────
+      // Monthly disparate-impact analysis per org. ≥5% divergence flags.
+      import("./services/fairLendingAudit").then(({ runFairLendingAudit }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Fair-lending audit cron registered (self-rescheduling, 30d)", "compliance");
+          scheduleSelfRescheduling({
+            name: "fair_lending_audit",
+            intervalMs: 30 * 24 * 60 * 60 * 1000,
+            initialDelayMs: 12 * 60 * 1000,
+            run: async () => { await runFairLendingAudit(); },
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import fair-lending audit: ${err}`, "compliance");
+      });
+
+      // ─── Panel-300 #26: DSAR overdue alert (every 1h) ────────────────
+      // Walks dsar_requests_lifecycle for rows where sla_deadline_at < now
+      // AND fulfilled_at IS NULL. Logs warning per overdue row so the
+      // founder/page-watcher sees them in /founder/dsar/recent. v0: log-
+      // only; alert-fan-out is a follow-up.
+      import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+        log("DSAR overdue-alert cron registered (self-rescheduling, 1h)", "compliance");
+        scheduleSelfRescheduling({
+          name: "dsar_overdue_alert",
+          intervalMs: 60 * 60 * 1000,
+          initialDelayMs: 14 * 60 * 1000,
+          run: async () => {
+            try {
+              const { db } = await import("./db");
+              const { dsarRequestsLifecycle } = await import("@shared/schema");
+              const { and, lte, isNull, sql } = await import("drizzle-orm");
+              const overdue = await db
+                .select()
+                .from(dsarRequestsLifecycle)
+                .where(and(
+                  isNull(dsarRequestsLifecycle.fulfilledAt),
+                  lte(dsarRequestsLifecycle.slaDeadlineAt, new Date()),
+                ));
+              if (overdue.length > 0) {
+                log(`[DSAR] ${overdue.length} overdue requests — review at /founder/dsar/recent`, "compliance");
+              }
+            } catch (err) {
+              log(`DSAR overdue check failed: ${err}`, "compliance");
+            }
+          },
+        });
+      }).catch(err => {
+        log(`Failed to register DSAR cron: ${err}`, "compliance");
+      });
+
       // ─── FW-CAMILA-3: pre-churn ladder sweep (daily at boot+10m) ──
       // Walks active orgs, computes days-silent, fires the highest-numbered
       // rung that hasn't been fired (unique-index makes the insert
