@@ -2662,6 +2662,68 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "community_letters_published_idx" ON "community_letters" ("published_at")',
 
+  // Panel-300 #9 — reconciliation rules + run history.
+  `CREATE TABLE IF NOT EXISTS "reconciliation_rules" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "source_system" text NOT NULL,
+     "entity_type" text NOT NULL,
+     "aggregation_key" text NOT NULL,
+     "expected_query" text,
+     "tolerance_dollars" numeric NOT NULL DEFAULT 1.00,
+     "enabled" boolean NOT NULL DEFAULT true,
+     "last_run_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "reconciliation_rules_key_idx" ON "reconciliation_rules" ("source_system", "entity_type", "aggregation_key")',
+
+  `CREATE TABLE IF NOT EXISTS "reconciliation_runs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "rule_id" uuid NOT NULL,
+     "run_at" timestamptz NOT NULL DEFAULT now(),
+     "source_total" numeric,
+     "acreos_total" numeric,
+     "difference_dollars" numeric,
+     "status" text NOT NULL,
+     "error_message" text
+   )`,
+  'CREATE INDEX IF NOT EXISTS "reconciliation_runs_rule_run_idx" ON "reconciliation_runs" ("rule_id", "run_at")',
+  'CREATE INDEX IF NOT EXISTS "reconciliation_runs_status_idx" ON "reconciliation_runs" ("status")',
+
+  // Panel-300 #10 + #20 — statutory_forms + disclosure_timing_scheduled.
+  `CREATE TABLE IF NOT EXISTS "statutory_forms" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "state" text NOT NULL,
+     "form_key" text NOT NULL,
+     "statute_citation" text,
+     "version" text NOT NULL,
+     "body" text NOT NULL,
+     "attorney_reviewed_at" timestamptz,
+     "attorney_reviewer" text,
+     "enabled" boolean NOT NULL DEFAULT false,
+     "expires_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "statutory_forms_state_key_version_idx" ON "statutory_forms" ("state", "form_key", "version")',
+  'CREATE INDEX IF NOT EXISTS "statutory_forms_enabled_idx" ON "statutory_forms" ("enabled")',
+
+  `CREATE TABLE IF NOT EXISTS "disclosure_timing_scheduled" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "deal_id" integer,
+     "property_id" integer,
+     "statutory_form_id" uuid NOT NULL,
+     "closing_date" timestamptz NOT NULL,
+     "send_date" timestamptz NOT NULL,
+     "sent_at" timestamptz,
+     "status" text NOT NULL DEFAULT 'scheduled',
+     "send_error_message" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "disclosure_timing_send_date_idx" ON "disclosure_timing_scheduled" ("send_date", "status")',
+  'CREATE INDEX IF NOT EXISTS "disclosure_timing_org_idx" ON "disclosure_timing_scheduled" ("organization_id")',
+
   // Panel-300 G3 — auth-fail lockout tracker.
   `CREATE TABLE IF NOT EXISTS "auth_fail_attempts" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

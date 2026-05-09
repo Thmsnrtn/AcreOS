@@ -6281,6 +6281,110 @@ export const syntheticCheckRuns = pgTable(
 export type SyntheticCheckRun = typeof syntheticCheckRuns.$inferSelect;
 export type InsertSyntheticCheckRun = typeof syntheticCheckRuns.$inferInsert;
 
+// ─── Panel-300 #9 — reconciliation rules + run history ──────────────────
+// Adjacent-industries (Yusra) + executive-strategy (Marisol). Nightly
+// cron compares source-system totals against AcreOS DB totals; if
+// divergence > tolerance, log + alert. Replaces "trust the webhook"
+// with "verify the webhook landed."
+export const reconciliationRules = pgTable(
+  "reconciliation_rules",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    sourceSystem: text("source_system").notNull(), // stripe | wire | irs_1099 | sendgrid
+    entityType: text("entity_type").notNull(), // subscription | invoice | wire_transfer | 1099_filing | email_send
+    aggregationKey: text("aggregation_key").notNull(), // e.g. "monthly_invoice_total"
+    expectedQuery: text("expected_query"), // SQL query (or descriptor) for AcreOS-side total
+    toleranceDollars: numeric("tolerance_dollars").notNull().default("1.00"),
+    enabled: boolean("enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reconciliation_rules_key_idx").on(
+      table.sourceSystem,
+      table.entityType,
+      table.aggregationKey,
+    ),
+  ],
+);
+export type ReconciliationRule = typeof reconciliationRules.$inferSelect;
+export type InsertReconciliationRule = typeof reconciliationRules.$inferInsert;
+
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    ruleId: varchar("rule_id").notNull(),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    sourceTotal: numeric("source_total"),
+    acreosTotal: numeric("acreos_total"),
+    differenceDollars: numeric("difference_dollars"),
+    status: text("status").notNull(), // ok | divergent | failing
+    errorMessage: text("error_message"),
+  },
+  (table) => [
+    index("reconciliation_runs_rule_run_idx").on(table.ruleId, table.runAt),
+    index("reconciliation_runs_status_idx").on(table.status),
+  ],
+);
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+
+// ─── Panel-300 #10 + #20 — statutory form registry + disclosure timing ──
+// Domain-real-estate + adjacent-industries + adversarial-stress. Per-state
+// forms with version + attorney-review status; disclosure-timing cron
+// fires off `closing_date - 3 days` automatically so TILA timing is
+// never violated by a manual workflow.
+export const statutoryForms = pgTable(
+  "statutory_forms",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    state: text("state").notNull(), // 'TX' | 'CA' | 'NY' etc.
+    formKey: text("form_key").notNull(), // 'contract_for_deed' | 'fcra_disclosure' | 'tila_disclosure'
+    statuteCitation: text("statute_citation"),
+    version: text("version").notNull(),
+    body: text("body").notNull(),
+    attorneyReviewedAt: timestamp("attorney_reviewed_at", { withTimezone: true }),
+    attorneyReviewer: text("attorney_reviewer"),
+    enabled: boolean("enabled").notNull().default(false), // disabled by default; flip after attorney sign-off
+    expiresAt: timestamp("expires_at", { withTimezone: true }), // 2-year resign cadence
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("statutory_forms_state_key_version_idx").on(
+      table.state,
+      table.formKey,
+      table.version,
+    ),
+    index("statutory_forms_enabled_idx").on(table.enabled),
+  ],
+);
+export type StatutoryForm = typeof statutoryForms.$inferSelect;
+export type InsertStatutoryForm = typeof statutoryForms.$inferInsert;
+
+export const disclosureTimingScheduled = pgTable(
+  "disclosure_timing_scheduled",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    dealId: integer("deal_id"),
+    propertyId: integer("property_id"),
+    statutoryFormId: varchar("statutory_form_id").notNull(),
+    closingDate: timestamp("closing_date", { withTimezone: true }).notNull(),
+    sendDate: timestamp("send_date", { withTimezone: true }).notNull(), // closing_date - 3 days
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    status: text("status").notNull().default("scheduled"), // scheduled | sent | skipped | failed
+    sendErrorMessage: text("send_error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("disclosure_timing_send_date_idx").on(table.sendDate, table.status),
+    index("disclosure_timing_org_idx").on(table.organizationId),
+  ],
+);
+export type DisclosureTimingScheduled = typeof disclosureTimingScheduled.$inferSelect;
+
 // ─── Panel-300 G3 — auth-fail lockout tracker ────────────────────────────
 // Adversarial-stress (Magdalena, Galvin) + security-compliance: record
 // failed auth attempts per (ip, email) tuple; lock after 5 failures within
