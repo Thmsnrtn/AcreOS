@@ -990,7 +990,23 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
-    updateCampaign({ id: campaign.id, status: newStatus });
+    updateCampaign(
+      { id: campaign.id, status: newStatus },
+      {
+        onSuccess: () => {
+          toast({
+            title: newStatus === 'paused' ? 'Campaign paused' : 'Campaign activated',
+          });
+        },
+        onError: (err: any) => {
+          toast({
+            title: `Couldn't ${newStatus === 'paused' ? 'pause' : 'activate'} campaign`,
+            description: `${err?.message ?? 'Network error'} — the campaign status is unchanged.`,
+            variant: 'destructive',
+          });
+        },
+      },
+    );
   };
 
   const handleTestSend = () => {
@@ -1261,6 +1277,7 @@ interface HealthService {
 
 function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateCampaign();
+  const { toast } = useToast();
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const { data: healthData } = useQuery<{ services: HealthService[] }>({
     queryKey: ['/api/health/cached'],
@@ -1300,7 +1317,16 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const onSubmit = (data: z.infer<typeof campaignFormSchema>) => {
-    mutate(data, { onSuccess });
+    mutate(data, {
+      onSuccess,
+      onError: (err: any) => {
+        toast({
+          title: "Couldn't create campaign",
+          description: `${err?.message ?? "Network error"} — your draft is preserved. Try again or check the system status.`,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (
