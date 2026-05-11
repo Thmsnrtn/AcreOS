@@ -112,6 +112,7 @@ import {
   ListChecks,
   Heart,
   Megaphone,
+  Hammer,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";

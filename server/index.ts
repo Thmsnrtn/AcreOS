@@ -256,12 +256,18 @@ app.use("/api/auth/microsoft", authAttemptLimiter);
 app.use("/api/login", authAttemptLimiter);
 app.use("/api/register", authAttemptLimiter);
 
-// AI endpoints: 60 requests per minute per IP
+// AI / Pax / chat endpoints: 240 requests per minute, keyed by userId with
+// IP fallback. These are hot paths — /api/pax fans out ~8 calls per page
+// load when the Gabriel × Pax rail is mounted. A pure 60/min per-IP cap
+// 429'd legitimate authenticated users on cellular carrier NAT (same root
+// cause as the /api/auth limiter fixed 2026-05-10). Founder traffic also
+// bypasses the cap via the deeper aiRateLimit in middleware/aiRateLimit.ts.
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 240,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => (req as any).auth?.userId || req.ip || "unknown",
   message: { message: "AI request limit reached. Please wait a moment." },
 });
 app.use("/api/ai", aiLimiter);
