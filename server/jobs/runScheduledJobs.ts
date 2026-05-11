@@ -1737,15 +1737,42 @@ export async function runScheduledJobs(): Promise<void> {
   // Auto-seed county GIS endpoints for free parcel lookups
   seedCountyGisEndpointsOnStartup();
 
-  // Start periodic health checks
+  // Start periodic health checks (every 60s). Replaces the service's
+  // own startPeriodicChecks() with a lock-gated trackInterval so on a
+  // >1 worker scale-out we don't fan out probes N× across the health-
+  // checked dependencies. TTL = ~90% of cadence (54s).
   import("../services/healthCheck").then(({ healthCheckService }) => {
-    healthCheckService.startPeriodicChecks(60000); // Check every minute
+    // Initial tick at boot so the dashboard hydrates promptly. Lock-
+    // gated so even the warm-up call only fires from one machine.
+    withJobLock("health_check_periodic", 54, () => healthCheckService.checkAll())
+      .catch(() => {/* boot-time tick: swallow */});
+    trackInterval(() => {
+      withJobLock("health_check_periodic", 54, () => healthCheckService.checkAll())
+        .catch((err: any) => log(`Health check failed: ${err}`, "health-check"));
+    }, 60_000);
+    log("Health check job registered (every 60s, lock-gated)", "health-check");
   });
 
-  // Start external service status monitoring (Stripe, Twilio, Lob, Regrid)
+  // Start external service status monitoring (Stripe, Twilio, Lob, Regrid).
+  // Replaces the service's own startPeriodicMonitoring() interval so the
+  // tick is gated by withJobLock — on a >1 worker scale-out we don't
+  // fan out probes N× to Stripe/Twilio/Lob/Regrid and we don't write
+  // duplicate systemAlerts rows on outage detection. TTL = ~90% (4m).
+  // NOTE: this skips the original loop's "auto-resolve on recovery"
+  // side effect for now — resolveOutageNotifications can be folded in
+  // when the auto-resolve path is given its own lock_name + signal.
   import("../services/externalStatusMonitor").then(({ externalStatusMonitor }) => {
-    externalStatusMonitor.startPeriodicMonitoring(5 * 60 * 1000); // Check every 5 minutes
-    log("External service status monitoring started (every 5 minutes)", "external-monitor");
+    trackInterval(() => {
+      withJobLock("external_status_monitor", 4 * 60, async () => {
+        const outages = await externalStatusMonitor.detectOutages();
+        for (const outage of outages) {
+          if (outage.status.status === "outage") {
+            await externalStatusMonitor.notifyUsersOfOutage(outage.service, outage.impact);
+          }
+        }
+      }).catch((err: any) => log(`External status monitor failed: ${err}`, "external-monitor"));
+    }, 5 * 60 * 1000);
+    log("External service status monitoring started (every 5 minutes, lock-gated)", "external-monitor");
   }).catch(err => {
     log(`Failed to start external status monitoring: ${err}`, "external-monitor");
   });
