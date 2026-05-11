@@ -183,7 +183,7 @@ export async function runBacktestAccuracy(orgId?: number): Promise<BacktestResul
       .orderBy(desc(landCreditScores.createdAt))
       .limit(1);
 
-    const score = (lcs as any)?.totalScore ?? 50;
+    const score = (lcs as any)?.overallScore ?? 50;
     const isWon = deal.status === "closed";
 
     const bucket = buckets.find(b => score >= b.min && score <= b.max);

@@ -124,13 +124,13 @@ export interface ContributionReport {
 }
 
 export async function generateContributionReport(orgId: number): Promise<ContributionReport> {
-  const [propCount] = await db.select({ cnt: leads.id }).from(properties)
-    .where(eq(properties.organizationId, orgId));
-  const [dealCount] = await db.select({ cnt: deals.id }).from(deals)
-    .where(eq(deals.organizationId, orgId));
+  const propRows = await db.select({ id: properties.id }).from(properties)
+    .where(eq(properties.organizationId, orgId)).limit(1);
+  const dealRows = await db.select({ id: deals.id }).from(deals)
+    .where(eq(deals.organizationId, orgId)).limit(1);
 
-  const propertiesContributed = Number((propCount as any)?.cnt || 0) ? 1 : 0;
-  const dealsContributed = Number((dealCount as any)?.cnt || 0) ? 1 : 0;
+  const propertiesContributed = propRows.length > 0 ? 1 : 0;
+  const dealsContributed = dealRows.length > 0 ? 1 : 0;
 
   // Simplified — real implementation would track API usage
   const contributed = propertiesContributed + dealsContributed;

@@ -26,12 +26,13 @@ export async function getCountyReviews(state?: string): Promise<CountyReview[]> 
     ? sql`p.state = ${state.toUpperCase()} AND d.status = 'closed' AND p.county IS NOT NULL`
     : sql`d.status = 'closed' AND p.county IS NOT NULL`;
 
+  // accepted_amount and offer_amount are numeric columns in prod — no NULLIF/cast needed
   const result = await db.execute(sql`
     SELECT p.county, p.state,
       COUNT(d.id) as deal_count,
       COUNT(DISTINCT d.organization_id) as investor_count,
-      AVG(COALESCE(NULLIF(d.accepted_amount, '')::numeric, 0) - COALESCE(NULLIF(d.offer_amount, '')::numeric, 0)) as avg_profit,
-      AVG(EXTRACT(EPOCH FROM (COALESCE(d.closing_date::timestamp, d.updated_at) - d.created_at)) / 86400) as avg_days
+      AVG(COALESCE(d.accepted_amount, 0) - COALESCE(d.offer_amount, 0)) as avg_profit,
+      AVG(EXTRACT(EPOCH FROM (COALESCE(d.closing_date, d.updated_at) - d.created_at)) / 86400) as avg_days
     FROM deals d
     JOIN properties p ON p.id = d.property_id
     WHERE ${conditions}
@@ -77,17 +78,18 @@ export interface DealCaseStudy {
 }
 
 export async function getAnonymizedCaseStudies(limit = 10): Promise<DealCaseStudy[]> {
+  // accepted_amount/offer_amount are numeric columns in prod — no NULLIF/cast needed
   const result = await db.execute(sql`
     SELECT p.county, p.state, p.size_acres,
-      COALESCE(NULLIF(d.offer_amount, '')::numeric, 0) as buy_price,
-      COALESCE(NULLIF(d.accepted_amount, '')::numeric, 0) as sell_price,
-      EXTRACT(EPOCH FROM (COALESCE(d.closing_date::timestamp, d.updated_at) - d.created_at)) / 86400 as days
+      COALESCE(d.offer_amount, 0) as buy_price,
+      COALESCE(d.accepted_amount, 0) as sell_price,
+      EXTRACT(EPOCH FROM (COALESCE(d.closing_date, d.updated_at) - d.created_at)) / 86400 as days
     FROM deals d
     JOIN properties p ON p.id = d.property_id
     WHERE d.status = 'closed'
       AND p.county IS NOT NULL
-      AND COALESCE(NULLIF(d.accepted_amount, '')::numeric, 0) > COALESCE(NULLIF(d.offer_amount, '')::numeric, 0)
-    ORDER BY (COALESCE(NULLIF(d.accepted_amount, '')::numeric, 0) - COALESCE(NULLIF(d.offer_amount, '')::numeric, 0)) DESC
+      AND COALESCE(d.accepted_amount, 0) > COALESCE(d.offer_amount, 0)
+    ORDER BY (COALESCE(d.accepted_amount, 0) - COALESCE(d.offer_amount, 0)) DESC
     LIMIT ${limit}
   `);
 

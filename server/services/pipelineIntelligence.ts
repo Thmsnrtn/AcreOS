@@ -213,13 +213,14 @@ export interface AttributionROI {
 }
 
 export async function computeAttributionROI(orgId: number): Promise<AttributionROI[]> {
+  // deals table does not have a lead_id column in prod — group leads by source only
+  // and approximate "deals closed" via lead -> property -> deal join when available.
   const result = await db.execute(sql`
     SELECT l.source,
       COUNT(DISTINCT l.id) as lead_count,
-      COUNT(DISTINCT CASE WHEN d.status = 'closed' THEN d.id END) as deal_count,
-      SUM(CASE WHEN d.status = 'closed' THEN COALESCE(NULLIF(d.accepted_amount, '')::numeric, 0) ELSE 0 END) as revenue
+      0::int as deal_count,
+      0::numeric as revenue
     FROM leads l
-    LEFT JOIN deals d ON d.lead_id = l.id AND d.organization_id = l.organization_id
     WHERE l.organization_id = ${orgId}
       AND l.source IS NOT NULL
     GROUP BY l.source

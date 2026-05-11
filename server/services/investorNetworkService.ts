@@ -84,9 +84,9 @@ export async function computeInvestorTrustScore(
     verificationScore: 0,
   };
 
-  // Deal volume
+  // Deal volume — accepted_amount is the canonical close price (numeric in prod)
   const [closedDealsResult] = await db
-    .select({ count: count(), totalValue: sql<number>`COALESCE(SUM(CAST(purchase_price AS NUMERIC)), 0)` })
+    .select({ count: count(), totalValue: sql<number>`COALESCE(SUM(accepted_amount), 0)` })
     .from(deals)
     .where(and(eq(deals.organizationId, organizationId), eq(deals.status, "closed")));
 
