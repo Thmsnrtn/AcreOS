@@ -45,7 +45,12 @@ export interface UsageLimitResult {
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   free: {
-    leads: 10,
+    // Bumped 10 → 50 (2026-05-11): the sample-data flow seeds 35+ leads
+    // during evaluation, so the prior 10-lead cap surfaced as a hard wall
+    // before a new user could even finish exploring the canned dataset.
+    // 50 leaves enough headroom for sample data + a few user-added leads
+    // without making the upgrade decision feel coerced.
+    leads: 50,
     properties: 3,
     notes: 2,
     ai_requests: 25,
