@@ -8,6 +8,7 @@ import {
   insertOfferLetterSchema, insertOfferTemplateSchema,
   insertPropertyListingSchema,
   properties, organizations,
+  SUBSCRIPTION_TIERS, type SubscriptionTier,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -928,6 +929,15 @@ export function registerTeamMessagingRoutes(app: Express): void {
           return Errors.notFound(res, "Listing");
         }
 
+        // ── Plan-tier gate: marketplace_syndication is Scale+ only.
+        // Lower tiers can still preview (dryRun) but real fan-out is blocked.
+        const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
+        const tierFeatures: readonly string[] =
+          SUBSCRIPTION_TIERS[tier]?.features ?? [];
+        const hasSyndicationFeature = tierFeatures.includes(
+          "marketplace_syndication"
+        );
+
         // Accept BOTH the legacy { targets } shape and the new { platforms } shape
         // so we don't break any existing callers (the legacy stub used "targets").
         const platformsInput: unknown =
@@ -1038,7 +1048,20 @@ export function registerTeamMessagingRoutes(app: Express): void {
             continue;
           }
 
-          // 2. Credential gate (env vars listed in PLATFORMS registry)
+          // 2. Plan-tier gate (skip everything for non-Scale+ users except
+          // dry-run previews). Craigslist is allowed on every tier because
+          // it generates a copy/paste template, no API call.
+          if (!hasSyndicationFeature && p !== "craigslist" && !dryRun) {
+            earlyResults.push({
+              platform: p,
+              status: "missing_credentials",
+              error: "Marketplace syndication requires a Scale plan or higher",
+              manualInstructions: `Upgrade your plan to enable ${listingSyndication.PLATFORMS[p].name} syndication.`,
+            });
+            continue;
+          }
+
+          // 3. Credential gate (env vars listed in PLATFORMS registry)
           const cfg = listingSyndication.PLATFORMS[p];
           const missingEnv = (cfg.envKeys || []).filter(
             (k) => !process.env[k]
@@ -1054,13 +1077,13 @@ export function registerTeamMessagingRoutes(app: Express): void {
             continue;
           }
 
-          // 3. Dry run mode (UI preview)
+          // 4. Dry run mode (UI preview)
           if (dryRun) {
             earlyResults.push({ platform: p, status: "dry_run" });
             continue;
           }
 
-          // 4. Simulation mode (test org / SIMULATION_MODE=true)
+          // 5. Simulation mode (test org / SIMULATION_MODE=true)
           if (simulated) {
             await recordSimulatedAction(
               "listings",
@@ -1082,7 +1105,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           platformsToSyndicate.push(p);
         }
 
-        // 5. Real fan-out for whatever survived the gates
+        // 6. Real fan-out for whatever survived the gates
         const realResults = platformsToSyndicate.length
           ? await listingSyndication.syndicateListing(
               normalizedListing,
@@ -1121,7 +1144,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           };
         });
 
-        // 6. Persist results into the listing's syndicationTargets log
+        // 7. Persist results into the listing's syndicationTargets log
         // Merge: keep any pre-existing entries for other platforms, replace
         // entries for platforms we just touched.
         const touched = new Set(finalResults.map((r) => r.platform));
