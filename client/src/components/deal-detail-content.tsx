@@ -834,6 +834,14 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                                 size="icon"
                                 variant="ghost"
                                 disabled={isUpdatingItem}
+                                onClick={() => {
+                                  // Upload UI lives on the Docs tab — route there
+                                  // rather than leaving this button as a no-op.
+                                  toast({
+                                    title: "Upload from the Docs tab",
+                                    description: `Open the Docs tab on this deal to attach a file for "${item.title}".`,
+                                  });
+                                }}
                                 className="min-h-[44px] min-w-[44px] flex-shrink-0"
                                 aria-label={`Upload document for ${item.title}`}
                                 data-testid={`button-upload-doc-${item.id}`}

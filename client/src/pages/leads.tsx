@@ -765,29 +765,42 @@ export default function LeadsPage() {
 
   const handleBulkExport = () => {
     if (selectedLeadIds.size === 0) return;
-    const selectedLeads = filteredLeads?.filter(l => selectedLeadIds.has(l.id)) || [];
-    // CSV-safe cell encoder (slice 5k rule): double embedded quotes AND
-    // prefix formula-trigger leading characters with a `'` so spreadsheets
-    // don't interpret exported values as formulas (CSV injection).
-    const escapeCell = (raw: string | null | undefined): string => {
-      const s = (raw ?? "").toString();
-      const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-      return `"${safe.replace(/"/g, '""')}"`;
-    };
-    const headers = ["firstName", "lastName", "email", "phone", "status"];
-    const csvRows = [headers.map(h => escapeCell(h)).join(",")];
-    selectedLeads.forEach(lead => {
-      csvRows.push([lead.firstName, lead.lastName, lead.email, lead.phone, lead.status].map(escapeCell).join(","));
-    });
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `leads-export-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    try {
+      const selectedLeads = filteredLeads?.filter(l => selectedLeadIds.has(l.id)) || [];
+      // CSV-safe cell encoder (slice 5k rule): double embedded quotes AND
+      // prefix formula-trigger leading characters with a `'` so spreadsheets
+      // don't interpret exported values as formulas (CSV injection).
+      const escapeCell = (raw: string | null | undefined): string => {
+        const s = (raw ?? "").toString();
+        const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+        return `"${safe.replace(/"/g, '""')}"`;
+      };
+      const headers = ["firstName", "lastName", "email", "phone", "status"];
+      const csvRows = [headers.map(h => escapeCell(h)).join(",")];
+      selectedLeads.forEach(lead => {
+        csvRows.push([lead.firstName, lead.lastName, lead.email, lead.phone, lead.status].map(escapeCell).join(","));
+      });
+      const filename = `leads-export-${new Date().toISOString().split("T")[0]}.csv`;
+      const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({
+        title: "Export ready",
+        description: `Downloaded ${selectedLeads.length} lead${selectedLeads.length === 1 ? "" : "s"} to ${filename}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't export selection",
+        description: err?.message || "CSV build failed. Try again — your leads weren't changed.",
+        variant: "destructive",
+      });
+    }
   };
 
   // P1-28 — URL-sync active filters so /leads?stage=hot&q=foo round-trips
@@ -913,8 +926,13 @@ export default function LeadsPage() {
       setImportResult(result);
       setImportPreview(null);
       queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
-    } catch (error) {
+    } catch (error: any) {
       clientLogger.error('Import error:', error);
+      toast({
+        title: "Couldn't import leads",
+        description: `${error?.message || "The CSV didn't process"} — your existing leads are unchanged.`,
+        variant: "destructive",
+      });
     } finally {
       setIsImporting(false);
     }
@@ -954,8 +972,17 @@ export default function LeadsPage() {
       setOfferLetterLead(null);
       setSelectedPropertyId("");
       setOfferAmount("");
-    } catch (error) {
+      toast({
+        title: "Offer letter ready",
+        description: "PDF downloaded to your device.",
+      });
+    } catch (error: any) {
       clientLogger.error('Download error:', error);
+      toast({
+        title: "Couldn't generate offer letter",
+        description: `${error?.message || "PDF generation failed"} — try again in a moment.`,
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingOffer(false);
     }
