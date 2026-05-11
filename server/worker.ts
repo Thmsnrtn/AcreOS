@@ -404,3 +404,20 @@ process.on("uncaughtException", (err) => {
 logger.info(`[worker] booting — pollInterval=${POLL_INTERVAL_MS}ms batchSize=${BATCH_SIZE} handlers=${HANDLED_EVENT_TYPES.join(",")}`);
 
 void loop();
+
+// Scheduled jobs — formerly gated off the app process by
+// DISABLE_BACKGROUND_JOBS. Now run here on the worker so onboarding
+// sweepers, drip campaigns, the autonomous executor, etc. actually
+// fire in production. The per-job Postgres locks make it safe to run
+// the same module on multiple processes — only one will win each tick.
+if (process.env.WORKER_DISABLE_SCHEDULED_JOBS !== "1") {
+  void (async () => {
+    try {
+      const { runScheduledJobs } = await import("./jobs/runScheduledJobs");
+      await runScheduledJobs();
+      logger.info("[worker] scheduled jobs started");
+    } catch (err) {
+      logger.error("[worker] failed to start scheduled jobs", err instanceof Error ? err : undefined);
+    }
+  })();
+}
