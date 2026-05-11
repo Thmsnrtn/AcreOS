@@ -82,7 +82,7 @@ export function Hero() {
           <Link href="/auth?mode=register" className="lp-btn lp-btn-primary lp-btn-lg lp-btn-arrow">
             {c.cta1}
           </Link>
-          <a href="#founder" className="lp-btn lp-btn-secondary lp-btn-lg">
+          <a href="#how" className="lp-btn lp-btn-secondary lp-btn-lg">
             {c.cta2}
           </a>
         </div>

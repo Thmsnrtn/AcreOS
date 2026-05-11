@@ -1,99 +1,97 @@
 /**
- * Prototype reference: /acreos-landing/copy.jsx
+ * Central copy for the public landing page.
  *
- * Letter tone (founder voice — first-person, warm). Per the prototype
- * default and AcreOS founder's preference (saved in user memory),
- * this is the canonical voice for the public landing.
+ * Voice: mechanics-first, third-person. Describes what the system
+ * does, not why it was built. No "I built this", no founder-letter
+ * tone, no audience-flattering rhetorical hooks.
  *
- * The other two tones from the prototype (plain "operator" and
- * aspirational "OS") are not yet ported — Phase 9 coherence pass can
- * decide whether to add a tone toggle or stay with the letter voice
- * permanently.
+ * Primary positioning: built for Land Investors, actively expanding to
+ * other investor types (note investors, fix-and-flippers, etc.).
+ * Roadmap framing keeps the verticals visible without diluting focus.
+ *
+ * The previous `founder` block (a first-person letter from Thomas) and
+ * its FounderNote section have been removed entirely.
  */
 
 export const LANDING_COPY = {
   hero: {
-    eyebrow: "A letter from Thomas",
-    title: ["I built this", "because I needed it.", "Maybe you do too."] as const,
+    eyebrow: "Built for Land Investors",
+    title: [
+      "The operating system",
+      "for land investors.",
+      "From lead to closed.",
+    ] as const,
     sub:
-      "I've closed 200 land deals. The last 50 were on AcreOS. It's an honest piece of software — I wrote the spec, I review every release, I'll answer if you email. If you're a land investor and the spreadsheet life is wearing thin, give it 14 days.",
+      "AcreOS pulls lists, runs comps, sends mail, drafts replies, and tracks every deal through closing — in one place. Built for land investors. Actively expanding to note investors, fix-and-flippers, and other investor types.",
     cta1: "Start free trial",
-    cta2: "Read the letter",
-    ctaSub: "No credit card. Email me with questions: thomas@acreos.io",
-    proof: "12 investors in private beta. $1.4M closed. 0 of them have left.",
+    cta2: "See how it works",
+    ctaSub: "14 days free. No credit card required.",
+    proof: "Active early-access. Founding cohort onboarding now.",
+  },
+  positioning: {
+    primary: "Built for Land Investors.",
+    roadmap:
+      "Actively expanding to note investors, fix-and-flippers, and other investor types.",
   },
   how: {
     eyebrow: "How it works",
-    title: "Three steps. Most happen on their own.",
+    title: "Three steps. Most happens on its own.",
     steps: [
       {
         n: 1,
-        t: "Tell us your buy-box",
-        b: "Counties, acreage, price. The same conversation you'd have with a partner.",
+        t: "Define the buy-box",
+        b: "Counties, acreage, price band, parcel criteria. AcreOS filters every new lead against it.",
       },
       {
         n: 2,
-        t: "We do the busy work",
-        b: "List pulled, mail sent, replies drafted. Atlas, Pax, and Sophie work overnight.",
+        t: "AcreOS does the busy work",
+        b: "Lists pulled, mail sent, replies drafted overnight. Every action is logged and reviewable.",
       },
       {
         n: 3,
-        t: "You make the calls",
-        b: "Hit send on the offers you like. Skip the ones you don't. Keep your judgment where it belongs.",
+        t: "Operator makes the calls",
+        b: "Approve offers, edit drafts, skip what doesn't fit. Human judgment stays on the deals that matter.",
       },
     ],
   },
   agents: {
-    eyebrow: "Three coworkers",
-    title: "I named them after people I trust.",
+    eyebrow: "Meet Pax",
+    title: "Pax — your AI operations partner.",
     sub:
-      "Atlas does the math. Pax handles the conversation. Sophie watches the paper. They each tell you what they did and why — no black boxes.",
+      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, books follow-ups. Every action is shown with the data it used. Nothing happens behind your back.",
   },
   day: {
     eyebrow: "A Tuesday in May",
     title: "Two versions of the same week.",
     sub:
-      "Before I built AcreOS, my Tuesdays looked like the left side. Now they look like the right.",
+      "Before AcreOS, a typical Tuesday looks like the left column. With AcreOS, it looks like the right.",
   },
   features: {
     eyebrow: "What's in the box",
-    title: "Every tool I needed, in one place.",
-    sub: "I built each piece because I missed a deal without it. Nothing is here for show.",
+    title: "Every tool a land operator needs, in one place.",
+    sub: "Find, analyze, reach, close, service. No tab-juggling.",
   },
   quotes: {
     eyebrow: "From investors using it",
     title: "What investors are saying.",
   },
-  founder: {
-    eyebrow: "Why I built this",
-    title: "A land investor with a systems problem.",
-    body: [
-      "I got into land because I love the work — walking parcels, talking to sellers, doing the math on a deal that nobody else has looked at properly. I stayed up late building things because I love that too. The two halves of me have always been arguing about which one was the day job.",
-      "For a long time, my operation ran the way most do. PropStream in one tab, Pebble in another. A spreadsheet I trusted more than I should have. A Mailchimp account doing things it wasn't designed for. AI tools that were genuinely smart but couldn't see any of my context, so I'd find myself re-explaining the same deal three times in a morning.",
-      "I started building AcreOS because I was tired of being the integration layer. Tired of the busywork that wasn't the work. The first version was a tool for me. Then a couple of investor friends asked to use it. Now there's a small group of us, and we're opening the door wider.",
-      "It's built honestly. Every agent shows what it did and what it used to do it. Nothing happens behind your back. You can pause any of it in a click and run the deal yourself if you want — the way I still do, on the deals that matter most.",
-      "If you've been feeling the same friction, I'd love to have you on.",
-    ] as const,
-    sig: "Thomas",
-    sigSub: "Investor · Founder",
-  },
   pricing: {
     eyebrow: "Pricing",
-    title: "Honest pricing for honest work.",
+    title: "Transparent pricing.",
     sub:
-      "I priced it the way I'd want it priced as a customer. No tiers designed to upsell. No \"contact us\" wall. The numbers are right here.",
+      "Numbers on the page. No \"contact us\" wall. Pick a tier that matches operation size.",
   },
   faq: {
-    eyebrow: "Things people ask me",
-    title: "Real questions from real conversations.",
+    eyebrow: "Common questions",
+    title: "Frequently asked.",
   },
   cta: {
     eyebrow: "Ready when you are",
-    title: "Try it for two weeks. See what you think.",
+    title: "Try AcreOS for two weeks.",
     sub:
-      "No card, no calls, no pressure. If it's not for you, no hard feelings — and you can email me to tell me what was missing.",
+      "No card, no calls, no pressure. Full feature access during the trial.",
     cta1: "Start free trial",
-    cta2: "Email me first",
+    cta2: "Email us first",
   },
 };
 

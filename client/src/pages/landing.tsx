@@ -5,14 +5,17 @@
  * /acreos-landing/ prototype (sections-1.jsx, sections-2.jsx,
  * sections-3.jsx, sections.css, copy.jsx).
  *
- * Section order matches the prototype's app.jsx switch:
+ * Section order:
  *   Hero → HowItWorks → Agents → DayInLife → Features → Quotes →
- *   FounderNote → Pricing → FAQ → FinalCTA → Footer
+ *   Pricing → FAQ → FinalCTA → Footer
  *
- * Voice is the prototype's "letter" tone — see
- * client/src/pages/landing/copy.ts. Top nav lives in
- * client/src/pages/landing/LandingNav.tsx (homestead-styled, sticky,
- * anchor links to in-page sections + Sign in + Start free trial).
+ * Voice is mechanics-first, third-person — see
+ * client/src/pages/landing/copy.ts. The former founder-letter tone
+ * (and its FounderNote section) was removed per founder direction:
+ * the landing should describe what the system does, not why it was
+ * built. Top nav lives in client/src/pages/landing/LandingNav.tsx
+ * (homestead-styled, sticky, anchor links to in-page sections + Sign
+ * in + Start free trial).
  *
  * Legacy WaitlistSection / SOCIAL_PROOF / inline FEATURES that previously
  * lived in this file have been removed — the prototype's Features /
@@ -37,7 +40,6 @@ import { Agents } from "./landing/Agents";
 import { DayInLife } from "./landing/DayInLife";
 import { Features } from "./landing/Features";
 import { Quotes } from "./landing/Quotes";
-import { FounderNote } from "./landing/FounderNote";
 import { Pricing } from "./landing/Pricing";
 import { FAQ } from "./landing/FAQ";
 import { FinalCTA } from "./landing/FinalCTA";
@@ -74,7 +76,6 @@ export default function LandingPage() {
         <DayInLife />
         <Features />
         <Quotes />
-        <FounderNote />
         <Pricing />
         <FAQ />
         <FinalCTA />

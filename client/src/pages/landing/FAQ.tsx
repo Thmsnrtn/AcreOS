@@ -11,8 +11,8 @@ import { LANDING_COPY } from "./copy";
 
 const ITEMS = [
   {
-    q: "Can I bring my existing list?",
-    a: "Yes — import CSVs from PropStream, REISift, Pebble, DataTree, or any source. AcreOS dedupes against owners you've already mailed.",
+    q: "Can existing lists be imported?",
+    a: "Yes. AcreOS imports CSVs from PropStream, REISift, Pebble, DataTree, or any source, and dedupes against owners already mailed.",
   },
   {
     q: "Where does the data come from?",
@@ -39,8 +39,8 @@ const ITEMS = [
     a: "Same day. Define your buy-box in 4 minutes, and your first list pulls overnight. Mail can go out the next morning.",
   },
   {
-    q: "What if I cancel?",
-    a: "Export everything to CSV in one click. We don't hold your data hostage — and we'll send you a personal email asking what we missed.",
+    q: "What happens on cancel?",
+    a: "Export everything to CSV in one click. No data hostage-taking — AcreOS retains nothing after cancellation.",
   },
 ];
 
