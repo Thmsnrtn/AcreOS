@@ -65,8 +65,21 @@ const INVESTOR_TYPE_CHOICES: { value: InvestorTypeChoice; label: string; descrip
   { value: "both", label: "Both", description: "Mixed portfolio — land and notes.", icon: Sparkles },
 ];
 
-const INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; description: string }[] = [
+// The CORE three verticals AcreOS was built for and ships production-quality
+// support for today. Everything else is roadmap / beta — surfaced behind a
+// "Show all investor types" toggle so the first impression of a Land
+// Investors product isn't a 15-card icon avalanche.
+const CORE_INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; description: string }[] = [
   { value: "land_flipper", label: "Land Flipper", icon: Map, description: "Buy raw land at wholesale and resell for profit." },
+  { value: "note_investor", label: "Note Investor", icon: FileText, description: "Buy, sell, and service mortgage notes and seller-financed paper." },
+  { value: "hybrid", label: "Hybrid / Multi-Strategy", icon: Sparkles, description: "Combine land, notes, and other strategies — built for mixed portfolios." },
+];
+
+// Secondary verticals — schemas + UX are in roadmap. We accept the selection
+// (it's persisted on the org so we can prioritize roll-out by demand) but
+// the experience for these is still maturing. The "Beta" badge sets honest
+// expectations: pick this if it describes you, but expect rougher edges.
+const SECONDARY_INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; description: string }[] = [
   { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
   { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Acquire, renovate, and resell properties for profit." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
@@ -74,14 +87,15 @@ const INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; de
   { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
-  { value: "note_investor", label: "Note Investor", icon: FileText, description: "Buy, sell, and service mortgage notes and seller-financed paper." },
   { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
   { value: "subdivider", label: "Subdivider", icon: Warehouse, description: "Buy 40-200 acre parents, cut into 5-50 child lots, sell over 18-36 months." },
   { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
   { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
   { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
-  { value: "hybrid", label: "Hybrid / Multi-Strategy", icon: Sparkles, description: "Combine multiple strategies — land, notes, rentals, and more." },
 ];
+
+const INVESTOR_TYPES = [...CORE_INVESTOR_TYPES, ...SECONDARY_INVESTOR_TYPES];
+const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_INVESTOR_TYPES.map((t) => t.value));
 
 type OnboardingStatus = {
   completed: boolean;
@@ -168,6 +182,9 @@ export function OnboardingWizard() {
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
+  // Step 0 archetype picker — secondary verticals are collapsed by default
+  // so the first impression of "Land Investors" isn't a 15-card avalanche.
+  const [showAllInvestorTypes, setShowAllInvestorTypes] = useState(false);
   // Note Investor vertical (Phase 5 §5) — separate from businessType so
   // mixed-strategy orgs (Hybrid + buying notes) can still get the note
   // sidebar / vocabulary while their businessType remains 'hybrid'.
@@ -493,12 +510,17 @@ export function OnboardingWizard() {
 
             <div className="ob-field">
               <span className="ob-label">What kind of investing do you do?</span>
+              <p className="ob-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                Land is the primary vertical AcreOS was built for. Note
+                investing is fully supported. Other verticals are on the
+                roadmap — pick what fits and we'll prioritize accordingly.
+              </p>
               <RadioGroup
                 value={businessType}
                 onValueChange={(value) => setBusinessType(value as BusinessType)}
                 className="ob-cards"
               >
-                {INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
+                {CORE_INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
                   <label
                     key={value}
                     htmlFor={value}
@@ -514,6 +536,65 @@ export function OnboardingWizard() {
                   </label>
                 ))}
               </RadioGroup>
+
+              {/* Secondary verticals — collapsed by default so the first
+                  impression isn't a 15-card avalanche. Auto-expanded if
+                  the user previously selected one (e.g. coming back to
+                  edit) so their current selection is always visible. */}
+              <details
+                style={{ marginTop: 16 }}
+                open={SECONDARY_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
+                onToggle={(e) => setShowAllInvestorTypes((e.target as HTMLDetailsElement).open)}
+                data-testid="details-show-all-investor-types"
+              >
+                <summary
+                  className="ob-hint"
+                  style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}
+                  data-testid="summary-show-all-investor-types"
+                >
+                  Show all investor types (beta verticals)
+                </summary>
+                <RadioGroup
+                  value={businessType}
+                  onValueChange={(value) => setBusinessType(value as BusinessType)}
+                  className="ob-cards"
+                >
+                  {SECONDARY_INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
+                    <label
+                      key={value}
+                      htmlFor={value}
+                      className={`ob-card ${businessType === value ? "is-on" : ""}`}
+                      data-testid={`option-${value}`}
+                      style={{ position: "relative" }}
+                    >
+                      <RadioGroupItem value={value} id={value} className="sr-only" />
+                      <span
+                        aria-label="Beta vertical"
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          right: 8,
+                          font: "600 9px/1 var(--font-sans)",
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          padding: "3px 6px",
+                          borderRadius: 4,
+                          background: "var(--acr-surface-2)",
+                          color: "var(--acr-ink-3)",
+                          border: "0.5px solid var(--acr-line)",
+                        }}
+                      >
+                        Beta
+                      </span>
+                      <span className="ob-card-glyph">
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <span className="ob-card-title">{label}</span>
+                      <span className="ob-card-desc">{description}</span>
+                    </label>
+                  ))}
+                </RadioGroup>
+              </details>
             </div>
           </motion.div>
         );
