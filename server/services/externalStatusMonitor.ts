@@ -203,6 +203,35 @@ export const externalStatusMonitor = {
     return updated.length;
   },
   
+  /**
+   * Iterate all monitored services; for any whose current cached status
+   * is "operational", auto-resolve any outstanding outage alerts. Returns
+   * the total number of alerts resolved. Pulled out as its own method so
+   * the locked external_status_monitor tick in runScheduledJobs.ts can
+   * call it without `SERVICE_ENDPOINTS` having to be exported.
+   */
+  async resolveRecoveredServices(): Promise<{ resolved: number; recovered: string[] }> {
+    let totalResolved = 0;
+    const recovered: string[] = [];
+    for (const service of Object.keys(SERVICE_ENDPOINTS)) {
+      const status = await this.getServiceStatus(service);
+      if (status.status === "operational") {
+        const n = await this.resolveOutageNotifications(service);
+        if (n > 0) {
+          totalResolved += n;
+          recovered.push(service);
+          logActivity({
+            job: "external_monitor",
+            action: "service_alert_resolved",
+            summary: `${SERVICE_ENDPOINTS[service]?.name || service} is back online — outage alerts auto-resolved`,
+            metadata: { service, resolved: n },
+          }).catch(() => {});
+        }
+      }
+    }
+    return { resolved: totalResolved, recovered };
+  },
+
   startPeriodicMonitoring(intervalMs: number = 5 * 60 * 1000): void {
     setInterval(async () => {
       try {

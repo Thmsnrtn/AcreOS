@@ -1758,9 +1758,9 @@ export async function runScheduledJobs(): Promise<void> {
   // tick is gated by withJobLock — on a >1 worker scale-out we don't
   // fan out probes N× to Stripe/Twilio/Lob/Regrid and we don't write
   // duplicate systemAlerts rows on outage detection. TTL = ~90% (4m).
-  // NOTE: this skips the original loop's "auto-resolve on recovery"
-  // side effect for now — resolveOutageNotifications can be folded in
-  // when the auto-resolve path is given its own lock_name + signal.
+  // Includes the auto-resolve-on-recovery pass: when a service that was
+  // previously alerting on goes back to operational, outstanding alerts
+  // are flipped to resolved so the dashboard / inbox clear automatically.
   import("../services/externalStatusMonitor").then(({ externalStatusMonitor }) => {
     trackInterval(() => {
       withJobLock("external_status_monitor", 4 * 60, async () => {
@@ -1770,9 +1770,14 @@ export async function runScheduledJobs(): Promise<void> {
             await externalStatusMonitor.notifyUsersOfOutage(outage.service, outage.impact);
           }
         }
+        // Auto-resolve recovered services in the same locked tick.
+        const recoveryResult = await externalStatusMonitor.resolveRecoveredServices();
+        if (recoveryResult.resolved > 0) {
+          log(`Auto-resolved ${recoveryResult.resolved} outage alert(s) across: ${recoveryResult.recovered.join(", ")}`, "external-monitor");
+        }
       }).catch((err: any) => log(`External status monitor failed: ${err}`, "external-monitor"));
     }, 5 * 60 * 1000);
-    log("External service status monitoring started (every 5 minutes, lock-gated)", "external-monitor");
+    log("External service status monitoring started (every 5 minutes, lock-gated, auto-resolves on recovery)", "external-monitor");
   }).catch(err => {
     log(`Failed to start external status monitoring: ${err}`, "external-monitor");
   });
