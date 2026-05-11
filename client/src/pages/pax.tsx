@@ -467,37 +467,81 @@ interface UsageLimitsResponse {
 }
 
 function PaxDailyCapBadge() {
-  // Free-tier users get the platform OpenAI key with a daily cap. Surface
-  // "X/Y messages today" so the limit is visible up-front rather than
-  // arriving as a surprise 429 on send. Pro+ tiers have higher / unlimited
-  // caps and can BYOK to bypass entirely, so we hide the badge for them.
+  // Free tier: always show ("X/25 messages today") so the limit is visible
+  // up-front rather than arriving as a surprise 429.
+  // Paid (Starter/Pro): show only when usage >= 80% of cap, so the badge
+  // becomes a warning instead of constant clutter. At 100% it flips to
+  // destructive styling and surfaces an Upgrade CTA.
+  // Scale tier has an unlimited cap (limit === null) and is skipped.
   const { data } = useQuery<UsageLimitsResponse>({
     queryKey: ["/api/usage"],
   });
 
   if (!data) return null;
   const { tier, usage } = data;
-  // Only show on free tier — paid tiers have much higher caps.
-  if (tier !== "free") return null;
   const cap = usage.ai_requests;
+  // Unlimited tier (Scale / founder) — no badge needed.
   if (cap.limit === null) return null;
 
+  const ratio = cap.limit > 0 ? cap.current / cap.limit : 0;
   const atLimit = cap.current >= cap.limit;
+  const isPaid = tier !== "free";
+  const isWarning = ratio >= 0.8 && !atLimit;
+
+  // Paid tiers below 80% stay quiet — no badge clutter.
+  if (isPaid && ratio < 0.8) return null;
+
+  const containerClass = atLimit
+    ? "mb-4 flex items-center justify-between gap-3 rounded-md border border-acr-neg/40 bg-acr-neg-soft px-3 py-2"
+    : isWarning
+      ? "mb-4 flex items-center justify-between gap-3 rounded-md border border-acr-warn/40 bg-acr-warn-soft px-3 py-2"
+      : "mb-4 flex items-center justify-between gap-3 rounded-md border border-dashed bg-muted/30 px-3 py-2";
+
+  const iconClass = atLimit
+    ? "h-4 w-4 text-acr-neg"
+    : isWarning
+      ? "h-4 w-4 text-acr-warn"
+      : "h-4 w-4 text-muted-foreground";
+
+  const valueClass = atLimit
+    ? "font-medium tabular-nums text-acr-neg"
+    : isWarning
+      ? "font-medium tabular-nums text-acr-warn"
+      : "font-medium tabular-nums";
+
+  const captionClass = atLimit
+    ? "text-acr-neg"
+    : isWarning
+      ? "text-acr-warn"
+      : "text-muted-foreground";
+
+  const tierLabel = isPaid
+    ? tier.charAt(0).toUpperCase() + tier.slice(1)
+    : "Free tier";
+
+  const caption = atLimit
+    ? isPaid
+      ? `Daily ${tierLabel.toLowerCase()} limit reached — upgrade for more headroom.`
+      : "Daily free-tier limit reached — upgrade for unlimited."
+    : isWarning
+      ? `Approaching daily ${tierLabel.toLowerCase()} limit — resets at midnight.`
+      : "Free tier — resets daily at midnight.";
+
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+    <div
+      className={containerClass}
+      role={atLimit ? "alert" : isWarning ? "status" : undefined}
+      aria-label={`Pax daily usage: ${cap.current} of ${cap.limit} messages today`}
+    >
       <div className="flex items-center gap-2 text-sm">
-        <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <span className="font-medium tabular-nums">
+        <Sparkles className={iconClass} aria-hidden="true" />
+        <span className={valueClass}>
           {cap.current}/{cap.limit} messages today
         </span>
-        <span className="text-muted-foreground">
-          {atLimit
-            ? "Daily free-tier limit reached — upgrade for unlimited."
-            : "Free tier — resets daily at midnight."}
-        </span>
+        <span className={captionClass}>{caption}</span>
       </div>
-      {atLimit && (
-        <Button size="sm" variant="outline" asChild>
+      {(atLimit || isWarning) && (
+        <Button size="sm" variant={atLimit ? "destructive" : "outline"} asChild>
           <Link href="/pricing">Upgrade</Link>
         </Button>
       )}
