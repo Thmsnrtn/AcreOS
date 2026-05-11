@@ -108,6 +108,9 @@ export function AbTestsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/ab-tests"] });
       toast({ title: "A/B test started" });
     },
+    onError: (err: any) => {
+      toast({ title: "Couldn't start A/B test", description: `${err?.message ?? "Network error"} — the test is still in draft.`, variant: "destructive" });
+    },
   });
 
   const completeMutation = useMutation({
@@ -115,6 +118,9 @@ export function AbTestsContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ab-tests"] });
       toast({ title: "A/B test completed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't complete A/B test", description: `${err?.message ?? "Network error"} — the test is still running.`, variant: "destructive" });
     },
   });
 
@@ -124,6 +130,9 @@ export function AbTestsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/ab-tests"] });
       setSelectedTest(null);
       toast({ title: "A/B test deleted" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't delete A/B test", description: `${err?.message ?? "Network error"} — the test still exists.`, variant: "destructive" });
     },
   });
 

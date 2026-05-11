@@ -122,6 +122,9 @@ export function SequencesContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment paused" });
     },
+    onError: (err: any) => {
+      toast({ title: "Couldn't pause enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still active.`, variant: "destructive" });
+    },
   });
 
   const resumeEnrollmentMutation = useMutation({
@@ -130,6 +133,9 @@ export function SequencesContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment resumed" });
     },
+    onError: (err: any) => {
+      toast({ title: "Couldn't resume enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still paused.`, variant: "destructive" });
+    },
   });
 
   const cancelEnrollmentMutation = useMutation({
@@ -137,6 +143,9 @@ export function SequencesContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment cancelled" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't cancel enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still active.`, variant: "destructive" });
     },
   });
 
@@ -147,35 +156,43 @@ export function SequencesContent() {
   };
 
   const handleEdit = async (sequence: CampaignSequence) => {
-    const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
-    const fullSequence: SequenceWithSteps = await res.json();
-    setSelectedSequence(fullSequence);
-    setFormData({
-      name: fullSequence.name,
-      description: fullSequence.description || "",
-      enrollmentTrigger: fullSequence.enrollmentTrigger as any,
-      isActive: fullSequence.isActive ?? true,
-    });
-    setSteps(
-      fullSequence.steps.map((s: SequenceStep) => ({
-        id: s.id,
-        stepNumber: s.stepNumber,
-        delayDays: s.delayDays,
-        channel: s.channel as any,
-        templateId: s.templateId ?? undefined,
-        subject: s.subject ?? undefined,
-        content: s.content,
-        conditionType: s.conditionType as any,
-        conditionDays: s.conditionDays ?? undefined,
-      }))
-    );
-    setIsDialogOpen(true);
+    try {
+      const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
+      const fullSequence: SequenceWithSteps = await res.json();
+      setSelectedSequence(fullSequence);
+      setFormData({
+        name: fullSequence.name,
+        description: fullSequence.description || "",
+        enrollmentTrigger: fullSequence.enrollmentTrigger as any,
+        isActive: fullSequence.isActive ?? true,
+      });
+      setSteps(
+        fullSequence.steps.map((s: SequenceStep) => ({
+          id: s.id,
+          stepNumber: s.stepNumber,
+          delayDays: s.delayDays,
+          channel: s.channel as any,
+          templateId: s.templateId ?? undefined,
+          subject: s.subject ?? undefined,
+          content: s.content,
+          conditionType: s.conditionType as any,
+          conditionDays: s.conditionDays ?? undefined,
+        }))
+      );
+      setIsDialogOpen(true);
+    } catch (err: any) {
+      toast({ title: "Couldn't load sequence", description: `${err?.message ?? "Network error"} — try again.`, variant: "destructive" });
+    }
   };
 
   const handleView = async (sequence: CampaignSequence) => {
-    const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
-    const fullSequence: SequenceWithSteps = await res.json();
-    setViewingSequence(fullSequence);
+    try {
+      const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
+      const fullSequence: SequenceWithSteps = await res.json();
+      setViewingSequence(fullSequence);
+    } catch (err: any) {
+      toast({ title: "Couldn't load sequence", description: `${err?.message ?? "Network error"} — try again.`, variant: "destructive" });
+    }
   };
 
   const handleSubmit = () => {
