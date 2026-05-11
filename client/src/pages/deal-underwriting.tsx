@@ -1,3 +1,6 @@
+// DEPRECATED 2026-05-11 — consolidated into /deals/discover. The
+// /deal-underwriting route now redirects there. Kept on disk for possible
+// A/B reuse.
 import { useState, useId } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";

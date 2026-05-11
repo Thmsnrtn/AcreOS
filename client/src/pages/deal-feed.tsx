@@ -1,3 +1,5 @@
+// DEPRECATED 2026-05-11 — consolidated into /deals/discover. The /deal-feed
+// route now redirects there. Kept on disk for possible A/B reuse.
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";

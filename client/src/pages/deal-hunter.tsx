@@ -1,3 +1,7 @@
+// DEPRECATED 2026-05-11 — consolidated into /deals/discover. The /deal-hunter
+// route now redirects to /deals/discover (which mounts acquisition-radar.tsx
+// as the canonical surface). This file is kept on disk so we can A/B
+// alternative deal-discovery layouts later; do not link to /deal-hunter.
 import { useId, useState, useEffect, useRef } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";

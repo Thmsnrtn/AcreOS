@@ -1,3 +1,8 @@
+// 2026-05-11 — canonical deal-discovery surface (mounted at /deals/discover).
+// Replaces the fragmented /radar + /acquisition-radar + /deal-hunter +
+// /deal-feed + /deal-patterns + /deal-underwriting cluster from earlier
+// iterations. Those sibling page files are marked DEPRECATED and their
+// routes redirect here.
 import { useState, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

@@ -604,6 +604,16 @@ function Router() {
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
       </Route>
+      {/* 2026-05-11 audit — unified deal-discovery surface. Replaces the
+          previously fragmented /acquisition-radar + /deal-hunter + /deal-feed
+          + /deal-patterns + /deal-underwriting cluster. Each of those URLs
+          now redirects here; the underlying page bundles remain on disk
+          (DEPRECATED comment in each) so we can A/B them later if needed.
+          Registered BEFORE /deals/:id so wouter doesn't match "discover" as
+          the :id param. */}
+      <Route path="/deals/discover">
+        {() => <FlaggedRoute route="/radar" component={AcquisitionRadarPage} />}
+      </Route>
       {/* P1-28 — shareable URLs for deal detail. */}
       <Route path="/deals/:id">
         {() => <ProtectedRoute component={DealDetailPage} />}
@@ -869,7 +879,11 @@ function Router() {
         {() => <FlaggedRoute route="/land-credit" component={LandCreditPage} />}
       </Route>
       <Route path="/radar">
-        {() => <FlaggedRoute route="/radar" component={AcquisitionRadarPage} />}
+        {/* 2026-05-11 audit — consolidated into /deals/discover. */}
+        {() => <Redirect to="/deals/discover" />}
+      </Route>
+      <Route path="/acquisition-radar">
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/portfolio-optimizer">
         {() => <FlaggedRoute route="/portfolio-optimizer" component={PortfolioOptimizerPage} />}
@@ -887,7 +901,8 @@ function Router() {
         {() => <ProtectedRoute component={CashFlowPage} />}
       </Route>
       <Route path="/deal-hunter">
-        {() => <FlaggedRoute route="/deal-hunter" component={DealHunterPage} />}
+        {/* 2026-05-11 audit — consolidated into /deals/discover. */}
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/vision-ai">
         {() => <FlaggedRoute route="/vision-ai" component={VisionAIPage} />}
@@ -996,10 +1011,12 @@ function Router() {
       </Route>
 
       <Route path="/deal-underwriting">
-        {() => <ProtectedRoute component={DealUnderwritingPage} />}
+        {/* 2026-05-11 audit — consolidated into /deals/discover. */}
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/deal-feed">
-        {() => <ProtectedRoute component={DealFeedPage} />}
+        {/* 2026-05-11 audit — consolidated into /deals/discover. */}
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/market-data">
         {() => <ProtectedRoute component={MarketDataPage} />}
@@ -1057,7 +1074,8 @@ function Router() {
         {() => <FlaggedRoute route="/seller-intent" component={SellerIntentPage} />}
       </Route>
       <Route path="/deal-patterns">
-        {() => <FlaggedRoute route="/deal-patterns" component={DealPatternsPage} />}
+        {/* 2026-05-11 audit — consolidated into /deals/discover. */}
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/conscious-organization">
         {/* Founder-gated 2026-05-11: this page exposes the org-consciousness
