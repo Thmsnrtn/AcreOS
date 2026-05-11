@@ -33,26 +33,52 @@ import {
   Calculator
 } from "lucide-react";
 
-// Platforms requiring partner API credentials (LANDCOM_API_KEY,
-// LANDFLIP_API_KEY, META_ACCESS_TOKEN, etc.). Backend stub creates a
-// "pending" syndication record regardless, but actual posting requires
-// keys configured in Settings → Integrations.
+// Platforms requiring partner API credentials. The backend now returns
+// a per-platform status — "missing_credentials" replaces the static
+// "needs API key" badge once a real publish attempt has happened.
 const SYNDICATION_REQUIRES_KEYS = new Set([
   "facebook_marketplace",
   "landwatch",
   "landflip",
+  "land_com",
   "lands_of_america",
-  "zillow",
+  "landsearch",
 ]);
 
 const SYNDICATION_TARGETS = [
+  { id: "land_com", name: "Land.com", icon: Globe },
   { id: "facebook_marketplace", name: "Facebook Marketplace", icon: Globe },
   { id: "craigslist", name: "Craigslist", icon: Globe },
   { id: "landwatch", name: "LandWatch", icon: Globe },
   { id: "landflip", name: "LandFlip", icon: Globe },
   { id: "lands_of_america", name: "Lands of America", icon: Globe },
-  { id: "zillow", name: "Zillow", icon: Building },
+  { id: "landsearch", name: "LandSearch", icon: Building },
 ];
+
+// Per-platform syndication response from POST /api/listings/:id/publish.
+// Mirrors the server-side discriminated union — any new status value here
+// must also be handled in renderPlatformResult below.
+type PlatformResultStatus =
+  | "sent"
+  | "missing_credentials"
+  | "failed"
+  | "idempotent_skip"
+  | "simulated"
+  | "dry_run";
+
+interface PlatformResult {
+  platform: string;
+  status: PlatformResultStatus;
+  error?: string;
+  listingId?: string;
+  listingUrl?: string;
+  deepLinkUrl?: string;
+  manualInstructions?: string;
+}
+
+interface PublishResponse {
+  platforms: PlatformResult[];
+}
 
 const listingFormSchema = z.object({
   propertyId: z.number({ error: "Please select a property" }),
@@ -91,6 +117,8 @@ export default function ListingsPage() {
   const [publishingId, setPublishingId] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PropertyListing | null>(null);
   const [pendingUnpublish, setPendingUnpublish] = useState<PropertyListing | null>(null);
+  const [lastPublishResults, setLastPublishResults] = useState<PlatformResult[] | null>(null);
+  const [inFlightPlatforms, setInFlightPlatforms] = useState<Set<string>>(new Set());
 
   const { data: listings, isLoading } = useQuery<PropertyListing[]>({
     queryKey: ["/api/listings"],
@@ -142,18 +170,51 @@ export default function ListingsPage() {
   });
 
   const publishMutation = useMutation({
-    mutationFn: async ({ id, targets }: { id: number; targets: string[] }) => {
-      return apiRequest("POST", `/api/listings/${id}/publish`, { targets });
+    mutationFn: async ({ id, platforms }: { id: number; platforms: string[] }) => {
+      // Track per-platform in-flight state for the dialog spinner
+      setInFlightPlatforms(new Set(platforms));
+      const res = await apiRequest("POST", `/api/listings/${id}/publish`, { platforms });
+      return (await res.json()) as PublishResponse;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      setIsPublishOpen(false);
-      setPublishTargets([]);
-      setPublishingId(null);
-      toast({ title: "Listing published to selected platforms" });
+      setInFlightPlatforms(new Set());
+      setLastPublishResults(data.platforms ?? []);
+
+      const counts = (data.platforms ?? []).reduce(
+        (acc, r) => {
+          acc[r.status] = (acc[r.status] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<PlatformResultStatus, number>,
+      );
+      const sent = counts.sent ?? 0;
+      const simulated = counts.simulated ?? 0;
+      const missing = counts.missing_credentials ?? 0;
+      const failed = counts.failed ?? 0;
+
+      if (sent + simulated > 0 && failed === 0 && missing === 0) {
+        toast({ title: `Published to ${sent + simulated} platform${sent + simulated === 1 ? "" : "s"}` });
+      } else if (sent + simulated === 0) {
+        toast({
+          title: "Nothing published",
+          description: `${missing} need credentials, ${failed} failed.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `Partial: ${sent + simulated} sent, ${missing + failed} skipped`,
+          description: "See per-platform results in the dialog.",
+        });
+      }
     },
     onError: (error: any) => {
-      toast({ title: "Couldn't publish listing", description: `${error.message} — no platforms received the listing.`, variant: "destructive" });
+      setInFlightPlatforms(new Set());
+      toast({
+        title: "Couldn't publish listing",
+        description: `${error.message} — no platforms received the listing.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -194,13 +255,22 @@ export default function ListingsPage() {
   const handleOpenPublish = (id: number) => {
     setPublishingId(id);
     setPublishTargets([]);
+    setLastPublishResults(null);
     setIsPublishOpen(true);
   };
 
   const handlePublish = () => {
     if (publishingId && publishTargets.length > 0) {
-      publishMutation.mutate({ id: publishingId, targets: publishTargets });
+      publishMutation.mutate({ id: publishingId, platforms: publishTargets });
     }
+  };
+
+  const handleClosePublish = () => {
+    setIsPublishOpen(false);
+    setPublishTargets([]);
+    setPublishingId(null);
+    setLastPublishResults(null);
+    setInFlightPlatforms(new Set());
   };
 
   // P1 money-precision: canonical usd() preserves cents at boundaries; pages that
@@ -738,16 +808,58 @@ export default function ListingsPage() {
                               <div className="space-y-2">
                                 <p className="text-sm font-medium">Syndication:</p>
                                 <ul className="flex flex-wrap gap-2 list-none p-0 m-0">
-                                  {(listing.syndicationTargets as any[]).map((target, index) => (
-                                    <li key={index}>
-                                      <Badge
-                                        variant={target.status === "active" ? "default" : "secondary"}
-                                        aria-label={`${target.platform.replace(/_/g, " ")}: ${target.status}`}
-                                      >
-                                        {target.platform.replace(/_/g, " ")}
-                                      </Badge>
-                                    </li>
-                                  ))}
+                                  {(listing.syndicationTargets as any[]).map((target, index) => {
+                                    const platformLabel = target.platform.replace(/_/g, " ");
+                                    const statusLabel: Record<string, string> = {
+                                      active: "sent",
+                                      simulated: "simulated",
+                                      needs_credentials: "needs credentials",
+                                      duplicate_suppressed: "duplicate suppressed",
+                                      failed: "failed",
+                                      preview: "preview",
+                                      pending: "pending",
+                                      removed: "removed",
+                                    };
+                                    const tone =
+                                      target.status === "active"
+                                        ? "bg-acr-pos-soft text-acr-pos border-transparent"
+                                        : target.status === "simulated"
+                                          ? "bg-acr-brand-soft text-acr-brand border-transparent"
+                                          : target.status === "failed"
+                                            ? "bg-acr-neg-soft text-acr-neg border-transparent"
+                                            : target.status === "needs_credentials"
+                                              ? "bg-acr-warn-soft text-acr-warn border-transparent"
+                                              : "bg-acr-surface-2 text-acr-ink-3 border-transparent";
+                                    const shown = statusLabel[target.status] ?? target.status;
+                                    return (
+                                      <li key={index}>
+                                        {target.listingUrl ? (
+                                          <a
+                                            href={target.listingUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            aria-label={`${platformLabel}: ${shown} (opens listing in new tab)`}
+                                          >
+                                            <Badge
+                                              className={tone}
+                                              data-testid={`badge-syndication-${target.platform}`}
+                                            >
+                                              {platformLabel} · {shown}
+                                            </Badge>
+                                          </a>
+                                        ) : (
+                                          <Badge
+                                            className={tone}
+                                            aria-label={`${platformLabel}: ${shown}${target.error ? ` (${target.error})` : ""}`}
+                                            data-testid={`badge-syndication-${target.platform}`}
+                                            title={target.error || undefined}
+                                          >
+                                            {platformLabel} · {shown}
+                                          </Badge>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               </div>
                             )}
@@ -772,12 +884,14 @@ export default function ListingsPage() {
           </Tabs>
         )}
 
-        <Dialog open={isPublishOpen} onOpenChange={setIsPublishOpen}>
+        <Dialog open={isPublishOpen} onOpenChange={(open) => { if (!open) handleClosePublish(); }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Publish listing</DialogTitle>
               <DialogDescription>
-                Select platforms to syndicate your listing to.
+                {lastPublishResults
+                  ? "Per-platform results from your last publish attempt."
+                  : "Select platforms to syndicate your listing to."}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -788,11 +902,12 @@ export default function ListingsPage() {
               }}
             >
               <p className="text-xs text-muted-foreground" data-testid="text-publish-disclaimer">
-                Platforms marked <span className="font-medium">“needs API key”</span> require partner credentials configured in{" "}
+                Each platform requires partner credentials configured in{" "}
                 <Link href="/settings#integrations" className="underline hover:text-foreground">
                   Settings → Integrations
                 </Link>
-                . Listings selected without keys are queued as pending and posted automatically once credentials are added.
+                . Platforms without credentials will be returned as{" "}
+                <span className="font-medium">missing credentials</span> and skipped — no listing leaves your tenant.
               </p>
               <fieldset className="space-y-2 border-0 p-0 m-0">
                 <legend className="sr-only">Syndication platforms</legend>
@@ -801,22 +916,69 @@ export default function ListingsPage() {
                     const checked = publishTargets.includes(target.id);
                     const cbId = `publish-target-${target.id}`;
                     const needsKey = SYNDICATION_REQUIRES_KEYS.has(target.id);
+                    const inFlight = inFlightPlatforms.has(target.id);
+                    const lastResult = lastPublishResults?.find((r) => r.platform === target.id);
                     return (
                       <li
                         key={target.id}
                         className="flex items-center justify-between gap-4 p-3 border rounded-md"
+                        data-testid={`row-target-${target.id}`}
                       >
-                        <Label htmlFor={cbId} className="flex items-center gap-3 cursor-pointer flex-1">
-                          <target.icon className="h-5 w-5" aria-hidden="true" />
-                          <span>{target.name}</span>
-                          {needsKey && (
+                        <Label htmlFor={cbId} className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                          <target.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{target.name}</span>
+                          {needsKey && !lastResult && (
                             <Badge variant="outline" className="text-xs">needs API key</Badge>
+                          )}
+                          {inFlight && (
+                            <span
+                              className="flex items-center gap-1 text-xs text-muted-foreground"
+                              data-testid={`inflight-${target.id}`}
+                            >
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              Publishing…
+                            </span>
+                          )}
+                          {!inFlight && lastResult && (
+                            <span
+                              className="text-xs"
+                              data-testid={`result-${target.id}-${lastResult.status}`}
+                              title={lastResult.error || undefined}
+                            >
+                              {lastResult.status === "sent" && (
+                                <Badge className="bg-acr-pos-soft text-acr-pos border-transparent">
+                                  Sent
+                                </Badge>
+                              )}
+                              {lastResult.status === "simulated" && (
+                                <Badge className="bg-acr-brand-soft text-acr-brand border-transparent">
+                                  Simulated
+                                </Badge>
+                              )}
+                              {lastResult.status === "missing_credentials" && (
+                                <Badge className="bg-acr-warn-soft text-acr-warn border-transparent">
+                                  Missing credentials
+                                </Badge>
+                              )}
+                              {lastResult.status === "failed" && (
+                                <Badge className="bg-acr-neg-soft text-acr-neg border-transparent">
+                                  Failed
+                                </Badge>
+                              )}
+                              {lastResult.status === "idempotent_skip" && (
+                                <Badge variant="outline">Duplicate suppressed</Badge>
+                              )}
+                              {lastResult.status === "dry_run" && (
+                                <Badge variant="outline">Preview</Badge>
+                              )}
+                            </span>
                           )}
                         </Label>
                         <Checkbox
                           id={cbId}
                           data-testid={`checkbox-target-${target.id}`}
                           checked={checked}
+                          disabled={publishMutation.isPending}
                           onCheckedChange={(c) => {
                             if (c) setPublishTargets([...publishTargets, target.id]);
                             else setPublishTargets(publishTargets.filter((t) => t !== target.id));
@@ -827,14 +989,26 @@ export default function ListingsPage() {
                   })}
                 </ul>
               </fieldset>
+              {lastPublishResults?.some((r) => r.error) && (
+                <ul className="text-xs text-muted-foreground space-y-1 list-none p-0 m-0">
+                  {lastPublishResults
+                    .filter((r) => r.error)
+                    .map((r) => (
+                      <li key={r.platform} data-testid={`error-${r.platform}`}>
+                        <span className="font-medium">{r.platform.replace(/_/g, " ")}:</span>{" "}
+                        {r.error}
+                      </li>
+                    ))}
+                </ul>
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsPublishOpen(false)}
+                  onClick={handleClosePublish}
                   data-testid="button-cancel-publish"
                 >
-                  Cancel
+                  {lastPublishResults ? "Close" : "Cancel"}
                 </Button>
                 <Button
                   type="submit"
@@ -844,7 +1018,7 @@ export default function ListingsPage() {
                   {publishMutation.isPending && (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                   )}
-                  Publish to {publishTargets.length} platform{publishTargets.length === 1 ? "" : "s"}
+                  {lastPublishResults ? "Re-publish" : "Publish"} to {publishTargets.length} platform{publishTargets.length === 1 ? "" : "s"}
                 </Button>
               </div>
             </form>
