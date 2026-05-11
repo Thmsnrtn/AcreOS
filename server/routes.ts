@@ -600,7 +600,12 @@ export async function registerRoutes(
   const { registerOAuthRoutes } = await import("./auth/oauth");
   registerOAuthRoutes(app);
 
-  app.get("/api/health/:service", async (req: AuthenticatedRequest, res: Response) => {
+  // /api/health/deep is registered later by routes-enhancements.ts. The wildcard
+  // /api/health/:service below would otherwise shadow it (Express picks the
+  // first match), so we special-case `deep` to delegate to the deep-health path.
+  // Caught 2026-05-11 via endpoint health probe — /api/health/deep was 404ing.
+  app.get("/api/health/:service", async (req: AuthenticatedRequest, res: Response, next) => {
+    if (req.params.service === "deep") return next();
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
     if (!service) {
@@ -1582,6 +1587,12 @@ export async function registerRoutes(
     registerFounderV13Routes(app);
     const { registerFounderV14Routes } = await import("./routes-founder-v14");
     registerFounderV14Routes(app);
+    // SCP v2 routes — golden-suite, briefing, evolution/dashboard, evolution/status,
+    // costs, constitution, trust/promotions. File was orphaned from this
+    // registration block; 7 GET endpoints were 404ing in production. Caught
+    // 2026-05-11 via the endpoint health probe.
+    const { registerSCPv2Routes } = await import("./routes-scp-v2");
+    registerSCPv2Routes(app);
     const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
     registerSovereignIntegrationRoutes(app);
     const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
