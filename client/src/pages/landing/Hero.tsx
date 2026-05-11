@@ -7,8 +7,8 @@
  * - Sub copy at 19px max-width 580px
  * - Primary + secondary CTA buttons; "→" arrow on primary
  * - Trust pill with green dot + proof copy
- * - Three floating cards on right (Atlas/Pax/Sophie) with rotation +
- *   staggered fade-in animation
+ * - Three floating cards on right (Pax surfaces — analysis, drafts,
+ *   servicing) with rotation + staggered fade-in animation
  * - SVG parcel-grid + radial-glow + parcel-polygon backdrop
  *
  * Patterns extrapolated:
@@ -103,10 +103,10 @@ function HeroVisual() {
     <div className="lp-hero-visual" aria-hidden="true">
       <div className="lp-hero-card lp-hv-atlas">
         <div className="lp-hv-head">
-          <div className="lp-hv-avatar lp-hv-atlas-av">A</div>
+          <div className="lp-hv-avatar lp-hv-pax-av">P</div>
           <div className="lp-hv-meta">
-            <div className="lp-hv-name">Atlas</div>
-            <div className="lp-hv-role">Comping APN 304-12-456</div>
+            <div className="lp-hv-name">Pax · Comp analysis</div>
+            <div className="lp-hv-role">APN 304-12-456</div>
           </div>
           <span className="lp-hv-badge lp-hv-badge-running">
             <span className="lp-hv-spin" />
@@ -144,10 +144,10 @@ function HeroVisual() {
 
       <div className="lp-hero-card lp-hv-sophie">
         <div className="lp-hv-head">
-          <div className="lp-hv-avatar lp-hv-sophie-av">S</div>
+          <div className="lp-hv-avatar lp-hv-pax-av">P</div>
           <div className="lp-hv-meta">
-            <div className="lp-hv-name">Sophie</div>
-            <div className="lp-hv-role">Note #2204-A · serviced</div>
+            <div className="lp-hv-name">Pax · Note serviced</div>
+            <div className="lp-hv-role">Note #2204-A</div>
           </div>
           <span className="lp-hv-badge lp-hv-badge-done">Done</span>
         </div>

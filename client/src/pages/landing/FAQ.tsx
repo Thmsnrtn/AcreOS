@@ -27,12 +27,12 @@ const ITEMS = [
     a: "Yes. AcreOS includes a CRM purpose-built for land — pipeline stages, contact records, callback queues, and Pax inbox in one place.",
   },
   {
-    q: "What about my existing notes / loans?",
-    a: "Sophie can import and service notes from Beanstalk, Note Servicing Center, or a CSV. We'll do the migration with you on a 30-min call.",
+    q: "What about existing notes / loans?",
+    a: "AcreOS imports and services notes from Beanstalk, Note Servicing Center, or a CSV. Migration support is included on a 30-min call.",
   },
   {
     q: "Can I use this with a partner or VA?",
-    a: "Yes. Operator and Operation plans include multi-user with role-based permissions — your VA can't see financials unless you grant it.",
+    a: "Yes. Pro and Scale plans include multi-user with role-based permissions — your VA can't see financials unless you grant it.",
   },
   {
     q: "How fast can I get started?",

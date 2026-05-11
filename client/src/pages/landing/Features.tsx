@@ -20,16 +20,16 @@ type GlyphKind =
 const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
   { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS watches every parcel listing in your counties — forever.", i: "box" },
   { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Ready every Monday morning.", i: "list" },
-  { cat: "Analyze", t: "Atlas comps", d: "Real comparable sales, not Zillow guesses. With confidence scores.", i: "scale" },
+  { cat: "Analyze", t: "Comp engine", d: "Real comparable sales, not Zillow guesses. With confidence scores.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },
   { cat: "Reach", t: "Mail platform", d: "Multi-touch campaigns. Tracked. A/B tested. Full creative control.", i: "mail" },
   { cat: "Reach", t: "Pax Inbox", d: "SMS, email, voicemail in one thread. Drafts ready for every reply.", i: "inbox" },
-  { cat: "Close", t: "Offer composer", d: "Generate written offers in 30 seconds. Atlas defends the price.", i: "doc" },
+  { cat: "Close", t: "Offer composer", d: "Generate written offers in 30 seconds. Pax defends the price.", i: "doc" },
   { cat: "Close", t: "E-sign + escrow", d: "Send contracts, track signatures, hand off to title — without leaving the app.", i: "pen" },
-  { cat: "Service", t: "Sophie ledger", d: "Auto-pay, receipts, late notices, 1098s. Your seller-finance back office.", i: "ledger" },
+  { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices, 1098s. Seller-finance back office.", i: "ledger" },
   { cat: "Operate", t: "Automation builder", d: "No-code workflows. Trigger anything off any event. Pause anything in one click.", i: "flow" },
   { cat: "Operate", t: "Audit log", d: "Every agent action — what, when, why, what data it used. Full transparency.", i: "audit" },
-  { cat: "Operate", t: "Team + roles", d: "Bring on a VA, a partner, or your spouse. Granular permissions.", i: "team" },
+  { cat: "Operate", t: "Team + roles", d: "Add a VA, a partner, or a teammate. Granular permissions.", i: "team" },
 ];
 
 function FeatureGlyph({ kind }: { kind: GlyphKind }) {

@@ -8,12 +8,11 @@
  * Production wouter routes:
  * - /pricing, /academy, /blog → existing routes
  * - /privacy, /terms, /security → existing routes
- * - mailto:thomas@acreos.io for contact
- * - In-page anchors for #features, #pricing, #faq, #founder
+ * - mailto:hello@acreos.io for contact
+ * - In-page anchors for #features, #pricing, #faq, #agents
  *
- * Anchor links to features that don't exist yet (#atlas, #pax, #sophie
- * page subroutes) point at #agents instead — they'll get dedicated
- * routes in Phase 9 if desired.
+ * Internal agent names (Atlas/Sophie/Forge) are not surfaced here —
+ * customers only know Pax.
  */
 
 import { Link } from "wouter";
@@ -27,21 +26,19 @@ export function Footer() {
             <span className="lp-footer-logo-mark">A</span>AcreOS
           </a>
           <p className="lp-footer-tag">
-            The operating system for land investors. Built by an investor.
+            The operating system for land investors.
           </p>
         </div>
         <div className="lp-footer-cols">
           <div className="lp-footer-col">
             <div className="lp-footer-h">Product</div>
-            <a href="#agents">Atlas</a>
-            <a href="#agents">Pax</a>
-            <a href="#agents">Sophie</a>
-            <a href="#features">Automation</a>
+            <a href="#how">How it works</a>
+            <a href="#agents">Meet Pax</a>
+            <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Company</div>
-            <Link href="/why">From the founder</Link>
             <Link href="/careers">Careers</Link>
             <Link href="/press">Press</Link>
           </div>
@@ -54,7 +51,7 @@ export function Footer() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>
-            <a href="mailto:thomas@acreos.io">thomas@acreos.io</a>
+            <a href="mailto:hello@acreos.io">hello@acreos.io</a>
             <Link href="/support">Support</Link>
             <a href="https://status.acreos.io" target="_blank" rel="noreferrer">
               Status

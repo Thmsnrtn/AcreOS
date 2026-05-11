@@ -1,34 +1,30 @@
 /**
- * Prototype reference: /acreos-landing/sections-1.jsx → Agents (lines 142-272)
+ * Section: Meet Pax — the customer-facing AI operations partner.
  *
- * Tabbed three-agent showcase. Tabs are letter avatars + name + role.
- * Active tab gets a colored 1px ring (the agent's identity color) +
- * shadow. Panel below: tagline + bullets on the left, sample card with
- * label/value rows on the right. Mobile <880px collapses to single
- * column for both tabs and panel.
+ * Per persona-architecture (see CLAUDE.md / MEMORY): customers see
+ * Pax only. Other internal agents (Atlas/Sophie/Forge/etc.) are
+ * founder-side and don't appear in marketing. This section presents
+ * Pax's capabilities as three tabs (Analysis / Communication /
+ * Servicing) — these are surfaces *within* Pax, not separate agents.
  *
- * Per-agent identity colors are not theme tokens — they're agent
- * branding that stays consistent regardless of light/dark theme.
- * Atlas = brand terracotta (matches --acr-brand). Pax = teal.
- * Sophie = warm tan-brown.
- *
- * Per persona-architecture saved memory: customers see all three
- * named agents on the public landing (this is marketing of the AI
- * workforce). The "customers see Pax only" rule applies to the
- * primary in-app conversational interface, not to background-agent
- * surfacing or marketing.
+ * Tab visual: letter avatar + tab label + role. Active tab gets a
+ * colored 1px ring (Pax brand teal) + shadow. Panel below: tagline +
+ * bullets on the left, sample card on the right. Mobile <880px
+ * collapses to single column.
  */
 
 import { useState } from "react";
 import { LANDING_COPY } from "./copy";
 
-const AGENTS = [
+const PAX_COLOR = "#4C7B80";
+
+const SURFACES = [
   {
-    id: "atlas",
-    name: "Atlas",
-    role: "Analysis",
+    id: "analysis",
+    name: "Analysis",
+    role: "Comps + parcel intel",
+    letter: "A",
     tagline: "Pulls comps. Spots flaws. Prices parcels.",
-    color: "#C2531C",
     bullets: [
       "Pulls 10–20 comparables for any APN",
       "Calculates $/acre, road frontage, slope",
@@ -36,7 +32,7 @@ const AGENTS = [
       "Suggests an offer band with confidence",
     ],
     sample: {
-      title: "Atlas just finished APN 304-12-456",
+      title: "Pax just finished APN 304-12-456",
       rows: [
         ["Median comp", "$2,840 / acre"],
         ["Suggested offer", "$11,200 – $14,800"],
@@ -46,16 +42,16 @@ const AGENTS = [
     },
   },
   {
-    id: "pax",
-    name: "Pax",
-    role: "Communication",
+    id: "communication",
+    name: "Communication",
+    role: "Drafts + follow-ups",
+    letter: "C",
     tagline: "Drafts replies. Books calls. Handles objections.",
-    color: "#4C7B80",
     bullets: [
       "Drafts SMS, email, and voicemail replies",
       "Tone-matches each seller",
       "Schedules follow-ups across time zones",
-      "Hands off to you when judgment is needed",
+      "Hands off when human judgment is needed",
     ],
     sample: {
       title: "Pax has 4 drafts ready for review",
@@ -68,19 +64,19 @@ const AGENTS = [
     },
   },
   {
-    id: "sophie",
-    name: "Sophie",
-    role: "Servicing",
+    id: "servicing",
+    name: "Servicing",
+    role: "Notes + ledger",
+    letter: "S",
     tagline: "Watches title. Services notes. Keeps the books.",
-    color: "#8B5A2B",
     bullets: [
       "Tracks loan payments + sends receipts",
       "Monitors title status across counties",
       "Files 1098s and year-end statements",
-      "Catches missed payments before you do",
+      "Catches missed payments before the operator does",
     ],
     sample: {
-      title: "Sophie's ledger · this week",
+      title: "Pax ledger · this week",
       rows: [
         ["Payments collected", "$14,820"],
         ["Notes serviced", "37 of 37"],
@@ -94,7 +90,7 @@ const AGENTS = [
 export function Agents() {
   const c = LANDING_COPY.agents;
   const [activeIdx, setActiveIdx] = useState(0);
-  const a = AGENTS[activeIdx];
+  const a = SURFACES[activeIdx];
 
   return (
     <section className="lp-section" id="agents">
@@ -103,27 +99,27 @@ export function Agents() {
       <p className="lp-section-sub">{c.sub}</p>
 
       <div className="lp-agents-tabs" role="tablist">
-        {AGENTS.map((ag, i) => (
+        {SURFACES.map((s, i) => (
           <button
-            key={ag.id}
+            key={s.id}
             role="tab"
             aria-selected={activeIdx === i}
-            aria-controls={`agent-panel-${ag.id}`}
-            id={`agent-tab-${ag.id}`}
+            aria-controls={`agent-panel-${s.id}`}
+            id={`agent-tab-${s.id}`}
             className={`lp-agent-tab ${activeIdx === i ? "lp-agent-tab-active" : ""}`}
             onClick={() => setActiveIdx(i)}
             style={
               activeIdx === i
-                ? ({ "--tab-color": ag.color } as React.CSSProperties)
+                ? ({ "--tab-color": PAX_COLOR } as React.CSSProperties)
                 : undefined
             }
           >
-            <span className="lp-agent-tab-letter" style={{ background: ag.color }}>
-              {ag.name[0]}
+            <span className="lp-agent-tab-letter" style={{ background: PAX_COLOR }}>
+              {s.letter}
             </span>
             <span>
-              <span className="lp-agent-tab-name">{ag.name}</span>
-              <span className="lp-agent-tab-role">{ag.role}</span>
+              <span className="lp-agent-tab-name">{s.name}</span>
+              <span className="lp-agent-tab-role">{s.role}</span>
             </span>
           </button>
         ))}
@@ -141,7 +137,7 @@ export function Agents() {
           <ul className="lp-agent-bullets">
             {a.bullets.map((b, i) => (
               <li key={i}>
-                <span className="lp-agent-check" style={{ color: a.color }}>
+                <span className="lp-agent-check" style={{ color: PAX_COLOR }}>
                   ✓
                 </span>
                 {b}
@@ -150,13 +146,13 @@ export function Agents() {
           </ul>
         </div>
         <div>
-          <div className="lp-agent-sample" style={{ borderColor: a.color + "33" }}>
+          <div className="lp-agent-sample" style={{ borderColor: PAX_COLOR + "33" }}>
             <div className="lp-agent-sample-head">
               <span
                 className="lp-agent-sample-avatar"
-                style={{ background: a.color }}
+                style={{ background: PAX_COLOR }}
               >
-                {a.name[0]}
+                P
               </span>
               <div className="lp-agent-sample-title">{a.sample.title}</div>
             </div>

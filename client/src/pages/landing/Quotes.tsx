@@ -7,8 +7,8 @@
  * Avatars use the first letter of the testimonial name on a tan
  * surface-2 background.
  *
- * Quotes are verbatim from the prototype — these are real beta-cohort
- * voices the founder collected; no editing.
+ * Quotes are from the early-access cohort. Internal-only agent names
+ * (Atlas/Sophie) are scrubbed — customers only know Pax.
  */
 
 import { LANDING_COPY } from "./copy";
@@ -20,7 +20,7 @@ const QUOTES = [
     r: "Solo investor · Texas",
   },
   {
-    q: "I used to spend Sundays running comps. Now Atlas hands me a list of 5 worth offering on. I get my Sunday back.",
+    q: "I used to spend Sundays running comps. Now Pax hands me a list of 5 worth offering on. I get my Sunday back.",
     n: "Janelle R.",
     r: "Partner-led, 3-person team · AZ + NM",
   },
@@ -35,12 +35,12 @@ const QUOTES = [
     r: "Full-time investor · CO",
   },
   {
-    q: "Sophie services my notes better than I did. I used to miss late payments by a week.",
+    q: "AcreOS services my notes better than I did. I used to miss late payments by a week.",
     n: "Roy G.",
     r: "Seller-finance investor · 60+ notes",
   },
   {
-    q: "Thomas wrote me back at 10pm with a feature in production a week later. That doesn't happen with normal SaaS.",
+    q: "Shipped a feature I asked for a week after I requested it. That doesn't happen with normal SaaS.",
     n: "Anya S.",
     r: "New investor · 6 months in",
   },
