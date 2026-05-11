@@ -1823,7 +1823,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // GET /api/deals/handoffs — list all handoffs for the org
   app.get("/api/deals/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const handoffs = await getAllHandoffs(req.org.id);
+      const handoffs = await getAllHandoffs(req.organization.id);
       res.json(handoffs);
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
@@ -1833,7 +1833,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
   app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const handoffs = await getHandoffsForDeal(req.org.id, parseInt(req.params.dealId));
+      const handoffs = await getHandoffsForDeal(req.organization.id, parseInt(req.params.dealId));
       res.json(handoffs);
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
@@ -1847,7 +1847,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!fromTeamMemberId || !toTeamMemberId || !fromRole || !toRole) {
         return Errors.badRequest(res, "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required");
       }
-      const handoff = await initiateHandoff(req.org.id, {
+      const handoff = await initiateHandoff(req.organization.id, {
         dealId: parseInt(req.params.dealId),
         fromTeamMemberId,
         toTeamMemberId,
@@ -1867,7 +1867,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const { completed } = req.body;
       const handoff = await updateHandoffChecklist(
-        req.org.id,
+        req.organization.id,
         req.params.handoffId,
         req.params.itemId,
         !!completed
@@ -1881,7 +1881,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // POST /api/deals/handoffs/:handoffId/complete — complete the handoff
   app.post("/api/deals/handoffs/:handoffId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const handoff = await completeHandoff(req.org.id, req.params.handoffId);
+      const handoff = await completeHandoff(req.organization.id, req.params.handoffId);
       res.json(handoff);
     } catch (err: any) {
       Errors.badRequest(res, err.message);
