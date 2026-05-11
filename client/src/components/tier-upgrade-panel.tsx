@@ -17,8 +17,8 @@ interface TierFeature {
   pro: string | boolean;
 }
 
-// Marketing labels Starter/Pro map to the canonical solo/operator pricing
-// tiers from shared/billing/tier-pricing.ts. Never hardcode tier prices.
+// Tier keys match the canonical TIER_PRICES_CENTS from
+// shared/billing/tier-pricing.ts. Never hardcode tier prices.
 const LAUNCH_TIERS = [
   {
     id: "free" as const,
@@ -32,8 +32,8 @@ const LAUNCH_TIERS = [
   {
     id: "starter" as const,
     name: "Starter",
-    price: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
+    price: TIER_PRICES_CENTS.starter.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents / 100,
     description: "Replace your spreadsheet",
     cta: "Start free trial",
     highlighted: false,
@@ -41,8 +41,8 @@ const LAUNCH_TIERS = [
   {
     id: "pro" as const,
     name: "Pro",
-    price: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
+    price: TIER_PRICES_CENTS.pro.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
     description: "For serious operators",
     cta: "Start free trial",
     highlighted: true,

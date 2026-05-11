@@ -33,17 +33,18 @@ const CANCEL_REASONS = [
 /**
  * Vesper §3 — given the customer's current tier, return the next-cheapest
  * paid tier we should suggest as a downgrade. Returns null when there's
- * nowhere lower to go (Solo customers can only cancel).
+ * nowhere lower to go (Starter customers can only cancel).
  *
  * The currentTier value comes from organizations.subscription_tier which
- * uses the legacy starter/pro/scale labels. tierForSubscriptionTier maps
- * both label sets to the canonical solo/operator/empire keys.
+ * may use canonical starter/pro/scale labels OR the legacy
+ * solo/operator/empire labels. tierForSubscriptionTier folds both sets
+ * onto the canonical keys.
  */
 function suggestedDowngradeTier(currentTier: string): Tier | null {
   const canonical = tierForSubscriptionTier(currentTier);
-  if (canonical === "empire") return "operator";
-  if (canonical === "operator") return "solo";
-  // solo → no lower paid tier
+  if (canonical === "scale") return "pro";
+  if (canonical === "pro") return "starter";
+  // starter → no lower paid tier
   return null;
 }
 

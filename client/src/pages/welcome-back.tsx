@@ -81,9 +81,9 @@ function formatPrice(cents: number): string {
 
 function tierLabel(tier: string): string {
   const v = tier.toLowerCase();
-  if (v === "solo" || v === "starter") return "Solo";
-  if (v === "operator" || v === "pro") return "Operator";
-  if (v === "empire" || v === "scale") return "Empire";
+  if (v === "starter" || v === "solo") return "Starter";
+  if (v === "pro" || v === "operator") return "Pro";
+  if (v === "scale" || v === "empire") return "Scale";
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 

@@ -11,9 +11,9 @@ import {
 
 describe("shared/billing/tier-pricing", () => {
   it("defines exactly three canonical paid tiers", () => {
-    expect(TIERS).toEqual(["solo", "operator", "empire"]);
+    expect(TIERS).toEqual(["starter", "pro", "scale"]);
     expect(Object.keys(TIER_PRICES_CENTS).sort()).toEqual(
-      ["empire", "operator", "solo"],
+      ["pro", "scale", "starter"],
     );
   });
 
@@ -47,54 +47,54 @@ describe("shared/billing/tier-pricing", () => {
   );
 
   it("matches the documented canonical prices ($20 / $49 / $79 monthly)", () => {
-    expect(TIER_PRICES_CENTS.solo.priceMonthlyCents).toBe(2000);
-    expect(TIER_PRICES_CENTS.operator.priceMonthlyCents).toBe(4900);
-    expect(TIER_PRICES_CENTS.empire.priceMonthlyCents).toBe(7900);
+    expect(TIER_PRICES_CENTS.starter.priceMonthlyCents).toBe(2000);
+    expect(TIER_PRICES_CENTS.pro.priceMonthlyCents).toBe(4900);
+    expect(TIER_PRICES_CENTS.scale.priceMonthlyCents).toBe(7900);
   });
 
   it("matches the documented canonical yearly prices ($200 / $490 / $790)", () => {
-    expect(TIER_PRICES_CENTS.solo.priceYearlyCents).toBe(20000);
-    expect(TIER_PRICES_CENTS.operator.priceYearlyCents).toBe(49000);
-    expect(TIER_PRICES_CENTS.empire.priceYearlyCents).toBe(79000);
+    expect(TIER_PRICES_CENTS.starter.priceYearlyCents).toBe(20000);
+    expect(TIER_PRICES_CENTS.pro.priceYearlyCents).toBe(49000);
+    expect(TIER_PRICES_CENTS.scale.priceYearlyCents).toBe(79000);
   });
 
   describe("tierPriceCents()", () => {
     it("returns monthly cents for monthly interval", () => {
-      expect(tierPriceCents("solo", "monthly")).toBe(2000);
-      expect(tierPriceCents("operator", "monthly")).toBe(4900);
-      expect(tierPriceCents("empire", "monthly")).toBe(7900);
+      expect(tierPriceCents("starter", "monthly")).toBe(2000);
+      expect(tierPriceCents("pro", "monthly")).toBe(4900);
+      expect(tierPriceCents("scale", "monthly")).toBe(7900);
     });
 
     it("returns yearly cents for yearly interval", () => {
-      expect(tierPriceCents("solo", "yearly")).toBe(20000);
-      expect(tierPriceCents("operator", "yearly")).toBe(49000);
-      expect(tierPriceCents("empire", "yearly")).toBe(79000);
+      expect(tierPriceCents("starter", "yearly")).toBe(20000);
+      expect(tierPriceCents("pro", "yearly")).toBe(49000);
+      expect(tierPriceCents("scale", "yearly")).toBe(79000);
     });
   });
 
   describe("tierPriceDollars()", () => {
     it("returns prices in dollars (cents / 100)", () => {
-      expect(tierPriceDollars("solo", "monthly")).toBe(20);
-      expect(tierPriceDollars("operator", "yearly")).toBe(490);
+      expect(tierPriceDollars("starter", "monthly")).toBe(20);
+      expect(tierPriceDollars("pro", "yearly")).toBe(490);
     });
   });
 
   describe("tierForSubscriptionTier()", () => {
-    it("maps the legacy starter/pro/scale aliases", () => {
-      expect(tierForSubscriptionTier("starter")).toBe("solo");
-      expect(tierForSubscriptionTier("pro")).toBe("operator");
-      expect(tierForSubscriptionTier("scale")).toBe("empire");
+    it("maps the legacy solo/operator/empire aliases", () => {
+      expect(tierForSubscriptionTier("solo")).toBe("starter");
+      expect(tierForSubscriptionTier("operator")).toBe("pro");
+      expect(tierForSubscriptionTier("empire")).toBe("scale");
     });
 
-    it("maps canonical solo/operator/empire to themselves", () => {
-      expect(tierForSubscriptionTier("solo")).toBe("solo");
-      expect(tierForSubscriptionTier("operator")).toBe("operator");
-      expect(tierForSubscriptionTier("empire")).toBe("empire");
+    it("maps canonical starter/pro/scale to themselves", () => {
+      expect(tierForSubscriptionTier("starter")).toBe("starter");
+      expect(tierForSubscriptionTier("pro")).toBe("pro");
+      expect(tierForSubscriptionTier("scale")).toBe("scale");
     });
 
     it("is case-insensitive", () => {
-      expect(tierForSubscriptionTier("STARTER")).toBe("solo");
-      expect(tierForSubscriptionTier("Empire")).toBe("empire");
+      expect(tierForSubscriptionTier("STARTER")).toBe("starter");
+      expect(tierForSubscriptionTier("Empire")).toBe("scale");
     });
 
     it("returns null for free tier and unknown values", () => {
@@ -133,13 +133,18 @@ describe("shared/billing/tier-pricing", () => {
     // The test fails ONLY if the env var IS set but does not match the
     // value carried in TIER_PRICES_CENTS. That catches drift between the
     // env config and the in-process pricing module.
+    //
+    // Env var names retain their legacy SOLO/OPERATOR/EMPIRE spelling
+    // so deployed Stripe price IDs in Fly secrets keep resolving without
+    // a billing-side rename. The CANONICAL tier keys are
+    // starter/pro/scale; the env var names are decoupled.
     const ENV_TO_TIER: Array<[string, Tier, "monthly" | "yearly"]> = [
-      ["STRIPE_PRICE_SOLO_MONTHLY", "solo", "monthly"],
-      ["STRIPE_PRICE_SOLO_YEARLY", "solo", "yearly"],
-      ["STRIPE_PRICE_OPERATOR_MONTHLY", "operator", "monthly"],
-      ["STRIPE_PRICE_OPERATOR_YEARLY", "operator", "yearly"],
-      ["STRIPE_PRICE_EMPIRE_MONTHLY", "empire", "monthly"],
-      ["STRIPE_PRICE_EMPIRE_YEARLY", "empire", "yearly"],
+      ["STRIPE_PRICE_SOLO_MONTHLY", "starter", "monthly"],
+      ["STRIPE_PRICE_SOLO_YEARLY", "starter", "yearly"],
+      ["STRIPE_PRICE_OPERATOR_MONTHLY", "pro", "monthly"],
+      ["STRIPE_PRICE_OPERATOR_YEARLY", "pro", "yearly"],
+      ["STRIPE_PRICE_EMPIRE_MONTHLY", "scale", "monthly"],
+      ["STRIPE_PRICE_EMPIRE_YEARLY", "scale", "yearly"],
     ];
 
     it.each(ENV_TO_TIER)(

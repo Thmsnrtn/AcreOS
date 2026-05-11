@@ -8,22 +8,24 @@
  * Every site that needs tier prices (UI, MRR math, Stripe checkout helpers,
  * tests) MUST import from this module. Do not hardcode tier prices anywhere.
  *
- * Canonical tier names used across product strategy:
- *   - solo      ($20 / mo, $200 / yr) — 1 investor, replaces the spreadsheet
- *   - operator  ($49 / mo, $490 / yr) — partnerships and small teams
- *   - empire    ($79 / mo, $790 / yr) — full-time multi-state operations
+ * Canonical tier names (renamed 2026-05-11 to match the customer-facing
+ * pricing page; old names retained as aliases for the
+ * `organizations.subscription_tier` column so historical rows still resolve):
+ *   - starter ($20 / mo, $200 / yr) — 1 investor, replaces the spreadsheet
+ *   - pro     ($49 / mo, $490 / yr) — partnerships and small teams
+ *   - scale   ($79 / mo, $790 / yr) — full-time multi-state operations
  *
- * The `organizations.subscription_tier` column historically used the labels
- * "starter / pro / scale" with the same prices. Both label sets refer to the
- * same plans; consumers that need to map an org's stored tier to a canonical
- * pricing key should use {@link tierForSubscriptionTier}.
+ * Legacy `organizations.subscription_tier` values that we still recognise:
+ * "solo" (now starter), "operator" (now pro), "empire" (now scale). All
+ * lookups go through {@link tierForSubscriptionTier} which folds both label
+ * sets onto the canonical key.
  *
  * Stripe price IDs come from environment variables and may be undefined in
  * local/dev environments — that is intentional. CI tests assert that prices
  * are positive and self-consistent and only verify env IDs when they are set.
  */
 
-export type Tier = "solo" | "operator" | "empire";
+export type Tier = "starter" | "pro" | "scale";
 export type BillingInterval = "monthly" | "yearly";
 
 export interface TierPricing {
@@ -65,36 +67,41 @@ function envPriceId(name: string): string | undefined {
 }
 
 export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
-  solo: {
+  starter: {
     priceMonthlyCents: 2000,   // $20.00 / mo
     priceYearlyCents: 20000,   // $200.00 / yr — ~16% discount
+    // Stripe env vars kept on their legacy SOLO/OPERATOR/EMPIRE names so
+    // existing Stripe price IDs in Fly secrets keep resolving without a
+    // billing-side renaming sweep. The aliases are documented next to the
+    // canonical tier keys here.
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_SOLO_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_SOLO_YEARLY"),
-    displayName: "Solo",
-    // Solo is single-user only. Inviting a teammate must prompt for an
-    // Operator / Empire upgrade rather than charging per-seat.
+    displayName: "Starter",
+    // Starter is single-user only. Inviting a teammate must prompt for a
+    // Pro / Scale upgrade rather than charging per-seat.
     priceMonthlyPerSeatCents: null,
     maxSeats: 1,
   },
-  operator: {
+  pro: {
     priceMonthlyCents: 4900,   // $49.00 / mo
     priceYearlyCents: 49000,   // $490.00 / yr — ~16% discount
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_OPERATOR_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_OPERATOR_YEARLY"),
-    displayName: "Operator",
+    displayName: "Pro",
     // $20/seat after the first.
     priceMonthlyPerSeatCents: 2000,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_YEARLY"),
     maxSeats: null,
   },
-  empire: {
+  scale: {
     priceMonthlyCents: 7900,   // $79.00 / mo
     priceYearlyCents: 79000,   // $790.00 / yr — ~16% discount
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
-    displayName: "Empire",
-    // $30/seat after the first.
+    displayName: "Scale",
+    // $30/seat after the first — see follow-up commit for the
+    // reconciliation to the $40 pricing-page promise.
     priceMonthlyPerSeatCents: 3000,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_YEARLY"),
@@ -208,21 +215,26 @@ export function tierPriceDollars(tier: Tier, interval: BillingInterval): number 
 /**
  * Aliases for the legacy `organizations.subscription_tier` column values.
  * Keep this map in sync with the column comment in `shared/schema.ts`.
+ *
+ * Pre-2026-05-11 the canonical keys were solo/operator/empire — those
+ * labels are retained here as aliases so DB rows that were written before
+ * the rename still resolve to the right tier.
  */
 const SUBSCRIPTION_TIER_ALIASES: Record<string, Tier> = {
-  solo: "solo",
-  starter: "solo",
-  operator: "operator",
-  pro: "operator",
-  empire: "empire",
-  scale: "empire",
+  starter: "starter",
+  solo: "starter",
+  pro: "pro",
+  operator: "pro",
+  scale: "scale",
+  empire: "scale",
 };
 
 /**
  * Maps an `organizations.subscription_tier` column value (which may be
- * "free" / "starter" / "pro" / "scale" / "solo" / "operator" / "empire") to
- * the canonical paid {@link Tier}. Returns `null` for the free tier or any
- * unrecognised value — callers should treat that as $0 MRR contribution.
+ * "free" / "starter" / "pro" / "scale" / legacy "solo" / "operator" /
+ * "empire") to the canonical paid {@link Tier}. Returns `null` for the
+ * free tier or any unrecognised value — callers should treat that as $0
+ * MRR contribution.
  */
 export function tierForSubscriptionTier(subscriptionTier: string | null | undefined): Tier | null {
   if (!subscriptionTier) return null;
@@ -246,14 +258,14 @@ export function monthlyRevenueCentsFor(
   return TIER_PRICES_CENTS[tier].priceMonthlyCents;
 }
 
-export const TIERS: readonly Tier[] = ["solo", "operator", "empire"] as const;
+export const TIERS: readonly Tier[] = ["starter", "pro", "scale"] as const;
 
 /**
  * Per-seat add-on price (cents) for the tier, honoring billing interval.
  * Returns 0 when the tier is single-user only or seatCount <= 1.
  *
- * Phase 5 §5 (team readiness). Solo cannot add seats — callers should call
- * {@link canAddSeats} BEFORE invoking this and prompt for an upgrade.
+ * Phase 5 §5 (team readiness). Starter cannot add seats — callers should
+ * call {@link canAddSeats} BEFORE invoking this and prompt for an upgrade.
  */
 export function seatAddonCents(
   tier: Tier,
@@ -282,9 +294,9 @@ export function totalMonthlyBillCents(
 }
 
 /**
- * Whether the tier supports the requested seat count. Solo is hard-capped
- * at 1; Operator / Empire are unlimited. Callers MUST check this before
- * creating an invitation that would push seatCount above the limit.
+ * Whether the tier supports the requested seat count. Starter is hard-capped
+ * at 1; Pro / Scale are unlimited. Callers MUST check this before creating
+ * an invitation that would push seatCount above the limit.
  */
 export function canAddSeats(tier: Tier, requestedSeats: number): boolean {
   const max = TIER_PRICES_CENTS[tier].maxSeats;
@@ -294,8 +306,8 @@ export function canAddSeats(tier: Tier, requestedSeats: number): boolean {
 
 /**
  * Human-readable seat-pricing breakdown for the billing UI. Renders to
- * "Operator @ $49/mo + 2 extra seats × $20 = $89/mo" or, for Solo,
- * "Solo @ $20/mo (single seat)".
+ * "Pro @ $49/mo + 2 extra seats × $20 = $89/mo" or, for Starter,
+ * "Starter @ $20/mo (single seat)".
  */
 export function describeSeatPricing(
   tier: Tier,
@@ -316,4 +328,3 @@ export function describeSeatPricing(
   const totalDollars = totalMonthlyBillCents(tier, seatCount, interval) / 100;
   return `${pricing.displayName} @ $${baseDollars}${intervalSuffix} + ${extraSeats} extra seat${extraSeats === 1 ? "" : "s"} × $${perSeatDollars} = $${totalDollars}${intervalSuffix}`;
 }
-

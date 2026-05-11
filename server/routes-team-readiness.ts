@@ -144,7 +144,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         if (!canAddSeats(tier, parsed.data.seatCount)) {
           return Errors.forbidden(
             res,
-            `Tier ${tier} is capped at ${TIER_PRICES_CENTS[tier].maxSeats} seat(s). Upgrade to Operator or Empire to add more.`,
+            `Tier ${tier} is capped at ${TIER_PRICES_CENTS[tier].maxSeats} seat(s). Upgrade to Pro or Scale to add more.`,
           );
         }
 

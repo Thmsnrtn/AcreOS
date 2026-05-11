@@ -1,12 +1,16 @@
 /**
- * Three tiers (Solo / Operator / Empire) with monthly/annual toggle.
- * Operator is "Most popular" — gets 1px ink-color border + shadow + flag.
+ * Four tiers (Free / Starter / Pro / Scale) with monthly/annual toggle.
+ * Pro is "Most popular" — gets 1px ink-color border + shadow + flag.
  *
  * Prices come from shared/billing/tier-pricing.ts so this landing surface
  * can never drift from the pricing page, MRR math, or Stripe checkout
  * amounts. Earlier prototype copy used $199 / $499 / $1290 as illustrative
  * marketing; that drifted from the canonical $20 / $49 / $79 and is the
  * reason MRR math was fiction across the founder dashboard.
+ *
+ * 2026-05-11 — renamed Solo/Operator/Empire → Starter/Pro/Scale to match
+ * the in-app /pricing page and the canonical TIER_PRICES_CENTS keys. A
+ * "Free" card was added so the landing matches the in-app's 4-tier shape.
  */
 
 import { useState } from "react";
@@ -16,10 +20,25 @@ import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
 const TIERS = [
   {
-    name: "Solo",
+    name: "Free",
+    desc: "Explore the platform — no card required.",
+    m: 0,
+    a: 0,
+    features: [
+      "1 user",
+      "10 leads / 3 properties / 2 notes",
+      "All 3 agents (limited daily AI)",
+      "Pax inbox",
+      "6 free data sources",
+    ],
+    cta: "Get started",
+    featured: false,
+  },
+  {
+    name: "Starter",
     desc: "For investors closing 1–4 deals a month.",
-    m: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
-    a: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
+    m: TIER_PRICES_CENTS.starter.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.starter.priceYearlyCents / 100,
     features: [
       "1 user",
       "3 counties in buy-box",
@@ -32,10 +51,10 @@ const TIERS = [
     featured: false,
   },
   {
-    name: "Operator",
+    name: "Pro",
     desc: "For partnerships and small teams.",
-    m: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
-    a: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
+    m: TIER_PRICES_CENTS.pro.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
     features: [
       "5 users",
       "Unlimited counties",
@@ -49,10 +68,10 @@ const TIERS = [
     featured: true,
   },
   {
-    name: "Empire",
+    name: "Scale",
     desc: "For full-time operations & multi-state.",
-    m: TIER_PRICES_CENTS.empire.priceMonthlyCents / 100,
-    a: TIER_PRICES_CENTS.empire.priceYearlyCents / 100,
+    m: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.scale.priceYearlyCents / 100,
     features: [
       "Unlimited users",
       "Custom integrations",
@@ -97,7 +116,7 @@ export function Pricing() {
 
       <div className="lp-pricing-grid">
         {TIERS.map((t) => {
-          const price = annual ? Math.round(t.a / 12) : t.m;
+          const price = t.m === 0 ? 0 : annual ? Math.round(t.a / 12) : t.m;
           return (
             <div key={t.name} className={`lp-tier ${t.featured ? "lp-tier-featured" : ""}`}>
               {t.featured && <div className="lp-tier-flag">Most popular</div>}
@@ -108,7 +127,11 @@ export function Pricing() {
                 <span className="lp-tier-per">/mo</span>
               </div>
               <div className="lp-tier-billed">
-                {annual ? `Billed $${t.a.toLocaleString()} annually` : "Billed monthly"}
+                {t.m === 0
+                  ? "Free forever"
+                  : annual
+                  ? `Billed $${t.a.toLocaleString()} annually`
+                  : "Billed monthly"}
               </div>
               <Link
                 href={t.cta === "Talk to us" ? "/contact" : "/auth?mode=register"}
@@ -130,7 +153,7 @@ export function Pricing() {
       </div>
 
       <div className="lp-pricing-foot">
-        Every plan includes 14 days free, no setup fees, and migration help from a real human.
+        Every paid plan includes 14 days free, no setup fees, and migration help from a real human.
       </div>
     </section>
   );

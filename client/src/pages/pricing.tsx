@@ -15,10 +15,10 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
 
-// Tier labels here ("Starter / Pro / Scale") are the public marketing names
-// for the canonical solo / operator / empire pricing tiers. Prices come from
-// shared/billing/tier-pricing.ts so this page can never drift from the
-// MRR math in /api/founder/executive-dashboard or the Stripe checkout.
+// Tier labels Free / Starter / Pro / Scale match both the canonical
+// TIER_PRICES_CENTS keys and the landing-page pricing table. Prices come
+// from shared/billing/tier-pricing.ts so this page can never drift from
+// the MRR math in /api/founder/executive-dashboard or the Stripe checkout.
 const TIERS = [
   {
     id: "free",
@@ -32,8 +32,8 @@ const TIERS = [
   {
     id: "starter",
     name: "Starter",
-    price: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
+    price: TIER_PRICES_CENTS.starter.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents / 100,
     description: "Replace your spreadsheet",
     cta: "Start 14-day free trial",
     highlighted: false,
@@ -41,8 +41,8 @@ const TIERS = [
   {
     id: "pro",
     name: "Pro",
-    price: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
+    price: TIER_PRICES_CENTS.pro.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
     description: "For serious operators",
     cta: "Start 14-day free trial",
     highlighted: true,
@@ -50,8 +50,8 @@ const TIERS = [
   {
     id: "scale",
     name: "Scale",
-    price: TIER_PRICES_CENTS.empire.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.empire.priceYearlyCents / 100,
+    price: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.scale.priceYearlyCents / 100,
     description: "For growing teams",
     cta: "Start 14-day free trial",
     highlighted: false,

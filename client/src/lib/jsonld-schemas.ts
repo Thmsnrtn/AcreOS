@@ -68,8 +68,8 @@ export function productLandingSchema() {
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: "USD",
-      lowPrice: (TIER_PRICES_CENTS.solo.priceMonthlyCents / 100).toFixed(2),
-      highPrice: (TIER_PRICES_CENTS.empire.priceMonthlyCents / 100).toFixed(2),
+      lowPrice: (TIER_PRICES_CENTS.starter.priceMonthlyCents / 100).toFixed(2),
+      highPrice: (TIER_PRICES_CENTS.scale.priceMonthlyCents / 100).toFixed(2),
       offerCount: 4,
       url: `${SITE_URL}/pricing`,
     },
@@ -77,9 +77,9 @@ export function productLandingSchema() {
 }
 
 const TIER_DESCRIPTIONS: Record<Tier, { name: string; description: string }> = {
-  solo: { name: "Starter", description: "Replace your spreadsheet." },
-  operator: { name: "Pro", description: "For serious operators." },
-  empire: { name: "Scale", description: "For growing teams." },
+  starter: { name: "Starter", description: "Replace your spreadsheet." },
+  pro: { name: "Pro", description: "For serious operators." },
+  scale: { name: "Scale", description: "For growing teams." },
 };
 
 export function pricingProductSchema() {

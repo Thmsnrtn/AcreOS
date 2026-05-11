@@ -26,7 +26,7 @@ import { organizations, revenueRecognitionPeriods } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import {
   monthlyRevenueCentsFor,
-  type Tier,
+  tierForSubscriptionTier,
   TIER_PRICES_CENTS,
 } from "@shared/billing/tier-pricing";
 import { logger } from "../utils/logger";
@@ -68,9 +68,11 @@ export async function runMonthlyRecognition(periodKey: string): Promise<Recognit
 
   for (const org of orgs) {
     if (org.status !== "active") continue;
-    const tier = (org.tier ?? "free") as Tier;
-    if (!TIER_PRICES_CENTS[tier]) continue;
-    if (tier === "free") continue; // free tier doesn't generate revenue
+    // org.tier (the organizations.subscription_tier column) may still
+    // carry legacy solo/operator/empire values for grandfathered rows —
+    // fold through the alias map so both label sets resolve correctly.
+    const tier = tierForSubscriptionTier(org.tier);
+    if (!tier) continue; // free / unknown tier → no revenue recognised
 
     const interval = (org.billingInterval === "yearly" ? "yearly" : "monthly") as
       | "monthly"

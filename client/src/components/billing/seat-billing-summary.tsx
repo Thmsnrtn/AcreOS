@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 interface BillingSummary {
-  tier: "solo" | "operator" | "empire" | null;
+  tier: "starter" | "pro" | "scale" | null;
   seatCount: number;
   interval: "monthly" | "yearly";
   description: string;
@@ -89,9 +89,9 @@ export function SeatBillingSummary() {
           <p className="text-xs text-muted-foreground">
             Free tier — upgrade to invite teammates.
           </p>
-        ) : data.tier === "solo" ? (
+        ) : data.tier === "starter" ? (
           <p className="text-xs text-muted-foreground">
-            Solo plan is single-user. Upgrade to Operator or Empire to add seats.
+            Starter plan is single-user. Upgrade to Pro or Scale to add seats.
           </p>
         ) : (
           <div className="flex items-end gap-2">

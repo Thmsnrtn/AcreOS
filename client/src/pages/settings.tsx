@@ -1011,12 +1011,12 @@ export default function Settings() {
                             currentTier={organization.subscriptionTier || "free"}
                             // Vesper §3 — wire "Downgrade instead" to the
                             // plan picker preselected to a lower tier.
-                            // Canonical Tier (solo/operator/empire) maps to
-                            // the modal's TierKey (starter/pro/free).
+                            // Canonical Tier (starter/pro/scale) maps to
+                            // the modal's TierKey (free/starter/pro).
                             onDowngrade={(suggested) => {
                               const modalTier: TierKey =
-                                suggested === "operator" ? "pro"
-                                  : suggested === "solo" ? "starter"
+                                suggested === "pro" ? "pro"
+                                  : suggested === "starter" ? "starter"
                                   : "starter";
                               setPlanPickerHighlight(modalTier);
                               setShowPlanComparison(true);

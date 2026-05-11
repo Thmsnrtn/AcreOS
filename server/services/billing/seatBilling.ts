@@ -8,7 +8,7 @@
  *
  * Behavior contract:
  *   • If org has no Stripe subscription → no-op (free tier / dev env).
- *   • If tier is solo → throw, since solo cannot have additional seats.
+ *   • If tier is starter → throw, since starter cannot have additional seats.
  *   • If extraSeats === 0 → remove the per-seat line item (or skip if absent).
  *   • Otherwise upsert a subscription item on the per-seat Price, quantity =
  *     seatCount - 1. Idempotent on repeat calls.
@@ -51,8 +51,8 @@ export async function syncSeatAddon(
   if (!tier) {
     return { ok: false, reason: "free_tier" };
   }
-  if (tier === "solo" && seatCount > 1) {
-    throw new Error("Solo tier does not support additional seats — upgrade first.");
+  if (tier === "starter" && seatCount > 1) {
+    throw new Error("Starter tier does not support additional seats — upgrade first.");
   }
 
   const subscriptionId = org.stripeSubscriptionId;

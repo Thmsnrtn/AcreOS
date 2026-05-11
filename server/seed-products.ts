@@ -2,8 +2,8 @@ import { getUncachableStripeClient } from './stripeClient';
 import { logger } from "./utils/logger";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
-// Only Pro / Operator tier supports additional seats in the launch lineup.
-// Per-seat add-on shadows the Solo monthly price as the per-seat cost.
+// Only Pro tier supports additional seats in the launch lineup.
+// Per-seat add-on shadows the Starter monthly price as the per-seat cost.
 const SEAT_ADDON_PRODUCTS = [
   {
     name: 'Pro Seat Add-on',
@@ -12,15 +12,16 @@ const SEAT_ADDON_PRODUCTS = [
       type: 'seat_addon',
       tier: 'pro',
     },
-    monthlyPrice: TIER_PRICES_CENTS.solo.priceMonthlyCents, // $20/seat/month
-    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents,   // $200/seat/year
+    monthlyPrice: TIER_PRICES_CENTS.starter.priceMonthlyCents, // $20/seat/month
+    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents,   // $200/seat/year
   },
 ];
 
-// Stripe products for the 3 paid tiers — Starter / Pro / Scale here are the
-// public marketing labels for the canonical solo / operator / empire tiers
-// in shared/billing/tier-pricing.ts. Prices come from that module so this
-// script can never drift from the pricing page or MRR math.
+// Stripe products for the 3 paid tiers. Names + metadata keys + canonical
+// TIER_PRICES_CENTS keys now all match (Starter / Pro / Scale) per the
+// 2026-05-11 reconciliation. Prices come from
+// shared/billing/tier-pricing.ts so this script can never drift from the
+// pricing page or MRR math.
 const SUBSCRIPTION_PRODUCTS = [
   {
     name: 'Starter',
@@ -32,8 +33,8 @@ const SUBSCRIPTION_PRODUCTS = [
       teamMembers: '1',
       aiCredits: '500',
     },
-    monthlyPrice: TIER_PRICES_CENTS.solo.priceMonthlyCents,
-    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents,
+    monthlyPrice: TIER_PRICES_CENTS.starter.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents,
   },
   {
     name: 'Pro',
@@ -45,8 +46,8 @@ const SUBSCRIPTION_PRODUCTS = [
       teamMembers: '2',
       aiCredits: '1000',
     },
-    monthlyPrice: TIER_PRICES_CENTS.operator.priceMonthlyCents,
-    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents,
+    monthlyPrice: TIER_PRICES_CENTS.pro.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.pro.priceYearlyCents,
   },
   {
     name: 'Scale',
@@ -58,8 +59,8 @@ const SUBSCRIPTION_PRODUCTS = [
       teamMembers: '10',
       aiCredits: '-1',
     },
-    monthlyPrice: TIER_PRICES_CENTS.empire.priceMonthlyCents,
-    yearlyPrice: TIER_PRICES_CENTS.empire.priceYearlyCents,
+    monthlyPrice: TIER_PRICES_CENTS.scale.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.scale.priceYearlyCents,
   },
 ];
 

@@ -1645,7 +1645,7 @@ export function registerOrganizationRoutes(app: Express): void {
         if (!tier) {
           return res.status(402).json({
             error: "upgrade_required",
-            message: "Free tier cannot invite teammates. Upgrade to Operator or Empire to add seats.",
+            message: "Free tier cannot invite teammates. Upgrade to Pro or Scale to add seats.",
             statusCode: 402,
             details: { projected, seatCount, tier: null },
           });
@@ -1653,8 +1653,8 @@ export function registerOrganizationRoutes(app: Express): void {
         if (!canAddSeats(tier, projected)) {
           return res.status(402).json({
             error: "upgrade_required",
-            message: tier === "solo"
-              ? "Solo tier is single-user only. Upgrade to Operator or Empire to invite teammates."
+            message: tier === "starter"
+              ? "Starter tier is single-user only. Upgrade to Pro or Scale to invite teammates."
               : `Tier ${tier} is capped at ${projected - 1} seats. Upgrade to add more.`,
             statusCode: 402,
             details: { projected, seatCount, tier },
