@@ -7,11 +7,15 @@ import {
   teamConversations, teamMessages, teamMemberPresence, teamMembers, notifications,
   insertOfferLetterSchema, insertOfferTemplateSchema,
   insertPropertyListingSchema,
+  properties, organizations,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
+import * as listingSyndication from "./services/listingSyndication";
 import type { NextFunction } from "express";
 import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
@@ -891,45 +895,292 @@ export function registerTeamMessagingRoutes(app: Express): void {
     }
   });
 
-  // POST /api/listings/:id/publish - Publish to syndication targets (stub)
-  api.post("/api/listings/:id/publish", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      
-      if (isNaN(id)) {
-        return Errors.badRequest(res, "Invalid listing ID");
+  // POST /api/listings/:id/publish - Publish to syndication targets
+  //
+  // Real syndication: looks up the listing's underlying property, builds a
+  // NormalizedListing, then calls listingSyndication.syndicateListing() for
+  // each requested platform. Per-platform results are written back to the
+  // listing's syndicationTargets jsonb log so the UI can render history.
+  //
+  // - Honors SIMULATION_MODE (category "listings"): test orgs never POST to
+  //   real partner APIs; would-have-happened payloads are written to
+  //   simulated_actions instead.
+  // - Idempotent against rapid clicks: any platform attempted in the last
+  //   60s for this same listing is skipped with status "idempotent_skip".
+  // - Returns { platforms: [{ platform, status, error?, listingUrl?, listingId? }] }
+  //   per syndication call site contract.
+  api.post(
+    "/api/listings/:id/publish",
+    isAuthenticated,
+    getOrCreateOrg,
+    idempotencyMiddleware,
+    async (req, res) => {
+      try {
+        const org = req.organization;
+        const id = parseInt(req.params.id);
+
+        if (isNaN(id)) {
+          return Errors.badRequest(res, "Invalid listing ID");
+        }
+
+        const listing = await storage.getPropertyListing(org.id, id);
+        if (!listing) {
+          return Errors.notFound(res, "Listing");
+        }
+
+        // Accept BOTH the legacy { targets } shape and the new { platforms } shape
+        // so we don't break any existing callers (the legacy stub used "targets").
+        const platformsInput: unknown =
+          req.body?.platforms ?? req.body?.targets;
+        const dryRun: boolean = req.body?.dryRun === true;
+
+        if (!Array.isArray(platformsInput) || platformsInput.length === 0) {
+          return Errors.badRequest(
+            res,
+            "Please specify at least one syndication platform"
+          );
+        }
+
+        // Coerce + validate against known PLATFORMS registry
+        const knownIds = new Set(
+          Object.keys(listingSyndication.PLATFORMS)
+        ) as Set<string>;
+        const platforms = (platformsInput as unknown[])
+          .filter((p): p is string => typeof p === "string")
+          .filter((p) => knownIds.has(p)) as listingSyndication.LegacySyndicationPlatform[];
+
+        if (platforms.length === 0) {
+          return Errors.badRequest(
+            res,
+            "No recognized syndication platforms in request"
+          );
+        }
+
+        // ── Idempotency: skip platforms already attempted in the last 60s.
+        // Without this, double-clicking "Publish" creates duplicate listings.
+        const existingTargets = (listing.syndicationTargets ?? []) as Array<{
+          platform: string;
+          status: string;
+          postedAt?: string;
+          listingId?: string;
+          listingUrl?: string;
+          error?: string;
+        }>;
+        const now = Date.now();
+        const recentByPlatform = new Map<string, (typeof existingTargets)[number]>();
+        for (const t of existingTargets) {
+          if (!t.postedAt) continue;
+          const ageMs = now - new Date(t.postedAt).getTime();
+          if (Number.isFinite(ageMs) && ageMs < 60_000) {
+            recentByPlatform.set(t.platform, t);
+          }
+        }
+
+        // Load the underlying property + org for the NormalizedListing builder
+        const [property] = await db
+          .select()
+          .from(properties)
+          .where(
+            and(
+              eq(properties.id, listing.propertyId),
+              eq(properties.organizationId, org.id)
+            )
+          );
+
+        if (!property) {
+          return Errors.notFound(res, "Property for listing");
+        }
+
+        const [orgRow] = await db
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, org.id));
+
+        const normalizedListing =
+          await listingSyndication.buildNormalizedListing(property, orgRow, {
+            askingPrice: parseFloat(listing.askingPrice || "0"),
+            sellerFinancingAvailable:
+              listing.sellerFinancingAvailable || false,
+            downPaymentMin: listing.downPaymentMin
+              ? parseFloat(listing.downPaymentMin)
+              : undefined,
+            monthlyPaymentMin: listing.monthlyPaymentMin
+              ? parseFloat(listing.monthlyPaymentMin)
+              : undefined,
+            interestRate: listing.interestRate
+              ? parseFloat(listing.interestRate)
+              : undefined,
+            termYears: listing.termMonths
+              ? Math.round(listing.termMonths / 12)
+              : undefined,
+          });
+
+        // ── Per-platform fan-out
+        const simulated = shouldSimulate("listings", orgRow ?? null);
+        const platformsToSyndicate: typeof platforms = [];
+        const earlyResults: Array<{
+          platform: string;
+          status: "sent" | "missing_credentials" | "failed" | "idempotent_skip" | "simulated" | "dry_run";
+          error?: string;
+          listingId?: string;
+          listingUrl?: string;
+          deepLinkUrl?: string;
+          manualInstructions?: string;
+        }> = [];
+
+        for (const p of platforms) {
+          // 1. Idempotency check
+          if (recentByPlatform.has(p)) {
+            earlyResults.push({
+              platform: p,
+              status: "idempotent_skip",
+            });
+            continue;
+          }
+
+          // 2. Credential gate (env vars listed in PLATFORMS registry)
+          const cfg = listingSyndication.PLATFORMS[p];
+          const missingEnv = (cfg.envKeys || []).filter(
+            (k) => !process.env[k]
+          );
+          // Craigslist + any platform with no envKeys requires no creds
+          if (cfg.envKeys.length > 0 && missingEnv.length === cfg.envKeys.length) {
+            earlyResults.push({
+              platform: p,
+              status: "missing_credentials",
+              error: `Missing env vars: ${missingEnv.join(", ")}`,
+              manualInstructions: `Add ${cfg.envKeys.join(", ")} in Settings → Integrations to enable ${cfg.name}.`,
+            });
+            continue;
+          }
+
+          // 3. Dry run mode (UI preview)
+          if (dryRun) {
+            earlyResults.push({ platform: p, status: "dry_run" });
+            continue;
+          }
+
+          // 4. Simulation mode (test org / SIMULATION_MODE=true)
+          if (simulated) {
+            await recordSimulatedAction(
+              "listings",
+              `syndicate.${p}`,
+              {
+                listingId: listing.id,
+                propertyId: listing.propertyId,
+                platform: p,
+                askingPrice: normalizedListing.askingPrice,
+                acreage: normalizedListing.acreage,
+              },
+              orgRow ?? { id: org.id }
+            );
+            earlyResults.push({ platform: p, status: "simulated" });
+            continue;
+          }
+
+          // Otherwise, queue for real syndication
+          platformsToSyndicate.push(p);
+        }
+
+        // 5. Real fan-out for whatever survived the gates
+        const realResults = platformsToSyndicate.length
+          ? await listingSyndication.syndicateListing(
+              normalizedListing,
+              platformsToSyndicate
+            )
+          : [];
+
+        const realResultsByPlatform = new Map(
+          realResults.map((r) => [r.platform, r])
+        );
+
+        // Combine early-decided + real-fanout, preserving the request order
+        const finalResults = platforms.map((p) => {
+          const early = earlyResults.find((r) => r.platform === p);
+          if (early) return early;
+          const r = realResultsByPlatform.get(p);
+          if (!r) {
+            return {
+              platform: p,
+              status: "failed" as const,
+              error: "No result returned from syndication service",
+            };
+          }
+          return {
+            platform: r.platform,
+            status: r.success
+              ? ("sent" as const)
+              : r.error?.toLowerCase().includes("not configured")
+              ? ("missing_credentials" as const)
+              : ("failed" as const),
+            error: r.error,
+            listingId: r.listingId,
+            listingUrl: r.listingUrl,
+            deepLinkUrl: r.deepLinkUrl,
+            manualInstructions: r.manualInstructions,
+          };
+        });
+
+        // 6. Persist results into the listing's syndicationTargets log
+        // Merge: keep any pre-existing entries for other platforms, replace
+        // entries for platforms we just touched.
+        const touched = new Set(finalResults.map((r) => r.platform));
+        const carriedOver = existingTargets.filter(
+          (t) => !touched.has(t.platform)
+        );
+        const stamp = new Date().toISOString();
+        const newEntries = finalResults.map((r) => ({
+          platform: r.platform,
+          listingId: r.listingId,
+          listingUrl: r.listingUrl,
+          status:
+            r.status === "sent"
+              ? "active"
+              : r.status === "simulated"
+              ? "simulated"
+              : r.status === "dry_run"
+              ? "preview"
+              : r.status === "idempotent_skip"
+              ? "duplicate_suppressed"
+              : r.status === "missing_credentials"
+              ? "needs_credentials"
+              : "failed",
+          postedAt: stamp,
+          error: r.error,
+        }));
+
+        const merged = [...carriedOver, ...newEntries];
+        const anySent = finalResults.some(
+          (r) => r.status === "sent" || r.status === "simulated"
+        );
+
+        await storage.updatePropertyListing(id, {
+          status: anySent ? "active" : listing.status,
+          syndicationTargets: merged,
+          publishedAt: anySent ? new Date() : listing.publishedAt ?? null,
+        });
+
+        logger.info("Listing publish fan-out complete", {
+          source: "routes-team-messaging",
+          metadata: {
+            listingId: id,
+            orgId: org.id,
+            simulated,
+            dryRun,
+            platforms: finalResults.map((r) => ({
+              platform: r.platform,
+              status: r.status,
+            })),
+          },
+        });
+
+        return res.json({ platforms: finalResults });
+      } catch (error: any) {
+        logger.error("Publish listing error", error);
+        Errors.internal(res, error);
       }
-      
-      const listing = await storage.getPropertyListing(org.id, id);
-      if (!listing) {
-        return Errors.notFound(res, "Listing");
-      }
-      
-      const { targets } = req.body; // Array of target platforms
-      if (!targets || !Array.isArray(targets) || targets.length === 0) {
-        return Errors.badRequest(res, "Please specify syndication targets");
-      }
-      
-      // Create syndication targets with pending status
-      const syndicationTargets = targets.map((platform: string) => ({
-        platform,
-        status: "pending",
-        postedAt: new Date().toISOString(),
-      }));
-      
-      const updated = await storage.updatePropertyListing(id, {
-        status: "active",
-        syndicationTargets,
-        publishedAt: new Date(),
-      });
-      
-      res.json(updated);
-    } catch (error: any) {
-      logger.error("Publish listing error", error);
-      Errors.internal(res, error);
     }
-  });
+  );
 
   // POST /api/listings/:id/unpublish - Remove from syndication
   api.post("/api/listings/:id/unpublish", isAuthenticated, getOrCreateOrg, async (req, res) => {
