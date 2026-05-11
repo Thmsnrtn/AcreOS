@@ -13,25 +13,25 @@
 import { LANDING_COPY } from "./copy";
 
 const BEFORE = [
-  { t: "6:42 am", e: "11 unread texts from sellers waiting. Triage by hand." },
-  { t: "8:15 am", e: "Pull comps for 3 leads in PropStream. Switch to spreadsheet." },
-  { t: "9:30 am", e: "Skip-trace 14 owners. Half are duplicates from last month." },
-  { t: "11:00 am", e: "Call Janet back. She sold to someone else yesterday." },
-  { t: "1:20 pm", e: "Mail merge in Mailchimp. 8 mailers go to wrong addresses." },
-  { t: "3:45 pm", e: "Update CRM by hand. Two callbacks slip through unlogged." },
-  { t: "7:30 pm", e: "Borrower asks for a receipt. Hunt for it in Gmail until 9pm." },
-  { t: "10:15 pm", e: "Tomorrow's mailing list still isn't comped." },
+  { t: "6:42 am", e: "11 unread seller texts. Sorted manually across SMS, Gmail, and CRM." },
+  { t: "8:15 am", e: "Comps pulled for 3 leads in PropStream. Exported to spreadsheet." },
+  { t: "9:30 am", e: "14 owners skip-traced. Duplicates from prior batches not flagged." },
+  { t: "11:00 am", e: "Follow-up call to a 4-day-old lead. No status logged in CRM." },
+  { t: "1:20 pm", e: "Mail merge run in Mailchimp. 8 mailers bounce — address column misaligned." },
+  { t: "3:45 pm", e: "CRM updated by hand. 2 callbacks logged from memory; 1 missed." },
+  { t: "7:30 pm", e: "Borrower receipt search across Gmail threads. Found after 90 minutes." },
+  { t: "10:15 pm", e: "Tomorrow's mailing list still not comped or deduped." },
 ];
 
 const AFTER = [
-  { t: "6:42 am", e: "Open AcreOS. 14 replies overnight. 11 already drafted by Pax." },
-  { t: "7:00 am", e: "Skim drafts. Send 9, edit 2, escalate 3 to call." },
-  { t: "7:25 am", e: "22 leads comped overnight. 4 flagged as worth offering on." },
-  { t: "8:30 am", e: "Three calls placed. Two seller meetings booked for Thursday." },
-  { t: "10:00 am", e: "Tomorrow's mail reviewed and approved. 37 receipts sent overnight." },
-  { t: "11:15 am", e: "Busy work done. Drive out to walk a parcel." },
-  { t: "4:00 pm", e: "Sign two offers Pax drafted earlier in the day." },
-  { t: "6:30 pm", e: "Dinner. AcreOS handles the rest of the queue." },
+  { t: "6:42 am", e: "Inbox opens to 14 overnight replies. 11 drafted by Pax, queued for review." },
+  { t: "7:00 am", e: "Drafts triaged in one view. 9 sent, 2 edited, 3 escalated — all logged." },
+  { t: "7:25 am", e: "22 leads comped overnight. 4 surfaced as in-buy-box with confidence scores." },
+  { t: "8:30 am", e: "3 calls placed from the lead queue. 2 meetings booked into calendar automatically." },
+  { t: "10:00 am", e: "Tomorrow's mail batch reviewed and approved. 37 servicing receipts sent overnight." },
+  { t: "11:15 am", e: "Inbox at zero. Pipeline state current. Operator capacity freed for field work." },
+  { t: "4:00 pm", e: "2 offers signed from Pax-drafted templates. Audit log captures source data." },
+  { t: "6:30 pm", e: "Background queue continues: comps, drafts, receipts, follow-ups." },
 ];
 
 export function DayInLife() {
@@ -55,7 +55,7 @@ export function DayInLife() {
             </div>
           ))}
           <div className="lp-day-foot lp-day-foot-bad">
-            <b>Result:</b> 3 deals closed. 2 missed because of slow replies. Burnout by Thursday.
+            <b>Result:</b> 7 tools touched. 4 manual handoffs. Pipeline state updated after-hours.
           </div>
         </div>
 
@@ -71,7 +71,7 @@ export function DayInLife() {
             </div>
           ))}
           <div className="lp-day-foot lp-day-foot-good">
-            <b>Result:</b> 7 deals closed. 0 missed replies. Home for dinner.
+            <b>Result:</b> One tool. Zero manual sync. Pipeline state current as of last action.
           </div>
         </div>
       </div>
