@@ -85,7 +85,7 @@ export default function LeadAssignmentSettingsPage() {
   });
 
   const { data: members = [] } = useQuery<TeamMember[]>({
-    queryKey: ["/api/organization/members"],
+    queryKey: ["/api/team"],
   });
 
   const saveMutation = useMutation({
