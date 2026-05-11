@@ -28,7 +28,10 @@ import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 // ~5,000 LOC from the entry chunk per the 2026-05-01 perf audit.
 const KeyboardShortcutsModal = React.lazy(() => import("@/components/keyboard-shortcuts").then(m => ({ default: m.KeyboardShortcutsModal })));
 const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m => ({ default: m.NewItemMenu })));
-const OnboardingWizard = React.lazy(() => import("@/components/onboarding-wizard").then(m => ({ default: m.OnboardingWizard })));
+// Canonical onboarding surface per CLAUDE.md / MEMORY.md. The legacy
+// `@/components/onboarding-wizard` (no slash) is kept on disk for possible
+// founder A/B testing but must NOT be imported in customer-facing code.
+const OnboardingWizard = React.lazy(() => import("@/components/onboarding/OnboardingWizard").then(m => ({ default: m.OnboardingWizard })));
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";

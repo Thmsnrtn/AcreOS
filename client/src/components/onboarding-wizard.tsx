@@ -1,3 +1,14 @@
+/**
+ * @deprecated Legacy onboarding wizard (901 LOC). Per CLAUDE.md / MEMORY.md
+ * the canonical customer-facing onboarding surface is
+ * `client/src/components/onboarding/OnboardingWizard.tsx`.
+ *
+ * As of 2026-05-11 (commit: route customers exclusively to canonical
+ * OnboardingWizard) this file has zero customer-facing importers and is
+ * retained on disk only so the founder side may swap to it for A/B
+ * testing if desired. Do NOT re-import this from customer routes; if you
+ * need to extend onboarding, modify the canonical file.
+ */
 import { useState, useEffect, type ElementType } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
