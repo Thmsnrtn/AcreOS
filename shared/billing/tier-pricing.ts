@@ -100,9 +100,10 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
     displayName: "Scale",
-    // $30/seat after the first — see follow-up commit for the
-    // reconciliation to the $40 pricing-page promise.
-    priceMonthlyPerSeatCents: 3000,
+    // $40/seat after the first — matches the pricing-page promise
+    // ($40 was already advertised on /pricing for the Scale tier's
+    // "Team seats" row; this aligns the canonical price source).
+    priceMonthlyPerSeatCents: 4000,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_YEARLY"),
     maxSeats: null,
