@@ -100,6 +100,15 @@ export default function Dashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: sparklines } = useQuery<{
+    months: string[];
+    revenue: number[];
+    pipeline: number[];
+  }>({
+    queryKey: ["/api/dashboard/sparklines?months=6"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [widgetSettings, setWidgetSettings] = useState<DashboardWidgetSettings>(() => 
     loadSettings(organization)
   );
@@ -156,21 +165,10 @@ export default function Dashboard() {
     });
   }, [leads]);
 
-  const revenueSparkline = useMemo(() => {
-    const base = stats?.monthlyRevenue ?? 0;
-    if (!base) return [];
-    // Synthetic 6-month trend with slight growth
-    return Array.from({ length: 6 }, (_, i) =>
-      Math.round(base * (0.78 + i * 0.045) * (1 + Math.sin(i * 1.3) * 0.04))
-    );
-  }, [stats]);
-
-  const pipelineSparkline = useMemo(() => {
-    if (!pipelineValue) return [];
-    return Array.from({ length: 6 }, (_, i) =>
-      Math.round(pipelineValue * (0.6 + i * 0.08) * (1 + Math.sin(i * 2.1) * 0.05))
-    );
-  }, [pipelineValue]);
+  // Real monthly aggregates from /api/dashboard/sparklines.
+  // No synthetic shape — if the org has no history we get zeros.
+  const revenueSparkline = useMemo(() => sparklines?.revenue ?? [], [sparklines]);
+  const pipelineSparkline = useMemo(() => sparklines?.pipeline ?? [], [sparklines]);
 
   const statusData = [
     { name: 'Available', value: properties.filter((p: any) => p.status === 'available' || p.status === 'listed').length, color: 'hsl(16, 70%, 50%)' },

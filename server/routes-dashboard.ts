@@ -23,6 +23,96 @@ export function registerDashboardRoutes(app: Express): void {
     const stats = await storage.getDashboardStats(org.id);
     res.json(stats);
   });
+
+  // Real monthly aggregates for the dashboard sparklines.
+  // Returns chronologically-ordered arrays (oldest -> newest) covering
+  // the requested window (default 6 months, max 24). Empty/zero buckets
+  // are returned as 0 — the client should NOT synthesize fake shape on
+  // top. If the org has no history, the response is all zeros.
+  api.get("/api/dashboard/sparklines", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const monthsRaw = Number(req.query.months ?? 6);
+      const months = Math.min(24, Math.max(1, Number.isFinite(monthsRaw) ? Math.floor(monthsRaw) : 6));
+
+      const now = new Date();
+      // Build [start, end) for each month, oldest first.
+      const buckets: { start: Date; end: Date; month: string }[] = [];
+      for (let i = months - 1; i >= 0; i--) {
+        const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+        buckets.push({ start, end, month });
+      }
+
+      const windowStart = buckets[0].start;
+      const windowEnd = buckets[buckets.length - 1].end;
+
+      // Pull only what we need from the window. payments.paymentDate
+      // gives us "revenue earned in month X". For pipeline we use deals
+      // whose offerDate (fallback createdAt) falls in the month and which
+      // were active (not closed/cancelled at end of month) — to keep
+      // this fast we just sum offer amount of deals created in-month.
+      const [paymentsRows, dealsRows] = await Promise.all([
+        db
+          .select({
+            paymentDate: payments.paymentDate,
+            amount: payments.amount,
+          })
+          .from(payments)
+          .where(and(
+            eq(payments.organizationId, org.id),
+            eq(payments.status, "completed"),
+            gte(payments.paymentDate, windowStart),
+            lte(payments.paymentDate, windowEnd),
+          )),
+        db
+          .select({
+            createdAt: deals.createdAt,
+            offerDate: deals.offerDate,
+            offerAmount: deals.offerAmount,
+            acceptedAmount: deals.acceptedAmount,
+            status: deals.status,
+          })
+          .from(deals)
+          .where(eq(deals.organizationId, org.id)),
+      ]);
+
+      const revenue = buckets.map((b) => {
+        const total = paymentsRows.reduce((sum, p) => {
+          if (!p.paymentDate) return sum;
+          const d = new Date(p.paymentDate);
+          if (d >= b.start && d < b.end) return sum + Number(p.amount || 0);
+          return sum;
+        }, 0);
+        return Math.round(total);
+      });
+
+      const pipeline = buckets.map((b) => {
+        // Deals whose offer/created date falls in this month and that
+        // were not yet closed/cancelled. Use acceptedAmount when
+        // present, else offerAmount.
+        const total = dealsRows.reduce((sum, d) => {
+          const ref = d.offerDate ? new Date(d.offerDate) : d.createdAt ? new Date(d.createdAt) : null;
+          if (!ref) return sum;
+          if (ref < b.start || ref >= b.end) return sum;
+          if (d.status === "cancelled") return sum;
+          const amt = Number(d.acceptedAmount || d.offerAmount || 0);
+          return sum + amt;
+        }, 0);
+        return Math.round(total);
+      });
+
+      res.json({
+        months: buckets.map((b) => b.month),
+        revenue,
+        pipeline,
+      });
+    } catch (err: any) {
+      logger.error("Dashboard sparklines error", { error: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
   
   // Dashboard Intelligence - Anomalies, Predictions, Next Best Actions
   // /api/dashboard/intelligence pulls ALL leads/deals/properties and
