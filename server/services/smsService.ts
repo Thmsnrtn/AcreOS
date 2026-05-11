@@ -9,6 +9,10 @@ export interface SmsOptions {
   to: string;
   message: string;
   from?: string;
+  // MMS: when non-empty, Twilio treats this as MMS rather than SMS.
+  // Twilio's REST API accepts MediaUrl as a repeated form field; we send
+  // one per URL. Public https URLs to images or short videos only.
+  mediaUrls?: string[];
 }
 
 export interface SmsResult {
@@ -76,6 +80,7 @@ export class SmsService {
         to: options.to,
         from: options.from || this.fromNumber,
         body: options.message.slice(0, 500),
+        mediaUrls: options.mediaUrls,
       });
       return { success: true, messageId: rec.id };
     }
@@ -94,6 +99,13 @@ export class SmsService {
         From: options.from || this.fromNumber!,
         Body: options.message,
       });
+      // MMS: Twilio accepts MediaUrl as a repeated form field. Append one
+      // per URL — URLSearchParams.append preserves multiple values.
+      if (options.mediaUrls?.length) {
+        for (const mu of options.mediaUrls) {
+          body.append("MediaUrl", mu);
+        }
+      }
 
       const response = await fetch(url, {
         method: 'POST',
@@ -157,7 +169,8 @@ export const smsService = new SmsService();
 export async function sendOrgSMS(
   organizationId: number,
   to: string,
-  message: string
+  message: string,
+  mediaUrls?: string[]
 ): Promise<SmsResult> {
   // SIMULATION_MODE short-circuits per-org SMS too. Read both env +
   // org.settings.simulationMode so the test org can be simulated
@@ -169,7 +182,7 @@ export async function sendOrgSMS(
     const rec = await recordSimulatedAction(
       "sms",
       "twilio.messages.create",
-      { to, body: message.slice(0, 500) },
+      { to, body: message.slice(0, 500), mediaUrls },
       org
     );
     return { success: true, messageId: rec.id };
@@ -179,7 +192,7 @@ export async function sendOrgSMS(
 
   if (!credentials) {
     if (smsService.isConfigured()) {
-      return smsService.sendSMS({ to, message });
+      return smsService.sendSMS({ to, message, mediaUrls });
     }
     return {
       success: false,
@@ -196,6 +209,12 @@ export async function sendOrgSMS(
       From: credentials.phoneNumber,
       Body: message,
     });
+    // MMS pass-through (mirrors SmsService.sendSMS above).
+    if (mediaUrls?.length) {
+      for (const mu of mediaUrls) {
+        body.append("MediaUrl", mu);
+      }
+    }
 
     const response = await fetch(url, {
       method: 'POST',

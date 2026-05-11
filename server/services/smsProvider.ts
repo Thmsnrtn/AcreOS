@@ -12,6 +12,9 @@ export interface SmsOptions {
   message: string;
   from?: string;
   organizationId?: number;
+  // MMS: when non-empty, this becomes an MMS send (different per-message
+  // cost — see TWILIO_COST_PER_MMS).
+  mediaUrls?: string[];
 }
 
 export interface SmsResult {
@@ -31,6 +34,9 @@ interface ProviderCredentials {
 }
 
 const TWILIO_COST_PER_SMS = 0.0079;
+// Twilio MMS is roughly 2x SMS in the US (varies by carrier surcharge,
+// but a stable enough default for cost-attribution accounting).
+const TWILIO_COST_PER_MMS = 0.02;
 
 async function getOrgSmsCredentials(organizationId: number): Promise<ProviderCredentials | null> {
   const [twilioIntegration] = await db
@@ -86,6 +92,12 @@ async function sendViaTwilio(
       From: options.from || credentials.phoneNumber,
       Body: options.message,
     });
+    const isMms = (options.mediaUrls?.length ?? 0) > 0;
+    if (isMms) {
+      for (const mu of options.mediaUrls!) {
+        body.append("MediaUrl", mu);
+      }
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -102,7 +114,7 @@ async function sendViaTwilio(
         success: true,
         messageId: data.sid,
         provider: SmsProvider.TWILIO,
-        cost: TWILIO_COST_PER_SMS,
+        cost: isMms ? TWILIO_COST_PER_MMS : TWILIO_COST_PER_SMS,
       };
     } else {
       const error = await response.text();
@@ -127,7 +139,7 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
       const rec = await recordSimulatedAction(
         "sms",
         "provider.messages.create",
-        { to: options.to, body: options.message.slice(0, 500) },
+        { to: options.to, body: options.message.slice(0, 500), mediaUrls: options.mediaUrls },
         org
       );
       return {
