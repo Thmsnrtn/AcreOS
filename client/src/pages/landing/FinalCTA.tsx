@@ -13,11 +13,15 @@
 import { useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { LANDING_COPY } from "./copy";
+import { SupportFeedbackModal } from "@/components/support-feedback-modal";
 
 export function FinalCTA() {
   const c = LANDING_COPY.cta;
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
+  // 2026-05-11: replaced dead `mailto:thomas@acreos.io` with the
+  // SupportFeedbackModal that pipes into /founder/feedback.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -50,9 +54,20 @@ export function FinalCTA() {
           </button>
         </form>
         <div className="lp-cta-or">or</div>
-        <a href="mailto:hello@acreos.io" className="lp-btn lp-btn-ghost">
+        <button
+          type="button"
+          onClick={() => setFeedbackOpen(true)}
+          className="lp-btn lp-btn-ghost"
+          data-testid="final-cta-contact"
+        >
           {c.cta2} →
-        </a>
+        </button>
+        <SupportFeedbackModal
+          open={feedbackOpen}
+          onOpenChange={setFeedbackOpen}
+          source="landing_final_cta"
+          defaultCategory="question"
+        />
 
         <div className="lp-cta-trust">
           <span>14 days free</span>

@@ -15,9 +15,14 @@
  * customers only know Pax.
  */
 
+import { useState } from "react";
 import { Link } from "wouter";
+import { SupportFeedbackModal } from "@/components/support-feedback-modal";
 
 export function Footer() {
+  // 2026-05-11: replaced dead `mailto:` contact link with the
+  // SupportFeedbackModal that pipes into /founder/feedback.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
     <footer className="lp-footer">
       <div className="lp-footer-inner">
@@ -51,7 +56,14 @@ export function Footer() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>
-            <a href="mailto:hello@acreos.io">hello@acreos.io</a>
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="lp-footer-link-btn"
+              data-testid="footer-contact"
+            >
+              Contact us
+            </button>
             <Link href="/help#support">Support</Link>
             <a href="https://status.acreos.io" target="_blank" rel="noreferrer">
               Status
@@ -59,6 +71,12 @@ export function Footer() {
           </div>
         </div>
       </div>
+      <SupportFeedbackModal
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        source="landing_footer"
+        defaultCategory="question"
+      />
       <div className="lp-footer-bottom">
         <span>© {new Date().getFullYear()} AcreOS, Inc.</span>
         <span className="lp-footer-fine">

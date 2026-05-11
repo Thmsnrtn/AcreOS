@@ -1286,7 +1286,8 @@
   flex-direction: column;
   gap: 10px;
 }
-.lp-footer-col a {
+.lp-footer-col a,
+.lp-footer-col .lp-footer-link-btn {
   font: 400 14px/1.4 var(--font-sans);
   color: var(--acr-ink-2);
   text-decoration: none;
@@ -1294,7 +1295,16 @@
   align-items: center;
   min-height: 44px;
 }
-.lp-footer-col a:hover {
+.lp-footer-col .lp-footer-link-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  justify-content: flex-start;
+}
+.lp-footer-col a:hover,
+.lp-footer-col .lp-footer-link-btn:hover {
   color: var(--acr-brand);
 }
 
