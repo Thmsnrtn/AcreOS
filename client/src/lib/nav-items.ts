@@ -47,17 +47,26 @@ export interface MasterNavItem {
 }
 
 export const ALL_NAV_ITEMS: MasterNavItem[] = [
+  // 2026-05-11 sidebar audit — 7 canonical customer entries.
+  // Today / Leads / Properties / Deals / Outreach / Money / Settings.
+  // Pipeline is reachable as a Deals view; AI Hub stays as a mobile-nav
+  // entry only. Founder-mode surfaces are gated separately under /founder
+  // and are NEVER listed in this customer-facing registry.
   { id: "today",         label: "Today",          icon: Home,        href: "/today",          description: "Daily briefing and action queue" },
-  { id: "pipeline",      label: "Pipeline",        icon: GitBranch,   href: "/pipeline",       description: "Leads, deals, and properties hub" },
-  { id: "money",         label: "Money",           icon: DollarSign,  href: "/money",          description: "Notes, portfolio, and cash flow" },
-  { id: "ai-hub",      label: "AI Hub",        icon: Sparkles,    href: "/ai",           description: "AI assistant, agents, and automation" },
-  { id: "settings",      label: "Settings",        icon: Settings,    href: "/settings",       description: "Account, billing, and preferences" },
   { id: "leads",         label: "Leads",           icon: Users,       href: "/leads",          description: "Land seller leads CRM" },
   { id: "properties",    label: "Properties",      icon: MapIcon,     href: "/properties",     description: "Property inventory" },
   { id: "deals",         label: "Deals",           icon: Briefcase,   href: "/deals",          description: "Deal pipeline board" },
+  { id: "outreach",      label: "Outreach",        icon: Mail,        href: "/campaigns",      description: "Email, SMS, direct mail, sequences, buyer blasts" },
+  { id: "money",         label: "Money",           icon: DollarSign,  href: "/money",          description: "Notes, portfolio, and cash flow" },
+  { id: "settings",      label: "Settings",        icon: Settings,    href: "/settings",       description: "Account, billing, and preferences" },
+  // Legacy entries — retained in the master map so command-palette,
+  // mobile drawer, and existing nav-preferences continue to resolve.
+  // Not part of the default sidebar.
+  { id: "pipeline",      label: "Pipeline",        icon: GitBranch,   href: "/pipeline",       description: "Leads, deals, and properties hub" },
+  { id: "ai-hub",      label: "AI Hub",        icon: Sparkles,    href: "/ai",           description: "AI assistant, agents, and automation" },
+  { id: "campaigns",     label: "Campaigns",       icon: Mail,        href: "/campaigns",      description: "Email, SMS, and direct mail" },
   { id: "tasks",         label: "Tasks",           icon: ListTodo,    href: "/tasks",          description: "Your action items" },
   { id: "inbox",         label: "Inbox",           icon: Inbox,       href: "/inbox",          description: "Messages and communications" },
-  { id: "campaigns",     label: "Campaigns",       icon: Mail,        href: "/campaigns",      description: "Email, SMS, and direct mail" },
   { id: "finance",       label: "Finance",         icon: Banknote,    href: "/finance",        description: "Seller-financed notes and loans" },
   { id: "portfolio",     label: "Portfolio",       icon: PieChart,    href: "/portfolio",      description: "Investment portfolio overview" },
   { id: "analytics",     label: "Analytics",       icon: BarChart3,   href: "/analytics",      description: "Insights and reporting" },
@@ -81,25 +90,21 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
   // Additional Pages
   { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
-  { id: "reseller",             label: "Reseller Dashboard",  icon: Building2,   href: "/reseller",             description: "White-label reseller management" },
-  { id: "data-moat",            label: "Data Moat",           icon: Database,    href: "/data-moat",            description: "Proprietary data assets and API keys" },
-  { id: "fee-dashboard",        label: "Fee Dashboard",       icon: Percent,     href: "/fee-dashboard",        description: "Transaction fee tracking and revenue" },
   { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
   // voice-analytics removed — AI Voice feature deprecated
   { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
-  // Sovereign Protocol — Phase A Visibility
-  { id: "sovereign",            label: "Sovereign",           icon: Shield,      href: "/sovereign",            description: "Autonomous organization oversight" },
-  { id: "board-of-directors",   label: "Board of Directors",  icon: Shield,      href: "/board-of-directors",   description: "Agent negotiations and delegation" },
-  { id: "agent-performance",    label: "Agent Performance",   icon: TrendingUp,  href: "/agent-performance",    description: "Trust scores and revenue attribution" },
-  { id: "memory-browser",       label: "Memory Browser",      icon: Brain,       href: "/memory-browser",       description: "Browse agent cognitive memories" },
-  { id: "event-log",            label: "Event Log",           icon: Zap,         href: "/event-log",            description: "Real-time event mesh stream" },
-  { id: "job-health",           label: "Job Health",          icon: Activity,    href: "/job-health",           description: "Background job monitoring" },
-  { id: "agent-collaboration",  label: "Collaboration",       icon: Users,       href: "/agent-collaboration",  description: "Agent messaging, delegation, and consensus" },
+  // Sovereign Protocol / agent-mesh / reseller / data-moat / fee-dashboard
+  // entries removed from the customer-facing master list 2026-05-11. Those
+  // surfaces are founder-only and now live exclusively under
+  // FounderProtectedRoute in App.tsx — they must never appear in the
+  // command palette, mobile drawer, or nav-customizer for customers.
 ];
 
 export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
   ALL_NAV_ITEMS.map((item) => [item.id, item])
 );
 
-export const DEFAULT_SIDEBAR_ITEMS = ["today", "pipeline", "money", "ai-hub", "settings"];
-export const DEFAULT_MOBILE_ITEMS  = ["today", "pipeline", "money", "ai-hub"];
+// 2026-05-11 audit — customer sidebar trimmed to 7 canonical entries.
+// AI Hub stays on mobile bottom-nav (Today/Deals/Money/AI Hub + More).
+export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "outreach", "money", "settings"];
+export const DEFAULT_MOBILE_ITEMS  = ["today", "deals", "money", "ai-hub"];

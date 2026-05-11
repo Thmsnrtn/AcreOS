@@ -357,36 +357,67 @@ interface NavModule {
 // ─────────────────────────────────────────────────────────────────────
 // Navigation structure — consolidated into logical groups
 // ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// 2026-05-11 sidebar audit (multi-lens strategic review):
+//
+// Customer surface trimmed to 7 canonical top-level entries:
+//   Today / Leads / Properties / Deals / Outreach / Money / Settings.
+//
+// Persona-vertical modules (Notes, Tax-Delinquent, Wholesale, Rentals,
+// Flip, Subdivision) remain — each is `businessTypeOnly` and only
+// appears for a matching operator profile. The Founder module remains
+// `founderOnly` and is the ONLY place internal agent-codename surfaces
+// (sovereign, board-of-directors, anticipatory-enterprise, etc.) are
+// linked from. Customers never see them.
+// ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
-  // ── Core ──────────────────────────────────────────────────────────
+  // ── Core 7 ────────────────────────────────────────────────────────
   {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    href: "/",
-    description: "Overview of your land-investing business",
+    id: "today",
+    label: "Today",
+    icon: Home,
+    href: "/today",
+    description: "Daily briefing and action queue",
   },
   {
-    id: "crm",
-    label: "CRM",
+    id: "leads",
+    label: "Leads",
     icon: ContactRound,
     href: "/leads",
-    description: "Contacts, deals, and property management",
-    children: [
-      // Primary daily surfaces — pipeline, properties, map, blind-offer wizard.
-      // Discoverability via parent click + breadcrumb in URL for /leads itself.
-      { label: "Properties", icon: Map, href: "/properties", description: "Properties you own or evaluate" },
-      { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
-      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
-      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
-    ],
+    description: "Land seller leads CRM",
     overflow: [
       { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
       { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
-      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
+      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
       { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers" },
+    ],
+  },
+  {
+    id: "properties",
+    label: "Properties",
+    icon: Map,
+    href: "/properties",
+    description: "Property inventory",
+    overflow: [
+      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
+      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
+      { label: "Listings", icon: Store, href: "/listings", description: "Properties for sale" },
+    ],
+  },
+  {
+    id: "deals",
+    label: "Deals",
+    icon: GitBranch,
+    href: "/deals",
+    description: "Deal pipeline + discovery",
+    children: [
+      { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Kanban view of active deals" },
+      { label: "Discover", icon: Target, href: "/deals/discover", description: "Scored deal opportunities + hunter + feed + patterns" },
+    ],
+    overflow: [
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
-      { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
+      { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
+      { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
     ],
   },
 
@@ -509,70 +540,40 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
-  // ── Outreach ──────────────────────────────────────────────────────
+  // ── Outreach (consolidated 2026-05-11) ────────────────────────────
+  // Combines campaigns / direct-mail / sequences / buyer-blasts into
+  // one customer entry. Channel-tabs live inside /campaigns.
   {
-    id: "campaigns",
-    label: "Campaigns",
+    id: "outreach",
+    label: "Outreach",
     icon: Mail,
     href: "/campaigns",
-    description: "Email, SMS, and direct mail campaigns",
+    description: "Email, SMS, direct mail, sequences, buyer blasts",
     children: [
-      // Removed redundant "Campaigns" child — parent already routes to /campaigns.
-      { label: "Direct Mail", icon: Newspaper, href: "/direct-mail", description: "Direct mail campaign automation" },
-      { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
-    ],
-  },
-  {
-    id: "inbox",
-    label: "Inbox",
-    icon: Inbox,
-    href: "/inbox",
-    description: "Messages and communications",
-    showUnreadBadge: true,
-  },
-
-  // ── Intelligence ──────────────────────────────────────────────────
-  {
-    id: "ai-hub",
-    label: "Pax",
-    icon: Bot,
-    href: "/ai",
-    description: "Your AcreOS assistant — chat, activity, automation",
-  },
-  {
-    id: "intelligence",
-    label: "Insights",
-    icon: Brain,
-    href: "/analytics",
-    description: "Analysis and market signals",
-    children: [
-      // Primary daily-look surfaces.
-      { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
-      { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
-      { label: "Acquisition Radar", icon: Target, href: "/radar", description: "Scored deal opportunities" },
+      { label: "Email & SMS", icon: Mail, href: "/campaigns", description: "Campaign builder" },
+      { label: "Direct Mail", icon: Newspaper, href: "/campaigns?channel=direct-mail", description: "Direct mail campaign automation" },
+      { label: "Sequences", icon: Zap, href: "/campaigns?channel=sequences", description: "Automated follow-up sequences" },
     ],
     overflow: [
-      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
-      { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
-      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
+      { label: "Inbox", icon: Inbox, href: "/inbox", description: "Messages and communications" },
     ],
-    // Niche surfaces (Cohort Retention, Document Intel) reachable via /analytics
-    // tabs + command palette ⌘K — kept off the sidebar entirely for legibility.
   },
 
-  // ── Finance ───────────────────────────────────────────────────────
+  // ── Money (consolidated) ──────────────────────────────────────────
+  // Money is the canonical customer surface for finance/portfolio/cash-flow.
+  // The legacy /finance + /portfolio + /analytics surfaces are still reachable
+  // from inside /money's tabs and from the command palette.
   {
-    id: "finance",
-    label: "Finance",
-    icon: Banknote,
-    href: "/finance",
-    description: "Seller financing and portfolio",
-    children: [
+    id: "money",
+    label: "Money",
+    icon: DollarSign,
+    href: "/money",
+    description: "Notes, portfolio, and cash flow",
+    overflow: [
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
-    ],
-    overflow: [
       { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
   },
 
@@ -642,8 +643,9 @@ const NAV_MODULES: NavModule[] = [
   },
 ];
 
-// Default expanded modules (open by default)
-const DEFAULT_EXPANDED = new Set<string>(["crm", "campaigns", "intelligence", "founder-business"]);
+// Default expanded modules (open by default).
+// 2026-05-11 audit — IDs aligned to the new 7-entry customer surface.
+const DEFAULT_EXPANDED = new Set<string>(["deals", "outreach", "founder-business"]);
 
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";
