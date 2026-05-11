@@ -8,7 +8,8 @@
  * Production wouter routes:
  * - /pricing, /academy, /blog → existing routes
  * - /privacy, /terms, /security → existing routes
- * - mailto:hello@acreos.io for contact
+ * - mailto:thomas@acreos.io for contact (reverted from hello@ until the
+ *   hello@ alias is provisioned and confirmed by the founder)
  * - In-page anchors for #features, #pricing, #faq, #agents
  *
  * Internal agent names (Atlas/Sophie/Forge) are not surfaced here —
@@ -51,7 +52,7 @@ export function Footer() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>
-            <a href="mailto:hello@acreos.io">hello@acreos.io</a>
+            <a href="mailto:thomas@acreos.io">thomas@acreos.io</a>
             <Link href="/help#support">Support</Link>
             <a href="https://status.acreos.io" target="_blank" rel="noreferrer">
               Status

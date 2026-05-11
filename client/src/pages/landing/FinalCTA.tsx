@@ -50,7 +50,7 @@ export function FinalCTA() {
           </button>
         </form>
         <div className="lp-cta-or">or</div>
-        <a href="mailto:hello@acreos.io" className="lp-btn lp-btn-ghost">
+        <a href="mailto:thomas@acreos.io" className="lp-btn lp-btn-ghost">
           {c.cta2} →
         </a>
 
