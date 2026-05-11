@@ -71,8 +71,8 @@ export const LANDING_COPY = {
     sub: "Find, analyze, reach, close, service. No tab-juggling.",
   },
   quotes: {
-    eyebrow: "From investors using it",
-    title: "What investors are saying.",
+    eyebrow: "What the system does",
+    title: "Mechanics, not marketing.",
   },
   pricing: {
     eyebrow: "Pricing",

@@ -1,48 +1,67 @@
 /**
  * Prototype reference: /acreos-landing/sections-2.jsx → Quotes (lines 136-169)
  *
- * Six testimonial cards in 3-column grid (2 at <1080px, 1 at <720px).
- * Each card: large brand-color decorative quote-mark in upper right,
- * 16px serif-flavored body text, divider, avatar circle + name + role.
- * Avatars use the first letter of the testimonial name on a tan
- * surface-2 background.
+ * Replaces the prior testimonial grid with a set of product-mechanic
+ * statements. With a small founding cohort, testimonial-style social
+ * proof anti-sells on a public landing page. Each card describes one
+ * concrete thing the system does, anchored to a verb and a visible
+ * artifact (draft, log, alert, file).
  *
- * Quotes are from the early-access cohort. Internal-only agent names
- * (Atlas/Sophie) are scrubbed — customers only know Pax.
+ * The card layout, decorative quote-mark glyph, divider, and avatar
+ * circle are retained — the avatar now carries a short token mark
+ * ("PAX", "LOG", etc.) instead of an initial, since these are not
+ * person-quotes.
  */
 
 import { LANDING_COPY } from "./copy";
 
-const QUOTES = [
+type MechCard = {
+  /** Single-sentence mechanic statement, in third-person. */
+  q: string;
+  /** Short scope label (e.g. "Lead reply pipeline"). */
+  n: string;
+  /** Surface or artifact the mechanic produces. */
+  r: string;
+  /** Short numeric/glyph token rendered in the card's avatar circle. */
+  tag: string;
+};
+
+const MECHANICS: MechCard[] = [
   {
-    q: "Pax replied to a seller in 90 seconds at 11pm on a Sunday. We closed that deal Tuesday. That single deal paid for AcreOS for two years.",
-    n: "Marcus K.",
-    r: "Solo investor · Texas",
+    q: "Replies drafted within 60 seconds of an inbound message, queued for operator review before send.",
+    n: "Lead reply pipeline",
+    r: "Inbox → Pax draft queue",
+    tag: "01",
   },
   {
-    q: "I used to spend Sundays running comps. Now Pax hands me a list of 5 worth offering on. I get my Sunday back.",
-    n: "Janelle R.",
-    r: "Partner-led, 3-person team · AZ + NM",
+    q: "Comps pulled, scored, and ranked overnight against the operator's buy-box. In-box leads surfaced by morning.",
+    n: "Overnight comp run",
+    r: "Lead list → ranked queue",
+    tag: "02",
   },
   {
-    q: "The audit log is the killer feature. Every action my agents take, I can see why. No black box.",
-    n: "David O.",
-    r: "Investor + lender · 80 active notes",
+    q: "Every deal traced from APN ingestion to closed file. Each action timestamped and attributed to operator or agent.",
+    n: "Deal audit trail",
+    r: "Per-deal activity log",
+    tag: "03",
   },
   {
-    q: "I came over from REISift + Pebble + Mailchimp + a spreadsheet. AcreOS replaced all four. The bill went down, the deals went up.",
-    n: "Tasha B.",
-    r: "Full-time investor · CO",
+    q: "Mailers merged from the lead list with address validation and deduplication before send. Bounces logged back to the lead record.",
+    n: "Mail campaigns",
+    r: "Lead list → print queue",
+    tag: "04",
   },
   {
-    q: "AcreOS services my notes better than I did. I used to miss late payments by a week.",
-    n: "Roy G.",
-    r: "Seller-finance investor · 60+ notes",
+    q: "Notes serviced on schedule: receipts generated, late payments flagged, borrower statements produced at month-end.",
+    n: "Note servicing",
+    r: "Note ledger → receipts",
+    tag: "05",
   },
   {
-    q: "Shipped a feature I asked for a week after I requested it. That doesn't happen with normal SaaS.",
-    n: "Anya S.",
-    r: "New investor · 6 months in",
+    q: "Pipeline state visible from one screen. Stage transitions, callbacks, and offers logged without manual data entry.",
+    n: "Pipeline view",
+    r: "All-deal status board",
+    tag: "06",
   },
 ];
 
@@ -54,17 +73,17 @@ export function Quotes() {
       <h2 className="lp-section-title">{c.title}</h2>
 
       <div className="lp-quotes-grid">
-        {QUOTES.map((q, i) => (
+        {MECHANICS.map((m, i) => (
           <figure key={i} className="lp-quote-card">
             <div className="lp-quote-mark" aria-hidden="true">
               {"“"}
             </div>
-            <blockquote className="lp-quote-text">{q.q}</blockquote>
+            <blockquote className="lp-quote-text">{m.q}</blockquote>
             <figcaption className="lp-quote-foot">
-              <div className="lp-quote-avatar">{q.n[0]}</div>
+              <div className="lp-quote-avatar">{m.tag}</div>
               <div>
-                <div className="lp-quote-name">{q.n}</div>
-                <div className="lp-quote-role">{q.r}</div>
+                <div className="lp-quote-name">{m.n}</div>
+                <div className="lp-quote-role">{m.r}</div>
               </div>
             </figcaption>
           </figure>
