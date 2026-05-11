@@ -59,7 +59,7 @@ export function FinalCTA() {
           <span className="lp-cta-sep" aria-hidden="true">·</span>
           <span>No credit card</span>
           <span className="lp-cta-sep" aria-hidden="true">·</span>
-          <span>SOC2 Type II</span>
+          <span>SOC 2 Type 1 in progress · 2026-Q3 target</span>
           <span className="lp-cta-sep" aria-hidden="true">·</span>
           <span>Cancel anytime</span>
         </div>
