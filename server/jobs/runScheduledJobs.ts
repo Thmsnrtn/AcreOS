@@ -1803,18 +1803,24 @@ export async function runScheduledJobs(): Promise<void> {
     }, 5 * 60 * 1000);
 
     // Delegation auto-completion check (every 15 minutes)
+    // 15m cadence → TTL = ~90% (13m).
     trackInterval(() => {
-      checkDelegationCompletions().catch(() => {});
+      withJobLock("check_delegation_completions", 13 * 60, checkDelegationCompletions)
+        .catch((err: any) => log(`Delegation completion check failed: ${err}`, "autonomy"));
     }, 15 * 60 * 1000);
 
     // Retry failed actions (every 30 minutes)
+    // 30m cadence → TTL = ~90% (27m).
     trackInterval(() => {
-      retryFailedActions().catch(() => {});
+      withJobLock("retry_failed_actions", 27 * 60, retryFailedActions)
+        .catch((err: any) => log(`Retry failed actions failed: ${err}`, "autonomy"));
     }, 30 * 60 * 1000);
 
     // Consensus auto-execution (every 5 minutes)
+    // 5m cadence → TTL = ~90% (4m).
     trackInterval(() => {
-      executeResolvedConsensus().catch(() => {});
+      withJobLock("execute_resolved_consensus", 4 * 60, executeResolvedConsensus)
+        .catch((err: any) => log(`Execute resolved consensus failed: ${err}`, "autonomy"));
     }, 5 * 60 * 1000);
 
     log("Final mile autonomy jobs registered (summary/delegation/retry/consensus)", "autonomy");
