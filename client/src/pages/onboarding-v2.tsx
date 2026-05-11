@@ -678,7 +678,11 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
 
   const inviteMutation = useMutation({
     mutationFn: async (emailList: string[]) => {
-      const res = await apiRequest("POST", "/api/team/invite", { emails: emailList });
+      // Canonical bulk-invitation endpoint (routes-organization.ts:1610).
+      // Was previously POST /api/team/invite which never existed server-side.
+      const res = await apiRequest("POST", "/api/organization/invitations", {
+        invites: emailList.map((email) => ({ email, role: "member" as const })),
+      });
       return res.json();
     },
     onSuccess: () => {
