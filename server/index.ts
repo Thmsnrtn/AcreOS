@@ -226,10 +226,10 @@ app.use(
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
 
-// Sentry request/tracing handler — must come before routes, after bodyParsers
-if (process.env.SENTRY_DSN) {
-  app.use(Sentry.expressErrorHandler());
-}
+// Sentry's express ERROR handler is registered AFTER routes (see below,
+// just before the generic error handler). Registering it here as well
+// previously meant the early instance never caught route errors (routes
+// hadn't been mounted yet) but did consume an extra middleware slot.
 
 app.use(validateContentType);
 app.use(requestLoggingMiddleware);
