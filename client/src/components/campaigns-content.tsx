@@ -1573,6 +1573,10 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
+      {campaignType === "sms" && (
+        <SmsMediaUrlField form={form} />
+      )}
+
       <div className="space-y-2">
         <Label htmlFor="campaign-budget">Budget</Label>
         <div className="relative">
@@ -1609,10 +1613,61 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
           )}
         </Button>
         <div className="text-xs text-muted-foreground text-center space-y-1" data-testid="text-campaign-costs">
-          <p>Sending costs: email $0.01 each, SMS $0.03 each.</p>
+          <p>Sending costs: email $0.01 each, SMS $0.03 each, MMS (with image) $0.05 each.</p>
           <p>Direct mail: $0.75–$1.25 per piece (varies by size).</p>
         </div>
       </div>
     </form>
+  );
+}
+
+// SMS-channel composer add-on: a single public image/video URL Twilio
+// can fetch and attach as MMS. URL paste only (no S3 upload pipeline —
+// out of scope per the MMS rollout spec). Twilio enforces size/format
+// limits server-side; we only validate that it looks like https + image
+// or video so we don't bill customers for obvious typos.
+function SmsMediaUrlField({ form }: { form: ReturnType<typeof useForm<z.infer<typeof campaignFormSchema>>> }) {
+  // The schema field is mediaUrls: text[]; UI exposes a single URL for
+  // now (Twilio MMS commonly allows 1 image per message in US/CA).
+  const mediaUrlsValue = (form.watch("mediaUrls" as any) as string[] | null | undefined) ?? [];
+  const currentUrl = mediaUrlsValue[0] ?? "";
+  const trimmed = currentUrl.trim();
+  const looksValid =
+    trimmed === "" ||
+    (/^https:\/\//i.test(trimmed) && /\.(jpg|jpeg|png|gif|webp|mp4|mov|3gp)(\?.*)?$/i.test(trimmed));
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="campaign-media-url">
+        Image / video URL <span className="text-muted-foreground font-normal">(optional — MMS)</span>
+      </Label>
+      <Input
+        id="campaign-media-url"
+        type="url"
+        inputMode="url"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        placeholder="https://example.com/property-photo.jpg"
+        defaultValue={currentUrl}
+        onChange={(e) => {
+          const v = e.target.value.trim();
+          form.setValue("mediaUrls" as any, v ? [v] : []);
+        }}
+        aria-invalid={!looksValid}
+        aria-describedby="campaign-media-url-help"
+        data-testid="input-media-url"
+      />
+      <p id="campaign-media-url-help" className="text-xs text-muted-foreground">
+        {looksValid
+          ? "Paste a public https URL to a property photo. Costs $0.05/recipient (vs $0.03 for plain SMS)."
+          : "URL must be https and end in .jpg, .png, .gif, .webp, .mp4, .mov, or .3gp."}
+      </p>
+      {trimmed && looksValid && (
+        <p className="text-xs text-muted-foreground italic" data-testid="text-mms-preview">
+          [image attached] — recipients will see your message text plus this media.
+        </p>
+      )}
+    </div>
   );
 }
