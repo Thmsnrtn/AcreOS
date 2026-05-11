@@ -178,6 +178,7 @@ import { registerRentalRoutes } from "./routes-rentals";
 import { registerRentLedgerRoutes } from "./routes-rent-ledger";
 import { registerAccountSecurityRoutes } from "./routes-account-security";
 import { registerFounderLetterRoutes } from "./routes-founder-letters";
+import { registerFeedbackRoutes } from "./routes-feedback";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -1905,6 +1906,9 @@ export async function registerRoutes(
   registerAccountSecurityRoutes(app);
   // FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure.
   registerFounderLetterRoutes(app);
+  // 2026-05-11: public feedback/support form + founder triage inbox.
+  // Replaces dead thomas@acreos.io mailto links across landing surfaces.
+  registerFeedbackRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
