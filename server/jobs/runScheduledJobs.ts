@@ -1161,16 +1161,18 @@ function startPromptEvolutionJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 9) return;
-    try {
+    // Monthly cron — TTL = 60m (covers full 09:xx UTC window so duplicate
+    // tick within the window is suppressed across workers).
+    withJobLock("prompt_evolution_monthly", 60 * 60, async () => {
       const { runMonthlyPromptEvolution } = await import('../services/promptEvolutionMetaAgent');
       const r = await runMonthlyPromptEvolution();
       log(
         `[prompt-evolution] monthly: scanned=${r.scanned} proposals=${r.proposals.filter(p => p.proposalId).length}`,
         'sovereign',
       );
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1186,7 +1188,8 @@ function startExperimentSweepJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDay() !== 1 || now.getUTCHours() !== 9) return;
-    try {
+    // Weekly window — TTL = 60m (covers the 09:xx UTC window).
+    withJobLock("experiment_sweep_weekly", 60 * 60, async () => {
       const { sweepAndAutoComplete } = await import('../services/decisionExperiments');
       const r = await sweepAndAutoComplete();
       if (r.autoCompleted > 0) {
@@ -1195,9 +1198,9 @@ function startExperimentSweepJob() {
           'sovereign',
         );
       }
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[experiments] sweep failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1212,16 +1215,17 @@ function startAgentMemoryConsolidationJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDay() !== 0 || now.getUTCHours() !== 23) return;
-    try {
+    // Weekly window — TTL = 60m (covers the 23:xx UTC window).
+    withJobLock("agent_memory_consolidation_weekly", 60 * 60, async () => {
       const { runWeeklyMemoryConsolidation } = await import('../services/agentMemoryConsolidation');
       const r = await runWeeklyMemoryConsolidation();
       log(
         `[agent-memory] week ${r.weekKey}: ${r.notesWritten} notes, ${r.skipped.length} skipped`,
         'sovereign',
       );
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[agent-memory] failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1234,16 +1238,17 @@ function startExpansionRadarJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDay() !== 1 || now.getUTCHours() !== 8) return;
-    try {
+    // Weekly window — TTL = 60m (covers the 08:xx UTC window).
+    withJobLock("expansion_radar_weekly", 60 * 60, async () => {
       const { runWeeklyExpansionScan } = await import('../services/expansionRadar');
       const r = await runWeeklyExpansionScan();
       log(
         `[expansion-radar] ${r.weekKey}: scanned=${r.scanned} qualifiers=${r.qualifiers} top=${r.topCandidates.length}`,
         'sovereign',
       );
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[expansion-radar] failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1256,7 +1261,10 @@ function startOnboardingSweeperJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering onboarding-journey sweeper (hourly)', 'sovereign');
   trackInterval(async () => {
-    try {
+    // Hourly — TTL = 55m (≈90% of cadence). Per-step idempotence is
+    // already handled by status='fired', but the lock prevents two
+    // workers from both firing onboarding email/SMS in the same hour.
+    withJobLock("onboarding_sweeper", 55 * 60, async () => {
       const { sweepAndFireDueSteps } = await import('../services/onboardingAutonomy');
       const r = await sweepAndFireDueSteps();
       if (r.fired > 0 || r.failed > 0) {
@@ -1265,9 +1273,9 @@ function startOnboardingSweeperJob() {
           'sovereign',
         );
       }
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[onboarding] sweep failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1282,16 +1290,19 @@ function startCustomerLetterJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 15) return;
-    try {
+    // Monthly window — TTL = 60m (covers 15:xx UTC window). Per-org
+    // letters are idempotent by (orgId, monthKey) but the cross-org
+    // iteration itself burns OpenAI tokens — lock keeps that single-fire.
+    withJobLock("customer_letters_monthly", 60 * 60, async () => {
       const { runMonthlyCustomerLetters } = await import('../services/customerNarrative');
       const r = await runMonthlyCustomerLetters();
       log(
         `[customer-letters] generated ${r.succeeded}/${r.orgsProcessed} for ${r.monthKey} (${r.failed} failed)`,
         'sovereign',
       );
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[customer-letters] run failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1304,13 +1315,14 @@ function startActionPreviewSweeperJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering action-preview sweeper (hourly)', 'sovereign');
   trackInterval(async () => {
-    try {
+    // Hourly — TTL = 55m (≈90% of cadence).
+    withJobLock("action_preview_sweeper", 55 * 60, async () => {
       const { sweepOrphanedPreviews } = await import('../services/actionPreview');
       const r = await sweepOrphanedPreviews();
       if (r.swept > 0) log(`[action-preview] swept ${r.swept} orphans`, 'sovereign');
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[action-preview] sweep failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1324,25 +1336,25 @@ function startStrategicProposalsJobs() {
   log('Registering strategic proposals (weekly Sun 00:00 UTC + monthly synthesis 1st 10:00 UTC)', 'sovereign');
   trackInterval(async () => {
     const now = new Date();
-    // Weekly: Sunday 00:xx UTC window
+    // Weekly: Sunday 00:xx UTC window — TTL = 60m (covers the window).
     if (now.getUTCDay() === 0 && now.getUTCHours() === 0) {
-      try {
+      withJobLock("strategic_proposals_weekly", 60 * 60, async () => {
         const { runWeeklyProposals } = await import('../services/strategicProposals');
         const r = await runWeeklyProposals();
         log(`[strategic-proposals] weekly ${r.weekKey}: ${r.proposalsCreated} created`, 'sovereign');
-      } catch (err: any) {
+      }).catch((err: any) => {
         log(`[strategic-proposals] weekly failed: ${err?.message ?? err}`, 'sovereign');
-      }
+      });
     }
-    // Monthly synthesis: 1st at 10:00 UTC
+    // Monthly synthesis: 1st at 10:00 UTC — TTL = 60m.
     if (now.getUTCDate() === 1 && now.getUTCHours() === 10) {
-      try {
+      withJobLock("strategic_proposals_monthly_synthesis", 60 * 60, async () => {
         const { runMonthlySynthesis } = await import('../services/strategicProposals');
         const r = await runMonthlySynthesis();
         log(`[strategic-proposals] synthesis ${r.monthKey}: ${r.synthesizedCount} picked`, 'sovereign');
-      } catch (err: any) {
+      }).catch((err: any) => {
         log(`[strategic-proposals] synthesis failed: ${err?.message ?? err}`, 'sovereign');
-      }
+      });
     }
   }, ONE_HOUR);
 }
@@ -1358,13 +1370,14 @@ function startFounderLetterJob() {
   trackInterval(async () => {
     const now = new Date();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 12) return;
-    try {
+    // Monthly window — TTL = 60m (covers the 12:xx UTC window).
+    withJobLock("founder_letter_monthly", 60 * 60, async () => {
       const { generateMonthlyLetter } = await import('../services/founderNarrative');
       const r = await generateMonthlyLetter();
       log(`[founder-letter] generated ${r.monthKey}`, 'sovereign');
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[founder-letter] generation failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_HOUR);
 }
 
@@ -1387,13 +1400,14 @@ function startAutonomyOutcomeGraderJob() {
     }
   }, 2 * 60 * 1000);
   trackInterval(async () => {
-    try {
+    // Daily cadence — TTL = 60m (expected-max duration + buffer).
+    withJobLock("autonomy_outcome_grader", 60 * 60, async () => {
       const { gradeRecentDecisions } = await import('../services/autonomyHealth');
       const { graded } = await gradeRecentDecisions();
       if (graded > 0) log(`[autonomy-health] graded ${graded} decisions`, 'sovereign');
-    } catch (err: any) {
+    }).catch((err: any) => {
       log(`[autonomy-health] grade failed: ${err?.message ?? err}`, 'sovereign');
-    }
+    });
   }, ONE_DAY);
 }
 
@@ -1463,15 +1477,18 @@ function startTrustEvolutionJob() {
  */
 function startAgentReactionProcessorJob() {
   const TWO_MINUTES = 2 * 60 * 1000;
+  // 2m cadence → TTL = ~90% (108s ≈ 1.8m).
+  const TTL_SECONDS = 108;
 
   log('Registering agent reaction processor (every 2 minutes)', 'sovereign');
 
   trackInterval(() => {
-    import('../services/agentReactionEngine').then(({ processAgentReactions }) => {
-      processAgentReactions().catch(err => {
-        log(`Agent reaction processor failed: ${err}`, 'sovereign');
-      });
-    }).catch(err => log(`Reaction engine import failed: ${err}`, 'sovereign'));
+    withJobLock("agent_reaction_processor", TTL_SECONDS, async () => {
+      const { processAgentReactions } = await import('../services/agentReactionEngine');
+      await processAgentReactions();
+    }).catch(err => {
+      log(`Agent reaction processor failed: ${err}`, 'sovereign');
+    });
   }, TWO_MINUTES);
 }
 
@@ -1481,24 +1498,28 @@ function startAgentReactionProcessorJob() {
  */
 function startAgentProactiveEngineJob() {
   const FIVE_MINUTES = 5 * 60 * 1000;
+  // 5m cadence → TTL = ~90% (4m).
+  const TTL_SECONDS = 4 * 60;
 
   log('Registering agent proactive engine (every 5 minutes)', 'sovereign');
 
   // Start after 3 minutes to let agents seed first
   setTimeout(() => {
-    import('../services/agentProactiveEngine').then(({ runProactiveEngine }) => {
-      runProactiveEngine().catch(err => {
-        log(`Proactive engine startup run failed: ${err}`, 'sovereign');
-      });
-    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+    withJobLock("agent_proactive_engine", TTL_SECONDS, async () => {
+      const { runProactiveEngine } = await import('../services/agentProactiveEngine');
+      await runProactiveEngine();
+    }).catch(err => {
+      log(`Proactive engine startup run failed: ${err}`, 'sovereign');
+    });
   }, 3 * 60 * 1000);
 
   trackInterval(() => {
-    import('../services/agentProactiveEngine').then(({ runProactiveEngine }) => {
-      runProactiveEngine().catch(err => {
-        log(`Proactive engine run failed: ${err}`, 'sovereign');
-      });
-    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+    withJobLock("agent_proactive_engine", TTL_SECONDS, async () => {
+      const { runProactiveEngine } = await import('../services/agentProactiveEngine');
+      await runProactiveEngine();
+    }).catch(err => {
+      log(`Proactive engine run failed: ${err}`, 'sovereign');
+    });
   }, FIVE_MINUTES);
 }
 
@@ -1508,15 +1529,18 @@ function startAgentProactiveEngineJob() {
  */
 function startV5MaintenanceJob() {
   const FIFTEEN_MINUTES = 15 * 60 * 1000;
+  // 15m cadence → TTL = ~90% (13m).
+  const TTL_SECONDS = 13 * 60;
 
   log('Registering v5 maintenance job (every 15 minutes)', 'sovereign');
 
   trackInterval(() => {
-    import('./v5MaintenanceJob').then(({ runV5Maintenance }) => {
-      runV5Maintenance().catch(err => {
-        log(`v5 maintenance run failed: ${err}`, 'sovereign');
-      });
-    }).catch(err => log(`v5 maintenance import failed: ${err}`, 'sovereign'));
+    withJobLock("v5_maintenance", TTL_SECONDS, async () => {
+      const { runV5Maintenance } = await import('./v5MaintenanceJob');
+      await runV5Maintenance();
+    }).catch(err => {
+      log(`v5 maintenance run failed: ${err}`, 'sovereign');
+    });
   }, FIFTEEN_MINUTES);
 }
 
@@ -2120,12 +2144,19 @@ export async function runScheduledJobs(): Promise<void> {
   // ─── Agent Initiative Engine (every 30 minutes) ──
   import("../services/agentInitiativeEngine").then(({ agentInitiativeEngine }) => {
     log("Agent initiative engine registered (every 30m)", "initiative");
+    // 30m cadence → TTL = ~90% (27m). OpenAI-heavy; lock prevents
+    // double spend on a >1 worker scale-out.
+    const INITIATIVE_TTL_SECONDS = 27 * 60;
     // Run after 5-minute startup delay, then every 30 minutes
     setTimeout(() => {
       // Get any org for initiative scanning (use org 1 as default)
-      agentInitiativeEngine.runInitiativeCycle(1).catch(() => {});
+      withJobLock("agent_initiative_engine", INITIATIVE_TTL_SECONDS, () =>
+        agentInitiativeEngine.runInitiativeCycle(1),
+      ).catch(() => {});
       trackInterval(() => {
-        agentInitiativeEngine.runInitiativeCycle(1).catch((err: any) => {
+        withJobLock("agent_initiative_engine", INITIATIVE_TTL_SECONDS, () =>
+          agentInitiativeEngine.runInitiativeCycle(1),
+        ).catch((err: any) => {
           log(`Initiative cycle failed: ${err}`, "initiative");
         });
       }, 30 * 60 * 1000);
