@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +32,18 @@ import {
   Globe, Share2, Edit, Building, MapPin, ImageIcon,
   Calculator
 } from "lucide-react";
+
+// Platforms requiring partner API credentials (LANDCOM_API_KEY,
+// LANDFLIP_API_KEY, META_ACCESS_TOKEN, etc.). Backend stub creates a
+// "pending" syndication record regardless, but actual posting requires
+// keys configured in Settings → Integrations.
+const SYNDICATION_REQUIRES_KEYS = new Set([
+  "facebook_marketplace",
+  "landwatch",
+  "landflip",
+  "lands_of_america",
+  "zillow",
+]);
 
 const SYNDICATION_TARGETS = [
   { id: "facebook_marketplace", name: "Facebook Marketplace", icon: Globe },
@@ -774,12 +787,20 @@ export default function ListingsPage() {
                 if (publishTargets.length > 0 && !publishMutation.isPending) handlePublish();
               }}
             >
+              <p className="text-xs text-muted-foreground" data-testid="text-publish-disclaimer">
+                Platforms marked <span className="font-medium">“needs API key”</span> require partner credentials configured in{" "}
+                <Link href="/settings#integrations" className="underline hover:text-foreground">
+                  Settings → Integrations
+                </Link>
+                . Listings selected without keys are queued as pending and posted automatically once credentials are added.
+              </p>
               <fieldset className="space-y-2 border-0 p-0 m-0">
                 <legend className="sr-only">Syndication platforms</legend>
                 <ul className="space-y-2 list-none p-0 m-0">
                   {SYNDICATION_TARGETS.map((target) => {
                     const checked = publishTargets.includes(target.id);
                     const cbId = `publish-target-${target.id}`;
+                    const needsKey = SYNDICATION_REQUIRES_KEYS.has(target.id);
                     return (
                       <li
                         key={target.id}
@@ -788,6 +809,9 @@ export default function ListingsPage() {
                         <Label htmlFor={cbId} className="flex items-center gap-3 cursor-pointer flex-1">
                           <target.icon className="h-5 w-5" aria-hidden="true" />
                           <span>{target.name}</span>
+                          {needsKey && (
+                            <Badge variant="outline" className="text-xs">needs API key</Badge>
+                          )}
                         </Label>
                         <Checkbox
                           id={cbId}
