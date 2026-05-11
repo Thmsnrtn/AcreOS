@@ -26,6 +26,7 @@ import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
 import { eq, sql, and, gte } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
+import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -1799,8 +1800,14 @@ export function registerCampaignRoutes(app: Express): void {
       // Send SMS messages with in-memory dedup for this execution
       const sentInExecution = new Set<number>();
       const results = { sent: 0, failed: 0, errors: [] as string[] };
-      const twilio = (await import("twilio")).default;
-      const client = twilio(twilioSid, twilioToken);
+      // Honor SIMULATION_MODE / org.settings.simulationMode here too — this
+      // callsite previously bypassed the shouldSimulate gate because it
+      // called Twilio directly instead of going through smsService. Without
+      // this branch a global kill-switch was a lie for the campaign batch
+      // path. Caught 2026-05-10.
+      const simulated = shouldSimulate("sms", org);
+      const twilio = simulated ? null : (await import("twilio")).default;
+      const client = simulated ? null : twilio!(twilioSid, twilioToken);
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -1812,11 +1819,20 @@ export function registerCampaignRoutes(app: Express): void {
             .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
             .replace(/\{\{county\}\}/g, (lead as any).county || "");
 
-          await client.messages.create({
-            to: lead!.phone!,
-            from: twilioPhone,
-            body,
-          });
+          if (simulated) {
+            await recordSimulatedAction(
+              "sms",
+              "campaign_batch_send",
+              { to: lead!.phone, from: twilioPhone, body, campaignId, leadId: lead!.id },
+              org
+            );
+          } else {
+            await client!.messages.create({
+              to: lead!.phone!,
+              from: twilioPhone,
+              body,
+            });
+          }
           results.sent++;
           sentInExecution.add(lead!.id);
 

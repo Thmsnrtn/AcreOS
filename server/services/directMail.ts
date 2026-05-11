@@ -2,6 +2,7 @@ import Lob from 'lob';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
+import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -194,9 +195,28 @@ export class DirectMailService {
   }
 
   async sendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    // Honor SIMULATION_MODE / SIMULATION_MODE_LOB / org.settings.simulationMode.
+    // Previously this service relied only on Lob's own `test_*` key for safety,
+    // which made the global kill-switch a lie for direct-mail. Caught 2026-05-10.
+    const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
+    if (shouldSimulate("lob", org)) {
+      const sim = await recordSimulatedAction(
+        "lob",
+        "send_postcard",
+        { to: options.to, from: options.from, size: options.size, mode },
+        org as any
+      );
+      return {
+        id: sim.id,
+        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        isTestMode: true,
+        credentialSource: "platform",
+      };
+    }
+
     let lob: any;
     let credentialSource: 'organization' | 'platform' = 'platform';
-    
+
     if (orgId) {
       const orgClient = await this.getOrgLobClient(orgId);
       if (orgClient) {
@@ -204,11 +224,11 @@ export class DirectMailService {
         credentialSource = orgClient.source;
       }
     }
-    
+
     if (!lob) {
       lob = this.getLobClient(mode);
     }
-    
+
     const result = await lob.postcards.create({
       to: {
         name: options.to.name,
@@ -243,9 +263,25 @@ export class DirectMailService {
   }
 
   async sendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
+    if (shouldSimulate("lob", org)) {
+      const sim = await recordSimulatedAction(
+        "lob",
+        "send_letter",
+        { to: options.to, from: options.from, pageCount: options.pageCount, mode },
+        org as any
+      );
+      return {
+        id: sim.id,
+        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        isTestMode: true,
+        credentialSource: "platform",
+      };
+    }
+
     let lob: any;
     let credentialSource: 'organization' | 'platform' = 'platform';
-    
+
     if (orgId) {
       const orgClient = await this.getOrgLobClient(orgId);
       if (orgClient) {
@@ -253,11 +289,11 @@ export class DirectMailService {
         credentialSource = orgClient.source;
       }
     }
-    
+
     if (!lob) {
       lob = this.getLobClient(mode);
     }
-    
+
     const result = await lob.letters.create({
       to: {
         name: options.to.name,
