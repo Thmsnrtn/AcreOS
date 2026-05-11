@@ -459,12 +459,63 @@ interface HealthService {
   message?: string;
 }
 
+interface UsageLimitsResponse {
+  tier: string;
+  usage: {
+    ai_requests: { current: number; limit: number | null; percentage: number | null };
+  };
+}
+
+function PaxDailyCapBadge() {
+  // Free-tier users get the platform OpenAI key with a daily cap. Surface
+  // "X/Y messages today" so the limit is visible up-front rather than
+  // arriving as a surprise 429 on send. Pro+ tiers have higher / unlimited
+  // caps and can BYOK to bypass entirely, so we hide the badge for them.
+  const { data } = useQuery<UsageLimitsResponse>({
+    queryKey: ["/api/usage"],
+  });
+
+  if (!data) return null;
+  const { tier, usage } = data;
+  // Only show on free tier — paid tiers have much higher caps.
+  if (tier !== "free") return null;
+  const cap = usage.ai_requests;
+  if (cap.limit === null) return null;
+
+  const atLimit = cap.current >= cap.limit;
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+      <div className="flex items-center gap-2 text-sm">
+        <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <span className="font-medium tabular-nums">
+          {cap.current}/{cap.limit} messages today
+        </span>
+        <span className="text-muted-foreground">
+          {atLimit
+            ? "Daily free-tier limit reached — upgrade for unlimited."
+            : "Free tier — resets daily at midnight."}
+        </span>
+      </div>
+      {atLimit && (
+        <Button size="sm" variant="outline" asChild>
+          <Link href="/pricing">Upgrade</Link>
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function AiChatGuard({ children }: { children: React.ReactNode }) {
   const { data: healthData, isLoading } = useQuery<{ services: HealthService[] }>({
     queryKey: ["/api/health/cached"],
   });
 
   const openaiService = healthData?.services?.find(s => s.name === "openai");
+  // Platform key is set in Fly secrets — free tier uses it transparently
+  // (rate-limited via usageLimitGate("ai_requests") on the server). The
+  // earlier "needs an OpenAI API key" empty state was misleading: it told
+  // users to BYOK when the platform key already covers them. Only show a
+  // truly-broken-state message if the platform key is missing entirely.
   const aiUnavailable = openaiService?.status === "unconfigured";
 
   if (isLoading) {
@@ -484,15 +535,17 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
             <Bot className="h-8 w-8 text-muted-foreground" />
           </div>
           <div className="space-y-2 max-w-md">
-            <h3 className="text-lg font-semibold">Pax needs an OpenAI API key</h3>
+            <h3 className="text-lg font-semibold">Pax is temporarily unavailable</h3>
             <p className="text-sm text-muted-foreground">
-              Configure it in Settings → Integrations to start chatting with Pax.
+              The AI service is not reachable right now. This usually clears in a
+              minute or two — please try again shortly. Pro+ users can configure
+              their own OpenAI key in integrations to bypass platform outages.
             </p>
           </div>
           <Button variant="outline" asChild>
             <Link href="/settings#integrations">
               <Settings className="w-4 h-4 mr-2" aria-hidden="true" />
-              Go to integrations
+              Bring your own key
             </Link>
           </Button>
         </CardContent>
@@ -500,7 +553,12 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <PaxDailyCapBadge />
+      {children}
+    </>
+  );
 }
 
 // ─── Suggested Prompts ────────────────────────────────────────────────────────
