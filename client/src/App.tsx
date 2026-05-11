@@ -320,7 +320,9 @@ const FounderProvidersPage = React.lazy(() => import("@/pages/founder-providers"
 const FounderTodoPage = React.lazy(() => import("@/pages/founder-todo"));
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
-const OnboardingWizardPage = React.lazy(() => import("@/pages/onboarding-wizard"));
+// Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
+// page-route surface (recoverable on tab-close) for first-run setup; the
+// standalone `/pages/onboarding-wizard.tsx` page was deleted as redundant.
 const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
