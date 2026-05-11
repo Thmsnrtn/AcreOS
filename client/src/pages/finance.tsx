@@ -74,7 +74,7 @@ export default function FinancePage() {
     setIsExporting(true);
     try {
       const response = await fetch('/api/notes/export', { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to export');
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -85,12 +85,21 @@ export default function FinancePage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
+    } catch (error: any) {
       clientLogger.error('Export error:', error);
+      // Invisible export failures were the #1 user complaint pre-audit.
+      // Surface a destructive toast so the user knows the file wasn't
+      // downloaded and can retry.
+      toast({
+        title: "Couldn't export notes",
+        description: error?.message || "Check your connection and try again — no file was downloaded.",
+        variant: "destructive",
+      });
     } finally {
       setIsExporting(false);
     }
   };
+
 
   const handleQboSync = async () => {
     setIsQboSyncing(true);
@@ -459,6 +468,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [showAcceptPayment, setShowAcceptPayment] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [dunningData, setDunningData] = useState<any>(null);
   const [isDunningLoading, setIsDunningLoading] = useState(false);
@@ -492,9 +502,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   };
 
   const handleCopyPaymentLink = async () => {
-    if (paymentLink) {
+    if (!paymentLink) return;
+    try {
       await navigator.clipboard.writeText(paymentLink);
       toast({ title: "Payment link copied to clipboard" });
+    } catch (err: any) {
+      // Clipboard API can reject in non-secure contexts or when the
+      // permission is blocked — surface this so the user knows to
+      // copy manually instead of silently doing nothing.
+      toast({
+        title: "Couldn't copy link",
+        description: "Select the link and copy it manually.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -556,6 +576,34 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
       });
     } finally {
       setIsSendingReminder(false);
+    }
+  };
+
+  // Amortization schedule PDF download (separate from the note doc PDF).
+  // Endpoint exists at /api/notes/:id/schedule/pdf — the button was
+  // unwired pre-audit (no onClick handler).
+  const handleDownloadSchedulePdf = async () => {
+    setIsDownloadingSchedule(true);
+    try {
+      const response = await fetch(`/api/notes/${note.id}/schedule/pdf`, { credentials: 'include' });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `amortization-schedule-${note.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      toast({
+        title: "Couldn't export schedule PDF",
+        description: error?.message || "Check your connection and try again — no file was downloaded.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingSchedule(false);
     }
   };
 
@@ -932,8 +980,20 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   {isRegenerating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-1" aria-hidden="true" />}
                   Regenerate
                 </Button>
-                <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9" data-testid="button-export-schedule">
-                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export PDF
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 sm:min-h-9"
+                  onClick={handleDownloadSchedulePdf}
+                  disabled={isDownloadingSchedule || schedule.length === 0}
+                  data-testid="button-export-schedule"
+                >
+                  {isDownloadingSchedule ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-1" aria-hidden="true" />
+                  )}
+                  Export PDF
                 </Button>
               </div>
               <Card>
@@ -1077,7 +1137,16 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button size="sm" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
                       <ArrowUpRight className="w-4 h-4 mr-1" aria-hidden="true" /> Escalate
                     </Button>
-                    <Button size="sm" variant="ghost" className="min-h-11 sm:min-h-9" data-testid="button-record-contact">
+                    {/* Log call: backend endpoint not yet shipped. Disable
+                        with a tooltip so users don't tap an inert button. */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="min-h-11 sm:min-h-9"
+                      disabled
+                      title="Coming soon — call logging will appear here"
+                      data-testid="button-record-contact"
+                    >
                       <Phone className="w-4 h-4 mr-1" aria-hidden="true" /> Log call
                     </Button>
                   </div>
