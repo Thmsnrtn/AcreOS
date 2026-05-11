@@ -168,7 +168,7 @@ export default function PricingPage() {
           </span>
           {annual && (
             <Badge variant="secondary" className="text-xs">
-              Save 20%
+              Save 17%
             </Badge>
           )}
         </div>

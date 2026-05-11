@@ -106,7 +106,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
           />
         </button>
         <span className={`text-sm ${annual ? "font-semibold" : "text-muted-foreground"}`}>
-          Annual <Badge variant="secondary" className="ml-1 text-xs">Save 20%</Badge>
+          Annual <Badge variant="secondary" className="ml-1 text-xs">Save 17%</Badge>
         </span>
       </div>
 
