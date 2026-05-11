@@ -72,11 +72,15 @@ primary_region = 'iad'
 
 # Worker VM — shared CPU is fine because PDF render / eval batches are
 # bursty + tolerant of contention. min_machines_running = 1 keeps a
-# single drainable consumer hot at all times.
+# single drainable consumer hot at all times. Bumped from 1×/1GB to
+# 2×/2GB to absorb the scheduled-jobs catalogue that now also runs
+# here (formerly gated off the app by DISABLE_BACKGROUND_JOBS) — drip
+# campaigns + autonomous executor + onboarding sweeper + briefings
+# share this machine with the outbox drain loop.
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '1gb'
+  size = 'shared-cpu-2x'
+  memory = '2gb'
   cpu_kind = 'shared'
-  cpus = 1
+  cpus = 2
   processes = ['worker']
   min_machines_running = 1
