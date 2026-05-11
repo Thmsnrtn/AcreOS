@@ -20,7 +20,7 @@
  * waitlist for adjacent verticals will live on /verticals/waitlist
  * (Phase 8 Coverage Pass) rather than the public landing.
  */
-import { useDocumentTitle, usePageDescription } from "@/hooks/use-document-title";
+import { usePageDescription } from "@/hooks/use-document-title";
 import { SkipToContent } from "@/components/skip-to-content";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
@@ -45,7 +45,10 @@ import { Footer } from "./landing/Footer";
 import "./landing/landing.css";
 
 export default function LandingPage() {
-  useDocumentTitle("AcreOS — the operating system for land investors");
+  // Title is intentionally NOT set here — index.html ships the canonical
+  // "AcreOS — The Operating System for Land Investors" title and we don't
+  // want a flicker between that and a React-set variant on first paint.
+  // Other routes still use useDocumentTitle() for their per-page titles.
   usePageDescription(
     "Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf.",
   );
