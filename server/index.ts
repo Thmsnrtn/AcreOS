@@ -123,6 +123,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Strip trailing slashes on GET/HEAD requests so /pricing and /pricing/
+// don't both 200 (or 301 inconsistently). Policy: canonical form has no
+// trailing slash. Skip the root path "/" and API routes (some clients
+// rely on exact paths and POST bodies should not be redirected).
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  if (req.path === "/" || !req.path.endsWith("/")) return next();
+  if (req.path.startsWith("/api/")) return next();
+  const stripped = req.path.replace(/\/+$/, "");
+  const query = req.url.slice(req.path.length);
+  return res.redirect(301, stripped + query);
+});
+
 // API versioning: /api/v1/* is transparently rewritten to /api/*
 // Clients can use either prefix; new code should use /api/v1/.
 app.use((req, _res, next) => {
