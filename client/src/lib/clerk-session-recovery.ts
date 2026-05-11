@@ -23,9 +23,13 @@
  * already decided are valid.
  */
 
+import { hasAnyClerkSession, hasAnyClerkCookie, readClerkSessionJwt } from "./clerk-session-detect";
+
+// Backwards-compat local alias — historically this file probed only the
+// bare `__session=` name, which is "always false" in our proxy/suffixed-
+// cookie config. Use the shared helper so we tolerate both names.
 function hasSessionCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  return /(^|;\s*)__session=/.test(document.cookie);
+  return hasAnyClerkSession();
 }
 
 export function installClerkSessionRecovery(): void {
@@ -126,8 +130,7 @@ export function installClerkSessionRecovery(): void {
   // cookie is not HttpOnly in our proxy setup (we saw it in document.cookie)
   // so we can read it client-side.
   const parseSessionId = (): string | null => {
-    const m = document.cookie.match(/__session=([^;]+)/);
-    const jwt = m?.[1];
+    const jwt = readClerkSessionJwt();
     if (!jwt) return null;
     try {
       const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
@@ -137,6 +140,12 @@ export function installClerkSessionRecovery(): void {
     }
   };
   const touchSession = async (): Promise<void> => {
+    // Don't even attempt the touch if there's no Clerk cookie at all on
+    // this domain. Unauthenticated landing-page visits were producing two
+    // `/__clerk/v1/client/sessions/.../touch` 401s in the console — the
+    // touch was firing on a stale or empty cookie. Belt-and-braces: also
+    // bail when there's no parseable sid.
+    if (!hasAnyClerkCookie()) return;
     const sid = parseSessionId();
     if (!sid) return;
     try {

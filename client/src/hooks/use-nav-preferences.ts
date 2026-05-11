@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_SIDEBAR_ITEMS, DEFAULT_MOBILE_ITEMS, ALL_NAV_ITEMS } from "@/lib/nav-items";
 import { clientLogger } from "@/lib/clientLogger";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 
 /**
  * Sidebar + mobile-nav preferences.
@@ -74,6 +75,9 @@ async function fetchServerNavPreferences(): Promise<Partial<NavPreferences> | nu
 }
 
 async function patchServerNavPreferences(prefs: NavPreferences): Promise<void> {
+  // Don't PATCH from unauthenticated contexts — the server will 401 and
+  // the local state is canonical anyway.
+  if (!hasAnyClerkSession()) return;
   try {
     await fetch(PREFERENCES_ENDPOINT, {
       method: "PATCH",
@@ -91,8 +95,12 @@ export function useNavPreferences() {
   const [prefs, setPrefs] = useState<NavPreferences>(loadLocal);
   const patchTimerRef = useRef<number | undefined>(undefined);
 
-  // Hydrate from server on mount.
+  // Hydrate from server on mount — but only when signed in. /api/me/preferences
+  // requires auth, so calling it for unauthenticated visitors (e.g. anyone
+  // mounting <MobileBottomNav> on a public page) just produces a 401 in the
+  // console. Skip until a Clerk session cookie is present.
   useEffect(() => {
+    if (!hasAnyClerkSession()) return;
     let cancelled = false;
     fetchServerNavPreferences().then((server) => {
       if (cancelled || !server) return;

@@ -1,6 +1,7 @@
 import { useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import { hasAnyClerkSession, readClerkSessionJwt } from "@/lib/clerk-session-detect";
 
 export type AuthUser = User & { isFounder?: boolean };
 
@@ -11,23 +12,19 @@ export type AuthUser = User & { isFounder?: boolean };
 // __session cookie correctly and /api/auth/user is healthy, we treat a
 // 200 from that endpoint as the truth of "is this browser signed in."
 //
-// The query is enabled whenever a __session cookie exists on the domain;
-// we don't wait for Clerk-JS to confirm because its confirmation can
-// never arrive in the broken flow. On 401 we clear and bounce to /auth.
+// The query is enabled whenever a Clerk session cookie exists on the
+// domain (bare `__session=` OR suffixed `__session_<hash>=` — see
+// clerk-session-detect.ts); we don't wait for Clerk-JS to confirm
+// because its confirmation can never arrive in the broken flow. On 401
+// we clear and bounce to /auth.
 
 let authFailCount = 0;
-
-function hasSessionCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  return /(^|;\s*)__session=/.test(document.cookie);
-}
 
 async function touchClerkSession(): Promise<void> {
   // Same 401-recovery touch as queryClient.refreshSessionCookie. Kept
   // inline to avoid pulling queryClient into the auth bootstrap path.
   try {
-    const m = typeof document !== "undefined" ? document.cookie.match(/__session=([^;]+)/) : null;
-    const jwt = m?.[1];
+    const jwt = readClerkSessionJwt();
     if (!jwt) return;
     const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
     const sid = payload?.sid;
@@ -76,7 +73,7 @@ export function useAuth() {
   const { signOut } = useClerk();
   const queryClient = useQueryClient();
 
-  const cookiePresent = hasSessionCookie();
+  const cookiePresent = hasAnyClerkSession();
 
   const { data: user, isLoading: userLoading, isFetched } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],

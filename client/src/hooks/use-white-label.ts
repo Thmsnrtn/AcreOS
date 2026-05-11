@@ -10,6 +10,7 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 
 interface WhiteLabelConfig {
   tenantId?: string;
@@ -92,9 +93,10 @@ function updateFavicon(faviconUrl: string): void {
 export function useWhiteLabel() {
   // The /white-label/config endpoint requires auth — fetching it for
   // unauthenticated visitors on /, /pricing, /auth etc. produces 401s
-  // in the console. Skip until we have an auth cookie.
-  const hasSession =
-    typeof document !== "undefined" && /(^|;\s*)__session=/.test(document.cookie);
+  // in the console. Skip until we have any Clerk session cookie (the
+  // proxy issues suffixed `__session_<hash>=` cookies, so a bare
+  // `__session=` check is "always false"; use the shared helper).
+  const hasSession = hasAnyClerkSession();
   const { data } = useQuery<{ config: WhiteLabelConfig | null }>({
     queryKey: ["/api/white-label/config"],
     enabled: hasSession,
