@@ -459,15 +459,37 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // HEALTH CHECK (Public endpoint - no rate limiting, no middleware)
+  // HEALTH CHECKS (Public, no rate limiting, no middleware)
   // Mounted BEFORE WhiteLabel/Clerk middleware so health probes never fail
   // due to domain resolution or auth issues.
+  //
+  // /api/healthz — tiny liveness probe, returns 200 with no upstream fan-out.
+  //   Safe target for Fly/uptime monitors.
+  // /api/health  — cached service snapshot (refreshed by startPeriodicChecks).
+  //   Previously synchronously hit Stripe + OpenAI on every request from a
+  //   public endpoint, giving 500–660ms TTFB and a DoS-amplification
+  //   surface for any unauth caller. Caught 2026-05-10.
+  // /api/health/live — explicit opt-in to the live fan-out, for cases where
+  //   you genuinely need a fresh check (e.g. CI deploy verification).
   // ============================================
+  app.get("/api/healthz", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({ ok: true, uptime: process.uptime() });
+  });
+
   app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
-      const result = await healthCheckService.checkAll();
+      // Use cached snapshot maintained by startPeriodicChecks(). Only fall
+      // back to a synchronous checkAll() if the cache is empty (first call
+      // after boot before the first periodic tick).
+      const cached = healthCheckService.getLastResults();
+      const result = cached || (await healthCheckService.checkAll());
       const statusCode = result.overall === "unavailable" ? 503 : 200;
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=10, s-maxage=10, stale-while-revalidate=60",
+      );
       res.status(statusCode).json({
         ...result,
         version: process.env.npm_package_version || "1.0.0",
@@ -481,6 +503,29 @@ export async function registerRoutes(
         version: process.env.npm_package_version || "1.0.0",
         uptime: process.uptime(),
         error: err?.message || "health check failed",
+      });
+    }
+  });
+
+  app.get("/api/health/live", async (_req: Request, res: Response) => {
+    try {
+      const { healthCheckService } = await import("./services/healthCheck");
+      const result = await healthCheckService.checkAll();
+      const statusCode = result.overall === "unavailable" ? 503 : 200;
+      res.setHeader("Cache-Control", "no-store");
+      res.status(statusCode).json({
+        ...result,
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+      });
+    } catch (err: any) {
+      res.status(503).json({
+        overall: "degraded",
+        services: [],
+        timestamp: new Date(),
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+        error: err?.message || "live health check failed",
       });
     }
   });

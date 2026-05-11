@@ -9,8 +9,20 @@ import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 
-const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, (req) => req.ip || req.socket.remoteAddress || 'unknown');
-const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 60 * 1000 }, (req) => req.ip || req.socket.remoteAddress || 'unknown');
+// Borrower portal rate-limiters. Keyed by accessToken when present (the
+// portal endpoints carry it as a URL param) and fall back to IP. Pure IP
+// keying breaks borrowers on shared cellular NAT — same class of bug as
+// the /api/auth limiter fixed 2026-05-10. The accessToken is unauthenticated
+// but is a per-borrower secret, so using it as a key is a strict improvement.
+function borrowerPortalKey(req: any): string {
+  const token = req.params?.accessToken || req.body?.accessToken;
+  if (token && typeof token === "string" && token.length > 8) return `tok:${token}`;
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, borrowerPortalKey);
+// Deprecated sunsetting endpoint — raised from 2/min to a usable 10/min and
+// keyed by accessToken so legitimate borrowers retrying on cellular don't 429.
+const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60 * 1000 }, borrowerPortalKey);
 
 // ─────────────────────────────────────────────────────────────────────
 // Sigfried §1 — Borrower-portal sunset (RFC 8594)
