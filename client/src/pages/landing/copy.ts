@@ -62,7 +62,7 @@ export const LANDING_COPY = {
   },
   quotes: {
     eyebrow: "From investors using it",
-    title: "What the beta cohort said.",
+    title: "What investors are saying.",
   },
   founder: {
     eyebrow: "Why I built this",
