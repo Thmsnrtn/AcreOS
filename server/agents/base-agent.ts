@@ -8,6 +8,7 @@ import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { emailService } from "../services/emailService";
 import { logger } from "../utils/logger";
+import { coerceTimerDelay } from "../utils/safeTimer";
 
 export type AgentStatus = "idle" | "running" | "error" | "disabled";
 
@@ -51,11 +52,21 @@ export abstract class BaseAgent {
       logger.info(`[${this.name}] Agent disabled via feature flag`);
       return;
     }
-    logger.info(`[${this.name}] Starting (interval: ${this.intervalMs}ms)`);
+    // Sanitize the subclass-provided intervalMs so a bad constant (NaN,
+    // a phone string promoted to a number, etc.) can't trigger Node's
+    // TimeoutOverflowWarning and silently turn into a 1ms hot-loop.
+    const safeInterval = coerceTimerDelay(this.intervalMs, `agent:${this.name}:intervalMs`);
+    if (safeInterval === null) {
+      logger.error(`[${this.name}] refusing to start — intervalMs is not a usable number`, undefined, {
+        metadata: { intervalMs: String(this.intervalMs) },
+      });
+      return;
+    }
+    logger.info(`[${this.name}] Starting (interval: ${safeInterval}ms)`);
     // Run once immediately then schedule
     await this.safeRun();
-    this.timer = setInterval(() => this.safeRun(), this.intervalMs);
-    this.nextRun = new Date(Date.now() + this.intervalMs);
+    this.timer = setInterval(() => this.safeRun(), safeInterval);
+    this.nextRun = new Date(Date.now() + safeInterval);
   }
 
   stop(): void {

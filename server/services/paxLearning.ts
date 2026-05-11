@@ -11,6 +11,10 @@ import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
 const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
+// Cap exponential backoff so a runaway failedCount can't overflow int32
+// and trigger Node's TimeoutOverflowWarning. 5 minutes is well past any
+// realistic self-heal retry — anything longer should escalate, not sleep.
+const MAX_BACKOFF_MS = 5 * 60 * 1000;
 
 export const paxLearningService = {
   
@@ -612,7 +616,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       };
     }
     
-    const backoffDelay = BASE_BACKOFF_MS * Math.pow(2, failedCount);
+    const backoffDelay = Math.min(BASE_BACKOFF_MS * Math.pow(2, failedCount), MAX_BACKOFF_MS);
     if (failedCount > 0) {
       logger.info(`[pax-self-heal] Waiting ${backoffDelay}ms before retry attempt ${currentAttemptNumber}`);
       await new Promise(resolve => setTimeout(resolve, backoffDelay));

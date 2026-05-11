@@ -43,6 +43,7 @@
 import { db } from "../db";
 import { jobRuns, outboxDlq } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { coerceTimerDelay } from "../utils/safeTimer";
 
 export interface SelfReschedulingOpts {
   /** Logical job name. Used for `job_runs.job_name` and DLQ event_type. */
@@ -225,11 +226,27 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
     }
 
     if (status.cancelled) return;
-    timer = setTimeout(tick, nextDelayMs);
+    const safeNext = coerceTimerDelay(nextDelayMs, `jobs:${name}:nextDelayMs`);
+    if (safeNext === null) {
+      logger.error(`[jobs:${name}] refusing to reschedule — nextDelayMs is not a usable number`, undefined, {
+        metadata: { nextDelayMs: String(nextDelayMs) },
+      });
+      return;
+    }
+    timer = setTimeout(tick, safeNext);
   };
 
   // Kick off the first run after the optional initial delay.
-  timer = setTimeout(tick, initialDelayMs);
+  const safeInitial = coerceTimerDelay(initialDelayMs, `jobs:${name}:initialDelayMs`);
+  if (safeInitial === null) {
+    logger.error(`[jobs:${name}] refusing to start — initialDelayMs is not a usable number`, undefined, {
+      metadata: { initialDelayMs: String(initialDelayMs) },
+    });
+    return function cancel() {
+      status.cancelled = true;
+    };
+  }
+  timer = setTimeout(tick, safeInitial);
 
   return function cancel() {
     status.cancelled = true;
