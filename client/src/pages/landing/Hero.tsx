@@ -87,10 +87,12 @@ export function Hero() {
           </a>
         </div>
         <div className="lp-hero-ctasub">{c.ctaSub}</div>
-        <div className="lp-hero-proof">
-          <span className="lp-hero-dot" aria-hidden="true" />
-          {c.proof}
-        </div>
+        {c.proof ? (
+          <div className="lp-hero-proof">
+            <span className="lp-hero-dot" aria-hidden="true" />
+            {c.proof}
+          </div>
+        ) : null}
       </div>
 
       <HeroVisual />

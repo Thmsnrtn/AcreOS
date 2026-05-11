@@ -19,14 +19,13 @@ export const LANDING_COPY = {
     title: [
       "The operating system",
       "for land investors.",
-      "From lead to closed.",
     ] as const,
     sub:
       "AcreOS pulls lists, runs comps, sends mail, drafts replies, and tracks every deal through closing — in one place. Built for land investors. Actively expanding to note investors, fix-and-flippers, and other investor types.",
     cta1: "Start free trial",
     cta2: "See how it works",
     ctaSub: "14 days free. No credit card required.",
-    proof: "Active early-access. Founding cohort onboarding now.",
+    proof: "",
   },
   positioning: {
     primary: "Built for Land Investors.",
