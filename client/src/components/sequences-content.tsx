@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Users, Play, Pause, StopCircle, Eye, Loader2 } from "lucide-react";
 import { SequenceBuilder, type SequenceStepData } from "@/components/sequence-builder";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { CampaignSequence, SequenceStep, SequenceEnrollment, Lead } from "@shared/schema";
 
 type SequenceWithSteps = CampaignSequence & { steps: SequenceStep[] };
@@ -25,6 +26,8 @@ export function SequencesContent() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedSequence, setSelectedSequence] = useState<SequenceWithSteps | null>(null);
   const [viewingSequence, setViewingSequence] = useState<SequenceWithSteps | null>(null);
+  // Pending delete target — when set, a confirm dialog gates the destructive call.
+  const [pendingDelete, setPendingDelete] = useState<CampaignSequence | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -408,7 +411,7 @@ export function SequencesContent() {
                         <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
-                          onClick={() => deleteMutation.mutate(sequence.id)}
+                          onClick={() => setPendingDelete(sequence)}
                           data-testid={`button-delete-sequence-${sequence.id}`}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -538,6 +541,29 @@ export function SequencesContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="Delete sequence?"
+        description={
+          pendingDelete
+            ? `Permanently delete "${pendingDelete.name}"? Any active enrollments will be cancelled. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete sequence"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteMutation.mutate(pendingDelete.id, {
+              onSettled: () => setPendingDelete(null),
+            });
+          }
+        }}
+      />
     </div>
   );
 }
