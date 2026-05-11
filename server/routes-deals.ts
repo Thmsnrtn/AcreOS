@@ -1099,23 +1099,140 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
   api.post("/api/due-diligence/:propertyId/lookup/tax", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
-      const result = {
-        annualTax: 125.00,
-        backTaxes: 0,
-        taxSaleStatus: "none",
-        lastPaidDate: "2024-12-01",
-        source: "County Treasurer Records",
-        lastUpdated: new Date().toISOString(),
-        details: {
-          taxYear: 2024,
-          assessedValue: 8500,
-          taxRate: 0.0147,
-          exemptions: [],
+
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return Errors.notFound(res, "Property");
+      }
+
+      // Source order: (a) tax value already stored on the property row
+      // (populated by an earlier parcel fetch), (b) tax value embedded in
+      // parcelData JSONB, (c) live re-fetch via the parcel pipeline
+      // (County GIS → RapidAPI → Regrid) which returns taxAmount.
+      let annualTax: number | null = null;
+      let assessedValue: number | null = null;
+      let source: string | null = null;
+      let lastUpdated: string | null = null;
+      let providerNote: string | null = null;
+
+      const rawTax = (property as any).taxAmount;
+      if (rawTax !== null && rawTax !== undefined && rawTax !== "") {
+        const parsed = parseFloat(String(rawTax));
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          annualTax = parsed;
+          source = "Property record";
+          lastUpdated = (property as any).updatedAt?.toISOString?.() || null;
         }
-      };
-      res.json(result);
+      }
+
+      const parcelData: any = (property as any).parcelData ?? null;
+      if (annualTax === null && parcelData?.taxAmount) {
+        const parsed = parseFloat(String(parcelData.taxAmount));
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          annualTax = parsed;
+          source = parcelData.source ? `Parcel cache (${parcelData.source})` : "Parcel cache";
+          lastUpdated = parcelData.lastUpdated || null;
+        }
+      }
+
+      // Pull assessed value from any provider that already populated it.
+      const assessedRaw =
+        (property as any).assessedValue ??
+        parcelData?.assessedValue ??
+        null;
+      if (assessedRaw !== null && assessedRaw !== undefined && assessedRaw !== "") {
+        const parsed = parseFloat(String(assessedRaw));
+        if (!Number.isNaN(parsed) && parsed > 0) assessedValue = parsed;
+      }
+
+      // If we still have no tax value but have coordinates or an APN, try
+      // one live parcel lookup — caches the result for future calls.
+      if (annualTax === null) {
+        try {
+          const { lookupParcelByAPN, lookupParcelByCoordinates } =
+            await import("./services/parcel");
+          let lookup: any = null;
+          if (property.apn && property.state && property.county) {
+            lookup = await lookupParcelByAPN(
+              property.apn,
+              `${property.state}/${property.county}`,
+              org.id,
+            );
+          } else if (property.latitude && property.longitude) {
+            lookup = await lookupParcelByCoordinates(
+              Number(property.latitude),
+              Number(property.longitude),
+              org.id,
+            );
+          }
+          if (lookup?.found && lookup.parcel?.data?.taxAmount) {
+            const parsed = parseFloat(String(lookup.parcel.data.taxAmount));
+            if (!Number.isNaN(parsed) && parsed > 0) {
+              annualTax = parsed;
+              source = `Live (${lookup.source})`;
+              lastUpdated = new Date().toISOString();
+            }
+          } else if (lookup && !lookup.found) {
+            providerNote = lookup.error || "Parcel not found in any provider";
+          }
+        } catch (lookupErr: any) {
+          logger.warn(`[tax-lookup] live parcel fetch failed: ${lookupErr?.message ?? lookupErr}`);
+          providerNote = "Live parcel lookup failed — try Fetch Map first";
+        }
+      }
+
+      // Derive a tax rate only when both inputs are real.
+      const taxRate =
+        annualTax !== null && assessedValue !== null && assessedValue > 0
+          ? Number((annualTax / assessedValue).toFixed(6))
+          : null;
+
+      if (annualTax === null) {
+        // No fabricated numbers — be explicit that we don't have data yet.
+        return res.json({
+          annualTax: null,
+          assessedValue,
+          backTaxes: null,
+          taxSaleStatus: "unknown",
+          lastPaidDate: null,
+          source: null,
+          lastUpdated: null,
+          details: {
+            message:
+              providerNote ||
+              "Tax data not yet available for this parcel. Run Fetch Map to pull parcel data, or add an ATTOM API key in Settings → Integrations for assessor-grade detail.",
+            taxYear: null,
+            assessedValue,
+            taxRate: null,
+            exemptions: [],
+          },
+        });
+      }
+
+      // We have real tax data. backTaxes / taxSaleStatus / lastPaidDate /
+      // exemptions are county-treasurer-specific and not available from
+      // Regrid / county GIS — return null rather than fabricate.
+      res.json({
+        annualTax,
+        assessedValue,
+        backTaxes: null,
+        taxSaleStatus: "unknown",
+        lastPaidDate: null,
+        source,
+        lastUpdated,
+        details: {
+          taxYear: new Date().getFullYear(),
+          assessedValue,
+          taxRate,
+          exemptions: [],
+          note:
+            "Tax-sale status and back-tax history require a county-treasurer integration — not surfaced here yet.",
+        },
+      });
     } catch (error: any) {
+      logger.error("Tax lookup error", error instanceof Error ? error : undefined);
       Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup tax info"));
     }
   });
