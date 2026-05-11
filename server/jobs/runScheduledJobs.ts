@@ -1875,7 +1875,11 @@ export async function runScheduledJobs(): Promise<void> {
           intervalMs: 5 * 60 * 1000,
           initialDelayMs: 90_000,
           run: async () => {
-            return await runFlyNightModeTick();
+            // 5m cadence → TTL = ~90% (4m). Wraps a Fly API write so
+            // two worker generations don't both flip min_machines.
+            await withJobLock("fly_night_mode", 4 * 60, async () => {
+              await runFlyNightModeTick();
+            });
           },
         });
       });
@@ -1921,7 +1925,10 @@ export async function runScheduledJobs(): Promise<void> {
         intervalMs: 15 * 60 * 1000,
         initialDelayMs: 3 * 60 * 1000, // 3min after boot
         run: async () => {
-          await runAllSyntheticChecks();
+          // 15m cadence → TTL = ~90% of cadence (13m).
+          await withJobLock("synthetic_checks", 13 * 60, async () => {
+            await runAllSyntheticChecks();
+          });
         },
       });
     });
@@ -1939,7 +1946,12 @@ export async function runScheduledJobs(): Promise<void> {
         name: "reconciliation_cron",
         intervalMs: 24 * 60 * 60 * 1000,
         initialDelayMs: 8 * 60 * 1000,
-        run: async () => { await runReconciliation(); },
+        run: async () => {
+          // Daily cadence; TTL = expected max duration + buffer (60m).
+          await withJobLock("reconciliation_cron", 60 * 60, async () => {
+            await runReconciliation();
+          });
+        },
       });
     });
   }).catch(err => {
@@ -1957,7 +1969,11 @@ export async function runScheduledJobs(): Promise<void> {
         name: "disclosure_timing_dispatch",
         intervalMs: 60 * 60 * 1000,
         initialDelayMs: 6 * 60 * 1000,
-        run: async () => { await runDisclosureTimingDispatch(); },
+        run: async () => {
+          await withJobLock("disclosure_timing_dispatch", 55 * 60, async () => {
+            await runDisclosureTimingDispatch();
+          });
+        },
       });
     });
   }).catch(err => {
@@ -1973,7 +1989,12 @@ export async function runScheduledJobs(): Promise<void> {
         name: "fair_lending_audit",
         intervalMs: 30 * 24 * 60 * 60 * 1000,
         initialDelayMs: 12 * 60 * 1000,
-        run: async () => { await runFairLendingAudit(); },
+        run: async () => {
+          // Monthly cadence; TTL = expected max duration + buffer (60m).
+          await withJobLock("fair_lending_audit", 60 * 60, async () => {
+            await runFairLendingAudit();
+          });
+        },
       });
     });
   }).catch(err => {
