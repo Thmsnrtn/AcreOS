@@ -20467,4 +20467,30 @@ export const userSignInLocations = pgTable(
   ],
 );
 export type UserSignInLocation = typeof userSignInLocations.$inferSelect;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Feedback submissions — public support/feedback/question form.
+//
+// Replaces the dead `thomas@acreos.io` mailto links across landing surfaces.
+// Anyone (signed in or not) can POST /api/feedback. Founder triages from
+// /founder/feedback. Status lifecycle: new → read → replied → archived.
+// ───────────────────────────────────────────────────────────────────────────
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: serial("id").primaryKey(),
+  category: text("category").notNull(), // 'support' | 'feedback' | 'question'
+  name: text("name"),
+  email: text("email"), // optional — visitors may not provide
+  message: text("message").notNull(),
+  source: text("source"), // e.g. 'landing_footer', 'final_cta', 'help_page'
+  // Founder triage state
+  status: text("status").notNull().default("new"), // 'new' | 'read' | 'replied' | 'archived'
+  readAt: timestamp("read_at"),
+  repliedAt: timestamp("replied_at"),
+  // Audit
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
+export type InsertFeedbackSubmission = typeof feedbackSubmissions.$inferInsert;
 export type InsertUserSignInLocation = typeof userSignInLocations.$inferInsert;
