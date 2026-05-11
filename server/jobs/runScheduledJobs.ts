@@ -906,12 +906,17 @@ async function processChurnEngine() {
 
 function startChurnEngineJob() {
   log('Starting churn risk engine (daily at 6am)', 'churn');
-  // Run once 2 minutes after startup, then check every 5 minutes whether it's 6am
+  // Daily wall-clock 6am window — TTL = 60m so a duplicate tick within
+  // the 5m window (or any retry inside the hour) gets skipped across
+  // workers. The startup-warmup run is unwrapped because it's a one-
+  // shot at boot and runs from a single instance during boot anyway.
   setTimeout(() => { processChurnEngine(); }, 2 * 60 * 1000);
   trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 6 && now.getMinutes() < 5) {
-      processChurnEngine();
+      withJobLock("churn_engine_daily", 60 * 60, processChurnEngine).catch((err: any) => {
+        log(`Churn engine lock error: ${err}`, 'churn');
+      });
     }
   }, 5 * 60 * 1000);
 }
@@ -930,10 +935,13 @@ async function processFounderBriefing() {
 
 function startFounderBriefingJob() {
   log('Starting founder daily briefing job (daily at 7am)', 'briefing');
+  // Daily wall-clock 7am window — TTL = 60m covers the 5m window.
   trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 7 && now.getMinutes() < 5) {
-      processFounderBriefing();
+      withJobLock("founder_briefing_daily", 60 * 60, processFounderBriefing).catch((err: any) => {
+        log(`Founder briefing lock error: ${err}`, 'briefing');
+      });
     }
   }, 5 * 60 * 1000);
 }
