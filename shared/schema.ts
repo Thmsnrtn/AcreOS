@@ -16914,16 +16914,29 @@ export type AdjacentVerticalsWaitlistEntry = typeof adjacentVerticalsWaitlist.$i
 // FEEDBACK SUBMISSIONS
 // ============================================
 
+// Unified feedback table. Serves BOTH the in-app signed-in feedback widget
+// (legacy, populated with userId + userEmail) AND the public support/feedback/
+// question form on the landing page (populated with name + email; no userId).
+// `userId` is nullable to support anonymous public submissions.
 export const feedbackSubmissions = pgTable("feedback_submissions", {
   id: serial("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  userEmail: text("user_email").notNull(),
-  category: text("category").notNull(), // bug, feature_request, confusion, other
+  // Identity — exactly one of (userId+userEmail) OR (name?+email?) populated
+  userId: text("user_id"),                         // signed-in submissions only
+  userEmail: text("user_email"),                   // signed-in submissions only
+  name: text("name"),                              // public submissions only
+  email: text("email"),                            // public submissions only
+  // Content
+  category: text("category").notNull(),            // bug | feature_request | confusion | other | support | feedback | question
   message: text("message").notNull(),
+  source: text("source"),                          // landing_footer | final_cta | in_app_widget | help_page
   allowFollowUp: boolean("allow_follow_up").default(true).notNull(),
   pageUrl: text("page_url"),
   userAgent: text("user_agent"),
-  status: text("status").default("new").notNull(), // new, reviewed, resolved, archived
+  ipAddress: text("ip_address"),
+  // Founder triage state
+  status: text("status").default("new").notNull(), // new | read | replied | archived | reviewed | resolved
+  readAt: timestamp("read_at"),
+  repliedAt: timestamp("replied_at"),
   founderNotes: text("founder_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -20468,29 +20481,6 @@ export const userSignInLocations = pgTable(
 );
 export type UserSignInLocation = typeof userSignInLocations.$inferSelect;
 
-// ───────────────────────────────────────────────────────────────────────────
-// Feedback submissions — public support/feedback/question form.
-//
-// Replaces the dead `thomas@acreos.io` mailto links across landing surfaces.
-// Anyone (signed in or not) can POST /api/feedback. Founder triages from
-// /founder/feedback. Status lifecycle: new → read → replied → archived.
-// ───────────────────────────────────────────────────────────────────────────
-export const feedbackSubmissions = pgTable("feedback_submissions", {
-  id: serial("id").primaryKey(),
-  category: text("category").notNull(), // 'support' | 'feedback' | 'question'
-  name: text("name"),
-  email: text("email"), // optional — visitors may not provide
-  message: text("message").notNull(),
-  source: text("source"), // e.g. 'landing_footer', 'final_cta', 'help_page'
-  // Founder triage state
-  status: text("status").notNull().default("new"), // 'new' | 'read' | 'replied' | 'archived'
-  readAt: timestamp("read_at"),
-  repliedAt: timestamp("replied_at"),
-  // Audit
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
-export type InsertFeedbackSubmission = typeof feedbackSubmissions.$inferInsert;
+// (feedback_submissions table is unified above near the in-app widget definition;
+//  duplicate declaration removed 2026-05-11.)
 export type InsertUserSignInLocation = typeof userSignInLocations.$inferInsert;

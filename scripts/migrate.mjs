@@ -2350,20 +2350,39 @@ const STATEMENTS = [
      "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
    )`,
 
-  // feedback_submissions — derived
+  // feedback_submissions — unified table serving both the in-app signed-in
+  // feedback widget (legacy: user_id + user_email) AND the public landing
+  // support/feedback/question form (name + email, no auth). 2026-05-11 made
+  // user_id + user_email nullable to support anonymous public submissions.
   `CREATE TABLE IF NOT EXISTS "feedback_submissions" (
      "id" SERIAL PRIMARY KEY,
-     "user_id" TEXT NOT NULL,
-     "user_email" TEXT NOT NULL,
+     "user_id" TEXT,
+     "user_email" TEXT,
+     "name" TEXT,
+     "email" TEXT,
      "category" TEXT NOT NULL,
      "message" TEXT NOT NULL,
+     "source" TEXT,
      "allow_follow_up" BOOLEAN NOT NULL DEFAULT TRUE,
      "page_url" TEXT,
      "user_agent" TEXT,
+     "ip_address" TEXT,
      "status" TEXT NOT NULL DEFAULT 'new',
+     "read_at" TIMESTAMP,
+     "replied_at" TIMESTAMP,
      "founder_notes" TEXT,
      "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
    )`,
+  // Make legacy user_id + user_email nullable on existing prod tables, and
+  // add the public-form columns that the original schema lacked.
+  `ALTER TABLE "feedback_submissions" ALTER COLUMN "user_id" DROP NOT NULL`,
+  `ALTER TABLE "feedback_submissions" ALTER COLUMN "user_email" DROP NOT NULL`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "name" TEXT`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "email" TEXT`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "source" TEXT`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "ip_address" TEXT`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "read_at" TIMESTAMP`,
+  `ALTER TABLE "feedback_submissions" ADD COLUMN IF NOT EXISTS "replied_at" TIMESTAMP`,
 
   // integration_status — derived
   `CREATE TABLE IF NOT EXISTS "integration_status" (
@@ -3411,24 +3430,9 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "strategic_proposals_status_idx" ON "strategic_proposals" ("status")`,
   `CREATE INDEX IF NOT EXISTS "strategic_proposals_proposed_by_idx" ON "strategic_proposals" ("proposed_by")`,
 
-  // 2026-05-11 — feedback_submissions. Public support/feedback/question form
-  // (replaces dead `thomas@acreos.io` mailto links). Founder triages from
-  // /founder/feedback. Idempotent CREATE TABLE + indexes for filtering by
-  // status and ordering by recency.
-  `CREATE TABLE IF NOT EXISTS "feedback_submissions" (
-     "id" serial PRIMARY KEY,
-     "category" text NOT NULL,
-     "name" text,
-     "email" text,
-     "message" text NOT NULL,
-     "source" text,
-     "status" text NOT NULL DEFAULT 'new',
-     "read_at" timestamp,
-     "replied_at" timestamp,
-     "ip_address" text,
-     "user_agent" text,
-     "created_at" timestamp DEFAULT now() NOT NULL
-   )`,
+  // 2026-05-11 — feedback_submissions indexes (CREATE TABLE was unified
+  // with the earlier in-app-widget definition above; only indexes needed
+  // for the public-form triage flow).
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_status_idx" ON "feedback_submissions" ("status")`,
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_created_at_idx" ON "feedback_submissions" ("created_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_category_idx" ON "feedback_submissions" ("category")`,
