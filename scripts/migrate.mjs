@@ -3093,6 +3093,323 @@ const STATEMENTS = [
   // for SMS campaigns. text[] so we can stash multiple URLs even though
   // the UI gates to one for now.
   'ALTER TABLE "campaigns" ADD COLUMN IF NOT EXISTS "media_urls" text[]',
+
+  // 2026-05-11 — migration-consolidation sweep. The following CREATE TABLE
+  // blocks were previously executed by inline `pool.query()` calls in
+  // server/index.ts at boot on every app/worker process. That created a
+  // race condition (2 app machines + 1 worker firing the same DDL
+  // concurrently against pgBouncer) and meant DDL ran on every restart
+  // rather than per-release. Migrated here so this script is the single
+  // authoritative migration path (Fly release_command). All are idempotent.
+
+  // Cycle 12: organization_invitations + email deliverability tables.
+  `CREATE TABLE IF NOT EXISTS "organization_invitations" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "email" text NOT NULL,
+     "role" text NOT NULL DEFAULT 'member',
+     "token" text UNIQUE,
+     "invite_token_hash" text,
+     "invite_token_last4" text,
+     "invited_by_user_id" text,
+     "status" text NOT NULL DEFAULT 'pending',
+     "created_at" timestamp DEFAULT now() NOT NULL,
+     "expires_at" timestamp NOT NULL,
+     "accepted_at" timestamp,
+     "accepted_by_user_id" text
+   )`,
+  `ALTER TABLE "organization_invitations" ADD COLUMN IF NOT EXISTS "invite_token_hash" text`,
+  `ALTER TABLE "organization_invitations" ADD COLUMN IF NOT EXISTS "invite_token_last4" text`,
+  `ALTER TABLE "organization_invitations" ALTER COLUMN "token" DROP NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS "idx_org_invitations_org_id" ON "organization_invitations" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_org_invitations_email_status" ON "organization_invitations" ("email", "status")`,
+  `CREATE INDEX IF NOT EXISTS "idx_org_invitations_token" ON "organization_invitations" ("token")`,
+  `CREATE INDEX IF NOT EXISTS "idx_org_invitations_token_hash" ON "organization_invitations" ("invite_token_hash")`,
+
+  `CREATE TABLE IF NOT EXISTS "email_events" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "email" text NOT NULL,
+     "event" text NOT NULL,
+     "sg_event_id" text UNIQUE,
+     "sg_message_id" text,
+     "timestamp" timestamptz,
+     "reason" text,
+     "status" text,
+     "response" text,
+     "metadata" jsonb,
+     "created_at" timestamptz DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "idx_email_events_email_created" ON "email_events" ("email", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "idx_email_events_sg_event_id" ON "email_events" ("sg_event_id")`,
+
+  `CREATE TABLE IF NOT EXISTS "email_suppressions" (
+     "email" text PRIMARY KEY,
+     "reason" text NOT NULL,
+     "suppressed_at" timestamptz DEFAULT now() NOT NULL,
+     "source" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "idx_email_suppressions_source" ON "email_suppressions" ("source")`,
+
+  // Renoir §1-§2: subscription_history (mirrors 0042_subscription_history.sql).
+  `CREATE TABLE IF NOT EXISTS "subscription_history" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "event_type" text NOT NULL,
+     "tier" text,
+     "billing_interval" text,
+     "price_cents" integer,
+     "event_at" timestamp DEFAULT now() NOT NULL,
+     "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "idx_subscription_history_org_event_at" ON "subscription_history" ("organization_id", "event_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "idx_subscription_history_event_type" ON "subscription_history" ("event_type")`,
+
+  // Phase A.0: simulated_actions (SIMULATION_MODE side-effect ledger).
+  `CREATE TABLE IF NOT EXISTS "simulated_actions" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "category" text NOT NULL,
+     "action" text NOT NULL,
+     "payload" jsonb,
+     "simulated_id" text NOT NULL UNIQUE,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "idx_sim_actions_org_id" ON "simulated_actions" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_sim_actions_category_created" ON "simulated_actions" ("category", "created_at")`,
+
+  // Founder letters — monthly narrative.
+  `CREATE TABLE IF NOT EXISTS "founder_letters" (
+     "id" serial PRIMARY KEY,
+     "month_key" text NOT NULL UNIQUE,
+     "letter_markdown" text NOT NULL,
+     "summary_json" jsonb NOT NULL,
+     "pending_founder_decision" text,
+     "generated_at" timestamp DEFAULT now() NOT NULL,
+     "delivered_at" timestamp,
+     "status" text NOT NULL DEFAULT 'draft'
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_letters_month_idx" ON "founder_letters" ("month_key")`,
+  `CREATE INDEX IF NOT EXISTS "founder_letters_status_idx" ON "founder_letters" ("status")`,
+
+  // Agent memory notes — weekly per-agent consolidation.
+  `CREATE TABLE IF NOT EXISTS "agent_memory_notes" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "week_key" text NOT NULL,
+     "patterns_learned" text NOT NULL,
+     "wins" jsonb DEFAULT '[]'::jsonb,
+     "losses" jsonb DEFAULT '[]'::jsonb,
+     "self_recommendations" text,
+     "decisions_analyzed" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "agent_memory_notes_agent_idx" ON "agent_memory_notes" ("agent_codename", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "agent_memory_notes_week_idx" ON "agent_memory_notes" ("week_key")`,
+
+  // Provider lookup log — per-lookup telemetry.
+  `CREATE TABLE IF NOT EXISTS "provider_lookup_log" (
+     "id" serial PRIMARY KEY,
+     "provider_name" text NOT NULL,
+     "category" text NOT NULL,
+     "input_type" text NOT NULL,
+     "success" boolean NOT NULL,
+     "cached" boolean NOT NULL DEFAULT false,
+     "latency_ms" integer,
+     "cost_cents" integer DEFAULT 0,
+     "error_code" text,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_provider_idx" ON "provider_lookup_log" ("provider_name", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_category_idx" ON "provider_lookup_log" ("category", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_created_idx" ON "provider_lookup_log" ("created_at")`,
+
+  // Decision experiments — A/B framework at decision-policy layer.
+  `CREATE TABLE IF NOT EXISTS "decision_experiments" (
+     "id" serial PRIMARY KEY,
+     "name" text NOT NULL UNIQUE,
+     "description" text NOT NULL,
+     "category" text NOT NULL,
+     "item_type" text,
+     "variants" jsonb NOT NULL,
+     "success_metric" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'draft',
+     "winning_variant" text,
+     "founder_notes" text,
+     "started_at" timestamp,
+     "ended_at" timestamp,
+     "created_at" timestamp DEFAULT now() NOT NULL,
+     "updated_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "decision_experiments_status_idx" ON "decision_experiments" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "decision_experiments_category_idx" ON "decision_experiments" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "decision_experiments_item_type_idx" ON "decision_experiments" ("item_type")`,
+  `CREATE TABLE IF NOT EXISTS "decision_experiment_assignments" (
+     "id" serial PRIMARY KEY,
+     "experiment_id" integer NOT NULL REFERENCES "decision_experiments"("id") ON DELETE CASCADE,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "variant_key" text NOT NULL,
+     "assigned_at" timestamp DEFAULT now() NOT NULL,
+     "outcome_recorded" boolean NOT NULL DEFAULT false,
+     "outcome_value" integer,
+     "outcome_at" timestamp
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "dea_experiment_org_unique" ON "decision_experiment_assignments" ("experiment_id", "organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "dea_experiment_idx" ON "decision_experiment_assignments" ("experiment_id")`,
+  `CREATE INDEX IF NOT EXISTS "dea_variant_idx" ON "decision_experiment_assignments" ("variant_key")`,
+
+  // Expansion candidates — weekly computed upsell-ready list.
+  `CREATE TABLE IF NOT EXISTS "expansion_candidates" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "week_key" text NOT NULL,
+     "current_tier" text NOT NULL,
+     "proposed_tier" text NOT NULL,
+     "score" integer NOT NULL,
+     "signals" jsonb NOT NULL,
+     "reasoning" text NOT NULL,
+     "estimated_mrr_lift_cents" integer,
+     "status" text NOT NULL DEFAULT 'proposed',
+     "founder_notes" text,
+     "resolved_at" timestamp,
+     "resolved_by" text,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "expansion_candidates_week_idx" ON "expansion_candidates" ("week_key")`,
+  `CREATE INDEX IF NOT EXISTS "expansion_candidates_status_idx" ON "expansion_candidates" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "expansion_candidates_org_idx" ON "expansion_candidates" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "expansion_candidates_score_idx" ON "expansion_candidates" ("score")`,
+
+  // Onboarding journeys + steps — Sophie's 30-day scripted activation sequence.
+  `CREATE TABLE IF NOT EXISTS "onboarding_journeys" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL UNIQUE REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "started_at" timestamp DEFAULT now() NOT NULL,
+     "current_step_key" text NOT NULL DEFAULT 'day0_welcome',
+     "activation_status" text NOT NULL DEFAULT 'pending',
+     "activation_determined_at" timestamp,
+     "first_deal_at" timestamp,
+     "first_lead_added_at" timestamp,
+     "founder_flag" text,
+     "notes" jsonb DEFAULT '{}'::jsonb,
+     "created_at" timestamp DEFAULT now() NOT NULL,
+     "updated_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_journeys_status_idx" ON "onboarding_journeys" ("activation_status")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_journeys_started_at_idx" ON "onboarding_journeys" ("started_at")`,
+  `CREATE TABLE IF NOT EXISTS "onboarding_steps" (
+     "id" serial PRIMARY KEY,
+     "journey_id" integer NOT NULL REFERENCES "onboarding_journeys"("id") ON DELETE CASCADE,
+     "step_key" text NOT NULL,
+     "scheduled_at" timestamp NOT NULL,
+     "fired_at" timestamp,
+     "status" text NOT NULL DEFAULT 'scheduled',
+     "outcome" jsonb DEFAULT '{}'::jsonb,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_steps_journey_idx" ON "onboarding_steps" ("journey_id")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_steps_scheduled_at_idx" ON "onboarding_steps" ("scheduled_at")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_steps_status_idx" ON "onboarding_steps" ("status")`,
+
+  // Customer letters — per-org monthly narrative (Sophie's voice).
+  `CREATE TABLE IF NOT EXISTS "customer_letters" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "month_key" text NOT NULL,
+     "letter_markdown" text NOT NULL,
+     "summary_json" jsonb NOT NULL,
+     "recommended_action" text,
+     "generated_at" timestamp DEFAULT now() NOT NULL,
+     "delivered_at" timestamp,
+     "opened_at" timestamp,
+     "status" text NOT NULL DEFAULT 'draft'
+   )`,
+  `CREATE INDEX IF NOT EXISTS "customer_letters_org_month_idx" ON "customer_letters" ("organization_id", "month_key")`,
+  `CREATE INDEX IF NOT EXISTS "customer_letters_status_idx" ON "customer_letters" ("status")`,
+
+  // Tool proposals — agent-requested integrations / capabilities (founder-gated).
+  `CREATE TABLE IF NOT EXISTS "tool_proposals" (
+     "id" serial PRIMARY KEY,
+     "proposed_by" text NOT NULL,
+     "title" text NOT NULL,
+     "description" text NOT NULL,
+     "category" text NOT NULL,
+     "capability_gap" text NOT NULL,
+     "expected_benefit" text NOT NULL,
+     "estimated_complexity" text NOT NULL DEFAULT 'medium',
+     "estimated_impact_cents" integer,
+     "supporting_evidence" jsonb,
+     "status" text NOT NULL DEFAULT 'proposed',
+     "founder_notes" text,
+     "resolved_at" timestamp,
+     "resolved_by" text,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "tool_proposals_status_idx" ON "tool_proposals" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "tool_proposals_category_idx" ON "tool_proposals" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "tool_proposals_proposed_by_idx" ON "tool_proposals" ("proposed_by")`,
+
+  // Action previews — audit trail of auto-approved actions w/ cancel window.
+  `CREATE TABLE IF NOT EXISTS "action_previews" (
+     "id" serial PRIMARY KEY,
+     "decision_id" integer,
+     "agent_codename" text NOT NULL,
+     "item_type" text NOT NULL,
+     "action_summary" text NOT NULL,
+     "action_reasoning" text,
+     "action_payload" jsonb,
+     "estimated_impact_cents" integer,
+     "confidence" integer,
+     "planned_at" timestamp DEFAULT now() NOT NULL,
+     "commit_at" timestamp NOT NULL,
+     "committed_at" timestamp,
+     "cancelled_at" timestamp,
+     "cancelled_by" text,
+     "cancel_reason" text,
+     "status" text NOT NULL DEFAULT 'pending',
+     "execution_result" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "action_previews_status_idx" ON "action_previews" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "action_previews_commit_at_idx" ON "action_previews" ("commit_at")`,
+  `CREATE INDEX IF NOT EXISTS "action_previews_decision_idx" ON "action_previews" ("decision_id")`,
+  `CREATE INDEX IF NOT EXISTS "action_previews_agent_idx" ON "action_previews" ("agent_codename")`,
+
+  // Founder settings — key-value operational knobs.
+  `CREATE TABLE IF NOT EXISTS "founder_settings" (
+     "id" serial PRIMARY KEY,
+     "key" text NOT NULL UNIQUE,
+     "value" text NOT NULL,
+     "value_type" text NOT NULL DEFAULT 'string',
+     "description" text,
+     "category" text NOT NULL DEFAULT 'general',
+     "updated_at" timestamp DEFAULT now() NOT NULL,
+     "updated_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_settings_key_idx" ON "founder_settings" ("key")`,
+  `CREATE INDEX IF NOT EXISTS "founder_settings_category_idx" ON "founder_settings" ("category")`,
+
+  // Strategic proposals — weekly per-agent + monthly synthesis.
+  `CREATE TABLE IF NOT EXISTS "strategic_proposals" (
+     "id" serial PRIMARY KEY,
+     "proposed_by" text NOT NULL,
+     "week_key" text NOT NULL,
+     "month_key" text,
+     "title" text NOT NULL,
+     "rationale" text NOT NULL,
+     "estimated_impact_cents" integer,
+     "confidence" integer NOT NULL DEFAULT 50,
+     "category" text NOT NULL,
+     "supporting_data_keys" jsonb DEFAULT '[]'::jsonb,
+     "status" text NOT NULL DEFAULT 'proposed',
+     "founder_feedback" text,
+     "resolved_at" timestamp,
+     "resolved_by" text,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "strategic_proposals_week_idx" ON "strategic_proposals" ("week_key")`,
+  `CREATE INDEX IF NOT EXISTS "strategic_proposals_month_idx" ON "strategic_proposals" ("month_key")`,
+  `CREATE INDEX IF NOT EXISTS "strategic_proposals_status_idx" ON "strategic_proposals" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "strategic_proposals_proposed_by_idx" ON "strategic_proposals" ("proposed_by")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
