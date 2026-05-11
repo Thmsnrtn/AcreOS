@@ -152,16 +152,17 @@ Respond in JSON:
       recommendation: string;
     }>;
   }> {
+    const safeDays = Math.max(1, Math.min(3650, Number(days) || 90));
     const replayed = await db.select().from(ceoDecisionReplays)
       .where(
         and(
-          gte(ceoDecisionReplays.originalDate, sql`NOW() - INTERVAL '${days} days'`),
+          gte(ceoDecisionReplays.originalDate, sql.raw(`NOW() - INTERVAL '${safeDays} days'`)),
           sql`${ceoDecisionReplays.qualityScore} IS NOT NULL`,
         )
       );
 
     const total = await db.select({ count: count() }).from(ceoDecisionReplays)
-      .where(gte(ceoDecisionReplays.originalDate, sql`NOW() - INTERVAL '${days} days'`));
+      .where(gte(ceoDecisionReplays.originalDate, sql.raw(`NOW() - INTERVAL '${safeDays} days'`)));
 
     if (replayed.length === 0) {
       return {
@@ -257,10 +258,11 @@ Respond in JSON:
    * Get decision quality trend over time.
    */
   async getQualityTrend(days = 90): Promise<Array<{ week: string; avgQuality: number; count: number }>> {
+    const safeDays = Math.max(1, Math.min(3650, Number(days) || 90));
     const decisions = await db.select().from(ceoDecisionReplays)
       .where(
         and(
-          gte(ceoDecisionReplays.originalDate, sql`NOW() - INTERVAL '${days} days'`),
+          gte(ceoDecisionReplays.originalDate, sql.raw(`NOW() - INTERVAL '${safeDays} days'`)),
           sql`${ceoDecisionReplays.qualityScore} IS NOT NULL`,
         )
       )

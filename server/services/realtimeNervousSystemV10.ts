@@ -251,11 +251,12 @@ class RealtimeNervousSystemService {
   }
 
   async getEventStats(hours = 24): Promise<Record<string, number>> {
+    const safeHours = Math.max(1, Math.min(720, Number(hours) || 24));
     const events = await db.select({
       eventType: realtimeEventLog.eventType,
       count: count(),
     }).from(realtimeEventLog)
-      .where(gte(realtimeEventLog.createdAt, sql`NOW() - INTERVAL '${hours} hours'`))
+      .where(gte(realtimeEventLog.createdAt, sql.raw(`NOW() - INTERVAL '${safeHours} hours'`)))
       .groupBy(realtimeEventLog.eventType);
 
     const stats: Record<string, number> = {};

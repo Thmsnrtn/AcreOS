@@ -40,20 +40,8 @@ export function registerFounderV11Routes(app: Express) {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get("/api/founder/v11/negotiations/:id", async (req, res) => {
-    try {
-      const neg = await agentNegotiationService.getById(parseInt(req.params.id));
-      res.json(neg || null);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/api/founder/v11/negotiations", async (req, res) => {
-    try {
-      const limit = parseInt(String(req.query.limit || "20"));
-      res.json(await agentNegotiationService.getRecent(limit));
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
+  // NOTE: specific paths must come BEFORE the parameterized /:id route
+  // or Express will match /active, /escalated, /stats against :id.
   app.get("/api/founder/v11/negotiations/active", async (_req, res) => {
     try { res.json(await agentNegotiationService.getActive()); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -64,16 +52,34 @@ export function registerFounderV11Routes(app: Express) {
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  app.get("/api/founder/v11/negotiations/stats", async (_req, res) => {
+    try { res.json(await agentNegotiationService.getStats()); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/founder/v11/negotiations", async (req, res) => {
+    try {
+      const limit = parseInt(String(req.query.limit || "20"));
+      res.json(await agentNegotiationService.getRecent(limit));
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/founder/v11/negotiations/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ error: "Invalid negotiation id" });
+      }
+      const neg = await agentNegotiationService.getById(id);
+      res.json(neg || null);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   app.post("/api/founder/v11/negotiations/:id/override", async (req, res) => {
     try {
       await agentNegotiationService.ceoOverride(parseInt(req.params.id), req.body.override);
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/api/founder/v11/negotiations/stats", async (_req, res) => {
-    try { res.json(await agentNegotiationService.getStats()); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ─── 2. Revenue Attribution Graph ──────────────────────────────────────

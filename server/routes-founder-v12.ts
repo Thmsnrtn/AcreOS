@@ -318,6 +318,18 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   // ─── 8. Tenant Context Fabric ─────────────────────────────────────────
+  // NOTE: specific paths must come BEFORE parameterized /:orgId routes
+  // or Express will match /stats against :orgId.
+
+  app.get("/api/founder/v12/tenants/stats", async (_req, res) => {
+    try { res.json(await tenantFabricService.getStats()); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/founder/v12/tenants", async (_req, res) => {
+    try { res.json(await tenantFabricService.getAllTenants()); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
 
   app.post("/api/founder/v12/tenants/:orgId/initialize", async (req, res) => {
     try { res.json(await tenantFabricService.initializeTenant(parseInt(req.params.orgId))); }
@@ -344,15 +356,5 @@ export function registerFounderV12Routes(app: Express) {
       const trust = await tenantFabricService.adjustTenantTrust(parseInt(req.params.orgId), req.params.codename, req.body.delta);
       res.json({ trust });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/api/founder/v12/tenants", async (_req, res) => {
-    try { res.json(await tenantFabricService.getAllTenants()); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/api/founder/v12/tenants/stats", async (_req, res) => {
-    try { res.json(await tenantFabricService.getStats()); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 }

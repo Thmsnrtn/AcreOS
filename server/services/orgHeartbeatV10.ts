@@ -251,8 +251,9 @@ Respond with just a number 0-100.`;
    * Get health trend — last N snapshots' grades.
    */
   async getHealthTrend(days = 7): Promise<Array<{ date: string; grade: string; score: number }>> {
+    const safeDays = Math.max(1, Math.min(365, Number(days) || 7));
     const snapshots = await db.select().from(orgHeartbeatSnapshots)
-      .where(gte(orgHeartbeatSnapshots.createdAt, sql`NOW() - INTERVAL '${days} days'`))
+      .where(gte(orgHeartbeatSnapshots.createdAt, sql.raw(`NOW() - INTERVAL '${safeDays} days'`)))
       .orderBy(orgHeartbeatSnapshots.createdAt);
 
     const gradeToScore: Record<string, number> = { A: 95, B: 80, C: 65, D: 45, F: 20 };
