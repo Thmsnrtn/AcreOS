@@ -364,6 +364,7 @@ export default function TodayPage() {
         actionLabel: s.actionLabel,
         actionUrl: s.actionUrl,
         rank: 400 + (1 - s.confidence) * 10,
+        confidence: s.confidence,
       });
     });
 

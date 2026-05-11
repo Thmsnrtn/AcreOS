@@ -62,6 +62,11 @@ export interface DecisionItem {
   actionLabel: string;
   actionUrl: string;
   rank: number; // for sort; lower = higher priority
+  // Optional Pax model-confidence (0..1). Only set for Pax-sourced rows;
+  // rendered as a 4th chip on the row when present so the founder can
+  // see how strongly Pax stands behind the suggestion (restored after
+  // d21c5fc8 collapsed the per-section view into the unified queue).
+  confidence?: number | null;
 }
 
 interface DecisionQueueProps {
@@ -133,6 +138,16 @@ export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
                             <SourceIcon className="w-3 h-3" aria-hidden={true} />
                             {sourcePillLabel[item.source]}
                           </Badge>
+                          {item.source === "pax-suggests" &&
+                            typeof item.confidence === "number" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs border-transparent bg-acr-pos-soft text-acr-pos tabular-nums"
+                                aria-label={`Pax confidence: ${Math.round(item.confidence * 100)} percent`}
+                              >
+                                {Math.round(item.confidence * 100)}% confidence
+                              </Badge>
+                            )}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
                       </div>
