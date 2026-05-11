@@ -5,7 +5,6 @@ import { logger } from "../utils/logger";
 
 export enum SmsProvider {
   TWILIO = "twilio",
-  TELNYX = "telnyx",
 }
 
 export interface SmsOptions {
@@ -32,7 +31,6 @@ interface ProviderCredentials {
 }
 
 const TWILIO_COST_PER_SMS = 0.0079;
-const TELNYX_COST_PER_SMS = 0.004;
 
 async function getOrgSmsCredentials(organizationId: number): Promise<ProviderCredentials | null> {
   const [twilioIntegration] = await db
@@ -59,41 +57,10 @@ async function getOrgSmsCredentials(organizationId: number): Promise<ProviderCre
     }
   }
 
-  const [telnyxIntegration] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "telnyx"),
-        eq(organizationIntegrations.isEnabled, true)
-      )
-    )
-    .limit(1);
-
-  if (telnyxIntegration?.credentials) {
-    const creds = telnyxIntegration.credentials;
-    if (creds.apiKey && creds.fromPhoneNumber) {
-      return {
-        provider: SmsProvider.TELNYX,
-        apiKey: creds.apiKey,
-        phoneNumber: creds.fromPhoneNumber,
-      };
-    }
-  }
-
   return null;
 }
 
 function getDefaultCredentials(): ProviderCredentials | null {
-  if (process.env.TELNYX_API_KEY && process.env.TELNYX_PHONE_NUMBER) {
-    return {
-      provider: SmsProvider.TELNYX,
-      apiKey: process.env.TELNYX_API_KEY,
-      phoneNumber: process.env.TELNYX_PHONE_NUMBER,
-    };
-  }
-
   if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
     return {
       provider: SmsProvider.TWILIO,
@@ -131,9 +98,9 @@ async function sendViaTwilio(
 
     if (response.ok) {
       const data = await response.json();
-      return { 
-        success: true, 
-        messageId: data.sid, 
+      return {
+        success: true,
+        messageId: data.sid,
         provider: SmsProvider.TWILIO,
         cost: TWILIO_COST_PER_SMS,
       };
@@ -143,41 +110,6 @@ async function sendViaTwilio(
     }
   } catch (error: any) {
     return { success: false, error: error.message, provider: SmsProvider.TWILIO };
-  }
-}
-
-async function sendViaTelnyx(
-  credentials: ProviderCredentials,
-  options: SmsOptions
-): Promise<SmsResult> {
-  try {
-    const response = await fetch('https://api.telnyx.com/v2/messages', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${credentials.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: options.from || credentials.phoneNumber,
-        to: options.to,
-        text: options.message,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return { 
-        success: true, 
-        messageId: data.data?.id, 
-        provider: SmsProvider.TELNYX,
-        cost: TELNYX_COST_PER_SMS,
-      };
-    } else {
-      const error = await response.text();
-      return { success: false, error, provider: SmsProvider.TELNYX };
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message, provider: SmsProvider.TELNYX };
   }
 }
 
@@ -218,20 +150,15 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
 
   if (!credentials) {
     logger.info(`[SMS] No provider configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
-    return { 
-      success: true, 
-      messageId: `mock-${Date.now()}`, 
+    return {
+      success: true,
+      messageId: `mock-${Date.now()}`,
       provider: SmsProvider.TWILIO,
     };
   }
 
   logger.info(`[SMS] Sending via ${credentials.provider} to ${options.to}`);
-
-  if (credentials.provider === SmsProvider.TELNYX) {
-    return sendViaTelnyx(credentials, options);
-  } else {
-    return sendViaTwilio(credentials, options);
-  }
+  return sendViaTwilio(credentials, options);
 }
 
 export async function sendBulkSms(
@@ -255,14 +182,9 @@ export function getProviderInfo(): {
   const available: SmsProvider[] = [];
   let defaultProvider: SmsProvider | null = null;
 
-  if (process.env.TELNYX_API_KEY) {
-    available.push(SmsProvider.TELNYX);
-    defaultProvider = SmsProvider.TELNYX;
-  }
-
   if (process.env.TWILIO_ACCOUNT_SID) {
     available.push(SmsProvider.TWILIO);
-    if (!defaultProvider) defaultProvider = SmsProvider.TWILIO;
+    defaultProvider = SmsProvider.TWILIO;
   }
 
   return {
@@ -270,7 +192,6 @@ export function getProviderInfo(): {
     default: defaultProvider,
     costs: {
       [SmsProvider.TWILIO]: TWILIO_COST_PER_SMS,
-      [SmsProvider.TELNYX]: TELNYX_COST_PER_SMS,
     },
   };
 }

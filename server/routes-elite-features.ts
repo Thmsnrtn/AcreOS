@@ -21,7 +21,6 @@ import { addMonths } from "./utils/dateUtils";
 
 // Services
 import * as propertyTaxService from "./services/propertyTaxService";
-import * as eSigningService from "./services/eSigningService";
 import { runAutoDueDiligence } from "./services/dueDiligenceEngine";
 import * as metaAdsService from "./services/metaAdsService";
 import * as actumProcessing from "./services/actumProcessing";
@@ -215,124 +214,13 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
-  // E-SIGNING (Dropbox Sign — legacy, opt-in via DROPBOX_SIGN_API_KEY)
+  // E-SIGNING — native flow only.
   //
-  // The canonical native flow lives on /api/generated-documents/:id/
-  // request-signature + /api/public/sign/:docId — no subscription
-  // required. These endpoints stay in place for orgs that explicitly
-  // opt into Dropbox Sign by setting the env key. Each one catches the
-  // "not configured" error and steers callers to the native flow
-  // instead of a cryptic 500.
+  // The Dropbox Sign integration was removed; AcreOS ships its own
+  // signing stack. Use the native endpoints:
+  //   POST /api/generated-documents/:id/request-signature
+  //   POST /api/public/sign/:docId
   // ============================================
-
-  function esignNotConfigured(res: Response, err: any) {
-    return res.status(503).json({
-      message: "Dropbox Sign is not configured on this deployment. Use the native signing flow: POST /api/generated-documents/:id/request-signature",
-      detail: err?.message,
-    });
-  }
-
-  app.post("/api/documents/:id/send-for-signature", ...auth, async (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const documentId = parseInt(req.params.id);
-      const { title, subject, message, signers, testMode, expiresAt } = req.body;
-
-      if (!signers?.length) return res.status(400).json({ message: "At least one signer required" });
-
-      const result = await eSigningService.sendDocumentForSignature({
-        documentId, organizationId: org.id, title, subject, message,
-        signers, testMode: testMode ?? (process.env.NODE_ENV !== "production"),
-        expiresAt: expiresAt ? new Date(expiresAt) : undefined,
-      });
-
-      res.json(result);
-    } catch (err: any) {
-      // Pre-dispatch state-disclosure gate threw — surface as HTTP 422
-      // with the structured payload so the client UI can prompt the
-      // operator to embed the required disclosure block.
-      if (err instanceof eSigningService.DisclosureMissingError) {
-        return res.status(422).json({
-          error: "VALIDATION_FAILED",
-          message: "Required state disclosure missing",
-          details: err.payload,
-          statusCode: 422,
-        });
-      }
-      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.get("/api/esign/status/:signatureRequestId", ...auth, async (req: Request, res: Response) => {
-    try {
-      const status = await eSigningService.getSignatureRequestStatus(req.params.signatureRequestId);
-      res.json(status);
-    } catch (err: any) {
-      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post("/api/esign/remind/:signatureRequestId", ...auth, async (req: Request, res: Response) => {
-    try {
-      const { signerEmail } = req.body;
-      await eSigningService.resendSignatureReminder(req.params.signatureRequestId, signerEmail);
-      res.json({ success: true });
-    } catch (err: any) {
-      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post("/api/esign/cancel/:signatureRequestId", ...auth, async (req: Request, res: Response) => {
-    try {
-      await eSigningService.cancelSignatureRequest(req.params.signatureRequestId);
-      res.json({ success: true });
-    } catch (err: any) {
-      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // Webhook from Dropbox Sign — verify HMAC signature (DEFECT-0008).
-  // P0-10 (master findings): fail-closed on missing webhook key, atomic
-  // event claim, state-machine guard, signed-PDF pin on completion all
-  // implemented inside processDropboxSignWebhook().
-  app.post("/api/webhooks/dropbox-sign", async (req: Request, res: Response) => {
-    try {
-      const signature = req.headers["x-dropbox-sign-signature"] as string;
-      const webhookKey = process.env.DROPBOX_SIGN_WEBHOOK_KEY;
-      // Fail-closed: production MUST have a webhook key. Without one we
-      // can't authenticate the request and must reject — anything else
-      // lets a forged event mutate signed-document status.
-      if (!webhookKey) {
-        if (process.env.NODE_ENV === "production") {
-          logger.error("[dropbox-sign] DROPBOX_SIGN_WEBHOOK_KEY not configured in production — rejecting");
-          return res.status(503).json({ message: "Webhook handler not configured" });
-        }
-        logger.warn("[dropbox-sign] DROPBOX_SIGN_WEBHOOK_KEY not configured (non-prod) — accepting unsigned for development");
-      } else {
-        if (!signature) {
-          logger.warn("[dropbox-sign] Webhook received without signature header — rejecting");
-          return res.status(401).json({ message: "Missing signature" });
-        }
-        const crypto = await import("crypto");
-        const expected = crypto.createHmac("sha256", webhookKey)
-          .update(JSON.stringify(req.body))
-          .digest("hex");
-        if (signature !== expected) {
-          logger.warn("[dropbox-sign] Webhook signature mismatch — rejecting");
-          return res.status(401).json({ message: "Invalid signature" });
-        }
-      }
-      await eSigningService.processDropboxSignWebhook(req.body);
-      res.json({ success: true });
-    } catch (err: any) {
-      logger.error("Dropbox Sign webhook error", err);
-      res.status(500).json({ message: err.message });
-    }
-  });
 
   // ============================================
   // AUTOMATED DUE DILIGENCE ENGINE
@@ -482,26 +370,6 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/actum/ach-return-codes", ...auth, (req: Request, res: Response) => {
     res.json(actumProcessing.ACH_RETURN_CODES);
-  });
-
-  // Actum webhook — verify shared secret (DEFECT-0008)
-  app.post("/api/webhooks/actum", async (req: Request, res: Response) => {
-    try {
-      // Verify Actum webhook authenticity via shared secret header
-      const actumSecret = process.env.ACTUM_WEBHOOK_SECRET;
-      if (actumSecret) {
-        const providedSecret = req.headers["x-actum-secret"] || req.headers["authorization"];
-        if (!providedSecret || providedSecret !== `Bearer ${actumSecret}`) {
-          logger.warn("[actum] Webhook received without valid authentication — rejecting");
-          return res.status(401).json({ message: "Unauthorized" });
-        }
-      }
-      await actumProcessing.processActumWebhook(req.body);
-      res.json({ success: true });
-    } catch (err: any) {
-      logger.error("Actum webhook error", err);
-      res.status(500).json({ message: err.message });
-    }
   });
 
   // ============================================

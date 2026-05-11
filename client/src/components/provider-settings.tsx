@@ -119,21 +119,14 @@ export function ProviderSettings() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <StatusBadge
-              active={providers.sms.available.includes("telnyx")}
-              label="Telnyx (Economy)"
-            />
-            <StatusBadge
               active={providers.sms.available.includes("twilio")}
-              label="Twilio (Premium)"
+              label="Twilio"
             />
           </div>
 
           {providers.sms.available.length > 0 && (
             <div className="rounded-lg border p-3 bg-muted/30">
               <div className="text-sm font-medium mb-2">Cost per SMS</div>
-              {providers.sms.costs.telnyx !== undefined && (
-                <CostDisplay label="Telnyx" cost={providers.sms.costs.telnyx} unit="SMS" />
-              )}
               {providers.sms.costs.twilio !== undefined && (
                 <CostDisplay label="Twilio" cost={providers.sms.costs.twilio} unit="SMS" />
               )}
@@ -145,14 +138,13 @@ export function ProviderSettings() {
               <DollarSign className="h-4 w-4 text-acr-pos" aria-hidden="true" />
               <span>
                 Default provider: <strong>{providers.sms.default}</strong>
-                {providers.sms.default === "telnyx" && " (50% cheaper)"}
               </span>
             </div>
           )}
 
           {providers.sms.available.length === 0 && (
             <div className="text-sm text-muted-foreground">
-              No SMS provider configured. Add Telnyx or Twilio API keys in integrations.
+              No SMS provider configured. Add Twilio API keys in integrations.
             </div>
           )}
         </CardContent>
@@ -171,24 +163,14 @@ export function ProviderSettings() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <StatusBadge
-              active={providers.mail.available.includes("pcm")}
-              label="PCM (No monthly fee)"
-            />
-            <StatusBadge
               active={providers.mail.available.includes("lob")}
-              label="Lob (Premium)"
+              label="Lob"
             />
           </div>
 
           {providers.mail.available.length > 0 && (
             <div className="rounded-lg border p-3 bg-muted/30">
               <div className="text-sm font-medium mb-2">Cost per piece</div>
-              {providers.mail.costs.pcm && (
-                <>
-                  <CostDisplay label="PCM letter" cost={providers.mail.costs.pcm.letter} />
-                  <CostDisplay label="PCM postcard" cost={providers.mail.costs.pcm.postcard} />
-                </>
-              )}
               {providers.mail.costs.lob && (
                 <>
                   <CostDisplay label="Lob letter" cost={providers.mail.costs.lob.letter} />
@@ -203,14 +185,13 @@ export function ProviderSettings() {
               <DollarSign className="h-4 w-4 text-acr-pos" aria-hidden="true" />
               <span>
                 Default provider: <strong>{providers.mail.default}</strong>
-                {providers.mail.default === "pcm" && " (No monthly subscription)"}
               </span>
             </div>
           )}
 
           {providers.mail.available.length === 0 && (
             <div className="text-sm text-muted-foreground">
-              No mail provider configured. Add PCM or Lob API keys in integrations.
+              No mail provider configured. Add Lob API keys in integrations.
             </div>
           )}
         </CardContent>

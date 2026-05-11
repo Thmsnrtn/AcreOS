@@ -1081,10 +1081,9 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       // -----------------------------------------------------------------
-      // Pre-dispatch state disclosure gate. Mirrors the gate inside
-      // eSigningService.sendDocumentForSignature so the native path is
-      // protected too. Returns HTTP 422 with a `DISCLOSURE_MISSING`
-      // payload the client UI uses to prompt the operator.
+      // Pre-dispatch state disclosure gate. Returns HTTP 422 with a
+      // `DISCLOSURE_MISSING` payload the client UI uses to prompt the
+      // operator.
       // -----------------------------------------------------------------
       {
         const variables = ((document.variables as Record<string, unknown>) || {});

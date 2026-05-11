@@ -105,15 +105,6 @@ const SUB_PROCESSORS: SubProcessor[] = [
     optional: true,
   },
   {
-    vendor: "Dropbox Sign",
-    purpose: "External-signer e-signature (when operator enables)",
-    dataCategories: ["signer name + email", "signed document content"],
-    region: "US",
-    dpaUrl: "https://www.dropbox.com/business/trust/compliance/dropbox-sign-dpa",
-    effectiveDate: "2025-11-01",
-    optional: true,
-  },
-  {
     vendor: "Sentry",
     purpose: "Error monitoring, exception tracing",
     dataCategories: ["stack traces", "redacted request context"],

@@ -13,7 +13,7 @@
  *   1. Pull top 200 counties by land transaction volume (rotating priority list)
  *   2. Fetch tax delinquent lists via county API / Puppeteer scrape fallback
  *   3. Fetch recent ownership transfers from county recorder
- *   4. Pull ATTOM Data / PropStream comparable sales (if API keys configured)
+ *   4. Pull ATTOM Data comparable sales (if API key configured)
  *   5. Enrich each parcel: out-of-state check, ownership tenure, assessed spread
  *   6. Compute preliminary SellerMotivationScore (0–100)
  *   7. Upsert into countyAssessorRecords table + flag high-motivation owners
@@ -209,55 +209,6 @@ async function fetchAttomComparables(
   }
 }
 
-// PropStream fallback
-async function fetchPropStreamComparables(
-  state: string,
-  county: string
-): Promise<AttomComparable[]> {
-  const apiKey = process.env.PROPSTREAM_API_KEY;
-  if (!apiKey) return [];
-
-  try {
-    const resp = await fetch(
-      `https://api.propstream.com/v1/properties/search`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          state,
-          county,
-          propertyType: ["VACANT_LAND"],
-          soldInLast: 730, // 24 months
-          minSalePrice: 500,
-          maxSalePrice: 5000000,
-          pageSize: 100,
-        }),
-      }
-    );
-
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    return (data?.properties || []).map((p: any) => ({
-      apn: p.apn || "",
-      county,
-      state,
-      saleDate: p.lastSaleDate || "",
-      salePrice: parseFloat(p.lastSalePrice || "0"),
-      acreage: parseFloat(p.lotSizeAcres || "0"),
-      pricePerAcre: parseFloat(p.lotSizeAcres || "0") > 0
-        ? parseFloat(p.lastSalePrice || "0") / parseFloat(p.lotSizeAcres || "0")
-        : 0,
-      propertyType: "LAND",
-      address: p.address || "",
-    }));
-  } catch {
-    return [];
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Tax delinquent list fetching
 // Core expert principle: Tax delinquent = financially distressed owner =
@@ -292,24 +243,6 @@ async function fetchTaxDelinquentList(
   county: string,
   fips: string
 ): Promise<TaxDelinquentRecord[]> {
-  // First try county-specific API if configured
-  const customEndpoint = process.env[`TAX_DELINQUENT_API_${fips}`];
-  if (customEndpoint) {
-    try {
-      const resp = await fetch(customEndpoint, {
-        headers: {
-          Authorization: `Bearer ${process.env.COUNTY_API_KEY || ""}`,
-        },
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        return parseCountyApiResponse(data, county, state);
-      }
-    } catch {
-      // Fall through to Puppeteer scrape
-    }
-  }
-
   // For counties without direct API: queue a browser scrape task
   // The actual scrape happens in browserAutomation service
   logger.info(`[CountyAssessor] ${county}, ${state} (FIPS: ${fips}) — queued for browser scrape`);
@@ -317,34 +250,6 @@ async function fetchTaxDelinquentList(
   // Return synthetic test data structure that browser scrape would return
   // Real implementation: integrate with existing browserAutomation.ts service
   return [];
-}
-
-function parseCountyApiResponse(
-  data: any,
-  county: string,
-  state: string
-): TaxDelinquentRecord[] {
-  if (!Array.isArray(data)) return [];
-  return data.map((item: any) => ({
-    apn: item.parcel_id || item.apn || "",
-    ownerName: item.owner_name || "",
-    ownerAddress: item.mailing_address || "",
-    ownerCity: item.mailing_city || "",
-    ownerState: item.mailing_state || "",
-    ownerZip: item.mailing_zip || "",
-    propertyAddress: item.property_address || "",
-    assessedValue: parseFloat(item.assessed_value || "0"),
-    taxesDue: parseFloat(item.taxes_due || item.delinquent_amount || "0"),
-    taxesDelinquentYears: parseInt(item.years_delinquent || "1"),
-    acreage: parseFloat(item.acreage || item.lot_size || "0"),
-    legalDescription: item.legal_description || "",
-    county,
-    state,
-    isOutOfState: (item.mailing_state || "").toUpperCase() !== state.toUpperCase(),
-    ownershipYears: item.ownership_years || undefined,
-    lastSaleDate: item.last_sale_date || undefined,
-    lastSalePrice: parseFloat(item.last_sale_price || "0") || undefined,
-  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -618,13 +523,10 @@ async function processCounty(
   // 1. Fetch tax delinquent list
   const delinquentRecords = await fetchTaxDelinquentList(state, county, fips);
 
-  // 2. Fetch comparable sales from ATTOM (try ATTOM first, PropStream fallback)
+  // 2. Fetch comparable sales from ATTOM
   const acreMin = countyConfig.avgAcreage * 0.1;
   const acreMax = countyConfig.avgAcreage * 10;
-  let comps = await fetchAttomComparables(state, county, acreMin, acreMax);
-  if (comps.length === 0) {
-    comps = await fetchPropStreamComparables(state, county);
-  }
+  const comps = await fetchAttomComparables(state, county, acreMin, acreMax);
 
   // 3. Update county market stats
   const marketStats = await updateCountyMarketStats(state, county, comps);

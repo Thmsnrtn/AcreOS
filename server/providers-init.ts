@@ -6,7 +6,6 @@ import { providerRegistry } from "./services/providers/provider-registry";
 import { openDataProvider } from "./services/providers/open-data-provider";
 import { regridProvider } from "./services/providers/regrid-provider";
 import { attomProvider } from "./services/providers/attom-provider";
-import { batchdataProvider } from "./services/providers/batchdata-provider";
 import type { DataCategory } from "./services/providers/types";
 import { logger } from "./utils/logger";
 
@@ -26,11 +25,6 @@ export function initializeProviders(): void {
   // ATTOM — pro tier
   for (const category of attomProvider.categories) {
     providerRegistry.register(category, attomProvider, 50);
-  }
-
-  // BatchData — starter/pro tier
-  for (const category of batchdataProvider.categories) {
-    providerRegistry.register(category, batchdataProvider, 40);
   }
 
   logger.info("Data providers initialized", { source: "providers-init" });

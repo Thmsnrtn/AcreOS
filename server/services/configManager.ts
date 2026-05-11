@@ -194,7 +194,6 @@ export const CREDENTIAL_DEFINITIONS: Array<{
   { key: "MCP_API_KEY", service: "mcp", label: "MCP API Key", isSecret: true, isRequired: false, hint: "Auto-generate below" },
   // Data Providers
   { key: "ATTOM_API_KEY", service: "attom", label: "ATTOM Data API Key", isSecret: true, isRequired: false, hint: "apikey from attomdata.com", docUrl: "https://api.gateway.attomdata.com/docs" },
-  { key: "BATCHDATA_API_KEY", service: "batchdata", label: "BatchData API Key", isSecret: true, isRequired: false, hint: "Bearer token from batchdata.com", docUrl: "https://developer.batchdata.com" },
   { key: "REGRID_API_KEY", service: "regrid", label: "Regrid API Key", isSecret: true, isRequired: false, hint: "API key from regrid.com", docUrl: "https://regrid.com/api" },
 ];
 
@@ -216,6 +215,5 @@ export const SERVICE_GROUPS: Array<{
   { service: "openai", label: "OpenAI (fallback)", description: "Direct OpenAI fallback if OpenRouter is unavailable", icon: "Sparkles", required: false },
   { service: "mcp", label: "MCP API Key", description: "Internal MCP server access key", icon: "Key", required: false },
   { service: "attom", label: "ATTOM Data", description: "Property details, valuations, and sales comparables", icon: "Building", required: false },
-  { service: "batchdata", label: "BatchData", description: "Property lookup and skip tracing", icon: "Search", required: false },
   { service: "regrid", label: "Regrid", description: "Parcel boundaries, owner info, and land data", icon: "MapPin", required: false },
 ];

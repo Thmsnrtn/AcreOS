@@ -13,9 +13,10 @@
  *   - Cordelia §2.1
  *
  * This registry is the SINGLE source of truth used by `checkDisclosure()`
- * which is called from the document-dispatch pipeline (e.g.
- * `eSigningService.sendDocumentForSignature`) to BLOCK dispatch when a
- * required disclosure is missing.
+ * which is called from the native document-dispatch pipeline (e.g.
+ * the `/api/generated-documents/:id/request-signature` handler in
+ * `routes-doc-system.ts`) to BLOCK dispatch when a required disclosure is
+ * missing.
  *
  * IMPORTANT — accuracy disclaimer:
  *   Statute text is reproduced from publicly available codifications of

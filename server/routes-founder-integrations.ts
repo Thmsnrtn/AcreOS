@@ -90,15 +90,6 @@ const INTEGRATIONS: IntegrationDef[] = [
     flySecretName: "REGRID_API_KEY",
     category: "data",
   },
-  {
-    key: "batchdata",
-    displayName: "BatchData",
-    envVars: ["BATCHDATA_API_KEY"],
-    isCritical: false,
-    setupDocsUrl: "https://app.batchdata.com",
-    flySecretName: "BATCHDATA_API_KEY",
-    category: "data",
-  },
 ];
 
 function isEnvConfigured(envVars: string[]): boolean {

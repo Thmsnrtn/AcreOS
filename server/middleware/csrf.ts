@@ -28,9 +28,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/webhooks/twilio/sms",
   "/webhooks/twilio/sms-status",
   "/webhooks/twilio/recording-status",
-  "/webhooks/dropbox-sign",
   "/webhooks/meta-lead-ads",
-  "/webhooks/actum",
   // STR-009: analytics/telemetry are fire-and-forget beacons that can't
   // set a CSRF cookie before the first page load, and sendBeacon() can't
   // attach custom headers. They're auth-gated and don't mutate user data,
