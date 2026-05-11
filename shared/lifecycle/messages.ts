@@ -279,14 +279,19 @@ export const LIFECYCLE_KEYS: LifecycleMessageKey[] = [
 //
 // Rows = cancellation reason. Columns = tier they were on. Per-cell behaviour:
 //
-//                | Solo                | Operator           | Empire
+//                | Starter             | Pro                | Scale
 //   -------------+---------------------+--------------------+---------------------
-//   price        | "$20 still works..."| "Downgrade to Solo"| "Downgrade to Solo"
+//   price        | "$20 still works..."| "Drop to Starter"  | "Drop to Starter"
 //   missing_feat | trigger when ships  | trigger when ships | trigger when ships
 //   not_using    | re-onboard live     | re-onboard live    | re-onboard live
 //   wrong_fit    | NO TOUCH            | NO TOUCH           | NO TOUCH
 //   churned      | gentle "we built X" | gentle "we built X"| gentle "we built X"
 //   unknown      | gentle "we built X" | gentle "we built X"| gentle "we built X"
+//
+// WinbackTier identifiers below (solo/operator/empire) are kept as the
+// persisted cellKey vocabulary so cohort-analysis joins against existing
+// audit rows in lifecycle_message_sends keep working. User-facing copy in
+// the pitch strings uses the canonical Starter/Pro/Scale names instead.
 
 /** Cancellation reason taxonomy aligned to cancellation_surveys.reason. */
 export type CancellationReason =
@@ -345,7 +350,7 @@ function cell(
 }
 
 /** All 18 cells (6 reasons × 3 tiers). The 6-segment framing groups them
- * by *approach* (price-Solo vs price-Operator/Empire are distinct
+ * by *approach* (price-Starter vs price-Pro/Scale are distinct
  * segments; not-using is one segment regardless of tier; etc.). */
 export const WINBACK_MATRIX: WinbackCell[] = [
   // Price row
@@ -353,19 +358,19 @@ export const WINBACK_MATRIX: WinbackCell[] = [
     "price",
     "solo",
     "tailored_email",
-    "Our $20 Solo tier still works for you — come back any time, your data is preserved.",
+    "Our $20 Starter tier still works for you — come back any time, your data is preserved.",
   ),
   cell(
     "price",
     "operator",
     "tailored_email",
-    "Don't pay for tiers you don't use — drop to Solo at $20/mo and keep going.",
+    "Don't pay for tiers you don't use — drop to Starter at $20/mo and keep going.",
   ),
   cell(
     "price",
     "empire",
     "tailored_email",
-    "Don't pay for tiers you don't use — drop to Solo at $20/mo and keep going.",
+    "Don't pay for tiers you don't use — drop to Starter at $20/mo and keep going.",
   ),
   // Missing-feature row
   cell(
