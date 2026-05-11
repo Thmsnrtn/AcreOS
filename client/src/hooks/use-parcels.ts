@@ -76,9 +76,18 @@ export function useFetchPropertyParcel() {
       });
     },
     onError: (error: Error) => {
+      // Common cases worth surfacing in friendlier copy than the raw
+      // upstream error string.
+      const msg = error.message || "";
+      const isNotFound = /404|not found/i.test(msg);
+      const isNotConfigured = /not configured|no provider|api.key/i.test(msg);
       toast({
         title: "Couldn't fetch parcel data",
-        description: `${error.message} — your existing property records are unchanged.`,
+        description: isNotFound
+          ? "We couldn't find this parcel in any of our providers. Double-check the APN, county, and state on the property and try again."
+          : isNotConfigured
+            ? "Parcel lookup providers aren't configured yet. Add ATTOM, BatchData, or Regrid keys in Settings → Integrations to enable this."
+            : `${msg} — your existing property records are unchanged.`,
         variant: "destructive",
       });
     },

@@ -1563,29 +1563,10 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Trigger */}
-      <div className="md:hidden fixed top-4 left-4 z-50 safe-area-top">
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild>
-            <Button
-              aria-label="Open navigation"
-              variant="outline"
-              size="icon"
-              className="shadow-lg glass-panel min-h-[44px] min-w-[44px]"
-              data-testid="button-mobile-menu"
-            >
-              <Menu className="w-5 h-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent
-            side="left"
-            aria-label="Mobile sidebar"
-            className="p-0 w-[85vw] max-w-[320px] border-r-sidebar-border"
-          >
-            <MobileNavContent onNavClick={() => setIsOpen(false)} />
-          </SheetContent>
-        </Sheet>
-      </div>
+      {/* Mobile trigger removed 2026-05-11: bottom-nav "More" already
+          opens the full nav (MobileCommandDrawer), and the top-left
+          hamburger was double-clutter — and was opening to nothing
+          on some routes. Customers reach every page via bottom-nav. */}
 
       {/* Desktop Sidebar */}
       <aside

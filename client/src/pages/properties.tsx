@@ -976,6 +976,18 @@ function PropertyCard({ property, onDelete }: {
             width={400}
             onClick={() => setIsDetailOpen(true)}
           />
+        ) : property.apn?.startsWith("ONBOARD-SAMPLE") ? (
+          // Sample / onboarding placeholder — no real parcel exists in any
+          // provider, so "Fetch Map" would just 404. Show a friendly state
+          // instead of a button that's guaranteed to fail.
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center px-4">
+              <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" aria-hidden="true" />
+              <p className="text-xs text-muted-foreground">
+                Sample property — add a real APN or address to load the parcel map.
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
