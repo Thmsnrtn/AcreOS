@@ -20,6 +20,8 @@ import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { logger } from "./utils/logger";
 
 const SLA_HOURS = 24;
 
@@ -47,6 +49,24 @@ export function registerPrivacyDsarRoutes(app: Express): void {
           auditNotes: parsed.data.notes ?? null,
         })
         .returning();
+
+      // Audit-event fan-out: every DSAR intake writes to audit_events so the
+      // 7-year recovery log shows the request lifecycle from receipt onward.
+      try {
+        await auditFromRequest(req, {
+          action: AuditActions.DSAR_INTAKE,
+          target: { type: "dsar", id: row.id },
+          metadata: {
+            requestType: parsed.data.requestType,
+            email: parsed.data.requesterEmail.toLowerCase(),
+            slaDeadlineAt: row.slaDeadlineAt,
+            source: "public_intake",
+          },
+        });
+      } catch (auditErr) {
+        logger.warn("[dsar-public] audit log failed", auditErr as Error);
+      }
+
       return res.status(201).json({
         id: row.id,
         slaDeadlineAt: row.slaDeadlineAt,
@@ -141,6 +161,30 @@ export function registerPrivacyDsarRoutes(app: Express): void {
           .where(eq(dsarRequestsLifecycle.id, id))
           .returning();
         if (!updated) return Errors.notFound(res, "DSAR request");
+
+        // Audit-event: founder marked this DSAR fulfilled. Closes the
+        // 24h-SLA lifecycle row in audit_events alongside the intake event.
+        try {
+          await auditFromRequest(req, {
+            action: AuditActions.DSAR_COMPLETED,
+            target: { type: "dsar", id: updated.id },
+            metadata: {
+              requestType: updated.requestType,
+              email: updated.requesterEmail,
+              deliveryMethod: updated.deliveryMethod,
+              bytesDelivered: updated.bytesDelivered,
+              fulfilledAt: updated.fulfilledAt,
+              slaDeadlineAt: updated.slaDeadlineAt,
+              metBySla:
+                !!updated.fulfilledAt &&
+                new Date(updated.fulfilledAt).getTime() <=
+                  new Date(updated.slaDeadlineAt).getTime(),
+            },
+          });
+        } catch (auditErr) {
+          logger.warn("[dsar-fulfill] audit log failed", auditErr as Error);
+        }
+
         return res.json(updated);
       } catch (err) {
         return Errors.internal(res, err);

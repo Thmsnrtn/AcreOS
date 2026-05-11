@@ -1245,7 +1245,12 @@ export async function registerRoutes(
   app.use('/api/comments', commentsRouter);
   app.use('/api/price-optimizer', isAuthenticated, getOrCreateOrg, priceOptimizerRouter);
   app.use('/api/portfolio-health', isAuthenticated, getOrCreateOrg, portfolioHealthRouter);
-  app.use('/api/privacy', isAuthenticated, gdprRouter);
+  // gdprRouter is the legacy /api/privacy/{export,delete,status} shim.
+  // Mounted WITHOUT a prefix-level isAuthenticated so /api/privacy/dsar
+  // (the panel-300 #26 public intake, registered later by
+  // registerPrivacyDsarRoutes) remains reachable without a session.
+  // The router applies isAuthenticated per-route internally.
+  app.use('/api/privacy', gdprRouter);
   app.use('/api/metrics', isAuthenticated, metricsRouter);
   app.use('/api/bulk', isAuthenticated, getOrCreateOrg, bulkRouter);
   app.use('/api/leads', isAuthenticated, getOrCreateOrg, leadEnrichmentRouter);
