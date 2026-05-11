@@ -74,20 +74,52 @@ export function installClerkSessionRecovery(): void {
     }
   };
 
+  // Decode a Clerk session token JWT's exp claim. Returns null if the JWT
+  // can't be parsed, treating it as "unknown — don't trust." Used to filter
+  // out expired sessions from Clerk.client.sessions, which can include stale
+  // entries after sign-out/sign-in cycles because Clerk-JS doesn't always
+  // GC dead sessions from in-memory state.
+  const tokenExpiryMs = (s: any): number | null => {
+    const jwt: string | undefined =
+      s?.lastActiveToken?.jwt ?? s?.token?.jwt ?? s?.lastActiveToken ?? undefined;
+    if (typeof jwt !== "string" || !jwt.includes(".")) return null;
+    try {
+      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      if (typeof payload?.exp !== "number") return null;
+      return payload.exp * 1000;
+    } catch {
+      return null;
+    }
+  };
+
   const promoteActiveIfNeeded = async (): Promise<void> => {
     const Clerk = (window as any).Clerk;
     if (!Clerk?.loaded) return;
     if (Clerk.session) return;
-    const sessions: Array<{ id: string; status: string }> = Clerk.client?.sessions ?? [];
+    const sessions: Array<any> = Clerk.client?.sessions ?? [];
     if (sessions.length === 0) {
       // No in-memory sessions — if the cookie is alive, recover them.
       await reloadClientIfCookieAlive();
       return;
     }
-    const active = sessions.find((s) => s.status === "active") ?? sessions[0];
-    if (!active) return;
+    // Filter to sessions Clerk marks active AND whose JWT (if we can read
+    // one) is not expired. After a sign-out/sign-in cycle Clerk.client.sessions
+    // can still list the prior session with status='active' even though its
+    // JWT is dead — promoting it would write a stale __session cookie and
+    // every /api/* request would 401. The previous code did exactly that.
+    const now = Date.now();
+    const candidates = sessions
+      .filter((s) => s?.status === "active")
+      .map((s) => ({ s, exp: tokenExpiryMs(s) }))
+      .filter(({ exp }) => exp === null || exp > now)
+      // Most-recent-token-expiry first — prefers the freshest session
+      // when multiple are simultaneously "active."
+      .sort((a, b) => (b.exp ?? 0) - (a.exp ?? 0));
+
+    const winner = candidates[0]?.s ?? sessions.find((s) => s?.status === "active") ?? sessions[0];
+    if (!winner?.id) return;
     try {
-      await Clerk.setActive({ session: active.id });
+      await Clerk.setActive({ session: winner.id });
     } catch {
       // best-effort
     }
