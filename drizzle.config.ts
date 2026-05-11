@@ -1,5 +1,15 @@
 import { defineConfig } from "drizzle-kit";
 
+// NOTE: Migrations do NOT run through drizzle-kit's migrator in this repo.
+// The authoritative migration path is `scripts/migrate.mjs`, registered as
+// Fly's `release_command` in fly.toml. This config exists only so that
+// `drizzle-kit generate` and `drizzle-kit studio` continue to work for
+// schema-diff inspection during development. The local `migrations/meta/`
+// journal was deleted on 2026-05-11 because it had drifted out of sync
+// (last journal entry: 0017_pax_next_gen; actual migrations: through 0075).
+// If you want to re-enable the drizzle migrator at any point, regenerate
+// the journal from a clean baseline first — do not partially restore it.
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL, ensure the database is provisioned");
 }
