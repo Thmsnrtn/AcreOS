@@ -471,6 +471,13 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/bookkeeping/quickbooks/auth-url", ...auth, (req: Request, res: Response) => {
     try {
+      if (!process.env.QBO_CLIENT_ID) {
+        return res.status(503).json({
+          error: "integration_not_configured",
+          message: "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
+          statusCode: 503,
+        });
+      }
       const org = req.organization;
       const url = bookkeeping.getQboOAuthUrl(org.id);
       res.json({ url });

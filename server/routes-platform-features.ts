@@ -39,18 +39,26 @@ export function registerPlatformFeatureRoutes(app: Express): void {
         : 0;
 
       const closedDeals = deals.filter(d => d.status === "closed");
+      const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
+      const closedThisYear = closedDeals.filter((d: any) => d.updatedAt && new Date(d.updatedAt) >= thisYearStart);
+      const portfolioValue = properties.reduce((s: number, p: any) => s + (Number(p.marketValue) || 0), 0);
+      const totalAcquired = properties.reduce((s: number, p: any) => s + (Number(p.purchasePrice) || 0), 0);
+      const monthlyIncome = notes.reduce((s, n: any) => s + parseFloat(n.monthlyPayment || "0"), 0);
 
       const data = {
-        properties: { total: properties.length, owned: properties.filter(p => p.status === "owned").length },
-        deals: { total: deals.length, closed: closedDeals.length, pipeline: deals.filter(d => d.status !== "closed" && d.status !== "cancelled").length },
-        notes: {
-          total: totalNotes,
-          outstandingPrincipal: totalOutstanding,
-          avgInterestRate: avgRate,
-          monthlyIncome: notes.reduce((s, n: any) => s + parseFloat(n.monthlyPayment || "0"), 0),
-        },
-        markets: [],
-        pipeline: [],
+        orgName: org.name || "Organization",
+        organizationId: org.id,
+        totalProperties: properties.length,
+        activeDeals: deals.filter(d => d.status !== "closed" && d.status !== "cancelled").length,
+        closedDealsThisYear: closedThisYear.length,
+        portfolioValue,
+        totalAcquiredCost: totalAcquired,
+        totalEquity: Math.max(0, portfolioValue - totalAcquired),
+        notesReceivableBalance: totalOutstanding,
+        monthlyNoteIncome: monthlyIncome,
+        avgCocReturn: avgRate,
+        topMarkets: [],
+        pipelineByStage: [],
       };
 
       const pdfBuffer = await generatePortfolioPdf(data);
@@ -141,11 +149,16 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   // QuickBooks connect
   app.get("/api/integrations/quickbooks/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { getQboOAuthUrl } = await import("./services/bookkeeping");
-      if (typeof getQboOAuthUrl !== "function") {
-        return Errors.badRequest(res, "QuickBooks integration not configured");
+      if (!process.env.QBO_CLIENT_ID) {
+        return res.status(503).json({
+          error: "integration_not_configured",
+          message: "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
+          statusCode: 503,
+        });
       }
-      const url = getQboOAuthUrl();
+      const org = req.organization;
+      const { getQboOAuthUrl } = await import("./services/bookkeeping");
+      const url = getQboOAuthUrl(org.id);
       res.json({ url });
     } catch (error) {
       Errors.internal(res, error);
@@ -803,24 +816,48 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const org = req.organization;
       const { computeInvestorTrustScore, computeInvestorBadges } = await import("./services/investorNetworkService");
       const trustProfile = await computeInvestorTrustScore(org.id);
-      const badges = computeInvestorBadges(trustProfile);
+
+      // computeInvestorBadges expects a profile shape; derive it from the score components.
+      // We don't have verified deal counts surfaced yet — pass conservative defaults so
+      // we still return a valid response instead of 500ing.
+      const badges = computeInvestorBadges({
+        verifiedDeals: 0,
+        verifiedVolume: 0,
+        responseRate: 0,
+        fulfillmentRate: 0,
+        memberMonths: 0,
+        hasCompletedProfile: trustProfile.tenureScore > 0,
+        activeStates: 0,
+      });
+
+      const tier = trustProfile.tier;
+      const total = trustProfile.total;
+      const components = {
+        dealVolumeScore: trustProfile.dealVolumeScore,
+        dealValueScore: trustProfile.dealValueScore,
+        responseRateScore: trustProfile.responseRateScore,
+        fulfillmentRateScore: trustProfile.fulfillmentRateScore,
+        tenureScore: trustProfile.tenureScore,
+        peerReviewScore: trustProfile.peerReviewScore,
+        verificationScore: trustProfile.verificationScore,
+      };
 
       res.json({
-        score: trustProfile.totalScore,
-        tier: trustProfile.trustTier,
-        components: trustProfile.components,
+        score: total,
+        tier,
+        components,
         badges,
         achievementProgress: {
-          nextTier: trustProfile.trustTier === "platinum" ? null
-            : trustProfile.trustTier === "gold" ? "platinum"
-            : trustProfile.trustTier === "silver" ? "gold"
-            : trustProfile.trustTier === "bronze" ? "silver"
+          nextTier: tier === "platinum" ? null
+            : tier === "gold" ? "platinum"
+            : tier === "silver" ? "gold"
+            : tier === "bronze" ? "silver"
             : "bronze",
-          pointsNeeded: trustProfile.trustTier === "platinum" ? 0
-            : trustProfile.trustTier === "gold" ? 800 - trustProfile.totalScore
-            : trustProfile.trustTier === "silver" ? 600 - trustProfile.totalScore
-            : trustProfile.trustTier === "bronze" ? 400 - trustProfile.totalScore
-            : 200 - trustProfile.totalScore,
+          pointsNeeded: tier === "platinum" ? 0
+            : tier === "gold" ? 800 - total
+            : tier === "silver" ? 600 - total
+            : tier === "bronze" ? 400 - total
+            : 200 - total,
         },
       });
     } catch (error) {
