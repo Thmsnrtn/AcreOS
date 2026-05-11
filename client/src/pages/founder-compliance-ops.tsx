@@ -65,6 +65,35 @@ export default function FounderComplianceOpsPage() {
     },
   });
 
+  // Mark a DSAR fulfilled. Writes audit_events.dsar.completed on the server.
+  // deliveryMethod defaults to "email" — adjust per request via prompt().
+  const fulfillDsar = useMutation({
+    mutationFn: async (id: string) => {
+      // eslint-disable-next-line no-alert
+      const deliveryMethod = window.prompt(
+        "Delivery method? (email / secure_download / in_app)",
+        "email",
+      );
+      if (!deliveryMethod) throw new Error("Cancelled");
+      const r = await fetch(`/api/founder/dsar/${id}/fulfill`, {
+        method: "POST",
+        credentials: "include",
+        headers: csrf(),
+        body: JSON.stringify({ deliveryMethod, auditNotes: `Fulfilled via compliance-ops UI` }),
+      });
+      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "DSAR marked fulfilled — audit_events updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/founder/dsar/recent"] });
+    },
+    onError: (err: Error) => {
+      if (err.message === "Cancelled") return;
+      toast({ title: "Couldn't fulfil", description: err.message, variant: "destructive" });
+    },
+  });
+
   // ── Fair-Lending ────────────────────────────────────────────────
   const fairLending = useQuery<{
     rows: Array<any>;
@@ -163,6 +192,32 @@ export default function FounderComplianceOpsPage() {
         </div>
       </div>
 
+      {/* Cross-tab overdue banner — DSAR SLA breaches are highest-signal */}
+      {dsar.data && dsar.data.summary.overdueCount > 0 && (
+        <div
+          className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3"
+          role="alert"
+          data-testid="alert-dsar-overdue"
+        >
+          <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="text-sm">
+            <p className="font-medium text-destructive">
+              {dsar.data.summary.overdueCount} DSAR{" "}
+              {dsar.data.summary.overdueCount === 1 ? "request is" : "requests are"} past 24h SLA
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Each overdue request is logged hourly by the dsar_overdue_alert cron and surfaces in audit_events.
+              Fulfil from the DSAR tab below.
+            </p>
+          </div>
+          {tab !== "dsar" && (
+            <Button size="sm" variant="outline" className="ml-auto" onClick={() => setTab("dsar")}>
+              View DSAR queue
+            </Button>
+          )}
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="grid grid-cols-3 lg:grid-cols-6 mb-4">
           <TabsTrigger value="dsar"><FileText className="w-3.5 h-3.5 mr-1" /> DSAR</TabsTrigger>
@@ -205,6 +260,7 @@ export default function FounderComplianceOpsPage() {
                           <th className="text-left p-2">Received</th>
                           <th className="text-left p-2">SLA deadline</th>
                           <th className="text-left p-2">Status</th>
+                          <th className="text-left p-2">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -223,6 +279,20 @@ export default function FounderComplianceOpsPage() {
                                   <Badge variant="destructive" className="text-xs">Overdue</Badge>
                                 ) : (
                                   <Badge variant="outline" className="text-xs">Within SLA</Badge>
+                                )}
+                              </td>
+                              <td className="p-2">
+                                {!r.fulfilledAt && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    aria-label={`Mark DSAR ${r.id} fulfilled`}
+                                    onClick={() => fulfillDsar.mutate(r.id)}
+                                    disabled={fulfillDsar.isPending}
+                                  >
+                                    Mark fulfilled
+                                  </Button>
                                 )}
                               </td>
                             </tr>
