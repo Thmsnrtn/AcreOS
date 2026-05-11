@@ -81,3 +81,8 @@ acreos-picker/node_modules/
 # Eval harness reports (generated locally; CI uploads as artifacts)
 evals/reports/
 
+
+# Audit screenshots from Playwright walkthroughs (local only, not for repo)
+audit-*.png
+walk-*.png
+w2-*.png
