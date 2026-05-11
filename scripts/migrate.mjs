@@ -3061,6 +3061,33 @@ const STATEMENTS = [
    )`,
   'CREATE UNIQUE INDEX IF NOT EXISTS "user_sign_in_locations_unique" ON "user_sign_in_locations" ("user_id", "ip_prefix", "ua_family")',
   'CREATE INDEX IF NOT EXISTS "user_sign_in_locations_user_last_seen_idx" ON "user_sign_in_locations" ("user_id", "last_seen_at")',
+
+  // 2026-05-10 audit — autonomous_decisions audit-trail table. Promised
+  // by server/jobs/autonomousHealthMonitor.ts:23 but never defined in
+  // shared/schema.ts or any migrations/*.sql file. Without it the
+  // documented "complete audit trail of what the system did on its own"
+  // has no destination — self-healing actions silently no-op.
+  // See migrations/0074_schema_drift_fix.sql for full context.
+  `CREATE TABLE IF NOT EXISTS "autonomous_decisions" (
+     "id"             serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+     "actor"          text NOT NULL,
+     "decision_type"  text NOT NULL,
+     "subject_type"   text,
+     "subject_id"     text,
+     "rationale"      text NOT NULL,
+     "input"          jsonb DEFAULT '{}'::jsonb NOT NULL,
+     "outcome"        text NOT NULL DEFAULT 'pending',
+     "outcome_detail" text,
+     "reverted_at"    timestamp,
+     "reverted_by"    text,
+     "metadata"       jsonb DEFAULT '{}'::jsonb NOT NULL,
+     "created_at"     timestamp NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "autonomous_decisions_org_created_idx" ON "autonomous_decisions" ("organization_id", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "autonomous_decisions_actor_created_idx" ON "autonomous_decisions" ("actor", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "autonomous_decisions_type_created_idx" ON "autonomous_decisions" ("decision_type", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "autonomous_decisions_outcome_idx" ON "autonomous_decisions" ("outcome") WHERE "outcome" IN (\'pending\', \'failure\')',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
