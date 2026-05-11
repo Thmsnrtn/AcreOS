@@ -1767,8 +1767,14 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
+      // MMS costs more than SMS (carrier surcharges + Twilio media hosting),
+      // so charge per-recipient by whether the campaign has any media URLs.
       const costPerSms = 3; // 3 cents per SMS
-      const totalCost = dedupedLeads.length * costPerSms;
+      const costPerMms = 5; // 5 cents per MMS — per spec
+      const campaignMediaUrls = (campaign as any).mediaUrls as string[] | null | undefined;
+      const hasMms = !!(campaignMediaUrls && campaignMediaUrls.length > 0);
+      const perRecipientCost = hasMms ? costPerMms : costPerSms;
+      const totalCost = dedupedLeads.length * perRecipientCost;
 
       if (!req.isFounder) {
         const deductResult = await creditService.deductCredits(
@@ -1823,7 +1829,14 @@ export function registerCampaignRoutes(app: Express): void {
             await recordSimulatedAction(
               "sms",
               "campaign_batch_send",
-              { to: lead!.phone, from: twilioPhone, body, campaignId, leadId: lead!.id },
+              {
+                to: lead!.phone,
+                from: twilioPhone,
+                body,
+                campaignId,
+                leadId: lead!.id,
+                mediaUrls: hasMms ? campaignMediaUrls : undefined,
+              },
               org
             );
           } else {
@@ -1831,6 +1844,10 @@ export function registerCampaignRoutes(app: Express): void {
               to: lead!.phone!,
               from: twilioPhone,
               body,
+              // Twilio's Node SDK accepts mediaUrl as string | string[]; pass
+              // an array so multi-image MMS (when we lift the UI cap) works
+              // without further changes.
+              ...(hasMms ? { mediaUrl: campaignMediaUrls } : {}),
             });
           }
           results.sent++;
@@ -1852,14 +1869,15 @@ export function registerCampaignRoutes(app: Express): void {
         await new Promise(r => setTimeout(r, 1000));
       }
 
-      // DEFECT-0047: Refund credits for failed sends
+      // DEFECT-0047: Refund credits for failed sends — use the same
+      // per-recipient cost we deducted upfront (MMS or SMS).
       if (!req.isFounder && results.failed > 0) {
-        const refundAmount = results.failed * costPerSms;
+        const refundAmount = results.failed * perRecipientCost;
         await creditService.addCredits(
           org.id, refundAmount, "refund",
-          `Refund for ${results.failed} failed SMS(es) in campaign: ${campaign.name}`
+          `Refund for ${results.failed} failed ${hasMms ? "MMS" : "SMS"}(es) in campaign: ${campaign.name}`
         );
-        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed SMS sends in campaign ${campaignId}`);
+        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed ${hasMms ? "MMS" : "SMS"} sends in campaign ${campaignId}`);
       }
 
       // Update campaign stats

@@ -3088,6 +3088,11 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_actor_created_idx" ON "autonomous_decisions" ("actor", "created_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_type_created_idx" ON "autonomous_decisions" ("decision_type", "created_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_outcome_idx" ON "autonomous_decisions" ("outcome") WHERE "outcome" IN (\'pending\', \'failure\')',
+
+  // 2026-05-11 — campaigns.media_urls (migration 0075). MMS attachments
+  // for SMS campaigns. text[] so we can stash multiple URLs even though
+  // the UI gates to one for now.
+  'ALTER TABLE "campaigns" ADD COLUMN IF NOT EXISTS "media_urls" text[]',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

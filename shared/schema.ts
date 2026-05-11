@@ -1369,6 +1369,10 @@ export const campaigns = pgTable("campaigns", {
   subject: text("subject"),
   content: text("content"),
   templateId: text("template_id"),
+  // MMS attachments — array of public https URLs Twilio fetches and
+  // attaches when sending. Currently constrained to 1 from the UI but
+  // schema is array so we can lift the limit later without migration.
+  mediaUrls: text("media_urls").array(),
   
   // Schedule
   scheduledDate: timestamp("scheduled_date"),
