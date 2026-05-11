@@ -31,15 +31,8 @@ import {
   Warehouse,
   Truck,
   Users,
-  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
-import {
-  formatTaxIdAsTyped,
-  isValidTaxId,
-  taxIdFormatHint,
-  type TaxIdType,
-} from "@shared/taxIdentity";
 import { motion, AnimatePresence } from "framer-motion";
 import "./onboarding.css";
 
@@ -136,15 +129,12 @@ const WIZARD_STEPS = [
     description: "Start reaching out to motivated sellers",
     icon: Target,
   },
+  // Tax-identity step was moved OUT of signup onboarding 2026-05-11.
+  // It's now a lazy prompt (TaxIdentityPrompt) shown only when a user
+  // attempts to create their first seller-financed note. A land flipper
+  // without notes shouldn't have to surface an EIN at signup.
   {
     id: 4,
-    name: "tax_identity",
-    title: "Tax Identity",
-    description: "Required to issue 1099-INTs to your borrowers",
-    icon: ShieldCheck,
-  },
-  {
-    id: 5,
     name: "done",
     title: "You're All Set!",
     description: "Your AcreOS workspace is ready to go",
@@ -184,19 +174,8 @@ export function OnboardingWizard() {
   const [investorType, setInvestorType] = useState<InvestorTypeChoice>("land");
   const [organizationName, setOrganizationName] = useState("");
 
-  // ─── Tax-identity (step 4) state ─────────────────────────────────────────
-  // Required for 1099-INT issuance. Captured separately from operational
-  // org name (legal entity name === IRS filing name). All values stay
-  // local-only until "Continue" — we never auto-save the EIN per keystroke.
-  const [legalEntityName, setLegalEntityName] = useState("");
-  const [taxIdType, setTaxIdType] = useState<TaxIdType>("EIN");
-  const [taxId, setTaxId] = useState("");
-  const [taxAddrLine1, setTaxAddrLine1] = useState("");
-  const [taxAddrLine2, setTaxAddrLine2] = useState("");
-  const [taxAddrCity, setTaxAddrCity] = useState("");
-  const [taxAddrState, setTaxAddrState] = useState("");
-  const [taxAddrZip, setTaxAddrZip] = useState("");
-  const [taxIdentityError, setTaxIdentityError] = useState<string | null>(null);
+  // Tax-identity capture was moved out of the signup wizard 2026-05-11.
+  // See TaxIdentityPrompt — surfaced lazily on first seller-financed note.
 
   const { data: onboardingStatus, refetch: refetchStatus } = useQuery<OnboardingStatus>({
     queryKey: ["/api/onboarding/status"],
@@ -305,48 +284,6 @@ export function OnboardingWizard() {
     },
   });
 
-  const taxIdentityMutation = useMutation({
-    mutationFn: async (payload: {
-      legalEntityName: string;
-      taxIdType: TaxIdType;
-      taxId: string;
-      taxAddress: {
-        line1: string;
-        line2?: string;
-        city: string;
-        state: string;
-        zip: string;
-      };
-    }) => {
-      const res = await apiRequest("PATCH", "/api/organization/tax-identity", payload);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || "Couldn't save tax identity");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/organization/tax-identity"] });
-      toast({
-        title: "Tax identity saved",
-        description: "We've encrypted and stored it. You're set up to issue 1099s.",
-      });
-    },
-  });
-
-  const skipTaxIdentityMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/organization/tax-identity/skip", {});
-      if (!res.ok) throw new Error("Couldn't skip tax identity");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/organization/tax-identity"] });
-    },
-  });
-
   const completeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {});
@@ -401,34 +338,6 @@ export function OnboardingWizard() {
           stepId: currentStep,
           data: { businessType, organizationName, investorType }
         });
-      } else if (currentStep === 4) {
-        // Tax-identity step — submit the form before advancing.
-        setTaxIdentityError(null);
-        if (!isValidTaxId(taxId, taxIdType)) {
-          setTaxIdentityError(taxIdFormatHint(taxIdType));
-          return;
-        }
-        try {
-          await taxIdentityMutation.mutateAsync({
-            legalEntityName: legalEntityName.trim(),
-            taxIdType,
-            taxId,
-            taxAddress: {
-              line1: taxAddrLine1.trim(),
-              line2: taxAddrLine2.trim() || undefined,
-              city: taxAddrCity.trim(),
-              state: taxAddrState.trim().toUpperCase(),
-              zip: taxAddrZip.trim(),
-            },
-          });
-        } catch (err: any) {
-          setTaxIdentityError(err?.message ?? "Couldn't save tax identity");
-          return;
-        }
-        await completeStepMutation.mutateAsync({
-          stepId: currentStep,
-          data: { taxIdentityCaptured: true },
-        });
       } else {
         await completeStepMutation.mutateAsync({ stepId: currentStep });
       }
@@ -459,16 +368,6 @@ export function OnboardingWizard() {
 
   const handleSkip = async () => {
     try {
-      // The tax-identity step has its own dedicated skip endpoint that sets
-      // onboardingData.skippedTaxIdentity — needed by the dashboard nudge to
-      // remind owners that 1099 issuance is still blocked.
-      if (currentStep === 4) {
-        try {
-          await skipTaxIdentityMutation.mutateAsync();
-        } catch (err) {
-          clientLogger.error("Error skipping tax identity:", err);
-        }
-      }
       await completeStepMutation.mutateAsync({ stepId: currentStep, data: { skipped: true } });
 
       if (currentStep < WIZARD_STEPS.length - 1) {
@@ -502,8 +401,7 @@ export function OnboardingWizard() {
 
   const isPending = completeStepMutation.isPending || provisionMutation.isPending ||
     completeMutation.isPending || updateOrgMutation.isPending ||
-    loadSampleDataMutation.isPending || taxIdentityMutation.isPending ||
-    skipTaxIdentityMutation.isPending;
+    loadSampleDataMutation.isPending;
   
   const step = WIZARD_STEPS[currentStep];
   const StepIcon = step.icon;
@@ -513,18 +411,6 @@ export function OnboardingWizard() {
   const canContinue = () => {
     if (currentStep === 0) {
       return !!businessType && organizationName.trim().length > 0;
-    }
-    if (currentStep === 4) {
-      // Tax-identity submission — require the full set so we never PATCH a
-      // half-filled form. "Skip for now" remains available as the escape.
-      return (
-        legalEntityName.trim().length > 0 &&
-        taxId.trim().length > 0 &&
-        taxAddrLine1.trim().length > 0 &&
-        taxAddrCity.trim().length > 0 &&
-        taxAddrState.trim().length === 2 &&
-        /^[0-9]{5}(-[0-9]{4})?$/.test(taxAddrZip.trim())
-      );
     }
     return true;
   };
@@ -910,221 +796,6 @@ export function OnboardingWizard() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             data-testid="onboarding-step-4"
-          >
-            <div className="ob-eyebrow">
-              <span className="ob-eyebrow-dot" aria-hidden="true" />
-              Step 4 · Tax identity
-            </div>
-            <h1 className="ob-title">
-              Set up <span className="ob-title-italic">1099 issuance.</span>
-            </h1>
-            <p className="ob-sub">
-              Required to issue 1099-INT forms to your borrowers / lenders.
-              We encrypt this at rest. You can edit it any time in Settings
-              &rsaquo; Tax Identity.
-            </p>
-
-            <div
-              role="note"
-              style={{
-                display: "flex",
-                gap: 10,
-                padding: "10px 12px",
-                marginBottom: 16,
-                borderRadius: 10,
-                background: "var(--acr-surface)",
-                border: "0.5px solid var(--acr-line)",
-                font: "400 13px/1.5 var(--font-sans)",
-                color: "var(--acr-ink-2)",
-              }}
-            >
-              <ShieldCheck
-                className="w-4 h-4"
-                aria-hidden="true"
-                style={{ flexShrink: 0, marginTop: 2, color: "var(--acr-pos)" }}
-              />
-              <span>
-                Encrypted with AES-256-GCM at rest. Plaintext is never returned
-                to the client — even owners only see the last four digits in
-                the audit log.
-              </span>
-            </div>
-
-            <div className="ob-field">
-              <label htmlFor="legal-entity-name" className="ob-label">
-                Legal entity name
-              </label>
-              <input
-                id="legal-entity-name"
-                className="ob-input"
-                value={legalEntityName}
-                onChange={(e) => setLegalEntityName(e.target.value)}
-                placeholder="e.g. Apex Land Group, LLC"
-                aria-required="true"
-                data-testid="input-legal-entity-name"
-              />
-              <p className="ob-hint">
-                Must match the entity name registered with the IRS exactly.
-              </p>
-            </div>
-
-            <div className="ob-field">
-              <span className="ob-label">Tax ID type</span>
-              <RadioGroup
-                value={taxIdType}
-                onValueChange={(value) => {
-                  setTaxIdType(value as TaxIdType);
-                  setTaxId("");
-                  setTaxIdentityError(null);
-                }}
-                className="ob-cards"
-                style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
-              >
-                {(["EIN", "SSN", "ITIN"] as const).map((opt) => (
-                  <label
-                    key={opt}
-                    htmlFor={`tax-id-type-${opt}`}
-                    className={`ob-card ${taxIdType === opt ? "is-on" : ""}`}
-                    data-testid={`option-tax-id-type-${opt}`}
-                  >
-                    <RadioGroupItem
-                      value={opt}
-                      id={`tax-id-type-${opt}`}
-                      className="sr-only"
-                    />
-                    <span className="ob-card-title">{opt}</span>
-                  </label>
-                ))}
-              </RadioGroup>
-            </div>
-
-            <div className="ob-field">
-              <label htmlFor="tax-id" className="ob-label">
-                Tax ID ({taxIdType})
-              </label>
-              <input
-                id="tax-id"
-                className="ob-input"
-                value={taxId}
-                onChange={(e) => {
-                  setTaxId(formatTaxIdAsTyped(e.target.value, taxIdType));
-                  setTaxIdentityError(null);
-                }}
-                placeholder={
-                  taxIdType === "EIN"
-                    ? "XX-XXXXXXX"
-                    : taxIdType === "SSN"
-                    ? "XXX-XX-XXXX"
-                    : "9XX-XX-XXXX"
-                }
-                inputMode="numeric"
-                autoComplete="off"
-                spellCheck={false}
-                aria-required="true"
-                aria-invalid={!!taxIdentityError}
-                aria-describedby="tax-id-hint"
-                data-testid="input-tax-id"
-              />
-              <p
-                id="tax-id-hint"
-                className="ob-hint"
-                style={{
-                  color: taxIdentityError ? "var(--acr-neg)" : undefined,
-                }}
-              >
-                {taxIdentityError ?? taxIdFormatHint(taxIdType)}
-              </p>
-            </div>
-
-            <div className="ob-field">
-              <span className="ob-label">Tax address</span>
-              <p className="ob-hint" style={{ marginTop: 0 }}>
-                Address that should appear on issued 1099s. Can differ from
-                your operational address.
-              </p>
-              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                <input
-                  id="tax-addr-line1"
-                  className="ob-input"
-                  value={taxAddrLine1}
-                  onChange={(e) => setTaxAddrLine1(e.target.value)}
-                  placeholder="Street address"
-                  aria-label="Street address"
-                  aria-required="true"
-                  data-testid="input-tax-addr-line1"
-                />
-                <input
-                  id="tax-addr-line2"
-                  className="ob-input"
-                  value={taxAddrLine2}
-                  onChange={(e) => setTaxAddrLine2(e.target.value)}
-                  placeholder="Apt / Suite (optional)"
-                  aria-label="Apartment or suite (optional)"
-                  data-testid="input-tax-addr-line2"
-                />
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr",
-                    gap: 8,
-                  }}
-                >
-                  <input
-                    id="tax-addr-city"
-                    className="ob-input"
-                    value={taxAddrCity}
-                    onChange={(e) => setTaxAddrCity(e.target.value)}
-                    placeholder="City"
-                    aria-label="City"
-                    aria-required="true"
-                    data-testid="input-tax-addr-city"
-                  />
-                  <input
-                    id="tax-addr-state"
-                    className="ob-input"
-                    value={taxAddrState}
-                    onChange={(e) =>
-                      setTaxAddrState(
-                        e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
-                      )
-                    }
-                    placeholder="State"
-                    aria-label="State (2-letter code)"
-                    aria-required="true"
-                    maxLength={2}
-                    data-testid="input-tax-addr-state"
-                  />
-                  <input
-                    id="tax-addr-zip"
-                    className="ob-input"
-                    value={taxAddrZip}
-                    onChange={(e) =>
-                      setTaxAddrZip(e.target.value.replace(/[^0-9-]/g, "").slice(0, 10))
-                    }
-                    placeholder="ZIP"
-                    aria-label="ZIP code"
-                    aria-required="true"
-                    inputMode="numeric"
-                    data-testid="input-tax-addr-zip"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <p className="ob-hint" style={{ marginTop: 16 }}>
-              Skip for now if you're not ready — onboarding completes either way.
-              The 1099 generator will block until this is captured.
-            </p>
-          </motion.div>
-        );
-
-      case 5:
-        return (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            data-testid="onboarding-step-5"
           >
             <div className="ob-reveal">
               <div className="ob-reveal-icon">

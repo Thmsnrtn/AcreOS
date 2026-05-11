@@ -36,6 +36,7 @@ import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
+import { TaxIdentityPrompt } from "@/components/onboarding/TaxIdentityPrompt";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -1618,6 +1619,25 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateNote();
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
+  const { toast } = useToast();
+
+  // Tax-identity lazy prompt (2026-05-11). The IRS requires a legal entity
+  // name + EIN/SSN/ITIN before we can issue 1099-INTs to a borrower. Rather
+  // than block signup with this (the old onboarding step 4 behavior), we
+  // surface it the moment it becomes load-bearing: the first seller-financed
+  // note. If the user skips, we still create the note but with status
+  // "pending" so they can't accept payments — and the dashboard checklist
+  // surfaces the unresolved tax-identity gap.
+  const { data: taxIdentity } = useQuery<{ captured: boolean; skipped: boolean }>({
+    queryKey: ["/api/organization/tax-identity"],
+    queryFn: async () => {
+      const res = await fetch("/api/organization/tax-identity", { credentials: "include" });
+      if (!res.ok) return { captured: false, skipped: false };
+      return res.json();
+    },
+  });
+  const [pendingFormData, setPendingFormData] = useState<z.infer<typeof noteFormSchema> | null>(null);
+  const [taxPromptOpen, setTaxPromptOpen] = useState(false);
 
   const availableProperties = properties?.filter((p: any) => p.status !== 'sold') || [];
   // Show buyers first, but fall back to all leads if no buyer-type leads exist
@@ -1649,10 +1669,17 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
 
   const suggestedPayment = calculatePayment();
 
-  const onSubmit = (data: z.infer<typeof noteFormSchema>) => {
+  // Actually submit the note. Optionally force "pending" if the user
+  // skipped tax-identity capture — that keeps the 1099-INT generator
+  // safely blocked until they come back and provide an EIN.
+  const submitNote = (
+    data: z.infer<typeof noteFormSchema>,
+    opts: { saveAsPending?: boolean } = {},
+  ) => {
     const payment = data.monthlyPayment || suggestedPayment.toFixed(2);
     mutate({
       ...data,
+      status: opts.saveAsPending ? "pending" : data.status,
       monthlyPayment: payment,
       currentBalance: data.originalPrincipal,
       firstPaymentDate: addMonths(new Date(data.startDate), 1),
@@ -1660,7 +1687,49 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
     }, { onSuccess });
   };
 
+  const onSubmit = (data: z.infer<typeof noteFormSchema>) => {
+    // First-note lazy prompt: if the org has not captured tax-identity AND
+    // has not explicitly skipped it, intercept the save and prompt now.
+    // After successful capture (or explicit skip), we proceed with the save.
+    if (taxIdentity && !taxIdentity.captured && !taxIdentity.skipped) {
+      setPendingFormData(data);
+      setTaxPromptOpen(true);
+      return;
+    }
+    submitNote(data);
+  };
+
   return (
+    <>
+      <TaxIdentityPrompt
+        open={taxPromptOpen}
+        onOpenChange={(open) => {
+          setTaxPromptOpen(open);
+          if (!open) setPendingFormData(null);
+        }}
+        deferredActionLabel="save this note"
+        onCaptured={() => {
+          setTaxPromptOpen(false);
+          if (pendingFormData) {
+            submitNote(pendingFormData);
+            setPendingFormData(null);
+          }
+        }}
+        onSkipped={() => {
+          setTaxPromptOpen(false);
+          if (pendingFormData) {
+            // Skipping tax-identity downgrades this note to pending so the
+            // 1099-INT generator (and payment-accept flows) remain blocked
+            // until the org provides an EIN.
+            toast({
+              title: "Note saved as pending",
+              description: "Add your tax identity in Settings to activate 1099-INT issuance.",
+            });
+            submitNote(pendingFormData, { saveAsPending: true });
+            setPendingFormData(null);
+          }
+        }}
+      />
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1890,5 +1959,6 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </form>
     </Form>
+    </>
   );
 }
