@@ -1928,9 +1928,12 @@ export default function Settings() {
             </TabsContent>
 
             {/* ── Security Tab ─────────────────────────────────────────── */}
+            {/* Password change is delegated to Clerk's UserProfile dialog
+                (opened from TwoFactorAuthSettings). The legacy PasswordChange
+                card POSTed to /api/auth/change-password which no longer
+                exists — Clerk owns credentials end-to-end. */}
             <TabsContent value="security" className="space-y-6 mt-6" data-testid="tab-content-security">
               <TwoFactorAuthSettings />
-              <PasswordChangeSettings />
             </TabsContent>
 
             {/* ── Privacy Tab ──────────────────────────────────────────── */}
@@ -2000,7 +2003,7 @@ function TwoFactorAuthSettings() {
           Two-factor authentication
         </CardTitle>
         <CardDescription>
-          Add an extra layer of security with an authenticator app (Google Authenticator, Authy, 1Password) or SMS code. Managed through your Clerk account.
+          Manage your password, two-factor authentication (authenticator app or SMS), and connected accounts through your Clerk account.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -2043,109 +2046,6 @@ function TwoFactorAuthSettings() {
             </div>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Password Change Settings ──────────────────────────────────────────────────
-
-function PasswordChangeSettings() {
-  const { toast } = useToast();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const changeMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword }).then(r => r.json()),
-    onSuccess: () => {
-      toast({ title: "Password changed" });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    },
-    onError: (err: any) =>
-      toast({
-        title: "Couldn't change password",
-        description: err?.message || "Check your current password and try again — your password hasn't changed.",
-        variant: "destructive",
-      }),
-  });
-
-  const passwordsMatch = !confirmPassword || newPassword === confirmPassword;
-  const valid = !!currentPassword && newPassword.length >= 8 && newPassword === confirmPassword;
-
-  return (
-    <Card data-testid="card-password-change">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="w-5 h-5" aria-hidden="true" />
-          Change password
-        </CardTitle>
-        <CardDescription>Update your account password. Use at least 8 characters.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="space-y-3 max-w-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (valid && !changeMutation.isPending) changeMutation.mutate();
-          }}
-        >
-          <div className="space-y-1">
-            <Label htmlFor="current-password">Current password</Label>
-            <Input
-              id="current-password"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={e => setCurrentPassword(e.target.value)}
-              data-testid="input-current-password"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="new-password">New password</Label>
-            <Input
-              id="new-password"
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              data-testid="input-new-password"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="confirm-password">Confirm new password</Label>
-            <Input
-              id="confirm-password"
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              aria-invalid={!passwordsMatch}
-              aria-describedby={!passwordsMatch ? "confirm-password-error" : undefined}
-              data-testid="input-confirm-password"
-            />
-            {!passwordsMatch && (
-              <p id="confirm-password-error" className="text-xs text-destructive" role="alert">
-                The two passwords don't match. Please retype them.
-              </p>
-            )}
-          </div>
-          <Button
-            type="submit"
-            size="sm"
-            className="min-h-11 sm:min-h-9"
-            disabled={!valid || changeMutation.isPending}
-            data-testid="button-change-password"
-          >
-            {changeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
-            Change password
-          </Button>
-        </form>
       </CardContent>
     </Card>
   );
