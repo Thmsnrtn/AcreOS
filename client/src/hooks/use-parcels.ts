@@ -86,7 +86,7 @@ export function useFetchPropertyParcel() {
         description: isNotFound
           ? "We couldn't find this parcel in any of our providers. Double-check the APN, county, and state on the property and try again."
           : isNotConfigured
-            ? "Parcel lookup providers aren't configured yet. Add ATTOM, BatchData, or Regrid keys in Settings → Integrations to enable this."
+            ? "Parcel lookup providers aren't configured yet. Add ATTOM or Regrid keys in Settings → Integrations to enable this."
             : `${msg} — your existing property records are unchanged.`,
         variant: "destructive",
       });

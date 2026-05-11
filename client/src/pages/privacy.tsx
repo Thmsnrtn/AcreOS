@@ -246,7 +246,6 @@ export default function PrivacyPolicy() {
                 <li>Lob (direct mail — opt-in).</li>
                 <li>Sentry (error monitoring — with cookie consent).</li>
                 <li>Regrid (property data enrichment — opt-in).</li>
-                <li>Dropbox Sign (e-signatures — opt-in).</li>
               </ul>
             </section>
 
