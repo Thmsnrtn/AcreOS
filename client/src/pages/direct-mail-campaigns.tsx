@@ -1,3 +1,6 @@
+// DEPRECATED 2026-05-11 — consolidated into /campaigns?channel=direct-mail.
+// The /direct-mail + /direct-mail-campaigns routes now redirect there.
+// Kept on disk for possible A/B reuse.
 import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";

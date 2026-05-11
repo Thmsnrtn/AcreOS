@@ -105,7 +105,8 @@ const SettingsPage = React.lazy(() => import("@/pages/settings"));
 const TasksPage = React.lazy(() => import("@/pages/tasks"));
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics"));
 const HelpPage = React.lazy(() => import("@/pages/help"));
-const SupportPage = React.lazy(() => import("@/pages/support"));
+// /support stub deleted 2026-05-11 — was a 15-line redirect-to-/help#support
+// component. App.tsx now handles the redirect directly (see /support route).
 
 // CRM / Pipeline
 const OffersPage = React.lazy(() => import("@/pages/offers"));
@@ -711,7 +712,10 @@ function Router() {
         {() => <ProtectedRoute component={DoubleClosePage} />}
       </Route>
       <Route path="/buyer-blasts">
-        {() => <ProtectedRoute component={BuyerBlastsPage} />}
+        {/* 2026-05-11 audit — consolidated into /campaigns (channel-tab).
+            Detail route /buyer-blasts/:id stays operational because the
+            blast detail surface has its own deep-link semantics. */}
+        {() => <Redirect to="/campaigns?channel=buyer-blasts" />}
       </Route>
       <Route path="/buyer-blasts/:id">
         {() => <ProtectedRoute component={BuyerBlastsPage} />}
@@ -729,7 +733,8 @@ function Router() {
         {() => <ProtectedRoute component={AbTestsPage} />}
       </Route>
       <Route path="/sequences">
-        {() => <ProtectedRoute component={SequencesPage} />}
+        {/* 2026-05-11 audit — consolidated into /campaigns (channel-tab). */}
+        {() => <Redirect to="/campaigns?channel=sequences" />}
       </Route>
       <Route path="/counties">
         {() => <ProtectedRoute component={CountiesPage} />}
@@ -759,7 +764,10 @@ function Router() {
         {() => <Redirect to="/ai#agents" />}
       </Route>
       <Route path="/support">
-        {() => <ProtectedRoute component={SupportPage} />}
+        {/* 2026-05-11 — replaced the 15-line SupportPage redirect stub
+            with an inline Redirect so /support → /help#support works at
+            the router level. */}
+        {() => <Redirect to="/help#support" />}
       </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
@@ -1111,7 +1119,11 @@ function Router() {
         {() => <ProtectedRoute component={SkipTracingPage} />}
       </Route>
       <Route path="/direct-mail">
-        {() => <ProtectedRoute component={DirectMailCampaignsPage} />}
+        {/* 2026-05-11 audit — consolidated into /campaigns (channel-tab). */}
+        {() => <Redirect to="/campaigns?channel=direct-mail" />}
+      </Route>
+      <Route path="/direct-mail-campaigns">
+        {() => <Redirect to="/campaigns?channel=direct-mail" />}
       </Route>
       <Route path="/syndication">
         {() => <ProtectedRoute component={SyndicationPage} />}

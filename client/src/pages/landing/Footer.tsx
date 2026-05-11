@@ -52,7 +52,7 @@ export function Footer() {
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>
             <a href="mailto:hello@acreos.io">hello@acreos.io</a>
-            <Link href="/support">Support</Link>
+            <Link href="/help#support">Support</Link>
             <a href="https://status.acreos.io" target="_blank" rel="noreferrer">
               Status
             </a>

@@ -469,11 +469,12 @@ const NAV_MODULES: NavModule[] = [
     id: "wholesaler",
     label: "Wholesale",
     icon: Send,
-    href: "/buyer-blasts",
+    href: "/campaigns?channel=buyer-blasts",
     description: "Buyer blasts, EMD, double-close, state rules",
     businessTypeOnly: ["residential_wholesaler"],
     children: [
-      { label: "Buyer blasts", icon: Send, href: "/buyer-blasts", description: "One-click outreach to matched cash buyers" },
+      // 2026-05-11 — buyer-blasts is now a channel-tab inside /campaigns.
+      { label: "Buyer blasts", icon: Send, href: "/campaigns?channel=buyer-blasts", description: "One-click outreach to matched cash buyers" },
       { label: "Buyer analytics", icon: TrendingUp, href: "/buyer-analytics", description: "Per-blast funnel + freshness" },
       { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
       { label: "Double-close", icon: GitBranch, href: "/double-close", description: "A→B + B→C linked transactions" },

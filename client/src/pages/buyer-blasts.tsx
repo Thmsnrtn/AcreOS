@@ -1,3 +1,6 @@
+// 2026-05-11 — index route /buyer-blasts now redirects to
+// /campaigns?channel=buyer-blasts. This component still mounts on
+// /buyer-blasts/:id for deep-linked blast detail views.
 /**
  * /buyer-blasts — Push-to-buyer-list one-click outreach (W-4).
  *
