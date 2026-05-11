@@ -6,8 +6,8 @@
  * sections-3.jsx, sections.css, copy.jsx).
  *
  * Section order:
- *   Hero → HowItWorks → Agents → DayInLife → Features → Quotes →
- *   Pricing → FAQ → FinalCTA → Footer
+ *   Hero → Positioning → HowItWorks → Agents → DayInLife → Features →
+ *   Quotes → Pricing → FAQ → FinalCTA → Footer
  *
  * Voice is mechanics-first, third-person — see
  * client/src/pages/landing/copy.ts. The former founder-letter tone
@@ -35,6 +35,7 @@ import {
 } from "@/lib/jsonld-schemas";
 import { LandingNav } from "./landing/LandingNav";
 import { Hero } from "./landing/Hero";
+import { Positioning } from "./landing/Positioning";
 import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
 import { DayInLife } from "./landing/DayInLife";
@@ -52,7 +53,7 @@ export default function LandingPage() {
   // want a flicker between that and a React-set variant on first paint.
   // Other routes still use useDocumentTitle() for their per-page titles.
   usePageDescription(
-    "Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf.",
+    "The operating system for land investors. Find motivated sellers, analyze parcels, send direct mail, and close deals — with agents that act on your behalf. Actively expanding to note investors, fix-and-flippers, and other investor types.",
   );
   return (
     <div className="min-h-screen bg-background">
@@ -60,7 +61,7 @@ export default function LandingPage() {
       <OpenGraph
         url={`${SITE.url}/`}
         title="AcreOS — The Operating System for Land Investors"
-        description="Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf."
+        description="The operating system for land investors. Find motivated sellers, analyze parcels, send direct mail, and close deals — with agents that act on your behalf. Actively expanding to note investors, fix-and-flippers, and other investor types."
         type="website"
       />
       <JsonLd id="ld-organization" data={organizationSchema()} />
@@ -71,6 +72,7 @@ export default function LandingPage() {
           prototype's app.jsx switch statement. */}
       <main id="main-content">
         <Hero />
+        <Positioning />
         <HowItWorks />
         <Agents />
         <DayInLife />

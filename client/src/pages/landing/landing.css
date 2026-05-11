@@ -1455,3 +1455,41 @@
     display: none;
   }
 }
+
+/* ───────────────────────────────────────────────────── POSITIONING BAND */
+
+.lp-positioning {
+  width: 100%;
+  background: var(--acr-surface-1, #FAF4E8);
+  border-top: 1px solid var(--acr-border, rgba(80, 40, 15, 0.08));
+  border-bottom: 1px solid var(--acr-border, rgba(80, 40, 15, 0.08));
+}
+.lp-positioning-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+}
+.lp-positioning-primary {
+  font-family: var(--font-serif, "Fraunces", serif);
+  font-size: clamp(22px, 3.4vw, 30px);
+  font-weight: 600;
+  color: var(--acr-ink, #241607);
+  letter-spacing: -0.01em;
+}
+.lp-positioning-roadmap {
+  font-family: var(--font-sans, system-ui);
+  font-size: 15px;
+  color: var(--acr-ink-2, rgba(36, 22, 7, 0.72));
+  max-width: 720px;
+  line-height: 1.5;
+}
+@media (max-width: 720px) {
+  .lp-positioning-inner {
+    padding: 28px 20px;
+  }
+}
