@@ -4536,7 +4536,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       // Support escalations
       const escalatedTickets = await db.select({ count: count() }).from(supportTickets)
         .where(and(
-          sql`${supportTickets.escalatedAt} IS NOT NULL`,
+          eq(supportTickets.resolutionType, "escalated"),
           sql`${supportTickets.createdAt} >= ${thirtyDaysAgo}`
         ));
       const totalTickets = await db.select({ count: count() }).from(supportTickets)

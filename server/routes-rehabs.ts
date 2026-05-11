@@ -429,13 +429,14 @@ export function registerRehabRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const activeStatuses = ["planning", "demo", "framing", "rough_ins", "drywall", "finishes", "punch_list", "listed", "under_contract"];
 
+      const statusList = sql.join(activeStatuses.map(s => sql`${s}`), sql`, `);
       const rows = await db.execute(sql`
         SELECT id, name, status, started_at, planned_listing_date,
                purchase_price_cents, budget_total_cents, spent_total_cents,
                arv_cents, holding_cost_monthly_cents
         FROM rehabs
         WHERE organization_id = ${orgId}
-          AND status = ANY(${activeStatuses}::text[])
+          AND status IN (${statusList})
         ORDER BY updated_at DESC
         LIMIT 5
       `);

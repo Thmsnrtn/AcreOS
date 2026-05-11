@@ -273,7 +273,8 @@ export function registerContractorRoutes(app: Express): void {
   app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const taxYear = parseInt(String(req.query.taxYear ?? new Date().getFullYear()), 10);
+      const parsedYear = parseInt(String(req.query.taxYear ?? new Date().getFullYear()), 10);
+      const taxYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
 
       const rows = await db.execute(sql`
         SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
