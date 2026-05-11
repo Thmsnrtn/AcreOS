@@ -1060,7 +1060,10 @@ function Router() {
         {() => <FlaggedRoute route="/deal-patterns" component={DealPatternsPage} />}
       </Route>
       <Route path="/conscious-organization">
-        {() => <ProtectedRoute component={ConsciousOrganizationPage} />}
+        {/* Founder-gated 2026-05-11: this page exposes the org-consciousness
+            agent surface (Atlas/Sophie/Forge codenames) which must never
+            reach customer-facing users per the persona-architecture rule. */}
+        {() => <FounderProtectedRoute component={ConsciousOrganizationPage} />}
       </Route>
       <Route path="/anticipatory-enterprise">
         {/* Exposes internal agent-negotiation codenames (forge_revenue,
@@ -1101,7 +1104,10 @@ function Router() {
 
       {/* Team — additional */}
       <Route path="/commissions">
-        {() => <ProtectedRoute component={CommissionsPage} />}
+        {/* Founder-gated 2026-05-11: org-wide commission ledgers are a
+            founder-business surface; per-user commissions land in
+            /settings → Payouts and /money for customers. */}
+        {() => <FounderProtectedRoute component={CommissionsPage} />}
       </Route>
       <Route path="/team-leaderboard">
         {() => <ProtectedRoute component={TeamLeaderboardPage} />}
@@ -1112,7 +1118,9 @@ function Router() {
         {() => <ProtectedRoute component={KPIDashboardPage} />}
       </Route>
       <Route path="/cohort-analysis">
-        {() => <ProtectedRoute component={CohortAnalysisPage} />}
+        {/* Founder-gated 2026-05-11: cross-org retention cohorts are a
+            founder-business analytics surface, not a customer-facing one. */}
+        {() => <FounderProtectedRoute component={CohortAnalysisPage} />}
       </Route>
       <Route path="/audit-log">
         {() => <ProtectedRoute component={AuditLogPage} />}
