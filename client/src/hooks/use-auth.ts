@@ -1,7 +1,8 @@
 import { useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
-import { hasAnyClerkSession, readClerkSessionJwt } from "@/lib/clerk-session-detect";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { touchClerkSession } from "@/lib/clerk-touch";
 
 export type AuthUser = User & { isFounder?: boolean };
 
@@ -19,29 +20,6 @@ export type AuthUser = User & { isFounder?: boolean };
 // we clear and bounce to /auth.
 
 let authFailCount = 0;
-
-async function touchClerkSession(): Promise<void> {
-  // Same 401-recovery touch as queryClient.refreshSessionCookie. Kept
-  // inline to avoid pulling queryClient into the auth bootstrap path.
-  try {
-    const jwt = readClerkSessionJwt();
-    if (!jwt) return;
-    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    const sid = payload?.sid;
-    if (!sid) return;
-    await fetch(
-      `/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "active_organization_id=",
-        credentials: "include",
-      }
-    );
-  } catch {
-    // best effort
-  }
-}
 
 async function fetchAppUser(): Promise<AuthUser | null> {
   let response = await fetch("/api/auth/user", { credentials: "include" });

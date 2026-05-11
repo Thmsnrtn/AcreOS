@@ -4,6 +4,11 @@ import React from "react";
 import { ToastAction } from "@/components/ui/toast";
 import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
 import { clientLogger } from "@/lib/clientLogger";
+// Canonical 401-recovery Clerk-session touch. Aliased as
+// `refreshSessionCookie` to preserve the historical call-site name in
+// the three places this fires (fetchJsonArray, apiRequest 401 retry,
+// query 401 retry). See client/src/lib/clerk-touch.ts.
+import { touchClerkSession as refreshSessionCookie } from "@/lib/clerk-touch";
 
 // Per-request timeout (ms). Short enough that a stalled endpoint
 // surfaces as a retry-able error rather than a perpetual spinner; long
@@ -176,34 +181,6 @@ export async function fetchJsonArray<T>(url: string): Promise<T[]> {
     return [];
   } catch {
     return [];
-  }
-}
-
-// On 401 to an authenticated /api endpoint, proactively touch the Clerk
-// session to refresh the __session JWT, then let the caller retry once.
-// Cycle 3 r1 showed that the 45s keep-alive interval could race against
-// the 60s+30s JWT validity window — an in-flight fetch could arrive
-// after the cookie expired but before the next scheduled touch. This
-// helper closes that race without changing user-visible behavior.
-async function refreshSessionCookie(): Promise<void> {
-  try {
-    const m = document.cookie.match(/__session=([^;]+)/);
-    const jwt = m?.[1];
-    if (!jwt) return;
-    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    const sid = payload?.sid;
-    if (!sid) return;
-    await fetch(
-      `/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "active_organization_id=",
-        credentials: "include",
-      }
-    );
-  } catch {
-    // best effort
   }
 }
 
