@@ -12,59 +12,25 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
 import {
   Users,
   Map,
-  Banknote,
-  GitBranch,
   ArrowRight,
   Sun,
-  CheckCircle2,
-  AlertTriangle,
-  Bell,
-  Calendar,
   Clock,
-  X,
   Target,
   Sparkles,
-  TrendingUp,
-  AlertCircle,
-  Activity,
-  DollarSign,
-  Flame,
-  BarChart3,
-  Zap,
-  Moon,
-  Bot,
   RefreshCw,
-  Briefcase,
-  MessageSquare,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { plural, usd, dollarsCompact } from "@/lib/format";
+import { plural } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
-import { ClearedEmpty } from "@/components/empty-states";
-import { GlossaryTerm } from "@/components/Glossary";
-import { ContentReveal } from "@/components/ContentReveal";
+import { DecisionQueue, type DecisionItem } from "@/components/today/DecisionQueue";
+import { CashStrip } from "@/components/today/CashStrip";
+import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import "./today.css";
-import { resolveVerticalSurfaces } from "@/lib/today-vertical-surfaces";
-
-interface GoalWithProgress {
-  id: number;
-  label: string;
-  goalType: string;
-  targetValue: string;
-  periodStart: string;
-  periodEnd: string;
-  currentValue: number;
-  progressPct: number;
-  isActive: boolean;
-}
 
 interface NextBestAction {
   id: string;
@@ -121,7 +87,7 @@ interface SystemAlert {
 interface PaxObservation {
   id: number;
   type: string;
-  severity: string; // high | medium | low | info
+  severity: string;
   title: string;
   description: string;
   metadata: Record<string, any> | null;
@@ -180,23 +146,13 @@ const alertLinkLabelByType: Record<string, string> = {
   stale_avm: "View properties",
 };
 
-// Priority → semantic --acr-* tone (Tier 1 platform pattern, applied here
-// in Phase G polish on /today's carryforward).
-const priorityColors: Record<string, string> = {
-  high: "bg-acr-neg-soft text-acr-neg border-transparent",
-  medium: "bg-acr-warn-soft text-acr-warn border-transparent",
-  low: "bg-acr-brand-soft text-acr-brand border-transparent",
-};
-
+const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 const LAST_VISIT_KEY = "acreos_last_visit_ts";
 const WELCOME_BACK_THRESHOLD_DAYS = 7;
 
 export default function TodayPage() {
   useDocumentTitle("Today — AcreOS");
-  // Persona-aware labels for the entity counts. Defaults to land_investor
-  // copy ("Properties") when persona is unset; switches to "Notes" /
-  // "Subject properties" / etc when the user picks a different archetype.
   const propertyLabelPlural = useTerm("entity.property.plural");
   const { toast } = useToast();
   const { data: organization } = useOrganization();
@@ -207,24 +163,6 @@ export default function TodayPage() {
   const { data: propertiesRaw = [] } = useProperties();
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
 
-  // r5 Eleanor WF-R5-001: progressive disclosure for first-time users.
-  // If the org has very little data (≤ 2 leads + 0 properties) we
-  // treat the dashboard as "new user mode" and hide the
-  // information-dense AI / Pulse / Action Queue sections. The
-  // Getting Started checklist and the hero become the focus.
-  // A user can toggle the full dashboard on via localStorage once
-  // they've decided they want it — we persist that preference.
-  const hasEngaged = leads.length >= 3 || properties.filter((p: any) => p.status === "owned").length >= 1;
-  const newUserModeOverride =
-    typeof window !== "undefined" &&
-    window.localStorage.getItem("acreos.dashboardMode") === "full";
-  const isNewUserMode = !hasEngaged && !newUserModeOverride;
-  const switchToFullMode = () => {
-    try {
-      window.localStorage.setItem("acreos.dashboardMode", "full");
-    } catch { /* noop */ }
-    window.location.reload();
-  };
   const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
     staleTime: 2 * 60 * 1000,
@@ -232,11 +170,6 @@ export default function TodayPage() {
   const { data: systemAlerts = [], isLoading: alertsLoading } = useQuery<SystemAlert[]>({
     queryKey: ["/api/alerts/active"],
     staleTime: 5 * 60 * 1000,
-  });
-  const { data: activeGoals = [] } = useQuery<GoalWithProgress[]>({
-    queryKey: ["/api/goals"],
-    staleTime: 5 * 60 * 1000,
-    select: (data) => Array.isArray(data) ? data.filter((g) => g.isActive) : [],
   });
 
   const { data: intelligence, isLoading: intelligenceLoading } =
@@ -257,14 +190,12 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  // Decision queue: derive pending count from leads + deals already fetched
-  const { data: allDealsRaw = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
+  const { data: allDealsRaw = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string; purchasePrice?: string; offerAmount?: string }[]>({
     queryKey: ["/api/deals"],
     staleTime: 5 * 60 * 1000,
   });
   const allDeals = Array.isArray(allDealsRaw) ? allDealsRaw : [];
 
-  // Cash position: upcoming note payments in next 30/60/90 days
   const { data: allNotesRaw = [], isLoading: notesLoading } = useQuery<{
     id: number; status: string; currentBalance: string; monthlyPayment: string;
     nextPaymentDate?: string; borrowerName?: string;
@@ -294,41 +225,17 @@ export default function TodayPage() {
     return stalledLeads + waitingCounters + stuckDeals;
   })();
 
-  const dismissMutation = useMutation({
+  // Dismiss mutation retained for /alerts surface; no longer wired into
+  // /today JSX (decision queue handles the high-level fan-out). Keeping
+  // the hook means we can re-introduce inline dismiss without re-fetching.
+  void useMutation({
     mutationFn: async (alertId: number) => {
       await apiRequest("DELETE", `/api/alerts/${alertId}/dismiss`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/alerts/active"] });
     },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Couldn't dismiss alert",
-        description: "The alert is still active. Try again, or check the system status.",
-      });
-    },
   });
-
-  // ── Agent Activity for Today page ─────────────────────────────────────
-  const { data: agentActivity = [] } = useQuery<any[]>({
-    queryKey: ["/api/founder/v12/lifecycle/agents"],
-    staleTime: 30_000,
-  });
-  const { data: pendingApprovals = [] } = useQuery<any[]>({
-    queryKey: ["/api/autonomous/tasks/pending-approval"],
-    staleTime: 15_000,
-  });
-  const { data: autonomyData } = useQuery<any>({
-    queryKey: ["/api/founder/v14/autonomy/score"],
-    staleTime: 60_000,
-  });
-
-  const activeAgentCount = Array.isArray(agentActivity)
-    ? agentActivity.filter((a: any) => a.status === "running" || a.status === "active").length
-    : 0;
-  const pendingApprovalCount = Array.isArray(pendingApprovals) ? pendingApprovals.length : 0;
-  const autonomyScore = autonomyData?.score ?? autonomyData?.overallScore ?? 0;
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -337,7 +244,6 @@ export default function TodayPage() {
     return "Good evening";
   };
 
-  // --- Today's Actions: tasks due today or overdue (not completed) ---
   const todayActions = tasks.filter((t) => {
     if (t.status === "completed" || t.status === "done") return false;
     if (!t.dueDate) return false;
@@ -345,22 +251,151 @@ export default function TodayPage() {
     return isToday(due) || isBefore(due, startOfDay(new Date()));
   });
 
-  const aiActions = intelligence?.actions?.slice(0, 5) ?? [];
-
-  const paxObservations = paxInsights?.observations ?? [];
-  const paxStaleLeads = paxInsights?.staleLeads ?? [];
-  const paxExpiringOffers = paxInsights?.expiringOffers ?? [];
-  const paxItemCount = paxObservations.length + paxStaleLeads.length + paxExpiringOffers.length;
-
-  const paxSuggestions = paxSuggestionsData?.suggestions ?? [];
-
   const { data: todayPriorities, isLoading: prioritiesLoading } =
     useQuery<TodayPrioritiesData>({
       queryKey: ["/api/dashboard/today-priorities"],
       staleTime: 5 * 60 * 1000,
     });
 
-  // Business Pulse computed values
+  // ── Decision queue merge ───────────────────────────────────────────────
+  // Pulse, Start-here, Today's actions, Pax suggests, Pax noticed,
+  // Portfolio alerts, AI action queue → one prioritized list. Provenance
+  // pill (source) tells the user which surface noticed each item.
+  const decisionItems: DecisionItem[] = React.useMemo(() => {
+    const items: DecisionItem[] = [];
+
+    // Pax priorities (AI-prioritized 1/2/3) — top rank.
+    (todayPriorities?.priorities ?? []).forEach((p, idx) => {
+      items.push({
+        id: `priority-${p.id}`,
+        source: "pax-priority",
+        priority: p.priority,
+        title: p.title,
+        description: p.description,
+        actionLabel: p.actionLabel,
+        actionUrl: p.actionUrl,
+        rank: idx, // already pre-sorted by the backend
+      });
+    });
+
+    // Today's actions (tasks due today/overdue).
+    todayActions.forEach((t) => {
+      const isOverdue = t.dueDate && isBefore(new Date(t.dueDate), startOfDay(new Date()));
+      items.push({
+        id: `task-${t.id}`,
+        source: "ai-queue",
+        priority: (t.priority as "high" | "medium" | "low") ?? "medium",
+        title: t.title,
+        description: t.dueDate
+          ? `${isOverdue ? "Overdue · " : ""}Due ${format(new Date(t.dueDate), "MMM d")}`
+          : (t.description ?? ""),
+        actionLabel: "Open task",
+        actionUrl: "/pipeline",
+        rank: 100 + (isOverdue ? 0 : 10) + (priorityRank[t.priority] ?? 1),
+      });
+    });
+
+    // Portfolio alerts.
+    systemAlerts.forEach((a) => {
+      const sev: "high" | "medium" | "low" =
+        a.severity === "critical" ? "high" : a.severity === "warning" ? "medium" : "low";
+      items.push({
+        id: `alert-${a.id}`,
+        source: "portfolio-alert",
+        priority: sev,
+        title: a.title,
+        description: a.message,
+        actionLabel: alertLinkLabelByType[a.type] ?? "View",
+        actionUrl: alertHrefByType[a.type] ?? "/",
+        rank: 200 + priorityRank[sev],
+      });
+    });
+
+    // Pax noticed — observations, stale leads, expiring offers.
+    (paxInsights?.observations ?? []).forEach((obs) => {
+      const sev: "high" | "medium" | "low" =
+        obs.severity === "high" ? "high" : obs.severity === "medium" ? "medium" : "low";
+      items.push({
+        id: `obs-${obs.id}`,
+        source: "pax-noticed",
+        priority: sev,
+        title: obs.title,
+        description: obs.description,
+        actionLabel: "Review",
+        actionUrl: "/pax#insights",
+        rank: 300 + priorityRank[sev],
+      });
+    });
+    (paxInsights?.staleLeads ?? []).forEach((lead) => {
+      items.push({
+        id: `stale-lead-${lead.id}`,
+        source: "pax-noticed",
+        priority: "medium",
+        title: `${lead.firstName} ${lead.lastName} hasn't been contacted`,
+        description: lead.daysSinceContact >= 999
+          ? "Never contacted"
+          : `${lead.daysSinceContact} days since last contact`,
+        actionLabel: "Follow up",
+        actionUrl: "/leads",
+        rank: 310,
+      });
+    });
+    (paxInsights?.expiringOffers ?? []).forEach((offer) => {
+      items.push({
+        id: `expiring-offer-${offer.id}`,
+        source: "pax-noticed",
+        priority: "high",
+        title: offer.title,
+        description: `Offer expires ${offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}`,
+        actionLabel: "View deal",
+        actionUrl: "/deals",
+        rank: 250,
+      });
+    });
+
+    // Pax suggests.
+    (paxSuggestionsData?.suggestions ?? []).forEach((s) => {
+      items.push({
+        id: `suggest-${s.id}`,
+        source: "pax-suggests",
+        priority: s.confidence >= 0.85 ? "high" : s.confidence >= 0.7 ? "medium" : "low",
+        title: s.suggestion,
+        description: s.rationale,
+        actionLabel: s.actionLabel,
+        actionUrl: s.actionUrl,
+        rank: 400 + (1 - s.confidence) * 10,
+      });
+    });
+
+    // AI action queue (dashboard intelligence).
+    (intelligence?.actions ?? []).slice(0, 5).forEach((a) => {
+      items.push({
+        id: `ai-${a.id}`,
+        source: "ai-queue",
+        priority: a.priority,
+        title: a.title,
+        description: a.description,
+        actionLabel: a.actionLabel,
+        actionUrl: a.actionUrl,
+        rank: 500 + priorityRank[a.priority],
+      });
+    });
+
+    return items;
+  }, [
+    todayPriorities,
+    todayActions,
+    systemAlerts,
+    paxInsights,
+    paxSuggestionsData,
+    intelligence,
+  ]);
+
+  const decisionQueueLoading =
+    prioritiesLoading || tasksLoading || alertsLoading ||
+    paxLoading || paxSuggestionsLoading || intelligenceLoading;
+
+  // ── Cash strip aggregates ──────────────────────────────────────────────
   const activeDeals = allDeals.filter(
     (d) => !["closed", "cancelled"].includes(d.status)
   );
@@ -368,91 +403,36 @@ export default function TodayPage() {
     (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
     0
   );
-  const hotDeals = allDeals.filter(
-    (d) => d.status === "accepted" || d.status === "in_escrow"
-  ).length;
-  const avgWinProbability = activeDeals.length > 0
-    ? Math.round(
-        activeDeals.reduce((sum, d: any) => sum + (d.winProbability ?? 0), 0) /
-          activeDeals.length
-      )
-    : 0;
-  const closedDealsThisMonth = allDeals.filter((d) => {
-    if (d.status !== "closed") return false;
-    if (!d.updatedAt) return false;
-    const date = new Date(d.updatedAt);
+
+  const cashAggregates = React.useMemo(() => {
     const now = new Date();
-    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-  });
-  const closedRevenueThisMonth = closedDealsThisMonth.reduce(
-    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
-    0
-  );
+    const activeNotes = allNotes.filter(
+      (n) => n.status === "active" || n.status === "late" || n.status === "delinquent"
+    );
+    const lateCount = allNotes.filter(
+      (n) => n.status === "late" || n.status === "delinquent"
+    ).length;
+    const within = (days: number) =>
+      activeNotes.filter((n) => {
+        if (!n.nextPaymentDate) return false;
+        const diff = (new Date(n.nextPaymentDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+        return diff >= 0 && diff <= days;
+      });
+    const sum = (arr: typeof activeNotes) =>
+      arr.reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    return {
+      projected30: sum(within(30)),
+      projected90: sum(within(90)),
+      lateCount,
+    };
+  }, [allNotes]);
 
-  // Pulse score: simple heuristic based on active deals, hot deals, pipeline
-  const pulseScore = Math.min(
-    100,
-    Math.round(
-      (activeDeals.length > 0 ? 20 : 0) +
-      (hotDeals > 0 ? 25 : 0) +
-      (pipelineValue > 0 ? 20 : 0) +
-      (avgWinProbability > 0 ? avgWinProbability * 0.35 : 0)
-    )
-  );
-  // Pulse tonal projection — replaces hardcoded emerald/amber/blue with
-  // semantic --acr-* tones so per-theme switching works.
-  const pulseBg =
-    pulseScore >= 80
-      ? "from-acr-pos-soft to-transparent"
-      : pulseScore >= 55
-      ? "from-acr-warn-soft to-transparent"
-      : "from-acr-brand-soft to-transparent";
-  const pulseColor =
-    pulseScore >= 80
-      ? "text-acr-pos"
-      : pulseScore >= 55
-      ? "text-acr-warn"
-      : "text-acr-brand";
-  const pulseLabel =
-    pulseScore >= 80 ? "Strong" : pulseScore >= 55 ? "Steady" : "Building";
+  // ── Empty-state / welcome-back state machine (single pathway) ──────────
+  const hasAnyData =
+    (stats?.activeLeads ?? leads.length) > 0 ||
+    (stats?.activeProperties ?? properties.length) > 0 ||
+    allDeals.length > 0;
 
-  // Cash position calculations
-  const cashPosition = (() => {
-    const now = new Date();
-    const activeNotes = allNotes.filter(n => n.status === "active" || n.status === "late" || n.status === "delinquent");
-    const lateCount = allNotes.filter(n => n.status === "late" || n.status === "delinquent").length;
-    const upcoming30 = activeNotes.filter(n => {
-      if (!n.nextPaymentDate) return false;
-      const due = new Date(n.nextPaymentDate);
-      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-      return diff >= 0 && diff <= 30;
-    });
-    const next3 = upcoming30
-      .sort((a, b) => new Date(a.nextPaymentDate!).getTime() - new Date(b.nextPaymentDate!).getTime())
-      .slice(0, 3);
-    const projected30 = upcoming30.reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
-    const projected60 = activeNotes.filter(n => {
-      if (!n.nextPaymentDate) return false;
-      const due = new Date(n.nextPaymentDate);
-      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-      return diff >= 0 && diff <= 60;
-    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
-    const projected90 = activeNotes.filter(n => {
-      if (!n.nextPaymentDate) return false;
-      const due = new Date(n.nextPaymentDate);
-      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-      return diff >= 0 && diff <= 90;
-    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
-    return { next3, lateCount, projected30, projected60, projected90, activeCount: activeNotes.length };
-  })();
-
-  const onboardingComplete = organization?.onboardingCompleted === true;
-  const [onboardingDismissed, setOnboardingDismissed] = React.useState(() => {
-    return sessionStorage.getItem("onboarding_banner_dismissed") === "true";
-  });
-  const showOnboardingBanner = !onboardingComplete && !onboardingDismissed;
-
-  // ── Welcome Back: detect returning users after extended absence ─────
   const [welcomeBackDismissed, setWelcomeBackDismissed] = React.useState(false);
   const lastVisitTs = React.useMemo(() => {
     try {
@@ -466,16 +446,16 @@ export default function TodayPage() {
     ? Math.floor((Date.now() - lastVisitTs) / (1000 * 60 * 60 * 24))
     : null;
   const showWelcomeBack =
+    hasAnyData &&
     !welcomeBackDismissed &&
     daysSinceLastVisit !== null &&
     daysSinceLastVisit >= WELCOME_BACK_THRESHOLD_DAYS;
 
-  // Update the last-visit timestamp on mount (after reading the old value)
   React.useEffect(() => {
     try {
       localStorage.setItem(LAST_VISIT_KEY, Date.now().toString());
     } catch {
-      // localStorage unavailable — ignore
+      // ignore
     }
   }, []);
 
@@ -488,198 +468,35 @@ export default function TodayPage() {
     }
   }, []);
 
-  const userName = user?.firstName || organization?.name || "";
+  // Sample-data CTA: seed a realistic dataset directly from /today's
+  // empty state without forcing the user into the onboarding wizard.
+  const loadSampleDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/onboarding/sample-data", {});
+      if (!res.ok) throw new Error("Failed to load sample data");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      toast({
+        title: "Sample data loaded",
+        description: "Take a look around — this is a realistic snapshot you can safely explore.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't load sample data",
+        description: `${error?.message ?? "Try again in a moment"} — your workspace is unchanged.`,
+      });
+    },
+  });
 
-  // Persona-aware quick-jump banners. /today's parcel-flip layout doesn't
-  // serve sub-vertical operators (Linnea/Note Investor flagged it; Marcus/
-  // Tax-Delinquent flagged it). Until a full per-persona /today rebuild
-  // lands, surface fast links to each persona's actual workspace.
-  const investorType = (organization as any)?.investorType as string | undefined;
-  const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
-  // FW-10: collapse the 6 stacked vertical banners into one registry-driven
-  // card. Imelda §3 today: "Most days as a landlord do not look like
-  // AcreOS's /today" — we shouldn't pile 6 cards on the same view.
-  const verticalClusters = resolveVerticalSurfaces({ businessType, investorType });
+  const showEmptyState = !statsLoading && !hasAnyData && !showWelcomeBack;
 
   return (
     <PageShell label="Today">
-      {/* FW-10: single "Your surfaces" card driven by the vertical-surfaces
-          registry. Replaces 6 stacked banners. An org that fingerprints to
-          multiple verticals (e.g. land + notes) gets multiple sections in
-          one card instead of multiple stacked cards. */}
-      {verticalClusters.length > 0 && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 space-y-4">
-            {verticalClusters.map((cluster, idx) => (
-              <div
-                key={cluster.id}
-                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${idx > 0 ? "pt-3 border-t border-border/40" : ""}`}
-              >
-                <div>
-                  <h3 className="font-semibold text-sm">{cluster.title}</h3>
-                  <p className="text-sm text-muted-foreground">{cluster.description}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                  {cluster.links.map((l) => (
-                    <Button key={l.href} asChild size="sm" variant="outline">
-                      <Link href={l.href}>{l.label}</Link>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Onboarding prompt for new users */}
-      {showOnboardingBanner && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm">Welcome to AcreOS.</h3>
-                <p className="text-sm text-muted-foreground">Complete a quick setup to personalize AcreOS for your land-investing business.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button asChild size="sm" className="min-h-11 sm:min-h-9">
-                <Link href="/onboarding-v2">
-                  Get started <ArrowRight className="w-3.5 h-3.5 ml-1" aria-hidden="true" />
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 sm:h-9 sm:w-9"
-                onClick={() => { setOnboardingDismissed(true); sessionStorage.setItem("onboarding_banner_dismissed", "true"); }}
-                aria-label="Dismiss onboarding banner"
-              >
-                <X className="w-4 h-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Welcome Back card for returning users after extended absence */}
-      {showWelcomeBack && (
-        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-card bg-acr-brand-soft shrink-0">
-                  <RefreshCw className="w-5 h-5 text-acr-brand" aria-hidden="true" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-base">
-                    Welcome back{userName ? `, ${userName}` : ""}!
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    It's been {plural(daysSinceLastVisit, "day")} since your last visit. Here's what's happening:
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 h-11 w-11 sm:h-9 sm:w-9"
-                onClick={dismissWelcomeBack}
-                aria-label="Dismiss welcome back card"
-              >
-                <X className="w-4 h-4" aria-hidden="true" />
-              </Button>
-            </div>
-
-            {/* Summary stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground tabular-nums">
-                  {statsLoading ? "—" : stats?.activeLeads ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Active leads</p>
-              </div>
-              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground tabular-nums">
-                  {statsLoading ? "—" : stats?.activeDeals ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Active deals</p>
-              </div>
-              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground tabular-nums">
-                  {statsLoading ? "—" : stats?.activeProperties ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground">{propertyLabelPlural}</p>
-              </div>
-              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground tabular-nums">
-                  {pendingDecisionCount > 0 ? pendingDecisionCount : 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Pending decisions</p>
-              </div>
-            </div>
-
-            {/* Quick action links */}
-            <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm" variant="default" className="gap-1.5 min-h-11 sm:min-h-9">
-                <Link href="/decision-queue">
-                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Review decisions
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40 min-h-11 sm:min-h-9">
-                <Link href="/portfolio">
-                  <Briefcase className="w-3.5 h-3.5" aria-hidden="true" />
-                  View portfolio
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40 min-h-11 sm:min-h-9">
-                <Link href="/team-inbox">
-                  <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
-                  Check messages
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Getting Started Checklist — shown when user has no data yet */}
-      {!statsLoading && (stats?.activeLeads ?? 0) === 0 && (stats?.activeProperties ?? 0) === 0 && (
-        <div className="space-y-4">
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
-            <CardContent className="p-6 text-center space-y-3">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
-                <Target className="w-6 h-6 text-primary" aria-hidden="true" />
-              </div>
-              <h2 className="text-xl font-bold">Ready to find your first deal?</h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Your AcreOS workspace is set up. Follow these steps to start evaluating parcels and closing deals.
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <Button asChild size="sm" className="min-h-11 sm:min-h-9">
-                  <Link href="/properties">
-                    <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Add your first parcel
-                  </Link>
-                </Button>
-                <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-9">
-                  <Link href="/leads">
-                    <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Import leads
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <GettingStartedChecklist />
-        </div>
-      )}
-
-      {/* Header — homestead Command Center editorial greeting (prototype: acreos/command-center.jsx hero) */}
+      {/* ── Section 1: Hero greeting ─────────────────────────────────── */}
       <div className="acr-cc-hero">
         <div>
           <div className="acr-eyebrow flex items-center gap-2">
@@ -714,732 +531,98 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Agent Activity — sovereign system status */}
-      {(activeAgentCount > 0 || pendingApprovalCount > 0) && (
-        <div className="rounded-xl border bg-gradient-to-br from-primary/5 to-transparent p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Bot className="w-4 h-4 text-primary" aria-hidden="true" />
-              <span className="font-semibold text-sm">Agent activity</span>
-              {autonomyScore > 0 && (
-                <Badge variant="outline" className="text-xs tabular-nums">
-                  {Math.round(autonomyScore)}% autonomy
-                </Badge>
-              )}
-            </div>
-            <Link href="/sovereign">
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-primary/10">
-                Sovereign dashboard &rarr;
-              </Badge>
-            </Link>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center">
-              <AnimatedCounter value={activeAgentCount} className="text-lg font-bold tabular-nums" />
-              <p className="text-xs text-muted-foreground">Active agents</p>
-            </div>
-            <div className="text-center">
-              <Link href="/ai#agents">
-                <AnimatedCounter
-                  value={pendingApprovalCount}
-                  className={`text-lg font-bold tabular-nums ${pendingApprovalCount > 0 ? "text-acr-warn" : ""}`}
-                />
-                <p className="text-xs text-muted-foreground">Pending approvals</p>
-              </Link>
-            </div>
-            <div className="text-center">
-              <AnimatedCounter
-                value={Math.round(autonomyScore)}
-                format={(n) => `${Math.round(n)}%`}
-                className="text-lg font-bold tabular-nums"
-              />
-              <p className="text-xs text-muted-foreground">Autonomy score</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* r5 Eleanor WF-R5-001: collapse the dense sections behind a
-          "Show full dashboard" toggle while the org is still in
-          first-deal discovery. Keeps the onboarding checklist + hero
-          in focus. */}
-      {isNewUserMode && (
-        <div className="rounded-lg border border-dashed border-muted-foreground/40 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
-          <span>
-            Simplified dashboard. Complete a lead or a property to unlock the full metrics view.
-          </span>
-          <button
-            type="button"
-            onClick={switchToFullMode}
-            className="underline hover:text-foreground whitespace-nowrap"
-            data-testid="button-show-full-dashboard"
-          >
-            Show full dashboard
-          </button>
-        </div>
-      )}
-
-      {/* Business Pulse — live business momentum snapshot */}
-      {!isNewUserMode && (
-      <div data-testid="section-business-pulse">
-        <div className={`rounded-xl border bg-gradient-to-br ${pulseBg} p-4`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className={`w-4 h-4 ${pulseColor}`} aria-hidden="true" />
-              <span className="font-semibold text-sm">Business pulse</span>
-              <Badge variant="outline" className={`text-xs ${pulseColor} border-current`}>
-                {pulseLabel}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-acr-pos animate-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
-              <span className="text-xs text-muted-foreground tabular-nums" aria-label={`Pulse score ${pulseScore} out of 100`}>{pulseScore}/100</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-background/60 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <DollarSign className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Pipeline</span>
+      {/* ── Empty-state: single pathway ──────────────────────────────── */}
+      {showEmptyState && (
+        <div className="space-y-4">
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
+            <CardContent className="p-6 text-center space-y-3">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
+                <Target className="w-6 h-6 text-primary" aria-hidden="true" />
               </div>
-              <p className="text-lg font-bold text-foreground tabular-nums">
-                {pipelineValue > 0 ? dollarsCompact(pipelineValue * 100) : "—"}
+              <h2 className="text-xl font-bold">Ready to find your first deal?</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.
               </p>
-              <p className="text-[10px] text-muted-foreground">
-                <span className="tabular-nums">{activeDeals.length}</span> active deals
-              </p>
-            </div>
-            <div className="bg-background/60 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Flame className="w-3.5 h-3.5 text-acr-brand" aria-hidden="true" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Hot deals</span>
-              </div>
-              <p className="text-lg font-bold text-foreground tabular-nums">{hotDeals}</p>
-              <p className="text-[10px] text-muted-foreground">accepted / in escrow</p>
-            </div>
-            <div className="bg-background/60 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <BarChart3 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg win prob</span>
-              </div>
-              <p className="text-lg font-bold text-foreground tabular-nums">
-                {avgWinProbability > 0 ? `${avgWinProbability}%` : "—"}
-              </p>
-              <p className="text-[10px] text-muted-foreground">across pipeline</p>
-            </div>
-            <div className="bg-background/60 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingUp className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">This month</span>
-              </div>
-              <p className="text-lg font-bold text-foreground tabular-nums">
-                {closedRevenueThisMonth > 0 ? dollarsCompact(closedRevenueThisMonth * 100) : "—"}
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                <span className="tabular-nums">{closedDealsThisMonth.length}</span> closed
-              </p>
-            </div>
-          </div>
-          {/* Pulse progress bar */}
-          <div className="mt-3">
-            <div className="w-full bg-background/60 rounded-full h-1.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  pulseScore >= 80 ? "bg-acr-pos" : pulseScore >= 55 ? "bg-acr-warn" : "bg-acr-brand"
-                }`}
-                style={{ width: `${pulseScore}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* r5 Eleanor: Start Here Today + Pax Suggests + AI Action Queue
-          are also hidden in new-user mode. Getting Started checklist
-          (above this block) + Portfolio Overview (below) remain. */}
-      {!isNewUserMode && (
-      <>
-      {/* Epic J: Section 0 — Start Here Today (3 AI-prioritized actions) */}
-      <div data-testid="section-start-here-today">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
-            <h2 className="acr-section-h2">Start here today</h2>
-          </div>
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-            <Link href="/evening-review">
-              <Moon className="w-3 h-3" aria-hidden="true" /> Evening review
-            </Link>
-          </Button>
-        </div>
-
-        <ContentReveal
-          ready={!prioritiesLoading}
-          skeleton={
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
-            </div>
-          }
-        >
-        {(todayPriorities?.priorities ?? []).length > 0 ? (
-          <div className="space-y-2">
-            {(todayPriorities?.priorities ?? []).map((priority, idx) => (
-              <Card key={priority.id} className={`rounded-card hover:shadow-md transition-shadow ${idx === 0 ? "border-[color:var(--acr-brand)]/30" : ""}`}>
-                <CardContent className="flex items-center gap-4 p-4">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-acr-brand text-acr-brand-ink" : "bg-muted text-muted-foreground"}`}>
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-medium text-sm truncate">{priority.title}</span>
-                      <Badge variant="secondary" className={priorityColors[priority.priority]}>
-                        {priority.priority}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground line-clamp-1">{priority.description}</p>
-                  </div>
-                  <Button asChild size="sm" variant={idx === 0 ? "default" : "outline"} className="shrink-0 text-xs">
-                    <Link href={priority.actionUrl}>{priority.actionLabel}</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
-              <p className="text-sm text-muted-foreground">Nothing pressing today.</p>
-            </CardContent>
-          </Card>
-        )}
-        </ContentReveal>
-      </div>
-
-      {/* Section 1: Today's Actions (tasks due today or overdue) */}
-      <div data-testid="section-todays-actions">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-            <h2 className="acr-section-h2">
-              <GlossaryTerm slug="decision_queue">Today's actions</GlossaryTerm>
-            </h2>
-            {todayActions.length > 0 && (
-              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
-                {todayActions.length}
-              </Badge>
-            )}
-          </div>
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-            <Link href="/pipeline">
-              All tasks <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-
-        {tasksLoading ? (
-          <div className="space-y-2">
-            {[1, 2].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
-          </div>
-        ) : todayActions.length === 0 ? (
-          <Card>
-            <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
-              <p className="text-sm text-muted-foreground">No tasks due today.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {todayActions.map((task) => {
-              const isOverdue = task.dueDate && isBefore(new Date(task.dueDate), startOfDay(new Date()));
-              return (
-                <Card key={task.id} className="hover:shadow-sm transition-shadow">
-                  <CardContent className="flex items-center gap-4 py-3 px-4">
-                    <Clock className={`w-4 h-4 shrink-0 ${isOverdue ? "text-acr-neg" : "text-acr-warn"}`} aria-hidden="true" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm truncate">{task.title}</span>
-                        {task.priority && (
-                          <Badge variant="secondary" className={`${priorityColors[task.priority] ?? ""} text-xs capitalize`}>
-                            {task.priority}
-                          </Badge>
-                        )}
-                        {isOverdue && (
-                          <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg text-xs">Overdue</Badge>
-                        )}
-                      </div>
-                      {task.dueDate && (
-                        <p className="text-xs text-muted-foreground tabular-nums">
-                          Due {format(new Date(task.dueDate), "MMM d")}
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Section 2: Portfolio Health Alerts */}
-      {!alertsLoading && systemAlerts.length > 0 && (
-        <div data-testid="section-alerts">
-          <div className="flex items-center gap-2 mb-3">
-            <Bell className="w-4 h-4 text-acr-warn" aria-hidden="true" />
-            <h2 className="acr-section-h2">Portfolio alerts</h2>
-            <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn text-xs tabular-nums">
-              {systemAlerts.length}
-            </Badge>
-          </div>
-          <div className="space-y-2">
-            {systemAlerts.map((alert) => {
-              const isCritical = alert.severity === "critical";
-              const isWarning = alert.severity === "warning";
-              const borderClass = isCritical
-                ? "border-acr-neg/30 bg-acr-neg-soft dark:border-acr-neg/30 dark:bg-acr-neg-soft"
-                : isWarning
-                ? "border-acr-warn/30 bg-acr-warn-soft dark:border-acr-warn/30 dark:bg-acr-warn-soft"
-                : "border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/20";
-              const iconClass = isCritical ? "text-acr-neg" : isWarning ? "text-acr-warn" : "text-primary";
-              const href = alertHrefByType[alert.type] ?? "/";
-              const linkLabel = alertLinkLabelByType[alert.type] ?? "View";
-              return (
-                <div
-                  key={alert.id}
-                  className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}
-                  role={isCritical ? "alert" : "status"}
-                  aria-live={isCritical ? "assertive" : "polite"}
+              <div className="flex flex-wrap gap-2 justify-center pt-2">
+                <Button asChild size="sm" className="min-h-11 sm:min-h-9">
+                  <Link href="/properties">
+                    <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                    Add your first parcel
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-9">
+                  <Link href="/leads">
+                    <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                    Import leads
+                  </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11 sm:min-h-9"
+                  onClick={() => loadSampleDataMutation.mutate()}
+                  disabled={loadSampleDataMutation.isPending}
+                  data-testid="button-try-sample-data"
                 >
-                  <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${iconClass}`} aria-hidden="true" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{alert.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button asChild variant="outline" size="sm" className="text-xs h-7">
-                      <Link href={href}>{linkLabel}</Link>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => dismissMutation.mutate(alert.id)}
-                      disabled={dismissMutation.isPending}
-                      aria-label={`Dismiss alert: ${alert.title}`}
-                    >
-                      <X className="w-3 h-3" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Section 2b: Pax Noticed
-          Per design-system §1.3: agent attribution lives in the section
-          header itself ("Pax noticed"). No additional "AI" badge — the
-          name IS the byline. */}
-      {!paxLoading && paxItemCount > 0 && (
-        <div data-testid="section-pax-noticed">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-acr-brand" aria-hidden="true" />
-              <h2 className="acr-section-h2">Pax noticed</h2>
-              {paxItemCount > 0 && (
-                <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
-                  {paxItemCount}
-                </Badge>
-              )}
-            </div>
-            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-              <Link href="/pax#insights">
-                View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Link>
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            {/* Observation cards */}
-            {paxObservations.map((obs) => {
-              const isHigh = obs.severity === "high";
-              const isMedium = obs.severity === "medium";
-              const isLow = obs.severity === "low";
-              // Use semantic --acr-* tones so observation cards re-skin
-              // automatically across all five themes (homestead/quarry/
-              // nocturne/meadow/slate). Severity → tone:
-              //   high → neg (destructive)
-              //   medium → warn
-              //   low → accent (informational)
-              const toneClass = isHigh
-                ? "border-[color:var(--acr-neg)]/30 bg-acr-neg-soft"
-                : isMedium
-                ? "border-[color:var(--acr-warn)]/30 bg-acr-warn-soft"
-                : isLow
-                ? "border-acr-line bg-acr-surface-2"
-                : "border-acr-line bg-acr-surface-2";
-              const badgeClass = isHigh
-                ? "bg-acr-neg-soft text-acr-neg border-transparent"
-                : isMedium
-                ? "bg-acr-warn-soft text-acr-warn border-transparent"
-                : isLow
-                ? "bg-acr-surface-2 text-acr-ink-2 border-transparent"
-                : "bg-acr-surface-2 text-acr-ink-3 border-transparent";
-              const iconColor = isHigh
-                ? "text-acr-neg"
-                : isMedium
-                ? "text-acr-warn"
-                : "text-acr-brand";
-              return (
-                <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-card border p-3 ${toneClass}`}>
-                  <Sparkles className={`w-4 h-4 shrink-0 mt-0.5 ${iconColor}`} aria-hidden="true" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium">{obs.title}</p>
-                      <Badge variant="secondary" className={`text-xs capitalize ${badgeClass}`}>
-                        {obs.severity}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{obs.description}</p>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Stale lead cards */}
-            {paxStaleLeads.map((lead) => (
-              <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-card border border-[color:var(--acr-warn)]/30 bg-acr-warn-soft p-3">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-acr-warn" aria-hidden="true" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">
-                    {lead.firstName} {lead.lastName} hasn't been contacted
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                    {lead.daysSinceContact >= 999 ? "Never contacted" : `${lead.daysSinceContact} days since last contact`}
-                  </p>
-                </div>
-                <Button asChild variant="outline" size="sm" className="text-xs h-7 shrink-0">
-                  <Link href="/leads">Follow up</Link>
+                  <Sparkles className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                  {loadSampleDataMutation.isPending ? "Loading…" : "Try with sample data"}
                 </Button>
               </div>
-            ))}
-
-            {/* Expiring offer cards */}
-            {paxExpiringOffers.map((offer) => (
-              <div
-                key={`offer-${offer.id}`}
-                className="flex items-start gap-3 rounded-card border border-[color:var(--acr-neg)]/30 bg-acr-neg-soft p-3"
-                role="alert"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-acr-neg" aria-hidden="true" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{offer.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                    Offer expires {offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}
-                  </p>
-                </div>
-                <Button asChild variant="outline" size="sm" className="text-xs h-7 shrink-0">
-                  <Link href="/deals">View deal</Link>
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Section 2c: Pax Suggests
-          Same byline pattern as Pax Noticed — section header IS the
-          attribution (design-system §1.3). */}
-      <div data-testid="section-pax-suggests">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-acr-brand" aria-hidden="true" />
-            <h2 className="acr-section-h2">Pax suggests</h2>
-          </div>
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-            <Link href="/leads">
-              All leads <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-
-        {paxLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
-        ) : paxSuggestions.length === 0 ? (
-          <Card>
-            <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
-              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Pax is monitoring your pipeline.</p>
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-2">
-            {paxSuggestions.map((s) => {
-              const confidencePct = Math.round(s.confidence * 100);
-              const confBadgeClass = confidencePct >= 85
-                ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos"
-                : confidencePct >= 70
-                ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn"
-                : "bg-muted text-muted-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
-              return (
-                <Card key={s.id} className="hover:shadow-sm transition-shadow border-acr-pos/20 dark:border-acr-pos/30">
-                  <CardContent className="flex items-start gap-4 py-3 px-4">
-                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-acr-pos" aria-hidden="true" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="font-medium text-sm">{s.suggestion}</span>
-                        <Badge variant="secondary" className={`text-xs tabular-nums ${confBadgeClass}`}>
-                          {confidencePct}% confidence
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{s.rationale}</p>
-                    </div>
-                    <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-8 border-acr-pos/30 hover:bg-acr-pos-soft dark:border-acr-pos/30 dark:hover:bg-acr-pos-soft">
-                      <Link href={s.actionUrl}>{s.actionLabel}</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Section 3: Goal Progress */}
-      {activeGoals.length > 0 && (
-        <div data-testid="section-goals">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-primary" aria-hidden="true" />
-              <h2 className="acr-section-h2">Goal progress</h2>
-              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
-                {activeGoals.length}
-              </Badge>
-            </div>
-            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-              <Link href="/settings">
-                Manage goals <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Link>
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {activeGoals.map((goal) => (
-              <Card key={goal.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium truncate">{goal.label}</span>
-                    <span className="text-xs text-muted-foreground ml-2 shrink-0 tabular-nums">
-                      {goal.progressPct}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={goal.progressPct}
-                    className="h-2 mb-2"
-                    aria-label={`${goal.label}: ${goal.progressPct}% complete`}
-                  />
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {typeof goal.currentValue === "number" && goal.goalType === "revenue_earned"
-                      ? `${usd(goal.currentValue, { noCents: true })} of ${usd(goal.targetValue, { noCents: true })}`
-                      : `${goal.currentValue} of ${Number(goal.targetValue)}`}
-                    {" · "}ends {format(new Date(goal.periodEnd), "MMM d, yyyy")}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <GettingStartedChecklist />
         </div>
       )}
 
-      {/* Section 4: AI Action Queue */}
-      <div data-testid="section-ai-actions">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
-            <h2 className="acr-section-h2">AI action queue</h2>
-          </div>
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-            <Link href="/pipeline">
-              View pipeline <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-
-        {intelligenceLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
-        ) : aiActions.length === 0 ? (
-          <ClearedEmpty
-            headline="All clear — nothing needs you right now"
-            subtitle="No AI-suggested actions. Check back as new signals come in."
-          />
-        ) : (
-          <div className="space-y-3">
-            {aiActions.map((action) => (
-              <Card key={action.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="flex items-center gap-4 p-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-sm truncate">{action.title}</span>
-                      <Badge variant="secondary" className={`capitalize ${priorityColors[action.priority]}`}>
-                        {action.priority}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{action.description}</p>
-                  </div>
-                  <Button asChild size="sm" variant="outline" className="shrink-0">
-                    <Link href={action.actionUrl}>{action.actionLabel}</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Section 3b: Cash Position */}
-      {(cashPosition.activeCount > 0 || notesLoading) && (
-        <div data-testid="section-cash-position">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
-              <h2 className="acr-section-h2">Cash position</h2>
-              {cashPosition.lateCount > 0 && (
-                <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg text-xs tabular-nums">
-                  {cashPosition.lateCount} late
-                </Badge>
-              )}
-            </div>
-            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-              <Link href="/finance">
-                View finance <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Link>
-            </Button>
-          </div>
-          {notesLoading ? (
-            <Skeleton className="h-28 w-full" />
-          ) : (
-            <div className="space-y-2">
-              {/* 30/60/90 forecast row */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: "30d", value: cashPosition.projected30 },
-                  { label: "60d", value: cashPosition.projected60 },
-                  { label: "90d", value: cashPosition.projected90 },
-                ].map(({ label, value }) => (
-                  <Card key={label} className="border-acr-pos/20 dark:border-acr-pos/30">
-                    <CardContent className="py-3 px-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-0.5 tabular-nums">{label} projected</p>
-                      <p className="text-base font-semibold tabular-nums text-acr-pos">
-                        {usd(value, { noCents: true })}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+      {/* ── Welcome back (returning user, single card) ───────────────── */}
+      {showWelcomeBack && (
+        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
+          <CardContent className="p-5 flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-card bg-acr-brand-soft shrink-0">
+                <RefreshCw className="w-5 h-5 text-acr-brand" aria-hidden="true" />
               </div>
-              {/* Upcoming payments */}
-              {cashPosition.next3.length > 0 && (
-                <div className="space-y-1.5">
-                  {cashPosition.next3.map((note) => {
-                    const isLate = note.status === "late" || note.status === "delinquent";
-                    return (
-                      <Card key={note.id} className="hover:shadow-sm transition-shadow">
-                        <CardContent className="flex items-center justify-between py-2.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            {isLate ? (
-                              <AlertCircle className="w-4 h-4 text-acr-neg shrink-0" aria-hidden="true" />
-                            ) : (
-                              <Banknote className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
-                            )}
-                            <div>
-                              <p className="text-sm font-medium leading-tight">
-                                {note.borrowerName ?? `Note #${note.id}`}
-                              </p>
-                              <p className="text-xs text-muted-foreground tabular-nums">
-                                Due {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), "MMM d") : "—"}
-                              </p>
-                            </div>
-                          </div>
-                          <span
-                            className={`text-sm font-semibold tabular-nums ${isLate ? "text-acr-neg" : "text-acr-pos"}`}
-                            aria-label={isLate ? `Late payment: ${usd(note.monthlyPayment, { noCents: true })}` : undefined}
-                          >
-                            {usd(note.monthlyPayment, { noCents: true })}
-                          </span>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
+              <div>
+                <h3 className="font-semibold text-base">
+                  Welcome back{user?.firstName ? `, ${user.firstName}` : ""}.
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  It's been {plural(daysSinceLastVisit, "day")} since you stopped by. Here's where things stand.
+                </p>
+              </div>
             </div>
-          )}
-        </div>
-      )}
-      </>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={dismissWelcomeBack}
+              aria-label="Dismiss welcome back card"
+            >
+              Dismiss
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Section 4: KPI strip — homestead .acr-cc-metrics (prototype: 5-column metric strip) */}
-      <div data-testid="section-stats">
-        <h2 className="acr-eyebrow mb-3" style={{ color: "var(--acr-ink-3)" }}>
-          Portfolio overview
-        </h2>
-        <div className="acr-cc-metrics" data-testid="stats-grid">
-          <div className="acr-metric" data-testid="stat-active-leads">
-            <div className="acr-metric-label">Active leads</div>
-            <div className="acr-metric-value">
-              {statsLoading ? "—" : (stats?.activeLeads ?? leads.length)}
-            </div>
-            <div className="acr-metric-delta acr-delta-pos">
-              {leads.filter((l) => l.status === "new").length} new
-            </div>
-          </div>
-          <div className="acr-metric" data-testid="stat-properties">
-            <div className="acr-metric-label">{propertyLabelPlural}</div>
-            <div className="acr-metric-value">
-              {statsLoading ? "—" : properties.length}
-            </div>
-            <div className="acr-metric-delta">
-              {(() => {
-                const owned = properties.filter((p) => p.status === "owned").length;
-                const prospects = properties.filter((p) => p.status === "prospect").length;
-                if (owned > 0 && prospects > 0) return `${owned} owned · ${prospects} prospect`;
-                if (owned > 0) return `${owned} owned`;
-                if (prospects > 0) return `${prospects} prospect`;
-                return "none";
-              })()}
-            </div>
-          </div>
-          <div className="acr-metric" data-testid="stat-active-notes">
-            <div className="acr-metric-label">Active notes</div>
-            <div className="acr-metric-value">
-              {statsLoading ? "—" : (stats?.activeNotes ?? 0)}
-            </div>
-            <div className="acr-metric-delta">&nbsp;</div>
-          </div>
-          <div className="acr-metric" data-testid="stat-open-deals">
-            <div className="acr-metric-label">Open deals</div>
-            <div className="acr-metric-value">
-              {statsLoading ? "—" : (stats?.activeDeals ?? 0)}
-            </div>
-            <div className="acr-metric-delta">&nbsp;</div>
-          </div>
-          <div className="acr-metric" data-testid="stat-pending-decisions">
-            <div className="acr-metric-label">Pending decisions</div>
-            <div className="acr-metric-value">
-              {pendingDecisionCount}
-            </div>
-            <div className={`acr-metric-delta ${pendingDecisionCount > 0 ? "acr-delta-neg" : "acr-muted"}`}>
-              {pendingDecisionCount > 0 ? "needs review" : "all clear"}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* ── Section 2: Decision queue (merged) ───────────────────────── */}
+      {!showEmptyState && (
+        <DecisionQueue items={decisionItems} isLoading={decisionQueueLoading} />
+      )}
+
+      {/* ── Section 3: Cash strip ────────────────────────────────────── */}
+      {!showEmptyState && (
+        <CashStrip
+          isLoading={notesLoading}
+          cashOnHand={cashAggregates.projected90}
+          openDealsValue={pipelineValue}
+          openDealsCount={activeDeals.length}
+          pendingPayments30={cashAggregates.projected30}
+          lateCount={cashAggregates.lateCount}
+        />
+      )}
+
+      {/* ── Section 4: Activity feed ─────────────────────────────────── */}
+      {!showEmptyState && <TodayActivityFeed />}
     </PageShell>
   );
 }
