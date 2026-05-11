@@ -302,17 +302,39 @@ app.use(validateContentType);
 app.use(requestLoggingMiddleware);
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
-// Auth routes: 20 requests per 15 min per IP
+// Auth read endpoints (session-check, org list, oauth-status): permissive cap
+// keyed by user-id when authenticated, falling back to IP. The previous blanket
+// 20/15min-per-IP rule 429'd cellular users behind carrier-grade NAT, where
+// many phones share one egress IP and one normal browsing session burns the
+// bucket for the whole subnet — caught 2026-05-10 as the mobile sign-in hang.
+// /api/auth/user is skipped entirely: it's called on every page render to
+// validate the session cookie, clerk-express already verifies the JWT, and
+// rate-limiting a read-only session check adds no security value.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => (req as any).auth?.userId || req.ip || "unknown",
+  skip: (req) => req.originalUrl.startsWith("/api/auth/user"),
   message: { message: "Too many requests. Please try again later." },
 });
+
+// Auth-attempt endpoints (OAuth init/callback, legacy login/register): keep
+// an aggressive per-IP cap to slow credential-stuffing and brute force.
+const authAttemptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many sign-in attempts. Please try again later." },
+});
+
 app.use("/api/auth", authLimiter);
-app.use("/api/login", authLimiter);
-app.use("/api/register", authLimiter);
+app.use("/api/auth/google", authAttemptLimiter);
+app.use("/api/auth/microsoft", authAttemptLimiter);
+app.use("/api/login", authAttemptLimiter);
+app.use("/api/register", authAttemptLimiter);
 
 // AI endpoints: 60 requests per minute per IP
 const aiLimiter = rateLimit({
