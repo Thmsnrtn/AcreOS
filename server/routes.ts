@@ -230,24 +230,13 @@ import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 // ============================================
 // JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
 // ============================================
-const instanceId = crypto.randomUUID();
-
-async function withJobLock<T>(
-  jobName: string,
-  ttlSeconds: number,
-  fn: () => Promise<T>
-): Promise<T | null> {
-  const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
-  if (!acquired) {
-    logger.info(`[${jobName}] Lock not acquired, skipping execution`);
-    return null;
-  }
-  try {
-    return await fn();
-  } finally {
-    await storage.releaseJobLock(jobName, instanceId);
-  }
-}
+// `instanceId` + `withJobLock` are defined ONCE in server/utils/jobRuntime.ts
+// and shared between the app process (this file) and the worker process
+// (server/worker.ts -> server/jobs/runScheduledJobs.ts). A previous local
+// copy in this file used a different per-import instanceId, which meant
+// `storage.releaseJobLock(name, instanceId)` could never release a lock
+// held by the jobRuntime path during graceful shutdown.
+import { withJobLock } from "./utils/jobRuntime";
 
 // P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
 // (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
