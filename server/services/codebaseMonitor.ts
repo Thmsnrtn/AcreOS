@@ -22,7 +22,7 @@
 import { execSync } from "child_process";
 import * as path from "path";
 import {
-  recordProposedChange,
+  proposeCodeChange,
   notifyFounder,
   preflightBudgetCheck,
   type Pillar,
@@ -142,9 +142,11 @@ async function proposeDependencyBumps(packages: OutdatedPackage[]) {
       riskTier = "low";
     }
 
-    await recordProposedChange({
+    await proposeCodeChange({
       pillar: "shared" as Pillar,
       agent: "codebase_monitor",
+      source: "npm_outdated",
+      rawSignal: { name: pkg.name, current: pkg.current, wanted: pkg.wanted, latest: pkg.latest, type: pkg.type },
       title: `Bump ${pkg.name} ${pkg.current} → ${pkg.wanted} (${bump})`,
       rationale:
         `npm outdated reports ${pkg.name} is at ${pkg.current}; semver-compatible ` +
@@ -205,9 +207,11 @@ async function proposeTscFixes(buckets: TsErrorBucket[]) {
   let proposed = 0;
   for (const bucket of significant.slice(0, 5)) {
     // Cap at 5 per run
-    await recordProposedChange({
+    await proposeCodeChange({
       pillar: "shared" as Pillar,
       agent: "codebase_monitor",
+      source: "tsc_errors",
+      rawSignal: { file: bucket.file, errorCount: bucket.count },
       title: `Clear ${bucket.count} TypeScript errors in ${bucket.file}`,
       rationale:
         `${bucket.file} has ${bucket.count} TypeScript errors per current ` +
@@ -289,14 +293,15 @@ export async function runCodebaseMonitor(
 
   if (proposalsAdded > 0) {
     await notifyFounder({
-      source: "planner_weekly",
+      source: "agent_event",
       pillar: "C_agentic",
+      agentCodename: "codebase_monitor",
       severity: "info",
       title: `Codebase monitor surfaced ${proposalsAdded} proposal${proposalsAdded === 1 ? "" : "s"}`,
       body:
-        `New proposals are awaiting your review in /founder/agent-queue. ` +
-        `All proposals are in simulation mode — none will ship until you ` +
-        `promote them.`,
+        `New proposals are queued in the decisions inbox (itemType=agent_code_proposal). ` +
+        `All are in simulation mode — promote one out of sim to let the evolution ` +
+        `gauntlet pick it up on its next 6h tick.`,
       metadata: { proposalsAdded },
     });
   }

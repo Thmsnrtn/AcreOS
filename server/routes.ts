@@ -179,6 +179,7 @@ import { registerRentLedgerRoutes } from "./routes-rent-ledger";
 import { registerAccountSecurityRoutes } from "./routes-account-security";
 import { registerFounderLetterRoutes } from "./routes-founder-letters";
 import { registerFeedbackRoutes } from "./routes-feedback";
+import { registerRosyRiverRoutes } from "./routes-rosy-river";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -1909,6 +1910,10 @@ export async function registerRoutes(
   // 2026-05-11: public feedback/support form + founder triage inbox.
   // Replaces dead thomas@acreos.io mailto links across landing surfaces.
   registerFeedbackRoutes(app);
+  // 2026-05-12 — Rosy River C4 server side: founder agent-queue endpoints.
+  // Powers /founder/agent-queue (C4 client UI shipped separately) + the
+  // /founder/notifications feed for continuous agent-event visibility.
+  registerRosyRiverRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
