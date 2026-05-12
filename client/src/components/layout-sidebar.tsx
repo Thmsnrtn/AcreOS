@@ -621,6 +621,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
       { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", description: "Public support/feedback/question submissions from landing pages" },
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
+      { label: "Founder feed", icon: Activity, href: "/founder/feed", description: "Unified timeline — feedback + agent events + code proposals in one view" },
       // Sigfried §1: legacy operational dashboard (~7,400 lines) is being
       // extracted into the focused /founder/* surfaces above. Founder still
       // needs access during the extraction window — flagged with a Legacy

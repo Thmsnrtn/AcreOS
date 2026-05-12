@@ -281,6 +281,37 @@ export async function stage1Generate(proposal: {
   const historyId = historyRow.id;
   log("stage1Generate — history row created", { historyId });
 
+  // Rosy River budget gate — preflight before the LLM call. Stage 1 uses
+  // Opus, ~$0.20-0.50 per call depending on file size. Bail with abandoned
+  // status if the weekly ceiling would be breached.
+  try {
+    const { preflightBudgetCheck } = await import("./rosyRiver");
+    const preflight = await preflightBudgetCheck(0.5);
+    if (!preflight.ok) {
+      logError("stage1Generate — budget preflight failed", {
+        historyId,
+        reason: preflight.reason,
+      });
+      await db
+        .update(evolutionHistory)
+        .set({
+          status: "abandoned",
+          stageFailedAt: "stage1",
+          stageFailureReason: `Budget preflight: ${preflight.reason}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(evolutionHistory.id, historyId));
+      return null;
+    }
+  } catch (preflightErr) {
+    // Preflight is advisory — don't block the pipeline if Rosy River is
+    // unavailable. Log and proceed.
+    logError("stage1Generate — preflight threw, proceeding without gate", {
+      historyId,
+      error: preflightErr instanceof Error ? preflightErr.message : String(preflightErr),
+    });
+  }
+
   // 4. Call Claude Opus to generate the code change
   let generatedCode = "";
   try {
@@ -310,6 +341,31 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
       max_tokens: 4000,
     });
     generatedCode = completion.choices[0]?.message?.content ?? "";
+
+    // Rosy River cost ledger — write the LLM call into agent_llm_traces
+    // so the weekly budget aggregator (and the founder dashboard banner)
+    // see the spend.
+    try {
+      const { logAgentTrace } = await import("./agentLlmTraces");
+      const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage;
+      // Opus rough cost: $15/M input, $75/M output → cents per call.
+      const inputTokens = usage?.prompt_tokens ?? 0;
+      const outputTokens = usage?.completion_tokens ?? 0;
+      const costCents = Math.ceil((inputTokens * 0.0015) + (outputTokens * 0.0075));
+      await logAgentTrace({
+        agentCodename: "evolution_pipeline",
+        purpose: "stage1_code_generation",
+        decisionId: historyId,
+        model: ASSESSMENT_MODEL,
+        userPrompt: `target: ${proposal.targetFile}`,
+        response: generatedCode.slice(0, 4000),
+        inputTokens,
+        outputTokens,
+        costCents,
+      });
+    } catch (_) {
+      /* fire-and-forget, never block the pipeline */
+    }
   } catch (err) {
     logError("stage1Generate — OpenRouter call failed", {
       historyId,
