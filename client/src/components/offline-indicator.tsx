@@ -30,12 +30,29 @@ export function OfflineIndicator() {
     };
   }, []);
 
+  // While the banner is visible, set a body data attribute so the sticky
+  // page-topbar can shift down by its height (h-10) and not be covered.
+  // The banner is fixed (different containing block than the topbar), so
+  // sticky-flow won't work — body-attribute + CSS selector is the simplest
+  // cross-tree handshake.
+  const bannerVisible = (isOffline && !dismissed) || showReconnecting;
+  useEffect(() => {
+    if (bannerVisible) {
+      document.body.dataset.offlineBanner = "true";
+    } else {
+      delete document.body.dataset.offlineBanner;
+    }
+    return () => {
+      delete document.body.dataset.offlineBanner;
+    };
+  }, [bannerVisible]);
+
   if (!isOffline && !showReconnecting) return null;
   if (dismissed && isOffline) return null;
 
   if (showReconnecting) {
     return (
-      <div 
+      <div
         className="fixed top-0 left-0 right-0 z-[100] bg-acr-pos text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
         data-testid="reconnecting-indicator"
       >
@@ -46,7 +63,7 @@ export function OfflineIndicator() {
   }
 
   return (
-    <div 
+    <div
       className="fixed top-0 left-0 right-0 z-[100] bg-acr-warn text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
       data-testid="offline-indicator"
     >

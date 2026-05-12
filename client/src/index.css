@@ -1117,6 +1117,14 @@
   }
 }
 
+/* When the offline banner is up (40px tall, fixed top-0 z-[100]), shift
+   the sticky page-topbar (top-0 z-30) down so it sits BELOW the banner
+   instead of being covered. Banner sets body[data-offline-banner='true']
+   via a useEffect in OfflineIndicator. */
+body[data-offline-banner="true"] [data-page-topbar] {
+  top: 2.5rem; /* matches OfflineIndicator h-10 (40px) */
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    PHASE 9: macOS TAHOE-GRADE UI POLISH
 ═══════════════════════════════════════════════════════════════════ */

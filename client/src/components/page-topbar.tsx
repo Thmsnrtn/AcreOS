@@ -105,6 +105,11 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
 
   return (
     <header
+      // data-page-topbar lets the offline banner push us down by its
+      // h-10 (40px) while it's visible. See index.css rule that pairs
+      // with body[data-offline-banner='true']. Without this the sticky
+      // topbar (z-30) is covered by the fixed offline banner (z-[100]).
+      data-page-topbar
       className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 md:px-6 h-14 backdrop-blur-md bg-background/80 border-b border-border"
       role="banner"
     >
