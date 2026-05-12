@@ -94,6 +94,13 @@ export default [
       // must expose an accessible name. Bulk-applied 25+ aria-labels
       // during the full a11y pass; this rule prevents regressions.
       "acreos/icon-button-needs-aria-label": "error",
+      // 2026-05 cache-invalidation infra: flag `useMutation` callsites
+      // that forget to invalidate the query cache in their success
+      // callbacks. Heuristic-based (mutations that legitimately don't
+      // need invalidation can opt out with `// allow-no-invalidation:
+      // <reason>`), so wired as `warn` rather than `error`. Pairs with
+      // `client/src/lib/query-keys.ts` which provides `invalidateRelated`.
+      "acreos/use-mutation-must-invalidate": "warn",
     },
   },
 ];

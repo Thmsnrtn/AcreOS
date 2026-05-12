@@ -17,5 +17,6 @@ module.exports = {
     "no-hardcoded-color-literals": require("./no-hardcoded-color-literals.cjs"),
     "prefer-verbs-canon": require("./prefer-verbs-canon.cjs"),
     "icon-button-needs-aria-label": require("./icon-button-needs-aria-label.cjs"),
+    "use-mutation-must-invalidate": require("./use-mutation-must-invalidate.cjs"),
   },
 };
