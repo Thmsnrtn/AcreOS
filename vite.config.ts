@@ -117,6 +117,13 @@ export default defineConfig({
           // boundary. Both share most of the underlying WebGL machinery
           // anyway.
           'vendor-map': ['mapbox-gl', 'maplibre-gl'],
+          // A8: @turf/turf is ~300kb gzipped and only used in the
+          // subdivision-plan-editor (parcels surface). Isolating it
+          // keeps it out of the main bundle for users who never open
+          // that page. @dnd-kit (drag/drop) is similar — only used on
+          // /deals kanban + a few component drags.
+          'vendor-turf': ['@turf/turf'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
           'vendor-motion': ['framer-motion'],
           'vendor-pdf': ['jspdf'],
           'vendor-sanitize': ['isomorphic-dompurify'],
