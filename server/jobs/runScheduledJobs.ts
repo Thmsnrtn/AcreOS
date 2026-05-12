@@ -1116,6 +1116,45 @@ function startCodebaseMonitorJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Rosy River C5: Weekly telemetry digest (Sunday 8am UTC) ──────────────────
+// Rolls up the last 7 days of agent_tasks / agent_llm_traces / evolution_history
+// into a single founder-feed event. Scheduled outside the heavy 3-5am window
+// and after Sunday's existing strategic-proposals / model-intelligence jobs
+// so it has the freshest data to summarize.
+async function processTelemetryDigestJob() {
+  try {
+    const { runTelemetryDigest } = await import("../services/telemetryDigest");
+    const snapshot = await runTelemetryDigest();
+    log(
+      `Telemetry digest: $${snapshot.spend.totalUsd.toFixed(2)} spent, ` +
+        `${snapshot.proposals.total} proposals, ` +
+        `${snapshot.gauntlet.deployed} deployed, ` +
+        `${snapshot.gauntlet.reverted} reverted`,
+      'telemetry-digest',
+    );
+    jobSupervisor.notifyResult('telemetry_digest', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Telemetry digest job error: ${err}`, 'telemetry-digest');
+    jobSupervisor.notifyResult('telemetry_digest', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startTelemetryDigestJob() {
+  log('Starting telemetry digest job (Sundays at 8:00am UTC)', 'telemetry-digest');
+  trackInterval(() => {
+    const now = new Date();
+    if (
+      now.getUTCDay() === 0 && // Sunday
+      now.getUTCHours() === 8 &&
+      now.getUTCMinutes() < 5
+    ) {
+      withJobLock('telemetry_digest', 6 * 24 * 60 * 60, processTelemetryDigestJob).catch(err => {
+        log(`Telemetry digest lock error: ${err}`, 'telemetry-digest');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Data Retention: nightly purge of expired rows (3:30am UTC) ───────────────
 async function processDataRetentionJob() {
   try {
@@ -2322,6 +2361,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Rosy River C2: codebase monitor (daily at 4:15am UTC, after evolution deploy window)
   startCodebaseMonitorJob();
+
+  // Rosy River C5: weekly telemetry digest (Sundays at 8:00am UTC)
+  startTelemetryDigestJob();
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();
