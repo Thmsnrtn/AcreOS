@@ -28,6 +28,7 @@ import {
   type Pillar,
   type RiskTier,
 } from "./rosyRiver";
+import { isLikelyRejection } from "./decisionLogRag";
 import { logger } from "../utils/logger";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -126,6 +127,7 @@ const HIGH_BLAST_DEPS = new Set([
 
 async function proposeDependencyBumps(packages: OutdatedPackage[]) {
   let proposed = 0;
+  let skippedAsLikelyRejected = 0;
   for (const pkg of packages) {
     if (!pkg.current || !pkg.wanted) continue;
     if (pkg.current === pkg.wanted) continue; // already at wanted
@@ -142,17 +144,40 @@ async function proposeDependencyBumps(packages: OutdatedPackage[]) {
       riskTier = "low";
     }
 
+    const title = `Bump ${pkg.name} ${pkg.current} → ${pkg.wanted} (${bump})`;
+    const targetFiles = ["package.json", "package-lock.json"];
+
+    // C7 decision-log RAG: skip if the founder has rejected very similar
+    // proposals recently. Keeps the agent-queue clean of repeat-noise and
+    // teaches the codebase monitor without an explicit deny-list.
+    const likely = await isLikelyRejection(
+      { title, targetFiles, agentType: "codebase_monitor" },
+      { k: 5, minSimilarity: 0.6, minRejectFraction: 0.6 },
+    );
+    if (likely.likely) {
+      skippedAsLikelyRejected++;
+      logger.info("[codebase-monitor] skipped (likely rejection)", {
+        source: "codebase-monitor",
+        metadata: {
+          package: pkg.name,
+          reason: likely.reason,
+          precedentIds: likely.precedents.map((p) => p.agentTaskId),
+        },
+      });
+      continue;
+    }
+
     await proposeCodeChange({
       pillar: "shared" as Pillar,
       agent: "codebase_monitor",
       source: "npm_outdated",
       rawSignal: { name: pkg.name, current: pkg.current, wanted: pkg.wanted, latest: pkg.latest, type: pkg.type },
-      title: `Bump ${pkg.name} ${pkg.current} → ${pkg.wanted} (${bump})`,
+      title,
       rationale:
         `npm outdated reports ${pkg.name} is at ${pkg.current}; semver-compatible ` +
         `upgrade available to ${pkg.wanted}. Latest released is ${pkg.latest}. ` +
         `Bump classification: ${bump}.${isHighBlast ? " High-blast dependency — founder review required." : ""}`,
-      targetFiles: ["package.json", "package-lock.json"],
+      targetFiles,
       riskTier,
       preMortem:
         bump === "major"
@@ -164,6 +189,12 @@ async function proposeDependencyBumps(packages: OutdatedPackage[]) {
       simulationMode: true,
     });
     proposed++;
+  }
+  if (skippedAsLikelyRejected > 0) {
+    logger.info("[codebase-monitor] dep-bump skip summary", {
+      source: "codebase-monitor",
+      metadata: { skippedAsLikelyRejected, proposed },
+    });
   }
   return proposed;
 }

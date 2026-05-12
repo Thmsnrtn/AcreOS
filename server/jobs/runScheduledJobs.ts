@@ -1155,6 +1155,40 @@ function startTelemetryDigestJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Rosy River C6: Multi-week planner (Sunday 9am UTC, 1h after digest) ──────
+async function processMultiWeekPlannerJob() {
+  try {
+    const { runMultiWeekPlanner } = await import("../services/multiWeekPlanner");
+    const plan = await runMultiWeekPlanner();
+    log(
+      `Multi-week planner: ${plan.recommendations.length} recommendation(s), ` +
+        `spend Δ${plan.deltas.spendDeltaPct}%, ` +
+        `${plan.promotionEligible.length} promotion-eligible`,
+      'multi-week-planner',
+    );
+    jobSupervisor.notifyResult('multi_week_planner', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Multi-week planner job error: ${err}`, 'multi-week-planner');
+    jobSupervisor.notifyResult('multi_week_planner', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startMultiWeekPlannerJob() {
+  log('Starting multi-week planner job (Sundays at 9:00am UTC)', 'multi-week-planner');
+  trackInterval(() => {
+    const now = new Date();
+    if (
+      now.getUTCDay() === 0 && // Sunday
+      now.getUTCHours() === 9 &&
+      now.getUTCMinutes() < 5
+    ) {
+      withJobLock('multi_week_planner', 6 * 24 * 60 * 60, processMultiWeekPlannerJob).catch(err => {
+        log(`Multi-week planner lock error: ${err}`, 'multi-week-planner');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Data Retention: nightly purge of expired rows (3:30am UTC) ───────────────
 async function processDataRetentionJob() {
   try {
@@ -2364,6 +2398,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Rosy River C5: weekly telemetry digest (Sundays at 8:00am UTC)
   startTelemetryDigestJob();
+
+  // Rosy River C6: weekly multi-week planner (Sundays at 9:00am UTC, after digest)
+  startMultiWeekPlannerJob();
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();
