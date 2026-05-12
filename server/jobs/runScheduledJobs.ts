@@ -1077,6 +1077,45 @@ function startEvolutionPipelineJob() {
   }, 6 * 60 * 60 * 1000);
 }
 
+// ── Rosy River C2: Codebase Monitor — daily proposal scan (4:15am UTC) ───────
+// See /Users/user/.claude/plans/ok-i-wanna-try-rosy-river.md (C2). Writes
+// candidates to proposed_changes outbox in simulation mode. Founder reviews
+// at /founder/agent-queue and promotes to the evolution gauntlet.
+//
+// Scheduled outside the 3-5am evolution-pipeline deploy window so it doesn't
+// compete for CPU/locks. npm-outdated scan only (TS scan deferred — too heavy
+// for prod inline; runs locally or in a future worker pool).
+async function processCodebaseMonitorJob() {
+  try {
+    const { runCodebaseMonitor } = await import("../services/codebaseMonitor");
+    const result = await runCodebaseMonitor({
+      scanNpmOutdated: true,
+      scanTypescript: false,
+    });
+    log(
+      `Codebase monitor: ${result.proposalsAdded} proposal(s) added` +
+        (result.skipped ? ` (skipped: ${result.reason})` : ""),
+      'codebase-monitor',
+    );
+    jobSupervisor.notifyResult('codebase_monitor', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Codebase monitor job error: ${err}`, 'codebase-monitor');
+    jobSupervisor.notifyResult('codebase_monitor', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startCodebaseMonitorJob() {
+  log('Starting codebase monitor job (daily at 4:15am UTC)', 'codebase-monitor');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 4 && now.getUTCMinutes() >= 15 && now.getUTCMinutes() < 20) {
+      withJobLock('codebase_monitor', 23 * 60 * 60, processCodebaseMonitorJob).catch(err => {
+        log(`Codebase monitor lock error: ${err}`, 'codebase-monitor');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Data Retention: nightly purge of expired rows (3:30am UTC) ───────────────
 async function processDataRetentionJob() {
   try {
@@ -2280,6 +2319,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Evolution pipeline: process pending proposals (runs every 6 hours, deploys at 3-5am)
   startEvolutionPipelineJob();
+
+  // Rosy River C2: codebase monitor (daily at 4:15am UTC, after evolution deploy window)
+  startCodebaseMonitorJob();
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();

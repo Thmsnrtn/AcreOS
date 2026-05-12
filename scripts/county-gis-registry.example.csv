@@ -1,0 +1,4 @@
+state,county,fipsCode,baseUrl,layerId,apnField,ownerField,sourceUrl,notes
+TX,Williamson,48491,https://maps.wcad.org/arcgis/rest/services/Parcels/MapServer,0,PROP_ID,OWNER_NAME,https://www.wcad.org/,Williamson Central Appraisal District
+TX,Collin,48085,https://gis.collincad.org/arcgis/rest/services/parcels/MapServer,0,PROP_ID,OWNER,https://www.collincad.org/,Collin Central Appraisal District
+AZ,Yavapai,04025,https://gis.yavapaiaz.gov/arcgis/rest/services/Parcels/MapServer,0,APN,OWNER,https://gis.yavapaiaz.gov/,Yavapai County GIS

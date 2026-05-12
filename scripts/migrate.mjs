@@ -3436,6 +3436,79 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_status_idx" ON "feedback_submissions" ("status")`,
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_created_at_idx" ON "feedback_submissions" ("created_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "feedback_submissions_category_idx" ON "feedback_submissions" ("category")`,
+
+  // 2026-05-12 — Rosy River C1: agentic-pipeline outbox + cost ledger +
+  // founder notification feed. All three tables are server-only and
+  // unblock the codebase-monitor agent (C2), telemetry collectors (C5),
+  // and the founder review dashboard (C4). See:
+  //   /Users/user/.claude/plans/ok-i-wanna-try-rosy-river.md
+  `CREATE TABLE IF NOT EXISTS "proposed_changes" (
+     "id" serial PRIMARY KEY,
+     "pillar" text NOT NULL,
+     "agent" text NOT NULL,
+     "title" text NOT NULL,
+     "rationale" text NOT NULL,
+     "target_files" text[] NOT NULL DEFAULT '{}',
+     "proposed_diff" text,
+     "risk_tier" text NOT NULL,
+     "auto_merge_eligible" boolean NOT NULL DEFAULT false,
+     "estimated_cost_usd" numeric(10,6),
+     "pre_mortem" text,
+     "rollback_path" text,
+     "status" text NOT NULL DEFAULT 'proposed',
+     "gauntlet_proposal_id" integer,
+     "evolution_history_id" integer,
+     "pr_number" integer,
+     "pr_url" text,
+     "founder_decision" text,
+     "founder_notes" text,
+     "founder_decided_at" timestamp,
+     "simulation_mode" boolean NOT NULL DEFAULT true,
+     "created_at" timestamp DEFAULT now() NOT NULL,
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "proposed_changes_status_idx" ON "proposed_changes" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "proposed_changes_pillar_idx" ON "proposed_changes" ("pillar")`,
+  `CREATE INDEX IF NOT EXISTS "proposed_changes_created_idx" ON "proposed_changes" ("created_at" DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS "agent_cost_log" (
+     "id" serial PRIMARY KEY,
+     "pillar" text NOT NULL,
+     "agent" text NOT NULL,
+     "action" text NOT NULL,
+     "model" text NOT NULL,
+     "input_tokens" integer NOT NULL DEFAULT 0,
+     "output_tokens" integer NOT NULL DEFAULT 0,
+     "cost_usd" numeric(10,6) NOT NULL,
+     "proposed_change_id" integer,
+     "evolution_history_id" integer,
+     "metadata" jsonb,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "agent_cost_log_pillar_idx" ON "agent_cost_log" ("pillar")`,
+  `CREATE INDEX IF NOT EXISTS "agent_cost_log_created_idx" ON "agent_cost_log" ("created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "agent_cost_log_agent_idx" ON "agent_cost_log" ("agent")`,
+
+  `CREATE TABLE IF NOT EXISTS "founder_notifications" (
+     "id" serial PRIMARY KEY,
+     "source" text NOT NULL,
+     "pillar" text,
+     "severity" text NOT NULL DEFAULT 'info',
+     "title" text NOT NULL,
+     "body" text,
+     "proposed_change_id" integer,
+     "evolution_history_id" integer,
+     "pr_number" integer,
+     "pr_url" text,
+     "metadata" jsonb,
+     "status" text NOT NULL DEFAULT 'unread',
+     "read_at" timestamp,
+     "dismissed_at" timestamp,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_notifications_status_idx" ON "founder_notifications" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "founder_notifications_source_idx" ON "founder_notifications" ("source")`,
+  `CREATE INDEX IF NOT EXISTS "founder_notifications_created_idx" ON "founder_notifications" ("created_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
