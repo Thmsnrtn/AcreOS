@@ -202,7 +202,19 @@ export function useDeleteLead() {
       return id;
     },
     onSuccess: (_data, id) => {
+      // Invalidate every consumer that displays lead counts or lists. The
+      // /leads list refreshing alone isn't enough — /today's overdue tile,
+      // /today's decision queue, the leads-aging chart, and the dashboard
+      // KPI strip all derive from separate queries. Without these the
+      // founder sees the deleted lead persist in the dashboard count
+      // (caught 2026-05-12: "I deleted 17 sample leads, they never
+      // disappeared from the dashboard").
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
+      queryClient.removeQueries({ queryKey: [api.leads.get.path, id] });
       toast({
         title: "Lead deleted",
         description: "Lead moved to trash.",
@@ -212,6 +224,10 @@ export function useDeleteLead() {
             try {
               await fetch(`/api/leads/${id}/restore`, { method: "PATCH", credentials: "include" });
               queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
             } catch { /* ignore */ }
           },
         }, "Undo") as any,

@@ -1375,9 +1375,14 @@ function AppContent() {
           Feedback was slot 3 until the consolidation pass — now it
           lives inside the help sheet + settings + command palette. */}
       {/* FloatingActionButton hidden on desktop — desktop has ⌘K + sidebar
-          New-Item menu; mobile keeps the FAB as a tap target. */}
-      {user && <div className="md:hidden"><FloatingActionButton /></div>}
-      {user && <ConversationTray />}
+          New-Item menu; mobile keeps the FAB as a tap target.
+          Also hidden on /ai (chat surface has its own send button — the
+          global FAB overlaps the chat input on mobile) and on /inbox
+          (primary action lives in the page chrome there too). */}
+      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && (
+        <div className="md:hidden"><FloatingActionButton /></div>
+      )}
+      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && <ConversationTray />}
       {/* FloatingHelpButton removed 2026-05-01 — folded into ⌘K command
           palette (already shipped). The help search lives there now;
           one fewer FAB on every page. */}

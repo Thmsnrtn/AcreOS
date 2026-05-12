@@ -4,7 +4,12 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -474,17 +479,20 @@ export default function DecisionQueuePage() {
       </div>
 
       {/* Pax Dialog */}
-      <Dialog open={pax.isOpen} onOpenChange={(open) => setPax(prev => ({ ...prev, isOpen: open }))}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+      {/* ResponsiveModal so mobile gets a bottom-sheet that the iOS keyboard
+          can push above; the previous centered Dialog left a frosted backdrop
+          with only the keyboard visible when the textarea took focus. */}
+      <ResponsiveModal open={pax.isOpen} onOpenChange={(open) => setPax(prev => ({ ...prev, isOpen: open }))}>
+        <ResponsiveModalContent className="max-w-lg">
+          <ResponsiveModalHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-acr-brand" aria-hidden="true" />
-              <DialogTitle>Ask Pax</DialogTitle>
+              <ResponsiveModalTitle>Ask Pax</ResponsiveModalTitle>
             </div>
             {pax.contextLabel && (
               <p className="text-xs text-muted-foreground mt-1">{pax.contextLabel}</p>
             )}
-          </DialogHeader>
+          </ResponsiveModalHeader>
 
           <form
             className="space-y-3 mt-2"
@@ -545,8 +553,8 @@ export default function DecisionQueuePage() {
               </a>.
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </PageShell>
   );
 }
