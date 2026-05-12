@@ -3443,6 +3443,51 @@ const STATEMENTS = [
   // tables. The earlier draft (proposed_changes / agent_cost_log /
   // founder_notifications) duplicated existing infrastructure and was reverted
   // before any deploy.
+
+  // 2026-05-12 — Seed canonical autonomy rules into custom_autonomy_rules so
+  // the rosyRiver classifier reads from the DB instead of hard-coded fallbacks.
+  // ON CONFLICT DO NOTHING keeps these idempotent — re-running never overwrites
+  // a founder edit. The (organization_id, rule_text) pair is the natural key.
+  // organization_id=1 is the SYSTEM org (matches selfAssessmentAgent.ts).
+  `CREATE UNIQUE INDEX IF NOT EXISTS "custom_autonomy_rules_org_text_uniq"
+     ON "custom_autonomy_rules" ("organization_id", "rule_text")`,
+
+  // Hard stops — agent must NEVER propose a change touching these.
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'regex:\\.env(\\..*)?$',          'hard_stop', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'regex:server/routes/billing',  'hard_stop', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'regex:server/services/stripe', 'hard_stop', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'regex:\\bsecrets?\\b',         'hard_stop', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'regex:package-lock\\.json$',   'hard_stop', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+
+  // Founder-approval surfaces — agent may propose, but cannot auto-merge.
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'client/src/',                  'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'server/db/schema',             'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'server/routes/auth',           'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'server/services/billing',      'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'server/services/pricing',      'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+  `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
+     VALUES (1, 'shared/schema.ts',             'founder_approval', true)
+     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
