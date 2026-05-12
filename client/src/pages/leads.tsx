@@ -13,6 +13,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
@@ -328,8 +329,25 @@ function ScoreDetailsDialog({
           )}
 
           {isLoadingHistory && (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <div className="space-y-2" data-testid="skeleton-score-history" aria-busy="true">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground" />
+                <h4 className="text-sm font-medium text-muted-foreground">Score History</h4>
+              </div>
+              <div className="space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-2 bg-muted/30 rounded"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-5 w-12 rounded-full" />
+                    </div>
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
