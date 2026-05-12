@@ -8,7 +8,7 @@
  * Production wouter routes:
  * - /pricing, /academy, /blog → existing routes
  * - /privacy, /terms, /security → existing routes
- * - mailto:hello@acreos.io for contact (role alias, not personal)
+ * - Contact opens SupportFeedbackModal (form-only — no mailto)
  * - In-page anchors for #features, #pricing, #faq, #agents
  *
  * Internal agent names (Atlas/Sophie/Forge) are not surfaced here —

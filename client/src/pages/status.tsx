@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 type Tone = "green" | "amber" | "red" | "gray";
 const STATUS_CONFIG: Record<string, { tone: Tone; icon: typeof CheckCircle2; label: string }> = {
@@ -125,7 +126,17 @@ export default function StatusPage() {
 
         <div className="text-center mt-12 space-y-2">
           <p className="text-sm text-muted-foreground">
-            Questions? Contact <a href="mailto:support@acreos.io" className="underline hover:text-foreground">support@acreos.io</a>
+            Questions?{" "}
+            <SupportFeedbackButton
+              variant="link"
+              defaultCategory="question"
+              source="status_page"
+              ariaLabel="Open support form to ask about service status"
+              testId="status-contact"
+            >
+              Contact us
+            </SupportFeedbackButton>
+            .
           </p>
         </div>
       </div>

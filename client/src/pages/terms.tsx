@@ -5,6 +5,7 @@ import { ArrowLeft, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 export default function TermsOfService() {
   usePageMeta(
@@ -213,10 +214,19 @@ export default function TermsOfService() {
             <section className="space-y-4" data-testid="section-contact">
               <h2 className="text-xl font-semibold">11. Contact information</h2>
               <p className="text-muted-foreground leading-relaxed">
-                If you have any questions about these Terms, please contact us at:
+                If you have any questions about these Terms, please{" "}
+                <SupportFeedbackButton
+                  variant="link"
+                  defaultCategory="question"
+                  source="terms_legal"
+                  ariaLabel="Open support form to contact the AcreOS legal team"
+                  testId="terms-contact-legal"
+                >
+                  contact our legal team
+                </SupportFeedbackButton>
+                .
               </p>
               <address className="text-muted-foreground not-italic">
-                Email: <a href="mailto:legal@acreos.com" className="underline-offset-2 hover:underline">legal@acreos.com</a><br />
                 Address: Marlborough, MA
               </address>
             </section>

@@ -16,6 +16,7 @@ import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 interface SubProcessor {
   vendor: string;
@@ -205,9 +206,28 @@ export default function SubProcessorsPage() {
         </Card>
 
         <p className="mt-6 text-xs text-muted-foreground max-w-2xl">
-          To object to a specific sub-processor, email privacy@acreos.com
-          before its effective date. To request a Data Processing Addendum
-          (DPA) with AcreOS as your processor, email legal@acreos.com.
+          To object to a specific sub-processor before its effective date,{" "}
+          <SupportFeedbackButton
+            variant="link"
+            defaultCategory="question"
+            source="sub_processors"
+            ariaLabel="Open support form to object to a sub-processor"
+            testId="subproc-privacy-contact"
+          >
+            contact our privacy team
+          </SupportFeedbackButton>
+          . To request a Data Processing Addendum (DPA) with AcreOS as your
+          processor,{" "}
+          <SupportFeedbackButton
+            variant="link"
+            defaultCategory="question"
+            source="sub_processors"
+            ariaLabel="Open support form to request a DPA from the legal team"
+            testId="subproc-legal-contact"
+          >
+            contact our legal team
+          </SupportFeedbackButton>
+          .
         </p>
       </div>
     </div>

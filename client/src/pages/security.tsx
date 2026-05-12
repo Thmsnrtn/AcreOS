@@ -36,6 +36,7 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { securityPageSchema, organizationSchema, SITE } from "@/lib/jsonld-schemas";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 interface SubProcessor {
   vendor: string;
@@ -281,18 +282,22 @@ export default function SecurityPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <p>
-              If you believe you've discovered a security issue in AcreOS,
-              please email{" "}
-              <a
-                href="mailto:security@acreos.com"
-                className="font-medium text-primary hover:underline"
-                aria-label="Email AcreOS security at security@acreos.com"
+              If you believe you've discovered a security issue in AcreOS,{" "}
+              <SupportFeedbackButton
+                variant="link"
+                defaultCategory="support"
+                source="security_disclosure"
+                ariaLabel="Open the support form to submit a security finding"
+                testId="security-disclosure-submit"
+                className="font-medium"
               >
-                security@acreos.com
-              </a>
-              . Encrypt sensitive details with our PGP key (available on
-              request) if your finding includes proof-of-concept payloads
-              or active session artifacts.
+                submit security findings here
+              </SupportFeedbackButton>
+              . Include reproduction steps and any affected accounts or
+              endpoints; please omit live credentials, active session
+              cookies, or exfiltrated user data from the report itself —
+              we'll request a secure exchange channel if your finding
+              requires PoC payloads.
             </p>
             <ul className="space-y-2 list-disc pl-5">
               <li>
@@ -356,14 +361,17 @@ export default function SecurityPage() {
             </p>
             <p>
               For enterprise procurement: a current security questionnaire,
-              architecture diagram, and DPA are available on request via{" "}
-              <a
-                href="mailto:security@acreos.com"
-                className="font-medium text-primary hover:underline"
-                aria-label="Email AcreOS security at security@acreos.com"
+              architecture diagram, and DPA are available on request —{" "}
+              <SupportFeedbackButton
+                variant="link"
+                defaultCategory="support"
+                source="security_disclosure"
+                ariaLabel="Open support form to request enterprise security documents"
+                testId="security-procurement-request"
+                className="font-medium"
               >
-                security@acreos.com
-              </a>
+                contact us
+              </SupportFeedbackButton>
               .
             </p>
           </CardContent>

@@ -5,6 +5,7 @@ import { ArrowLeft, Shield } from "lucide-react";
 import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 export default function PrivacyPolicy() {
   usePageMeta(
@@ -166,8 +167,11 @@ export default function PrivacyPolicy() {
                 <li><strong>Portability:</strong> Transfer your data to another service provider.</li>
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-4">
-                To exercise any of these rights, contact us at <a href="mailto:privacy@acreos.com" className="underline-offset-2 hover:underline">privacy@acreos.com</a>. We will respond
-                to your request within <span className="tabular-nums">30</span> days.
+                To exercise any of these rights, submit a request through your{" "}
+                <Link href="/privacy-settings" className="underline-offset-2 hover:underline text-primary" data-testid="privacy-rights-dsar">
+                  privacy settings (data-subject requests)
+                </Link>
+                {" "}page. We will respond within <span className="tabular-nums">30</span> days.
               </p>
             </section>
 
@@ -227,7 +231,11 @@ export default function PrivacyPolicy() {
                 to third parties for monetary or other valuable consideration.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                To exercise your California privacy rights, contact us at <a href="mailto:privacy@acreos.com" className="underline-offset-2 hover:underline">privacy@acreos.com</a>.
+                To exercise your California privacy rights, submit a request through your{" "}
+                <Link href="/privacy-settings" className="underline-offset-2 hover:underline text-primary" data-testid="privacy-rights-dsar-ccpa">
+                  privacy settings (data-subject requests)
+                </Link>
+                {" "}page.
               </p>
             </section>
 
@@ -264,12 +272,20 @@ export default function PrivacyPolicy() {
             <section className="space-y-4" data-testid="section-contact">
               <h2 className="text-xl font-semibold">14. Contact us</h2>
               <p className="text-muted-foreground leading-relaxed">
-                If you have any questions about this Privacy Policy or our data practices, please contact us at:
+                If you have any questions about this Privacy Policy or our data practices,{" "}
+                <SupportFeedbackButton
+                  variant="link"
+                  defaultCategory="support"
+                  source="privacy_page"
+                  ariaLabel="Open support form to contact the AcreOS privacy team"
+                  testId="privacy-contact-team"
+                >
+                  contact our privacy team
+                </SupportFeedbackButton>
+                . Our Data Protection Officer reviews submissions tagged for privacy.
               </p>
               <address className="text-muted-foreground not-italic">
-                Email: <a href="mailto:privacy@acreos.com" className="underline-offset-2 hover:underline">privacy@acreos.com</a><br />
-                Address: Marlborough, MA<br />
-                Data Protection Officer: <a href="mailto:dpo@acreos.com" className="underline-offset-2 hover:underline">dpo@acreos.com</a>
+                Address: Marlborough, MA
               </address>
             </section>
 

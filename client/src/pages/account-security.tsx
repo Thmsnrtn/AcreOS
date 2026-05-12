@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 interface Session {
   sessionId: string;
@@ -115,8 +116,8 @@ export default function AccountSecurityPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Account security</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Active sessions, two-factor enrollment, and login-history at a glance. If
-            anything looks off, sign out everywhere — the rest is best handled by
-            email to support@acreos.io.
+            anything looks off, sign out everywhere — the rest is best handled via the
+            support form below.
           </p>
         </div>
       </div>
@@ -229,9 +230,20 @@ export default function AccountSecurityPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground mt-4">
-        See an unfamiliar location, IP, or device? Revoke that session above, then change your password and email
-        support@acreos.io with the timestamp. We can correlate against our audit log.
+        See an unfamiliar location, IP, or device? Revoke that session above, then change your password and use the
+        support form below with the timestamp. We can correlate against our audit log.
       </p>
+      <div className="mt-3">
+        <SupportFeedbackButton
+          variant="default"
+          defaultCategory="support"
+          source="account_security"
+          ariaLabel="Open support form to report an account-security issue"
+          testId="account-security-support"
+        >
+          Open support form
+        </SupportFeedbackButton>
+      </div>
     </PageShell>
   );
 }

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 interface VerticalRow {
   vertical: string;
@@ -211,7 +212,17 @@ export default function MultiVerticalPnLPage() {
           <p className="mt-6 text-xs text-muted-foreground">
             P&L numbers reflect your operations across Land deals, Note Investor portfolio, and BH rent payments
             stored in AcreOS. As you add other verticals (FF, W, SD), they'll appear automatically. For a deeper
-            historical view, check `/founder/financials` (founder access only) or contact support@acreos.io.
+            historical view, check `/founder/financials` (founder access only) or{" "}
+            <SupportFeedbackButton
+              variant="link"
+              defaultCategory="support"
+              source="multi_vertical_pnl"
+              ariaLabel="Open a support request about multi-vertical P&L"
+              testId="mv-pnl-support"
+            >
+              open a support request
+            </SupportFeedbackButton>
+            .
           </p>
         </>
       ) : null}

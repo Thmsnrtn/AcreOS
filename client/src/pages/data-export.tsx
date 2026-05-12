@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Link } from "wouter";
 
 interface ExportOption {
   id: string;
@@ -215,11 +216,15 @@ export default function DataExportPage() {
 
       <p className="text-xs text-muted-foreground">
         Exports are processed in real-time and limited to your organization's data. Large exports may take a few seconds.
-        For GDPR data deletion requests, <a
-          href="mailto:support@acreos.com"
-          aria-label="Email support@acreos.com to request GDPR data deletion"
-          className="underline-offset-2 hover:underline"
-        >contact support</a>.
+        For GDPR data deletion requests, use the{" "}
+        <Link
+          href="/privacy-settings"
+          className="underline-offset-2 hover:underline text-primary"
+          data-testid="data-export-dsar-link"
+        >
+          data-subject requests page
+        </Link>
+        {" "}— it submits, tracks, and fulfils the request end-to-end.
       </p>
     </PageShell>
   );

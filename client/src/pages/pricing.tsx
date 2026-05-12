@@ -14,6 +14,7 @@ import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
+import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 // Tier labels Free / Starter / Pro / Scale match both the canonical
 // TIER_PRICES_CENTS keys and the landing-page pricing table. Prices come
@@ -272,13 +273,15 @@ export default function PricingPage() {
 
           <p className="text-center text-sm text-muted-foreground mt-8">
             Need custom enterprise pricing?{" "}
-            <a
-              href="mailto:support@acreos.io"
-              aria-label="Email support@acreos.io for enterprise pricing"
-              className="text-primary hover:underline"
+            <SupportFeedbackButton
+              variant="link"
+              defaultCategory="question"
+              source="pricing_enterprise"
+              ariaLabel="Open support form for enterprise pricing"
+              testId="pricing-enterprise-contact"
             >
               Contact us
-            </a>
+            </SupportFeedbackButton>
             .
           </p>
         </div>
