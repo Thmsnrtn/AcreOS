@@ -112,7 +112,11 @@ export default defineConfig({
           // on /maps, PDF on document pages, motion on animation-heavy
           // pages, date-fns once across the app, Clerk on auth pages).
           'vendor-charts': ['recharts'],
-          'vendor-map': ['mapbox-gl'],
+          // Rosy River B1: maplibre-gl ships in the same chunk as mapbox-gl
+          // so Phase 2 of the migration doesn't introduce a new code-split
+          // boundary. Both share most of the underlying WebGL machinery
+          // anyway.
+          'vendor-map': ['mapbox-gl', 'maplibre-gl'],
           'vendor-motion': ['framer-motion'],
           'vendor-pdf': ['jspdf'],
           'vendor-sanitize': ['isomorphic-dompurify'],
