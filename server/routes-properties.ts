@@ -80,6 +80,42 @@ const paginationQuerySchema = z.object({
 export function registerPropertyRoutes(app: Express): void {
   const api = app;
 
+  // ── Rosy River B9 — Property report PDF ─────────────────────────────────
+  // Registered BEFORE /api/properties/:id so the .pdf suffix doesn't get
+  // swallowed by the generic detail handler.
+  api.get(
+    "/api/properties/:id/report.pdf",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      try {
+        const org = req.organization;
+        const propertyId = parseInt(req.params.id, 10);
+        if (!Number.isFinite(propertyId)) {
+          return Errors.badRequest(res, "Invalid property id");
+        }
+        const { generatePropertyReport } = await import("./services/propertyReportPdf");
+        const doc = await generatePropertyReport({
+          propertyId,
+          organizationId: org.id,
+        });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="property-${propertyId}.pdf"`,
+        );
+        doc.pipe(res);
+        doc.end();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === "Property not found") {
+          return Errors.notFound(res, "Property");
+        }
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // PROPERTIES (INVENTORY)
   // ============================================
 
