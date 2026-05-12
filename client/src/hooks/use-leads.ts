@@ -1,7 +1,7 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, buildUrl, type InsertLead } from "@shared/routes";
-import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
+import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
@@ -240,6 +240,43 @@ export function useDeleteLead() {
       toast({
         title,
         description,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+/**
+ * Re-run the Betty score for a lead and invalidate every dependent cache.
+ *
+ * Replaces two duplicate mutations in pages/leads.tsx (the score-details
+ * modal and the row dropdown menu). Both previously invalidated only
+ * ['/api/leads'] and missed:
+ *   - the per-lead detail cache (header score badge stays old)
+ *   - the score-history query (timeline chart stays stale)
+ */
+export function useRescoreLead() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (leadId: number) => {
+      const res = await apiRequest("POST", `/api/leads/${leadId}/betty-score`, { triggerSource: "manual" });
+      if (!res.ok) throw new Error("Failed to rescore lead");
+      return res.json();
+    },
+    onSuccess: (_data, leadId) => {
+      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.leads.get.path, leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "score-history"] });
+      toast({
+        title: "Lead rescored",
+        description: "The lead score has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't rescore lead",
+        description: "The existing score is unchanged. Try again.",
         variant: "destructive",
       });
     },

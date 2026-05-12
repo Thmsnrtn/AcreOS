@@ -6,7 +6,7 @@ import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
+import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead, useRescoreLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -183,28 +183,15 @@ function ScoreDetailsDialog({
     enabled: open,
   });
 
-  const rescoreMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/leads/${lead.id}/betty-score`, { triggerSource: "manual" });
-      if (!res.ok) throw new Error("Failed to rescore lead");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      refetchHistory();
-      toast({
-        title: "Lead rescored",
-        description: "The lead score has been updated.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't rescore lead",
-        description: "The existing score is unchanged. Try again.",
-        variant: "destructive",
-      });
-    },
-  });
+  const rescoreMutation = useRescoreLead();
+  // The shared hook handles toast + dependent invalidations. We still
+  // refetch the open modal's history query so the timeline updates
+  // immediately even though invalidation alone would refetch it.
+  const handleRescore = () => {
+    rescoreMutation.mutate(lead.id, {
+      onSuccess: () => refetchHistory(),
+    });
+  };
 
   const latestFactors = scoreHistory?.[0]?.factors || lead.scoreFactors || {};
   
@@ -352,7 +339,7 @@ function ScoreDetailsDialog({
             Close
           </Button>
           <Button
-            onClick={() => rescoreMutation.mutate()}
+            onClick={handleRescore}
             disabled={rescoreMutation.isPending}
             data-testid={`button-rescore-${lead.id}`}
           >
@@ -369,32 +356,11 @@ function ScoreDetailsDialog({
 }
 
 function RescoreMenuItem({ leadId }: { leadId: number }) {
-  const { toast } = useToast();
-  const rescoreMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/leads/${leadId}/betty-score`, { triggerSource: "manual" });
-      if (!res.ok) throw new Error("Failed to rescore lead");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({
-        title: "Lead rescored",
-        description: "The lead score has been updated.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't rescore lead",
-        description: "The existing score is unchanged. Try again.",
-        variant: "destructive",
-      });
-    },
-  });
+  const rescoreMutation = useRescoreLead();
 
   return (
     <DropdownMenuItem
-      onClick={() => rescoreMutation.mutate()} 
+      onClick={() => rescoreMutation.mutate(leadId)}
       disabled={rescoreMutation.isPending}
       data-testid={`button-rescore-menu-${leadId}`}
     >
