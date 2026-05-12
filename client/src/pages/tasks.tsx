@@ -140,7 +140,14 @@ export default function TasksPage() {
       return response.json();
     },
     onSuccess: () => {
+      // /api/tasks invalidation matches the filtered tab via prefix, but the
+      // "my" tab queries ["/api/tasks/my"] (distinct cache key — not a prefix
+      // match) and the dashboard widget/today-priorities feeds also pull
+      // their own keys. Invalidate the full fan-out so every surface refreshes.
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
       setIsCreateOpen(false);
       createForm.reset();
       toast({ title: "Task created", description: "Your task has been created successfully." });
@@ -157,6 +164,9 @@ export default function TasksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
       setIsEditOpen(false);
       setSelectedTask(null);
       toast({ title: "Task updated", description: "Your task has been updated successfully." });
@@ -173,6 +183,9 @@ export default function TasksPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
       if (data.nextTask) {
         toast({
           title: "Task completed",
@@ -193,6 +206,9 @@ export default function TasksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
       setTaskToDelete(null);
       toast({ title: "Task deleted", description: "The task has been removed." });
     },

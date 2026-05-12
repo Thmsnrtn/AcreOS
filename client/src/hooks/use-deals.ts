@@ -159,8 +159,16 @@ export function useDeleteDeal() {
       const res = await apiRequest("DELETE", `/api/deals/${id}`);
       if (!res.ok) throw new Error(`${res.status}: Failed to delete deal`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      // Mirrors the leads-delete fix (commit 26c20669). A bare /api/deals
+      // invalidation leaves dashboard widgets (stats, intelligence,
+      // today-priorities) holding stale rows, plus the per-deal detail
+      // cache still exists if the user navigates back to it.
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      queryClient.removeQueries({ queryKey: ['/api/deals', id] });
       toast({
         title: "Success",
         description: "Deal deleted successfully.",

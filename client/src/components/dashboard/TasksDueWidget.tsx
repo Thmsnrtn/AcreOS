@@ -112,6 +112,8 @@ export function TasksDueWidget() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
       toast({ title: "Task completed", description: "Great job!" });
     },
     onError: (error: Error) => {

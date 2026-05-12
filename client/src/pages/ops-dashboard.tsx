@@ -121,7 +121,12 @@ export default function OpsDashboardPage() {
   const completeTask = useMutation({
     mutationFn: (taskId: number) =>
       fetch(`/api/tasks/${taskId}/complete`, { method: "POST" }).then(r => r.json()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/tasks"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/tasks"] });
+      qc.invalidateQueries({ queryKey: ["/api/tasks/my"] });
+      qc.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+    },
     onError: () =>
       toast({
         title: "Couldn't mark task done",

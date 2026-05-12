@@ -115,9 +115,15 @@ export function useSendDirectMail() {
       }, { idempotent: true });
       return res.json() as Promise<SendDirectMailResponse>;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['/api/organization'] });
+      // Campaign attribution + response-trend reads change immediately on
+      // queue, plus mail consumes credits. Without these the campaign
+      // detail page shows zero sent / no spent credits until refresh.
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', variables.campaignId, 'mail-attribution'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', variables.campaignId, 'response-trend'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
     },
   });
 }

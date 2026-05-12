@@ -73,6 +73,11 @@ export function useCreateProperty() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
+      // Onboarding checklist's "Add first property" tile derives from the
+      // checklist-status endpoint. Lead + deal create already invalidate
+      // it; property create did not, so the tile never ticked after
+      // the user added their first property.
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
       toast({
         title: "Success",
         description: "Property created successfully.",
@@ -104,8 +109,11 @@ export function useDeleteProperty() {
         throw new Error(error.message || `${res.status}: Failed to delete property`);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      queryClient.removeQueries({ queryKey: [api.properties.get.path, id] });
       toast({
         title: "Success",
         description: "Property deleted successfully.",
