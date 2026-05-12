@@ -8,6 +8,26 @@ export function PWAInstallPrompt() {
   const { canInstall, isInstalled, isIOS, promptInstall } = usePWA();
   const [showPrompt, setShowPrompt] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // Hide while the cookie-consent banner is up — same gating the FAB uses
+  // (see floating-action-button.tsx). On mobile both surfaces compete for
+  // the bottom of the viewport and the PWA prompt would steal the banner's
+  // tap targets.
+  const [cookieBannerVisible, setCookieBannerVisible] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("acreos_cookie_consent") === null;
+  });
+
+  useEffect(() => {
+    const recheck = () => {
+      setCookieBannerVisible(localStorage.getItem("acreos_cookie_consent") === null);
+    };
+    window.addEventListener("acreos:cookieconsent", recheck);
+    window.addEventListener("storage", recheck);
+    return () => {
+      window.removeEventListener("acreos:cookieconsent", recheck);
+      window.removeEventListener("storage", recheck);
+    };
+  }, []);
 
   useEffect(() => {
     const wasDismissed = localStorage.getItem("pwa-install-dismissed");
@@ -40,13 +60,13 @@ export function PWAInstallPrompt() {
     }
   };
 
-  if (!showPrompt || isInstalled) return null;
+  if (!showPrompt || isInstalled || cookieBannerVisible) return null;
 
   if (isIOS) {
     return (
       <aside
         aria-label="Install AcreOS"
-        className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
+        className="fixed bottom-[88px] md:bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
       >
         <Card className="border-primary/20 shadow-lg">
           <CardContent className="p-4">
