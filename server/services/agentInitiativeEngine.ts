@@ -13,7 +13,7 @@
 
 import { db } from "../db";
 import {
-  leads, deals, tasks, agentEvents,
+  leads, deals, tasks, agentEvents, decisionsInboxItems,
 } from "@shared/schema";
 import { eq, and, sql, desc, lt, gte, isNull } from "drizzle-orm";
 import { wsServer } from "../websocket";
@@ -254,6 +254,47 @@ class AgentInitiativeEngine {
                 autoExecuteBlocked: !allowed ? "insufficient_trust" : "low_confidence",
               },
             });
+
+            // Mirror into decisionsInboxItems so the founder agent-queue UI
+            // shows initiative-engine proposals next to codebase-monitor
+            // proposals. agentEvents stays as the firehose; this row is
+            // the actionable queue entry.
+            try {
+              await db.insert(decisionsInboxItems).values({
+                itemType: "agent_initiative",
+                riskLevel: proposal.type === "risk" ? "high" : "medium",
+                urgencyScore: Math.round(proposal.confidence * 100),
+                sophieAnalysis: proposal.description,
+                sophieConfidenceScore: Math.round(proposal.confidence * 100),
+                recommendedAction: proposal.action,
+                recommendedActionLabel: proposal.title,
+                actionPayload: {
+                  action: proposal.action,
+                  actionInput: proposal.actionInput,
+                  proposalType: proposal.type,
+                  estimatedImpact: proposal.estimatedImpact,
+                },
+                organizationId: orgId,
+                ownerAgentCodename: proposal.agentCodename,
+                status: "pending",
+                contextBundle: {
+                  reasoning: proposal.reasoning,
+                  estimatedImpact: proposal.estimatedImpact,
+                  trustScore,
+                  autoExecuteBlocked: !allowed ? "insufficient_trust" : "low_confidence",
+                },
+              });
+            } catch (inboxErr) {
+              // Inbox mirror is advisory — never let it block the agentEvents
+              // write or the founder broadcast.
+              logger.warn("[initiative] inbox mirror failed", {
+                source: "initiative",
+                metadata: {
+                  agent: proposal.agentCodename,
+                  error: inboxErr instanceof Error ? inboxErr.message : String(inboxErr),
+                },
+              });
+            }
 
             // Notify founder
             wsServer.broadcastFounderEvent("agent_proposal", {
