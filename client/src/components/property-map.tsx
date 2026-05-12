@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
+import maplibregl from "maplibre-gl";
 import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun, Clock, Wind, Compass, TrendingUp, TrendingDown, Minus as MinusIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,21 +18,32 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
 import { clientLogger } from "@/lib/clientLogger";
+import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
+import "maplibre-gl/dist/maplibre-gl.css";
+
+// Rosy River B1 Phase 2 — engine-aware map renderer.
+//
+// `gl` is the runtime constructor namespace; it points at mapboxgl OR
+// maplibregl based on VITE_MAP_ENGINE (default: mapbox).
+//
+// We keep the `mapboxgl.X` TYPE references throughout this file because
+// the two libraries' types are structurally compatible (maplibre is a
+// permissive fork of mapbox-gl-js v1) and TS types are erased at runtime.
+// Only the `new ...()` constructor sites — Map, Marker, Popup,
+// NavigationControl — read from `gl` so they pick up the live engine.
+const MAP_ENGINE = getMapEngine();
+const gl: typeof mapboxgl = (MAP_ENGINE === "maplibre" ? (maplibregl as unknown) : mapboxgl) as typeof mapboxgl;
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || (window as any).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN;
 
-if (MAPBOX_TOKEN) {
+if (MAP_ENGINE === "mapbox" && MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
-type MapStyle = "satellite" | "terrain" | "streets";
+type MapStyle = MapStyleName;
 
-const MAP_STYLES: Record<MapStyle, string> = {
-  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
-  terrain: "mapbox://styles/mapbox/outdoors-v12",
-  streets: "mapbox://styles/mapbox/streets-v12",
-};
+const MAP_STYLES: Record<MapStyle, string> = STYLE_URLS[MAP_ENGINE];
 
 const FEMA_NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
 const USGS_LAND_USE_URL = "https://www.sciencebase.gov/arcgis/rest/services/Catalog/5f9637fad34eb2e5df3d40a2/MapServer";
@@ -1329,7 +1341,7 @@ export function PropertyMap({
           ? `$${Math.round(comp.salePrice / comp.acres).toLocaleString()}/ac`
           : "N/A";
       
-      const popup = new mapboxgl.Popup({ offset: 25, closeButton: true })
+      const popup = new gl.Popup({ offset: 25, closeButton: true })
         .setHTML(`
           <div style="min-width: 180px; font-family: system-ui;">
             <div style="font-weight: 600; margin-bottom: 4px;">${comp.address || comp.apn || "Comp Property"}</div>
@@ -1341,7 +1353,7 @@ export function PropertyMap({
           </div>
         `);
       
-      const marker = new mapboxgl.Marker({ element: el })
+      const marker = new gl.Marker({ element: el })
         .setLngLat([comp.lng, comp.lat])
         .setPopup(popup)
         .addTo(map.current!);
@@ -1799,7 +1811,7 @@ export function PropertyMap({
     const handleClick = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
       
-      const marker = new mapboxgl.Marker({
+      const marker = new gl.Marker({
         color: "#3b82f6",
         scale: 0.7
       })
@@ -2026,7 +2038,7 @@ export function PropertyMap({
     // r6 Tasha: allow the map to render with zero properties — that's
     // the state a fresh org / driving-for-dollars user lands in, and
     // they still need geographic context + basemap tiles.
-    if (!mapContainer.current || !MAPBOX_TOKEN) return;
+    if (!mapContainer.current || !isMapEngineConfigured()) return;
 
     const viewState = initialViewState || (() => {
       if (properties.length === 0) {
@@ -2044,7 +2056,7 @@ export function PropertyMap({
       };
     })();
 
-    map.current = new mapboxgl.Map({
+    map.current = new gl.Map({
       container: mapContainer.current,
       style: MAP_STYLES[currentStyle],
       center: [viewState.longitude, viewState.latitude],
@@ -2062,7 +2074,7 @@ export function PropertyMap({
       addPropertyLayers();
 
       if (interactive) {
-        map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+        map.current.addControl(new gl.NavigationControl(), "top-right");
       }
     });
 
@@ -2072,13 +2084,17 @@ export function PropertyMap({
     };
   }, [properties, initialViewState, interactive, currentStyle, setup3DTerrain, addPropertyLayers, stopFlyover]);
 
-  if (!MAPBOX_TOKEN) {
+  if (!isMapEngineConfigured()) {
     return (
       <Card className="flex items-center justify-center" style={{ height }}>
         <CardContent className="text-center text-muted-foreground p-6">
           <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p>Map not available</p>
-          <p className="text-sm mt-1">Please configure VITE_MAPBOX_ACCESS_TOKEN</p>
+          <p className="text-sm mt-1">
+            {MAP_ENGINE === "mapbox"
+              ? "Please configure VITE_MAPBOX_ACCESS_TOKEN, or set VITE_MAP_ENGINE=maplibre to use the open-source path."
+              : "MapLibre tiles unavailable — check VITE_STADIA_API_KEY or network."}
+          </p>
         </CardContent>
       </Card>
     );
@@ -2917,7 +2933,7 @@ export function SinglePropertyMap({
   const map = useRef<mapboxgl.Map | null>(null);
 
   useEffect(() => {
-    if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
+    if (!mapContainer.current || !isMapEngineConfigured() || !boundary || !centroid) return;
 
     // Helper to compute bounds from polygon coordinates
     const computeBounds = (coords: number[][][]): [[number, number], [number, number]] => {
@@ -2939,7 +2955,7 @@ export function SinglePropertyMap({
     const bounds = computeBounds(coords);
     
     // Build satellite 3D map with terrain
-    const mapInstance = new mapboxgl.Map({
+    const mapInstance = new gl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [centroid.lng, centroid.lat],
@@ -3059,7 +3075,7 @@ export function SinglePropertyMap({
         });
       } catch { /* bounds may be degenerate */ }
 
-      mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
+      mapInstance.addControl(new gl.NavigationControl(), "top-right");
 
       // Fetch and display nearby parcels
       if (showNearbyParcels && state && county) {
@@ -3114,7 +3130,7 @@ export function SinglePropertyMap({
     };
   }, [boundary, centroid, apn, enable3DTerrain, state, county, showNearbyParcels]);
 
-  if (!MAPBOX_TOKEN) {
+  if (!isMapEngineConfigured()) {
     return (
       <div className="flex items-center justify-center bg-muted/30 rounded-md" style={{ height }}>
         <div className="text-center text-muted-foreground p-4">
@@ -3169,7 +3185,7 @@ export function StaticPropertyMap({
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  if (!MAPBOX_TOKEN) {
+  if (!isMapEngineConfigured()) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/30 rounded-md", className)} style={{ height }}>
         <div className="text-center text-muted-foreground p-4">
@@ -3237,11 +3253,20 @@ export function StaticPropertyMap({
   const pixelWidth = Math.min(width, 1280); // Max 1280px
   const safeHeight = Math.min(pixelHeight, 1280);
 
-  // Build the static map URL with auto-fitting and more padding for zoomed-out view
-  const staticMapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`;
+  // B1 Phase 2 note: this static-image fallback uses Mapbox's Static Images
+  // API for GeoJSON overlay support. The OSM free static-map service has no
+  // equivalent. When MAP_ENGINE='maplibre' and no MAPBOX_TOKEN is set, the
+  // static fallback is empty — the interactive map remains the primary
+  // path. A future iteration can render the overlay client-side from a
+  // tiled basemap.
+  const staticMapUrl = MAPBOX_TOKEN
+    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`
+    : "";
 
   // Fallback URL without GeoJSON overlay (just satellite view centered on property)
-  const fallbackUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`;
+  const fallbackUrl = MAPBOX_TOKEN
+    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`
+    : "";
 
   if (imageError) {
     return (
