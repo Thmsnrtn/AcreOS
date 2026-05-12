@@ -25,6 +25,10 @@ export function CookieConsentBanner() {
   const accept = () => {
     localStorage.setItem(STORAGE_KEY, "accepted");
     setStatus("accepted");
+    // Notify any sibling components (e.g. FloatingActionButton) that the
+    // banner is gone, so they can re-show. Tab-local custom event since
+    // localStorage's "storage" event only fires cross-tab.
+    window.dispatchEvent(new Event("acreos:cookieconsent"));
     // Now that the user has consented, initialize Sentry (session replay, etc.)
     initSentryAfterConsent();
   };
@@ -32,6 +36,7 @@ export function CookieConsentBanner() {
   const decline = () => {
     localStorage.setItem(STORAGE_KEY, "declined");
     setStatus("declined");
+    window.dispatchEvent(new Event("acreos:cookieconsent"));
   };
 
   // Don't render during SSR hydration or after consent already given

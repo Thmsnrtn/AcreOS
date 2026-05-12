@@ -16,6 +16,26 @@ export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [, setLocation] = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
+  // Hide the FAB while the cookie-consent banner is up, otherwise on mobile
+  // the FAB sits on top of the banner's Accept/Decline buttons and the user
+  // can't dismiss the banner. The banner dispatches `acreos:cookieconsent`
+  // on accept/decline (cookie-consent-banner.tsx) so we re-check then.
+  const [cookieBannerVisible, setCookieBannerVisible] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("acreos_cookie_consent") === null;
+  });
+  useEffect(() => {
+    const recheck = () => {
+      setCookieBannerVisible(localStorage.getItem("acreos_cookie_consent") === null);
+    };
+    window.addEventListener("acreos:cookieconsent", recheck);
+    window.addEventListener("storage", recheck); // cross-tab
+    return () => {
+      window.removeEventListener("acreos:cookieconsent", recheck);
+      window.removeEventListener("storage", recheck);
+    };
+  }, []);
+  if (cookieBannerVisible) return null;
 
   const quickActions: QuickAction[] = [
     {
