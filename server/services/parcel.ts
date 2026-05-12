@@ -209,7 +209,7 @@ function formatOwnerAddress(props: RegridParcel["properties"]): string {
 /**
  * Lookup parcel from County GIS endpoint
  */
-async function lookupFromCountyGIS(
+export async function lookupFromCountyGIS(
   apn: string,
   state: string,
   county: string

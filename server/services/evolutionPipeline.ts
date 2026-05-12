@@ -832,6 +832,53 @@ export async function stage5Deploy(
 ): Promise<boolean> {
   log("stage5Deploy — deploying", { historyId, targetFile });
 
+  // Rosy River C3: in PR mode (default), Stage 5 pushes the evolution branch
+  // and opens a GitHub PR via gh. The founder reviews + merges in GitHub.
+  // The regression check (Stage 6) only fires after the actual merge — for
+  // now we don't auto-schedule it; a future iteration will poll for merge
+  // via the GitHub API and trigger Stage 6 then.
+  try {
+    const { openPullRequestForEvolution, isPrModeEnabled } = await import("./evolutionPrGenerator");
+    if (isPrModeEnabled()) {
+      const [history] = await db
+        .select({ branchName: evolutionHistory.branchName })
+        .from(evolutionHistory)
+        .where(eq(evolutionHistory.id, historyId))
+        .limit(1);
+      if (history?.branchName) {
+        const pr = await openPullRequestForEvolution(historyId, history.branchName);
+        if (pr) {
+          await db
+            .update(evolutionHistory)
+            .set({
+              status: "pr_opened",
+              stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage5')`,
+              updatedAt: new Date(),
+            })
+            .where(eq(evolutionHistory.id, historyId));
+          log("stage5Deploy — PR opened, awaiting founder merge", {
+            historyId,
+            prNumber: pr.prNumber,
+            prUrl: pr.prUrl,
+          });
+          return true;
+        }
+        logError("stage5Deploy — openPullRequest returned null, falling back to legacy deploy", {
+          historyId,
+        });
+      } else {
+        logError("stage5Deploy — no branchName on history row, falling back to legacy deploy", {
+          historyId,
+        });
+      }
+    }
+  } catch (err) {
+    logError("stage5Deploy — PR mode threw, falling back to legacy deploy", {
+      historyId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // 1. Capture baseline error rate from the last hour of aiTelemetryEvents
   let baselineErrorRate = 0;
   try {

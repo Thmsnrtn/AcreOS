@@ -13177,6 +13177,11 @@ export const evolutionHistory = pgTable("evolution_history", {
   errorRateAfterDeploy: numeric("error_rate_after_deploy", { precision: 8, scale: 4 }),
   qualityScoreBefore: numeric("quality_score_before", { precision: 5, scale: 2 }),
   qualityScoreAfter: numeric("quality_score_after", { precision: 5, scale: 2 }),
+  // Rosy River C3 — GitHub PR generation. Stage 5 pushes the evolution
+  // branch and opens a PR via `gh` instead of marking deployed directly.
+  // Founder reviews + merges in GitHub. Null until the PR is opened.
+  prNumber: integer("pr_number"),
+  prUrl: text("pr_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

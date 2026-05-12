@@ -3488,6 +3488,11 @@ const STATEMENTS = [
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'shared/schema.ts',             'founder_approval', true)
      ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+
+  // 2026-05-12 — Rosy River C3: evolution_history gains pr_number + pr_url
+  // so Stage 5 can record which PR was opened for each evolution.
+  `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "pr_number" integer`,
+  `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "pr_url" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
