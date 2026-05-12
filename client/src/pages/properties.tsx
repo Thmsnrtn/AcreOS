@@ -14,7 +14,7 @@ import { ContentReveal } from "@/components/ContentReveal";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo, useEffect } from "react";
 import { useOrganization } from "@/hooks/use-organization";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -150,6 +150,7 @@ export default function PropertiesPage() {
   const refetch = propertiesQuery.refetch;
   const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();
+  const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
 
@@ -563,6 +564,19 @@ export default function PropertiesPage() {
                 <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
                   <Download className="w-4 h-4 mr-1" /> Export
                 </Button>
+                {selectedPropertyIds.size >= 2 && (
+                  <Button
+                    variant="outline"
+                    className="min-h-[44px] md:min-h-8"
+                    onClick={() => {
+                      const ids = Array.from(selectedPropertyIds).slice(0, 4);
+                      navigate(`/properties/compare?ids=${ids.join(",")}`);
+                    }}
+                    data-testid="button-bulk-compare-properties"
+                  >
+                    <Grid3x3 className="w-4 h-4 mr-1" aria-hidden="true" /> Compare
+                  </Button>
+                )}
                 <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
                   <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
                     <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Status"} />
