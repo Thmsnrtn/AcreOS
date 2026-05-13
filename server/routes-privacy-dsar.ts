@@ -141,6 +141,63 @@ export function registerPrivacyDsarRoutes(app: Express): void {
   );
 
   // FOUNDER — mark a DSAR fulfilled (after the response is sent).
+  // ── Pillar D / D1 — Auto-generate DSAR export ─────────────────────────
+  // Founder-only: given a DSAR id + an optional userId, builds the
+  // GDPR-compliant data export via gdprService.exportUserData() and
+  // streams it as a JSON download. Founder forwards the file to the
+  // requester (delivery automation — email + signed-URL — is a future
+  // iteration, but this collapses the manual-SQL-dump step to a click).
+  app.post(
+    "/api/founder/dsar/:id/generate-export",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const id = req.params.id;
+        const userIdRaw = req.body?.userId;
+        const userId = typeof userIdRaw === "number" ? userIdRaw : parseInt(String(userIdRaw ?? ""), 10);
+        if (!Number.isFinite(userId)) {
+          return Errors.badRequest(res, "userId (numeric) required in body");
+        }
+        const [dsar] = await db
+          .select()
+          .from(dsarRequestsLifecycle)
+          .where(eq(dsarRequestsLifecycle.id, id))
+          .limit(1);
+        if (!dsar) return Errors.notFound(res, "DSAR request");
+
+        const { exportUserData } = await import("./services/gdprService");
+        const exportData = await exportUserData(userId);
+
+        try {
+          await auditFromRequest(req, {
+            action: "dsar_export_generated",
+            target: { type: "dsar", id: dsar.id },
+            metadata: {
+              requestType: dsar.requestType,
+              email: dsar.requesterEmail,
+              exportedUserId: userId,
+              recordCounts: exportData.totalRecords,
+            },
+          });
+        } catch (auditErr) {
+          logger.warn("[dsar-export] audit log failed", auditErr as Error);
+        }
+
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="dsar-${dsar.id}-user-${userId}.json"`,
+        );
+        return res.json(exportData);
+      } catch (err) {
+        logger.error("[dsar-export] generate failed", err);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   app.post(
     "/api/founder/dsar/:id/fulfill",
     isAuthenticated,

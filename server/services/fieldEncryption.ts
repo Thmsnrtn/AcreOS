@@ -78,6 +78,104 @@ function getKey(): Buffer {
   return _key;
 }
 
+// ─── Pillar D / D5 — Multi-version key ring ──────────────────────────────────
+//
+// Supports key rotation without re-encrypting every record on the day a new
+// key takes effect. Operate the ring like this:
+//
+//   1. Generate a new key. Add it to FIELD_ENCRYPTION_KEYS keyed by a new
+//      kid (e.g. "2026q3"). Keep the old kids in the ring during the
+//      rotation window so old records still decrypt.
+//   2. Set FIELD_ENCRYPTION_CURRENT_KID to the new kid. From now on,
+//      `encrypt()` stamps the envelope with that kid; new records use it.
+//   3. Run scripts/rotate-encrypted-fields.ts (deferred — future iteration)
+//      to re-encrypt old records into the new kid over time.
+//   4. Once every record is on the new kid, remove the old kid from the
+//      ring + delete the old key material.
+//
+// Env var format:
+//   FIELD_ENCRYPTION_KEYS={"2026q1":"<64hex>","2026q3":"<64hex>"}
+//   FIELD_ENCRYPTION_CURRENT_KID=2026q3
+//
+// Backwards-compat: if FIELD_ENCRYPTION_KEYS is unset, the legacy single
+// FIELD_ENCRYPTION_KEY is treated as the only kid ("default") and the
+// envelope's `kid` field is omitted on encrypt (matches existing rows).
+
+const LEGACY_KID = "default";
+
+interface KeyRing {
+  currentKid: string;
+  keys: Map<string, Buffer>;
+  isMultiKey: boolean;
+}
+
+let _keyRing: KeyRing | null = null;
+
+function loadKeyRing(): KeyRing {
+  const ringRaw = process.env.FIELD_ENCRYPTION_KEYS;
+  if (!ringRaw) {
+    // Legacy single-key mode — same behavior as before this commit.
+    const key = getKey();
+    const ring = new Map<string, Buffer>([[LEGACY_KID, key]]);
+    return { currentKid: LEGACY_KID, keys: ring, isMultiKey: false };
+  }
+
+  let parsed: Record<string, string>;
+  try {
+    parsed = JSON.parse(ringRaw);
+  } catch {
+    throw new Error("[fieldEncryption] FIELD_ENCRYPTION_KEYS must be valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("[fieldEncryption] FIELD_ENCRYPTION_KEYS must be an object kid → hex");
+  }
+
+  const ring = new Map<string, Buffer>();
+  for (const [kid, hex] of Object.entries(parsed)) {
+    if (typeof hex !== "string" || hex.length !== KEY_BYTES * 2) {
+      throw new Error(
+        `[fieldEncryption] FIELD_ENCRYPTION_KEYS[${kid}] must be ${KEY_BYTES * 2} hex chars`,
+      );
+    }
+    const buf = Buffer.from(hex, "hex");
+    if (buf.length !== KEY_BYTES) {
+      throw new Error(`[fieldEncryption] FIELD_ENCRYPTION_KEYS[${kid}] hex parse failed`);
+    }
+    ring.set(kid, buf);
+  }
+  if (ring.size === 0) {
+    throw new Error("[fieldEncryption] FIELD_ENCRYPTION_KEYS is empty");
+  }
+
+  const currentKid = process.env.FIELD_ENCRYPTION_CURRENT_KID;
+  if (!currentKid) {
+    throw new Error(
+      "[fieldEncryption] FIELD_ENCRYPTION_CURRENT_KID must be set when FIELD_ENCRYPTION_KEYS is set",
+    );
+  }
+  if (!ring.has(currentKid)) {
+    throw new Error(
+      `[fieldEncryption] FIELD_ENCRYPTION_CURRENT_KID=${currentKid} not present in keyring`,
+    );
+  }
+
+  // Also include the legacy FIELD_ENCRYPTION_KEY as the "default" kid so
+  // pre-rotation rows still decrypt during the migration window.
+  if (!ring.has(LEGACY_KID)) {
+    try {
+      ring.set(LEGACY_KID, getKey());
+    } catch {
+      /* legacy key absent — fine, ring-only mode */
+    }
+  }
+  return { currentKid, keys: ring, isMultiKey: true };
+}
+
+function getKeyRing(): KeyRing {
+  if (!_keyRing) _keyRing = loadKeyRing();
+  return _keyRing;
+}
+
 // Legacy "master key" path used by services/encryption.ts (utf8-encoded, scrypt-derived).
 // Required for forward-compat decrypt of envelopes B and C written by the legacy module.
 function getLegacyMasterKey(): Buffer | null {
@@ -93,18 +191,30 @@ interface EncryptedPayload {
   iv: string;
   tag: string;
   ct: string;
+  // Pillar D / D5 — optional key-ring identifier. When present, decrypt
+  // looks the key up in the ring; when absent, decrypt falls back to the
+  // legacy single FIELD_ENCRYPTION_KEY for backwards-compat with rows
+  // written before the keyring landed.
+  kid?: string;
 }
 
 /**
  * Encrypts a plaintext string using AES-256-GCM.
  * Always emits the canonical "enc:v1:" envelope.
+ *
+ * In multi-key mode (FIELD_ENCRYPTION_KEYS set), the envelope is stamped
+ * with the current kid. In single-key (legacy) mode, kid is omitted.
  */
 export function encrypt(plaintext: string): string {
   if (plaintext === null || plaintext === undefined) {
     throw new Error("[fieldEncryption] Cannot encrypt null or undefined");
   }
 
-  const key = getKey();
+  const ring = getKeyRing();
+  const key = ring.keys.get(ring.currentKid);
+  if (!key) {
+    throw new Error("[fieldEncryption] current key missing from ring");
+  }
   const iv  = crypto.randomBytes(IV_BYTES);
 
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
@@ -120,6 +230,9 @@ export function encrypt(plaintext: string): string {
     tag: tag.toString("hex"),
     ct:  ctBuf.toString("hex"),
   };
+  if (ring.isMultiKey) {
+    payload.kid = ring.currentKid;
+  }
 
   return ENCRYPTED_PREFIX + Buffer.from(JSON.stringify(payload)).toString("base64");
 }
@@ -162,7 +275,7 @@ export function decrypt(ciphertext: string, legacyOrganizationId?: number): stri
 }
 
 function decryptCanonical(ciphertext: string): string {
-  const key = getKey();
+  const ring = getKeyRing();
   const base64Part = ciphertext.slice(ENCRYPTED_PREFIX.length);
 
   let payload: EncryptedPayload;
@@ -175,6 +288,17 @@ function decryptCanonical(ciphertext: string): string {
   if (payload.v !== FORMAT_VERSION) {
     throw new Error(
       `[fieldEncryption] Unsupported encryption version: ${payload.v}. Expected ${FORMAT_VERSION}.`
+    );
+  }
+
+  // Pillar D / D5 — pick the right key from the ring. If the envelope
+  // names a kid, use that. Else fall back to the legacy single key (which
+  // is registered in the ring as LEGACY_KID).
+  const kid = payload.kid ?? LEGACY_KID;
+  const key = ring.keys.get(kid);
+  if (!key) {
+    throw new Error(
+      `[fieldEncryption] No key for kid=${kid}. Add it to FIELD_ENCRYPTION_KEYS or restore the previous key during rotation.`
     );
   }
 
