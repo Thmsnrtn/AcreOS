@@ -3455,39 +3455,39 @@ const STATEMENTS = [
   // Hard stops — agent must NEVER propose a change touching these.
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'regex:\\.env(\\..*)?$',          'hard_stop', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'regex:server/routes/billing',  'hard_stop', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'regex:server/services/stripe', 'hard_stop', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'regex:\\bsecrets?\\b',         'hard_stop', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'regex:package-lock\\.json$',   'hard_stop', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
 
   // Founder-approval surfaces — agent may propose, but cannot auto-merge.
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'client/src/',                  'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'server/db/schema',             'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'server/routes/auth',           'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'server/services/billing',      'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'server/services/pricing',      'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
      VALUES (1, 'shared/schema.ts',             'founder_approval', true)
-     ON CONFLICT ON CONSTRAINT "custom_autonomy_rules_org_text_uniq" DO NOTHING`,
+     ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
 
   // 2026-05-12 — Rosy River C3: evolution_history gains pr_number + pr_url
   // so Stage 5 can record which PR was opened for each evolution.
