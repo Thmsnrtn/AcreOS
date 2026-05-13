@@ -19,6 +19,29 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 export function registerPublicTrustRoutes(app: Express): void {
+  // ── Pillar H / H1 — public vertical maturity registry ───────────────────
+  //   GET /api/trust/verticals
+  //     Returns the 15 business types with their maturity tier so the
+  //     landing page can filter "shipping today" vs "beta" vs "roadmap"
+  //     consistently with the in-app onboarding wizard.
+  app.get("/api/trust/verticals", async (_req: Request, res: Response) => {
+    try {
+      const { BUSINESS_TYPES } = await import("@shared/business-types");
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+      const verticals = Object.values(BUSINESS_TYPES).map((v) => ({
+        id: v.id,
+        label: v.label,
+        shortDescription: v.shortDescription,
+        maturity: v.maturity,
+        integrations: v.integrations,
+      }));
+      return res.json({ verticals, lastUpdated: new Date().toISOString() });
+    } catch (err: unknown) {
+      logger.error("[trust] verticals fetch failed", err);
+      return Errors.internal(res, err);
+    }
+  });
+
   app.get("/api/trust/sub-processors", async (_req: Request, res: Response) => {
     try {
       const rows = await db
