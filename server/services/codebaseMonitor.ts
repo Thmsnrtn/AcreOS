@@ -29,7 +29,27 @@ import {
   type RiskTier,
 } from "./rosyRiver";
 import { isLikelyRejection } from "./decisionLogRag";
+import {
+  requiresSimulation,
+  addSimulationRequirement,
+} from "./agentPromotionGate";
 import { logger } from "../utils/logger";
+
+// On first import, ensure the codebase_monitor agent + its dep-bump
+// capability are registered with the promotion gate so simulation mode
+// is enforced until the founder promotes. Idempotent — re-importing or
+// re-running is a no-op.
+void (async () => {
+  try {
+    await addSimulationRequirement("codebase_monitor", "dep_bump");
+    await addSimulationRequirement("codebase_monitor", "tsc_fix");
+  } catch (err) {
+    logger.warn("[codebase-monitor] could not register simulation gate", {
+      source: "codebase-monitor",
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+})();
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -167,6 +187,11 @@ async function proposeDependencyBumps(packages: OutdatedPackage[]) {
       continue;
     }
 
+    // Consult the promotion gate — if the founder has promoted
+    // codebase_monitor's dep-bump capability, this returns false and
+    // proposals can go live. Otherwise simulation stays on.
+    const simRequired = await requiresSimulation("codebase_monitor", "dep_bump");
+
     await proposeCodeChange({
       pillar: "shared" as Pillar,
       agent: "codebase_monitor",
@@ -186,7 +211,7 @@ async function proposeDependencyBumps(packages: OutdatedPackage[]) {
           ? "New behavior possible behind feature flags. Read changelog."
           : "Patch bumps typically bugfix-only but verify changelog.",
       rollbackPath: `git revert <commit> && npm install`,
-      simulationMode: true,
+      simulationMode: simRequired,
     });
     proposed++;
   }
@@ -236,6 +261,7 @@ async function proposeTscFixes(buckets: TsErrorBucket[]) {
   // is permitted to touch. We don't want one-off type-noise proposals.
   const significant = buckets.filter((b) => b.count >= 5);
   let proposed = 0;
+  const tscSimRequired = await requiresSimulation("codebase_monitor", "tsc_fix");
   for (const bucket of significant.slice(0, 5)) {
     // Cap at 5 per run
     await proposeCodeChange({
@@ -254,7 +280,7 @@ async function proposeTscFixes(buckets: TsErrorBucket[]) {
         "Fixes could change runtime behaviour if errors were masking real " +
         "bugs (vs. drift). Adversarial review stage will catch most.",
       rollbackPath: `git revert <commit>`,
-      simulationMode: true,
+      simulationMode: tscSimRequired,
     });
     proposed++;
   }
