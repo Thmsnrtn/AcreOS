@@ -294,6 +294,90 @@ export const rateLimiters = {
  * Named limiters for specific route groups
  */
 export const authLimiter = createRateLimiter({ maxRequests: 10, windowMs: 15 * 60 * 1000 });
+
+// ─── Pillar D / D2 — Per-org tier-aware rate limits ─────────────────────────
+//
+// Three pieces:
+//   1. orgTieredKeyFunction — keys on req.organization.id when present,
+//      falls back to authenticatedKeyFunction.
+//   2. TIER_QUOTAS — default per-minute request budget by subscription tier.
+//      Founder can override per-org via organizations.settings.rateLimitOverride.
+//   3. createOrgTieredRateLimiter() — picks the right inner limiter at
+//      request time based on the org's tier (and any override).
+//
+// Why this matters: per-IP limits don't protect tenants from each other.
+// One enterprise customer running a sloppy script can use 100% of the
+// shared budget. Per-org quotas prevent the noisy-neighbor problem.
+
+export const TIER_QUOTAS: Record<string, RateLimitConfig> = {
+  // Conservative — fits a single-user-per-org workflow.
+  free: { maxRequests: 60, windowMs: 60 * 1000 },
+  // Default for paid customers.
+  starter: { maxRequests: 300, windowMs: 60 * 1000 },
+  // Power users + small teams.
+  pro: { maxRequests: 1500, windowMs: 60 * 1000 },
+  // Enterprise customers — large enough that custom override is usually
+  // unnecessary but `org.settings.rateLimitOverride` is available.
+  enterprise: { maxRequests: 6000, windowMs: 60 * 1000 },
+};
+
+export const orgTieredKeyFunction: KeyFunction = (req: Request) => {
+  const org = (req as Request & { organization?: { id?: number } }).organization;
+  if (org?.id) return `org:${org.id}`;
+  return authenticatedKeyFunction(req);
+};
+
+interface OrgSettingsShape {
+  rateLimitOverride?: { maxRequests?: number; windowMs?: number };
+}
+interface OrgShape {
+  id?: number;
+  subscriptionTier?: string | null;
+  settings?: OrgSettingsShape | null;
+}
+
+function resolveOrgQuota(req: Request): RateLimitConfig {
+  const org = (req as Request & { organization?: OrgShape }).organization;
+  const tier = (org?.subscriptionTier ?? "free").toLowerCase();
+  const tierDefault = TIER_QUOTAS[tier] ?? TIER_QUOTAS.free;
+  const override = org?.settings?.rateLimitOverride;
+  if (
+    override &&
+    typeof override.maxRequests === "number" &&
+    override.maxRequests > 0 &&
+    typeof override.windowMs === "number" &&
+    override.windowMs >= 1000
+  ) {
+    return { maxRequests: override.maxRequests, windowMs: override.windowMs };
+  }
+  return tierDefault;
+}
+
+/**
+ * Create a per-org tier-aware rate limiter. Returns express middleware that
+ * dispatches to a tier-specific inner limiter at request time. The inner
+ * limiters are memoized so we don't allocate a fresh closure per request.
+ */
+export function createOrgTieredRateLimiter() {
+  // Lazy-init one limiter per (maxRequests, windowMs) combo we encounter.
+  const innerLimiters = new Map<string, ReturnType<typeof createRateLimiter>>();
+  const getLimiter = (config: RateLimitConfig) => {
+    const key = `${config.maxRequests}@${config.windowMs}`;
+    let inner = innerLimiters.get(key);
+    if (!inner) {
+      inner = createRateLimiter(config, orgTieredKeyFunction);
+      innerLimiters.set(key, inner);
+    }
+    return inner;
+  };
+  return (req: Request, res: Response, next: NextFunction) => {
+    const config = resolveOrgQuota(req);
+    return getLimiter(config)(req, res, next);
+  };
+}
+
+/** Ready-to-use per-org tier-aware limiter for /api/* mount sites. */
+export const orgTieredLimiter = createOrgTieredRateLimiter();
 // r3 Gabriel × Pax: /ai page loads fan out to ~8 ai-category endpoints
 // on mount (conversations, scheduled-tasks/pending-results, pax/observations,
 // ai/nudges, conversations/:id/messages, observations/stream, etc.) plus

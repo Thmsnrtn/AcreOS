@@ -32,6 +32,47 @@ function formatTimestamp(): string {
   return new Date().toISOString();
 }
 
+// ─── Pillar D / D7 — PII redaction ─────────────────────────────────────────
+//
+// Every log line passes through `redactPII` before serialization. Patterns
+// are deliberately conservative (precision > recall) so that legitimate
+// debug output isn't mangled. To bypass for a specific call site, pass
+// `metadata: { __pii_safe: true }` — the redactor honors the flag.
+//
+// Pillar D / D7. The same redactor is used by sentry.ts beforeSend.
+
+const PII_PATTERNS: Array<[RegExp, string]> = [
+  // SSN / TIN — 3-2-4 digit groups with optional dashes/spaces
+  [/\b(?<!\d-)\d{3}[-\s]?\d{2}[-\s]?\d{4}(?!-\d)\b/g, "***-**-****"],
+  // Visa / MC / Amex / Disc — 13-16 digit runs with reasonable structure
+  [/\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6011)[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{1,4}\b/g, "****-****-****-****"],
+  // Email — basic RFC-ish pattern
+  [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[redacted-email]"],
+  // E.164-ish + common US 10-digit phone
+  [/\b\+?1?[-\s.]?\(?\d{3}\)?[-\s.]?\d{3}[-\s.]?\d{4}\b/g, "[redacted-phone]"],
+];
+
+export function redactPII(input: string): string {
+  let out = input;
+  for (const [pattern, replacement] of PII_PATTERNS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+function redactValue(v: unknown): unknown {
+  if (typeof v === "string") return redactPII(v);
+  if (Array.isArray(v)) return v.map(redactValue);
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = redactValue(val);
+    }
+    return out;
+  }
+  return v;
+}
+
 function formatLogEntry(entry: LogEntry): string {
   const parts = [
     `[${entry.timestamp}]`,
@@ -67,11 +108,19 @@ function serializeEntry(entry: LogEntry): string {
 }
 
 function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}): void {
+  // Pillar D / D7 — strip PII unless explicitly waived. Callers can pass
+  // `metadata: { __pii_safe: true }` for messages where the format guarantees
+  // no PII leak (e.g. metric names + numeric values).
+  const piiSafe = (options.metadata as Record<string, unknown> | undefined)?.__pii_safe === true;
+  const safeMessage = piiSafe ? message : redactPII(message);
+  const safeMetadata = piiSafe ? options.metadata : (redactValue(options.metadata) as Record<string, unknown> | undefined);
+
   const entry: LogEntry = {
     timestamp: formatTimestamp(),
     level,
-    message,
+    message: safeMessage,
     ...options,
+    metadata: safeMetadata,
   };
 
   const line = serializeEntry(entry);

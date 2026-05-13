@@ -4727,6 +4727,54 @@ export type InsertDataProcessingAgreement = typeof dataProcessingAgreements.$inf
 export const DPA_STATUSES = ["pending", "negotiating", "signed", "expired"] as const;
 export type DpaStatus = typeof DPA_STATUSES[number];
 
+// ─── Pillar D / D9 — incident tracking ────────────────────────────────────
+//
+// Every SEV-1 / SEV-2 incident gets a row here. The post-mortem template
+// in /docs/runbooks/_postmortem-template.md drives the long-form write-up;
+// this table is the structured index that the founder dashboard reads to
+// surface trend, MTTR, and root-cause-category distributions over time.
+export const incidents = pgTable("incidents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  severity: text("severity").notNull(),          // SEV-1 | SEV-2 | SEV-3 | SEV-4
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  status: text("status").notNull().default("open"), // open | mitigated | resolved | post_mortem_done
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  detectedAt: timestamp("detected_at", { withTimezone: true }),
+  mitigatedAt: timestamp("mitigated_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  detectionSource: text("detection_source"),     // sentry | customer | monitor | internal
+  rootCauseCategory: text("root_cause_category"), // db | auth | provider | code | config | dep | infra | other
+  rootCauseSummary: text("root_cause_summary"),
+  impactSummary: text("impact_summary"),         // customer-visible description
+  affectedOrgCount: integer("affected_org_count"),
+  estimatedRevenueImpactCents: integer("estimated_revenue_impact_cents"),
+  // Post-mortem fields populated after resolution
+  postMortemUrl: text("post_mortem_url"),
+  lessonsLearned: text("lessons_learned"),
+  followupActions: jsonb("followup_actions").$type<Array<{ owner: string; description: string; dueBy?: string; done?: boolean }>>(),
+  // Operational
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdBy: text("created_by"),
+}, (table) => [
+  index("incidents_severity_idx").on(table.severity),
+  index("incidents_status_idx").on(table.status),
+  index("incidents_started_at_idx").on(table.startedAt),
+]);
+export const insertIncidentSchema = createInsertSchema(incidents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type Incident = typeof incidents.$inferSelect;
+export type InsertIncident = z.infer<typeof insertIncidentSchema>;
+
+export const INCIDENT_SEVERITIES = ["SEV-1", "SEV-2", "SEV-3", "SEV-4"] as const;
+export const INCIDENT_STATUSES = ["open", "mitigated", "resolved", "post_mortem_done"] as const;
+export type IncidentSeverity = typeof INCIDENT_SEVERITIES[number];
+export type IncidentStatus = typeof INCIDENT_STATUSES[number];
+
 // ─── Phase 3 Week 14: Activation + retention telemetry ────────────────────
 // (Yuna §8, Konstantin §2). activation_events is the load-bearing table —
 // the first occurrence of a canonical event per organisation drives the

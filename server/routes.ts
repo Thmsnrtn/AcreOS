@@ -181,6 +181,9 @@ import { registerFounderLetterRoutes } from "./routes-founder-letters";
 import { registerFeedbackRoutes } from "./routes-feedback";
 import { registerRosyRiverRoutes } from "./routes-rosy-river";
 import { registerAgentPrereqsRoute } from "./routes-agent-prereqs";
+import { registerPublicTrustRoutes } from "./routes-public-trust";
+import { registerIncidentRoutes } from "./routes-incidents";
+import { registerErrorBudgetRoute } from "./routes-error-budget";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -1918,6 +1921,12 @@ export async function registerRoutes(
   // 2026-05-12 — Agent-loop prerequisite health check (gh auth, git, db,
   // OpenRouter, seeded rules). Founder hits it post-deploy.
   registerAgentPrereqsRoute(app);
+  // 2026-05-13 — Pillar D customer-facing trust surface (sub-processors etc.)
+  registerPublicTrustRoutes(app);
+  // 2026-05-13 — Pillar D / D9 incident tracking + post-mortem routes.
+  registerIncidentRoutes(app);
+  // 2026-05-13 — Pillar D / D6 error-budget endpoint.
+  registerErrorBudgetRoute(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.

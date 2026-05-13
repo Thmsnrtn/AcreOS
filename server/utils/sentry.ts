@@ -84,6 +84,27 @@ export function initSentry(): void {
         delete event.request.headers["authorization"];
         delete event.request.headers["x-csrf-token"];
       }
+
+      // Pillar D / D7 — strip PII (SSN, credit cards, email, phone) from
+      // event payload before it leaves the box. Uses the same redactor as
+      // server/utils/logger.ts. Lazy import to avoid a startup cycle.
+      try {
+        // Inline reference to avoid circular import with logger.ts
+        // (logger doesn't import sentry; we import logger here lazily).
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { redactPII } = require("./logger") as { redactPII: (s: string) => string };
+        if (event.message) event.message = redactPII(event.message);
+        if (event.exception?.values) {
+          for (const ex of event.exception.values) {
+            if (ex.value) ex.value = redactPII(ex.value);
+          }
+        }
+        if (event.request?.data && typeof event.request.data === "string") {
+          event.request.data = redactPII(event.request.data);
+        }
+      } catch {
+        /* redactor failure must never block the Sentry pipeline */
+      }
       return event;
     },
   });

@@ -3493,6 +3493,34 @@ const STATEMENTS = [
   // so Stage 5 can record which PR was opened for each evolution.
   `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "pr_number" integer`,
   `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "pr_url" text`,
+
+  // 2026-05-13 — Pillar D / D9: incident tracking table.
+  `CREATE TABLE IF NOT EXISTS "incidents" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "severity" text NOT NULL,
+     "title" text NOT NULL,
+     "summary" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "started_at" timestamptz NOT NULL,
+     "detected_at" timestamptz,
+     "mitigated_at" timestamptz,
+     "resolved_at" timestamptz,
+     "detection_source" text,
+     "root_cause_category" text,
+     "root_cause_summary" text,
+     "impact_summary" text,
+     "affected_org_count" integer,
+     "estimated_revenue_impact_cents" integer,
+     "post_mortem_url" text,
+     "lessons_learned" text,
+     "followup_actions" jsonb,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now(),
+     "created_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "incidents_severity_idx" ON "incidents" ("severity")`,
+  `CREATE INDEX IF NOT EXISTS "incidents_status_idx" ON "incidents" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "incidents_started_at_idx" ON "incidents" ("started_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
