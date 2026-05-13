@@ -22,9 +22,18 @@
  */
 
 export interface HallucinationWarning {
-  kind: "fabricated_number" | "arv_unreasonable" | "missing_disclosure_field";
+  // Pillar F / F1 — kinds extended for Pax entity-existence checks.
+  kind:
+    | "fabricated_number"
+    | "arv_unreasonable"
+    | "missing_disclosure_field"
+    | "entity_not_in_org";
   detail: string;
-  evidence: { sourceValue?: number; outputValue?: number; field?: string };
+  // severity is informational — most checks return "error", but
+  // numeric warnings could become "warning" if we soften them later.
+  severity?: "error" | "warning";
+  field?: string;
+  evidence?: { sourceValue?: number; outputValue?: number; field?: string };
 }
 
 const NUMBER_PATTERN = /\$([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*%/g;

@@ -1189,6 +1189,34 @@ function startMultiWeekPlannerJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Pillar F / F3: Pax personality drift sampler (Mondays 7am UTC) ──────────
+async function processPersonalityDriftJob() {
+  try {
+    const { runPersonalityDriftSampler } = await import("../services/personalityDriftSampler");
+    const report = await runPersonalityDriftSampler();
+    log(
+      `Personality drift: sample=${report.sampleSize}, composite=${report.current.composite.toFixed(3)}, alert=${report.alertFired}`,
+      'drift-sampler',
+    );
+    jobSupervisor.notifyResult('personality_drift', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Personality drift sampler error: ${err}`, 'drift-sampler');
+    jobSupervisor.notifyResult('personality_drift', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startPersonalityDriftJob() {
+  log('Starting personality drift sampler (Mondays at 7am UTC)', 'drift-sampler');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCDay() === 1 && now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
+      withJobLock('personality_drift', 6 * 24 * 60 * 60, processPersonalityDriftJob).catch(err => {
+        log(`Personality drift lock error: ${err}`, 'drift-sampler');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Pillar E / E1: Trial expiry automation (daily 9am UTC) ──────────────────
 async function processTrialExpiryJob() {
   try {
@@ -2487,6 +2515,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Rosy River C6: weekly multi-week planner (Sundays at 9:00am UTC, after digest)
   startMultiWeekPlannerJob();
+
+  // Pillar F / F3: Pax personality drift sampler (Mondays 7am UTC)
+  startPersonalityDriftJob();
 
   // Pillar E / E1: trial expiry automation (daily 9am UTC)
   startTrialExpiryJob();
