@@ -520,13 +520,13 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm text-acr-neg hover:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 md:mt-2 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
-              <Clock className="w-4 h-4" aria-hidden="true" />
+              <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
               <span className="font-medium">Review now</span>
               <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              <ArrowRight className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
             </Link>
           )}
         </div>
@@ -536,12 +536,12 @@ export default function TodayPage() {
       {showEmptyState && (
         <div className="space-y-4">
           <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
-            <CardContent className="p-6 text-center space-y-3">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
-                <Target className="w-6 h-6 text-primary" aria-hidden="true" />
+            <CardContent className="p-6 md:p-5 text-center space-y-3 md:space-y-2.5">
+              <div className="inline-flex items-center justify-center w-12 h-12 md:w-10 md:h-10 rounded-full bg-primary/10">
+                <Target className="w-6 h-6 md:w-5 md:h-5 text-primary" aria-hidden="true" />
               </div>
-              <h2 className="text-xl font-bold">Ready to find your first deal?</h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
+              <h2 className="text-xl md:text-lg font-bold md:font-semibold">Ready to find your first deal?</h2>
+              <p className="text-muted-foreground md:text-sm max-w-md mx-auto leading-relaxed">
                 Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.
               </p>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
@@ -578,17 +578,17 @@ export default function TodayPage() {
       {/* ── Welcome back (returning user, single card) ───────────────── */}
       {showWelcomeBack && (
         <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
-          <CardContent className="p-5 flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-card bg-acr-brand-soft shrink-0">
-                <RefreshCw className="w-5 h-5 text-acr-brand" aria-hidden="true" />
+          <CardContent className="p-5 md:p-4 flex items-start justify-between gap-4 md:gap-3">
+            <div className="flex items-center gap-3 md:gap-2.5">
+              <div className="p-2.5 md:p-2 rounded-card bg-acr-brand-soft shrink-0">
+                <RefreshCw className="w-5 h-5 md:w-4 md:h-4 text-acr-brand" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="font-semibold text-base">
+                <h3 className="font-semibold text-base md:text-sm">
                   Welcome back{user?.firstName ? `, ${user.firstName}` : ""}.
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  It's been {plural(daysSinceLastVisit, "day")} since you stopped by. Here's where things stand.
+                <p className="text-sm md:text-xs text-muted-foreground">
+                  It's been <span className="tabular-nums">{plural(daysSinceLastVisit, "day")}</span> since you stopped by. Here's where things stand.
                 </p>
               </div>
             </div>
