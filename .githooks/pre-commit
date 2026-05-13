@@ -66,4 +66,47 @@ else
   fi
 fi
 
+
+# ── 2. Pillar D / D10 — Secret scanning on staged content ──────────────────
+#
+# Scans the patch (added/modified lines only — not the full file) for
+# high-confidence secret patterns. Block on match. Patterns prioritized for
+# precision over recall to avoid false-positive fatigue.
+#
+# To intentionally commit a placeholder that matches a pattern, append
+# `// secret-scan:allow` (or `# secret-scan:allow` for non-JS files) to
+# the line.
+
+STAGED_FILES_FOR_SCAN=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -n "$STAGED_FILES_FOR_SCAN" ]; then
+  echo "  Scanning staged content for secrets..."
+
+  # Patterns: AWS access key, AWS secret access key prefixes, Stripe live
+  # keys, GitHub tokens (PAT + GH PAT + actions), Slack tokens, Google API
+  # keys, OpenAI keys, Anthropic keys, Twilio account-SIDs/auth-tokens,
+  # generic PEM private-key headers.
+  #
+  # Each pattern has a literal prefix so false-positives on random base64
+  # are minimized.
+  SECRET_PATTERNS='(AKIA[0-9A-Z]{16})|(ASIA[0-9A-Z]{16})|(sk_live_[0-9a-zA-Z]{24,})|(rk_live_[0-9a-zA-Z]{24,})|(pk_live_[0-9a-zA-Z]{24,})|(ghp_[0-9a-zA-Z]{36})|(gho_[0-9a-zA-Z]{36})|(ghs_[0-9a-zA-Z]{36})|(github_pat_[0-9a-zA-Z_]{82})|(xox[baprs]-[0-9a-zA-Z-]{10,})|(AIza[0-9A-Za-z_-]{35})|(sk-(proj-)?[0-9a-zA-Z_-]{40,})|(sk-ant-[0-9a-zA-Z_-]{40,})|(SK[0-9a-fA-F]{32})|(-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+
+  # git diff --cached -U0 emits only the patch hunks. We grep additions
+  # (lines starting with + but not +++) and skip any allow-listed lines.
+  SECRET_HITS=$(git diff --cached -U0 --diff-filter=ACM | grep -E '^\+[^+]' | grep -Ev 'secret-scan:allow' | grep -E "$SECRET_PATTERNS" || true)
+
+  if [ -n "$SECRET_HITS" ]; then
+    echo ""
+    echo "  ⚠ Likely secret detected in staged changes:"
+    echo "  ──────────────────────────────────────"
+    echo "$SECRET_HITS" | head -20
+    echo "  ──────────────────────────────────────"
+    echo "  Commit blocked. Remove the secret + rotate it if it was ever pushed."
+    echo "  Intentional placeholders should be on a line ending with:"
+    echo "    // secret-scan:allow"
+    echo "  Or use --no-verify only if you are absolutely certain."
+    exit 1
+  fi
+  echo "  No secrets detected."
+fi
+
 echo "  Pre-commit checks passed."

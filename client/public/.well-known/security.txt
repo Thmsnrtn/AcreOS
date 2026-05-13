@@ -1,0 +1,11 @@
+# AcreOS Security Disclosure Policy
+#
+# If you've discovered a vulnerability in AcreOS, please report it via the
+# Contact channel below. We commit to a 90-day responsible-disclosure
+# window and will credit researchers who follow this process.
+
+Contact: https://acreos.fly.dev/?support=true
+Expires: 2027-05-13T00:00:00Z
+Preferred-Languages: en
+Canonical: https://acreos.fly.dev/.well-known/security.txt
+Policy: https://acreos.fly.dev/security
