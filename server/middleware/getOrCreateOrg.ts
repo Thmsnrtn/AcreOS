@@ -181,6 +181,23 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     } catch {
       /* non-fatal; telemetry failures must not break org creation */
     }
+
+    // Pillar E / E5 — Lifecycle firehose. Same event, unified table.
+    // Powers cohort retention + LTV endpoints. Fire-and-forget.
+    try {
+      const { recordLifecycleEvent } = await import("../services/lifecycleEvents");
+      void recordLifecycleEvent({
+        organizationId: org.id,
+        userId,
+        eventType: "signup.created",
+        stage: "signup",
+        metadata: { isFounder, source: "getOrCreateOrg" },
+        sourceTable: "organizations",
+        sourceId: String(org.id),
+      });
+    } catch {
+      /* non-fatal */
+    }
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
     await db

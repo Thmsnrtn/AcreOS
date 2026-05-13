@@ -244,6 +244,19 @@ router.post("/step-entered", async (req: Request, res: Response) => {
       eventName: onboardingStepEnteredEvent(step),
       eventValue: { step, ...(path ? { path } : {}) },
     });
+    // Pillar E / E5 — mirror into the lifecycle firehose.
+    try {
+      const { recordLifecycleEvent } = await import("./services/lifecycleEvents");
+      void recordLifecycleEvent({
+        organizationId: org.id,
+        userId,
+        eventType: `onboarding.step_${step}_entered`,
+        stage: "onboarding",
+        metadata: { step, ...(path ? { path } : {}) },
+        sourceTable: "organizations",
+        sourceId: String(org.id),
+      });
+    } catch { /* non-fatal */ }
     res.json({ recorded: true, step });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -300,6 +313,18 @@ router.patch("/progress", async (req: Request, res: Response) => {
           userId,
           eventName: onboardingStepCompletedEvent(step),
           eventValue: { step, stepData },
+        });
+        // Pillar E / E5 — mirror into the lifecycle firehose so cohort
+        // retention + LTV endpoints see the engagement signal.
+        const { recordLifecycleEvent } = await import("./services/lifecycleEvents");
+        void recordLifecycleEvent({
+          organizationId: org.id,
+          userId,
+          eventType: `onboarding.step_${step}_completed`,
+          stage: "onboarding",
+          metadata: { step, stepData },
+          sourceTable: "organizations",
+          sourceId: String(org.id),
         });
       } catch { /* non-fatal */ }
     }

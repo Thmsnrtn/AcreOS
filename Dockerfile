@@ -28,9 +28,18 @@ RUN npm prune --omit=dev --legacy-peer-deps
 # --- Production stage ---
 FROM base
 
-# Chromium for puppeteer-core (browser automation features)
+# Chromium for puppeteer-core (browser automation features) +
+# gh CLI + git for Rosy River C3 — the evolution pipeline opens PRs via `gh`
+# from this machine, which requires both packages and GH_TOKEN (or
+# `gh auth login`) at runtime. node:slim ships without either.
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y chromium chromium-sandbox && \
+    apt-get install --no-install-recommends -y chromium chromium-sandbox git curl ca-certificates gnupg && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update -qq && \
+    apt-get install --no-install-recommends -y gh && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 COPY --from=build /app /app

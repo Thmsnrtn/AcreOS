@@ -1614,11 +1614,45 @@ export async function* processChatStream(
   });
   fullResponse = _streamValidated.response;
 
+  // Pillar F / F1 — hallucination guard. Catches fabricated numbers,
+  // unreasonable ARVs, and (most importantly) claimed lead/parcel/deal
+  // IDs that don't belong to this org. Warnings travel with the message
+  // via toolCalls metadata so the client can render them as a banner.
+  let hallucinationWarnings: unknown[] = [];
+  try {
+    const { guardPaxOutput } = await import("../services/paxHallucinationGuard");
+    const guarded = await guardPaxOutput({
+      organizationId: org.id,
+      output: fullResponse,
+    });
+    hallucinationWarnings = guarded.warnings;
+    if (guarded.warnings.length > 0) {
+      try {
+        const { logger } = await import("../utils/logger");
+        logger.warn("[pax] hallucination warnings on assistant reply", {
+          source: "pax",
+          metadata: {
+            organizationId: org.id,
+            conversationId: conversation.id,
+            warningCount: guarded.warnings.length,
+            kinds: guarded.warnings.map((w) => w.kind),
+          },
+        });
+      } catch { /* logger optional */ }
+    }
+  } catch {
+    /* guard is advisory — never block reply persistence on its failure */
+  }
+
   await createMessage({
     conversationId: conversation.id,
     role: "assistant",
     content: fullResponse,
-    toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined
+    toolCalls: toolCallsExecuted.length > 0
+      ? toolCallsExecuted
+      : hallucinationWarnings.length > 0
+        ? ([{ __hallucinationWarnings: hallucinationWarnings }] as unknown as typeof toolCallsExecuted)
+        : undefined
   });
 
   if (messages.length <= 1) {

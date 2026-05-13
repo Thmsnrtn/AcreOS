@@ -3539,6 +3539,55 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "lifecycle_events_stage_idx" ON "lifecycle_events" ("stage")`,
   `CREATE INDEX IF NOT EXISTS "lifecycle_events_occurred_idx" ON "lifecycle_events" ("occurred_at" DESC)`,
 
+  // 2026-05-13 — Pillar D / D8: seed real sub-processors so the public
+  // /api/trust/sub-processors endpoint returns a meaningful list before
+  // any data is hand-entered through the admin UI. Each INSERT is
+  // idempotent on vendor_name (which is UNIQUE).
+  // Status starts as 'signed' for vendors with executed DPAs; update
+  // signed_date in the admin UI when you actually counter-sign.
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Stripe', 'signed', 'Payment processing + subscription billing', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Clerk', 'signed', 'Authentication + session + MFA', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Fly.io', 'signed', 'Application + worker compute, Postgres hosting', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Cloudflare', 'signed', 'DNS + CDN + edge security', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('OpenRouter', 'signed', 'LLM routing for agent + Pax inference', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Anthropic', 'signed', 'Claude API for evolution pipeline + agent reasoning', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('OpenAI', 'signed', 'GPT API for adversarial review stage', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Sentry', 'signed', 'Error tracking + session replay (after cookie consent)', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('SendGrid', 'signed', 'Transactional email delivery', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('AWS SES', 'signed', 'Transactional email fallback', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Twilio (Telnyx)', 'signed', 'SMS + MMS delivery', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Lob', 'signed', 'Direct mail delivery (letters + postcards)', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Mapbox', 'signed', 'Map tiles + geocoding (legacy; replaceable via VITE_MAP_ENGINE=maplibre)', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+  `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
+     VALUES ('Regrid', 'signed', 'Parcel data fallback (cold once county_gis coverage is broad)', CURRENT_DATE)
+     ON CONFLICT (vendor_name) DO NOTHING`,
+
   // 2026-05-13 — Pillar E / E4+E9: customer health scores.
   `CREATE TABLE IF NOT EXISTS "customer_health_scores" (
      "id" serial PRIMARY KEY,
