@@ -4775,6 +4775,58 @@ export const INCIDENT_STATUSES = ["open", "mitigated", "resolved", "post_mortem_
 export type IncidentSeverity = typeof INCIDENT_SEVERITIES[number];
 export type IncidentStatus = typeof INCIDENT_STATUSES[number];
 
+// ─── Pillar E / E5 — Lifecycle events firehose ────────────────────────────
+//
+// Unified journal of every customer-lifecycle signal — activation,
+// onboarding, churn risk transitions, NPS responses, subscription
+// state, expansion triggers, etc. Wraps the existing scattered tables
+// (activationEvents, retentionEvents, subscriptionHistory, etc.) into
+// one append-only stream so cohort + LTV + journey reasoning is a single
+// SQL surface instead of five.
+//
+// Writers use recordLifecycleEvent() (services/lifecycleEvents.ts).
+// Backfill from the existing tables is in scripts/backfill-lifecycle-events.ts.
+export const lifecycleEvents = pgTable("lifecycle_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  // Canonical event types. New ones can be added freely; queries should
+  // match by prefix (e.g. "trial.*") when grouping.
+  eventType: text("event_type").notNull(),
+  // Lightweight stage label for funnel visualization.
+  stage: text("stage"), // signup | onboarding | activation | engagement | expansion | risk | churn | reactivation
+  // Free-form metadata: source signal, dollar amounts, attribution context.
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  // Originating table — handy when reverse-mapping a firehose row back
+  // to its canonical record. Null if the event is firehose-native.
+  sourceTable: text("source_table"),
+  sourceId: text("source_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("lifecycle_events_org_occurred_idx").on(table.organizationId, table.occurredAt),
+  index("lifecycle_events_event_type_idx").on(table.eventType),
+  index("lifecycle_events_stage_idx").on(table.stage),
+  index("lifecycle_events_occurred_idx").on(table.occurredAt),
+]);
+export const insertLifecycleEventSchema = createInsertSchema(lifecycleEvents).omit({
+  id: true,
+  occurredAt: true,
+});
+export type LifecycleEvent = typeof lifecycleEvents.$inferSelect;
+export type InsertLifecycleEvent = z.infer<typeof insertLifecycleEventSchema>;
+
+export const LIFECYCLE_STAGES = [
+  "signup",
+  "onboarding",
+  "activation",
+  "engagement",
+  "expansion",
+  "risk",
+  "churn",
+  "reactivation",
+] as const;
+export type LifecycleStage = typeof LIFECYCLE_STAGES[number];
+
 // ─── Phase 3 Week 14: Activation + retention telemetry ────────────────────
 // (Yuna §8, Konstantin §2). activation_events is the load-bearing table —
 // the first occurrence of a canonical event per organisation drives the

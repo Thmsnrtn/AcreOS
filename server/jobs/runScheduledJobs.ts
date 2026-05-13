@@ -1189,6 +1189,62 @@ function startMultiWeekPlannerJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Pillar E / E1: Trial expiry automation (daily 9am UTC) ──────────────────
+async function processTrialExpiryJob() {
+  try {
+    const { runTrialExpiryCycle } = await import("../services/trialEngine");
+    const result = await runTrialExpiryCycle();
+    log(
+      `Trial engine: reminders=${result.remindersSent}, followups=${result.followupsSent}, skipped=${result.skipped}`,
+      'trial-engine',
+    );
+    jobSupervisor.notifyResult('trial_engine', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Trial engine error: ${err}`, 'trial-engine');
+    jobSupervisor.notifyResult('trial_engine', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startTrialExpiryJob() {
+  log('Starting trial-expiry job (daily at 9am UTC)', 'trial-engine');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
+      withJobLock('trial_engine', 23 * 60 * 60, processTrialExpiryJob).catch(err => {
+        log(`Trial engine lock error: ${err}`, 'trial-engine');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Pillar E / E11: Onboarding step scheduler (daily 10am UTC) ──────────────
+async function processOnboardingSchedulerJob() {
+  try {
+    const { runOnboardingScheduler } = await import("../services/onboardingScheduler");
+    const result = await runOnboardingScheduler();
+    log(
+      `Onboarding scheduler: fired=${result.fired}, failed=${result.failed}, skipped=${result.skipped}`,
+      'onboarding-scheduler',
+    );
+    jobSupervisor.notifyResult('onboarding_scheduler', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Onboarding scheduler error: ${err}`, 'onboarding-scheduler');
+    jobSupervisor.notifyResult('onboarding_scheduler', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startOnboardingSchedulerJob() {
+  log('Starting onboarding scheduler (daily at 10am UTC)', 'onboarding-scheduler');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 10 && now.getUTCMinutes() < 5) {
+      withJobLock('onboarding_scheduler', 23 * 60 * 60, processOnboardingSchedulerJob).catch(err => {
+        log(`Onboarding scheduler lock error: ${err}`, 'onboarding-scheduler');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Data Retention: nightly purge of expired rows (3:30am UTC) ───────────────
 async function processDataRetentionJob() {
   try {
@@ -2401,6 +2457,12 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Rosy River C6: weekly multi-week planner (Sundays at 9:00am UTC, after digest)
   startMultiWeekPlannerJob();
+
+  // Pillar E / E1: trial expiry automation (daily 9am UTC)
+  startTrialExpiryJob();
+
+  // Pillar E / E11: onboarding step scheduler (daily 10am UTC)
+  startOnboardingSchedulerJob();
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();

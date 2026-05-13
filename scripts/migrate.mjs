@@ -3521,6 +3521,23 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "incidents_severity_idx" ON "incidents" ("severity")`,
   `CREATE INDEX IF NOT EXISTS "incidents_status_idx" ON "incidents" ("status")`,
   `CREATE INDEX IF NOT EXISTS "incidents_started_at_idx" ON "incidents" ("started_at" DESC)`,
+
+  // 2026-05-13 — Pillar E / E5: lifecycle events firehose.
+  `CREATE TABLE IF NOT EXISTS "lifecycle_events" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "user_id" text,
+     "event_type" text NOT NULL,
+     "stage" text,
+     "metadata" jsonb DEFAULT '{}'::jsonb,
+     "source_table" text,
+     "source_id" text,
+     "occurred_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "lifecycle_events_org_occurred_idx" ON "lifecycle_events" ("organization_id", "occurred_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "lifecycle_events_event_type_idx" ON "lifecycle_events" ("event_type")`,
+  `CREATE INDEX IF NOT EXISTS "lifecycle_events_stage_idx" ON "lifecycle_events" ("stage")`,
+  `CREATE INDEX IF NOT EXISTS "lifecycle_events_occurred_idx" ON "lifecycle_events" ("occurred_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
