@@ -185,6 +185,7 @@ import { registerPublicTrustRoutes } from "./routes-public-trust";
 import { registerIncidentRoutes } from "./routes-incidents";
 import { registerErrorBudgetRoute } from "./routes-error-budget";
 import { registerCohortRetentionRoutes } from "./routes-cohort-retention";
+import { registerCustomerHealthRoutes } from "./routes-customer-health";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -1930,6 +1931,8 @@ export async function registerRoutes(
   registerErrorBudgetRoute(app);
   // 2026-05-13 — Pillar E / E3 cohort retention endpoint.
   registerCohortRetentionRoutes(app);
+  // 2026-05-13 — Pillar E / E4+E9 customer health endpoints.
+  registerCustomerHealthRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.

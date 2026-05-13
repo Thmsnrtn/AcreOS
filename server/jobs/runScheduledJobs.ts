@@ -1217,6 +1217,36 @@ function startTrialExpiryJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Pillar E / E4+E9: Customer health scoring (daily 7am UTC) ───────────────
+async function processCustomerHealthJob() {
+  try {
+    const { runHealthForAllOrgs } = await import("../services/customerHealthEngine");
+    const result = await runHealthForAllOrgs();
+    log(
+      `Customer health: scored=${result.scored}, healthy=${result.bandsCount.healthy}, ` +
+        `watch=${result.bandsCount.watch}, silent=${result.bandsCount.silent_disengaged}, ` +
+        `struggling=${result.bandsCount.struggling}`,
+      'customer-health',
+    );
+    jobSupervisor.notifyResult('customer_health', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Customer health job error: ${err}`, 'customer-health');
+    jobSupervisor.notifyResult('customer_health', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startCustomerHealthJob() {
+  log('Starting customer health job (daily at 7am UTC)', 'customer-health');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
+      withJobLock('customer_health', 23 * 60 * 60, processCustomerHealthJob).catch(err => {
+        log(`Customer health lock error: ${err}`, 'customer-health');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Pillar E / E11: Onboarding step scheduler (daily 10am UTC) ──────────────
 async function processOnboardingSchedulerJob() {
   try {
@@ -2460,6 +2490,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Pillar E / E1: trial expiry automation (daily 9am UTC)
   startTrialExpiryJob();
+
+  // Pillar E / E4+E9: customer health scoring (daily 7am UTC)
+  startCustomerHealthJob();
 
   // Pillar E / E11: onboarding step scheduler (daily 10am UTC)
   startOnboardingSchedulerJob();

@@ -3538,6 +3538,24 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "lifecycle_events_event_type_idx" ON "lifecycle_events" ("event_type")`,
   `CREATE INDEX IF NOT EXISTS "lifecycle_events_stage_idx" ON "lifecycle_events" ("stage")`,
   `CREATE INDEX IF NOT EXISTS "lifecycle_events_occurred_idx" ON "lifecycle_events" ("occurred_at" DESC)`,
+
+  // 2026-05-13 — Pillar E / E4+E9: customer health scores.
+  `CREATE TABLE IF NOT EXISTS "customer_health_scores" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "score" integer NOT NULL,
+     "band" text NOT NULL,
+     "usage_velocity_points" integer NOT NULL,
+     "feature_breadth_points" integer NOT NULL,
+     "nps_signal_points" integer NOT NULL,
+     "data_quality_points" integer NOT NULL,
+     "pax_engagement_points" integer NOT NULL,
+     "signals" jsonb DEFAULT '{}'::jsonb,
+     "calculated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "customer_health_org_idx" ON "customer_health_scores" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "customer_health_band_idx" ON "customer_health_scores" ("band")`,
+  `CREATE INDEX IF NOT EXISTS "customer_health_calc_idx" ON "customer_health_scores" ("calculated_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

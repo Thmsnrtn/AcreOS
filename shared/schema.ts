@@ -4827,6 +4827,46 @@ export const LIFECYCLE_STAGES = [
 ] as const;
 export type LifecycleStage = typeof LIFECYCLE_STAGES[number];
 
+// ─── Pillar E / E4 + E9 — Customer health score ──────────────────────────
+//
+// Distinct from churn_risk_scores. Churn risk asks "how likely to leave?";
+// health asks "how much value is this customer extracting?" An org can
+// have low churn risk AND low health (uses the product just enough to
+// not churn) — that's the silent-disengaged segment we miss otherwise.
+//
+// Score breakdown (0–100, higher is healthier):
+//   usage_velocity      0–25  — events per week trend (+/-)
+//   feature_breadth     0–25  — # of distinct modules with data
+//   nps_signal          0–20  — most-recent NPS bucket (promoter/passive/detractor)
+//   data_quality        0–15  — % of records with complete required fields
+//   pax_engagement      0–15  — Pax conversations or nudges accepted in last 30d
+export const customerHealthScores = pgTable("customer_health_scores", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  score: integer("score").notNull(),                       // 0–100
+  band: text("band").notNull(),                            // healthy | watch | silent_disengaged | struggling
+  usageVelocityPoints: integer("usage_velocity_points").notNull(),
+  featureBreadthPoints: integer("feature_breadth_points").notNull(),
+  npsSignalPoints: integer("nps_signal_points").notNull(),
+  dataQualityPoints: integer("data_quality_points").notNull(),
+  paxEngagementPoints: integer("pax_engagement_points").notNull(),
+  signals: jsonb("signals").$type<Record<string, unknown>>().default({}),
+  calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("customer_health_org_idx").on(table.organizationId),
+  index("customer_health_band_idx").on(table.band),
+  index("customer_health_calc_idx").on(table.calculatedAt),
+]);
+export const insertCustomerHealthScoreSchema = createInsertSchema(customerHealthScores).omit({
+  id: true,
+  calculatedAt: true,
+});
+export type CustomerHealthScore = typeof customerHealthScores.$inferSelect;
+export type InsertCustomerHealthScore = z.infer<typeof insertCustomerHealthScoreSchema>;
+
+export const HEALTH_BANDS = ["healthy", "watch", "silent_disengaged", "struggling"] as const;
+export type HealthBand = typeof HEALTH_BANDS[number];
+
 // ─── Phase 3 Week 14: Activation + retention telemetry ────────────────────
 // (Yuna §8, Konstantin §2). activation_events is the load-bearing table —
 // the first occurrence of a canonical event per organisation drives the
