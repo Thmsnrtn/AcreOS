@@ -1296,6 +1296,23 @@ export default function Settings() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {products
                       .filter(p => p.active && p.prices.length > 0)
+                      // Only the 3 base tier cards (Starter / Pro / Scale).
+                      // Seat add-ons + vertical packs come from the same
+                      // /api/stripe/products endpoint but are managed via
+                      // the seats UI + per-vertical pack picker (Phase 5
+                      // §5). Tagging convention: metadata.tier is
+                      // starter|pro|scale on base tiers; seat-addons carry
+                      // metadata.type=seat_addon; packs carry
+                      // metadata.type=vertical_pack.
+                      .filter(p => {
+                        const tier = p.metadata?.tier;
+                        const type = p.metadata?.type;
+                        return (tier === "starter" || tier === "pro" || tier === "scale") && !type;
+                      })
+                      .sort((a, b) => {
+                        const order: Record<string, number> = { starter: 0, pro: 1, scale: 2 };
+                        return (order[a.metadata?.tier ?? ""] ?? 99) - (order[b.metadata?.tier ?? ""] ?? 99);
+                      })
                       .map((product) => {
                         const price = product.prices.find(p => p.active && p.recurring);
                         const isCurrent = isCurrentTier(product.name);
