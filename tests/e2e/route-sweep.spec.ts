@@ -31,33 +31,34 @@ import { clerk, clerkSetup } from "@clerk/testing/playwright";
 test.use({ storageState: "tests/e2e/.auth/user.json" });
 test.setTimeout(90_000);
 
-// Mint a fresh Clerk sign-in ticket per test via the Backend API and
-// exchange it for a session before the route navigation. The shared
+// Mint a Clerk sign-in ticket via the Backend API and exchange it
+// for a session before navigating to the route under test. The shared
 // storageState user.json holds a single JWT that ages out across a
-// 20-minute sweep; by the time later tests run, the JWT can't be
-// refreshed via the in-page touch alone. Re-signing per test ensures
-// every navigation starts with a fresh session and isolates real
-// product regressions from Clerk session-staleness noise.
+// 20-minute sweep; re-signing isolates real product regressions from
+// Clerk session-staleness noise.
 //
-// Skipped when CLERK_SECRET_KEY isn't available — falls back to
-// whatever's in user.json (the prior behavior).
+// Clerk's /v1/sign_in_tokens has rate limits (≈100/hour). Minting
+// per-test was burning the budget mid-sweep, after which beforeEach
+// silently returned and every subsequent test landed on PageLoader
+// with stale cookies — surfacing as a cascade of false "no interactive
+// elements rendered" failures. To stay under the limit we mint one
+// ticket per WORKER process and re-use it across that worker's tests;
+// the resulting session refreshes naturally via Clerk's in-page touch.
+//
+// Skipped when CLERK_SECRET_KEY isn't available — falls back to whatever's
+// in user.json.
 let setupDone = false;
+let workerTicketMinted = false;
 test.beforeEach(async ({ page, context }) => {
   const secret = process.env.CLERK_SECRET_KEY;
   const userId = process.env.CLERK_TEST_USER_ID || process.env.DEV_FOUNDER_USER_ID;
   if (!secret || !userId) return;
 
-  if (!setupDone) {
-    await clerkSetup();
-    setupDone = true;
-  }
-
   // Seed cookie-consent in localStorage on every new page in this
-  // context, mirroring auth-clerk-ticket.setup.ts. Without this, fresh
+  // context. Mirrors auth-clerk-ticket.setup.ts — without it, fresh
   // clerk.signIn navigations occasionally land on /auth via a path that
-  // clears localStorage, and the cookie-consent <Dialog> intercepts the
-  // route-under-test's interactive-element count — failing the test
-  // with "no interactive elements rendered" even though the page is fine.
+  // clears localStorage and the cookie-consent <Dialog> intercepts the
+  // interactive-element count.
   await context.addInitScript(() => {
     try {
       localStorage.setItem("acreos_cookie_consent", "accepted");
@@ -65,6 +66,15 @@ test.beforeEach(async ({ page, context }) => {
       /* private mode etc. — best-effort */
     }
   });
+
+  // One ticket mint per worker. Stays well under Clerk's /v1/sign_in_tokens
+  // rate limit even across multiple parallel sweep runs.
+  if (workerTicketMinted) return;
+
+  if (!setupDone) {
+    await clerkSetup();
+    setupDone = true;
+  }
 
   const res = await fetch("https://api.clerk.com/v1/sign_in_tokens", {
     method: "POST",
@@ -80,6 +90,7 @@ test.beforeEach(async ({ page, context }) => {
   await page.goto("/auth");
   await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
   await clerk.signIn({ page, signInParams: { strategy: "ticket", ticket: token } });
+  workerTicketMinted = true;
 });
 
 const CUSTOMER_ROUTES = [
