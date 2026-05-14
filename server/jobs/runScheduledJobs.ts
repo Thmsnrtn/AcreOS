@@ -2530,4 +2530,34 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();
+
+  // ─── Rosy River B / county-GIS autonomous discovery (weekly) ──────────
+  // Pillar B / B3 — perpetual discovery of new county ArcGIS parcel
+  // endpoints. Every Sunday at 5:30am UTC the agent searches ArcGIS Online
+  // for "parcel" / "assessor" / "cadastral" services, validates each, and
+  // inserts verified rows into county_gis_endpoints. Goal: drive the
+  // Regrid fallback rate down by cold-discovering counties our seed list
+  // missed.
+  import("../services/countyEndpointDiscovery").then(({ runCountyEndpointDiscovery }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("County endpoint discovery cron registered (self-rescheduling, 7d)", "data");
+      scheduleSelfRescheduling({
+        name: "county_endpoint_discovery",
+        intervalMs: 7 * 24 * 60 * 60 * 1000,
+        initialDelayMs: 30 * 60 * 1000,
+        run: async () => {
+          await withJobLock("county_endpoint_discovery", 60 * 60, async () => {
+            const r = await runCountyEndpointDiscovery({ maxResults: 200 });
+            log(
+              `[county-discovery] scanned=${r.scanned} candidates=${r.candidatesExtracted} ` +
+                `known=${r.alreadyKnown} validated=${r.validated} inserted=${r.inserted} failed=${r.failed}`,
+              "data",
+            );
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import county discovery cron: ${err}`, "data");
+  });
 }

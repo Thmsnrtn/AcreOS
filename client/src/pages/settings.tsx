@@ -50,6 +50,7 @@ import { PaxTasksSettingsTab } from "@/components/pax-tasks-settings-tab";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
+import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
 // the full Settings → Appearance surface uses AppearancePanel below.
@@ -864,6 +865,12 @@ export default function Settings() {
               </h1>
             </div>
           </div>
+
+          {/* Quick-find search — jumps to any setting across all 7 tabs by
+             keyword. Reduces the "overwhelming" feel: a user who knows
+             they want "2fa" or "stripe" or "theme" can land there in
+             one keystroke without scanning tab labels. */}
+          <SettingsQuickFind onJump={(tab) => handleTabChange(tab)} />
 
           {/* Mobile jump-menu — 17 tabs grouped into six clusters via Radix
              SelectGroup. Group labels make the long list scannable at 375px

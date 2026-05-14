@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ import {
   Bell,
   GitBranch,
   ArrowRight,
+  EyeOff,
+  RotateCcw,
 } from "lucide-react";
 
 // Priority → semantic --acr-* tone (carried from today.tsx).
@@ -74,29 +77,117 @@ interface DecisionQueueProps {
   isLoading: boolean;
 }
 
+// localStorage-backed snooze map. Keyed by item id, value is an ISO
+// expiry timestamp. Snoozed items hide from the queue until expiry.
+// Per-org persistence is overkill for a hide-toggle — we keep this
+// local so the user never waits on a network round-trip to dismiss.
+const SNOOZE_KEY = "acreos-decisionqueue-snoozed";
+const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
+
+function loadSnoozed(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(SNOOZE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    const now = Date.now();
+    const fresh: Record<string, number> = {};
+    for (const [id, expiry] of Object.entries(parsed)) {
+      if (typeof expiry === "number" && expiry > now) fresh[id] = expiry;
+    }
+    return fresh;
+  } catch {
+    return {};
+  }
+}
+
+function persistSnoozed(map: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SNOOZE_KEY, JSON.stringify(map));
+  } catch {
+    /* quota / private mode — best effort */
+  }
+}
+
 // Provenance-pill decision list. Replaces the old Start-here / Today's
 // actions / Pax suggests / Pax noticed / AI action queue / Portfolio
 // alerts stack — one prioritized list, source on a pill.
 export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
-  const sorted = [...items].sort((a, b) => a.rank - b.rank);
+  const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
+
+  useEffect(() => {
+    persistSnoozed(snoozed);
+  }, [snoozed]);
+
+  function snoozeItem(id: string) {
+    setSnoozed((prev) => ({ ...prev, [id]: Date.now() + SNOOZE_DURATION_MS }));
+  }
+
+  function snoozeAll(ids: string[]) {
+    const expiry = Date.now() + SNOOZE_DURATION_MS;
+    setSnoozed((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = expiry;
+      return next;
+    });
+  }
+
+  function restoreAll() {
+    setSnoozed({});
+  }
+
+  const visible = useMemo(
+    () => items.filter((it) => !snoozed[it.id]).sort((a, b) => a.rank - b.rank),
+    [items, snoozed],
+  );
+  const snoozedCount = Object.keys(snoozed).length;
 
   return (
     <div data-testid="section-decision-queue">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
           <h2 className="acr-section-h2">Decision queue</h2>
-          {sorted.length > 0 && (
+          {visible.length > 0 && (
             <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
-              {sorted.length}
+              {visible.length}
             </Badge>
           )}
         </div>
-        <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-          <Link href="/decision-queue">
-            View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </Link>
-        </Button>
+        <div className="flex items-center gap-1">
+          {visible.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-xs"
+              onClick={() => snoozeAll(visible.map((v) => v.id))}
+              aria-label="Snooze all items for 24 hours"
+              data-testid="button-snooze-all-decisions"
+            >
+              <EyeOff className="w-3 h-3" aria-hidden="true" />
+              Clear queue
+            </Button>
+          )}
+          {snoozedCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-xs"
+              onClick={restoreAll}
+              aria-label={`Restore ${snoozedCount} snoozed item${snoozedCount === 1 ? "" : "s"}`}
+              data-testid="button-restore-snoozed-decisions"
+            >
+              <RotateCcw className="w-3 h-3" aria-hidden="true" />
+              Restore {snoozedCount}
+            </Button>
+          )}
+          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+            <Link href="/decision-queue">
+              View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <ContentReveal
@@ -107,14 +198,18 @@ export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
           </div>
         }
       >
-        {sorted.length === 0 ? (
+        {visible.length === 0 ? (
           <ClearedEmpty
-            headline="All clear — nothing needs you right now"
-            subtitle="When new leads, deals, or signals come in, they'll show up here first."
+            headline={snoozedCount > 0 ? "Queue cleared for now" : "All clear — nothing needs you right now"}
+            subtitle={
+              snoozedCount > 0
+                ? `${snoozedCount} item${snoozedCount === 1 ? "" : "s"} snoozed for 24 hours. Use Restore to bring them back.`
+                : "When new leads, deals, or signals come in, they'll show up here first."
+            }
           />
         ) : (
           <ul role="list" className="space-y-2">
-            {sorted.map((item, idx) => {
+            {visible.map((item, idx) => {
               const SourceIcon = sourceIcon[item.source];
               return (
                 <li key={item.id} role="listitem">

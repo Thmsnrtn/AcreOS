@@ -115,6 +115,38 @@ export default function FounderStrategyPage() {
   const synthesized = proposals.filter((p) => p.status === "synthesized");
   const weekly = proposals.filter((p) => p.status === "proposed");
 
+  // Bulk-clear: defer every open weekly proposal in one click. Skips the
+  // synthesized list so the founder can't accidentally clear the high-signal
+  // monthly slate. Uses the existing reject endpoint with feedback="defer".
+  const bulkDeferWeekly = useMutation({
+    mutationFn: async () => {
+      const ids = weekly.map((p) => p.id);
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          apiRequest("POST", `/api/founder/intelligence/strategic-proposals/${id}/reject`, {
+            feedback: "bulk-deferred from founder queue",
+          }),
+        ),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      return { total: ids.length, failed };
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/strategic-proposals"] });
+      toast({
+        title: r.failed === 0 ? `Cleared ${r.total} weekly proposals` : `Cleared ${r.total - r.failed} of ${r.total}`,
+        description: r.failed > 0 ? `${r.failed} couldn't be cleared — try again.` : undefined,
+        variant: r.failed > 0 ? "destructive" : "default",
+      });
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't bulk-clear",
+        description: e.message,
+        variant: "destructive",
+      }),
+  });
+
   return (
     <PageShell label="Strategic Proposals">
       <div className="space-y-6 max-w-5xl mx-auto">
@@ -191,8 +223,26 @@ export default function FounderStrategyPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Weekly raw proposals (<span className="tabular-nums">{weekly.length}</span>)</CardTitle>
+            {weekly.length > 0 && (
+              <Button
+                onClick={() => {
+                  if (window.confirm(`Defer ${weekly.length} weekly proposal${weekly.length === 1 ? "" : "s"}? This rejects them all in bulk.`)) {
+                    bulkDeferWeekly.mutate();
+                  }
+                }}
+                disabled={bulkDeferWeekly.isPending}
+                variant="ghost"
+                size="sm"
+                className="text-xs gap-1"
+                aria-label={`Clear all ${weekly.length} weekly proposals`}
+                data-testid="button-bulk-defer-weekly-proposals"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+                {bulkDeferWeekly.isPending ? "Clearing…" : `Clear all (${weekly.length})`}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {weekly.length === 0 ? (

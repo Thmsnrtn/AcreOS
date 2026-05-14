@@ -104,10 +104,12 @@ test.describe("Map smoke", () => {
     }
     if ((await detectMapEngine(page)) === "none") test.skip();
 
-    // The component shows a style chooser. Pattern: 3 testids or 3
-    // role=button entries labelled satellite/terrain/streets.
+    // The component shows a style chooser. Real testids are
+    // button-map-satellite / button-map-terrain / button-map-streets
+    // (see property-map.tsx). Fall back to role=button if those testids
+    // ever get refactored.
     for (const style of ["satellite", "terrain", "streets"]) {
-      const btn = page.getByTestId(`map-style-${style}`).or(
+      const btn = page.getByTestId(`button-map-${style}`).or(
         page.getByRole("button", { name: new RegExp(style, "i") }),
       );
       if ((await btn.count()) === 0) continue;
@@ -131,8 +133,11 @@ test.describe("Map smoke", () => {
     }
     if ((await detectMapEngine(page)) === "none") test.skip();
 
-    // Find the measurement (Ruler / Distance / Area) toggle.
-    const measureBtn = page.getByRole("button", { name: /measure|ruler|distance/i });
+    // Find the measurement (Ruler / Distance / Area) toggle. Real
+    // testid is button-measure.
+    const measureBtn = page
+      .getByTestId("button-measure")
+      .or(page.getByRole("button", { name: /measure|ruler|distance/i }));
     if ((await measureBtn.count()) === 0) {
       test.info().annotations.push({
         type: "warning",
