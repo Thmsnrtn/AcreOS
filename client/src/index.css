@@ -98,8 +98,151 @@
 ═══════════════════════════════════════════════════════════════════ */
 
 
-/* ─────────────── Homestead · light ─────────────── */
+/* ─────────────── DIRTPASS · light (default) ─────────────────
+   DIRTPASS Vol. 1 — raw earth, weathered iron, sun-bleached dust.
+   Inspired by riding-culture poster design: oxidized rust on bone,
+   dust-gold accents, moss-green positives, dried-blood negatives.
+   This block doubles as the :root fallback so apps without an
+   explicit [data-theme] attribute land on DIRTPASS. */
 :root,
+[data-theme="dirtpass"]:root {
+  --acr-bg:           #EDE3D0;
+  --acr-bg-sunken:    #D9CDB6;
+  --acr-bg-raised:    #F7F0DD;
+  --acr-surface:      #F7F0DD;
+  --acr-surface-2:    #E5DAC1;
+  --acr-sidebar-bg:   #DECEB0;
+  --acr-sidebar-ink:  #1F1810;
+  --acr-line:         rgba(60,40,20,0.16);
+  --acr-line-soft:    rgba(60,40,20,0.08);
+  --acr-ink:          #1F1810;
+  --acr-ink-2:        #4D3E2C;
+  --acr-ink-3:        #7A6A50;
+  --acr-ink-4:        #A8987A;
+  --acr-brand:        #A04428;
+  --acr-brand-ink:    #F7F0DD;
+  --acr-brand-soft:   rgba(160,68,40,0.14);
+  --acr-accent:       #B8842E;
+  --acr-pos:          #5A7340;
+  --acr-pos-soft:     rgba(90,115,64,0.14);
+  --acr-warn:         #B97A1E;
+  --acr-warn-soft:    rgba(185,122,30,0.14);
+  --acr-neg:          #8E2B16;
+  --acr-neg-soft:     rgba(142,43,22,0.14);
+  --acr-glow:         rgba(160,68,40,0.32);
+  --acr-shadow-1:     0 1px 2px rgba(31,24,16,0.08);
+  --acr-shadow-2:     0 1px 2px rgba(31,24,16,0.08), 0 8px 22px -6px rgba(31,24,16,0.18);
+  --acr-shadow-3:     0 2px 4px rgba(31,24,16,0.10), 0 22px 50px -12px rgba(31,24,16,0.24);
+  --acr-ring:         0 0 0 3px rgba(160,68,40,0.30);
+  --acr-chart-a:      #A04428;
+  --acr-chart-b:      #B8842E;
+  --acr-chart-c:      #5A7340;
+  --acr-chart-d:      #4D3E2C;
+  /* HSL parallel */
+  --background:                  37 41% 87%;
+  --foreground:                  28 33% 9%;
+  --card:                        41 51% 92%;
+  --card-foreground:             28 33% 9%;
+  --popover:                     41 51% 92%;
+  --popover-foreground:          28 33% 9%;
+  --primary:                     14 60% 39%;
+  --primary-foreground:          41 51% 92%;
+  --secondary:                   38 31% 83%;
+  --secondary-foreground:        28 33% 9%;
+  --muted:                       38 31% 83%;
+  --muted-foreground:            34 21% 40%;
+  --accent:                      36 61% 45%;
+  --accent-foreground:           41 51% 92%;
+  --destructive:                 11 73% 32%;
+  --destructive-foreground:      41 51% 92%;
+  --border:                      34 26% 69%;
+  --input:                       34 26% 69%;
+  --ring:                        14 60% 39%;
+  --chart-1:                     14 60% 39%;
+  --chart-2:                     36 61% 45%;
+  --chart-3:                     84 28% 35%;
+  --chart-4:                     30 27% 24%;
+  --chart-5:                     34 21% 40%;
+  --sidebar-background:          37 47% 78%;
+  --sidebar-foreground:          28 33% 9%;
+  --sidebar-primary:             14 60% 39%;
+  --sidebar-primary-foreground:  41 51% 92%;
+  --sidebar-accent:              38 31% 83%;
+  --sidebar-accent-foreground:   28 33% 9%;
+  --sidebar-border:              34 23% 66%;
+  --sidebar-ring:                14 60% 39%;
+}
+
+/* ─────────────── DIRTPASS · dark ─────────────── */
+.dark,
+[data-theme="dirtpass"].dark {
+  --acr-bg:           #13100B;
+  --acr-bg-sunken:    #0A0805;
+  --acr-bg-raised:    #1F1A12;
+  --acr-surface:      #1F1A12;
+  --acr-surface-2:    #2B2418;
+  --acr-sidebar-bg:   #0A0805;
+  --acr-sidebar-ink:  #E8DCC4;
+  --acr-line:         rgba(232,220,196,0.10);
+  --acr-line-soft:    rgba(232,220,196,0.05);
+  --acr-ink:          #E8DCC4;
+  --acr-ink-2:        #BDAE8E;
+  --acr-ink-3:        #897B5F;
+  --acr-ink-4:        #574B36;
+  --acr-brand:        #C2604A;
+  --acr-brand-ink:    #13100B;
+  --acr-brand-soft:   rgba(194,96,74,0.18);
+  --acr-accent:       #D9A24A;
+  --acr-pos:          #92B570;
+  --acr-pos-soft:     rgba(146,181,112,0.16);
+  --acr-warn:         #D9A24A;
+  --acr-warn-soft:    rgba(217,162,74,0.16);
+  --acr-neg:          #BF4C2E;
+  --acr-neg-soft:     rgba(191,76,46,0.18);
+  --acr-glow:         rgba(194,96,74,0.36);
+  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.42);
+  --acr-shadow-2:     0 1px 2px rgba(0,0,0,0.42), 0 8px 22px -6px rgba(0,0,0,0.52);
+  --acr-shadow-3:     0 2px 4px rgba(0,0,0,0.48), 0 22px 50px -12px rgba(0,0,0,0.60);
+  --acr-ring:         0 0 0 3px rgba(194,96,74,0.40);
+  --acr-chart-a:      #C2604A;
+  --acr-chart-b:      #D9A24A;
+  --acr-chart-c:      #92B570;
+  --acr-chart-d:      #BDAE8E;
+  --background:                  31 22% 6%;
+  --foreground:                  39 50% 84%;
+  --card:                        30 27% 10%;
+  --card-foreground:             39 50% 84%;
+  --popover:                     30 27% 10%;
+  --popover-foreground:          39 50% 84%;
+  --primary:                     11 49% 53%;
+  --primary-foreground:          31 22% 6%;
+  --secondary:                   33 28% 13%;
+  --secondary-foreground:        39 50% 84%;
+  --muted:                       33 28% 13%;
+  --muted-foreground:            41 19% 46%;
+  --accent:                      40 64% 57%;
+  --accent-foreground:           31 22% 6%;
+  --destructive:                 11 60% 47%;
+  --destructive-foreground:      39 50% 84%;
+  --border:                      36 26% 18%;
+  --input:                       36 26% 18%;
+  --ring:                        11 49% 53%;
+  --chart-1:                     11 49% 53%;
+  --chart-2:                     40 64% 57%;
+  --chart-3:                     86 31% 57%;
+  --chart-4:                     38 16% 65%;
+  --chart-5:                     41 19% 46%;
+  --sidebar-background:          31 27% 4%;
+  --sidebar-foreground:          39 50% 84%;
+  --sidebar-primary:             11 49% 53%;
+  --sidebar-primary-foreground:  31 22% 6%;
+  --sidebar-accent:              33 28% 13%;
+  --sidebar-accent-foreground:   39 50% 84%;
+  --sidebar-border:              36 26% 18%;
+  --sidebar-ring:                11 49% 53%;
+}
+
+/* ─────────────── Homestead · light ─────────────── */
 [data-theme="homestead"]:root {
   /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
   --acr-bg:           #FAF4E8;
@@ -170,7 +313,6 @@
 }
 
 /* ─────────────── Homestead · dark ─────────────── */
-.dark,
 [data-theme="homestead"].dark {
   /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
   --acr-bg:           #1A120A;

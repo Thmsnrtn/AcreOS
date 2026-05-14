@@ -105,7 +105,6 @@
  * stack baked into each var. Zero font load.
  */
 
-:root,
 [data-font-pairing="editorial"]:root {
   --font-display: "Fraunces", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, serif;
   --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -127,10 +126,11 @@
   --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 
+:root,
 [data-font-pairing="native"]:root {
   /* Pure system stack — zero @font-face references, zero font load.
    * Apple platforms get SF Pro Display/Text/Mono; everywhere else
-   * falls through to the next available family. */
+   * falls through to the next available family. Default pairing. */
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
   --font-sans:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --font-serif:   ui-serif, "Times New Roman", Georgia, serif;

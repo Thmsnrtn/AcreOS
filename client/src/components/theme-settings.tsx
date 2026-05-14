@@ -24,6 +24,13 @@ type ThemeSwatch = {
 
 const THEMES: ThemeSwatch[] = [
   {
+    id: "dirtpass",
+    label: "Dirtpass",
+    tagline: "Oxidized rust, bone, moss — default",
+    light: { bg: "#EDE3D0", brand: "#A04428", ink: "#1F1814" },
+    dark: { bg: "#13100B" },
+  },
+  {
     id: "homestead",
     label: "Homestead",
     tagline: "Warm earth, terracotta, cream",
@@ -123,14 +130,14 @@ export function ThemeSettings() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Theme</p>
-              {themeConfig.theme !== "homestead" && (
+              {themeConfig.theme !== "dirtpass" && (
                 <button
                   type="button"
-                  onClick={() => setThemeConfig({ theme: "homestead" })}
+                  onClick={() => setThemeConfig({ theme: "dirtpass" })}
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
                   data-testid="button-reset-theme"
                 >
-                  Reset to Homestead
+                  Reset to Dirtpass
                 </button>
               )}
             </div>

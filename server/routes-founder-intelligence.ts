@@ -1692,32 +1692,51 @@ router.get("/strategic-proposals/month/:monthKey", requireFounder, async (req: R
   }
 });
 
-router.post("/strategic-proposals/:id/approve", requireFounder, async (req: any, res: Response) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
-    const { resolveProposal } = await import("./services/strategicProposals");
-    const feedback = req.body?.feedback as string | undefined;
-    const userId = req.permissionContext?.userId ?? "founder";
-    await resolveProposal(id, "approved", feedback, userId);
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+async function handleStrategicProposalAction(
+  req: any,
+  res: Response,
+  action: "approved" | "rejected",
+) {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
   }
+  try {
+    const { resolveProposal } = await import("./services/strategicProposals");
+    const { db } = await import("./db");
+    const { strategicProposals } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+
+    // Pre-flight: confirm the proposal exists so we return 404 instead of
+    // an opaque 500 when the founder clicks an approve button after the
+    // row was archived in a prior run.
+    const [existing] = await db
+      .select({ id: strategicProposals.id, status: strategicProposals.status })
+      .from(strategicProposals)
+      .where(eq(strategicProposals.id, id))
+      .limit(1);
+    if (!existing) {
+      return res.status(404).json({ error: `Strategic proposal #${id} not found` });
+    }
+
+    const feedback = (typeof req.body?.feedback === "string" ? req.body.feedback : "") || undefined;
+    const userId = req.permissionContext?.userId ?? req.user?.email ?? "founder";
+    await resolveProposal(id, action, feedback, userId);
+    res.json({ ok: true, id, previousStatus: existing.status, newStatus: action });
+  } catch (err: any) {
+    logger.error("[strategic-proposals] action failed", err, {
+      metadata: { action, id, userId: req.user?.email ?? null, msg: err?.message ?? String(err) },
+    });
+    res.status(500).json({ error: err?.message ?? "Internal error", action, id });
+  }
+}
+
+router.post("/strategic-proposals/:id/approve", requireFounder, async (req: any, res: Response) => {
+  await handleStrategicProposalAction(req, res, "approved");
 });
 
 router.post("/strategic-proposals/:id/reject", requireFounder, async (req: any, res: Response) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
-    const { resolveProposal } = await import("./services/strategicProposals");
-    const feedback = req.body?.feedback as string | undefined;
-    const userId = req.permissionContext?.userId ?? "founder";
-    await resolveProposal(id, "rejected", feedback, userId);
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  await handleStrategicProposalAction(req, res, "rejected");
 });
 
 router.post("/strategic-proposals/run-weekly", requireFounder, async (_req: Request, res: Response) => {
