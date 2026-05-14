@@ -927,6 +927,113 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar L — Tax-delinquent specialist lifecycle templates ────────
+  // Three templates from the 25-persona insight mine in
+  // docs/exhaustive-completion/pillar-l-tax-delinquent-25-personas.md.
+  // The state rules referenced live in
+  // shared/regulatory/taxLienStateRules.ts; templates interpolate
+  // {{stateRedemptionPeriodMonths}} and {{stateForeclosureNoticeMonths}}
+  // when the originating event payload includes them.
+  {
+    id: "tpl_tax_cert_acquired_kickoff",
+    name: "Tax Certificate Acquired — Cure Outreach Kickoff",
+    description:
+      "On certificate acquisition, send a cure-path letter to the delinquent owner offering a payment plan, and create the redemption-countdown task. Closes Rae's persona gap: most operators auto-skip to foreclosure; this surface gives the operator a cure-first option on day one.",
+    category: "deals",
+    trigger: { event: "cert.acquired" },
+    actions: [
+      {
+        id: "action_owner_cure_letter",
+        type: "send_email",
+        config: {
+          to: "{{delinquentOwnerEmail}}",
+          subject: "Tax-delinquency cure options — {{propertyAddress}}",
+          body:
+            "Hi {{ownerName}},\n\nWe've acquired the tax certificate for {{propertyAddress}} ({{stateCounty}}). The redemption window is {{stateRedemptionPeriodMonths}} months from the sale date, with statutory interest accruing at {{stateStatutoryRatePct}}.\n\nIf you'd like to discuss a payment plan to cure the delinquency, please reply or call — we'd rather work this out than foreclose. We can spread the obligation, including interest, into manageable monthly payments.\n\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_redemption_countdown_task",
+        type: "create_task",
+        config: {
+          title: "Redemption countdown — Cert #{{certificateId}} ({{propertyAddress}})",
+          description:
+            "Redemption period ends {{redemptionEndsDate}} ({{stateRedemptionPeriodMonths}} months from {{certificateAcquiredDate}}). Statutory rate {{stateStatutoryRatePct}}. State: {{state}} ({{saleType}}).",
+          priority: "medium",
+          dueInDays: 14,
+        },
+      },
+      {
+        id: "action_cert_acquired_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Certificate acquired: {{propertyAddress}} ({{state}}). Redemption window: {{stateRedemptionPeriodMonths}}mo; rate {{stateStatutoryRatePct}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_tax_cert_redemption_approaching",
+    name: "Redemption Period Closing (60 days)",
+    description:
+      "60 days before the redemption period closes, surface posture options to the operator: extend (if state allows), accept redemption-in-progress, or prepare foreclosure filing.",
+    category: "deals",
+    trigger: { event: "cert.redemption_period_60d" },
+    actions: [
+      {
+        id: "action_redemption_posture_task",
+        type: "create_task",
+        config: {
+          title: "60d to redemption close — Cert #{{certificateId}} ({{propertyAddress}})",
+          description:
+            "Redemption ends {{redemptionEndsDate}}. Confirm posture: (a) accept ongoing redemption-in-progress communications, (b) move to foreclosure filing, (c) renegotiate cure plan with owner. Per-state foreclosure-notice period: {{stateForeclosureNoticeMonths}}mo.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_redemption_approach_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Redemption closing in 60d on {{propertyAddress}} — Cert #{{certificateId}}. Decide posture.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_tax_cert_foreclosure_eligible",
+    name: "Foreclosure-Eligible — File or Forfeit",
+    description:
+      "When the redemption window closes without redemption, surface a high-priority task with state-specific foreclosure-filing requirements and the operator's net recovery scenarios.",
+    category: "deals",
+    trigger: { event: "cert.foreclosure_eligible" },
+    actions: [
+      {
+        id: "action_foreclosure_filing_task",
+        type: "create_task",
+        config: {
+          title: "Foreclosure-eligible — Cert #{{certificateId}} ({{propertyAddress}})",
+          description:
+            "Redemption period closed on {{redemptionEndsDate}}. State {{state}} requires {{stateForeclosureNoticeMonths}}-month foreclosure notice before action. Reference statute: {{stateStatutoryReference}}. Decide: file foreclosure, sell certificate, or write off.",
+          priority: "high",
+          dueInDays: 5,
+        },
+      },
+      {
+        id: "action_foreclosure_eligible_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Foreclosure-eligible: {{propertyAddress}} — Cert #{{certificateId}}. {{stateForeclosureNoticeMonths}}mo notice required in {{state}}.",
+        },
+      },
+    ],
+  },
   {
     id: "tpl_note_balloon_approaching_extended",
     name: "Note Balloon Approaching (90-day countdown)",

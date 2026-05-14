@@ -7237,6 +7237,12 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "note.insurance_expiring_60d",
   "note.escrow_shortfall",
   "note.reperforming_threshold",
+  // Pillar L — tax-delinquent specialist lifecycle. See
+  // pillar-l-tax-delinquent-25-personas.md.
+  "cert.acquired",
+  "cert.redemption_period_60d",
+  "cert.foreclosure_eligible",
+  "cert.redeemed",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
