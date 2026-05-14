@@ -44,6 +44,11 @@ test.use({
   viewport: { width: 1280, height: 720 },
 });
 
+// Page load + networkidle settle on production runs hot; the 30s default
+// isn't enough for /leads + /properties which fan out 5-10 API calls on
+// mount. 90s per test is comfortable.
+test.setTimeout(90_000);
+
 const VOLATILE_SELECTORS = [
   // Date / time pills — most pages render "5m ago" or "Mar 14" copy that
   // shifts every run.
@@ -72,8 +77,9 @@ async function settleForSnapshot(page: Page): Promise<void> {
     `,
   });
   // Wait for any data fetches to settle. networkidle is the cleanest
-  // signal we have without per-page knowledge.
-  await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+  // signal we have without per-page knowledge. Bounded so a slow API
+  // doesn't blow the whole test budget.
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
   // Give framer-motion / lazy-loaded sections a beat to commit DOM.
   await page.waitForTimeout(500);
 }
@@ -100,6 +106,9 @@ for (const { path, name } of PAGES) {
       mask: masks,
       maxDiffPixelRatio: 0.002,
       animations: "disabled",
+      // Full-page capture on heavy routes (/today, /leads) can run
+      // 20-40s against production. The 5s default is too tight.
+      timeout: 60_000,
     });
   });
 }

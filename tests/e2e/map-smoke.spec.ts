@@ -28,9 +28,16 @@ import { test, expect, type Page } from "@playwright/test";
 
 test.use({ storageState: "tests/e2e/.auth/user.json" });
 
+// Map mount + tile load on production needs ~10-15s comfortably.
+test.setTimeout(90_000);
+
 async function loadPropertiesPage(page: Page): Promise<void> {
-  await page.goto("/properties");
-  await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+  // /maps is the canonical map page; /properties is a list view that only
+  // shows an embedded map when an explicit toggle is clicked.
+  await page.goto("/maps");
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
+  // Give the map a beat to mount + style-load.
+  await page.waitForTimeout(2_000);
 }
 
 async function detectMapEngine(page: Page): Promise<"mapbox" | "maplibre" | "none"> {
@@ -64,10 +71,17 @@ test.describe("Map smoke", () => {
     const engine = await detectMapEngine(page);
 
     if (engine === "none") {
-      // The map didn't render. Distinguish the "no properties" empty
-      // state from a real mount failure.
-      const emptyState = await page.getByText(/no properties with map data/i).count();
-      test.skip(emptyState > 0, "Test org has no properties with coordinates — seed sample data before running");
+      // Distinguish the "no properties" empty state from a real mount
+      // failure. The maps page renders "No properties with map data"
+      // (or "No parcel coordinates yet") when the org has nothing
+      // geocoded yet — that's expected for a fresh tenant, not a bug.
+      const emptyState =
+        (await page.getByText(/no properties with map data/i).count()) +
+        (await page.getByText(/no parcel coordinates yet/i).count());
+      if (emptyState > 0) {
+        test.skip(true, "Test org has no properties with coordinates — seed sample data before running");
+        return;
+      }
       throw new Error(
         `Map canvas did not mount (no .mapboxgl-canvas or .maplibregl-canvas). ` +
           `Recent console errors: ${consoleErrors.slice(-3).join(" | ") || "(none)"}`,

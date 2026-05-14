@@ -33,6 +33,9 @@ import { test, expect, type Page } from "@playwright/test";
 
 test.use({ storageState: "tests/e2e/.auth/user.json" });
 
+// Production page-load + networkidle + vitals settle wants > 30s.
+test.setTimeout(120_000);
+
 interface VitalsResult {
   lcp: number | null;
   cls: number | null;
@@ -85,35 +88,64 @@ async function measureVitals(page: Page, path: string): Promise<VitalsResult> {
   await page.goto(path);
   await page.waitForLoadState("networkidle", { timeout: 45_000 }).catch(() => {});
 
-  // Inject a small collector into the page that subscribes to web-vitals
-  // callbacks and stuffs the values onto window.__vitals.
-  await page.evaluate(async () => {
+  // Native PerformanceObserver collection — no external lib needed,
+  // works against any production build whether or not it ships
+  // web-vitals to the client. Captures LCP, CLS, INP (Event Timing API)
+  // and TTFB from PerformanceNavigationTiming.
+  await page.evaluate(() => {
     if ((window as unknown as { __vitalsInstalled?: boolean }).__vitalsInstalled) return;
     (window as unknown as { __vitalsInstalled?: boolean }).__vitalsInstalled = true;
     type WindowWithVitals = Window & {
       __vitals?: { lcp?: number; cls?: number; inp?: number; ttfb?: number };
     };
-    (window as WindowWithVitals).__vitals = {};
+    const w = window as WindowWithVitals;
+    w.__vitals = {};
+
+    // TTFB from the navigation entry (already present on page load).
     try {
-      const mod = await import("web-vitals");
-      mod.onLCP((m) => {
-        (window as WindowWithVitals).__vitals!.lcp = m.value;
-      });
-      mod.onCLS((m) => {
-        (window as WindowWithVitals).__vitals!.cls = m.value;
-      });
-      mod.onINP((m) => {
-        (window as WindowWithVitals).__vitals!.inp = m.value;
-      });
-      mod.onTTFB((m) => {
-        (window as WindowWithVitals).__vitals!.ttfb = m.value;
-      });
-    } catch (err) {
-      // web-vitals is in deps; if dynamic import fails here it's an
-      // environment issue rather than a perf regression.
-      (window as unknown as { __vitalsErr?: string }).__vitalsErr =
-        err instanceof Error ? err.message : String(err);
-    }
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (nav) {
+        w.__vitals!.ttfb = nav.responseStart;
+      }
+    } catch { /* noop */ }
+
+    // LCP — last entry wins.
+    try {
+      new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const last = entries[entries.length - 1] as PerformanceEntry & { renderTime?: number; loadTime?: number };
+        if (last) {
+          const t = last.renderTime || last.loadTime || last.startTime;
+          if (typeof t === "number") w.__vitals!.lcp = t;
+        }
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+    } catch { /* noop */ }
+
+    // CLS — accumulate layout-shift values.
+    try {
+      let cls = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as Array<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>) {
+          if (!entry.hadRecentInput && typeof entry.value === "number") {
+            cls += entry.value;
+            w.__vitals!.cls = cls;
+          }
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+    } catch { /* noop */ }
+
+    // INP — longest event-duration after the test's click.
+    try {
+      let maxInp = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as Array<PerformanceEntry & { duration: number; interactionId?: number }>) {
+          if (entry.interactionId && entry.duration > maxInp) {
+            maxInp = entry.duration;
+            w.__vitals!.inp = maxInp;
+          }
+        }
+      }).observe({ type: "event", buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
+    } catch { /* noop */ }
   });
 
   // Trigger an interaction so INP can fire.

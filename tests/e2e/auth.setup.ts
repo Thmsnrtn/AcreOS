@@ -23,6 +23,14 @@ setup("authenticate", async ({ page }) => {
     fs.mkdirSync(authDir, { recursive: true })
   }
 
+  // When the parallel auth-clerk-ticket.setup.ts is handling auth via a
+  // Clerk Backend-API ticket, this legacy UI flow MUST not run — its
+  // empty-state fallback would clobber the good session.
+  if (process.env.CLERK_SIGN_IN_TICKET) {
+    console.log("CLERK_SIGN_IN_TICKET set — deferring to auth-clerk-ticket.setup.ts")
+    return
+  }
+
   const email = process.env.E2E_USER_EMAIL ?? ""
   const password = process.env.E2E_USER_PASSWORD ?? ""
 

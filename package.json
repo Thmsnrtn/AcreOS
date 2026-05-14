@@ -168,6 +168,7 @@
     "zustand": "5.0.12"
   },
   "devDependencies": {
+    "@clerk/testing": "2.0.27",
     "@playwright/test": "^1.49.1",
     "@sentry/cli": "2.58.5",
     "@tailwindcss/typography": "^0.5.19",
