@@ -148,6 +148,17 @@ async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
     errors.push(`pageerror: ${err.message}`);
   };
 
+  // Prime the Clerk session by hitting /today first. The storageState is
+  // shared across all tests in the sweep, so the JWT inside it goes
+  // stale as the run wears on. /today is fast and reliably authenticated
+  // — visiting it forces Clerk to refresh the in-memory session before
+  // we navigate to the route under test. Without this, routes scheduled
+  // late in a 20-minute sweep hit an expired JWT, fail to refresh, and
+  // sit on the PageLoader splash. (Confirmed via auth-stall-probe.spec
+  // — every "stalled" route clears in <1.5s when probed individually.)
+  await page.goto("/today", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(300);
+
   page.on("console", onConsole);
   page.on("pageerror", onPageError);
 
