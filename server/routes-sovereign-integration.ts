@@ -14,7 +14,6 @@ import { jobHealthLogs, agentMessages, agentEvents } from "@shared/schema";
 import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { logger } from "./utils/logger";
-import { logger } from "./utils/logger";
 
 export function registerSovereignIntegrationRoutes(app: Express) {
   // ─── Phase A: Job Health ───────────────────────────────────────────────────
@@ -171,11 +170,15 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         return res.status(400).json({ error: "agentCodename and overrideAction required" });
       }
 
-      // Log the override as an agent event
+      // Log the override as an agent event. agent_events requires
+      // organizationId + eventSource; agentCodename isn't a column.
+      const { getFounderPrimaryOrgId } = await import("./services/founder");
       const [event] = await db.insert(agentEvents).values({
-        agentCodename,
+        organizationId: await getFounderPrimaryOrgId(),
         eventType: "founder_override",
+        eventSource: "founder_action",
         payload: {
+          agentCodename,
           originalDecision: decision,
           overrideAction,
           reason: reason ?? "Founder override",
@@ -218,11 +221,14 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         isRead: false,
       }).returning();
 
-      // Also log as event
+      // Also log as event — agent_events requires organizationId + eventSource.
+      const { getFounderPrimaryOrgId: orgIdFn } = await import("./services/founder");
       await db.insert(agentEvents).values({
-        agentCodename: toAgent,
+        organizationId: await orgIdFn(),
         eventType: "task_delegated",
+        eventSource: "founder_action",
         payload: {
+          agentCodename: toAgent,
           from: fromAgent ?? "founder",
           task,
           messageId: message.id,
@@ -253,11 +259,14 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         return res.status(400).json({ error: "topic and participants required" });
       }
 
-      // Create consensus event
+      // Create consensus event — agent_events requires organizationId + eventSource.
+      const { getFounderPrimaryOrgId: orgIdFn2 } = await import("./services/founder");
       const [event] = await db.insert(agentEvents).values({
-        agentCodename: "system",
+        organizationId: await orgIdFn2(),
         eventType: "consensus_started",
+        eventSource: "system",
         payload: {
+          agentCodename: "system",
           topic,
           options: options ?? ["approve", "reject"],
           participants,

@@ -101,11 +101,16 @@ class TrustAuthorityEscalation {
 
     logger.info(`[trust-authority] ${agentCodename} promoted: Level ${oldTier.level} → ${newTier.level} (${oldScore} → ${newScore}). Unlocked: ${newActions.join(", ")}`);
 
-    // 1. Record the promotion event
+    // 1. Record the promotion event. agent_events requires organizationId
+    // + eventSource (notNull); agentCodename isn't a column. The prior
+    // shape crashed the trust-evolution job with a NOT NULL violation.
+    const { getFounderPrimaryOrgId } = await import("./founder");
     await db.insert(agentEvents).values({
-      agentCodename,
+      organizationId: await getFounderPrimaryOrgId(),
       eventType: "authority_promotion",
+      eventSource: "trust_evolution",
       payload: {
+        agentCodename,
         oldLevel: oldTier.level,
         newLevel: newTier.level,
         oldScore,

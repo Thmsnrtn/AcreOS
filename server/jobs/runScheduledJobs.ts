@@ -437,19 +437,24 @@ function startDealHunterScrapingJob() {
   }, msUntil2AM);
 }
 
-// Deal distress score recalculation job (hourly)
+// Deal distress score recalculation job (hourly).
+// Prior implementation imported the module and looked for a `.dealHunter`
+// export that doesn't exist — falling through to the module namespace
+// object and calling .recalculateAllDistressScores() on the module itself,
+// which threw "is not a function" every hour. The real export is
+// `dealHunterService`.
 async function processDistressRecalculation() {
   try {
-    const dealHunterModule2 = await import("../services/dealHunter");
-    const dealHunter = (dealHunterModule2 as any).dealHunter || dealHunterModule2;
-
-    const result = await dealHunter.recalculateAllDistressScores();
-
+    const { dealHunterService } = await import("../services/dealHunter");
+    const result = await dealHunterService.recalculateAllDistressScores();
     if (result.updated > 0) {
-      log(`Recalculated distress scores: ${result.updated} deals updated`, 'deal-hunter');
+      log(
+        `Recalculated distress scores: ${result.updated}/${result.scanned} deals updated`,
+        "deal-hunter",
+      );
     }
   } catch (err) {
-    log(`Distress recalculation job error: ${err}`, 'deal-hunter');
+    log(`Distress recalculation job error: ${err}`, "deal-hunter");
   }
 }
 

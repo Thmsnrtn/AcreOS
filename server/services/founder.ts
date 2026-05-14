@@ -84,3 +84,61 @@ export async function isFounderById(userId: string, storage: any): Promise<boole
     return false;
   }
 }
+
+/**
+ * Resolve the founder's primary organization id. Used by services and
+ * routes that need an `organizationId` for inserts but aren't run in the
+ * context of a specific tenant (founder-only collaboration / agent
+ * lifecycle / trust events). Reads `FOUNDER_PRIMARY_ORG_ID` from env if
+ * set; otherwise looks up the founder's first owned org via
+ * users → teamMembers. Cached after first resolution; resolves to 1
+ * (the deployed founder org) as a last-resort fallback so callers never
+ * blow up on a NOT NULL organization_id constraint.
+ */
+let _cachedFounderOrgId: number | null = null;
+
+export async function getFounderPrimaryOrgId(): Promise<number> {
+  if (_cachedFounderOrgId !== null) return _cachedFounderOrgId;
+
+  const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
+  if (fromEnv) {
+    const parsed = parseInt(fromEnv, 10);
+    if (Number.isFinite(parsed)) {
+      _cachedFounderOrgId = parsed;
+      return parsed;
+    }
+  }
+
+  try {
+    const { db } = await import("../db");
+    const { users, teamMembers } = await import("@shared/schema");
+    const { eq, inArray } = await import("drizzle-orm");
+    const founderEmails = getFounderEmails();
+    if (founderEmails.length > 0) {
+      const founderUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.email, founderEmails))
+        .limit(5);
+      if (founderUsers.length > 0) {
+        const userIds = founderUsers.map((u) => u.id);
+        const memberships = await db
+          .select({ organizationId: teamMembers.organizationId })
+          .from(teamMembers)
+          .where(inArray(teamMembers.userId, userIds))
+          .limit(1);
+        if (memberships[0]?.organizationId) {
+          _cachedFounderOrgId = memberships[0].organizationId;
+          return _cachedFounderOrgId;
+        }
+      }
+    }
+  } catch {
+    /* fall through to sentinel */
+  }
+
+  // Last-resort fallback so a missing migration / fresh DB doesn't crash
+  // an insert. Production has org id 1 as the founder workspace.
+  _cachedFounderOrgId = 1;
+  return 1;
+}

@@ -627,14 +627,49 @@ export class DealHunterService {
       .from(dealSources)
       .where(eq(dealSources.isActive, true))
       .orderBy(desc(dealSources.priority));
-    
+
     const results = [];
     for (const source of sources) {
       const result = await this.scrapeSource(source.id);
       results.push({ sourceId: source.id, name: source.name, ...result });
     }
-    
+
     return results;
+  }
+
+  /**
+   * Recompute distressScore for every non-archived scrapedDeals row by
+   * running them through calculateDistressScore() again. Used by the
+   * hourly cron in runScheduledJobs.ts:441 so weight changes propagate
+   * to historical deals without re-scraping. Returns the count of rows
+   * whose score changed.
+   */
+  async recalculateAllDistressScores(): Promise<{ scanned: number; updated: number }> {
+    // Score every scrapedDeals row — cheap to recompute, and the cron
+    // is what propagates scoring-weight changes to historical deals.
+    const rows = await db.select().from(scrapedDeals);
+
+    let updated = 0;
+    for (const row of rows) {
+      const dealData = {
+        taxesOwed: row.taxesOwed ? Number(row.taxesOwed) : 0,
+        sourceType: row.sourceType,
+        improvements: 0, // scraped deals don't track improvements; treat all as vacant
+        ownerType: row.ownerType,
+        ownerAddress: row.ownerAddress,
+        state: row.state,
+      };
+      const next = this.calculateDistressScore(dealData);
+      if (next !== row.distressScore) {
+        await db
+          .update(scrapedDeals)
+          .set({ distressScore: next })
+          .where(eq(scrapedDeals.id, row.id));
+        updated += 1;
+      }
+    }
+
+    return { scanned: rows.length, updated };
   }
 }
 

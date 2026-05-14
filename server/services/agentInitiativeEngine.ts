@@ -222,11 +222,17 @@ class AgentInitiativeEngine {
               });
               autoExecuted++;
 
-              // Record the auto-executed proposal
+              // Record the auto-executed proposal. agent_events requires
+              // organizationId + eventSource (notNull); agentCodename is
+              // not a column — fold it into the payload. The prior shape
+              // caused "null value in column 'organization_id'" 500s
+              // every initiative-engine cycle.
               await db.insert(agentEvents).values({
-                agentCodename: proposal.agentCodename,
+                organizationId: orgId,
                 eventType: "initiative_auto_executed",
+                eventSource: "agent",
                 payload: {
+                  agentCodename: proposal.agentCodename,
                   title: proposal.title,
                   action: proposal.action,
                   confidence: proposal.confidence,
@@ -239,9 +245,11 @@ class AgentInitiativeEngine {
             // Escalate to founder
             escalated++;
             await db.insert(agentEvents).values({
-              agentCodename: proposal.agentCodename,
+              organizationId: orgId,
               eventType: "initiative_proposal",
+              eventSource: "agent",
               payload: {
+                agentCodename: proposal.agentCodename,
                 type: proposal.type,
                 title: proposal.title,
                 description: proposal.description,
