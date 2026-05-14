@@ -26,9 +26,61 @@
  */
 
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { clerk, clerkSetup } from "@clerk/testing/playwright";
 
 test.use({ storageState: "tests/e2e/.auth/user.json" });
-test.setTimeout(60_000);
+test.setTimeout(90_000);
+
+// Mint a fresh Clerk sign-in ticket per test via the Backend API and
+// exchange it for a session before the route navigation. The shared
+// storageState user.json holds a single JWT that ages out across a
+// 20-minute sweep; by the time later tests run, the JWT can't be
+// refreshed via the in-page touch alone. Re-signing per test ensures
+// every navigation starts with a fresh session and isolates real
+// product regressions from Clerk session-staleness noise.
+//
+// Skipped when CLERK_SECRET_KEY isn't available — falls back to
+// whatever's in user.json (the prior behavior).
+let setupDone = false;
+test.beforeEach(async ({ page, context }) => {
+  const secret = process.env.CLERK_SECRET_KEY;
+  const userId = process.env.CLERK_TEST_USER_ID || process.env.DEV_FOUNDER_USER_ID;
+  if (!secret || !userId) return;
+
+  if (!setupDone) {
+    await clerkSetup();
+    setupDone = true;
+  }
+
+  // Seed cookie-consent in localStorage on every new page in this
+  // context, mirroring auth-clerk-ticket.setup.ts. Without this, fresh
+  // clerk.signIn navigations occasionally land on /auth via a path that
+  // clears localStorage, and the cookie-consent <Dialog> intercepts the
+  // route-under-test's interactive-element count — failing the test
+  // with "no interactive elements rendered" even though the page is fine.
+  await context.addInitScript(() => {
+    try {
+      localStorage.setItem("acreos_cookie_consent", "accepted");
+    } catch {
+      /* private mode etc. — best-effort */
+    }
+  });
+
+  const res = await fetch("https://api.clerk.com/v1/sign_in_tokens", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) return;
+  const { token } = await res.json();
+
+  await page.goto("/auth");
+  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+  await clerk.signIn({ page, signInParams: { strategy: "ticket", ticket: token } });
+});
 
 const CUSTOMER_ROUTES = [
   "/today",
@@ -147,17 +199,6 @@ async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
   const onPageError = (err: Error) => {
     errors.push(`pageerror: ${err.message}`);
   };
-
-  // Prime the Clerk session by hitting /today first. The storageState is
-  // shared across all tests in the sweep, so the JWT inside it goes
-  // stale as the run wears on. /today is fast and reliably authenticated
-  // — visiting it forces Clerk to refresh the in-memory session before
-  // we navigate to the route under test. Without this, routes scheduled
-  // late in a 20-minute sweep hit an expired JWT, fail to refresh, and
-  // sit on the PageLoader splash. (Confirmed via auth-stall-probe.spec
-  // — every "stalled" route clears in <1.5s when probed individually.)
-  await page.goto("/today", { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(300);
 
   page.on("console", onConsole);
   page.on("pageerror", onPageError);
