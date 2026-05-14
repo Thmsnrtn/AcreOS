@@ -1493,6 +1493,12 @@ export async function registerRoutes(
     app.use('/api/founder/intelligence', isAuthenticated, founderIntelRouter);
   }
 
+  // Pillar S — one canonical founder inbox.
+  {
+    const founderNowRouter = (await import("./routes-founder-now")).default;
+    app.use('/api/founder/now', isAuthenticated, founderNowRouter);
+  }
+
   // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
   {
     const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;

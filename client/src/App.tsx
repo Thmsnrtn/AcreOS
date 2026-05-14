@@ -244,6 +244,7 @@ const FounderTitlePartnersPage = React.lazy(() => import("@/pages/founder/title-
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
+const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
@@ -805,6 +806,12 @@ function Router() {
       {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/founder-home">
         {() => <Redirect to="/founder" />}
+      </Route>
+      {/* Pillar S — canonical founder inbox. Replaces cross-checking
+          the 7 legacy surfaces (agent-queue, strategy, decisions,
+          notifications, feed, todo, daily-digest). */}
+      <Route path="/founder/now">
+        {() => <FounderProtectedRoute component={FounderNowPage} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}

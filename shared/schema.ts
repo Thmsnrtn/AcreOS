@@ -204,6 +204,13 @@ export const organizations = pgTable("organizations", {
   // Set to 0 to disable enforcement (treats org as unlimited — used for
   // founder/internal orgs). Founder orgs already bypass via req.isFounder.
   orgAiQuotaDailyUsd: numeric("org_ai_quota_daily_usd", { precision: 10, scale: 2 }).notNull().default("50.00"),
+  // ─── Pillar S — Founder daily attention budget ─────────────────────
+  // Max number of action-required items the /founder/now inbox will
+  // surface per day. Agents may write more to decisions_inbox_items;
+  // overflow gets `deferred_until: tomorrow` rather than appearing.
+  // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
+  // one-inbox.md for the rationale.
+  founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
