@@ -98,8 +98,6 @@ interface UnitEconomicsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
-  useDocumentTitle("Unit economics");
-
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -281,6 +279,7 @@ function SummaryTile({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function FounderUnitEconomicsPage() {
+  useDocumentTitle("Unit economics");
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<UnitEconomicsResponse>({
     queryKey: ["/api/founder/unit-economics"],
     refetchInterval: 5 * 60_000,

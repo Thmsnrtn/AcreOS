@@ -54,8 +54,6 @@ const STATE_BADGE_TONE: Record<string, string> = {
 };
 
 function fmtChanged(when?: string | null): string {
-  useDocumentTitle("Feature management");
-
   if (!when) return "—";
   try {
     return new Date(when).toLocaleString();
@@ -65,6 +63,7 @@ function fmtChanged(when?: string | null): string {
 }
 
 export default function FounderFeatures() {
+  useDocumentTitle("Feature management");
   const [flags, setFlags] = useState<AdminFlag[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");

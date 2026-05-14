@@ -93,8 +93,6 @@ interface CostsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
-  useDocumentTitle("AI costs");
-
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -177,6 +175,7 @@ function StackedFeatureBar({ items }: { items: FeatureUsage[] }) {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function FounderAiCostsPage() {
+  useDocumentTitle("AI costs");
   const { data, isLoading, isError, error } = useQuery<CostsResponse>({
     queryKey: ["/api/founder/ai-costs"],
     refetchInterval: 60_000,

@@ -60,8 +60,6 @@ interface ObservabilityCostResponse {
 }
 
 function fmtNum(n: number): string {
-  useDocumentTitle("Observability cost");
-
   return n.toLocaleString();
 }
 
@@ -225,6 +223,7 @@ function RatesCard({ rates }: { rates: Rates }) {
 }
 
 export default function FounderObservabilityCostPage() {
+  useDocumentTitle("Observability cost");
   const { data, isLoading, isError, error } = useQuery<ObservabilityCostResponse>({
     queryKey: ["/api/founder/observability-cost"],
     refetchInterval: 5 * 60_000,

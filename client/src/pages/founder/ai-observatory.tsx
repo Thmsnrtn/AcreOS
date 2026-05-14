@@ -94,8 +94,6 @@ interface ModelCatalogResponse {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatCents(cents: number): string {
-  useDocumentTitle("AI observatory");
-
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -248,6 +246,7 @@ function ModelDistributionSection({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AiObservatory() {
+  useDocumentTitle("AI observatory");
   const { isFounder, isLoading: authLoading } = useAuth();
 
   const { data: stats, isLoading: statsLoading } = useQuery<AiStats>({

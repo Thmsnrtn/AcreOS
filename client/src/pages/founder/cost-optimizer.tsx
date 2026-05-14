@@ -94,8 +94,6 @@ interface RunsResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(n: number, digits = 2): string {
-  useDocumentTitle("Cost optimizer");
-
   return `$${(n ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -150,6 +148,7 @@ function marginColor(pct: number): string {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function FounderCostOptimizerPage() {
+  useDocumentTitle("Cost optimizer");
   const { toast } = useToast();
 
   const { data, isLoading, isError, error } = useQuery<RunsResponse>({
