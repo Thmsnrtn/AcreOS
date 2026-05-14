@@ -62,33 +62,33 @@ interface RouteMeta {
 
 const META_BY_PATH: Record<string, RouteMeta> = {
   "/": {
-    title: "AcreOS — The Operating System for Land Investors",
+    title: "AcreOS — The Operating System for Real-Estate Investors",
     description:
-      "Find motivated sellers, analyze parcels, send direct mail, and close land deals — with agents that act on your behalf.",
+      "One platform for every real-estate operator — pull lists, run comps, send mail, draft replies, and track every deal through closing. Built for land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords.",
     ogType: "website",
   },
   "/pricing": {
     title: "Pricing · AcreOS",
     description:
-      "Transparent plans for Land Investors — from the free tier to full-team tooling. CRM, direct mail, automated due diligence, and seller financing in one platform.",
+      "Transparent plans for every real-estate operator — same price regardless of vertical. CRM, direct mail, automated due diligence, note servicing, and rehab tracking in one platform.",
     ogType: "product",
   },
   "/security": {
     title: "Security · AcreOS",
     description:
-      "How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, vulnerability disclosure, and SOC 2 posture.",
+      "How AcreOS protects operators' data — encryption at rest and in transit, MFA, sub-processors, vulnerability disclosure, and SOC 2 posture.",
     ogType: "website",
   },
   "/changelog": {
     title: "Changelog · AcreOS",
     description:
-      "Recent updates, new features, and improvements to AcreOS — written for Land Investors using the platform.",
+      "Recent updates, new features, and improvements to AcreOS — written for the operators using the platform.",
     ogType: "article",
   },
   "/glossary": {
-    title: "Land Investor glossary · AcreOS",
+    title: "Real-estate operator glossary · AcreOS",
     description:
-      "Plain-English definitions of the vocabulary every land investor needs — yellow letter, skip trace, AVM, executory contract, and more.",
+      "Plain-English definitions of the vocabulary every real-estate operator needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
     ogType: "website",
   },
 };
