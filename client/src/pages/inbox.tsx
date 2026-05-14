@@ -907,13 +907,29 @@ export default function InboxPage() {
     return params;
   }, [statusFilter]);
 
+  // The default queryFn joins queryKey parts with "/", so passing an
+  // object as a key part produces "/api/inbox/[object Object]" and a 404.
+  // Provide explicit queryFns that build the URL from the params object
+  // via URLSearchParams. The object stays in the queryKey for cache
+  // discrimination; only the URL build path needs to change.
   const { data: emailMessages = [], isLoading: isLoadingEmail } = useQuery<InboxMessage[]>({
     queryKey: ["/api/inbox", emailQueryParams],
+    queryFn: async () => {
+      const qs = new URLSearchParams(emailQueryParams).toString();
+      const res = await fetch(`/api/inbox${qs ? `?${qs}` : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json();
+    },
     enabled: channelFilter === "all" || channelFilter === "email",
   });
 
   const { data: smsConversations = [], isLoading: isLoadingSms } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations", { channel: "sms" }],
+    queryFn: async () => {
+      const res = await fetch("/api/conversations?channel=sms", { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json();
+    },
     enabled: channelFilter === "all" || channelFilter === "sms",
   });
 

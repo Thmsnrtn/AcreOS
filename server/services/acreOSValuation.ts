@@ -859,7 +859,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
   /**
    * Get training data statistics
    */
-  async getTrainingDataStats(organizationId: string): Promise<{
+  async getTrainingDataStats(_organizationId: string): Promise<{
     totalTransactions: number;
     avgDataQuality: number;
     dateRange: { oldest: Date; newest: Date };
@@ -867,8 +867,11 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
     avgPricePerAcre: number;
   }> {
     try {
+      // transactionTraining is intentionally anonymized — no organizationId
+      // column. Stats are global aggregates across all contributing orgs;
+      // an earlier version tried to filter by org.id, hit a missing column
+      // at runtime, and crashed /avm with HTTP 500.
       const transactions = await db.query.transactionTraining.findMany({
-        where: eq(transactionTraining.organizationId, organizationId),
         orderBy: [desc(transactionTraining.saleDate)],
       });
 
@@ -882,9 +885,15 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         };
       }
 
-      const avgDataQuality = transactions.reduce((sum, t) => sum + t.dataQuality, 0) / transactions.length;
-      
-      const dates = transactions.map(t => t.saleDate).sort((a, b) => a.getTime() - b.getTime());
+      // dataQuality is text ("high" | "medium" | "low"); map to a 0-100 score.
+      const qualityScore: Record<string, number> = { high: 90, medium: 60, low: 30 };
+      const avgDataQuality =
+        transactions.reduce((sum, t) => sum + (qualityScore[t.dataQuality] ?? 0), 0) /
+        transactions.length;
+
+      const dates = transactions
+        .map((t) => t.saleDate)
+        .sort((a, b) => a.getTime() - b.getTime());
       const dateRange = {
         oldest: dates[0],
         newest: dates[dates.length - 1],
@@ -892,15 +901,20 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
       const stateMap = new Map<string, number>();
       for (const t of transactions) {
-        const state = (t.location as any).state;
+        // Real column is `state` (text), not a nested location.state.
+        const state = t.state ?? "unknown";
         stateMap.set(state, (stateMap.get(state) || 0) + 1);
       }
-
       const coverageByState = Array.from(stateMap.entries())
         .map(([state, count]) => ({ state, count }))
         .sort((a, b) => b.count - a.count);
 
-      const avgPricePerAcre = transactions.reduce((sum, t) => sum + t.pricePerAcre, 0) / transactions.length;
+      // pricePerAcre is `numeric`, which drizzle returns as string — coerce.
+      const totalPpa = transactions.reduce(
+        (sum, t) => sum + Number(t.pricePerAcre ?? 0),
+        0,
+      );
+      const avgPricePerAcre = totalPpa / transactions.length;
 
       return {
         totalTransactions: transactions.length,

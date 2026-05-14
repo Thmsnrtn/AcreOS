@@ -168,7 +168,15 @@ interface CriticalAlert {
   overdue: boolean;
 }
 
-type CriticalAlertsApi = CriticalAlert[];
+// Server actually wraps the list in an envelope (see
+// server/routes-founder-critical-alerts.ts:73 — res.json({ alerts, thresholds }))
+// so consumers must read .alerts, not treat the response as an array.
+// Treating the envelope as an array crashed /founder with
+// "TypeError: (s.data ?? []).filter is not a function".
+interface CriticalAlertsApi {
+  alerts: CriticalAlert[];
+  thresholds?: Record<string, number>;
+}
 
 interface CostOptimizerRun {
   id: number;
@@ -944,7 +952,7 @@ function SystemHealthSection() {
     staleTime: 5 * 60_000,
   });
 
-  const unackedAlerts = (alerts.data ?? []).filter((a) => !a.ackedAt);
+  const unackedAlerts = (alerts.data?.alerts ?? []).filter((a) => !a.ackedAt);
   const latestRun = cost.data?.runs?.[0];
 
   const ready = !vendor.isLoading && !alerts.isLoading && !cost.isLoading;
