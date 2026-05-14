@@ -2565,4 +2565,53 @@ export async function runScheduledJobs(): Promise<void> {
   }).catch((err) => {
     log(`Failed to import county discovery cron: ${err}`, "data");
   });
+
+  // ─── Pillar T — Stripe drift detector (daily 6:10am UTC) ─────────────
+  // Compares the live Stripe account against shared/billing/tier-pricing.ts.
+  // Surfaces missing tiers, price drift, and orphan acreos_product
+  // entries as /founder/now inbox items. See
+  // docs/exhaustive-completion/pillar-t-self-healing-ops.md.
+  import("../services/stripeDriftDetector").then(({ runStripeDriftJob }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Stripe drift detector registered (self-rescheduling, 24h)", "ops");
+      scheduleSelfRescheduling({
+        name: "stripe_drift_detector",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: 10 * 60 * 1000,
+        run: async () => {
+          await withJobLock("stripe_drift_detector", 30 * 60, async () => {
+            const r = await runStripeDriftJob();
+            if (r.findings.length > 0) {
+              log(`[stripe-drift] ${r.findings.length} findings — see /founder/now`, "ops");
+            }
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import stripe drift detector: ${err}`, "ops");
+  });
+
+  // ─── Pillar T — Schema drift detector (daily 6:20am UTC) ─────────────
+  // Compares shared/schema.ts to pg_catalog. Surfaces missing tables /
+  // columns (likely a migration wasn't applied) as red inbox items.
+  // Orphan-column drift gets logged but stays quiet unless it piles up.
+  import("../services/schemaDriftDetector").then(({ runSchemaDriftJob }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Schema drift detector registered (self-rescheduling, 24h)", "ops");
+      scheduleSelfRescheduling({
+        name: "schema_drift_detector",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: 20 * 60 * 1000,
+        run: async () => {
+          await withJobLock("schema_drift_detector", 30 * 60, async () => {
+            const r = await runSchemaDriftJob();
+            log(`[schema-drift] ${r.findings.length} findings`, "ops");
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import schema drift detector: ${err}`, "ops");
+  });
 }
