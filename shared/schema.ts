@@ -7217,7 +7217,7 @@ export type DiscoveredEndpoint = typeof discoveredEndpoints.$inferSelect;
 // Trigger event types for workflows
 export const WORKFLOW_TRIGGER_EVENTS = [
   "lead.created",
-  "lead.updated", 
+  "lead.updated",
   "lead.status_changed",
   "property.created",
   "property.updated",
@@ -7227,6 +7227,16 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "deal.stage_changed",
   "payment.received",
   "payment.missed",
+  // Pillar K (note-investor) lifecycle events. Existing templates
+  // referenced note.balloon_approaching + note.ltv_alert but the union
+  // didn't declare them; new note-lifecycle templates below add the
+  // remaining four. See docs/exhaustive-completion/pillar-k-note-
+  // investors-25-personas.md for the persona insights driving these.
+  "note.balloon_approaching",
+  "note.ltv_alert",
+  "note.insurance_expiring_60d",
+  "note.escrow_shortfall",
+  "note.reperforming_threshold",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
@@ -18011,6 +18021,31 @@ export const acquiredNotes = pgTable(
     taxDisbursementDueDate: date("tax_disbursement_due_date"),
     taxDisbursementAmountCents: bigint("tax_disbursement_amount_cents", { mode: "number" }),
     taxAuthorityName: text("tax_authority_name"),
+    // ── Reperforming progress (Pillar K, Geena persona) ──────────────────
+    // Tracks consecutive on-time payments for notes that were acquired
+    // non-performing and are being walked back to performing. Bumped by
+    // the `payment.received` workflow; reset by `payment.missed`.
+    // `reperformingThresholdMet` flips to true once
+    // `consecutiveOnTimePayments` reaches the org's configured threshold
+    // (default 12, founder-configurable via org settings) and triggers
+    // the `note.reperforming_threshold` workflow event so the operator
+    // can decide whether to reclassify or reprice.
+    consecutiveOnTimePayments: integer("consecutive_on_time_payments").notNull().default(0),
+    reperformingThresholdMet: boolean("reperforming_threshold_met").notNull().default(false),
+    // ── Compliance posture cache (Pillar K, Catalina/Jacques/Kit) ───────
+    // Optional cached output from `shared/regulatory/rmloAdvisor.ts` so
+    // surfaces don't re-derive it on every render. Recomputed when
+    // attributes that affect the advisory change (rate, state,
+    // collateral type, originating vs. acquired). Stored as jsonb so
+    // future advisor versions can expand without a migration.
+    compliancePostureJson: jsonb("compliance_posture_json").$type<{
+      rmloLikelyRequired: boolean;
+      regZTimingApplicable: boolean;
+      stateUsuryCapBps: number | null;
+      postureSummary: string;
+      computedAt: string;
+      advisorVersion: string;
+    }>(),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

@@ -29,6 +29,12 @@ const VOCABULARY = {
     // sellers. The seller of the tape is a relationship, not a pipeline
     // entity for note investors.
     note_investor: "Note opportunity",
+    // Pillar K sub-personas. Originators see leads as prospective
+    // borrowers (people they might lend to); servicers don't have a
+    // lead funnel — they service existing notes, so the term collapses
+    // to the note itself.
+    note_originator: "Prospective borrower",
+    note_servicer: "Serviced note",
     tax_delinquent: "Tax-delinquent owner",
     wholesaler: "Motivated seller",
     subdivider: "Lead",
@@ -38,6 +44,8 @@ const VOCABULARY = {
   "entity.lead.plural": {
     land_investor: "Leads",
     note_investor: "Note opportunities",
+    note_originator: "Prospective borrowers",
+    note_servicer: "Serviced notes",
     tax_delinquent: "Tax-delinquent owners",
     wholesaler: "Motivated sellers",
     subdivider: "Leads",
@@ -49,6 +57,8 @@ const VOCABULARY = {
     // Note investors think of the secured asset as collateral, not a
     // property — the collateral is the parcel that backs the note.
     note_investor: "Collateral",
+    note_originator: "Collateral",
+    note_servicer: "Collateral",
     tax_delinquent: "Property",
     wholesaler: "Subject property",
     subdivider: "Parent parcel",
@@ -58,6 +68,8 @@ const VOCABULARY = {
   "entity.property.plural": {
     land_investor: "Properties",
     note_investor: "Collateral",
+    note_originator: "Collateral",
+    note_servicer: "Collateral",
     tax_delinquent: "Properties",
     wholesaler: "Subject properties",
     subdivider: "Parent parcels",
@@ -67,6 +79,8 @@ const VOCABULARY = {
   "entity.deal": {
     land_investor: "Deal",
     note_investor: "Note acquisition",
+    note_originator: "Origination",
+    note_servicer: "Servicing event",
     tax_delinquent: "Tax certificate",
     wholesaler: "Assignment",
     subdivider: "Deal",
@@ -76,6 +90,8 @@ const VOCABULARY = {
   "entity.deal.plural": {
     land_investor: "Deals",
     note_investor: "Note acquisitions",
+    note_originator: "Originations",
+    note_servicer: "Servicing events",
     tax_delinquent: "Tax certificates",
     wholesaler: "Assignments",
     subdivider: "Deals",
@@ -86,6 +102,8 @@ const VOCABULARY = {
   "pipeline.label": {
     land_investor: "Pipeline",
     note_investor: "Note pipeline",
+    note_originator: "Origination pipeline",
+    note_servicer: "Servicing book",
     tax_delinquent: "Pipeline",
     wholesaler: "Pipeline",
     subdivider: "Pipeline",
@@ -96,6 +114,8 @@ const VOCABULARY = {
   "pipeline.stage.closed": {
     land_investor: "Closed",
     note_investor: "Acquired",
+    note_originator: "Originated",
+    note_servicer: "Resolved",
     tax_delinquent: "Awarded",
     wholesaler: "Assigned",
     subdivider: "Closed",
@@ -109,6 +129,8 @@ const VOCABULARY = {
   "outreach.yellow_letter": {
     land_investor: "Yellow letter",
     note_investor: "Yellow letter", // n/a — surface is hidden upstream
+    note_originator: "Yellow letter",
+    note_servicer: "Yellow letter",
     tax_delinquent: "Yellow letter",
     wholesaler: "Yellow letter",
     subdivider: "Yellow letter",
@@ -121,6 +143,8 @@ const VOCABULARY = {
     // Borrower-locate is the note-industry term for what land investors
     // call skip tracing. Same provider stack underneath.
     note_investor: "Borrower locate",
+    note_originator: "Borrower locate",
+    note_servicer: "Borrower locate",
     tax_delinquent: "Skip trace",
     wholesaler: "Skip trace",
     subdivider: "Skip trace",
@@ -133,6 +157,11 @@ const VOCABULARY = {
     // BPO (Broker Price Opinion) is the note-industry equivalent of an
     // AVM — a valuation of the collateral by an independent broker.
     note_investor: "BPO",
+    // Originators typically order a full appraisal (Reg-Z / Dodd-Frank
+    // depend on collateral value at origination). Servicers reuse the
+    // BPO the owner provides.
+    note_originator: "Appraisal",
+    note_servicer: "BPO",
     tax_delinquent: "AVM",
     wholesaler: "AVM",
     subdivider: "AVM",
@@ -143,6 +172,8 @@ const VOCABULARY = {
   "product.comp": {
     land_investor: "Comp",
     note_investor: "Recent comparable note sale",
+    note_originator: "Comparable origination",
+    note_servicer: "Recent comparable note sale",
     tax_delinquent: "Comp",
     wholesaler: "Comp",
     subdivider: "Comp",
@@ -153,6 +184,8 @@ const VOCABULARY = {
   "persona.name": {
     land_investor: "Land Investor",
     note_investor: "Note Investor",
+    note_originator: "Note Originator",
+    note_servicer: "Note Servicer",
     tax_delinquent: "Tax-Delinquent Specialist",
     wholesaler: "Wholesaler",
     subdivider: "Subdivider",
@@ -174,6 +207,8 @@ export function getTerm(key: VocabularyKey, persona: Persona | null | undefined)
 export const PERSONAS: readonly Persona[] = [
   "land_investor",
   "note_investor",
+  "note_originator",
+  "note_servicer",
   "tax_delinquent",
   "wholesaler",
   "subdivider",

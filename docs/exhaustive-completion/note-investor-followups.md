@@ -102,3 +102,90 @@ sources. There's no UI surface yet for note investors to validate which
 of their acquired notes are blocked from 1099 issuance (missing W-9,
 sub-$600 interest, etc.). Add a `/notes/tax-readiness` panel that
 mirrors `/finance/tax-readiness` for originated notes.
+
+---
+
+## Pillar K (25-persona insight mine) — additional follow-ups
+
+Added 2026-05-14 after working through 25 composite note-investor
+personas (see `pillar-k-note-investors-25-personas.md`). The five
+items in the action queue (workflow templates, persona vocabulary,
+RMLO advisor, reperforming progress, this doc) shipped in PR
+`pillar-k:`. The items below didn't make the cut but are real.
+
+### 8. Note "pool" entity (~1.5w build)
+
+NPL funds (Nico), discount-fund operators (Reyna), institutional buyers
+(Sully) and prolific flippers (Octavia) all acquire notes in *pools*
+and need per-pool P&L + analyst attribution.
+
+Schema sketch:
+- `note_pools` table — id, org_id, name, acquisition_date,
+  acquisition_price_cents, expected_recovery_cents.
+- `acquired_notes.pool_id` — nullable FK.
+- `note_pool_diligence_decisions` — per-row analyst decisions
+  (buy / pass / counter) with reasoning + analyst_user_id.
+
+Then surface per-pool P&L on `/notes/pools/:id`. ~1.5 week build.
+
+### 9. IRA-custodian routing + templates (~3d build)
+
+Brendan (self-directed IRA), Yuna (Roth back-door + IRA) need every
+note transaction routed through their custodian for signature +
+recording. Schema sketch: `acquired_notes.ira_custodian` enum +
+`ira_custodian_pending` status; one templatable letter per common
+custodian (Quest Trust, Equity Trust, IRA Services).
+
+### 10. Manufactured-home title flag (~1d build)
+
+Iris's notes are secured by MH titled at the DMV not the county.
+Single boolean: `acquired_notes.mh_dmv_titled`. Surface on the
+note detail page with a "where to record" hint per state.
+
+### 11. Servicer mode (Ursa — large standalone effort)
+
+Ursa is a licensed sub-servicer. AcreOS currently assumes the operator
+owns every note in their book. Servicer mode would invert that —
+segregated per-owner accounting + remittance. Substantial effort:
+new ownership-of-record table, P&L per owner, monthly remittance
+generator. Track as a future Pillar K-2.
+
+### 12. Broker mode (Talia — large standalone effort)
+
+Talia brokers between sellers and buyers without holding paper. The
+platform assumes operator-as-buyer; broker mode is a different mental
+model. Track alongside servicer mode for a future pillar pass.
+
+### 13. Partial-note (carved-interest) accounting (~1w build)
+
+Xander buys partial interests (e.g. first 60 months of P&I). Needs:
+`acquired_notes.parent_note_id` FK (self-reference); split
+amortization schedule renderer; per-partial yield calc.
+
+### 14. Commercial-land note variant (~1w build)
+
+Vasco buys notes secured by commercial land — yield comes from the
+underlying lease, not borrower paycheck. Different underwriting model.
+Likely needs a new collateral type + a leased-asset yield calculator.
+
+### 15. Cross-vertical portfolio yield rollup (~3d build)
+
+Park (family office) needs combined yield across notes + rentals +
+land. Probably belongs in Pillar P (landlord-and-cross-vertical
+personas) rather than K.
+
+### 16. PII-classified borrower-narrative field + redacted export (~3d build)
+
+Willa (foreclosure-rescue) captures borrower hardship narratives in
+free text. She needs the field PII-classified so it auto-redacts on
+exports she shares with co-investors or LPs. Wire into the existing
+DSAR/redaction plumbing.
+
+### 17. Exception-based alerts digest (~3d build)
+
+Maris (100+ notes self-serviced) doesn't want to see every payment-
+received notification — only the exceptions (delinquencies, escrow
+shortfalls, insurance lapses, balloons due). The workflow engine
+already fires all the right events; this is an aggregation surface +
+preference settings.
+

@@ -792,6 +792,180 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar K — Note-investor lifecycle templates ──────────────────────
+  // Five templates drawn from the 25-persona insight mine in
+  // docs/exhaustive-completion/pillar-k-note-investors-25-personas.md.
+  // Each addresses a moment in the note's life that recurred across
+  // multiple personas. Together they replace the manual spreadsheet
+  // workflow many veteran note investors (Maris, Geena, Octavia) run
+  // today.
+  {
+    id: "tpl_note_payment_received_receipt",
+    name: "Note Payment Received — Receipt & Streak",
+    description:
+      "On every payment received, email the borrower a payment receipt, log a Pax notification, and bump the on-time-payment streak (powers the reperforming threshold).",
+    category: "notes",
+    trigger: { event: "payment.received" },
+    actions: [
+      {
+        id: "action_payment_receipt_email",
+        type: "send_email",
+        config: {
+          to: "{{borrowerEmail}}",
+          subject: "Payment received — Note #{{noteId}}",
+          body:
+            "Hi {{borrowerName}},\n\nWe've received your payment of ${{amount}} for {{periodLabel}}. Current principal balance after this payment: ${{remainingPrincipal}}. Next payment of ${{nextAmount}} is due on {{nextDueDate}}.\n\nThank you,\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_payment_received_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Payment received: Note #{{noteId}} ({{borrowerName}}) — ${{amount}}. On-time streak: {{onTimeStreak}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_note_insurance_expiring",
+    name: "Insurance Policy Expiring (60 days)",
+    description:
+      "60 days before the borrower's hazard-insurance policy lapses on note collateral, create a review task and draft a renewal-request letter so the lender's lien stays insured.",
+    category: "notes",
+    trigger: { event: "note.insurance_expiring_60d" },
+    actions: [
+      {
+        id: "action_insurance_renewal_task",
+        type: "create_task",
+        config: {
+          title: "Confirm hazard-insurance renewal for Note #{{noteId}} ({{borrowerName}})",
+          description:
+            "Policy {{policyNumber}} on {{collateralAddress}} expires {{policyExpiryDate}}. Request proof of renewal or force-place coverage if borrower doesn't respond within 30 days.",
+          priority: "high",
+          dueInDays: 14,
+        },
+      },
+      {
+        id: "action_insurance_borrower_letter",
+        type: "send_email",
+        config: {
+          to: "{{borrowerEmail}}",
+          subject: "Action needed — insurance on {{collateralAddress}}",
+          body:
+            "Hi {{borrowerName}},\n\nOur records show your hazard-insurance policy {{policyNumber}} covering {{collateralAddress}} expires {{policyExpiryDate}}. Please forward a renewal declaration or replacement-policy proof at least 30 days before expiry. If we don't receive proof, the loan terms require us to force-place coverage at your expense, which is typically more expensive than your own policy.\n\nThank you,\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_insurance_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message: "Insurance expiring on Note #{{noteId}} collateral {{collateralAddress}} on {{policyExpiryDate}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_note_escrow_shortfall",
+    name: "Escrow Shortfall Detected",
+    description:
+      "When annual escrow analysis shows a shortfall (taxes + insurance > escrowed amount), create a review task and draft a borrower notice with the proposed payment-increase amount.",
+    category: "notes",
+    trigger: { event: "note.escrow_shortfall" },
+    actions: [
+      {
+        id: "action_escrow_review_task",
+        type: "create_task",
+        config: {
+          title: "Review escrow shortfall on Note #{{noteId}} — ${{shortfallAmount}}",
+          description:
+            "Annual escrow analysis projects a {{shortfallAmount}} shortfall over the next 12 months ({{taxIncrease}} tax + {{insuranceIncrease}} insurance increase). Decide whether to spread over 12 months ({{spreadAmount}}/mo) or recover lump-sum.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_escrow_borrower_letter",
+        type: "send_email",
+        config: {
+          to: "{{borrowerEmail}}",
+          subject: "Escrow analysis — Note #{{noteId}}",
+          body:
+            "Hi {{borrowerName}},\n\nOur annual escrow analysis on your note shows your escrow account is projected to be short by ${{shortfallAmount}} over the next 12 months, driven by higher property-tax ({{taxIncrease}}) and insurance ({{insuranceIncrease}}) costs. We'll be increasing your monthly escrow payment by ${{spreadAmount}} starting {{effectiveDate}} to keep the account whole.\n\nWe enclose the full escrow-analysis statement.\n\n{{orgName}}",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_note_reperforming_threshold",
+    name: "Reperforming Threshold Reached (12 on-time payments)",
+    description:
+      "After 12 consecutive on-time payments on a previously non-performing note, create a review task to reclassify the note as reperforming — typically unlocks better wholesale pricing.",
+    category: "notes",
+    trigger: { event: "note.reperforming_threshold" },
+    actions: [
+      {
+        id: "action_reperforming_review_task",
+        type: "create_task",
+        config: {
+          title: "Reclassify Note #{{noteId}} ({{borrowerName}}) as reperforming",
+          description:
+            "Borrower has made 12 consecutive on-time payments on a previously non-performing note. Reclassify to reperforming, update the asset registry, and consider repricing if you intend to sell.",
+          priority: "medium",
+          dueInDays: 5,
+        },
+      },
+      {
+        id: "action_reperforming_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message: "Note #{{noteId}} crossed 12-month reperforming threshold. Borrower: {{borrowerName}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_note_balloon_approaching_extended",
+    name: "Note Balloon Approaching (90-day countdown)",
+    description:
+      "90/60/30 days before a balloon payment is due, escalate notifications and draft borrower outreach with refinance + payoff options.",
+    category: "notes",
+    trigger: { event: "note.balloon_approaching" },
+    actions: [
+      {
+        id: "action_balloon_review_task",
+        type: "create_task",
+        config: {
+          title: "Balloon coming up — Note #{{noteId}} ({{borrowerName}}) due {{balloonDate}} (${{balloonAmount}})",
+          description:
+            "Reach out to borrower {{daysToBalloon}} days before balloon date. Confirm payoff source, offer refinance terms if appropriate, or schedule property valuation if collateral may be reclaimed.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_balloon_borrower_letter",
+        type: "send_email",
+        config: {
+          to: "{{borrowerEmail}}",
+          subject: "Balloon payment notice — Note #{{noteId}}",
+          body:
+            "Hi {{borrowerName}},\n\nThis is a reminder that the balloon payment of ${{balloonAmount}} on your note is due {{balloonDate}} ({{daysToBalloon}} days from today). If you'd like to discuss refinancing, an extension, or coordinating payoff, please reply or call us. We're happy to walk through options.\n\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_balloon_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message: "Balloon in {{daysToBalloon}}d — Note #{{noteId}}, ${{balloonAmount}} due {{balloonDate}}.",
+        },
+      },
+    ],
+  },
 ];
 
 export type WorkflowEventData = {

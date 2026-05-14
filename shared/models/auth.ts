@@ -81,6 +81,8 @@ export interface UserNotificationPrefsShape {
 export type Persona =
   | "land_investor"
   | "note_investor"
+  | "note_originator"   // Pillar K: Devon (land seller-financer), Hugo (tax-lien-to-note convertor). Wears the lender hat, not the secondary-market hat.
+  | "note_servicer"     // Pillar K: Ursa (licensed sub-servicer). Services notes for others; not the beneficial owner.
   | "tax_delinquent"
   | "wholesaler"
   | "subdivider"
