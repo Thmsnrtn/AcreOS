@@ -191,6 +191,13 @@ const CONSOLE_ALLOWLIST: RegExp[] = [
   // settling). Not a product regression.
   /Failed to load resource: the server responded with a status of 401/i,
   /\[Query Error\][^]*\b401\b/i,
+  // Playwright tears down the page when a test ends; any in-flight
+  // fetch from a polling hook (Pax SSE, react-query refetchInterval,
+  // websocket reconnects) shows up as net::ERR_FAILED in the console
+  // even though nothing is actually broken. Real failures still log a
+  // [Query Error] or a stack — those aren't allowlisted.
+  /Failed to load resource: net::ERR_FAILED/i,
+  /Failed to load resource: net::ERR_ABORTED/i,
 ];
 
 interface SweepResult {
