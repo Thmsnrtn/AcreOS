@@ -2592,6 +2592,29 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import stripe drift detector: ${err}`, "ops");
   });
 
+  // ─── Pillar U — monthly pillar review ────────────────────────────────
+  // Reads docs/exhaustive-completion/pillar-*.md, scores each on
+  // shipped-artifact recency, writes pillar-review-{YYYY-MM-DD}.md,
+  // surfaces stale/dead pillars as /founder/now inbox items.
+  import("../services/pillarReviewer").then(({ runPillarReviewJob }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Pillar reviewer registered (monthly, 30d interval)", "ops");
+      scheduleSelfRescheduling({
+        name: "pillar_reviewer",
+        intervalMs: 30 * 24 * 60 * 60 * 1000,
+        initialDelayMs: 24 * 60 * 60 * 1000,
+        run: async () => {
+          await withJobLock("pillar_reviewer", 30 * 60, async () => {
+            const r = await runPillarReviewJob();
+            log(`[pillar-review] stale=${r.staleCount} dead=${r.deadCount}`, "ops");
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import pillar reviewer: ${err}`, "ops");
+  });
+
   // ─── Pillar T — Schema drift detector (daily 6:20am UTC) ─────────────
   // Compares shared/schema.ts to pg_catalog. Surfaces missing tables /
   // columns (likely a migration wasn't applied) as red inbox items.
