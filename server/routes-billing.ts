@@ -256,9 +256,14 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeService } = await import("./stripeService");
       const rows = await stripeService.listProductsWithPrices();
-      // listProductsWithPrices already returns correctly nested data —
-      // just reshape field names to match what the client expects.
-      const result = rows.map((row: any) => ({
+      // Filter to AcreOS subscription products only. The Stripe account
+      // also carries unrelated products (Foundry, Doc Fee, county lots,
+      // etc.); without this filter the settings/billing page renders
+      // them as if they were subscription tiers. Tagged via
+      // metadata.acreos_product = "true" by
+      // scripts/setup-stripe-subscription-products.ts.
+      const acreosOnly = rows.filter((row: any) => row.product_metadata?.acreos_product === "true");
+      const result = acreosOnly.map((row: any) => ({
         id: row.product_id,
         name: row.product_name,
         description: row.product_description,
