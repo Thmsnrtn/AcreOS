@@ -7248,6 +7248,11 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "deal.contract_signed",
   "deal.assignment_pending",
   "deal.occupied",
+  // Pillar N — subdivider lifecycle. See
+  // pillar-n-subdividers-25-personas.md.
+  "plat.submitted",
+  "subdivision.vendor_milestone",
+  "subdivision.phase_recorded",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];

@@ -927,6 +927,101 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar N — Subdivider lifecycle templates ───────────────────────
+  // Subdividing is process-heavy (multiple agencies in sequence) and
+  // timeline-heavy (each stage on its own clock). These templates
+  // bring the major lifecycle moments into the workflow engine so
+  // operators don't lose them in spreadsheets.
+  {
+    id: "tpl_subdivision_plat_submitted",
+    name: "Subdivision — Plat Submitted to County",
+    description:
+      "When the plat is submitted, auto-create the approval-timeline tracker with all expected review stages so operators don't lose track of the multi-month process.",
+    category: "deals",
+    trigger: { event: "plat.submitted" },
+    actions: [
+      {
+        id: "action_plat_timeline_task",
+        type: "create_task",
+        config: {
+          title: "Plat submitted — track approval timeline for {{propertyAddress}}",
+          description:
+            "Plat #{{platId}} submitted {{submittedDate}} to {{countyName}}. Typical {{state}}-{{countyName}} timeline: {{estimatedApprovalMonths}}mo. Stages: 1) Engineering review, 2) Planning department, 3) Planning commission, 4) Approval/recordation. Track each stage's completion + ping county at {{nextCountyCheckinDays}}d intervals.",
+          priority: "medium",
+          dueInDays: 14,
+        },
+      },
+      {
+        id: "action_plat_submitted_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Plat submitted for {{propertyAddress}} ({{numLots}} lots). Estimated approval timeline: {{estimatedApprovalMonths}}mo.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_subdivision_vendor_milestone",
+    name: "Subdivision — Vendor Milestone Reached",
+    description:
+      "Each time a survey/engineering/county milestone is met, log it, notify, and create the next-stage downstream task so the project keeps moving instead of stalling on operator attention.",
+    category: "deals",
+    trigger: { event: "subdivision.vendor_milestone" },
+    actions: [
+      {
+        id: "action_milestone_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Subdivision milestone: {{milestoneName}} complete for {{propertyAddress}}. Next: {{nextStage}}.",
+        },
+      },
+      {
+        id: "action_next_stage_task",
+        type: "create_task",
+        config: {
+          title: "Next subdivision stage: {{nextStage}} — {{propertyAddress}}",
+          description:
+            "{{milestoneName}} completed {{milestoneDate}}. {{nextStage}} is the gating step. Vendor: {{nextVendor}}. Expected duration: {{nextStageDays}}d.",
+          priority: "medium",
+          dueInDays: 7,
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_subdivision_phase_recorded",
+    name: "Subdivision Phase Recorded — Generate Lots",
+    description:
+      "When a subdivision phase records, the constituent lots become sellable. Auto-create lot rows in the property table and queue marketing tasks per lot.",
+    category: "deals",
+    trigger: { event: "subdivision.phase_recorded" },
+    actions: [
+      {
+        id: "action_phase_recorded_task",
+        type: "create_task",
+        config: {
+          title: "Generate lots + marketing for {{propertyAddress}} Phase {{phaseNumber}}",
+          description:
+            "Phase {{phaseNumber}} recorded {{recordedDate}}. Generates {{lotCount}} lots. For each: (a) create property row with phase + lot designation, (b) commission lot photo/drone, (c) set asking price per the lot-pricing model.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_phase_recorded_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Phase {{phaseNumber}} recorded for {{propertyAddress}}. {{lotCount}} lots now sellable.",
+        },
+      },
+    ],
+  },
   // ── Pillar M — Wholesaler lifecycle templates ───────────────────────
   // Three templates from the 25-persona insight mine in
   // docs/exhaustive-completion/pillar-m-wholesalers-25-personas.md.
