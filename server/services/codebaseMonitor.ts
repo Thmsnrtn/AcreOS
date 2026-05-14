@@ -302,6 +302,82 @@ export interface CodebaseMonitorOptions {
    * Scan npm outdated. Default true — relatively cheap, network-bound.
    */
   scanNpmOutdated?: boolean;
+  /**
+   * Scan baseline schema-column violations (Pillar Q). Default true —
+   * fast (single ts-morph pass over server/). Surfaces a proposal per
+   * violation cluster so the legacy baseline shrinks over time.
+   * Net-new violations are caught at CI; this scanner only proposes
+   * fixes for the pre-existing baseline.
+   */
+  scanSchemaColumns?: boolean;
+}
+
+interface SchemaColumnViolation {
+  file: string;
+  table: string;
+  column: string;
+}
+
+function readSchemaColumnBaseline(): SchemaColumnViolation[] {
+  try {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const baselinePath = path.resolve(process.cwd(), "scripts/schema-column-baseline.json");
+    if (!fs.existsSync(baselinePath)) return [];
+    const raw = JSON.parse(fs.readFileSync(baselinePath, "utf-8")) as { entries: string[] };
+    return (raw.entries ?? []).map((entry) => {
+      // Format: "<file>|<table>.<column>"
+      const [file, tableCol] = entry.split("|");
+      const [table, column] = (tableCol ?? "").split(".");
+      return { file, table, column };
+    }).filter((v) => v.file && v.table && v.column);
+  } catch {
+    return [];
+  }
+}
+
+async function proposeSchemaColumnFixes(violations: SchemaColumnViolation[]): Promise<number> {
+  // Group violations by file so each proposal addresses one file.
+  const byFile = new Map<string, SchemaColumnViolation[]>();
+  for (const v of violations) {
+    const list = byFile.get(v.file) ?? [];
+    list.push(v);
+    byFile.set(v.file, list);
+  }
+  // Cap at 3 per run to avoid flooding the agent-queue. Smallest
+  // files first (highest probability of quick wins).
+  const ranked = [...byFile.entries()].sort((a, b) => a[1].length - b[1].length).slice(0, 3);
+  const simRequired = await requiresSimulation("codebase_monitor", "schema_column_fix");
+  let proposed = 0;
+  for (const [file, fileViolations] of ranked) {
+    const violationList = fileViolations
+      .slice(0, 12)
+      .map((v) => `${v.table}.${v.column}`)
+      .join(", ");
+    await proposeCodeChange({
+      pillar: "shared" as Pillar,
+      agent: "codebase_monitor",
+      source: "schema_column_baseline",
+      rawSignal: { file, violationCount: fileViolations.length, violations: fileViolations.slice(0, 12) },
+      title: `Fix ${fileViolations.length} schema-column mismatch${fileViolations.length === 1 ? "" : "es"} in ${file}`,
+      rationale:
+        `${file} references columns that don't exist on the drizzle schema in shared/schema.ts. ` +
+        `These don't crash today (the calls aren't on the hot path) but the bug class is exactly what ` +
+        `crashed activity-timeline + /avm + /founder this session. Violations: ${violationList}. ` +
+        `Likely fix per reference: remap to the real column name (often a snake_case → camelCase oversight) ` +
+        `or restructure the query to read from the right table.`,
+      targetFiles: [file],
+      riskTier: "low",
+      preMortem:
+        "If the file is dead code, the fix has no runtime impact. If the file is live, the column refs are " +
+        "either currently masked by error-handling (try/catch returns []) or the call path is rare; fix " +
+        "removes a latent 500.",
+      rollbackPath: "git revert <commit>",
+      simulationMode: simRequired,
+    });
+    proposed += 1;
+  }
+  return proposed;
 }
 
 export async function runCodebaseMonitor(
@@ -313,6 +389,7 @@ export async function runCodebaseMonitor(
 }> {
   const scanNpmOutdated = opts.scanNpmOutdated ?? true;
   const scanTypescript = opts.scanTypescript ?? false;
+  const scanSchemaColumns = opts.scanSchemaColumns ?? true;
   // Even though v0 signals are deterministic (no LLM), preflight the budget
   // so the loop is consistent. Tiny estimated cost — sentinel only.
   const ok = await preflightBudgetCheck(0.01);
@@ -345,6 +422,17 @@ export async function runCodebaseMonitor(
       }
     } catch (err) {
       logger.error("[codebase-monitor] tsc bucket scan failed", err);
+    }
+  }
+
+  if (scanSchemaColumns) {
+    try {
+      const violations = readSchemaColumnBaseline();
+      if (violations.length > 0) {
+        proposalsAdded += await proposeSchemaColumnFixes(violations);
+      }
+    } catch (err) {
+      logger.error("[codebase-monitor] schema column scan failed", err);
     }
   }
 
