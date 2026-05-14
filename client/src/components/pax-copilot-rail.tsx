@@ -391,12 +391,19 @@ export function PaxCopilotRail() {
   });
   const [dismissedNudgeIds, setDismissedNudgeIds] = useState<number[]>([]);
 
-  // Pax observations (initial load; real-time updates come via SSE below)
-  const { data: observationsData, refetch: refetchObs } = useQuery<PaxObservation[]>({
-    queryKey: ["/api/pax/observations", { unread: true }],
+  // Pax observations (initial load; real-time updates come via SSE below).
+  // Server has two modes on /api/pax/observations:
+  //   ?unread=true             → { count } (badge-count only — sidebar)
+  //   (no unread param)        → { observations: [...] } (this one)
+  // The rail wants the LIST of recent active observations, not the count.
+  // Earlier this query passed unread=true&limit=5, which silently returned
+  // {count} — the rail's PaxObservation[] cast then produced an empty list
+  // and burned a roundtrip per page-mount (often 429'd by the rate limiter).
+  const { data: observationsData, refetch: refetchObs } = useQuery<{ observations: PaxObservation[] }>({
+    queryKey: ["/api/pax/observations", { limit: 5 }],
     queryFn: async () => {
-      const res = await fetch("/api/pax/observations?unread=true&limit=5", { credentials: "include" });
-      if (!res.ok) return [];
+      const res = await fetch("/api/pax/observations?limit=5", { credentials: "include" });
+      if (!res.ok) return { observations: [] };
       return res.json();
     },
     staleTime: 60 * 1000,
@@ -422,9 +429,10 @@ export function PaxCopilotRail() {
     staleTime: 30_000,
   });
 
-  const observations = [...(Array.isArray(sseObservations) ? sseObservations : []), ...(Array.isArray(observationsData) ? observationsData : [])].filter(
-    (obs, idx, arr) => arr.findIndex((o) => o.id === obs.id) === idx
-  );
+  const observations = [
+    ...(Array.isArray(sseObservations) ? sseObservations : []),
+    ...(observationsData?.observations ?? []),
+  ].filter((obs, idx, arr) => arr.findIndex((o) => o.id === obs.id) === idx);
 
   // ── Cmd+K to open command palette ────────────────────────────────────────
   useEffect(() => {
