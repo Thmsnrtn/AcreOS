@@ -927,6 +927,94 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar O — Fix-and-flipper milestone templates ──────────────────
+  // Extends the existing `tpl_fix_flip_rehab_kickoff` template with
+  // three more lifecycle moments: demo-complete (frame kickoff),
+  // HML-extension warning, and punch-list-complete (listing ready).
+  // From the 25-persona insight mine in pillar-o-fix-and-flippers-25-
+  // personas.md.
+  {
+    id: "tpl_flip_milestone_demo_complete",
+    name: "Fix-and-Flip — Demo Complete → Framing Kickoff",
+    description:
+      "When demolition finishes, surface the framing kickoff: subcontractor schedule confirmation + mid-project budget reconciliation.",
+    category: "deals",
+    trigger: { event: "rehab.milestone" },
+    actions: [
+      {
+        id: "action_framing_kickoff_task",
+        type: "create_task",
+        config: {
+          title: "Framing kickoff — {{propertyAddress}}",
+          description:
+            "Demo complete {{milestoneDate}}. Confirm framing/structural crew start date (target: within {{nextStageDays}}d). Reconcile demo-stage spend vs budget: actual ${{actualSpend}} / planned ${{plannedSpend}}.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+      {
+        id: "action_subs_confirm_task",
+        type: "create_task",
+        config: {
+          title: "Confirm subcontractor schedule — {{propertyAddress}}",
+          description:
+            "Confirm mechanicals (HVAC, plumbing, electrical) start dates align with framing completion. Mechanicals typically follow framing by 2-3w.",
+          priority: "medium",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_milestone_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Demo complete: {{propertyAddress}}. Framing kickoff scheduled.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_flip_listing_ready",
+    name: "Fix-and-Flip — Punch List Complete → Listing Prep",
+    description:
+      "When the punch list closes out, surface listing-prep tasks: photography, staging, pricing-vs-comps decision, agent selection.",
+    category: "deals",
+    trigger: { event: "rehab.punch_list_complete" },
+    actions: [
+      {
+        id: "action_listing_prep_task",
+        type: "create_task",
+        config: {
+          title: "Listing prep — {{propertyAddress}} (target ARV ${{afterRepairValue}})",
+          description:
+            "Punch list closed {{punchListDate}}. Order professional photography, schedule staging, finalize listing price (comp ARV ${{compArv}} vs target ARV ${{afterRepairValue}}), select listing agent, list target date {{targetListDate}}.",
+          priority: "high",
+          dueInDays: 5,
+        },
+      },
+      {
+        id: "action_pricing_decision_task",
+        type: "create_task",
+        config: {
+          title: "Pricing-vs-comp decision — {{propertyAddress}}",
+          description:
+            "Comp range: ${{compLow}}-${{compHigh}}. Target ARV: ${{afterRepairValue}}. Recent comparable list-to-sale ratios: {{recentListSaleRatio}}. Set list price.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+      {
+        id: "action_listing_ready_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "{{propertyAddress}} ready to list. Target ARV ${{afterRepairValue}}, list-date target {{targetListDate}}.",
+        },
+      },
+    ],
+  },
   // ── Pillar N — Subdivider lifecycle templates ───────────────────────
   // Subdividing is process-heavy (multiple agencies in sequence) and
   // timeline-heavy (each stage on its own clock). These templates

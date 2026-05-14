@@ -7253,6 +7253,10 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "plat.submitted",
   "subdivision.vendor_milestone",
   "subdivision.phase_recorded",
+  // Pillar O — fix-and-flipper lifecycle. See
+  // pillar-o-fix-and-flippers-25-personas.md.
+  "rehab.milestone",
+  "rehab.punch_list_complete",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
