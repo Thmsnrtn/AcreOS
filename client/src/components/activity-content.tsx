@@ -54,8 +54,18 @@ export function ActivityContent() {
   if (entityFilter !== "all") queryParams.set("entityType", entityFilter);
   queryParams.set("limit", String(limit));
 
+  // Default queryFn joins parts with "/", so without an explicit queryFn
+  // this fired GET /api/activity-feed/limit=50 → 404 on every mount. Build
+  // the URL with "?" instead. Surfaced via the route-sweep on /analytics.
   const { data: activities, isLoading } = useQuery<ActivityLogEntry[]>({
     queryKey: ["/api/activity-feed", queryParams.toString()],
+    queryFn: async () => {
+      const res = await fetch(`/api/activity-feed?${queryParams.toString()}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json();
+    },
   });
 
   const loadMore = () => {
