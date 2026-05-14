@@ -731,6 +731,67 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Fix-and-flip workflow template ────────────────────────────────────
+  // Per Devon's investor critique: AcreOS has a fix-and-flipper persona
+  // (paxPersona.ts / personaVocabulary.ts) but no rehab-flavored workflow
+  // template. Without one the fix-and-flipper signup hits the leads page
+  // and gets land-investor language for their next steps. This template
+  // gives the fix-flipper the right scaffolding the moment a deal closes
+  // — rehab task, contractor schedule reminder, ARV sanity check — so
+  // they're not retrofitting the land-investor playbook to a 12-week
+  // rehab timeline.
+  {
+    id: "tpl_fix_flip_rehab_kickoff",
+    name: "Fix-and-Flip — Rehab Kickoff",
+    description:
+      "When a fix-and-flip deal closes, kick off the rehab tracker: budget review, contractor scheduling, ARV-vs-AVM check, and a 12-week timeline reminder.",
+    category: "deals",
+    trigger: { event: "deal.stage_changed" },
+    actions: [
+      {
+        id: "action_rehab_budget_task",
+        type: "create_task",
+        config: {
+          title: "Confirm rehab budget for {{propertyAddress}} (est. ${{estimatedRepairCost}})",
+          description:
+            "Walk the property, finalize the scope, and lock the rehab budget. Compare against contractor bids before issuing first draw.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+      {
+        id: "action_contractor_schedule",
+        type: "create_task",
+        config: {
+          title: "Schedule contractor for {{propertyAddress}} — week 1 demo + framing",
+          description:
+            "Confirm GC + sub trades. Demo / framing / rough-ins drive the critical path; the rest follows.",
+          priority: "high",
+          dueInDays: 5,
+        },
+      },
+      {
+        id: "action_arv_sanity_check",
+        type: "create_task",
+        config: {
+          title: "ARV sanity check — {{propertyAddress}}",
+          description:
+            "Pull 3 comps to defend your ARV. Reminder: the system's AVM ({{estimatedValue}}) is *as-is*. Your ARV is the post-rehab number — don't conflate them on the lender pro forma.",
+          priority: "medium",
+          dueInDays: 2,
+        },
+      },
+      {
+        id: "action_rehab_kickoff_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Rehab kicked off: {{propertyAddress}}. Budget ${{estimatedRepairCost}}, target ARV ${{afterRepairValue}}. 12-week timeline starts now.",
+        },
+      },
+    ],
+  },
 ];
 
 export type WorkflowEventData = {

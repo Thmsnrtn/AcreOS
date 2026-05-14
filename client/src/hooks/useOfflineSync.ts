@@ -38,6 +38,8 @@ export interface UseOfflineSyncResult {
   forceSync: () => Promise<void>;
   /** Queue a mutation for later execution when back online */
   queueMutation: (mutation: Omit<QueuedMutation, 'id' | 'timestamp' | 'retries'>) => Promise<void>;
+  /** How many mutations are currently queued awaiting sync. */
+  queuedCount: number;
 }
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
@@ -121,6 +123,7 @@ async function fetchJSON(url: string): Promise<unknown> {
 export function useOfflineSync(): UseOfflineSyncResult {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [queuedCount, setQueuedCount] = useState(0);
   const [cachedData, setCachedData] = useState<CachedData>({
     leads: [],
     properties: [],
@@ -130,6 +133,17 @@ export function useOfflineSync(): UseOfflineSyncResult {
 
   const dbRef = useRef<IDBDatabase | null>(null);
 
+  const refreshQueuedCount = useCallback(async () => {
+    const db = dbRef.current;
+    if (!db) return;
+    try {
+      const all = await idbGetAll<QueuedMutation>(db, 'mutations');
+      setQueuedCount(all.length);
+    } catch {
+      /* best effort */
+    }
+  }, []);
+
   // ── Open DB on mount ────────────────────────────────────────────────────────
   useEffect(() => {
     if (typeof indexedDB === 'undefined') return;
@@ -138,9 +152,11 @@ export function useOfflineSync(): UseOfflineSyncResult {
         dbRef.current = db;
         // Load cached data immediately
         loadCachedData(db);
+        // Seed the queued-count badge so the UI doesn't show "0" on cold mount.
+        refreshQueuedCount();
       })
       .catch((err) => clientLogger.error('[OfflineSync] Failed to open IndexedDB:', err));
-  }, []);
+  }, [refreshQueuedCount]);
 
   // ── Online/offline listeners ────────────────────────────────────────────────
   useEffect(() => {
@@ -255,12 +271,13 @@ export function useOfflineSync(): UseOfflineSyncResult {
 
       // Refresh cached data after draining
       await fetchAndCache(db);
+      await refreshQueuedCount();
       setSyncStatus('idle');
     } catch (err) {
       clientLogger.error('[OfflineSync] Drain error:', err);
       setSyncStatus('error');
     }
-  }, [fetchAndCache]);
+  }, [fetchAndCache, refreshQueuedCount]);
 
   // ── forceSync ───────────────────────────────────────────────────────────────
   const forceSync = useCallback(async () => {
@@ -294,13 +311,14 @@ export function useOfflineSync(): UseOfflineSyncResult {
       };
 
       await idbAddMutation(db, full);
+      await refreshQueuedCount();
 
       // If online, flush immediately
       if (navigator.onLine) {
         await drainMutationQueue(db);
       }
     },
-    [drainMutationQueue]
+    [drainMutationQueue, refreshQueuedCount]
   );
 
   // ── Periodic background sync (every 5 min when online) ───────────────────
@@ -313,5 +331,5 @@ export function useOfflineSync(): UseOfflineSyncResult {
     return () => clearInterval(interval);
   }, [drainMutationQueue]);
 
-  return { isOnline, cachedData, syncStatus, forceSync, queueMutation };
+  return { isOnline, cachedData, syncStatus, forceSync, queueMutation, queuedCount };
 }
