@@ -3213,19 +3213,23 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
     }
 
     // Query agent actions with left join to undo log.
-    // Drizzle's .where(undefined) crashes with "Cannot convert undefined
-    // or null to object" inside Object.entries() during its prepare phase
-    // (only on leftJoin queries in this version). Conditionally chain
-    // .where() only when we actually have conditions to apply.
+    // The select previously referenced agentActionLog.description and
+    // agentActionLog.metadata — neither exists on the schema (real
+    // columns are reasoning, input, output, confidence, …). Drizzle's
+    // prepare phase ran Object.entries() over the projection object and
+    // hit the undefined column references, throwing "Cannot convert
+    // undefined or null to object" on every call. Mapped to the actual
+    // columns; the response below derives description and metadata from
+    // reasoning + output so the API contract stays the same.
     const baseSelect = db
       .select({
         id: agentActionLog.id,
         agentCodename: agentActionLog.agentCodename,
         actionName: agentActionLog.actionName,
         actionType: agentActionLog.actionType,
-        description: agentActionLog.description,
+        reasoning: agentActionLog.reasoning,
+        output: agentActionLog.output,
         outcome: agentActionLog.outcome,
-        metadata: agentActionLog.metadata,
         createdAt: agentActionLog.createdAt,
         undoAvailable: agentActionUndoLog.undoAvailable,
         undoExpiry: agentActionUndoLog.undoExpiry,
@@ -3269,9 +3273,13 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
         agentName: agentNames[entry.agentCodename] || entry.agentCodename,
         actionName: entry.actionName,
         actionType: entry.actionType,
-        description: entry.description,
+        // description was a missing column on the schema; derive from
+        // reasoning so the client contract stays the same.
+        description: entry.reasoning,
         outcome: entry.outcome,
-        metadata: entry.metadata,
+        // metadata was a missing column too; surface the action's output
+        // jsonb, which carries the per-action details.
+        metadata: entry.output,
         createdAt: entry.createdAt,
         canUndo,
         undoExpiry: entry.undoExpiry,
@@ -3296,9 +3304,9 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
           agentName: agentNames[entry.agentCodename] || entry.agentCodename,
           actionName: entry.actionName,
           actionType: entry.actionType,
-          description: entry.description,
+          description: entry.reasoning,
           outcome: entry.outcome,
-          metadata: entry.metadata,
+          metadata: entry.output,
           createdAt: entry.createdAt,
           canUndo,
           undoExpiry: entry.undoExpiry,

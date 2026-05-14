@@ -29,11 +29,17 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// Real server response shape from /api/founder/ai/stats. The prior
+// interface used renamed-but-non-existent fields (totalCallsToday,
+// totalCostTodayCents) which caused every StatCard to fall back to
+// "—" even when the endpoint returned good data.
 interface AiStats {
-  totalCallsToday: number;
-  totalCostTodayCents: number;
+  totalCalls: number;
+  totalCostDollars: string;          // server formats as decimal string
   avgLatencyMs: number;
-  cacheHitRate: number; // 0–1
+  cacheHitRate: string;              // server formats as decimal string ("0.0")
+  modelDistribution?: Record<string, number>;
+  complexityDistribution?: Record<string, number>;
 }
 
 interface AiTelemetryEntry {
@@ -326,13 +332,13 @@ export default function AiObservatory() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Total AI Calls Today"
-            value={stats?.totalCallsToday?.toLocaleString() ?? "—"}
+            value={stats?.totalCalls?.toLocaleString() ?? "—"}
             icon={Activity}
             loading={statsLoading}
           />
           <StatCard
             title="Total Cost Today"
-            value={typeof stats?.totalCostTodayCents === "number" ? formatCents(stats.totalCostTodayCents) : "—"}
+            value={stats?.totalCostDollars ? `$${stats.totalCostDollars}` : "—"}
             icon={DollarSign}
             loading={statsLoading}
           />
@@ -345,7 +351,7 @@ export default function AiObservatory() {
           <StatCard
             title="Cache Hit Rate"
             value={
-              typeof stats?.cacheHitRate === "number" ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
+              stats?.cacheHitRate ? `${(Number(stats.cacheHitRate) * 100).toFixed(1)}%` : "—"
             }
             icon={Zap}
             loading={statsLoading}
