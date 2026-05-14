@@ -577,6 +577,14 @@ export async function registerRoutes(
   app.use(whiteLabelDomainMiddleware);
   app.use(correlationIdMiddleware);
 
+  // ── PUBLIC TRUST SURFACE — Pillar D / D8 + H / H1 ──────────────────────
+  // Mount /api/trust/* BEFORE Clerk middleware so prospective customers
+  // (no signed-in session) can view the sub-processor list + vertical
+  // maturity registry without hitting 401. Same pattern as /api/healthz
+  // above. The registerPublicTrustRoutes call later (after Clerk) becomes
+  // a no-op since these handlers are already bound.
+  registerPublicTrustRoutes(app);
+
   // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
   // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
   // but @clerk/express expects CLERK_PUBLISHABLE_KEY by default.
@@ -1925,8 +1933,10 @@ export async function registerRoutes(
   // 2026-05-12 — Agent-loop prerequisite health check (gh auth, git, db,
   // OpenRouter, seeded rules). Founder hits it post-deploy.
   registerAgentPrereqsRoute(app);
-  // 2026-05-13 — Pillar D customer-facing trust surface (sub-processors etc.)
-  registerPublicTrustRoutes(app);
+  // 2026-05-13 — Pillar D customer-facing trust surface — registered EARLIER
+  // (before Clerk middleware) so the public endpoints don't 401. This call
+  // is intentionally left as a no-op safety net.
+  // registerPublicTrustRoutes(app);  // moved above clerkMiddleware
   // 2026-05-13 — Pillar D / D9 incident tracking + post-mortem routes.
   registerIncidentRoutes(app);
   // 2026-05-13 — Pillar D / D6 error-budget endpoint.
