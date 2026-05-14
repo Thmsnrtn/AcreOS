@@ -76,6 +76,12 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          # script/build.ts hard-fails in CI without a Sentry token. The
+          # SENTRY_AUTH_TOKEN secret isn't currently set, so opt out
+          # explicitly per the script's documented escape hatch. To
+          # restore source-map uploads later: mint a Sentry token, set
+          # gh secret SENTRY_AUTH_TOKEN, and remove this line.
+          SENTRY_SOURCEMAPS: skip
 
       - name: Upload source maps to Sentry
         if: env.SENTRY_AUTH_TOKEN != ''
