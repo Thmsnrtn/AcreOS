@@ -18,7 +18,7 @@ type GlyphKind =
   | "doc" | "pen" | "ledger" | "flow" | "audit" | "team";
 
 const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
-  { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS watches every parcel listing in your counties — forever.", i: "box" },
+  { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS watches every listing, parcel, note, distressed lien, or off-market lead that matches — forever.", i: "box" },
   { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Ready every Monday morning.", i: "list" },
   { cat: "Analyze", t: "Comp engine", d: "Real comparable sales, not Zillow guesses. With confidence scores.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },

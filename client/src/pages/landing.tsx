@@ -53,15 +53,15 @@ export default function LandingPage() {
   // want a flicker between that and a React-set variant on first paint.
   // Other routes still use useDocumentTitle() for their per-page titles.
   usePageDescription(
-    "The operating system for land investors. Find motivated sellers, analyze parcels, send direct mail, and close deals — with agents that act on your behalf. Actively expanding to note investors, fix-and-flippers, and other investor types.",
+    "AcreOS is the operating system for real-estate investors — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing with AI agents that act on your behalf.",
   );
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
       <OpenGraph
         url={`${SITE.url}/`}
-        title="AcreOS — The Operating System for Land Investors"
-        description="The operating system for land investors. Find motivated sellers, analyze parcels, send direct mail, and close deals — with agents that act on your behalf. Actively expanding to note investors, fix-and-flippers, and other investor types."
+        title="AcreOS — The Operating System for Real-Estate Investors"
+        description="AcreOS is the operating system for real-estate investors — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing with AI agents that act on your behalf."
         type="website"
       />
       <JsonLd id="ld-organization" data={organizationSchema()} />

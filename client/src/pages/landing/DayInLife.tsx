@@ -7,7 +7,10 @@
  *
  * Voice is third-person/operator framing — describes the workday, not
  * the founder's life. Timeline events are calibrated to feel like a
- * real Tuesday for a working land operator.
+ * real Tuesday for a working real-estate operator — equally true for
+ * a land flipper, a note buyer, or a fix-and-flipper. The events are
+ * intentionally vertical-agnostic; per-vertical "day in the life"
+ * variants live on the future /verticals/<slug> pages.
  */
 
 import { LANDING_COPY } from "./copy";

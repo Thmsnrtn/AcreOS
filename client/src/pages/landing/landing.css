@@ -100,6 +100,49 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── Rotating vertical label (hero) ─────────────────────────────────
+   Each label slides up out of view and the next slides up from below.
+   The sizer reserves width at the widest label so the remainder of
+   the headline doesn't shift as labels cycle. */
+.lp-vertical-rotator {
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
+}
+.lp-vertical-rotator-sizer {
+  display: inline-block;
+  visibility: hidden;
+  white-space: nowrap;
+}
+.lp-vertical-rotator-window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: baseline;
+}
+.lp-vertical-rotator-label {
+  display: inline-block;
+  white-space: nowrap;
+  animation: lp-vertical-slide 2.6s cubic-bezier(0.16, 0.84, 0.44, 1) both;
+  /* italic + brand color inherited from .lp-hero-line:nth-child(2) on
+     the parent line. */
+}
+@keyframes lp-vertical-slide {
+  /* Slide in from below */
+  0%   { opacity: 0; transform: translateY(0.9em); }
+  10%  { opacity: 1; transform: translateY(0); }
+  /* Hold mid-cycle */
+  85%  { opacity: 1; transform: translateY(0); }
+  /* Slide out the top */
+  100% { opacity: 0; transform: translateY(-0.9em); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-vertical-rotator-label {
+    animation: none;
+  }
+}
+
 .lp-hero-sub {
   font: 400 19px/1.5 var(--font-sans);
   color: var(--acr-ink-2);

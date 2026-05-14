@@ -31,7 +31,7 @@ export function Footer() {
             <span className="lp-footer-logo-mark">A</span>AcreOS
           </a>
           <p className="lp-footer-tag">
-            The operating system for land investors.
+            The operating system for real-estate investors.
           </p>
         </div>
         <div className="lp-footer-cols">

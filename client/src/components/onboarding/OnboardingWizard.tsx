@@ -119,7 +119,7 @@ const WIZARD_STEPS = [
     id: 0,
     name: "welcome",
     title: "Welcome to AcreOS",
-    description: "The operating system for land investors",
+    description: "The operating system for real-estate investors",
     icon: Sparkles,
   },
   {
@@ -844,7 +844,7 @@ export function OnboardingWizard() {
 
             <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0", display: "grid", gap: 6 }}>
               {[
-                "Pre-built templates for land investors",
+                "Pre-built templates for every investor type",
                 "Target leads by score, stage, or location",
                 "Track open rates and responses",
               ].map((label) => (

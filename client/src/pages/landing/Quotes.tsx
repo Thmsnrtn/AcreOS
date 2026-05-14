@@ -40,7 +40,7 @@ const MECHANICS: MechCard[] = [
     tag: "02",
   },
   {
-    q: "Every deal traced from APN ingestion to closed file. Each action timestamped and attributed to operator or agent.",
+    q: "Every deal traced from first touch to closed file — parcels by APN, notes by loan number, rehabs by property ID. Each action timestamped and attributed to operator or agent.",
     n: "Deal audit trail",
     r: "Per-deal activity log",
     tag: "03",

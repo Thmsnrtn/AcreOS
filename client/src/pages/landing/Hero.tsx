@@ -23,6 +23,7 @@
 
 import { Link } from "wouter";
 import { LANDING_COPY } from "./copy";
+import { RotatingVertical } from "./RotatingVertical";
 
 export function Hero() {
   const c = LANDING_COPY.hero;
@@ -67,15 +68,14 @@ export function Hero() {
           {c.eyebrow}
         </div>
         <h1 className="lp-hero-title">
-          {c.title.map((line, i) => (
-            <span
-              key={i}
-              className="lp-hero-line"
-              style={{ animationDelay: `${0.1 + i * 0.08}s` }}
-            >
-              {line}
-            </span>
-          ))}
+          <span className="lp-hero-line" style={{ animationDelay: "0.1s" }}>
+            {c.title[0]}
+          </span>
+          <span className="lp-hero-line" style={{ animationDelay: "0.18s" }}>
+            {c.titleForPrefix}
+            <RotatingVertical />
+            {c.titleSuffix}
+          </span>
         </h1>
         <p className="lp-hero-sub">{c.sub}</p>
         <div className="lp-hero-cta">
