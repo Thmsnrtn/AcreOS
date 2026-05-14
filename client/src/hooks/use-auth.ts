@@ -35,7 +35,13 @@ async function fetchAppUser(): Promise<AuthUser | null> {
   }
 
   if (response.status === 401) {
-    authFailCount++;
+    // Both the initial call and the touched retry came back 401 — the
+    // session is dead, not refreshing. Jump authFailCount past
+    // ProtectedRoute's PageLoader threshold (≥3) so the user redirects
+    // to /auth on this render instead of sitting on the splash. Without
+    // this, react-query's 30s staleTime traps a settled-null result and
+    // the retry loop that would otherwise push the count up never fires.
+    authFailCount = Math.max(authFailCount + 1, 3);
     return null;
   }
 
