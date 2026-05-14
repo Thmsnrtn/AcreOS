@@ -13760,6 +13760,72 @@ export const insertCompanyAgentSchema = createInsertSchema(companyAgents).omit({
 export type CompanyAgent = typeof companyAgents.$inferSelect;
 export type InsertCompanyAgent = z.infer<typeof insertCompanyAgentSchema>;
 
+// ─── Pillar R — agent trust graduation per category ─────────────────
+// Per (agent, action_category) tuple track consecutive acceptances /
+// retracts. Promotion rules:
+//   manual       (default; founder approves every proposal)
+//   → notify_only (auto-merges; founder gets one-line notification)
+//   → silent      (auto-merges; appears in weekly digest)
+// Demote on retract. Suspend after 3 consecutive retracts at manual.
+export const agentActionGraduations = pgTable("agent_action_graduations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  // The category groups proposals so the founder isn't approving the
+  // same KIND of work over and over. Examples: "dependency_bump",
+  // "schema_column_fix", "copy_change", "workflow_template_wire".
+  actionCategory: text("action_category").notNull(),
+  graduationTier: text("graduation_tier").notNull().default("manual"), // manual | notify_only | silent | suspended
+  consecutiveAccepted: integer("consecutive_accepted").notNull().default(0),
+  consecutiveRetracted: integer("consecutive_retracted").notNull().default(0),
+  totalAccepted: integer("total_accepted").notNull().default(0),
+  totalRetracted: integer("total_retracted").notNull().default(0),
+  // When the tier last changed (promoted, demoted, or suspended).
+  tierChangedAt: timestamp("tier_changed_at", { withTimezone: true }).notNull().defaultNow(),
+  // Founder can override the tier — e.g. force-promote to silent
+  // before the auto-graduation threshold, or freeze at manual even
+  // after enough successes. Resets on next tier change.
+  founderOverride: text("founder_override"), // 'force_silent' | 'freeze_manual' | null
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("agent_graduation_unique").on(table.agentCodename, table.actionCategory),
+  index("agent_graduation_tier_idx").on(table.graduationTier),
+]);
+export type AgentActionGraduation = typeof agentActionGraduations.$inferSelect;
+
+// ─── Pillar R — post-merge observation windows ──────────────────────
+// Every agent-shipped change gets a 7-day observation row. A nightly
+// cron checks telemetry deltas; on regression, auto-reverts and
+// demotes the agent's graduation tier in that category.
+export const agentProposalObservations = pgTable("agent_proposal_observations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionCategory: text("action_category").notNull(),
+  // What shipped. Either a git SHA (for code changes) or a
+  // proposal/decision ID (for non-code changes).
+  shippedRef: text("shipped_ref").notNull(),
+  shippedRefType: text("shipped_ref_type").notNull(), // 'git_sha' | 'decision_id' | 'proposal_id'
+  shippedAt: timestamp("shipped_at", { withTimezone: true }).notNull(),
+  // The watch window: re-evaluate daily until this date.
+  observationEndsAt: timestamp("observation_ends_at", { withTimezone: true }).notNull(),
+  // Snapshot of pre-merge telemetry, for delta computation.
+  telemetryBaseline: jsonb("telemetry_baseline").$type<Record<string, number>>(),
+  // Latest snapshot from a daily cron pass.
+  telemetryCurrent: jsonb("telemetry_current").$type<Record<string, number>>(),
+  // The verdict so far: 'observing' | 'clean' | 'retracted'.
+  status: text("status").notNull().default("observing"),
+  // If retracted, why + when + how (git revert SHA).
+  retractReason: text("retract_reason"),
+  retractedAt: timestamp("retracted_at", { withTimezone: true }),
+  retractCommitSha: text("retract_commit_sha"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("agent_observations_agent_idx").on(table.agentCodename),
+  index("agent_observations_status_idx").on(table.status),
+  index("agent_observations_ends_idx").on(table.observationEndsAt),
+]);
+export type AgentProposalObservation = typeof agentProposalObservations.$inferSelect;
+
 // Agent Messages — inter-agent communication on typed channels
 export const agentMessages = pgTable("agent_messages", {
   id: serial("id").primaryKey(),
