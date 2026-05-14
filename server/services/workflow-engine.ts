@@ -927,6 +927,111 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar P — Buy-and-hold landlord lifecycle templates ────────────
+  // Three templates capturing the three highest-frequency landlord
+  // moments: lease renewal countdown, maintenance request triage,
+  // and rent received receipt. From the 25-persona insight mine in
+  // docs/exhaustive-completion/pillar-p-landlords-25-personas.md.
+  {
+    id: "tpl_landlord_lease_renewal_countdown",
+    name: "Landlord — Lease Renewal (60-day countdown)",
+    description:
+      "60 days before lease end, surface the renewal-or-vacate decision: rent-review math + drafted renewal/vacate letters so the landlord can act before the legal vacate-notice window closes.",
+    category: "deals",
+    trigger: { event: "lease.renewal_countdown_60d" },
+    actions: [
+      {
+        id: "action_renewal_decision_task",
+        type: "create_task",
+        config: {
+          title: "Renewal decision — {{propertyAddress}} / {{tenantName}} (lease ends {{leaseEndDate}})",
+          description:
+            "Current rent ${{currentRent}}. Market rent (per AVM/comps) ${{marketRent}}. Suggested renewal rent ${{suggestedRenewalRent}}. Decide: (a) offer renewal at {{suggestedRenewalRent}}, (b) offer renewal at current rent (retention), (c) issue notice to vacate. Per-state notice period: {{stateNoticeDays}}d.",
+          priority: "high",
+          dueInDays: 14,
+        },
+      },
+      {
+        id: "action_renewal_offer_letter",
+        type: "send_email",
+        config: {
+          to: "{{tenantEmail}}",
+          subject: "Lease renewal offer — {{propertyAddress}}",
+          body:
+            "Hi {{tenantName}},\n\nYour lease at {{propertyAddress}} ends {{leaseEndDate}}. We'd like to offer you a renewal at ${{suggestedRenewalRent}}/mo for another {{renewalTermMonths}}-month term ({{rentChangePct}} change from current ${{currentRent}}).\n\nIf you'd like to renew at these terms, please reply by {{renewalDecisionDeadline}}. If you'd prefer a different term length, let us know — we're happy to discuss.\n\n{{orgName}}",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_landlord_maintenance_request_triage",
+    name: "Landlord — Maintenance Request Triage",
+    description:
+      "Auto-categorize urgency on every maintenance request, then route to the appropriate vendor (or surface a DIY-vs-call decision for self-managed landlords).",
+    category: "deals",
+    trigger: { event: "maintenance.request_received" },
+    actions: [
+      {
+        id: "action_triage_task",
+        type: "create_task",
+        config: {
+          title: "Maintenance — {{propertyAddress}} ({{requestCategory}}, {{urgencyLevel}})",
+          description:
+            "Tenant {{tenantName}} reported {{requestDescription}}. Category: {{requestCategory}}. Urgency: {{urgencyLevel}} ({{urgencyRationale}}). Suggested vendor: {{suggestedVendor}}. Estimated cost: ${{estimatedCost}}.",
+          priority: "high",
+          dueInDays: 1,
+        },
+      },
+      {
+        id: "action_tenant_acknowledgment",
+        type: "send_email",
+        config: {
+          to: "{{tenantEmail}}",
+          subject: "Maintenance request received — {{propertyAddress}}",
+          body:
+            "Hi {{tenantName}},\n\nWe received your maintenance request: \"{{requestDescription}}\". Based on urgency, we'll have someone out within {{responseTimeSla}}. We'll send you a follow-up once the visit is scheduled.\n\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_triage_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Maintenance: {{requestCategory}} at {{propertyAddress}} — {{urgencyLevel}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_landlord_rent_received_receipt",
+    name: "Landlord — Rent Received → Receipt + Late-Fee Check",
+    description:
+      "On every rent payment, email a receipt, update YTD income, and flag if a late-fee should have applied based on the lease terms.",
+    category: "deals",
+    trigger: { event: "rent.received" },
+    actions: [
+      {
+        id: "action_rent_receipt_email",
+        type: "send_email",
+        config: {
+          to: "{{tenantEmail}}",
+          subject: "Rent receipt — {{propertyAddress}} {{rentPeriodLabel}}",
+          body:
+            "Hi {{tenantName}},\n\nWe've received your rent of ${{rentAmount}} for {{rentPeriodLabel}}. YTD payments: ${{ytdPaid}}. Next payment due {{nextDueDate}}.\n\nThank you,\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_rent_received_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Rent received: {{propertyAddress}} — ${{rentAmount}} ({{lateFeeApplied ? 'late-fee applied' : 'on-time'}}).",
+        },
+      },
+    ],
+  },
   // ── Pillar O — Fix-and-flipper milestone templates ──────────────────
   // Extends the existing `tpl_fix_flip_rehab_kickoff` template with
   // three more lifecycle moments: demo-complete (frame kickoff),

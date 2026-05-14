@@ -7257,6 +7257,11 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // pillar-o-fix-and-flippers-25-personas.md.
   "rehab.milestone",
   "rehab.punch_list_complete",
+  // Pillar P — buy-and-hold landlord lifecycle. See
+  // pillar-p-landlords-25-personas.md.
+  "lease.renewal_countdown_60d",
+  "maintenance.request_received",
+  "rent.received",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
