@@ -235,9 +235,12 @@ export default function TeamInboxPage() {
     select: convs => (Array.isArray(convs) ? convs.filter((c: Channel) => c.isDirect) : []),
   });
 
+  // /api/organization/members never existed; the real org-members listing
+  // is /api/team (routes-organization.ts:1071). The wrong URL produced
+  // a 404 on every /team page mount.
   const { data: members = [] } = useQuery<TeamMember[]>({
-    queryKey: ["/api/organization/members"],
-    queryFn: () => fetchJsonArray("/api/organization/members"),
+    queryKey: ["/api/team"],
+    queryFn: () => fetchJsonArray("/api/team"),
   });
 
   const { data: presence = [] } = useQuery<Presence[]>({
