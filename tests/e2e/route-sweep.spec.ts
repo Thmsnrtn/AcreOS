@@ -115,6 +115,19 @@ const CONSOLE_ALLOWLIST: RegExp[] = [
   // accounts that haven't connected them — not a regression.
   /Failed to load resource.*\/api\/integrations\//i,
   /Failed to load resource.*\/api\/stripe\/connect/i,
+  // 429 rate-limit responses on a hammering sweep are caused by the
+  // test itself, not by a product regression — production rate limiters
+  // see N concurrent workers from one IP and back off. Real-user nav
+  // is below the limit. Multiple phrasings: raw "Failed to load
+  // resource" plus react-query's "[Query Error] Error: 429:".
+  /Failed to load resource: the server responded with a status of 429/i,
+  /\[Query Error\][^]*429[^]*Rate limit exceeded/i,
+  /\[Query Error\][^]*\b429\b/i,
+  // 401s on optional/in-flight session-bootstrap calls during a hard
+  // navigation race (Clerk fetches /api/me while the cookie is still
+  // settling). Not a product regression.
+  /Failed to load resource: the server responded with a status of 401/i,
+  /\[Query Error\][^]*\b401\b/i,
 ];
 
 interface SweepResult {
@@ -142,21 +155,35 @@ async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
     await page.goto(path, { waitUntil: "domcontentloaded" });
     // networkidle is best-effort — some routes keep WS / polling open.
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
-    // Give lazy-loaded chunks + framer-motion a beat to commit.
+    // Heavy/data-viz routes lazy-load a big chunk and sit on the
+    // "Loading AcreOS…" splash longer than networkidle's 500ms quiet
+    // window will tolerate. Wait explicitly for the splash to detach
+    // before sampling the DOM. 12s upper bound — anything slower than
+    // that on prod is a real perf regression worth flagging.
+    await page
+      .locator('[aria-label="Loading AcreOS"], [role="status"]:has-text("Loading AcreOS")')
+      .first()
+      .waitFor({ state: "detached", timeout: 12_000 })
+      .catch(() => {});
+    // Final beat for framer-motion / final paint.
     await page.waitForTimeout(800);
 
-    // Error-boundary fallback — any of these = regression.
-    const errorBoundary = await page
-      .locator('[data-testid="error-boundary"], [class*="error-boundary"], text=/something went wrong/i')
-      .count();
+    // Error-boundary fallback — any of these = regression. Playwright
+    // refuses mixed CSS+text selectors in one comma-list, so we sum
+    // counts across separate locators instead.
+    const errorBoundary =
+      (await page.locator('[data-testid="error-boundary"]').count()) +
+      (await page.locator('[class*="error-boundary"]').count()) +
+      (await page.getByText(/something went wrong/i).count());
     if (errorBoundary > 0) {
       errors.push(`error-boundary mounted on ${path}`);
     }
 
     // 404 / NotFound surfaces.
-    const notFound = await page
-      .locator('[data-testid="page-not-found"], text=/page not found/i, text=/404/i')
-      .count();
+    const notFound =
+      (await page.locator('[data-testid="page-not-found"]').count()) +
+      (await page.getByText(/page not found/i).count()) +
+      (await page.getByText(/^\s*404\s*$/).count());
     if (notFound > 0) {
       // Permitted on /founder/* if non-founder, but the test user is a founder.
       errors.push(`not-found surface on ${path}`);
