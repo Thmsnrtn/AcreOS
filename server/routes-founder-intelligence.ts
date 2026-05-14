@@ -3212,10 +3212,12 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
       conditions.push(lt(agentActionLog.id, cursor));
     }
 
-    // Query agent actions with left join to undo log
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    const entries = await db
+    // Query agent actions with left join to undo log.
+    // Drizzle's .where(undefined) crashes with "Cannot convert undefined
+    // or null to object" inside Object.entries() during its prepare phase
+    // (only on leftJoin queries in this version). Conditionally chain
+    // .where() only when we actually have conditions to apply.
+    const baseSelect = db
       .select({
         id: agentActionLog.id,
         agentCodename: agentActionLog.agentCodename,
@@ -3230,10 +3232,16 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
         undoExecutedAt: agentActionUndoLog.undoExecutedAt,
       })
       .from(agentActionLog)
-      .leftJoin(agentActionUndoLog, eq(agentActionUndoLog.actionLogId, agentActionLog.id))
-      .where(whereClause)
-      .orderBy(desc(agentActionLog.createdAt))
-      .limit(limit + 1);
+      .leftJoin(agentActionUndoLog, eq(agentActionUndoLog.actionLogId, agentActionLog.id));
+
+    const entries = conditions.length > 0
+      ? await baseSelect
+          .where(and(...conditions))
+          .orderBy(desc(agentActionLog.createdAt))
+          .limit(limit + 1)
+      : await baseSelect
+          .orderBy(desc(agentActionLog.createdAt))
+          .limit(limit + 1);
 
     const hasMore = entries.length > limit;
     const results = entries.slice(0, limit);

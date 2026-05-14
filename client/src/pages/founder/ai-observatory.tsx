@@ -318,30 +318,34 @@ export default function AiObservatory() {
           </p>
         </div>
 
-        {/* Stats Row */}
+        {/* Stats Row — defensive: every accessor uses optional chaining +
+            null-coalesce. Server may return a partial AiStats payload
+            (or {} on a fresh deploy with no telemetry yet); reading a
+            method on undefined.toLocaleString() would crash the whole
+            page via ErrorBoundary. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Total AI Calls Today"
-            value={stats ? stats.totalCallsToday.toLocaleString() : "—"}
+            value={stats?.totalCallsToday?.toLocaleString() ?? "—"}
             icon={Activity}
             loading={statsLoading}
           />
           <StatCard
             title="Total Cost Today"
-            value={stats ? formatCents(stats.totalCostTodayCents) : "—"}
+            value={typeof stats?.totalCostTodayCents === "number" ? formatCents(stats.totalCostTodayCents) : "—"}
             icon={DollarSign}
             loading={statsLoading}
           />
           <StatCard
             title="Avg Latency"
-            value={stats ? formatMs(stats.avgLatencyMs) : "—"}
+            value={typeof stats?.avgLatencyMs === "number" ? formatMs(stats.avgLatencyMs) : "—"}
             icon={Clock}
             loading={statsLoading}
           />
           <StatCard
             title="Cache Hit Rate"
             value={
-              stats ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
+              typeof stats?.cacheHitRate === "number" ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
             }
             icon={Zap}
             loading={statsLoading}
