@@ -7243,6 +7243,11 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "cert.redemption_period_60d",
   "cert.foreclosure_eligible",
   "cert.redeemed",
+  // Pillar M — wholesaler lifecycle. See
+  // pillar-m-wholesalers-25-personas.md.
+  "deal.contract_signed",
+  "deal.assignment_pending",
+  "deal.occupied",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];

@@ -927,6 +927,104 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Pillar M — Wholesaler lifecycle templates ───────────────────────
+  // Three templates from the 25-persona insight mine in
+  // docs/exhaustive-completion/pillar-m-wholesalers-25-personas.md.
+  // Wholesalers' workflow diverges from land flips at three moments:
+  // the deal goes under contract (auto-broadcast to buyers), the
+  // assignment is pending (collection deadline + paperwork prep),
+  // and the property is occupied (cash-for-keys negotiation).
+  {
+    id: "tpl_wholesaler_contract_signed_buyer_broadcast",
+    name: "Wholesaler — Contract Signed → Buyer Broadcast",
+    description:
+      "When a wholesaler signs a contract, auto-create the buyer broadcast task and queue the deal for blast to the org's cash-buyer list. Surfaces Ari + Jen + Pia's biggest gap on day one.",
+    category: "deals",
+    trigger: { event: "deal.contract_signed" },
+    actions: [
+      {
+        id: "action_buyer_broadcast_task",
+        type: "create_task",
+        config: {
+          title: "Broadcast deal to buyer list — {{propertyAddress}} ({{contractPrice}})",
+          description:
+            "Contract signed {{contractDate}}. Asking ${{askingPrice}} (assignment fee ${{assignmentFee}}). Comp ARV ${{compArv}}. Send to cash-buyer list via /buyer-blasts, then follow up individually with top 5 buyers whose criteria match.",
+          priority: "high",
+          dueInDays: 2,
+        },
+      },
+      {
+        id: "action_buyer_broadcast_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Contract signed: {{propertyAddress}} — broadcast to buyer list within 48h.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_wholesaler_assignment_pending",
+    name: "Wholesaler — Assignment Pending (7-day countdown)",
+    description:
+      "When an assignment is pending, surface the timeline + draft the assignment paperwork. Closes Gus + Iyer's per-state paperwork question by templating early.",
+    category: "deals",
+    trigger: { event: "deal.assignment_pending" },
+    actions: [
+      {
+        id: "action_assignment_paperwork_task",
+        type: "create_task",
+        config: {
+          title: "Assignment paperwork — {{propertyAddress}} (fee ${{assignmentFee}})",
+          description:
+            "Buyer {{buyerName}} ({{buyerEntity}}) committed at ${{buyerPrice}}. Assignment fee {{assignmentFee}}. Confirm state-specific assignment-of-contract template ({{state}}) is on file; collect buyer earnest money; coordinate closing.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_assignment_pending_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Assignment pending: {{propertyAddress}} to {{buyerName}} — closing in {{daysToClose}}d.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_wholesaler_occupied_cash_for_keys",
+    name: "Wholesaler — Occupied Property Cash-for-Keys",
+    description:
+      "When a property under contract is occupied (current owner or tenant remaining), draft a cash-for-keys offer letter + create a negotiation timeline task. Closes Wren's persona pain.",
+    category: "deals",
+    trigger: { event: "deal.occupied" },
+    actions: [
+      {
+        id: "action_cfk_offer_letter",
+        type: "send_email",
+        config: {
+          to: "{{occupantEmail}}",
+          subject: "Relocation assistance offer — {{propertyAddress}}",
+          body:
+            "Hi {{occupantName}},\n\nWe understand you're currently in the home at {{propertyAddress}}. We'd like to offer cash for keys to help with your move:\n\n• ${{cfkAmount}} paid at vacate, broom-clean.\n• Move-out target: {{cfkVacateDate}} ({{cfkVacateDaysFromNow}} days from today).\n• We handle the lockbox + clean-out; you keep anything you want and leave the rest.\n\nPlease reply or call to talk it through. We'd rather work this out cooperatively.\n\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_cfk_negotiation_task",
+        type: "create_task",
+        config: {
+          title: "Cash-for-keys — {{propertyAddress}} ({{occupantName}})",
+          description:
+            "Occupant {{occupantName}} ({{occupantType}}). Offered ${{cfkAmount}} for vacate by {{cfkVacateDate}}. Confirm local relocation-assistance laws ({{state}}). Coordinate handoff inspection on vacate day.",
+          priority: "high",
+          dueInDays: 5,
+        },
+      },
+    ],
+  },
   // ── Pillar L — Tax-delinquent specialist lifecycle templates ────────
   // Three templates from the 25-persona insight mine in
   // docs/exhaustive-completion/pillar-l-tax-delinquent-25-personas.md.
