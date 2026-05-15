@@ -23,7 +23,7 @@ import { isFounderEmail } from "../services/founder";
 export function requireFlag(flagKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Founder bypass — provision-time access while flags are being set up.
-    const email = (req.user as any)?.claims?.email || (req.user as any)?.email;
+    const email = (req.user as any)?.email || (req.user as any)?.email;
     if (isFounderEmail(email)) return next();
 
     // Enterprise-tier orgs continue to bypass legacy reseller / white-label

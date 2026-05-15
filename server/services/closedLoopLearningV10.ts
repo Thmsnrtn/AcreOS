@@ -119,7 +119,7 @@ Respond in JSON:
         responseFormat: "json",
       });
 
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
 
       if (parsed.shouldPropagate && parsed.learning) {
         // Determine target agents from learning type

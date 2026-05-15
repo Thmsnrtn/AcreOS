@@ -48,7 +48,7 @@ const router = Router();
 // ── Auth guard ─────────────────────────────────────────────────────────────
 
 function requireFounder(req: any, res: any, next: any) {
-  const userEmail = req.user?.email || req.user?.claims?.email;
+  const userEmail = req.user?.email || req.user?.email;
   if (!isFounderEmail(userEmail)) {
     return res.status(403).json({ error: "Founder access required" });
   }

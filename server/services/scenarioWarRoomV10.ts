@@ -144,7 +144,7 @@ Respond in JSON:
           responseFormat: "json",
         });
 
-        const parsed = JSON.parse(result.response);
+        const parsed = JSON.parse(result.content);
         return {
           agentCodename: agent.codename,
           domain: domainInfo.domain,
@@ -262,7 +262,7 @@ Respond in JSON:
       responseFormat: "json",
     });
 
-    const parsed = JSON.parse(result.response);
+    const parsed = JSON.parse(result.content);
 
     const [comparison] = await db.insert(scenarioOutcomeComparisons).values({
       scenarioId,

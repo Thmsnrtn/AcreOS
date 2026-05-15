@@ -81,7 +81,7 @@ Respond in JSON:
 }`;
 
         const result = await routeAITask({ task: prompt, complexity: TaskComplexity.SIMPLE, responseFormat: "json" });
-        const parsed = JSON.parse(result.response);
+        const parsed = JSON.parse(result.content);
         stagedAction = parsed.action || stagedAction;
         stagedDetails = parsed.details || {};
       } catch { /* use defaults */ }

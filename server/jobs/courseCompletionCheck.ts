@@ -276,7 +276,7 @@ export async function registerCourseCompletionJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 6 * * *", // 6 AM UTC daily
+        pattern: "0 6 * * *", // 6 AM UTC daily
       },
       removeOnComplete: 5,
       removeOnFail: 3,

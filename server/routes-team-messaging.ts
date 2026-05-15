@@ -48,7 +48,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const conversations = await db
         .select()
@@ -73,7 +73,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const createSchema = z.object({
         name: z.string().optional(),
@@ -137,7 +137,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
@@ -210,7 +210,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
@@ -324,7 +324,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
@@ -433,7 +433,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const presenceSchema = z.object({
         status: z.enum(["online", "away", "offline"]),
@@ -1250,7 +1250,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
 
       // Ensure seed channels exist for this org
       const existing = await db
@@ -1297,7 +1297,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
 
       const schema = z.object({
         name: z.string().min(1).max(80).transform(n => n.startsWith("#") ? n : `#${n}`),
@@ -1347,7 +1347,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const channelId = parseInt(req.params.id, 10);
 
       const [channel] = await db

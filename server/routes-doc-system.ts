@@ -464,7 +464,7 @@ export function registerDocSystemRoutes(app: Express): void {
         content: template.content,
         variables: template.variables,
         changes: req.body.changes || `Version ${nextVersion} created`,
-        createdBy: user?.id || user?.claims?.sub || "system",
+        createdBy: user?.id || user?.id || "system",
       });
       
       res.status(201).json(version);
@@ -518,7 +518,7 @@ export function registerDocSystemRoutes(app: Express): void {
         version: nextVersion,
         content: doc.content || "",
         changes: req.body.changes || `Version ${nextVersion} created`,
-        createdBy: user?.id || user?.claims?.sub || "system",
+        createdBy: user?.id || user?.id || "system",
       });
       
       res.status(201).json(version);

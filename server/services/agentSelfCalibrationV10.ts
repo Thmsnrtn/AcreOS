@@ -187,7 +187,7 @@ If no calibration needed, respond: { "shouldCalibrate": false }`;
         responseFormat: "json",
       });
 
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
 
       if (parsed.shouldCalibrate) {
         const [entry] = await db.insert(agentCalibrationHistory).values({

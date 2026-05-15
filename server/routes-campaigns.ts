@@ -59,7 +59,7 @@ export function registerCampaignRoutes(app: Express): void {
       const campaign = await storage.createCampaign(input);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -1553,7 +1553,7 @@ export function registerCampaignRoutes(app: Express): void {
       const campaign = await storage.getCampaign(org.id, Number(req.params.id));
       if (!campaign) return Errors.notFound(res, "Campaign");
 
-      const userEmail = user.email || user.claims?.email;
+      const userEmail = user.email || user?.email;
       if (!userEmail) {
         return Errors.badRequest(res, "No email address found for current user");
       }

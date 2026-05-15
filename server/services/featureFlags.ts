@@ -159,10 +159,10 @@ export function buildFlagContext(req: {
 }): FlagContext {
   const tier = req.organization?.subscriptionTier;
   return {
-    userId: req.user?.id ? String(req.user.id) : req.user?.claims?.sub,
+    userId: req.user?.id ? String(req.user.id) : req.user?.id,
     tier: typeof tier === "string" ? tier : undefined,
     isFounder: !!req.isFounder || !!req.organization?.isFounder,
-    email: req.user?.claims?.email || req.user?.email,
+    email: req.user?.email || req.user?.email,
   };
 }
 

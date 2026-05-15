@@ -360,7 +360,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       }
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       await storage.deleteTask(id);
       

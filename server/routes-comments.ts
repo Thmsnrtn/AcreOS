@@ -94,7 +94,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
   try {
     const org = req.organization;
     const user = req.user;
-    const userId = (user as any)?.claims?.sub ?? user?.id;
+    const userId = (user as any)?.id ?? user?.id;
     const { entityType, entityId } = req.params;
 
     if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
@@ -185,7 +185,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Authenticated
   try {
     const org = req.organization;
     const user = req.user;
-    const userId = String((user as any)?.claims?.sub ?? user?.id);
+    const userId = String((user as any)?.id ?? user?.id);
     const commentId = parseInt(req.params.id);
 
     if (isNaN(commentId)) return Errors.badRequest(res, "invalid comment ID");

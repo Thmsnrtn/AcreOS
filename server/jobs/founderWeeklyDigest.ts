@@ -910,7 +910,7 @@ export async function registerFounderWeeklyDigestJob(queue: any): Promise<void> 
     {},
     {
       repeat: {
-        cron: "0 8 * * 1", // 8 AM UTC every Monday
+        pattern: "0 8 * * 1", // 8 AM UTC every Monday
         timezone: "America/Chicago",
       },
       removeOnComplete: 4,  // keep last 4 weeks

@@ -130,7 +130,7 @@ export function registerImportExportRoutes(app: Express): void {
       // Large-file path: queue a job (Magdalena §1).
       if (data.length > MAX_CSV_IMPORT_ROWS) {
         const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id;
+        const userId = user?.id || user?.id;
         let fieldMap: Record<string, string> | undefined;
         if (req.body?.fieldMap) {
           try {
@@ -165,7 +165,7 @@ export function registerImportExportRoutes(app: Express): void {
       }
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -243,7 +243,7 @@ export function registerImportExportRoutes(app: Express): void {
         : await importNotesFromCSV(data, org.id, userFieldMap);
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -661,7 +661,7 @@ export function registerImportExportRoutes(app: Express): void {
       try {
         const org = req.organization!;
         const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id;
+        const userId = user?.id || user?.id;
         if (!req.file) return res.status(400).json({ message: "No file uploaded" });
         if (req.file.size > HARD_BYTE_CAP) {
           return res.status(400).json({ message: "File exceeds size cap" });
@@ -699,7 +699,7 @@ export function registerImportExportRoutes(app: Express): void {
       try {
         const org = req.organization!;
         const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id;
+        const userId = user?.id || user?.id;
         if (!req.file) return res.status(400).json({ message: "No ZIP uploaded" });
         // ZIP magic check: PK\x03\x04
         const buf = req.file.buffer;
@@ -769,7 +769,7 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const org = req.organization!;
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       const parsed = exportEverythingSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         return res

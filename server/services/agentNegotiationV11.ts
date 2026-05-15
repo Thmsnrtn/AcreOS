@@ -80,7 +80,7 @@ Respond in JSON:
     let respondentEvidence: string[] = [];
     try {
       const result = await routeAITask({ task: respondentPrompt, complexity: TaskComplexity.MODERATE, responseFormat: "json" });
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
       respondentPosition = parsed.position || "No position stated";
       respondentEvidence = parsed.evidence || [];
     } catch {
@@ -119,7 +119,7 @@ Respond in JSON:
 
         try {
           const result = await routeAITask({ task: roundPrompt, complexity: TaskComplexity.MODERATE, responseFormat: "json" });
-          const parsed = JSON.parse(result.response);
+          const parsed = JSON.parse(result.content);
           rounds.push({
             round,
             agentCodename: agent,
@@ -156,7 +156,7 @@ Respond in JSON:
 
     try {
       const result = await routeAITask({ task: evalPrompt, complexity: TaskComplexity.MODERATE, responseFormat: "json" });
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
       resolution = parsed.resolution || "Negotiation concluded";
       resolutionType = parsed.resolutionType || "deadlocked";
       compromiseDetails = parsed.compromiseDetails || {};

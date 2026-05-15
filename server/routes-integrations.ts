@@ -122,7 +122,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "integration",
           entityId: org.id,
@@ -247,7 +247,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "integration",
           entityId: org.id,
@@ -309,7 +309,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const user = req.user as any;
       const { to } = req.body;
       
-      const recipientEmail = to || user.email || user.claims?.email;
+      const recipientEmail = to || user.email || user?.email;
       
       if (!recipientEmail) {
         return Errors.badRequest(res, "No recipient email address provided");
@@ -441,7 +441,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "email_domain",
           entityId: newDomain.id,
@@ -562,7 +562,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "email_domain",
           entityId: domainId,
@@ -621,7 +621,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "email_domain",
           entityId: domainId,
@@ -775,7 +775,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "phone_number",
           entityId: newPhone.id,
@@ -822,7 +822,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "phone_number",
           entityId: phoneId,
@@ -883,7 +883,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "phone_number",
           entityId: phoneId,
@@ -1333,7 +1333,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "custom_field_definition",
           entityId: definition.id,
@@ -1369,7 +1369,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "custom_field_definition",
           entityId: id,
@@ -1402,7 +1402,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "custom_field_definition",
           entityId: id,
@@ -1515,7 +1515,7 @@ export function registerIntegrationRoutes(app: Express): void {
       try {
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "saved_view",
           entityId: view.id,
@@ -1551,7 +1551,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "saved_view",
           entityId: id,
@@ -1584,7 +1584,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "saved_view",
           entityId: id,
@@ -1617,7 +1617,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "saved_view",
           entityId: id,

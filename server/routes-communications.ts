@@ -39,7 +39,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const teamMember = await storage.getTeamMember(org.id, user.claims?.sub || user.id);
+      const teamMember = await storage.getTeamMember(org.id, user?.id || user.id);
 
       const { type, fromEmail, fromName, replyToEmail, replyRoutingMode } = req.body;
 
@@ -74,7 +74,7 @@ export function registerCommunicationRoutes(app: Express): void {
       try {
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "email_identity",
           entityId: identity.id,
@@ -132,7 +132,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "email_identity",
           entityId: id,
@@ -161,7 +161,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "email_identity",
           entityId: id,
@@ -195,7 +195,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "email_identity",
           entityId: id,
@@ -243,7 +243,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "mail_identity",
           entityId: identity.id,
@@ -294,7 +294,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "mail_identity",
           entityId: id,
@@ -323,7 +323,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "mail_identity",
           entityId: id,
@@ -357,7 +357,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "mail_identity",
           entityId: id,
@@ -486,7 +486,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "mailing_order",
           entityId: order.id,
@@ -520,7 +520,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "mailing_order",
           entityId: id,
@@ -626,7 +626,7 @@ export function registerCommunicationRoutes(app: Express): void {
         return Errors.notFound(res, "Message");
       }
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const message = await storage.markInboxMessageRead(id, userId);
       res.json(message);
     } catch (error: any) {
@@ -712,7 +712,7 @@ export function registerCommunicationRoutes(app: Express): void {
           const user = req.user as any;
           await storage.createAuditLogEntry({
             organizationId: org.id,
-            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            userId: (user?.id || user?.id)?.toString() || null,
             action: "create",
             entityType: "email_send",
             entityId: org.id,
@@ -758,7 +758,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user?.claims?.sub ?? user?.id ?? "";
+      const userId = user?.id ?? user?.id ?? "";
       const { entityType, entityId, content, eventType = "note_added" } = req.body;
 
       if (!entityType || !entityId || !content) {
@@ -976,7 +976,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "workflow",
           entityId: workflow.id,
@@ -1009,7 +1009,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "workflow",
           entityId: id,
@@ -1042,7 +1042,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "workflow",
           entityId: id,
@@ -1076,7 +1076,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "workflow",
           entityId: id,
@@ -1157,7 +1157,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "workflow",
           entityId: workflow.id,
@@ -1328,7 +1328,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "scheduled_task",
           entityId: task.id,
@@ -1371,7 +1371,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "scheduled_task",
           entityId: id,
@@ -1404,7 +1404,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "scheduled_task",
           entityId: id,

@@ -427,7 +427,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const user = req.user as any;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "update",
         entityType: "organization",
         entityId: org.id,
@@ -550,7 +550,7 @@ export function registerOrganizationRoutes(app: Express): void {
           const user = authReq.user as any;
           await storage.createAuditLogEntry({
             organizationId: org.id,
-            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            userId: (user?.id || user?.id)?.toString() || null,
             action: "update",
             entityType: "organization_tax_identity",
             entityId: org.id,
@@ -635,7 +635,7 @@ export function registerOrganizationRoutes(app: Express): void {
           const user = authReq.user as any;
           await storage.createAuditLogEntry({
             organizationId: org.id,
-            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            userId: (user?.id || user?.id)?.toString() || null,
             action: "skip",
             entityType: "organization_tax_identity",
             entityId: org.id,
@@ -679,7 +679,7 @@ export function registerOrganizationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "organization_ai_settings",
           entityId: org.id,
@@ -1150,7 +1150,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const user = req.user as any;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "update",
         entityType: "team_member",
         entityId: memberId,
@@ -1224,7 +1224,7 @@ export function registerOrganizationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "team_member",
           entityId: memberId,
@@ -1291,7 +1291,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }
 
       const adder = req.user as any;
-      const adderUserId = String(adder?.claims?.sub || adder?.id || "");
+      const adderUserId = String(adder?.id || adder?.id || "");
 
       const row = await storage.addOrgCoOwner({
         organizationId: org.id,
@@ -1538,7 +1538,7 @@ export function registerOrganizationRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "organization_settings",
           entityId: org.id,
@@ -1612,7 +1612,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = (req as AuthenticatedRequest).organization;
       if (!org) return Errors.unauthorized(res);
       const user = (req as any).user;
-      const inviterId = user?.claims?.sub || user?.id || null;
+      const inviterId = user?.id || user?.id || null;
       // Accept either a single invite or { invites: [...] } for bulk.
       const bulkParsed = bulkInvitationSchema.safeParse(req.body);
       const singleParsed = createInvitationSchema.safeParse(req.body);
@@ -1816,8 +1816,8 @@ export function registerOrganizationRoutes(app: Express): void {
   api.post("/api/organization/invitations/accept", isAuthenticated, async (req, res) => {
     try {
       const user = (req as any).user;
-      const userId = user?.claims?.sub || user?.id;
-      const userEmail = (user?.claims?.email || user?.email || "").toLowerCase();
+      const userId = user?.id || user?.id;
+      const userEmail = (user?.email || user?.email || "").toLowerCase();
       const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -1992,7 +1992,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const userId = (user as any)?.claims?.sub ?? user?.id ?? "unknown";
+      const userId = (user as any)?.id ?? user?.id ?? "unknown";
       const parsed = pushSubscribeSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);

@@ -224,7 +224,7 @@ export function registerPropertyRoutes(app: Express): void {
       const property = await storage.createProperty(input);
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -287,7 +287,7 @@ export function registerPropertyRoutes(app: Express): void {
       const property = await storage.updateProperty(propertyId, validated, org.id);
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -375,7 +375,7 @@ export function registerPropertyRoutes(app: Express): void {
       );
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -425,7 +425,7 @@ export function registerPropertyRoutes(app: Express): void {
       await storage.deleteProperty(propertyId, org.id);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -456,7 +456,7 @@ export function registerPropertyRoutes(app: Express): void {
       const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -487,7 +487,7 @@ export function registerPropertyRoutes(app: Express): void {
       const updatedCount = await storage.bulkUpdateProperties(org.id, ids, updates);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -995,7 +995,7 @@ export function registerPropertyRoutes(app: Express): void {
       const result = detectLandStatusFromCoords(lat, lng);
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,

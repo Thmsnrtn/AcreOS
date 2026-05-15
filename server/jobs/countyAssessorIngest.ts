@@ -688,7 +688,7 @@ export async function registerCountyAssessorIngestJob(queue: Queue): Promise<voi
     {},
     {
       repeat: {
-        cron: "0 23 * * *", // 11 PM UTC nightly
+        pattern: "0 23 * * *", // 11 PM UTC nightly
       },
       removeOnComplete: 7,
       removeOnFail: 3,

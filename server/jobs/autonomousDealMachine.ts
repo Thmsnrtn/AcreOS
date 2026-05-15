@@ -864,7 +864,7 @@ export async function registerAutonomousDealMachineJob(queue: Queue): Promise<vo
     {},
     {
       repeat: {
-        cron: "0 1 * * *", // 1 AM UTC — after county assessor ingest (11 PM) and data ingest (10 PM)
+        pattern: "0 1 * * *", // 1 AM UTC — after county assessor ingest (11 PM) and data ingest (10 PM)
       },
       removeOnComplete: 7,
       removeOnFail: 3,

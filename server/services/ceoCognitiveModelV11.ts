@@ -60,7 +60,7 @@ Respond in JSON:
 }`;
 
     const result = await routeAITask({ task: prompt, complexity: TaskComplexity.COMPLEX, responseFormat: "json" });
-    const parsed = JSON.parse(result.response);
+    const parsed = JSON.parse(result.content);
 
     // Check if model exists for this category
     const [existing] = await db.select().from(ceoCognitiveModel)
@@ -139,7 +139,7 @@ Respond in JSON:
 }`;
 
     const result = await routeAITask({ task: prompt, complexity: TaskComplexity.MODERATE, responseFormat: "json" });
-    const parsed = JSON.parse(result.response);
+    const parsed = JSON.parse(result.content);
 
     const [prediction] = await db.insert(ceoShadowPredictions).values({
       decisionCategory: params.decisionCategory,
@@ -176,7 +176,7 @@ Respond in JSON:
 
     try {
       const result = await routeAITask({ task: matchPrompt, complexity: TaskComplexity.SIMPLE, responseFormat: "json" });
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
       wasCorrect = parsed.matches;
       divergenceReason = parsed.divergenceReason || null;
     } catch { /* use string comparison */ }

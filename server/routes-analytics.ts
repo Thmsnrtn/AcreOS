@@ -242,7 +242,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const rule = await storage.createAutomationRule({
         ...req.body,
@@ -302,7 +302,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       const presets = await storage.getWorkspacePresets(org.id, userId);
       res.json(presets);
     } catch (error: any) {
@@ -315,7 +315,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       const preset = await storage.createWorkspacePreset({
         ...req.body,
@@ -391,7 +391,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const tasks = await storage.getMyTasks(org.id, userId);
       res.json(tasks);
@@ -443,7 +443,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const unreadOnly = req.query.unreadOnly === 'true';
       
       const notifications = await storage.getNotifications(org.id, userId, unreadOnly);
@@ -459,7 +459,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       const count = await storage.getUnreadNotificationCount(org.id, userId);
       res.json({ count });
@@ -486,7 +486,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       
       await storage.markAllNotificationsRead(org.id, userId);
       res.json({ success: true });

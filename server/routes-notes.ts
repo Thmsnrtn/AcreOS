@@ -1234,7 +1234,7 @@ export function registerNoteRoutes(app: Express): void {
           .limit(1);
         if (!c) return Errors.notFound(res, "Case");
 
-        const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+        const userId = (req.user as any)?.id || (req.user as any)?.id || null;
 
         const [row] = await db
           .insert(noteLossMitActions)

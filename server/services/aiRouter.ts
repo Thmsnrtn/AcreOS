@@ -352,7 +352,7 @@ export enum AIProvider {
 }
 
 export interface AITask {
-  taskType: string;
+  taskType?: string;
   complexity: TaskComplexity;
   /**
    * Wave 8 — tier-based routing. When set, takes precedence over
@@ -360,7 +360,15 @@ export interface AITask {
    * See TaskTier docs for tier semantics.
    */
   taskTier?: TaskTier;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  /**
+   * Shorthand for the single-turn case: pass a raw prompt string instead
+   * of building messages. The router converts it to
+   * `[{ role: "user", content: task }]` automatically before sending.
+   * Mutually exclusive with `messages` in practice; if both are set,
+   * `messages` wins.
+   */
+  task?: string;
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   maxTokens?: number;
   temperature?: number;
   responseFormat?: "text" | "json";
@@ -849,6 +857,19 @@ export async function routeAITask(
   task: AITask,
   config: AIRouterConfig = {}
 ): Promise<AIResponse> {
+  // Shorthand: callers that pass `task: "prompt string"` instead of building
+  // a messages array get auto-converted to a single-turn user message.
+  // taskType defaults to "ad_hoc" when not set so cache + telemetry keys
+  // don't break.
+  if (!task.messages || task.messages.length === 0) {
+    const promptText = (task as AITask & { task?: string }).task;
+    task = {
+      ...task,
+      messages: promptText ? [{ role: "user", content: promptText }] : (task.messages ?? []),
+      taskType: task.taskType ?? "ad_hoc",
+    };
+  }
+
   // ── Phase 3 Week 9: per-org daily AI USD quota gate ─────────────────────────
   // Runs BEFORE the cache check so that even cached responses respect the cap
   // (a $0 cached call still counts as a call, but does not advance spend).

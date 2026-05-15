@@ -85,7 +85,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const parsed = createSupportCaseSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { subject, message } = parsed.data;
@@ -250,7 +250,7 @@ export function registerAdminRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
       const userId = getUserId(authReq);
-      const userEmail = user.claims?.email || user.email;
+      const userEmail = user?.email || user.email;
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
       // Previously any org owner could view escalated cases across all orgs.
@@ -288,7 +288,7 @@ export function registerAdminRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
       const userId = getUserId(authReq);
-      const userEmail = user.claims?.email || user.email;
+      const userEmail = user?.email || user.email;
       const caseId = parseInt(req.params.id);
       const parsed = adminRespondSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
@@ -338,7 +338,7 @@ export function registerAdminRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
       const userId = getUserId(authReq);
-      const userEmail = user.claims?.email || user.email;
+      const userEmail = user?.email || user.email;
       const org = authReq.organization;
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
@@ -435,7 +435,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
 
       const validation = insertFeatureRequestSchema.safeParse({
         ...req.body,
@@ -473,7 +473,7 @@ export function registerAdminRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
       const userId = getUserId(authReq);
-      const userEmail = user.claims?.email || user.email;
+      const userEmail = user?.email || user.email;
 
       // R1 fix: gate on canonical founder identity, not org ownership.
       // Previously any org owner could call this endpoint against any org.
@@ -495,7 +495,7 @@ export function registerAdminRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const user = authReq.user;
       const userId = getUserId(authReq);
-      const userEmail = user.claims?.email || user.email;
+      const userEmail = user?.email || user.email;
       const requestId = parseInt(req.params.id);
 
       // R1 fix: gate on canonical founder identity, not org ownership.
@@ -663,8 +663,8 @@ export function registerAdminRoutes(app: Express): void {
     }
 
     const user = req.user;
-    const userId = user.claims?.sub || user.id;
-    const userEmail = user.claims?.email || user.email;
+    const userId = user?.id || user.id;
+    const userEmail = user?.email || user.email;
 
     const founderUserIds = (process.env.FOUNDER_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
     const isFounder = isFounderEmail(userEmail) || founderUserIds.includes(String(userId));
@@ -2290,7 +2290,7 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/user/map-layer-preferences", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId: string = user?.claims?.sub || user?.id;
+      const userId: string = user?.id || user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
       const { userMapLayerPreferences } = await import("@shared/schema");
@@ -2311,7 +2311,7 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/user/map-layer-preferences/:layerId", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId: string = user?.claims?.sub || user?.id;
+      const userId: string = user?.id || user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
       const layerId = Number(req.params.layerId);
@@ -3836,7 +3836,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
       if (!parsedKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedKey.error.issues });
       const { name, scope = "read", expiresInDays } = parsedKey.data;
@@ -4206,7 +4206,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const org = (req as any).organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const { page, feedback } = req.body as { page: string; feedback: string };
       if (!feedback?.trim()) return res.status(400).json({ message: "Feedback required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");
@@ -4263,7 +4263,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const org = (req as any).organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const sessionId = await betaAnalytics.startSession(userId, org.id);
       res.json({ sessionId });
@@ -4303,7 +4303,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const org = (req as any).organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const { eventName } = req.body as { eventName: string };
       if (!eventName) return res.status(400).json({ message: "eventName required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");

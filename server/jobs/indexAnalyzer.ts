@@ -318,7 +318,7 @@ export async function registerIndexAnalyzerJob(queue: any): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 2 * * 0", // 2 AM UTC every Sunday
+        pattern: "0 2 * * 0", // 2 AM UTC every Sunday
       },
       removeOnComplete: 3,
       removeOnFail: 2,

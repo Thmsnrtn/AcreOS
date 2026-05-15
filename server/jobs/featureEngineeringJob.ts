@@ -265,7 +265,7 @@ export async function registerFeatureEngineeringJob(queue: Queue): Promise<void>
     {},
     {
       repeat: {
-        cron: "0 23 * * *", // 11 PM UTC nightly
+        pattern: "0 23 * * *", // 11 PM UTC nightly
       },
       removeOnComplete: 5,
       removeOnFail: 3,

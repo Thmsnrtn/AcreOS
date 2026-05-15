@@ -62,7 +62,7 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
       const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "update",
         entityType: "compliance_alert",
         entityId: alertId,
@@ -91,7 +91,7 @@ router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
       const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "update",
         entityType: "compliance_alert",
         entityId: alertId,
@@ -119,7 +119,7 @@ router.post('/disclosures', async (req: Request, res: Response) => {
       const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "create",
         entityType: "compliance_disclosure",
         entityId: parseInt(propertyId),
@@ -147,7 +147,7 @@ router.post('/monitor', async (req: Request, res: Response) => {
       const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
-        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        userId: (user?.id || user?.id)?.toString() || null,
         action: "create",
         entityType: "compliance_monitor",
         entityId: org.id,

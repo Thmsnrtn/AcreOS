@@ -589,7 +589,7 @@ export async function registerAutonomousHealthMonitorJob(queue: any): Promise<vo
     {},
     {
       repeat: {
-        cron: "0 * * * *", // every hour on the hour
+        pattern: "0 * * * *", // every hour on the hour
       },
       removeOnComplete: 24, // keep last 24 hourly runs
       removeOnFail: 5,

@@ -179,7 +179,7 @@ export async function registerLandCreditRecalcJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 3 * * *", // 3 AM UTC daily
+        pattern: "0 3 * * *", // 3 AM UTC daily
       },
       removeOnComplete: 5,
       removeOnFail: 3,

@@ -270,7 +270,7 @@ export async function registerDealHunterScrapeJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 */2 * * *", // Every 2 hours
+        pattern: "0 */2 * * *", // Every 2 hours
       },
       removeOnComplete: 5,
       removeOnFail: 3,

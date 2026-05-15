@@ -963,7 +963,7 @@ export async function registerRoutes(
       
       // Log the action
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -1048,7 +1048,7 @@ export async function registerRoutes(
       
       // Audit log
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -1081,7 +1081,7 @@ export async function registerRoutes(
       }
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       // Get lead details before soft-delete for audit log
       const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
@@ -1133,7 +1133,7 @@ export async function registerRoutes(
       }
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       const restoredCount = await storage.restoreLeads(org.id, ids);
       
@@ -1166,7 +1166,7 @@ export async function registerRoutes(
       }
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       const deletedCount = await storage.permanentlyDeleteLeads(org.id, ids);
       
@@ -1389,7 +1389,7 @@ export async function registerRoutes(
       
       // Create audit log entry
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -1454,7 +1454,7 @@ export async function registerRoutes(
       
       // Create audit log entry for the undo
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -2214,7 +2214,7 @@ export async function registerRoutes(
       }
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       
       await storage.deleteTask(id);
       

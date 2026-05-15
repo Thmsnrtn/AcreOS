@@ -77,7 +77,7 @@ export function complianceGate(checkType: "note" | "deal") {
           const { storage } = await import("../storage");
           await storage.createAuditLogEntry({
             organizationId: org.id,
-            userId: user?.claims?.sub || user?.id,
+            userId: user?.id || user?.id,
             action: "compliance_check",
             entityType: checkType,
             entityId: 0,

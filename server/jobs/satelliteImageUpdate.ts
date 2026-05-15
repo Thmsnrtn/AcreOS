@@ -322,7 +322,7 @@ export async function registerSatelliteUpdateJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 2 * * *", // 2 AM UTC daily
+        pattern: "0 2 * * *", // 2 AM UTC daily
       },
       removeOnComplete: 5,
       removeOnFail: 3,

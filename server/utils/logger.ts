@@ -221,9 +221,8 @@ export const logger = {
       ...options,
     };
 
-    const user = req.user as { claims?: { sub?: string } } | undefined;
-    if (user?.claims?.sub) {
-      entry.userId = user.claims.sub;
+    if (req.user?.id) {
+      entry.userId = req.user.id;
     }
 
     log("info", formatLogEntry(entry));

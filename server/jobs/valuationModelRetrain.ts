@@ -392,7 +392,7 @@ export async function registerValuationRetrainJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 1 * * 0", // Sundays at 1 AM UTC
+        pattern: "0 1 * * 0", // Sundays at 1 AM UTC
       },
       removeOnComplete: 3,
       removeOnFail: 3,

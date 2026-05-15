@@ -224,7 +224,7 @@ export function registerBillingRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "update",
           entityType: "billing_auto_top_up",
           entityId: org.id,
@@ -410,7 +410,7 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
 
-      const email = user?.claims?.email || parsed.data.email;
+      const email = user?.email || parsed.data.email;
       const businessName = org.name || parsed.data.businessName;
 
       if (!email) {
@@ -435,7 +435,7 @@ export function registerBillingRoutes(app: Express): void {
       try {
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "create",
           entityType: "stripe_connect_account",
           entityId: org.id,
@@ -507,7 +507,7 @@ export function registerBillingRoutes(app: Express): void {
         const user = req.user as any;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          userId: (user?.id || user?.id)?.toString() || null,
           action: "delete",
           entityType: "stripe_connect_account",
           entityId: org.id,

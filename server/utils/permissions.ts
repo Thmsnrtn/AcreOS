@@ -264,7 +264,7 @@ export async function getUserPermissionContext(
   user: any,
   org: Organization
 ): Promise<UserPermissionContext | null> {
-  const userId = user.claims?.sub || user.id;
+  const userId = user?.id || user.id;
   if (!userId) return null;
 
   const teamMember = await storage.getTeamMember(org.id, userId);

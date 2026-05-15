@@ -201,7 +201,7 @@ export function registerFinanceRoutes(app: Express): void {
       const note = await storage.createNote(input);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -264,7 +264,7 @@ export function registerFinanceRoutes(app: Express): void {
     const note = await storage.updateNote(noteId, validated, org.id);
 
     const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
+    const userId = user?.id || user?.id;
     await storage.createAuditLogEntry({
       organizationId: org.id,
       userId,
@@ -293,7 +293,7 @@ export function registerFinanceRoutes(app: Express): void {
     await storage.deleteNote(noteId, org.id);
 
     const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
+    const userId = user?.id || user?.id;
     await storage.createAuditLogEntry({
       organizationId: org.id,
       userId,
@@ -617,7 +617,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       try {
         const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id;
+        const userId = user?.id || user?.id;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: userId?.toString() || null,
@@ -920,7 +920,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       try {
         const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id;
+        const userId = user?.id || user?.id;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: userId?.toString() || null,

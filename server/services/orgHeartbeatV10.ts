@@ -150,7 +150,7 @@ Respond with just a number 0-100.`;
           task: prompt,
           complexity: TaskComplexity.SIMPLE,
         });
-        const parsed = parseInt(result.response.replace(/\D/g, ""));
+        const parsed = parseInt(result.content.replace(/\D/g, ""));
         if (parsed >= 0 && parsed <= 100) coherenceScore = parsed;
       }
     } catch {

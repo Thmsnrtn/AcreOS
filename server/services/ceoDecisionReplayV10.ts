@@ -113,7 +113,7 @@ Respond in JSON:
       responseFormat: "json",
     });
 
-    const parsed = JSON.parse(result.response);
+    const parsed = JSON.parse(result.content);
 
     const [updated] = await db.update(ceoDecisionReplays)
       .set({

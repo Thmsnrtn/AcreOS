@@ -521,7 +521,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const user = (req as any).user;
-        const reviewerId = user?.claims?.sub || user?.id || null;
+        const reviewerId = user?.id || user?.id || null;
 
         const [existing] = await db
           .select()

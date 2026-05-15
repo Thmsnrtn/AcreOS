@@ -306,7 +306,7 @@ export async function registerRegulatoryComplianceJob(queue: Queue): Promise<voi
     {},
     {
       repeat: {
-        cron: "0 4 * * *", // 4 AM UTC daily
+        pattern: "0 4 * * *", // 4 AM UTC daily
       },
       removeOnComplete: 5,
       removeOnFail: 3,

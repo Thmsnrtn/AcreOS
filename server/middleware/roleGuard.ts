@@ -78,7 +78,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const userId = String(user.claims?.sub || user.id);
+      const userId = String(user?.id || user.id);
 
       const [member] = await db
         .select({ role: teamMembers.role })

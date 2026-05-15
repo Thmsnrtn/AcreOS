@@ -360,7 +360,7 @@ export function registerLeadRoutes(app: Express): void {
       const lead = await storage.createLead(input);
 
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -488,7 +488,7 @@ export function registerLeadRoutes(app: Express): void {
       const lead = await storage.updateLead(leadId, validated, org.id);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -548,7 +548,7 @@ export function registerLeadRoutes(app: Express): void {
 
     // Soft delete: set deletedAt instead of hard deleting
     const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
+    const userId = user?.id || user?.id;
     await db.update(leads).set({
       deletedAt: new Date(),
       deletedBy: userId || null,
@@ -653,7 +653,7 @@ export function registerLeadRoutes(app: Express): void {
       const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
@@ -684,7 +684,7 @@ export function registerLeadRoutes(app: Express): void {
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
       
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,

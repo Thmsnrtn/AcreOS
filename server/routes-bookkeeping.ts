@@ -46,7 +46,7 @@ router.get("/1099", async (req: Request, res: Response) => {
     if (Array.isArray(forms) && forms.length > 0) {
       try {
         const { recordActivationEventAsync } = await import("./services/activation");
-        const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+        const userId = (req.user as any)?.id || (req.user as any)?.id || null;
         recordActivationEventAsync({
           orgId: org.id,
           userId,

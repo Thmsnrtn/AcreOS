@@ -85,7 +85,7 @@ Respond in JSON:
     let weights: number[] = nodes.map(() => 1 / nodes.length); // default equal split
     try {
       const result = await routeAITask({ task: prompt, complexity: TaskComplexity.MODERATE, responseFormat: "json" });
-      const parsed = JSON.parse(result.response);
+      const parsed = JSON.parse(result.content);
       if (parsed.weights && parsed.weights.length === nodes.length) {
         weights = parsed.weights;
       }

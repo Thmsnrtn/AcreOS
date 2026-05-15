@@ -177,7 +177,7 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const user = req.user as any;
-    const userId = user.claims?.sub || user.id;
+    const userId = user?.id || user.id;
     const parsed = createConversationSchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
@@ -212,7 +212,7 @@ export function registerAIRoutes(app: Express): void {
       step = "parse";
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const parsed = aiChatSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -337,7 +337,7 @@ export function registerAIRoutes(app: Express): void {
       step = "parse";
       const org = req.organization;
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const parsed = aiChatStreamSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -891,7 +891,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
+      const userId = user?.id || user?.id;
       const { paxNudges } = await import("@shared/schema");
       const { eq: _eq, and: _and, isNull, or: _or, lte: _lte, sql: _sql } = await import("drizzle-orm");
       const now = new Date();
@@ -1429,7 +1429,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const user = req.user as any;
-      const userId = user.claims?.sub || user.id;
+      const userId = user?.id || user.id;
       const actionId = parseInt(req.params.id);
       
       const action = await storage.getVaAction(actionId);

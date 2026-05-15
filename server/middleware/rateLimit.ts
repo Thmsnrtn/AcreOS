@@ -259,7 +259,7 @@ export function createRateLimiter(
 export const authenticatedKeyFunction: KeyFunction = (req: Request) => {
   const user = (req as any).user;
   if (user) {
-    const userId = user.claims?.sub || user.id;
+    const userId = user?.id || user.id;
     if (userId) {
       return `user:${userId}`;
     }

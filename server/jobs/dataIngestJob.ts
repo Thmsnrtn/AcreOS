@@ -258,7 +258,7 @@ export async function registerDataIngestJob(queue: Queue): Promise<void> {
     {},
     {
       repeat: {
-        cron: "0 22 * * *", // 10 PM UTC nightly
+        pattern: "0 22 * * *", // 10 PM UTC nightly
       },
       removeOnComplete: 7,
       removeOnFail: 5,
