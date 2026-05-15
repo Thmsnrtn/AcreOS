@@ -245,6 +245,7 @@ const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedba
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
+const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
@@ -812,6 +813,13 @@ function Router() {
           notifications, feed, todo, daily-digest). */}
       <Route path="/founder/now">
         {() => <FounderProtectedRoute component={FounderNowPage} />}
+      </Route>
+      {/* Monthly check-in surface — sibling of /founder/now. Composes
+          the 13 fragmented summary endpoints into 5 sections + one
+          decision. Read once a month in 5 minutes; the founder's only
+          required surface alongside /founder/now. */}
+      <Route path="/founder/cockpit">
+        {() => <FounderProtectedRoute component={FounderCockpitPage} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}

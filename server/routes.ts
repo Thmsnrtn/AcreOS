@@ -1499,6 +1499,12 @@ export async function registerRoutes(
     app.use('/api/founder/now', isAuthenticated, founderNowRouter);
   }
 
+  // Founder cockpit — the monthly check-in surface composing 13 fragmented summary endpoints.
+  {
+    const founderCockpitRouter = (await import("./routes-founder-cockpit")).default;
+    app.use('/api/founder/cockpit', isAuthenticated, founderCockpitRouter);
+  }
+
   // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
   {
     const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;
