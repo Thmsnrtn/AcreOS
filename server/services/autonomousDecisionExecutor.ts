@@ -482,7 +482,7 @@ export function checkHardGuardrails(action: {
  */
 async function captureTelemetryBaseline(): Promise<Record<string, number>> {
   try {
-    const { auditEvents, jobHealthLogs } = await import("@shared/schema");
+    const { auditEvents, jobHealthLogs, customerHealthScores, supportCases } = await import("@shared/schema");
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [errorRow] = await db
       .select({ c: sql<number>`count(*)::int` })
@@ -502,9 +502,26 @@ async function captureTelemetryBaseline(): Promise<Record<string, number>> {
           sql`${jobHealthLogs.runStartedAt} >= ${dayAgo}`,
         ),
       );
+    // Customer-outcome baseline (paired with agentRetractCron's regression
+    // check on the same signals).
+    const [healthRow] = await db
+      .select({ avg: sql<number>`coalesce(avg(${customerHealthScores.score})::float, 0)` })
+      .from(customerHealthScores)
+      .where(sql`${customerHealthScores.calculatedAt} >= ${dayAgo}`);
+    const [escalatedRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(supportCases)
+      .where(
+        and(
+          sql`${supportCases.escalatedAt} >= ${dayAgo}`,
+          sql`${supportCases.escalatedAt} IS NOT NULL`,
+        ),
+      );
     return {
       errors24h: Number(errorRow?.c ?? 0),
       jobFailures24h: Number(jobFailRow?.c ?? 0),
+      customerHealthAvg: Number(healthRow?.avg ?? 0),
+      supportEscalations24h: Number(escalatedRow?.c ?? 0),
       capturedAtMs: Date.now(),
     };
   } catch {

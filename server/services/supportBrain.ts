@@ -562,6 +562,19 @@ In the meantime, is there anything else I can help you with?`;
         entityType: "support_case",
         entityId: String(caseId),
       }).catch(() => {});
+
+      // Pillar R — the Support Agent earns trust on every successful
+      // auto-resolution. After 10 consecutive resolutions Sophie graduates
+      // to notify_only; after 50 more, to silent. Customer dissatisfaction
+      // ratings (≤2) call recordRetract() in rateSatisfaction below, so
+      // graduation is gated on customer-side outcome quality, not just
+      // "did the playbook run without crashing."
+      try {
+        const { recordAcceptance } = await import("./trustGraduation");
+        await recordAcceptance("sophie", "support_auto_resolve");
+      } catch (err) {
+        logger.warn("[support-brain] trustGraduation.recordAcceptance failed", { caseId, err: String(err) });
+      }
     }
     return updated;
   }
@@ -571,6 +584,17 @@ In the meantime, is there anything else I can help you with?`;
       userSatisfaction: rating,
       status: "closed",
     });
+
+    // Pillar R — customer ratings ≤2 (out of 5) are a retract signal.
+    // Demotes Sophie's tier and resets the consecutive-acceptance streak.
+    if (rating <= 2) {
+      try {
+        const { recordRetract } = await import("./trustGraduation");
+        await recordRetract("sophie", "support_auto_resolve");
+      } catch (err) {
+        logger.warn("[support-brain] trustGraduation.recordRetract failed", { caseId, rating, err: String(err) });
+      }
+    }
   }
 
   async getEscalatedCases(): Promise<SupportCase[]> {

@@ -21,6 +21,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
+import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import {
   Card,
   CardContent,
@@ -262,6 +263,7 @@ export default function FounderAgentQueuePage() {
   return (
     <PageShell>
       <div className="max-w-5xl mx-auto py-6 space-y-6">
+        <CanonicalSurfacesBanner variant="compact" />
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>

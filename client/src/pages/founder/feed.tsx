@@ -18,6 +18,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import {
   Card,
   CardContent,
@@ -165,6 +166,7 @@ export default function FounderFeedPage() {
   return (
     <PageShell>
       <div className="max-w-5xl mx-auto py-6 space-y-6">
+        <CanonicalSurfacesBanner variant="compact" />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold flex items-center gap-2">

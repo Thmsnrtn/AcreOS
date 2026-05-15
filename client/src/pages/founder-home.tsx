@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 
 import { FounderPageShell } from "@/components/founder/founder-page-shell";
+import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -255,6 +256,8 @@ export default function FounderHomePage() {
           payload doesn't crash the entire surface. Each falls back to a
           recoverable error card with retry. */}
       <div className="space-y-10">
+        <CanonicalSurfacesBanner />
+
         <SectionBoundary name="What needs you today">
           <NeedsYouSection />
         </SectionBoundary>

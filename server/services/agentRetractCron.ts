@@ -25,6 +25,8 @@ import {
   agentEvents,
   auditEvents,
   jobHealthLogs,
+  customerHealthScores,
+  supportCases,
 } from "@shared/schema";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
@@ -44,6 +46,12 @@ const REGRESSION_THRESHOLDS = {
   // Floor — if baseline was 0 errors, allow up to 10 before flagging.
   errorFloor: 10,
   jobFailureFloor: 3,
+  // Customer-side outcome signals. If avg customer health drops by ≥10
+  // points or the support-escalation rate triples (with a floor of 5
+  // escalations to avoid noise on tiny samples), that's a regression.
+  customerHealthDropPoints: 10,
+  escalationRateMultiplier: 3.0,
+  escalationFloor: 5,
 };
 
 async function snapshotCurrentTelemetry(): Promise<Record<string, number>> {
@@ -67,9 +75,26 @@ async function snapshotCurrentTelemetry(): Promise<Record<string, number>> {
           sql`${jobHealthLogs.runStartedAt} >= ${dayAgo}`,
         ),
       );
+    // Customer-side outcome signals.
+    const [healthRow] = await db
+      .select({ avg: sql<number>`coalesce(avg(${customerHealthScores.score})::float, 0)` })
+      .from(customerHealthScores)
+      .where(sql`${customerHealthScores.calculatedAt} >= ${dayAgo}`);
+    const [escalatedRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(supportCases)
+      .where(
+        and(
+          sql`${supportCases.escalatedAt} >= ${dayAgo}`,
+          sql`${supportCases.escalatedAt} IS NOT NULL`,
+        ),
+      );
+
     return {
       errors24h: Number(errorRow?.c ?? 0),
       jobFailures24h: Number(jobFailRow?.c ?? 0),
+      customerHealthAvg: Number(healthRow?.avg ?? 0),
+      supportEscalations24h: Number(escalatedRow?.c ?? 0),
       capturedAtMs: Date.now(),
     };
   } catch (err) {
@@ -109,6 +134,35 @@ function assessRegression(
       return {
         regressed: true,
         reason: `Background-job failure count rose ${ratio.toFixed(1)}× (${baseJob} → ${curJob}, threshold ${REGRESSION_THRESHOLDS.jobFailureMultiplier}×).`,
+        metrics: current,
+      };
+    }
+  }
+
+  // Customer-health regression — drop of ≥10 points across the fleet.
+  // Only check if both baseline and current have meaningful samples (>0).
+  const baseHealth = Number(baseline.customerHealthAvg ?? 0);
+  const curHealth = Number(current.customerHealthAvg ?? 0);
+  if (baseHealth > 0 && curHealth > 0) {
+    const drop = baseHealth - curHealth;
+    if (drop >= REGRESSION_THRESHOLDS.customerHealthDropPoints) {
+      return {
+        regressed: true,
+        reason: `Average customer health dropped ${drop.toFixed(1)} points (${baseHealth.toFixed(1)} → ${curHealth.toFixed(1)}, threshold ${REGRESSION_THRESHOLDS.customerHealthDropPoints}).`,
+        metrics: current,
+      };
+    }
+  }
+
+  // Support-escalation regression — sustained spike in cases we couldn't auto-resolve.
+  const baseEsc = Number(baseline.supportEscalations24h ?? 0);
+  const curEsc = Number(current.supportEscalations24h ?? 0);
+  if (curEsc > REGRESSION_THRESHOLDS.escalationFloor) {
+    const ratio = baseEsc > 0 ? curEsc / baseEsc : curEsc / 1;
+    if (ratio >= REGRESSION_THRESHOLDS.escalationRateMultiplier) {
+      return {
+        regressed: true,
+        reason: `Support-escalation count rose ${ratio.toFixed(1)}× (${baseEsc} → ${curEsc}, threshold ${REGRESSION_THRESHOLDS.escalationRateMultiplier}×).`,
         metrics: current,
       };
     }
