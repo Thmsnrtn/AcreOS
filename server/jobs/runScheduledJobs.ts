@@ -2592,6 +2592,34 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import stripe drift detector: ${err}`, "ops");
   });
 
+  // ─── Pillar R — daily agent-retract cron ─────────────────────────────
+  // Walks open agent_proposal_observations rows. Compares telemetry
+  // baseline (captured at acceptance) to current snapshot; retracts +
+  // demotes trust tier on regression. Marks clean once the 7-day
+  // window closes without regression. Critical for Pillar R's
+  // "default to ship, retract on regression" guarantee.
+  import("../services/agentRetractCron").then(({ runAgentRetractCron }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Agent retract cron registered (self-rescheduling, 24h)", "ops");
+      scheduleSelfRescheduling({
+        name: "agent_retract_cron",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: 25 * 60 * 1000,
+        run: async () => {
+          await withJobLock("agent_retract_cron", 30 * 60, async () => {
+            const r = await runAgentRetractCron();
+            log(
+              `[agent-retract] evaluated=${r.evaluated} retracted=${r.retracted} cleaned=${r.marked_clean} errors=${r.errors}`,
+              "ops",
+            );
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import agent retract cron: ${err}`, "ops");
+  });
+
   // ─── Pillar U — monthly pillar review ────────────────────────────────
   // Reads docs/exhaustive-completion/pillar-*.md, scores each on
   // shipped-artifact recency, writes pillar-review-{YYYY-MM-DD}.md,

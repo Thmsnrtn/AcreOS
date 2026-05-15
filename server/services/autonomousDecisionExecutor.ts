@@ -469,6 +469,49 @@ export function checkHardGuardrails(action: {
 // Core executor — processes a single inbox item
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Pillar R — capture a pre-merge telemetry snapshot for the post-merge
+ * retract cron to compare against. Numbers are tiny (counts over the
+ * trailing 24h); the cron in agentRetractCron.ts reads agentProposalObservations
+ * and compares this baseline to the current snapshot each day.
+ *
+ * Kept intentionally minimal: error rate, recent job failures. More
+ * sophisticated signals (route-sweep pass rate, customer health delta,
+ * Pax quality) can be added without changing the schema since the field
+ * is jsonb.
+ */
+async function captureTelemetryBaseline(): Promise<Record<string, number>> {
+  try {
+    const { auditEvents, jobHealthLogs } = await import("@shared/schema");
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [errorRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(auditEvents)
+      .where(
+        and(
+          sql`${auditEvents.action} LIKE '%error%'`,
+          sql`${auditEvents.createdAt} >= ${dayAgo}`,
+        ),
+      );
+    const [jobFailRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(jobHealthLogs)
+      .where(
+        and(
+          sql`${jobHealthLogs.status} != 'success'`,
+          sql`${jobHealthLogs.runStartedAt} >= ${dayAgo}`,
+        ),
+      );
+    return {
+      errors24h: Number(errorRow?.c ?? 0),
+      jobFailures24h: Number(jobFailRow?.c ?? 0),
+      capturedAtMs: Date.now(),
+    };
+  } catch {
+    return { capturedAtMs: Date.now() };
+  }
+}
+
 async function processInboxItem(item: any): Promise<ExecutionResult> {
   const result: ExecutionResult = {
     itemId: item.id,
@@ -709,21 +752,74 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
   // Below confidence threshold → defer 24 hours. Threshold is founder-tunable
   // via /founder/settings (AUTO_EXECUTE_THRESHOLD) so the founder can raise
   // it if the calibration report flags overconfidence.
+  //
+  // Pillar R — trust-graduation override. Before applying the static
+  // threshold, consult the (agent, action_category) graduation tier:
+  //   - silent: bypass threshold entirely (proven category)
+  //   - notify_only: bypass threshold; surface as one-line in digest
+  //   - suspended: force defer regardless of confidence
+  //   - manual: fall through to the threshold check below
+  // Once Pillar R earns trust in a category, the static threshold stops
+  // being load-bearing and trust calibration takes over.
   const autoExecuteThreshold = await getNumberSetting(
     "AUTO_EXECUTE_THRESHOLD",
     EXECUTOR_CONFIG.AUTO_EXECUTE_THRESHOLD,
   );
-  if (aiDecision.confidence < autoExecuteThreshold) {
-    await db.update(decisionsInboxItems)
-      .set({
-        status: "deferred",
-        deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        updatedAt: new Date(),
-      })
-      .where(eq(decisionsInboxItems.id, item.id));
-    result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold)`;
-    result.executionSuccess = true;
-    return result;
+
+  let graduationTier: string = "manual";
+  try {
+    const { shouldAutoExecute } = await import("./trustGraduation");
+    const decision = await shouldAutoExecute(
+      ownerAgent ?? "executor",
+      item.itemType,
+    );
+    graduationTier = decision.tier;
+
+    if (decision.tier === "suspended") {
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "deferred",
+          deferredUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      result.executedAction = `deferred_suspended (agent=${ownerAgent} category=${item.itemType})`;
+      result.executionSuccess = true;
+      return result;
+    }
+
+    // Silent / notify_only categories bypass the confidence threshold.
+    // They've earned the trust to act on lower-confidence calls without
+    // founder approval. Hard-stops still apply (line 395+).
+    if (decision.tier === "silent" || decision.tier === "notify_only") {
+      // No-op: fall through to execution.
+    } else if (aiDecision.confidence < autoExecuteThreshold) {
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "deferred",
+          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold, tier=${decision.tier})`;
+      result.executionSuccess = true;
+      return result;
+    }
+  } catch (err) {
+    // Trust graduation read failed — fall back to the static threshold.
+    logger.warn("[autonomous-executor] trust graduation read failed; falling back to static threshold", err as Error);
+    if (aiDecision.confidence < autoExecuteThreshold) {
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "deferred",
+          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold)`;
+      result.executionSuccess = true;
+      return result;
+    }
   }
 
   // Execute the action
@@ -803,10 +899,33 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
             ...(item.contextBundle as Record<string, any> ?? {}),
             executorConfidence: aiDecision.confidence,
             executorAction: aiDecision.action,
+            graduationTier,
           },
           updatedAt: new Date(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
+
+      // Pillar R — open a 7-day observation window + bump the streak.
+      // The retract cron walks observations daily; if telemetry regresses
+      // it calls recordRetract() which demotes the tier.
+      try {
+        const { agentProposalObservations } = await import("@shared/schema");
+        const { recordAcceptance } = await import("./trustGraduation");
+        const observationEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.insert(agentProposalObservations).values({
+          agentCodename: ownerAgent ?? "executor",
+          actionCategory: item.itemType,
+          shippedRef: String(item.id),
+          shippedRefType: "decision_id",
+          shippedAt: new Date(),
+          observationEndsAt: observationEnd,
+          telemetryBaseline: await captureTelemetryBaseline(),
+          status: "observing",
+        });
+        await recordAcceptance(ownerAgent ?? "executor", item.itemType);
+      } catch (err) {
+        logger.warn("[autonomous-executor] failed to open observation window", err as Error);
+      }
     }
 
   } else if (aiDecision.action === "reject") {
