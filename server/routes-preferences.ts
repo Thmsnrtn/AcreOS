@@ -13,7 +13,7 @@
  * Validation note: each field has a fixed enum. Unknown values are rejected
  * loudly rather than silently coerced — bad data should not survive a
  * round-trip through the API. Defaults applied client-side; null in any
- * field means "use the client default" (homestead / auto / editorial /
+ * field means "use the client default" (dirtpass / auto / editorial /
  * adaptive / motion-from-OS).
  */
 
@@ -30,7 +30,7 @@ import { logger } from "./utils/logger";
 const router = Router();
 
 const DEFAULT_PREFERENCES: Required<AppearancePreferences> = {
-  theme: "homestead",
+  theme: "dirtpass",
   mode: "auto",
   fontPairing: "editorial",
   density: "adaptive",
@@ -40,7 +40,7 @@ const DEFAULT_PREFERENCES: Required<AppearancePreferences> = {
 };
 
 const preferencesSchema = z.object({
-  theme: z.enum(["homestead", "quarry", "nocturne", "meadow", "slate"]).optional(),
+  theme: z.enum(["dirtpass", "homestead", "quarry", "nocturne", "meadow", "slate"]).optional(),
   mode: z.enum(["light", "dark", "auto"]).optional(),
   fontPairing: z.enum(["editorial", "modern", "classic", "native", "refined"]).optional(),
   density: z.enum(["compact", "comfortable", "adaptive"]).optional(),

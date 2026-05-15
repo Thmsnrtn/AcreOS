@@ -92,9 +92,10 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   FIVE THEME BLOCKS — each contains --acr-* + HSL together.
-   The :root block doubles as the homestead-light fallback so apps
-   without an explicit data-theme attribute still get the house brand.
+   SIX THEME BLOCKS — each contains --acr-* + HSL together.
+   The :root block doubles as the DIRTPASS-light fallback so apps
+   without an explicit data-theme attribute still land on the house
+   brand (DIRTPASS Vol. 1 — see the block below).
 ═══════════════════════════════════════════════════════════════════ */
 
 
