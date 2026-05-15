@@ -26,7 +26,8 @@ export interface InboxItem {
   /** What kind of action this is — drives the icon + CTA. */
   kind: "secret_revoked" | "deploy_failed" | "regression_detected"
       | "strategic_proposal" | "agent_proposal" | "dsar_deadline"
-      | "pillar_health" | "job_health" | "budget_burn";
+      | "pillar_health" | "job_health" | "budget_burn"
+      | "tier_promotion" | "tier_demotion";
   title: string;
   body: string;
   /** Higher = surfaces first within a section. 0-100. */
@@ -122,6 +123,10 @@ export function classifyKind(kind: InboxItem["kind"], extra?: { daysUntil?: numb
 
   // Status surfaces.
   if (kind === "pillar_health" || kind === "job_health" || kind === "budget_burn") return "running_fine";
+
+  // Trust graduation — promotions are positive status, demotions need eyes.
+  if (kind === "tier_promotion") return "running_fine";
+  if (kind === "tier_demotion") return "amber";
 
   return "amber";
 }

@@ -22,6 +22,7 @@ import {
   jobHealthLogs,
   organizations,
   agentEvents,
+  agentActionGraduations,
 } from "@shared/schema";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
@@ -162,6 +163,41 @@ router.get("/", async (req: Request, res: Response) => {
       }
     } catch {
       /* shape drift — skip */
+    }
+
+    // ── Source 5: trust-graduation tier changes in the last 24h
+    // Promotions are positive status (running_fine); demotions are amber.
+    // Suspensions already surfaced via Source 4 (regression_detected event).
+    try {
+      const tierChanges = await db
+        .select()
+        .from(agentActionGraduations)
+        .where(gte(agentActionGraduations.tierChangedAt, dayAgo))
+        .orderBy(desc(agentActionGraduations.tierChangedAt))
+        .limit(20);
+      for (const row of tierChanges) {
+        const tier = row.graduationTier;
+        const isPromotion = tier === "notify_only" || tier === "silent";
+        const isDemotion = tier === "suspended" || (tier === "manual" && row.totalRetracted > 0);
+        if (!isPromotion && !isDemotion) continue;
+        if (tier === "suspended") continue; // already covered by retract-cron red surface
+        candidates.push({
+          id: `grad:${row.id}`,
+          section: isPromotion ? "running_fine" : "amber",
+          kind: isPromotion ? "tier_promotion" : "tier_demotion",
+          title: isPromotion
+            ? `${row.agentCodename} graduated → ${tier} on ${row.actionCategory}`
+            : `${row.agentCodename} demoted → ${tier} on ${row.actionCategory}`,
+          body: isPromotion
+            ? `${row.totalAccepted} accepted, ${row.totalRetracted} retracted lifetime.`
+            : `${row.consecutiveRetracted} consecutive retracts. Confirm the demotion was warranted.`,
+          priority: isPromotion ? 25 : 60,
+          actionUrl: `/founder/cockpit#autonomy`,
+          ownerAgentCodename: row.agentCodename,
+        });
+      }
+    } catch {
+      /* table may not exist yet on older deploys — skip */
     }
 
     const result = applyBudget(candidates, { dailyCap, redItemsAlwaysSurface: true });
