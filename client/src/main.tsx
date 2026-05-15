@@ -7,6 +7,7 @@ import "./index.css";
 import { initClientSentry } from "./lib/sentry";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
+import { installVersionCheck } from "./lib/version-check";
 
 // Install CSRF header interceptor before any fetch fires.
 installCsrfFetchInterceptor();
@@ -15,6 +16,13 @@ installClerkSessionRecovery();
 
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();
+
+// Stale-build self-heal — independent of the SW path so it still works
+// for users whose service worker (or Cloudflare edge, or HTTP cache) is
+// holding an old build. Polls /api/version and reloads when it changes.
+if (import.meta.env.PROD) {
+  installVersionCheck();
+}
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   // Real-user goal: "open the app, see latest UI; no manual cache clearing."

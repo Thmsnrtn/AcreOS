@@ -476,6 +476,17 @@ export async function registerRoutes(
     res.status(200).json({ ok: true, uptime: process.uptime() });
   });
 
+  // /api/version — tiny endpoint for the client's stale-build self-heal.
+  // Returns the deployed git SHA so the running tab can detect when its
+  // bundled SHA no longer matches production and reload itself. Must be
+  // no-store so neither browsers nor Cloudflare ever serve a stale answer
+  // (which would defeat the entire mechanism). See client/src/lib/version-check.ts.
+  app.get("/api/version", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.status(200).json({ sha: process.env.VITE_GIT_SHA || "unknown" });
+  });
+
   app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
