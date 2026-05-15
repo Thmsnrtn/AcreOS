@@ -17,14 +17,49 @@ installClerkSessionRecovery();
 initClientSentry();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  // Real-user goal: "open the app, see latest UI; no manual cache clearing."
+  // Three pieces below make this work even in Safari (which is the most
+  // aggressive HTTP-cacher of service-worker scripts):
+  //
+  //   1. updateViaCache: 'none' — Safari otherwise serves /sw.js itself
+  //      from the HTTP cache for up to 24h, so users never see new SWs
+  //      ship. 'none' forces a network revalidation on every check.
+  //   2. registration.update() on each page load — actively pulls the
+  //      latest sw.js even if the browser hasn't decided to check yet.
+  //   3. controllerchange listener — once a new SW takes over the page,
+  //      reload exactly once so the user instantly sees the new build.
+  //      The `reloaded` guard prevents the reload loop that can happen
+  //      when DevTools' "Update on reload" is enabled.
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker
+      .register('/sw.js', { updateViaCache: 'none' })
       .then((registration) => {
         clientLogger.info('SW registered:', registration.scope);
+        registration.update().catch(() => { /* best-effort */ });
+
+        // When a new SW is detected, tell it to skip the waiting phase
+        // so activation is immediate. The controllerchange listener below
+        // handles the reload.
+        registration.addEventListener('updatefound', () => {
+          const installing = registration.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              installing.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
       })
       .catch((error) => {
         clientLogger.info('SW registration failed:', error);
       });
+
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
   });
 }
 
