@@ -7,6 +7,7 @@ import { openDataProvider } from "./services/providers/open-data-provider";
 import { countyGisProvider } from "./services/providers/county-gis-provider";
 import { regridProvider } from "./services/providers/regrid-provider";
 import { attomProvider } from "./services/providers/attom-provider";
+import { batchdataProvider } from "./services/providers/batchdata-provider";
 import { logger } from "./utils/logger";
 
 export function initializeProviders(): void {
@@ -37,6 +38,16 @@ export function initializeProviders(): void {
   // ATTOM — pro tier (most expensive).
   for (const category of attomProvider.categories) {
     providerRegistry.register(category, attomProvider, 50);
+  }
+
+  // BatchData — starter tier, 3–15¢ per lookup. Cherry-picked from the
+  // production-polish branch where it had been sitting as an
+  // implemented-but-unwired provider. Slots between Regrid (priority 30)
+  // and ATTOM (priority 50) for property_details / skip_trace /
+  // owner_info. Only fires when BATCHDATA_API_KEY is set, so adding to
+  // the registry is safe even before the operator provisions credentials.
+  for (const category of batchdataProvider.categories) {
+    providerRegistry.register(category, batchdataProvider, 40);
   }
 
   logger.info("Data providers initialized", { source: "providers-init" });
