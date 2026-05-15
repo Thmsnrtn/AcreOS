@@ -11,6 +11,13 @@ interface LogEntry {
   requestId?: string;
   userId?: string;
   organizationId?: number;
+  /**
+   * Alias for `organizationId`. Many callers use `orgId` as a shorthand;
+   * accepting it here avoids forcing 50+ call sites to rename the key.
+   * Both fields survive into the serialized log; downstream consumers
+   * should prefer `organizationId` for canonical filtering.
+   */
+  orgId?: number;
   metadata?: Record<string, unknown>;
   error?: {
     name: string;
