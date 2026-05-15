@@ -53,9 +53,12 @@ import { TrialBanner } from "@/components/trial-banner";
 import { NotificationBanner } from "@/components/notification-banner";
 const NpsDialog = React.lazy(() => import("@/components/nps-dialog").then(m => ({ default: m.NpsDialog })));
 
-// Eagerly loaded: must be available immediately with no delay
-import AuthPage from "@/pages/auth-page";
-import LandingPage from "@/pages/landing";
+// Authed users hit /today and never see LandingPage; landing visitors never
+// hit AuthPage. Lazy-loading both keeps each side's first paint lean — the
+// other tree only ships when actually navigated to. NotFound stays eager
+// (tiny, useful as the universal Suspense-free fallback).
+const AuthPage = React.lazy(() => import("@/pages/auth-page"));
+const LandingPage = React.lazy(() => import("@/pages/landing"));
 import NotFound from "@/pages/not-found";
 
 // ─── Lazy-loaded page bundles ───────────────────────────────────────────────

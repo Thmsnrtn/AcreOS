@@ -91,44 +91,51 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV === "production" ? "hidden" : false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'wouter', '@tanstack/react-query'],
-          'vendor-ui': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-select',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-tooltip',
-            '@radix-ui/react-accordion',
-            '@radix-ui/react-scroll-area',
-            '@radix-ui/react-switch',
-            '@radix-ui/react-checkbox',
-            '@radix-ui/react-slider',
-            '@radix-ui/react-toast',
-          ],
-          // Isolate heavy deps so they only download when a page that
-          // needs them is visited (charts on analytics/dashboards, map
-          // on /maps, PDF on document pages, motion on animation-heavy
-          // pages, date-fns once across the app, Clerk on auth pages).
-          'vendor-charts': ['recharts'],
-          // Rosy River B1: maplibre-gl ships in the same chunk as mapbox-gl
-          // so Phase 2 of the migration doesn't introduce a new code-split
-          // boundary. Both share most of the underlying WebGL machinery
-          // anyway.
-          'vendor-map': ['mapbox-gl', 'maplibre-gl'],
-          // A8: @turf/turf is ~300kb gzipped and only used in the
-          // subdivision-plan-editor (parcels surface). Isolating it
-          // keeps it out of the main bundle for users who never open
-          // that page. @dnd-kit (drag/drop) is similar — only used on
-          // /deals kanban + a few component drags.
-          'vendor-turf': ['@turf/turf'],
-          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
-          'vendor-motion': ['framer-motion'],
-          'vendor-pdf': ['jspdf'],
-          'vendor-sanitize': ['isomorphic-dompurify'],
-          'vendor-clerk': ['@clerk/react'],
-          'vendor-date': ['date-fns'],
+        // Why this is a function instead of an object map:
+        // The previous object form leaked weight onto first paint. Vite's
+        // internal __vitePreload helper + tiny utilities like clsx /
+        // tailwind-merge land in *some* chunk; with the object form they
+        // landed inside vendor-pdf and vendor-charts respectively. Since
+        // every page uses the preload helper and clsx (via cn()), those
+        // "vendor" chunks got modulepreload'd on every page — dragging
+        // 100KB of jspdf and 100KB of recharts into the landing page.
+        //
+        // The function form gives us per-module control: shared mini-utils
+        // get their own tiny chunk, heavy single-use libs (jspdf) stay
+        // unchunked so they ride with their lazy consumer, and the major
+        // shared deps (react, radix, motion, etc.) keep their manual
+        // groupings. Verified via vite-plugin-visualizer post-change.
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+
+          // Tiny shared utils — give them their own chunk so they don't
+          // ride along with heavy libs and force-preload them.
+          if (/\/(clsx|tailwind-merge|class-variance-authority)\//.test(id)) {
+            return 'vendor-utils';
+          }
+
+          // Core runtime — eagerly needed everywhere.
+          if (/\/(react|react-dom|scheduler|wouter|@tanstack\/react-query)\//.test(id)) {
+            return 'vendor-react';
+          }
+
+          if (/\/@radix-ui\//.test(id)) return 'vendor-ui';
+          if (/\/@clerk\//.test(id)) return 'vendor-clerk';
+          if (/\/framer-motion\//.test(id)) return 'vendor-motion';
+          if (/\/date-fns\//.test(id)) return 'vendor-date';
+
+          // Heavy libs used across many pages — keep grouped so 30+ pages
+          // share one cached chunk instead of each carrying their own copy.
+          if (/\/recharts\//.test(id)) return 'vendor-charts';
+          if (/\/(mapbox-gl|maplibre-gl)\//.test(id)) return 'vendor-map';
+
+          // Heavy libs with a single consumer — DO NOT name them. Returning
+          // undefined lets Vite co-locate the lib with its sole importer's
+          // lazy chunk, so the lib only downloads when that route renders.
+          // Apply to: jspdf (borrower-portal only), @turf/turf (subdivision-
+          // plan-editor only), isomorphic-dompurify, @dnd-kit (deals only).
+
+          return undefined;
         },
       },
     },

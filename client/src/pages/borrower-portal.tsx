@@ -17,7 +17,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send, X, Info } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { format, differenceInDays } from "date-fns";
-import { jsPDF } from "jspdf";
+// jsPDF is dynamically imported inside generatePDF below — it's ~340KB
+// raw / 100KB brotli'd and only fires when a borrower actually downloads
+// a 1098/statement, so there's no reason to ship it on first paint of
+// the portal.
+import type { jsPDF as JsPDFType } from "jspdf";
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 
@@ -518,7 +522,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       
       if (res.ok) {
         const data = await res.json();
-        generatePDF(data);
+        await generatePDF(data);
         setShowStatementDialog(false);
       } else {
         const errData = await res.json();
@@ -531,8 +535,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     }
   };
   
-  const generatePDF = (data: any) => {
-    const doc = new jsPDF();
+  const generatePDF = async (data: any) => {
+    const { jsPDF } = await import("jspdf");
+    const doc: JsPDFType = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 20;
     

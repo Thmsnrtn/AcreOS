@@ -142,9 +142,23 @@ export function serveStatic(app: Express) {
   // can't break a deploy; the only risk is users seeing copy that's up
   // to TTL_SECONDS old, which is fine for marketing-style pages.
   // These need `public` so Cloudflare will actually cache them.
+  // Public marketing/legal routes — cacheable at the Cloudflare edge so the
+  // HTML shell hits in <30ms instead of round-tripping to Fly IAD (~325ms
+  // from the West Coast). All asset URLs in the shell are content-hashed
+  // so a stale shell can't reference a deleted bundle. Authed users hitting
+  // `/` still client-side-redirect to /today via HomeRoute — caching the
+  // shell doesn't change that, the JS boots and the redirect fires.
+  // Note: the shell carries a per-request CSP nonce; with caching, every
+  // visitor in a TTL window shares a nonce. Acceptable defense-in-depth
+  // tradeoff for unauthenticated public pages.
   const EDGE_CACHEABLE_SPA_PATHS: Array<{ rx: RegExp; ttl: number }> = [
-    { rx: /^\/security(\/|$)/, ttl: 600 },   // 10 min
-    { rx: /^\/changelog(\/|$)/, ttl: 600 },  // 10 min
+    { rx: /^\/$/, ttl: 300 },                 // landing — 5 min
+    { rx: /^\/security(\/|$)/, ttl: 600 },    // 10 min
+    { rx: /^\/changelog(\/|$)/, ttl: 600 },   // 10 min
+    { rx: /^\/terms(\/|$)/, ttl: 3600 },      // legal — 1 hr (rarely changes)
+    { rx: /^\/privacy(\/|$)/, ttl: 3600 },    // 1 hr
+    { rx: /^\/legal\//, ttl: 3600 },          // 1 hr
+    { rx: /^\/letters(\/|$)/, ttl: 600 },     // 10 min
   ];
 
   app.use("{*splat}", (req: Request, res: Response) => {
