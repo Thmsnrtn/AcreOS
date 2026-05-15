@@ -2592,6 +2592,32 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import stripe drift detector: ${err}`, "ops");
   });
 
+  // ─── Vendor secret rotation watcher (daily 6:30am UTC) ───────────────
+  // Stripe webhook, GH PAT, Clerk secret, Sentry token. Surfaces a /founder/now
+  // inbox item when any secret approaches expiry or returns 401.
+  import("../services/vendorSecretRotation").then(({ runVendorSecretRotationWatcher }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Vendor secret rotation watcher registered (self-rescheduling, 24h)", "ops");
+      scheduleSelfRescheduling({
+        name: "vendor_secret_rotation",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: 30 * 60 * 1000,
+        run: async () => {
+          await withJobLock("vendor_secret_rotation", 30 * 60, async () => {
+            const r = await runVendorSecretRotationWatcher();
+            const surfaceable = r.findings.filter((f) => f.status === "warning" || f.status === "expired");
+            log(
+              `[vendor-secret-rotation] vendors=${r.findings.length} surfaced=${surfaceable.length}`,
+              "ops",
+            );
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import vendor secret rotation: ${err}`, "ops");
+  });
+
   // ─── Pillar R — daily agent-retract cron ─────────────────────────────
   // Walks open agent_proposal_observations rows. Compares telemetry
   // baseline (captured at acceptance) to current snapshot; retracts +
