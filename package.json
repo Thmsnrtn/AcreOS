@@ -168,7 +168,7 @@
     "zustand": "5.0.13"
   },
   "devDependencies": {
-    "@clerk/testing": "2.0.27",
+    "@clerk/testing": "2.0.28",
     "@playwright/test": "^1.60.0",
     "@sentry/cli": "2.58.5",
     "@tailwindcss/typography": "^0.5.19",
@@ -176,7 +176,7 @@
     "@types/compression": "1.8.1",
     "@types/express": "4.17.21",
     "@types/mapbox__mapbox-gl-draw": "1.4.9",
-    "@types/node": "25.7.0",
+    "@types/node": "25.8.0",
     "@types/pdf-parse": "1.1.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
