@@ -103,7 +103,7 @@ export function registerPromptVersionsRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = weightsSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     try {
       await updateWeights(parsed.data.updates);
       return res.json({ ok: true, updated: parsed.data.updates.length });
@@ -117,7 +117,7 @@ export function registerPromptVersionsRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = promoteSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     try {
       await promoteCandidate(
         parsed.data.promptName,
@@ -147,7 +147,7 @@ export function registerPromptVersionsRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     try {
       const v = await registerVersion(parsed.data);
       return res.json({ ok: true, version: v });

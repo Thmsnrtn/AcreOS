@@ -243,7 +243,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
 
       const parsed = reset2faSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const targetUserId = req.params.id;
       const body = parsed.data;
@@ -478,7 +478,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
 
       const parsed = revokeAllOthersSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { exceptCurrentAdminSessionId } = parsed.data;
       const targetUserId = req.params.id;
@@ -576,7 +576,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
 
       const parsed = freezeAutopaySchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { reason, untilDate } = parsed.data;
       const orgId = Number.parseInt(req.params.id, 10);
@@ -662,7 +662,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
 
       const parsed = transferOwnershipSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { newOwnerUserId, courtDocumentS3Key, justification } = parsed.data;
       const orgId = Number.parseInt(req.params.id, 10);

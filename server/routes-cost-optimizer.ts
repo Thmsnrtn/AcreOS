@@ -88,7 +88,7 @@ export function registerCostOptimizerRoutes(app: Express): void {
         }
         const parsed = applyBodySchema.safeParse(req.body);
         if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.errors);
+          return Errors.validationFailed(res, parsed.error.issues);
         }
         const approverEmail = req.user?.email ?? "founder";
         const result = await applyRecommendation({

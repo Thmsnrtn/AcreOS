@@ -186,7 +186,7 @@ export function registerLotPricingRoutes(app: Express): void {
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = upsertSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [existing] = await db
           .select({ id: lotPricingRules.id })

@@ -18,12 +18,23 @@ interface LogEntry {
    * should prefer `organizationId` for canonical filtering.
    */
   orgId?: number;
+  /**
+   * Free-form structured tags. Routes/services pass arbitrary call-site
+   * context (agent name, job key, ...) under the canonical fields and
+   * also via top-level extras. The type is wide on purpose; downstream
+   * serializers normalize before writing.
+   */
+  agent?: string;
   metadata?: Record<string, unknown>;
-  error?: {
-    name: string;
-    message: string;
-    stack?: string;
-  };
+  /**
+   * Error context. Accepted shapes:
+   *   - { name, message, stack } — explicit Error-like context
+   *   - string                   — coerced into { message: string }
+   *   - Error                    — coerced via instanceof check
+   * Logger functions normalize before serialization.
+   */
+  error?: { name: string; message: string; stack?: string } | string | Error;
+  [key: string]: unknown;
 }
 
 interface RequestLogEntry extends LogEntry {
@@ -152,13 +163,31 @@ function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}):
   }
 }
 
+/**
+ * Normalize whatever the caller passed as the second arg into a
+ * Partial<LogEntry>. The legacy signature was `(message, options?)`
+ * with `options` as a structured Partial<LogEntry>, but the actual call
+ * sites pass a wide variety of shapes: Error, unknown (caught), strings.
+ * Coerce them all here so info/warn/debug accept the same wide input as
+ * error().
+ */
+function normalizeOptions(input?: unknown): Partial<LogEntry> | undefined {
+  if (input == null) return undefined;
+  if (input instanceof Error) {
+    return { error: { name: input.name, message: input.message, stack: input.stack } };
+  }
+  if (typeof input === "string") return { error: input };
+  if (typeof input === "object") return input as Partial<LogEntry>;
+  return { error: String(input) };
+}
+
 export const logger = {
-  info(message: string, options?: Partial<LogEntry>): void {
-    log("info", message, options);
+  info(message: string, options?: Partial<LogEntry> | Error | unknown): void {
+    log("info", message, normalizeOptions(options));
   },
 
-  warn(message: string, options?: Partial<LogEntry>): void {
-    log("warn", message, options);
+  warn(message: string, options?: Partial<LogEntry> | Error | unknown): void {
+    log("warn", message, normalizeOptions(options));
   },
 
   error(message: string, error?: Error | unknown, options?: Partial<LogEntry>): void {
@@ -175,8 +204,8 @@ export const logger = {
     log("error", message, { ...options, error: errorDetails });
   },
 
-  debug(message: string, options?: Partial<LogEntry>): void {
-    log("debug", message, options);
+  debug(message: string, options?: Partial<LogEntry> | Error | unknown): void {
+    log("debug", message, normalizeOptions(options));
   },
 
   request(req: Request, options?: Partial<RequestLogEntry>): void {

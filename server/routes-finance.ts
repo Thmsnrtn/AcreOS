@@ -216,7 +216,7 @@ export function registerFinanceRoutes(app: Express): void {
       res.status(201).json(note);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -237,7 +237,7 @@ export function registerFinanceRoutes(app: Express): void {
       validated = updateNoteSchema.parse(req.body);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.validationFailed(res, err.errors);
+        return Errors.validationFailed(res, err.issues);
       }
       throw err;
     }

@@ -107,7 +107,7 @@ export function registerRentRollImportRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const propId = parseInt(req.params.id, 10);
       const parsed = rentRollSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db.select({
         id: properties.id, listPrice: properties.listPrice, marketValue: properties.marketValue,
@@ -134,7 +134,7 @@ export function registerRentRollImportRoutes(app: Express): void {
       const userId = getUserId(req);
       const propId = parseInt(req.params.id, 10);
       const parsed = rentRollSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db.select().from(properties)
         .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));

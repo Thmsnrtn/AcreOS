@@ -87,7 +87,7 @@ export function registerAdminRoutes(app: Express): void {
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const parsed = createSupportCaseSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { subject, message } = parsed.data;
       
       if (!subject || !message) {
@@ -172,7 +172,7 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseMessageSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { message } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
@@ -205,7 +205,7 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseRatingSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { rating } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
@@ -291,7 +291,7 @@ export function registerAdminRoutes(app: Express): void {
       const userEmail = user.claims?.email || user.email;
       const caseId = parseInt(req.params.id);
       const parsed = adminRespondSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { message, resolve } = parsed.data;
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
@@ -392,7 +392,7 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const parsed = z.object({ content: z.string().min(1).max(10000) }).safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { content } = parsed.data;
       if (!content || !content.trim()) {
         return res.status(400).json({ error: "Message content is required" });
@@ -504,7 +504,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const parsed = featureRequestUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
       const { status, founderNotes, priority } = parsed.data;
 
       const updates: Record<string, any> = {};
@@ -849,7 +849,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { validateAllEndpoints, getEndpointStats, startValidationJob } = await import("./services/gisValidation");
       const parsedGisAll = gisValidateAllSchema.safeParse(req.body);
-      if (!parsedGisAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisAll.error.errors });
+      if (!parsedGisAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisAll.error.issues });
       const { stateFilter, maxConcurrent = 10, async: runAsync = false } = parsedGisAll.data;
       
       const stats = await getEndpointStats();
@@ -970,7 +970,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedFounder = setFounderSchema.safeParse(req.body);
-      if (!parsedFounder.success) return res.status(400).json({ message: "Invalid input", errors: parsedFounder.error.errors });
+      if (!parsedFounder.success) return res.status(400).json({ message: "Invalid input", errors: parsedFounder.error.issues });
       const { organizationId, isFounder } = parsedFounder.data;
 
       // If no organizationId provided, use the current user's organization
@@ -1091,7 +1091,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/data-sources/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedDsv = dataSourceValidateSchema.safeParse(req.body);
-      if (!parsedDsv.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsv.error.errors });
+      if (!parsedDsv.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsv.error.issues });
       const { sourceId, category, limit = 50 } = parsedDsv.data;
       const { dataSourceValidator } = await import("./services/data-source-validator");
       
@@ -1136,7 +1136,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const sourceId = Number(req.params.id);
       const parsedDsp = dataSourcePatchSchema.safeParse(req.body);
-      if (!parsedDsp.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsp.error.errors });
+      if (!parsedDsp.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsp.error.issues });
       const { isEnabled, priority, notes } = parsedDsp.data;
       
       const updates: Record<string, any> = { updatedAt: new Date() };
@@ -1199,7 +1199,7 @@ export function registerAdminRoutes(app: Express): void {
       const { countyGisEndpoints, insertCountyGisEndpointSchema } = await import('@shared/schema');
       
       const parsedGis = countyGisEndpointCreateSchema.safeParse(req.body);
-      if (!parsedGis.success) return res.status(400).json({ message: "Invalid input", errors: parsedGis.error.errors });
+      if (!parsedGis.success) return res.status(400).json({ message: "Invalid input", errors: parsedGis.error.issues });
       const { state, county, baseUrl, endpointType } = parsedGis.data;
       if (!state || !county || !baseUrl) {
         return res.status(400).json({ message: "state, county, and baseUrl are required" });
@@ -1670,7 +1670,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/county-gis-endpoints/bulk-add", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedBulkAdd = bulkAddEndpointsSchema.safeParse(req.body);
-      if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.errors });
+      if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.issues });
       const { endpoints } = parsedBulkAdd.data;
       if (!endpoints || !Array.isArray(endpoints) || endpoints.length === 0) {
         return res.status(400).json({ message: "No endpoints provided" });
@@ -1781,7 +1781,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { runDiscoveryScan } = await import('./services/arcgis-discovery');
       const parsedScan = discoveryScanSchema.safeParse(req.body);
-      if (!parsedScan.success) return res.status(400).json({ message: "Invalid input", errors: parsedScan.error.errors });
+      if (!parsedScan.success) return res.status(400).json({ message: "Invalid input", errors: parsedScan.error.issues });
       const { keywords, maxResults, targetStates } = parsedScan.data;
       
       logger.info("[Discovery] Starting ArcGIS Online scan...");
@@ -2001,7 +2001,7 @@ export function registerAdminRoutes(app: Express): void {
       
       const parseResult = updateDataSourceSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parseResult.error.errors });
+        return res.status(400).json({ message: "Invalid request body", errors: parseResult.error.issues });
       }
       
       const source = await storage.getDataSource(id);
@@ -2131,7 +2131,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedBulk = dataSourcesBulkImportSchema.safeParse(req.body);
-      if (!parsedBulk.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulk.error.errors });
+      if (!parsedBulk.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulk.error.issues });
       const { sources } = parsedBulk.data;
 
       if (!Array.isArray(sources) || sources.length === 0) {
@@ -2201,7 +2201,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const parseResult = brokerLookupSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.errors });
+        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.issues });
       }
 
       const { dataSourceBroker } = await import('./services/data-source-broker');
@@ -2219,7 +2219,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = req.organization;
       const parsedPe = propertyEnrichSchema.safeParse(req.body);
-      if (!parsedPe.success) return res.status(400).json({ message: "Invalid input", errors: parsedPe.error.errors });
+      if (!parsedPe.success) return res.status(400).json({ message: "Invalid input", errors: parsedPe.error.issues });
       const { propertyId, forceRefresh } = parsedPe.data;
 
       if (!propertyId) {
@@ -2247,7 +2247,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/enrichment/coordinates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const parsedCoord = coordinatesEnrichSchema.safeParse(req.body);
-      if (!parsedCoord.success) return res.status(400).json({ message: "Invalid input", errors: parsedCoord.error.errors });
+      if (!parsedCoord.success) return res.status(400).json({ message: "Invalid input", errors: parsedCoord.error.issues });
       const { latitude, longitude, categories, state, county, apn, forceRefresh } = parsedCoord.data;
 
       if (!latitude || !longitude) {
@@ -2316,7 +2316,7 @@ export function registerAdminRoutes(app: Express): void {
 
       const layerId = Number(req.params.layerId);
       const parsedPref = z.object({ enabled: z.boolean().optional(), opacity: z.coerce.number().min(0).max(1).optional() }).safeParse(req.body);
-      if (!parsedPref.success) return res.status(400).json({ message: "Invalid input", errors: parsedPref.error.errors });
+      if (!parsedPref.success) return res.status(400).json({ message: "Invalid input", errors: parsedPref.error.issues });
       const { enabled, opacity } = parsedPref.data;
 
       const { userMapLayerPreferences } = await import("@shared/schema");
@@ -2369,7 +2369,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedEnrich = z.object({ forceRefresh: z.boolean().optional(), orgId: z.number().int().positive().optional() }).safeParse(req.body);
-      if (!parsedEnrich.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrich.error.errors });
+      if (!parsedEnrich.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrich.error.issues });
       const { forceRefresh = false, orgId: targetOrgId } = parsedEnrich.data;
       const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
 
@@ -2521,7 +2521,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { provider } = req.params;
       const parsedApiKey = systemApiKeyUpdateSchema.safeParse(req.body);
-      if (!parsedApiKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedApiKey.error.errors });
+      if (!parsedApiKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedApiKey.error.issues });
       const { apiKey, isActive } = parsedApiKey.data;
       const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
       if (existing) {
@@ -2984,7 +2984,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { tier } = req.params;
       const parsedPromo = z.object({ promoLabel: z.string().min(1), promoDiscountPercent: z.coerce.number().min(1).max(100), promoEndsAt: z.string().datetime() }).safeParse(req.body);
-      if (!parsedPromo.success) return res.status(400).json({ message: "Invalid promo input", errors: parsedPromo.error.errors });
+      if (!parsedPromo.success) return res.status(400).json({ message: "Invalid promo input", errors: parsedPromo.error.issues });
       const { promoLabel, promoDiscountPercent, promoEndsAt } = parsedPromo.data;
       // Create a Stripe coupon
       const { getUncachableStripeClient } = await import("./stripeClient");
@@ -3838,7 +3838,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
-      if (!parsedKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedKey.error.errors });
+      if (!parsedKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedKey.error.issues });
       const { name, scope = "read", expiresInDays } = parsedKey.data;
       if (!name || !name.trim()) {
         return res.status(400).json({ error: "Name is required" });
@@ -4682,7 +4682,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   app.post("/api/founder/knowledge-base", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsed = kbArticleSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
 
       const data = parsed.data;
       const slug = data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -4715,7 +4715,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
       const parsed = kbArticleSchema.partial().safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
 
       const [updated] = await db.update(knowledgeBaseArticles)
         .set({ ...parsed.data, updatedAt: new Date() })
@@ -4750,7 +4750,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const schema = z.object({ articles: z.array(kbArticleSchema) });
       const parsed = schema.safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
 
       const results = [];
       for (const data of parsed.data.articles) {

@@ -145,7 +145,7 @@ export function registerArvRoutes(app: Express): void {
       if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid parcel id");
 
       const parsed = calcSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db.select({ id: properties.id, sqft: properties.squareFeet }).from(properties)
         .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));

@@ -354,7 +354,7 @@ export async function importLeads(
       });
 
       if (!parseResult.success) {
-        const errorMessages = parseResult.error.errors
+        const errorMessages = parseResult.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
         throw new Error(errorMessages);
@@ -488,7 +488,7 @@ export async function importProperties(
       });
 
       if (!parseResult.success) {
-        const errorMessages = parseResult.error.errors
+        const errorMessages = parseResult.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
         throw new Error(errorMessages);

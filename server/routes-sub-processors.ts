@@ -74,7 +74,7 @@ export function registerSubProcessorRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = createSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     try {
       const [row] = await db
         .insert(dataProcessingAgreements)
@@ -102,7 +102,7 @@ export function registerSubProcessorRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = updateSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     try {
       const [existing] = await db
         .select()

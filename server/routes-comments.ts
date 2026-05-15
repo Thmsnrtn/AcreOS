@@ -106,7 +106,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
 
     const parsed = createCommentSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { content } = parsed.data;
 

@@ -80,7 +80,7 @@ export function registerLeadRoutes(app: Express): void {
     // Parse pagination params
     const pagination = paginationQuerySchema.safeParse(req.query);
     if (!pagination.success) {
-      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
     const { page, pageSize, sortBy, sortOrder } = pagination.data;
 
@@ -270,7 +270,7 @@ export function registerLeadRoutes(app: Express): void {
       const org = req.organization;
       const parsed = checkDuplicatesSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { firstName, lastName, email, phone, address } = parsed.data;
 
@@ -307,7 +307,7 @@ export function registerLeadRoutes(app: Express): void {
       const org = req.organization;
       const parsed = mergeLeadsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { primaryId, duplicateId } = parsed.data;
 
@@ -470,7 +470,7 @@ export function registerLeadRoutes(app: Express): void {
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+        return Errors.badRequest(res, "Validation failed", err.issues.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
@@ -529,7 +529,7 @@ export function registerLeadRoutes(app: Express): void {
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+        return Errors.badRequest(res, "Validation failed", err.issues.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
@@ -613,7 +613,7 @@ export function registerLeadRoutes(app: Express): void {
       });
       const parsed = enrichSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { latitude, longitude, forceRefresh } = parsed.data;
 
@@ -646,7 +646,7 @@ export function registerLeadRoutes(app: Express): void {
       const org = req.organization;
       const parsed = bulkLeadIdsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, parsed.error.errors[0].message);
+        return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids } = parsed.data;
 
@@ -677,7 +677,7 @@ export function registerLeadRoutes(app: Express): void {
       const org = req.organization;
       const parsed = bulkLeadUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, parsed.error.errors[0].message);
+        return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids, updates } = parsed.data;
 

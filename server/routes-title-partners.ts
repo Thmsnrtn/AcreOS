@@ -277,7 +277,7 @@ export function registerTitlePartnerRoutes(app: Express) {
         const orgId = getOrganizationId(req);
         const parsed = createOrderBodySchema.safeParse(req.body);
         if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.errors);
+          return Errors.validationFailed(res, parsed.error.issues);
         }
         const body = parsed.data;
 
@@ -405,7 +405,7 @@ export function registerTitlePartnerRoutes(app: Express) {
         }
         const parsed = inboundStatusBodySchema.safeParse(parsedBody);
         if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.errors);
+          return Errors.validationFailed(res, parsed.error.issues);
         }
         const body = parsed.data;
 
@@ -491,7 +491,7 @@ export function registerTitlePartnerRoutes(app: Express) {
         }
         const parsed = registerPartnerBodySchema.safeParse(req.body);
         if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.errors);
+          return Errors.validationFailed(res, parsed.error.issues);
         }
         const b = parsed.data;
 

@@ -108,7 +108,7 @@ export function registerCoreAIRoutes(app: Express): void {
       
       const parseResult = agentTaskSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return Errors.badRequest(res, "Invalid request", parseResult.error.errors);
+        return Errors.badRequest(res, "Invalid request", parseResult.error.issues);
       }
 
       const { agentType, action, parameters } = parseResult.data;

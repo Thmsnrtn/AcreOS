@@ -95,7 +95,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
       const userId = getUserId(req);
       const rehabId = req.params.id;
       const parsed = drawSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [r] = await db.select({ id: rehabs.id }).from(rehabs)
         .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
@@ -132,7 +132,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const rehabId = req.params.id;
       const parsed = seedSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [r] = await db.select({ id: rehabs.id, lenderLoanCents: rehabs.lenderLoanCents }).from(rehabs)
         .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
@@ -169,7 +169,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {

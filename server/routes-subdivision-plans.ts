@@ -157,7 +157,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = createSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [parent] = await db
           .select({ id: properties.id })
@@ -199,7 +199,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const parsed = updateSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [existing] = await db
           .select()

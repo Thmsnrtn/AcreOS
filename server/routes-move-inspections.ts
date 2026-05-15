@@ -101,7 +101,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const userId = getUserId(req);
       const propId = parseInt(req.params.id, 10);
       const parsed = inspectionSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db.select({ id: properties.id }).from(properties)
         .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
@@ -131,7 +131,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
@@ -181,7 +181,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = reconcileSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [insp] = await db.select().from(moveInspections)
         .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)));

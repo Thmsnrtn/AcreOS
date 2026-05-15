@@ -74,7 +74,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(campaign);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -190,7 +190,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const bodyParsed = responseBodySchema.safeParse(req.body);
       if (!bodyParsed.success) {
-        return Errors.validationFailed(res, bodyParsed.error.errors);
+        return Errors.validationFailed(res, bodyParsed.error.issues);
       }
       const { trackingCode, channel, content, leadId, contactName, contactEmail, contactPhone, metadata } = bodyParsed.data;
       
@@ -236,7 +236,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(response);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -257,7 +257,7 @@ export function registerCampaignRoutes(app: Express): void {
       if (!response) return Errors.notFound(res, "Response");
       res.json(response);
     } catch (err) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       throw err;
     }
   });
@@ -300,7 +300,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(county);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -316,7 +316,7 @@ export function registerCampaignRoutes(app: Express): void {
       const updated = await storage.updateTargetCounty(county.id, validated);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       throw err;
     }
   });
@@ -371,7 +371,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(sequence);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -387,7 +387,7 @@ export function registerCampaignRoutes(app: Express): void {
       const updated = await storage.updateSequence(sequence.id, validated);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       throw err;
     }
   });
@@ -435,7 +435,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(step);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -451,7 +451,7 @@ export function registerCampaignRoutes(app: Express): void {
       const step = await storage.updateSequenceStep(Number(req.params.stepId), validated);
       res.json(step);
     } catch (err) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       throw err;
     }
   });
@@ -478,7 +478,7 @@ export function registerCampaignRoutes(app: Express): void {
 
     const parsed = reorderStepsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { stepIds } = parsed.data;
     await storage.reorderSequenceSteps(sequence.id, stepIds);
@@ -521,7 +521,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       const parsed = enrollLeadSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { leadId } = parsed.data;
       const lead = await storage.getLead(org.id, leadId);
@@ -556,7 +556,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(enrollment);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -570,7 +570,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/enrollments/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const parsed = pauseEnrollmentSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { reason } = parsed.data;
     const enrollment = await storage.pauseEnrollment(Number(req.params.id), reason || "Manually paused");
@@ -606,7 +606,7 @@ export function registerCampaignRoutes(app: Express): void {
       if (!campaign) return Errors.notFound(res, "Campaign");
       res.json(campaign);
     } catch (err) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       throw err;
     }
   });
@@ -625,7 +625,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const parsed = sendMailSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { pieceType, leadIds } = parsed.data;
 
@@ -1123,7 +1123,7 @@ export function registerCampaignRoutes(app: Express): void {
     const modeSchema = z.object({ mode: z.enum(["test", "live"]) });
     const parsed = modeSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { mode } = parsed.data;
     
@@ -1162,7 +1162,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const parsed = estimateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { pieceType, recipientCount, recipientIds, campaignId } = parsed.data;
 
@@ -1222,7 +1222,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const parsed = addressSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { line1, line2, city, state, zip } = parsed.data;
       
@@ -1259,7 +1259,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const parsed = bulkVerifySchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { leadIds } = parsed.data;
 
@@ -1370,7 +1370,7 @@ export function registerCampaignRoutes(app: Express): void {
       const [variant] = await db.insert(campaignVariants).values(input).returning();
       res.status(201).json(variant);
     } catch (err: any) {
-      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });

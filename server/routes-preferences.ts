@@ -90,7 +90,7 @@ router.patch("/", async (req: AuthenticatedRequest, res: Response) => {
 
     const parsed = preferencesSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const update = parsed.data;
     if (Object.keys(update).length === 0) {

@@ -135,7 +135,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       const parsed = autonomyConfigSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid config", errors: parsed.error.errors });
+        return res.status(400).json({ message: "Invalid config", errors: parsed.error.issues });
       }
 
       await autonomousAgentEngine.updateAgentConfig(org.id, type, {
@@ -225,7 +225,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const org = req.organization;
       const parsed = queueTaskSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid task", errors: parsed.error.errors });
+        return res.status(400).json({ message: "Invalid task", errors: parsed.error.issues });
       }
 
       const taskId = await queueAgentTask(
@@ -375,7 +375,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const org = req.organization;
       const parsed = evaluateActionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
       }
 
       const { agentType, actionDescription, parameters } = parsed.data;

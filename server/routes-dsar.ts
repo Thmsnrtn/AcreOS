@@ -112,7 +112,7 @@ export function registerDsarRoutes(app: Express): void {
   app.post("/api/public/dsar", publicDsarLimiter, async (req: Request, res: Response) => {
     const parsed = dsarIntakeSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const body = parsed.data;
 
@@ -334,7 +334,7 @@ export function registerDsarRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = denySchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
     try {
       const [row] = await db

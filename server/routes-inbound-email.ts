@@ -47,7 +47,7 @@ export function registerInboundEmailRoutes(app: Express): void {
       try {
         const parsed = inboundEmailSchema.safeParse(req.body);
         if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.errors);
+          return Errors.validationFailed(res, parsed.error.issues);
         }
 
         // Body-level replay protection: even if the outer SNS/HMAC envelope was
@@ -143,7 +143,7 @@ export function registerInboundEmailRoutes(app: Express): void {
           body: z.string().min(1),
         });
         const parsed = schema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const { to, subject, body } = parsed.data;
         const replyTo = generateReplyToAddress(leadId, org.id);

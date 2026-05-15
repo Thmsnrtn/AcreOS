@@ -288,7 +288,7 @@ export function registerRehabRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = createRehabSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db
         .select({ id: properties.id })
@@ -325,7 +325,7 @@ export function registerRehabRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateRehabSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of [
@@ -350,7 +350,7 @@ export function registerRehabRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = lineItemSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [r] = await db.select({ id: rehabs.id }).from(rehabs)
         .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
@@ -385,7 +385,7 @@ export function registerRehabRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = lineItemUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of [
@@ -511,7 +511,7 @@ export function registerRehabRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = seedTemplateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const tpl = TEMPLATES_BY_KEY.get(parsed.data.templateKey);
       if (!tpl) return Errors.badRequest(res, `Unknown template ${parsed.data.templateKey}`);

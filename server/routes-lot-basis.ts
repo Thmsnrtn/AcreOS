@@ -90,7 +90,7 @@ export function registerLotBasisRoutes(app: Express): void {
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = allocateSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [parent] = await db
           .select()
@@ -224,7 +224,7 @@ export function registerLotBasisRoutes(app: Express): void {
         if (!Number.isFinite(childId)) return Errors.badRequest(res, "Invalid lot id");
 
         const parsed = realizeCogsSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [alloc] = await db
           .select()

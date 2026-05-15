@@ -10,50 +10,50 @@ import { storage } from "./storage";
 
 // Due Diligence
 const dueDiligenceRequestSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
   leadId: z.number().optional(),
   priorityLevel: z.enum(["normal", "high", "urgent"]).optional(),
 });
 
 // Intent
 const intentPredictSchema = z.object({
-  leadId: z.number({ required_error: "leadId is required" }),
+  leadId: z.number({ message: "leadId is required" }),
   propertyId: z.number().optional(),
 });
 
 // Pricing
 const pricingAcquisitionSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
   targetMargin: z.number().optional(),
 });
 
 const pricingDispositionSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
   quickSale: z.boolean().optional(),
 });
 
 const pricingOptimizeSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
   sellerAskingPrice: z.number().optional(),
   dealType: z.enum(["acquisition", "disposition"]).optional(),
 });
 
 // Patterns
 const patternAnalyzeSchema = z.object({
-  dealId: z.number({ required_error: "dealId is required" }),
+  dealId: z.number({ message: "dealId is required" }),
 });
 
 // Negotiation
 const negotiationSessionSchema = z.object({
-  dealId: z.number({ required_error: "dealId is required" }),
+  dealId: z.number({ message: "dealId is required" }),
   leadId: z.number().optional(),
   initialOffer: z.number().optional(),
   sellerAsk: z.number().optional(),
 });
 
 const negotiationObjectionSchema = z.object({
-  sessionId: z.number({ required_error: "sessionId is required" }),
-  objectionText: z.string({ required_error: "objectionText is required" }),
+  sessionId: z.number({ message: "sessionId is required" }),
+  objectionText: z.string({ message: "objectionText is required" }),
 });
 
 // Sequences
@@ -68,7 +68,7 @@ const sequencePerformanceSchema = z.object({
 
 // Voice
 const voiceRecordSchema = z.object({
-  leadId: z.number({ required_error: "leadId is required" }),
+  leadId: z.number({ message: "leadId is required" }),
   audioUrl: z.string().optional(),
   transcriptText: z.string().optional(),
   callDuration: z.number().optional(),
@@ -76,11 +76,11 @@ const voiceRecordSchema = z.object({
 
 // Portfolio
 const portfolioMonitorSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
 });
 
 const portfolioAlertUpdateSchema = z.object({
-  action: z.enum(["acknowledge", "resolve", "dismiss"], { required_error: "action is required" }),
+  action: z.enum(["acknowledge", "resolve", "dismiss"], { message: "action is required" }),
   resolution: z.string().optional(),
   userId: z.string().optional(),
 });
@@ -101,16 +101,16 @@ const cashflowForecastSchema = z.object({
 
 // Compliance
 const complianceRuleSchema = z.object({
-  state: z.string({ required_error: "state is required" }),
+  state: z.string({ message: "state is required" }),
   county: z.string().optional(),
-  ruleType: z.enum(["document_requirements", "disclosure_rules", "timing_restrictions", "recording_requirements", "tax_rules"], { required_error: "ruleType is required" }),
-  description: z.string({ required_error: "description is required" }),
+  ruleType: z.enum(["document_requirements", "disclosure_rules", "timing_restrictions", "recording_requirements", "tax_rules"], { message: "ruleType is required" }),
+  description: z.string({ message: "description is required" }),
   requirements: z.array(z.string()).optional(),
   penalties: z.string().optional(),
 });
 
 const complianceCheckSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
 });
 
 // Buyer Matching
@@ -125,17 +125,17 @@ const buyerProfileSchema = z.object({
 });
 
 const buyerMatchSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
 });
 
 // Buyer Qualification
 const buyerQualifySchema = z.object({
-  buyerProfileId: z.number({ required_error: "buyerProfileId is required" }),
+  buyerProfileId: z.number({ message: "buyerProfileId is required" }),
 });
 
 // Disposition
 const dispositionRecommendSchema = z.object({
-  propertyId: z.number({ required_error: "propertyId is required" }),
+  propertyId: z.number({ message: "propertyId is required" }),
 });
 
 // ============================================

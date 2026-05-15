@@ -54,7 +54,7 @@ router.put("/", async (req: AuthenticatedRequest, res: Response) => {
     const userId = getUserId(req);
     const parsed = personaSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     await db
       .update(users)

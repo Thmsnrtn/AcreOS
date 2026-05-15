@@ -133,7 +133,7 @@ export function registerEtlRoutes(app: Express): void {
     if (!requireFounder(areq, res)) return;
     const parsed = replayParams.safeParse(req.params);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     try {
       const result = await replayDlqRecord(parsed.data.id);

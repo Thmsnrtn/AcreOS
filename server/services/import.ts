@@ -421,11 +421,11 @@ export async function importLeads(
     const parseResult = leadImportSchema.safeParse(leadData);
 
     if (!parseResult.success) {
-      const errorMessages = parseResult.error.errors
+      const errorMessages = parseResult.error.issues
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join("; ");
       
-      const validationErrors: ImportValidationError[] = parseResult.error.errors.map(e => ({
+      const validationErrors: ImportValidationError[] = parseResult.error.issues.map(e => ({
         row: i + 2,
         field: e.path.join("."),
         value: String((leadData as any)[e.path[0]] || ""),
@@ -615,11 +615,11 @@ export async function importProperties(
     const parseResult = propertyImportSchema.safeParse(propertyData);
 
     if (!parseResult.success) {
-      const errorMessages = parseResult.error.errors
+      const errorMessages = parseResult.error.issues
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join("; ");
       
-      const validationErrors: ImportValidationError[] = parseResult.error.errors.map(e => ({
+      const validationErrors: ImportValidationError[] = parseResult.error.issues.map(e => ({
         row: i + 2,
         field: e.path.join("."),
         value: String((propertyData as any)[e.path[0]] || ""),

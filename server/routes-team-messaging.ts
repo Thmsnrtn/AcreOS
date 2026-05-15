@@ -83,7 +83,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = createSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid request body", parsed.error.issues);
       }
       
       const { name, isDirect, participantIds } = parsed.data;
@@ -246,7 +246,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = messageSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid request body", parsed.error.issues);
       }
       
       const { body, attachments } = parsed.data;
@@ -355,7 +355,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = readSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid request body", parsed.error.issues);
       }
       
       const { messageIds, upToMessageId } = parsed.data;
@@ -442,7 +442,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = presenceSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid request body", parsed.error.issues);
       }
       
       const { status, deviceInfo } = parsed.data;
@@ -518,7 +518,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertOfferLetterSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid offer letter data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid offer letter data", parsed.error.issues);
       }
       
       const letter = await storage.createOfferLetter({
@@ -548,7 +548,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = batchSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid batch data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid batch data", parsed.error.issues);
       }
       
       const { leadIds, offerPercent, expirationDays, templateId, deliveryMethod } = parsed.data;
@@ -622,7 +622,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = insertOfferLetterSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid update data", parsed.error.issues);
       }
       
       const updated = await storage.updateOfferLetter(id, parsed.data);
@@ -706,7 +706,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertOfferTemplateSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid template data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid template data", parsed.error.issues);
       }
       
       const template = await storage.createOfferTemplate({
@@ -738,7 +738,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = insertOfferTemplateSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid update data", parsed.error.issues);
       }
       
       const updated = await storage.updateOfferTemplate(id, parsed.data);
@@ -818,7 +818,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertPropertyListingSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid listing data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid listing data", parsed.error.issues);
       }
       
       // Verify property belongs to this org
@@ -862,7 +862,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = insertPropertyListingSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
+        return Errors.badRequest(res, "Invalid update data", parsed.error.issues);
       }
       
       const updated = await storage.updatePropertyListing(id, parsed.data);
@@ -1304,7 +1304,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, "Name is required", parsed.error.errors);
+        return Errors.badRequest(res, "Name is required", parsed.error.issues);
       }
 
       const { name } = parsed.data;

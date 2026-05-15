@@ -163,7 +163,7 @@ export function registerRentalRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = tenantSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [created] = await db.insert(tenants).values({
         organizationId: orgId,
@@ -197,7 +197,7 @@ export function registerRentalRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = tenantUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       // RS-1: gate screening-field updates behind FCRA permissible-purpose
       // attestation. Cordelia §3 + Caspian §1 + Imelda §2.6.
@@ -483,7 +483,7 @@ export function registerRentalRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = leaseSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [prop] = await db.select({ id: properties.id }).from(properties)
         .where(and(eq(properties.id, parsed.data.propertyId), eq(properties.organizationId, orgId)));
@@ -537,7 +537,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = leaseUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
@@ -559,7 +559,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = attachTenantSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [link] = await db.insert(leaseTenants).values({
         organizationId: orgId,
@@ -593,7 +593,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = addendumSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [addendum] = await db.insert(leaseAddendums).values({
         organizationId: orgId,
@@ -701,7 +701,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = renewSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [parent] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));

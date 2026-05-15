@@ -17,8 +17,8 @@ const updatePropertySchema = insertPropertySchema.partial().omit({ organizationI
 
 // Zod schema for comps search
 const compsSearchSchema = z.object({
-  lat: z.number({ required_error: "lat is required" }),
-  lng: z.number({ required_error: "lng is required" }),
+  lat: z.number({ message: "lat is required" }),
+  lng: z.number({ message: "lng is required" }),
   radius: z.number().min(0.1).max(50).optional(),
   subjectAcreage: z.number().min(0).optional(),
   filters: z.object({
@@ -124,7 +124,7 @@ export function registerPropertyRoutes(app: Express): void {
 
     const pagination = paginationQuerySchema.safeParse(req.query);
     if (!pagination.success) {
-      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
     const { page, pageSize, sortBy, sortOrder } = pagination.data;
 
@@ -257,7 +257,7 @@ export function registerPropertyRoutes(app: Express): void {
       res.status(201).json(property);
     } catch (err: any) {
       if (err instanceof z.ZodError || err?.errors) {
-        return Errors.badRequest(res, "Validation failed", (err.errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
+        return Errors.badRequest(res, "Validation failed", (err.issues || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
       return Errors.internal(res, err);
     }
@@ -323,7 +323,7 @@ export function registerPropertyRoutes(app: Express): void {
       res.json(property);
     } catch (err: any) {
       if (err instanceof z.ZodError || err?.errors) {
-        return Errors.badRequest(res, "Validation failed", (err.errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
+        return Errors.badRequest(res, "Validation failed", (err.issues || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
       return Errors.internal(res, err);
     }
@@ -359,7 +359,7 @@ export function registerPropertyRoutes(app: Express): void {
         return Errors.badRequest(
           res,
           "Validation failed",
-          parsed.error.errors.map((e) => ({ field: e.path.join("."), message: e.message })),
+          parsed.error.issues.map((e) => ({ field: e.path.join("."), message: e.message })),
         );
       }
 
@@ -449,7 +449,7 @@ export function registerPropertyRoutes(app: Express): void {
       const org = req.organization;
       const parsed = bulkIdsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, parsed.error.errors[0].message);
+        return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids } = parsed.data;
 
@@ -480,7 +480,7 @@ export function registerPropertyRoutes(app: Express): void {
       const org = req.organization;
       const parsed = bulkUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.badRequest(res, parsed.error.errors[0].message);
+        return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids, updates } = parsed.data;
 
@@ -695,7 +695,7 @@ export function registerPropertyRoutes(app: Express): void {
       const org = req.organization;
       const parsed = compsSearchSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { lat, lng, radius, subjectAcreage, filters } = parsed.data;
       
@@ -756,7 +756,7 @@ export function registerPropertyRoutes(app: Express): void {
 
       const parsed = parcelLookupSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { apn, lat, lng, state, county } = parsed.data;
       

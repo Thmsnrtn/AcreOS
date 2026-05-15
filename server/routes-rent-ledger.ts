@@ -129,7 +129,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = seedSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
@@ -228,7 +228,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = paymentSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
@@ -351,7 +351,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = postureSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [updated] = await db.update(rentCharges).set({
         legalPosture: parsed.data.legalPosture,

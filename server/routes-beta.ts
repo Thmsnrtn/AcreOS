@@ -49,7 +49,7 @@ router.post("/waitlist", async (req, res) => {
     const result = await betaProgramService.joinWaitlist({ ...data, referredBy });
     res.json(result);
   } catch (err: any) {
-    if (err.errors) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
     res.status(500).json({ message: err.message });
   }
 });
@@ -93,7 +93,7 @@ router.post("/feedback", isAuthenticated, async (req, res) => {
     const result = await betaProgramService.submitFeedback({ ...data, email: user.email });
     res.json(result);
   } catch (err: any) {
-    if (err.errors) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
     res.status(500).json({ message: err.message });
   }
 });

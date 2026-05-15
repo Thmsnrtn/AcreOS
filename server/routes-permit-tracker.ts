@@ -269,7 +269,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = createChecklistSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const tpl = TEMPLATE_BY_KEY.get(parsed.data.templateKey);
         if (!tpl) return Errors.badRequest(res, `Unknown template ${parsed.data.templateKey}`);
@@ -327,7 +327,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
         if (!gateId) return Errors.badRequest(res, "Missing gate id");
 
         const parsed = updateGateSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const updates: Record<string, unknown> = { updatedAt: new Date() };
         for (const k of [

@@ -155,7 +155,7 @@ export function registerContractorRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = createContractorSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [created] = await db.insert(contractors).values({
         organizationId: orgId,
@@ -185,7 +185,7 @@ export function registerContractorRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateContractorSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
@@ -220,7 +220,7 @@ export function registerContractorRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = paymentSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [c] = await db.select({ id: contractors.id }).from(contractors)
         .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)));

@@ -262,7 +262,7 @@ export function registerSubdivisionRoutes(app: Express): void {
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parent parcel id");
 
         const parsed = createLotsBatchSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [parent] = await db
           .select()
@@ -329,7 +329,7 @@ export function registerSubdivisionRoutes(app: Express): void {
         if (!Number.isFinite(childId)) return Errors.badRequest(res, "Invalid lot id");
 
         const parsed = editLotSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const updates: Record<string, unknown> = { updatedAt: new Date() };
         if (parsed.data.childLotNumber !== undefined) updates.childLotNumber = parsed.data.childLotNumber;

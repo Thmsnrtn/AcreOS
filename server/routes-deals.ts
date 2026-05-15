@@ -100,7 +100,7 @@ export function registerDealRoutes(app: Express): void {
 
     const pagination = paginationQuerySchema.safeParse(req.query);
     if (!pagination.success) {
-      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
     const { page, pageSize, sortBy, sortOrder } = pagination.data;
 
@@ -502,7 +502,7 @@ export function registerDealRoutes(app: Express): void {
       res.json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+        return Errors.badRequest(res, "Validation failed", err.issues.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       // Task 219: surface optimistic-lock conflicts as 409 Conflict
       if (err instanceof Error && err.message.includes("modified by another request")) {
@@ -523,7 +523,7 @@ export function registerDealRoutes(app: Express): void {
       const dealId = Number(req.params.id);
       const parsed = enrichDealSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const forceRefresh = parsed.data.forceRefresh;
       
@@ -641,7 +641,7 @@ export function registerDealRoutes(app: Express): void {
       const org = req.organization;
       const parsed = createDueDiligenceTemplateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const template = await storage.createDueDiligenceTemplate({
         ...parsed.data,
@@ -650,7 +650,7 @@ export function registerDealRoutes(app: Express): void {
       res.status(201).json(template);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -661,7 +661,7 @@ export function registerDealRoutes(app: Express): void {
   api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const parsed = updateDueDiligenceTemplateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), parsed.data);
     if (!template) return Errors.notFound(res, "Template");
@@ -686,7 +686,7 @@ export function registerDealRoutes(app: Express): void {
     try {
       const parsed = applyTemplateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { templateId } = parsed.data;
       const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
@@ -710,7 +710,7 @@ export function registerDealRoutes(app: Express): void {
     try {
       const parsed = createDueDiligenceItemSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const item = await storage.createDueDiligenceItem({
         ...parsed.data,
@@ -719,7 +719,7 @@ export function registerDealRoutes(app: Express): void {
       res.status(201).json(item);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -730,7 +730,7 @@ export function registerDealRoutes(app: Express): void {
   api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const parsed = updateDueDiligenceItemSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
@@ -765,7 +765,7 @@ export function registerDealRoutes(app: Express): void {
       });
       const parsed = analyzeSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, conversationHistory } = parsed.data;
       
@@ -1527,7 +1527,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.status(201).json(template);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }

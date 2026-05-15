@@ -108,7 +108,7 @@ export function registerLegalHoldRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = placeHoldSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     const body = parsed.data;
 
     // Scope-specific holds require non-empty scopeIds.
@@ -188,7 +188,7 @@ export function registerLegalHoldRoutes(app: Express): void {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
     const parsed = releaseHoldSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
     try {
       const [row] = await db

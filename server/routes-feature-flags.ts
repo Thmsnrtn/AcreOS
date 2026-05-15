@@ -83,7 +83,7 @@ router.patch("/admin/:key", async (req: AuthenticatedRequest, res: Response) => 
     if (!ctx.isFounder) return Errors.forbidden(res, "Founder access required");
 
     const parsed = adminPatchSchema.safeParse(req.body);
-    if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
     const update = parsed.data;
     if (Object.keys(update).length === 0) return Errors.badRequest(res, "Empty flag update");
 

@@ -232,7 +232,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = startPlaybookSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { linkedDealId, linkedPropertyId, linkedLeadId } = parsed.data;
       
@@ -418,7 +418,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const org = req.organization;
     const parsed = updateOrganizationSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const updates = parsed.data;
     const updated = await storage.updateOrganization(org.id, updates);
@@ -504,7 +504,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = authReq.organization;
       const parsed = taxIdentitySchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { legalEntityName, taxIdType, taxId, taxAddress } = parsed.data;
 
@@ -795,7 +795,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // Purchase additional seats
   const purchaseSeatsSchema = z.object({
     quantity: z.number().int().min(1, "Quantity must be at least 1"),
-    billingPeriod: z.enum(["monthly", "yearly"], { required_error: "Billing period must be 'monthly' or 'yearly'" }),
+    billingPeriod: z.enum(["monthly", "yearly"], { message: "Billing period must be 'monthly' or 'yearly'" }),
   });
 
   api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -803,7 +803,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = purchaseSeatsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { quantity, billingPeriod } = parsed.data;
       
@@ -894,7 +894,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = onboardingStepSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { step, data, skipped } = parsed.data;
       
@@ -920,7 +920,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = completeStepSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { stepId, data } = parsed.data;
       
@@ -952,7 +952,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = provisionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { businessType } = parsed.data;
       
@@ -982,7 +982,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = tipsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const stepNumber = parsed.data.step ?? 0;
       const tips = await onboardingService.generatePersonalizedTips(org.id, stepNumber);
@@ -1098,7 +1098,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const memberId = Number(req.params.id);
     const parsed = updateRoleSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { role } = parsed.data;
     const context = req.permissionContext as UserPermissionContext;
@@ -1198,7 +1198,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const memberId = Number(req.params.id);
       const parsed = viewOnlyToggleSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const members = await storage.getTeamMembers(org.id);
@@ -1277,7 +1277,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = req.organization;
       const parsed = addCoOwnerSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       // The candidate must already be a team member of this org (we don't
@@ -1527,7 +1527,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }).strict();
       const parsed = allowed.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       // Merge patch into the existing settings JSONB
       const current = await storage.getOrganization(org.id);
@@ -1819,7 +1819,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const userId = user?.claims?.sub || user?.id;
       const userEmail = (user?.claims?.email || user?.email || "").toLowerCase();
       const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       // Pelle G/H/I: per-user accept-rate limit (10/hr) — defends against
       // a leaked / brute-forced token from being burned through by an
@@ -1995,7 +1995,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const userId = (user as any)?.claims?.sub ?? user?.id ?? "unknown";
       const parsed = pushSubscribeSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { endpoint, keys } = parsed.data;
       // Upsert: ignore if same endpoint already registered
@@ -2019,7 +2019,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const parsed = pushUnsubscribeSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { endpoint } = parsed.data;
       await db.execute(sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`);
@@ -2057,7 +2057,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const parsed = commissionConfigSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       await saveCommissionConfig(req.organization.id, parsed.data);
       res.json({ success: true });
@@ -2106,7 +2106,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const parsed = recordCommissionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { teamMemberId, dealId, salePriceCents, closedAt } = parsed.data;
       const record = await recordDealCommission(
@@ -2131,7 +2131,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const parsed = commissionPaymentSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { paidCents } = parsed.data;
       const updated = await recordCommissionPayment(
@@ -2186,7 +2186,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const { score, feedback, trigger } = parsed.data;

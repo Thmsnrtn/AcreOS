@@ -45,7 +45,7 @@ router.post("/", isAuthenticated, getOrCreateOrg, (req, res) => {
     const entry = marketWatchlistService.addToWatchlist(org.id, String(user.id), data);
     res.status(201).json(entry);
   } catch (err: any) {
-    if (err.errors) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
     res.status(500).json({ message: err.message });
   }
 });

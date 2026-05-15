@@ -109,7 +109,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = ticketSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [created] = await db.insert(maintenanceTickets).values({
         organizationId: orgId,
@@ -134,7 +134,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
@@ -159,7 +159,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = dispatchSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [updated] = await db.update(maintenanceTickets).set({
         assignedContractorId: parsed.data.contractorId,
@@ -184,7 +184,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = completeSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [updated] = await db.update(maintenanceTickets).set({
         status: "completed",

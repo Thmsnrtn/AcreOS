@@ -482,7 +482,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       // Compute trust score — require > 300 to post

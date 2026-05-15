@@ -102,7 +102,7 @@ export function registerCountyTimelineRoutes(app: Express): void {
         if (!Number.isFinite(parcelId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = carrySchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [parent] = await db
           .select()

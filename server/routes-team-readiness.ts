@@ -137,7 +137,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const parsed = setSeatCountSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const tier = tierForSubscriptionTier(org.subscriptionTier);
         if (!tier) return Errors.forbidden(res, "Free tier cannot add seats — upgrade required");
@@ -249,7 +249,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const parsed = upsertRuleSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const data = parsed.data;
         if (data.id) {
@@ -335,7 +335,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         const sample = z
           .object({ state: z.string().optional(), county: z.string().optional() })
           .safeParse(req.body);
-        if (!sample.success) return Errors.validationFailed(res, sample.error.errors);
+        if (!sample.success) return Errors.validationFailed(res, sample.error.issues);
 
         const { assignLead } = await import("./services/leadAssigner");
         const teamMemberId = await assignLead(org.id, sample.data);
@@ -380,7 +380,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const parsed = slackIntegrationSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const data = parsed.data;
         // Upsert on (org, provider).
@@ -467,7 +467,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const parsed = offerThresholdSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         await db
           .update(organizations)
@@ -518,7 +518,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         const id = Number.parseInt(req.params.id, 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
         const parsed = approvalDecisionSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const user = (req as any).user;
         const reviewerId = user?.claims?.sub || user?.id || null;
@@ -598,7 +598,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const parsed = performanceQuerySchema.safeParse(req.query);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const days = parsed.data.range === "7d" ? 7 : parsed.data.range === "90d" ? 90 : 30;
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);

@@ -106,7 +106,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       const userId = getUserId(req);
       const rehabId = req.params.id;
       const parsed = bidSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       // If categoryBreakdown supplied, total should equal sum of breakdown.
       // Don't enforce — operator may add line items not in our enum yet.
@@ -133,7 +133,7 @@ export function registerBidEstimateRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {

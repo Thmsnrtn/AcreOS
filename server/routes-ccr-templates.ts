@@ -168,7 +168,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
         const parsed = createSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [row] = await db.insert(ccrTemplates).values({
           organizationId: orgId,
@@ -197,7 +197,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const parsed = updateSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const updates: Record<string, unknown> = { updatedAt: new Date() };
         if (parsed.data.name !== undefined) updates.name = parsed.data.name;
@@ -255,7 +255,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const parsed = renderSchema.safeParse(req.body);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [tpl] = await db
           .select()

@@ -36,7 +36,7 @@ export function registerAIRoutes(app: Express): void {
       res.status(201).json(config);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -68,7 +68,7 @@ export function registerAIRoutes(app: Express): void {
       res.status(201).json(task);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.errors[0].message);
+        return Errors.badRequest(res, err.issues[0].message);
       }
       throw err;
     }
@@ -180,7 +180,7 @@ export function registerAIRoutes(app: Express): void {
     const userId = user.claims?.sub || user.id;
     const parsed = createConversationSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { agentRole } = parsed.data;
     
@@ -215,7 +215,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = user.claims?.sub || user.id;
       const parsed = aiChatSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, conversationId, agentRole, propertyId } = parsed.data;
 
@@ -340,7 +340,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = user.claims?.sub || user.id;
       const parsed = aiChatStreamSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
 
@@ -470,7 +470,7 @@ export function registerAIRoutes(app: Express): void {
       }
       const parsed = setConversationProjectSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { projectId } = parsed.data;
       await storage.setConversationProject(conversationId, projectId ?? null);
@@ -507,7 +507,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = req.user?.id ?? "unknown";
       const parsed = knowledgeUploadSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { name, content, mimeType, sizeBytes } = parsed.data;
 
@@ -548,7 +548,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const parsed = updateKnowledgeSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { isActive, description } = parsed.data;
       await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
@@ -611,7 +611,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = req.user?.id ?? "unknown";
       const parsed = createProjectSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { name, description, entityType, entityId } = parsed.data;
       const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
@@ -631,7 +631,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const parsed = updateProjectSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { name, description, isActive } = parsed.data;
       await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
@@ -671,7 +671,7 @@ export function registerAIRoutes(app: Express): void {
       const projectId = parseInt(req.params.id);
       const parsed = projectFileUploadSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { fileName, content, mimeType, sizeBytes } = parsed.data;
 
@@ -732,7 +732,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = req.user?.id ?? "unknown";
       const parsed = createScheduledTaskSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { name, prompt, schedule, timezone } = parsed.data;
 
@@ -756,7 +756,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const parsed = updateScheduledTaskSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { isActive, schedule, timezone } = parsed.data;
       const updates: any = { isActive };
@@ -800,14 +800,14 @@ export function registerAIRoutes(app: Express): void {
   // ============================================
 
   const messageRatingSchema = z.object({
-    rating: z.union([z.literal(1), z.literal(-1)], { required_error: "rating must be 1 or -1" }),
+    rating: z.union([z.literal(1), z.literal(-1)], { message: "rating must be 1 or -1" }),
   });
 
   api.patch("/api/ai/messages/:id/rating", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const parsed = messageRatingSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { rating } = parsed.data;
       const msgId = parseInt(req.params.id);
@@ -960,7 +960,7 @@ export function registerAIRoutes(app: Express): void {
       const connectorId = req.params.id;
       const parsed = connectConnectorSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { credentials, settings } = parsed.data;
       const { getConnector } = await import("./services/connectors/registry");
@@ -1157,7 +1157,7 @@ export function registerAIRoutes(app: Express): void {
       const user = req.user;
       const parsed = checkPermissionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { actionId } = parsed.data;
       
@@ -1181,7 +1181,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const parsed = classifyIntentSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message } = parsed.data;
       const { classifyIntentSimple } = await import('./services/intent-router');
@@ -1204,7 +1204,7 @@ export function registerAIRoutes(app: Express): void {
       const user = req.user;
       const parsed = assistantExecuteSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, useAIClassification, useTrialToken } = parsed.data;
 
@@ -1387,7 +1387,7 @@ export function registerAIRoutes(app: Express): void {
 
       const parsed = updateVaAgentSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const updated = await storage.updateVaAgent(agentId, parsed.data);
       res.json(updated);
@@ -1460,7 +1460,7 @@ export function registerAIRoutes(app: Express): void {
       const actionId = parseInt(req.params.id);
       const parsed = rejectActionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { reason } = parsed.data;
       
@@ -1488,7 +1488,7 @@ export function registerAIRoutes(app: Express): void {
       const agentType = req.params.type as any;
       const parsed = vaTaskSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { task } = parsed.data;
 
@@ -1625,7 +1625,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const parsed = createCalendarEventSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const event = await storage.createVaCalendarEvent({
         ...parsed.data,
@@ -1734,7 +1734,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const parsed = approveToolSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { toolCallId, approved } = parsed.data;
       const key = `${req.params.id}:${toolCallId}`;

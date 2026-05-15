@@ -100,7 +100,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = req.organization;
       const parsed = usageEstimateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { actionType, quantity } = parsed.data;
 
@@ -136,7 +136,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = req.organization;
       const parsed = creditPurchaseSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { packId } = parsed.data;
 
@@ -209,7 +209,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = req.organization;
       const parsed = autoTopUpSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { enabled, thresholdCents, amountCents } = parsed.data;
 
@@ -294,7 +294,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = req.organization;
       const parsed = stripeCheckoutSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { priceId } = parsed.data;
       
@@ -407,7 +407,7 @@ export function registerBillingRoutes(app: Express): void {
 
       const parsed = connectLinkSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const email = user?.claims?.email || parsed.data.email;
@@ -532,7 +532,7 @@ export function registerBillingRoutes(app: Express): void {
     amount: z.number().positive("Valid amount is required"),
     noteId: z.number().int().optional(),
     propertyId: z.number().int().optional(),
-    paymentType: z.enum(["note_payment", "cash_sale", "down_payment"], { required_error: "Valid payment type is required" }),
+    paymentType: z.enum(["note_payment", "cash_sale", "down_payment"], { message: "Valid payment type is required" }),
     description: z.string().optional(),
   });
 
@@ -542,7 +542,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = req.organization;
       const parsed = paymentIntentSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const { amount, noteId, propertyId, paymentType, description } = parsed.data;
       
@@ -620,7 +620,7 @@ export function registerBillingRoutes(app: Express): void {
       const org = (req as any).organization;
       const parsed = trialStartSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const tier = parsed.data.tier;
       const status = await trialService.startTrial(org.id, tier);
@@ -764,7 +764,7 @@ export function registerBillingRoutes(app: Express): void {
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       // Save survey
@@ -840,7 +840,7 @@ export function registerBillingRoutes(app: Express): void {
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       if (!org.stripeCustomerId) {

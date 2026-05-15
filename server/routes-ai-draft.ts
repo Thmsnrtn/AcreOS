@@ -65,7 +65,7 @@ router.post("/draft-reply", async (req: AuthenticatedRequest, res: Response) => 
 
     const parsed = draftSchema.safeParse(req.body);
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { messageId, priorDraft, tone } = parsed.data;
 
