@@ -1505,6 +1505,12 @@ export async function registerRoutes(
     app.use('/api/founder/cockpit', isAuthenticated, founderCockpitRouter);
   }
 
+  // Pillar R — founder admin for trust-graduation tiers.
+  {
+    const founderGraduationRouter = (await import("./routes-founder-graduation")).default;
+    app.use('/api/founder/graduation', isAuthenticated, founderGraduationRouter);
+  }
+
   // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
   {
     const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;

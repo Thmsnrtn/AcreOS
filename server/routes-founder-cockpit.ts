@@ -251,7 +251,7 @@ function buildAutonomySection(
         ? [{ label: "Founder-override rate", value: `${pulse.overrideRatePct.toFixed(1)}%` }]
         : []),
     ],
-    actionUrl: "/founder/trends",
+    actionUrl: "/founder/trust-graduation",
   };
 }
 

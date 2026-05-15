@@ -246,6 +246,7 @@ const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-que
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
+const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
@@ -820,6 +821,11 @@ function Router() {
           required surface alongside /founder/now. */}
       <Route path="/founder/cockpit">
         {() => <FounderProtectedRoute component={FounderCockpitPage} />}
+      </Route>
+      {/* Pillar R — per-(agent, category) tier admin. Linked from the
+          cockpit's autonomy section. */}
+      <Route path="/founder/trust-graduation">
+        {() => <FounderProtectedRoute component={FounderTrustGraduationPage} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}
