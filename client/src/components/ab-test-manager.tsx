@@ -41,6 +41,12 @@ const statusIcons: Record<string, any> = {
   completed: CheckCircle,
 };
 
+const statusColors: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground border-transparent",
+  running: "bg-acr-brand-soft text-acr-brand border-transparent",
+  completed: "bg-acr-pos-soft text-acr-pos border-transparent",
+};
+
 const testTypeLabels: Record<string, string> = {
   subject: 'Subject line',
   content: 'Content',

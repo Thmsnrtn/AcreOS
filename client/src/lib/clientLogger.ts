@@ -13,7 +13,14 @@ import { Sentry } from "./sentry";
  * during local development. In production, the dev branches are stripped
  * by Vite via `import.meta.env.DEV` so only the Sentry path remains.
  */
-type LogContext = Record<string, unknown> | undefined;
+/**
+ * Accepts the common things call sites pass: a plain context object, an
+ * Error caught from a try/catch, a raw string, or an `unknown` value. The
+ * error() implementation coerces non-Record values into `{ value: x }`
+ * before handing them to Sentry's `extra` field. Widening here avoids
+ * forcing every caller to wrap their value in an object literal.
+ */
+type LogContext = Record<string, unknown> | Error | string | unknown | undefined;
 
 function isDev(): boolean {
   // `import.meta.env.DEV` is `true` for `vite dev`, false for prod builds.
@@ -49,17 +56,31 @@ export const clientLogger = {
   },
 
   error(err: Error | string | unknown, context?: LogContext): void {
+    const extra = coerceContext(context);
     if (err instanceof Error) {
-      Sentry.captureException(err, context ? { extra: context } : undefined);
+      Sentry.captureException(err, extra ? { extra } : undefined);
     } else if (typeof err === "string") {
-      Sentry.captureException(new Error(err), context ? { extra: context } : undefined);
+      Sentry.captureException(new Error(err), extra ? { extra } : undefined);
     } else {
-      Sentry.captureException(new Error(stringify(err)), context ? { extra: context } : undefined);
+      Sentry.captureException(new Error(stringify(err)), extra ? { extra } : undefined);
     }
     // eslint-disable-next-line no-console
     console.error(err, ...(context ? [context] : []));
   },
 };
+
+/**
+ * Convert whatever the caller passed as context into a Record Sentry can
+ * stash under `extra`. Errors → { name, message, stack }; strings →
+ * { value }; anything else → { value }.
+ */
+function coerceContext(ctx: LogContext): Record<string, unknown> | undefined {
+  if (ctx == null) return undefined;
+  if (ctx instanceof Error) return { name: ctx.name, message: ctx.message, stack: ctx.stack };
+  if (typeof ctx === "string") return { value: ctx };
+  if (typeof ctx === "object") return ctx as Record<string, unknown>;
+  return { value: ctx };
+}
 
 function stringify(v: unknown): string {
   if (typeof v === "string") return v;

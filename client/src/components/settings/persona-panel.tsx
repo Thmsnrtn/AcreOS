@@ -25,6 +25,8 @@ import { PERSONAS, getTerm } from "@/lib/personaVocabulary";
 const PERSONA_DESCRIPTIONS: Record<Persona, string> = {
   land_investor: "Buy raw land, sell with seller financing, manage the note. The default AcreOS path.",
   note_investor: "Buy/sell/manage promissory notes, often secured by real estate. Reuses 70% of land-investor infrastructure.",
+  note_originator: "Originate notes — typically seller-financed land or tax-lien conversions. Lender's perspective, not secondary market.",
+  note_servicer: "Service notes on behalf of others (licensed sub-servicer). Operational hat, not beneficial owner.",
   tax_delinquent: "Buy properties from owners behind on taxes (pre-foreclosure or at tax sale). Specialized auction calendar + state-rules.",
   wholesaler: "Get under contract at low price, assign the contract to an end buyer for an assignment fee. Don't actually own the property.",
   subdivider: "Buy large parcels, subdivide, sell smaller lots. Adds permit-tracking + per-lot pipelines.",

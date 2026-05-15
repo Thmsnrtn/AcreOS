@@ -25,7 +25,21 @@
  * vertical introduces a *new* axis, add a 4th input and union the same way.
  */
 
-import type { InvestorType } from "./contextProfile";
+/**
+ * Behaviorally-detected investor type. Inlined here because the previous
+ * `contextProfile.ts` source was removed; this keeps sidebar gating
+ * decoupled from any one detection implementation. The union below MUST
+ * stay in sync with the keys of `byDetectedInvestorType` below.
+ */
+export type InvestorType =
+  | "wholesaler"
+  | "fix_and_flip"
+  | "portfolio_builder"
+  | "auction_hunter"
+  | "developer"
+  | "note_investor"
+  | "new_investor"
+  | "residential_wholesaler";
 
 /**
  * Org-level investor-type ('land' | 'notes' | 'both'), the canonical
