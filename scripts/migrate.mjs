@@ -2493,6 +2493,48 @@ const STATEMENTS = [
   // organizations: investor-type fork (0073 Part A)
   `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS investor_type TEXT NOT NULL DEFAULT 'land'`,
 
+  // 2026-05-16 — incident patch. /api/notifications/count + every other
+  // path that calls getOrganizationByOwner was 500-ing because Drizzle's
+  // .select() pulls every column in shared/schema.ts and prod was missing
+  // at least one. Symptom: "Couldn't reach the decision queue" toast on
+  // every page; founder home unrenderable. Same shape as the 2026-05-07
+  // users-hydration patch above — added every shared/schema.ts → organizations
+  // column that wasn't already covered by the historical migration files,
+  // each guarded by IF NOT EXISTS so this is a no-op for any column that
+  // does exist. Verified column list against shared/schema.ts lines 50-216.
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS credit_balance numeric DEFAULT '0'`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS dunning_stage text DEFAULT 'none'`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS dunning_started_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS last_payment_failed_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS auto_top_up_enabled boolean DEFAULT false`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS auto_top_up_threshold_cents integer DEFAULT 200`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS auto_top_up_amount_cents integer DEFAULT 2500`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS additional_seats integer DEFAULT 0`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_founder boolean DEFAULT false`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_completed boolean DEFAULT false`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_step integer DEFAULT 0`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_data jsonb`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS settings jsonb`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_used boolean DEFAULT false`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_tokens integer DEFAULT 5`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_tokens_granted_at timestamp DEFAULT now()`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS proactive_notification_level varchar(50) DEFAULT 'balanced'`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pax_autonomy_level varchar(20) DEFAULT 'assisted'`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS utm_source text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS utm_medium text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS utm_campaign text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS utm_content text`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS timezone text DEFAULT 'America/New_York'`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS referral_credits integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS churn_risk_score integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS churn_risk_updated_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS churn_rescue_sent_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS milestones_reached jsonb DEFAULT '[]'::jsonb`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS referral_nudge_sent_at timestamp`,
+  `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS founder_daily_attention_cap integer NOT NULL DEFAULT 5`,
+
   // email_suppressions: deliverability extensions (0056 Part 4)
   `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS bounce_category text`,
   `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS organization_id integer REFERENCES organizations(id) ON DELETE SET NULL`,
