@@ -203,58 +203,112 @@ export default function TeamLeaderboardPage() {
                 No team members found.
               </div>
             ) : (
-              <div role="region" aria-label="Team leaderboard rankings" tabIndex={0}>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead scope="col" className="w-12">Rank</TableHead>
-                      <TableHead scope="col">Agent</TableHead>
-                      <TableHead scope="col">Role</TableHead>
-                      <TableHead scope="col" className="text-center">Leads</TableHead>
-                      <TableHead scope="col" className="text-center">Offers out</TableHead>
-                      <TableHead scope="col" className="text-center">Under contract</TableHead>
-                      <TableHead scope="col" className="text-center">Closed</TableHead>
-                      <TableHead scope="col" className="text-right">Revenue</TableHead>
-                      <TableHead scope="col" className="text-right">Score</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map((entry, idx) => (
-                      <TableRow
-                        key={entry.teamMemberId}
-                        className={idx === 0 ? "bg-acr-warn-soft/50" : ""}
-                      >
-                        <TableCell>
-                          <RankBadge rank={idx + 1} />
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{entry.displayName}</p>
-                            <p className="text-xs text-muted-foreground">{entry.email}</p>
+              <>
+                {/* Mobile: stacked card per agent. The 9-column table clips
+                    badly on phones; surface the score + key metrics first,
+                    keep agent identity prominent, fold lesser stats inline. */}
+                <ul className="md:hidden divide-y divide-border" data-testid="list-leaderboard-mobile">
+                  {entries.map((entry, idx) => (
+                    <li
+                      key={entry.teamMemberId}
+                      className={`px-4 py-3 ${idx === 0 ? "bg-acr-warn-soft/50" : ""}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <RankBadge rank={idx + 1} />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{entry.displayName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{entry.email}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="capitalize text-xs">{entry.role}</Badge>
+                            <span className="font-bold text-acr-accent tabular-nums text-sm">
+                              Score {entry.score}
+                            </span>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize text-xs">
-                            {entry.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center tabular-nums">{entry.leadsAssigned}</TableCell>
-                        <TableCell className="text-center tabular-nums">{entry.offersOut}</TableCell>
-                        <TableCell className="text-center tabular-nums">{entry.dealsUnderContract}</TableCell>
-                        <TableCell className="text-center font-semibold tabular-nums">{entry.dealsClosed}</TableCell>
-                        <TableCell className="text-right font-semibold text-acr-pos tabular-nums">
-                          {usd(entry.revenueGenerated, { noCents: true })}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="font-bold text-acr-accent tabular-nums">
-                            {entry.score}
-                          </span>
-                        </TableCell>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-semibold text-acr-pos tabular-nums">
+                            {usd(entry.revenueGenerated, { noCents: true })}
+                          </div>
+                          <div className="text-xs text-muted-foreground tabular-nums">revenue</div>
+                        </div>
+                      </div>
+                      <dl className="grid grid-cols-4 gap-2 mt-2 text-xs text-center">
+                        <div>
+                          <dt className="text-muted-foreground">Leads</dt>
+                          <dd className="tabular-nums font-medium">{entry.leadsAssigned}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Offers</dt>
+                          <dd className="tabular-nums font-medium">{entry.offersOut}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">UC</dt>
+                          <dd className="tabular-nums font-medium">{entry.dealsUnderContract}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Closed</dt>
+                          <dd className="tabular-nums font-semibold">{entry.dealsClosed}</dd>
+                        </div>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Desktop: full 9-column table, wrapped in horizontal-scroll
+                    fallback for narrow desktop windows. */}
+                <div className="hidden md:block overflow-x-auto" role="region" aria-label="Team leaderboard rankings" tabIndex={0}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead scope="col" className="w-12">Rank</TableHead>
+                        <TableHead scope="col">Agent</TableHead>
+                        <TableHead scope="col">Role</TableHead>
+                        <TableHead scope="col" className="text-center">Leads</TableHead>
+                        <TableHead scope="col" className="text-center">Offers out</TableHead>
+                        <TableHead scope="col" className="text-center">Under contract</TableHead>
+                        <TableHead scope="col" className="text-center">Closed</TableHead>
+                        <TableHead scope="col" className="text-right">Revenue</TableHead>
+                        <TableHead scope="col" className="text-right">Score</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {entries.map((entry, idx) => (
+                        <TableRow
+                          key={entry.teamMemberId}
+                          className={idx === 0 ? "bg-acr-warn-soft/50" : ""}
+                        >
+                          <TableCell>
+                            <RankBadge rank={idx + 1} />
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{entry.displayName}</p>
+                              <p className="text-xs text-muted-foreground">{entry.email}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="capitalize text-xs">
+                              {entry.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums">{entry.leadsAssigned}</TableCell>
+                          <TableCell className="text-center tabular-nums">{entry.offersOut}</TableCell>
+                          <TableCell className="text-center tabular-nums">{entry.dealsUnderContract}</TableCell>
+                          <TableCell className="text-center font-semibold tabular-nums">{entry.dealsClosed}</TableCell>
+                          <TableCell className="text-right font-semibold text-acr-pos tabular-nums">
+                            {usd(entry.revenueGenerated, { noCents: true })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-bold text-acr-accent tabular-nums">
+                              {entry.score}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

@@ -337,20 +337,26 @@ export default function OffersPage() {
           </div>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList data-testid="tabs-offers">
-              <TabsTrigger value="queue" data-testid="tab-queue">
-                <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
-                Offer queue
-              </TabsTrigger>
-              <TabsTrigger value="calculator" data-testid="tab-calculator">
-                <Calculator className="w-4 h-4 mr-2" aria-hidden="true" />
-                Batch calculator
-              </TabsTrigger>
-              <TabsTrigger value="templates" data-testid="tab-templates">
-                <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
-                Templates
-              </TabsTrigger>
-            </TabsList>
+            {/* TabsList is inline-flex so it doesn't shrink — at 390px the
+                three labels + icons total ~408px and overflow the viewport.
+                Wrap in a horizontal-scroll container so the bar can slide
+                instead of clipping; visible on iPhone-class viewports. */}
+            <div className="-mx-4 px-4 overflow-x-auto md:mx-0 md:px-0 md:overflow-visible">
+              <TabsList data-testid="tabs-offers" className="w-max md:w-auto">
+                <TabsTrigger value="queue" data-testid="tab-queue">
+                  <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Offer queue
+                </TabsTrigger>
+                <TabsTrigger value="calculator" data-testid="tab-calculator">
+                  <Calculator className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Batch calculator
+                </TabsTrigger>
+                <TabsTrigger value="templates" data-testid="tab-templates">
+                  <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Templates
+                </TabsTrigger>
+              </TabsList>
+            </div>
             
             <TabsContent value="queue" className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
