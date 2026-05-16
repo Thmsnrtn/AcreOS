@@ -2535,6 +2535,27 @@ const STATEMENTS = [
   `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS referral_nudge_sent_at timestamp`,
   `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS founder_daily_attention_cap integer NOT NULL DEFAULT 5`,
 
+  // 2026-05-16 — theme rename: dirtpass → bedrock (catalog cohesion).
+  // Two-part migration, both idempotent:
+  //   1. Any user record whose stored theme is "dirtpass" gets rewritten
+  //      to "bedrock" so their explicit choice survives the rename.
+  //   2. Any user record whose stored theme is "homestead" has the field
+  //      removed entirely. Rationale: the old client/server default for
+  //      months was "homestead"; lots of users have it stored without
+  //      ever having explicitly chosen it. Removing the field lets the
+  //      new server default (bedrock) take effect on next page load.
+  //      Real homestead fans can re-pick from Settings → Appearance in
+  //      one click. Per user instruction 2026-05-16 — accepting the
+  //      blast radius for catalog hygiene.
+  // Both UPDATEs match on appearance_preferences->>'theme', so they no-op
+  // for any row that doesn't have that specific value — safe to re-run.
+  `UPDATE users
+     SET appearance_preferences = jsonb_set(appearance_preferences, '{theme}', '"bedrock"'::jsonb)
+     WHERE appearance_preferences->>'theme' = 'dirtpass'`,
+  `UPDATE users
+     SET appearance_preferences = appearance_preferences - 'theme'
+     WHERE appearance_preferences->>'theme' = 'homestead'`,
+
   // email_suppressions: deliverability extensions (0056 Part 4)
   `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS bounce_category text`,
   `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS organization_id integer REFERENCES organizations(id) ON DELETE SET NULL`,

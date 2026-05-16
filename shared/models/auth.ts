@@ -9,7 +9,7 @@ import { index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from
  * the union types in sync when adding new options.
  */
 export interface AppearancePreferences {
-  theme?: "dirtpass" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
+  theme?: "bedrock" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
   mode?: "light" | "dark" | "auto";
   fontPairing?: "editorial" | "modern" | "classic" | "native" | "refined";
   density?: "compact" | "comfortable" | "adaptive";

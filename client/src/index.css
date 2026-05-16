@@ -93,20 +93,20 @@
 
 /* ═══════════════════════════════════════════════════════════════════
    SIX THEME BLOCKS — each contains --acr-* + HSL together.
-   The :root block doubles as the DIRTPASS-light fallback so apps
+   The :root block doubles as the BEDROCK-light fallback so apps
    without an explicit data-theme attribute still land on the house
-   brand (DIRTPASS Vol. 1 — see the block below).
+   brand (BEDROCK Vol. 1 — see the block below).
 ═══════════════════════════════════════════════════════════════════ */
 
 
-/* ─────────────── DIRTPASS · light (default) ─────────────────
-   DIRTPASS Vol. 1 — raw earth, weathered iron, sun-bleached dust.
+/* ─────────────── BEDROCK · light (default) ─────────────────
+   BEDROCK Vol. 1 — raw earth, weathered iron, sun-bleached dust.
    Inspired by riding-culture poster design: oxidized rust on bone,
    dust-gold accents, moss-green positives, dried-blood negatives.
    This block doubles as the :root fallback so apps without an
-   explicit [data-theme] attribute land on DIRTPASS. */
+   explicit [data-theme] attribute land on BEDROCK. */
 :root,
-[data-theme="dirtpass"]:root {
+[data-theme="bedrock"]:root {
   --acr-bg:           #EDE3D0;
   --acr-bg-sunken:    #D9CDB6;
   --acr-bg-raised:    #F7F0DD;
@@ -174,9 +174,9 @@
   --sidebar-ring:                14 60% 39%;
 }
 
-/* ─────────────── DIRTPASS · dark ─────────────── */
+/* ─────────────── BEDROCK · dark ─────────────── */
 .dark,
-[data-theme="dirtpass"].dark {
+[data-theme="bedrock"].dark {
   --acr-bg:           #13100B;
   --acr-bg-sunken:    #0A0805;
   --acr-bg-raised:    #1F1A12;

@@ -12,13 +12,13 @@ import { clientLogger } from "@/lib/clientLogger";
  * `prefers-color-scheme` changes do not flip the app under a manual pick.
  */
 
-export type ThemeId = "dirtpass" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
+export type ThemeId = "bedrock" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
 export type ThemeMode = "light" | "dark" | "auto";
 export type FontPairing = "editorial" | "modern" | "classic" | "native" | "refined";
 export type Density = "compact" | "comfortable" | "adaptive";
 export type MotionPreference = "full" | "reduced";
 
-export const THEME_IDS: ThemeId[] = ["dirtpass", "homestead", "quarry", "nocturne", "meadow", "slate"];
+export const THEME_IDS: ThemeId[] = ["bedrock", "homestead", "quarry", "nocturne", "meadow", "slate"];
 export const FONT_PAIRINGS: FontPairing[] = ["editorial", "modern", "classic", "native", "refined"];
 export const DENSITIES: Density[] = ["compact", "comfortable", "adaptive"];
 export const MOTION_PREFERENCES: MotionPreference[] = ["full", "reduced"];
@@ -37,7 +37,7 @@ function getInitialMotion(): MotionPreference {
 }
 
 const DEFAULT_CONFIG: ThemeConfig = {
-  theme: "dirtpass",
+  theme: "bedrock",
   mode: "auto",
   fontPairing: "native",
   density: "adaptive",

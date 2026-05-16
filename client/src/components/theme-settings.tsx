@@ -24,8 +24,8 @@ type ThemeSwatch = {
 
 const THEMES: ThemeSwatch[] = [
   {
-    id: "dirtpass",
-    label: "Dirtpass",
+    id: "bedrock",
+    label: "Bedrock",
     tagline: "Oxidized rust, bone, moss — default",
     light: { bg: "#EDE3D0", brand: "#A04428", ink: "#1F1814" },
     dark: { bg: "#13100B" },
@@ -130,14 +130,14 @@ export function ThemeSettings() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Theme</p>
-              {themeConfig.theme !== "dirtpass" && (
+              {themeConfig.theme !== "bedrock" && (
                 <button
                   type="button"
-                  onClick={() => setThemeConfig({ theme: "dirtpass" })}
+                  onClick={() => setThemeConfig({ theme: "bedrock" })}
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
                   data-testid="button-reset-theme"
                 >
-                  Reset to Dirtpass
+                  Reset to Bedrock
                 </button>
               )}
             </div>
