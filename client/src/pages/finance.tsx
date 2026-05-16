@@ -339,102 +339,160 @@ export default function FinancePage() {
           <Card className="floating-window overflow-hidden">
             <CardHeader className="pb-4">
               <CardTitle>Loan Portfolio</CardTitle>
-              <CardDescription>Click a note to view details, payment history, and amortization schedule</CardDescription>
+              <CardDescription>Tap a note to view details, payment history, and amortization schedule</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead className="min-w-[140px]">Borrower</TableHead>
-                      <TableHead className="min-w-[140px]">Property</TableHead>
-                      <TableHead className="text-right min-w-[90px]">Balance</TableHead>
-                      <TableHead className="text-right min-w-[80px]">Monthly</TableHead>
-                      <TableHead className="min-w-[100px]">Next Due</TableHead>
-                      <TableHead className="min-w-[80px]">Health</TableHead>
-                      <TableHead className="min-w-[80px]">Status</TableHead>
-                      <TableHead className="min-w-[50px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center h-24">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                          Loading notes...
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : enrichedNotes?.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="p-0">
-                        <EmptyState
-                          icon={FileText}
-                          title="No promissory notes yet"
-                          description="Create a note to track financing. Manage seller financing, track payments, and generate amortization schedules."
-                          actionLabel="Create Your First Note"
-                          onAction={() => setIsCreateOpen(true)}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    enrichedNotes?.map((note) => {
+              {/* Loading + empty states render outside the scrolling table
+                  container so their content doesn't get clipped by the
+                  horizontal-overflow behavior used for the desktop table. */}
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2 h-24 text-sm">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  Loading notes…
+                </div>
+              ) : !enrichedNotes || enrichedNotes.length === 0 ? (
+                <EmptyState
+                  icon={FileText}
+                  title="No promissory notes yet"
+                  description="Create a note to track financing. Manage seller financing, track payments, and generate amortization schedules."
+                  actionLabel="Create Your First Note"
+                  onAction={() => setIsCreateOpen(true)}
+                />
+              ) : (
+                <>
+                  {/* Mobile: card list. The 8-column table is unreadable in a
+                      375px viewport; a stacked card per note keeps every value
+                      visible without horizontal scrolling. md+ uses the full
+                      table below. */}
+                  <ul className="md:hidden divide-y divide-border" data-testid="list-notes-mobile">
+                    {enrichedNotes.map((note) => {
                       const health = getLoanHealth(note);
+                      const borrowerLabel = note.borrower
+                        ? `${note.borrower.firstName} ${note.borrower.lastName}`
+                        : note.borrowerId
+                          ? `Borrower #${note.borrowerId}`
+                          : "Unassigned borrower";
+                      const propertyLabel = note.property
+                        ? `${note.property.county}, ${note.property.state}`
+                        : note.propertyId
+                          ? `Property #${note.propertyId}`
+                          : "Unassigned property";
                       return (
-                        <TableRow 
-                          key={note.id} 
-                          className="cursor-pointer hover-elevate"
-                          onClick={() => setSelectedNote(note)}
-                          data-testid={`row-note-${note.id}`}
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">
-                                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
+                        <li key={note.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedNote(note)}
+                            className="w-full text-left px-4 py-3 hover-elevate active:bg-muted/30"
+                            data-testid={`card-note-${note.id}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-muted-foreground shrink-0" />
+                                  <span className="font-medium truncate">{borrowerLabel}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{propertyLabel}</span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="font-mono font-semibold tabular-nums">{usd(note.currentBalance)}</div>
+                                <div className="font-mono text-sm text-acr-pos tabular-nums">
+                                  {usd(note.monthlyPayment)}<span className="text-muted-foreground">/mo</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2 text-xs">
+                              <div className="flex items-center gap-2">
+                                <Badge className={getStatusColor(note.status)}>{note.status}</Badge>
+                                <span className={`font-medium ${health.color}`}>{health.label}</span>
+                              </div>
+                              <span className="text-muted-foreground">
+                                {note.nextPaymentDate
+                                  ? `Next ${format(new Date(note.nextPaymentDate), 'MMM d')}`
+                                  : 'No next due'}
                               </span>
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-4 h-4 text-muted-foreground" />
-                              <span className="text-sm">
-                                {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-medium tabular-nums">
-                            {usd(note.currentBalance)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-bold tabular-nums text-acr-pos">
-                            {usd(note.monthlyPayment)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), 'MMM d, yyyy') : '-'}
-                          </TableCell>
-                          <TableCell>
-                            <span className={`text-sm font-medium ${health.color}`}>
-                              {health.label}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(note.status)}>
-                              {note.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button size="icon" variant="ghost" aria-label="View note details" data-testid={`button-view-note-${note.id}`}>
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                          </button>
+                        </li>
                       );
-                    })
-                  )}
-                  </TableBody>
-                </Table>
-              </div>
+                    })}
+                  </ul>
+
+                  {/* Desktop: full 8-column table. Hidden on mobile. */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead className="min-w-[140px]">Borrower</TableHead>
+                          <TableHead className="min-w-[140px]">Property</TableHead>
+                          <TableHead className="text-right min-w-[90px]">Balance</TableHead>
+                          <TableHead className="text-right min-w-[80px]">Monthly</TableHead>
+                          <TableHead className="min-w-[100px]">Next Due</TableHead>
+                          <TableHead className="min-w-[80px]">Health</TableHead>
+                          <TableHead className="min-w-[80px]">Status</TableHead>
+                          <TableHead className="min-w-[50px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enrichedNotes.map((note) => {
+                          const health = getLoanHealth(note);
+                          return (
+                            <TableRow
+                              key={note.id}
+                              className="cursor-pointer hover-elevate"
+                              onClick={() => setSelectedNote(note)}
+                              data-testid={`row-note-${note.id}`}
+                            >
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-muted-foreground" />
+                                  <span className="font-medium">
+                                    {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-sm">
+                                    {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-medium tabular-nums">
+                                {usd(note.currentBalance)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-bold tabular-nums text-acr-pos">
+                                {usd(note.monthlyPayment)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), 'MMM d, yyyy') : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <span className={`text-sm font-medium ${health.color}`}>
+                                  {health.label}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={getStatusColor(note.status)}>
+                                  {note.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button size="icon" variant="ghost" aria-label="View note details" data-testid={`button-view-note-${note.id}`}>
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
