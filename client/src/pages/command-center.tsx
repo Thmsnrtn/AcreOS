@@ -1837,29 +1837,36 @@ export default function CommandCenterPage() {
           </div>
           <DisclaimerBanner type="ai" className="mb-4" />
           <div className="flex items-center gap-2">
-            <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1">
-              <TabsList className={isMobile ? "w-full" : ""}>
-                <TabsTrigger value="chat" className={isMobile ? "flex-1" : ""} data-testid="tab-chat">
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Assistant
-                </TabsTrigger>
-                <TabsTrigger value="team" className={isMobile ? "flex-1" : ""} data-testid="tab-team">
-                  <Users className="w-4 h-4 mr-2" />
-                  Team
-                </TabsTrigger>
-                <TabsTrigger value="tasks" className={isMobile ? "flex-1" : ""} data-testid="tab-tasks">
-                  <ListTodo className="w-4 h-4 mr-2" />
-                  Tasks
-                </TabsTrigger>
-                <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
-                  <Bot className="w-4 h-4 mr-2" />
-                  Background
-                </TabsTrigger>
-                <TabsTrigger value="ai-ops" className={isMobile ? "flex-1" : ""} data-testid="tab-ai-ops">
-                  <Brain className="w-4 h-4 mr-2" />
-                  AI Ops
-                </TabsTrigger>
-              </TabsList>
+            <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1 min-w-0">
+              {/* Five tabs × icon + label can't fit a 390px viewport when
+                  divided evenly with flex-1 — "Background" clipped to
+                  "Backgrou…" and "AI Ops" fell off the right edge. Use a
+                  horizontal-scroll bar on mobile so the user can swipe to
+                  all tabs; desktop keeps the inline-flex default. */}
+              <div className="overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
+                <TabsList className="w-max md:w-auto">
+                  <TabsTrigger value="chat" data-testid="tab-chat">
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Assistant
+                  </TabsTrigger>
+                  <TabsTrigger value="team" data-testid="tab-team">
+                    <Users className="w-4 h-4 mr-2" />
+                    Team
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" data-testid="tab-tasks">
+                    <ListTodo className="w-4 h-4 mr-2" />
+                    Tasks
+                  </TabsTrigger>
+                  <TabsTrigger value="agents" data-testid="tab-agents">
+                    <Bot className="w-4 h-4 mr-2" />
+                    Background
+                  </TabsTrigger>
+                  <TabsTrigger value="ai-ops" data-testid="tab-ai-ops">
+                    <Brain className="w-4 h-4 mr-2" />
+                    AI Ops
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </Tabs>
             <Dialog>
               <DialogTrigger asChild>
@@ -2184,7 +2191,13 @@ export default function CommandCenterPage() {
                       </div>
                     )}
                     
-                    <div className="flex gap-2 items-end">
+                    {/* Compact button sizes on mobile: 5 controls (attach,
+                        image-mode, textarea, send) on a 390px viewport with
+                        h-10/w-10 each + a Send button leaves the textarea
+                        with ~200px and clips the placeholder. Shrink the
+                        side buttons to h-9/w-9 below sm so the input gets
+                        breathing room. */}
+                    <div className="flex gap-1 sm:gap-2 items-end">
                       <div className="flex gap-1">
                         <Button
                           type="button"
@@ -2192,7 +2205,7 @@ export default function CommandCenterPage() {
                           size="icon"
                           onClick={handleAttachClick}
                           disabled={isStreaming || attachments.length >= MAX_ATTACHMENTS}
-                          className="h-10 w-10"
+                          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
                           aria-label="Attach file"
                           data-testid="button-attach-file"
                         >
@@ -2204,7 +2217,7 @@ export default function CommandCenterPage() {
                           size="icon"
                           onClick={() => setIsImageMode(!isImageMode)}
                           disabled={isStreaming}
-                          className="h-10 w-10"
+                          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
                           aria-label={isImageMode ? "Disable image mode" : "Enable image mode"}
                           data-testid="button-image-mode"
                         >
@@ -2216,14 +2229,17 @@ export default function CommandCenterPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={isImageMode ? "Describe the image you want to generate..." : "Ask me anything about your land investments..."}
-                        className="flex-1 min-h-[48px] max-h-32 resize-none"
+                        placeholder={isImageMode ? "Describe the image…" : "Ask Pax anything…"}
+                        className="flex-1 min-w-0 min-h-[44px] sm:min-h-[48px] max-h-32 resize-none"
                         disabled={isStreaming}
                         data-testid="input-message"
                       />
                       <Button
                         onClick={sendMessage}
                         disabled={(!input.trim() && attachments.length === 0) || isStreaming}
+                        size="icon"
+                        className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 shrink-0"
+                        aria-label="Send message"
                         data-testid="button-send-message"
                       >
                         {isStreaming ? (

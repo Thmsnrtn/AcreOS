@@ -109,7 +109,7 @@ export default function DecisionQueuePage() {
   // crashed `.filter(...)` downstream ("q.filter is not a function").
   // Unwrap defensively: accept an array, a { data } envelope, or
   // fall back to [].
-  const { data: leads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
+  const { data: leadsRaw = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
     queryFn: async () => {
       const r = await fetch("/api/leads", { credentials: "include" });
@@ -119,7 +119,7 @@ export default function DecisionQueuePage() {
     },
   });
 
-  const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
+  const { data: dealsRaw = [], isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
     queryFn: async () => {
       const r = await fetch("/api/deals", { credentials: "include" });
@@ -128,6 +128,21 @@ export default function DecisionQueuePage() {
       return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
     },
   });
+
+  // Stale-cache guard: a tab that loaded before the queryFn unwrap shipped
+  // can have the envelope `{ data: [...], total, ... }` in its React Query
+  // cache. The destructuring default `= []` only fires on `undefined`, not
+  // on a leftover object, so the envelope survives and `.filter` later dies
+  // with "L.filter is not a function" (caught in the ErrorBoundary as
+  // err_1778976895409). Coerce both arrays here so every downstream
+  // computation gets a real array regardless of cache state.
+  const unwrapList = <T,>(raw: unknown): T[] => {
+    if (Array.isArray(raw)) return raw as T[];
+    const envelope = (raw as { data?: unknown })?.data;
+    return Array.isArray(envelope) ? (envelope as T[]) : [];
+  };
+  const deals: Deal[] = unwrapList<Deal>(dealsRaw);
+  const leads: Lead[] = unwrapList<Lead>(leadsRaw);
 
   const updateLead = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Lead> }) =>
