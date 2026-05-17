@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -341,12 +341,18 @@ export default function CommissionsPage() {
     },
   });
 
-  const totalOwed = summaries.reduce((s, a) => s + a.ytdOwedCents, 0);
-  const totalOutstanding = summaries.reduce(
-    (s, a) => s + a.ytdOutstandingCents,
+  // Defensive: API response shape can drift (records missing, numeric fields
+  // returned as strings or null). Reduce + map on summaries.records previously
+  // threw a synchronous TypeError when any field was undefined, blowing up
+  // the page into the Server-Error boundary even on legit data with one
+  // edge-case row. Coerce to safe defaults at the boundary.
+  const safeSummaries = Array.isArray(summaries) ? summaries : [];
+  const totalOwed = safeSummaries.reduce((s, a) => s + (a.ytdOwedCents ?? 0), 0);
+  const totalOutstanding = safeSummaries.reduce(
+    (s, a) => s + (a.ytdOutstandingCents ?? 0),
     0
   );
-  const totalDeals = summaries.reduce((s, a) => s + a.ytdDeals, 0);
+  const totalDeals = safeSummaries.reduce((s, a) => s + (a.ytdDeals ?? 0), 0);
 
   const availableYears = [
     new Date().getFullYear(),
@@ -386,7 +392,7 @@ export default function CommissionsPage() {
               <div className="flex items-center gap-3">
                 <Users className="w-8 h-8 text-blue-500" aria-hidden="true" />
                 <div>
-                  <dd className="text-2xl font-bold tabular-nums">{summaries.length}</dd>
+                  <dd className="text-2xl font-bold tabular-nums">{safeSummaries.length}</dd>
                   <dt className="text-sm text-muted-foreground">Agents</dt>
                 </div>
               </div>
@@ -444,13 +450,13 @@ export default function CommissionsPage() {
               <div className="flex justify-center py-12" role="status" aria-label="Loading agent summaries">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
               </div>
-            ) : summaries.length === 0 ? (
+            ) : safeSummaries.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 No team members found.
               </div>
             ) : (
               <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 list-none p-0 m-0" aria-label="Commission summary by agent">
-                {summaries.map((s) => (
+                {safeSummaries.map((s) => (
                   <li key={s.teamMemberId}>
                     <AgentCard
                       summary={s}
@@ -481,29 +487,41 @@ export default function CommissionsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {summaries.flatMap((s) =>
-                        s.records.map((r) => (
-                          <TableRow key={r.id}>
-                            <TableCell scope="row" className="font-medium">
-                              {s.displayName}
-                            </TableCell>
-                            <TableCell className="tabular-nums">#{r.dealId}</TableCell>
-                            <TableCell>
-                              <time dateTime={r.dealClosedAt}>
-                                {format(new Date(r.dealClosedAt), "MMM d, yyyy")}
-                              </time>
-                            </TableCell>
-                            <TableCell className="tabular-nums">{money(r.salePrice)}</TableCell>
-                            <TableCell className="tabular-nums">{r.commissionRatePercent}%</TableCell>
-                            <TableCell className="tabular-nums">{money(r.totalOwedCents)}</TableCell>
-                            <TableCell className="tabular-nums">{money(r.paidCents)}</TableCell>
-                            <TableCell>
-                              <StatusBadge status={r.status} />
-                            </TableCell>
-                          </TableRow>
-                        ))
+                      {safeSummaries.flatMap((s) =>
+                        (s.records ?? []).map((r) => {
+                          // Guard date parse — Date(null/invalid) → "Invalid
+                          // Date" → format() throws → ErrorBoundary kills the
+                          // whole page. Show a dash instead.
+                          let closedLabel: ReactNode = "—";
+                          if (r.dealClosedAt) {
+                            const d = new Date(r.dealClosedAt);
+                            if (!Number.isNaN(d.getTime())) {
+                              closedLabel = (
+                                <time dateTime={r.dealClosedAt}>
+                                  {format(d, "MMM d, yyyy")}
+                                </time>
+                              );
+                            }
+                          }
+                          return (
+                            <TableRow key={r.id}>
+                              <TableCell scope="row" className="font-medium">
+                                {s.displayName}
+                              </TableCell>
+                              <TableCell className="tabular-nums">#{r.dealId}</TableCell>
+                              <TableCell>{closedLabel}</TableCell>
+                              <TableCell className="tabular-nums">{money(r.salePrice)}</TableCell>
+                              <TableCell className="tabular-nums">{r.commissionRatePercent}%</TableCell>
+                              <TableCell className="tabular-nums">{money(r.totalOwedCents)}</TableCell>
+                              <TableCell className="tabular-nums">{money(r.paidCents)}</TableCell>
+                              <TableCell>
+                                <StatusBadge status={r.status} />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
-                      {summaries.every((s) => s.records.length === 0) && (
+                      {safeSummaries.every((s) => (s.records ?? []).length === 0) && (
                         <TableRow>
                           <TableCell
                             colSpan={8}
