@@ -1164,6 +1164,23 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, 
       } catch (learnErr: any) {
         logger.error("[decisions-inbox] Override learning failed (non-blocking)", undefined, { metadata: { detail: learnErr.message } });
       }
+
+      // Phase B-2: also record into the cross-agent rejection notes table so
+      // the next time this agent generates LLM-driven content it sees the
+      // founder's feedback in its system prompt. Best-effort — never block
+      // the reject path on rejection-context bookkeeping.
+      try {
+        const { recordRejection } = await import("./services/agentRejectionContext");
+        await recordRejection({
+          agentCodename: item.ownerAgentCodename || "unknown",
+          decisionsInboxItemId: id,
+          tags: [],
+          note: reason,
+          rejectedBy: ((req as any).user?.email as string | undefined) ?? "founder",
+        });
+      } catch (rejErr: any) {
+        logger.warn(`[decisions-inbox] agent_rejection_notes mirror failed: ${rejErr?.message ?? rejErr}`);
+      }
     }
 
     res.json({ success: true });

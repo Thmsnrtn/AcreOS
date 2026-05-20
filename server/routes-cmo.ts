@@ -298,6 +298,25 @@ export function registerCmoRoutes(app: Express) {
       })
       .where(eq(decisionsInboxItems.id, inboxItemId));
 
+    // Phase B-2: mirror into the universal agent_rejection_notes table so
+    // cross-agent learning loop sees CMO rejections alongside everyone else's.
+    // The CMO-specific cmo_rejection_notes row stays as the canonical source
+    // for the CMO generator's own loader (which already pulls from it); this
+    // mirror lets /founder/inspector/agent/cmo + cross-agent observability
+    // queries treat all rejections uniformly.
+    try {
+      const { recordRejection } = await import("./services/agentRejectionContext");
+      await recordRejection({
+        agentCodename: "cmo",
+        decisionsInboxItemId: inboxItemId,
+        tags: tags ?? [],
+        note: note ?? null,
+        rejectedBy: (req as any).user?.email ?? "founder",
+      });
+    } catch (err) {
+      logger.warn(`[cmo:reject] failed to mirror rejection into agent_rejection_notes: ${err instanceof Error ? err.message : err}`);
+    }
+
     res.json({ ok: true, rejectionNoteId: rejectionNote.id });
   });
 

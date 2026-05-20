@@ -600,6 +600,109 @@ class AgentEvolutionEngine {
       recentInsights: Number(insights[0]?.count || 0),
     };
   }
+
+  /**
+   * Phase B-2: outcome-telemetry → prompt evolution feedback.
+   *
+   * Pulls the agent's last 30 days of rejection notes + failed action
+   * outcomes, drafts a prompt change that explicitly addresses the
+   * recurring failure patterns, and queues it as a proposal via the
+   * existing `proposePromptChange()` pipeline (founder reviews in
+   * /founder/prompt-evolutions before it applies).
+   *
+   * Returns null when there's not enough signal (default: fewer than 3
+   * rejections + 3 failed outcomes combined in the window). The CMO-style
+   * "agents learn from feedback automatically" loop becomes operational
+   * once a scheduler invokes this nightly per agent.
+   *
+   * @param agentCodename target agent
+   * @param windowDays    lookback window (default 30)
+   * @param minSignal     min combined signal count to bother proposing
+   */
+  async proposePromptChangeFromOutcomes(
+    agentCodename: string,
+    windowDays = 30,
+    minSignal = 3,
+  ): Promise<{ proposalId: number; signalCount: number } | null> {
+    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+    const { getRejectionSummary } = await import("./agentRejectionContext");
+    const summary = await getRejectionSummary(agentCodename, windowDays);
+
+    const failureStats = await db
+      .select({ count: count() })
+      .from(agentActionLog)
+      .where(
+        and(
+          eq(agentActionLog.agentCodename, agentCodename),
+          eq(agentActionLog.outcome, "failure"),
+          gte(agentActionLog.createdAt, cutoff),
+        ),
+      );
+    const failureCount = Number(failureStats[0]?.count ?? 0);
+    const signalCount = summary.totalCount + failureCount;
+
+    if (signalCount < minSignal) {
+      return null;
+    }
+
+    const agent = await db.query.companyAgents.findFirst({
+      where: eq(companyAgents.codename, agentCodename),
+    });
+    if (!agent?.personalityPrompt) return null;
+
+    // Cheap LLM call (Haiku) — drafts the prompt change. We don't apply
+    // here; the proposal lands in agent_prompt_evolutions for founder
+    // review. The existing /founder/prompt-evolutions UI handles approval.
+    let proposedPrompt = agent.personalityPrompt;
+    let reasonText = "";
+    try {
+      const { routeAITask, TaskComplexity } = await import("./aiRouter");
+      const response = await routeAITask({
+        taskType: "agent_prompt_evolution_from_outcomes",
+        complexity: TaskComplexity.MODERATE,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You revise agent personality prompts to address documented failure patterns. " +
+              "Output ONLY the revised prompt, preserving the agent's voice and core role. " +
+              "Add specific guardrails that directly address the rejection tags + notes you receive. " +
+              "Do not include any meta-commentary, markdown, or quotes — just the new prompt text.",
+          },
+          {
+            role: "user",
+            content:
+              `Agent: ${agentCodename}\n` +
+              `Current personality prompt:\n---\n${agent.personalityPrompt}\n---\n\n` +
+              `Last ${windowDays} days of signal:\n` +
+              `- ${summary.totalCount} founder rejections (top tags: ${summary.topTags.map((t) => `${t.tag}×${t.count}`).join(", ") || "none"})\n` +
+              `- Most recent rejection note: ${summary.mostRecentNote ?? "(no free-form note)"}\n` +
+              `- ${failureCount} failed action outcomes in the same window\n\n` +
+              "Revise the personality prompt to address the recurring patterns. Keep the core role intact.",
+          },
+        ],
+        maxTokens: 1500,
+        temperature: 0.3,
+      });
+      proposedPrompt = (response.content || "").trim() || agent.personalityPrompt;
+      reasonText =
+        `Auto-drafted from ${summary.totalCount} rejections + ${failureCount} failed outcomes in last ${windowDays}d. ` +
+        `Top rejection tags: ${summary.topTags.map((t) => t.tag).join(", ") || "n/a"}.`;
+    } catch (err) {
+      reasonText =
+        `Outcome-driven evolution requested but LLM draft failed (${err instanceof Error ? err.message : err}); ` +
+        `surfacing rejection summary as proposal reason for founder review.`;
+    }
+
+    if (proposedPrompt.trim() === agent.personalityPrompt.trim()) {
+      // No meaningful change — skip.
+      return null;
+    }
+
+    const proposalId = await this.proposePromptChange(agentCodename, proposedPrompt, reasonText);
+    return { proposalId, signalCount };
+  }
 }
 
 export const agentEvolutionEngine = new AgentEvolutionEngine();
