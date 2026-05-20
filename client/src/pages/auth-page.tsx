@@ -96,11 +96,14 @@ export default function AuthPage() {
     })();
   }, [isClerkServerDivergent, clerk]);
 
-  // Clear the once-per-tab flag once we're in a healthy state (server agrees
-  // we're signed in OR cookies are fully gone). Otherwise a successful sign-in
-  // followed by a manual sign-out wouldn't get a second auto-resync chance.
+  // Clear the once-per-tab flag only when the server confirms a signed-in
+  // user. Earlier we also cleared it when no Clerk cookie was present, but
+  // that fires in the brief window between our signOut+reload and Clerk-JS
+  // resurrecting the device session — letting the divergence cap reset and
+  // the loop continue. Tying the clear to a real server-confirmed sign-in
+  // means the cap only resets after a genuine successful auth.
   useEffect(() => {
-    if (user || !hasAnyClerkCookie()) {
+    if (user) {
       sessionStorage.removeItem(RESYNC_ATTEMPTED_KEY);
     }
   }, [user]);
