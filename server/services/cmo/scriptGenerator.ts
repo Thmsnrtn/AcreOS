@@ -22,12 +22,24 @@ import { eq, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../../utils/openaiClient";
 import { logger } from "../../utils/logger";
 import { listActiveArchetypes } from "./archetypes";
+import { selectVoiceForScript, type VoicePoolEntry } from "./voicePool";
 import {
   addCost,
   emptyBreakdown,
   estimateOpenRouterCostCents,
   type CostBreakdown,
 } from "./costTracker";
+
+interface BrandVoiceConfig {
+  provider: "elevenlabs";
+  pool?: VoicePoolEntry[];
+  voiceId?: string | null;
+  stability?: number;
+  similarityBoost?: number;
+  sampleScripts?: string[];
+}
+
+const RECENT_VOICE_WINDOW = 10;
 
 export interface GenerateScriptInput {
   brandProfile: BrandProfile;
@@ -66,7 +78,17 @@ function buildSystemPrompt(brand: BrandProfile, archetypesAllowed: string[], rej
     .map((r) => `  - ${r.name}: ${r.reason}`)
     .join("\n");
 
+  // Surface the available voice pool so the model writes scripts in a style
+  // compatible with whichever narrator gets assigned. We don't pin a voice
+  // here — voice selection is per-script in persistScripts() — but knowing
+  // the palette lets the generator stay tonally consistent.
+  const voiceConfig = brand.voice as unknown as { pool?: Array<{ name: string; vibe: string }> };
+  const voicePoolHint = voiceConfig.pool && voiceConfig.pool.length > 0
+    ? `\nNARRATOR VOICES AVAILABLE — every script will be matched to one of these. Write in a style compatible with the palette as a whole; the system selects the closest fit per script.\n${voiceConfig.pool.map((v) => `  - ${v.name}: ${v.vibe}`).join("\n")}\n`
+    : "";
+
   return `You are the lead copywriter for ${brand.displayName}, a software platform whose one-liner is: "${brand.oneLiner}".
+${voicePoolHint}
 
 PRIMARY AUDIENCE: ${brand.audiencePrimary}
 ${brand.audienceSecondary ? `SECONDARY AUDIENCE: ${brand.audienceSecondary}` : ""}
@@ -236,6 +258,15 @@ export async function persistScripts(
   const perScriptCost = Math.ceil(generationCostCents / Math.max(1, generated.length));
   const rows: CmoScript[] = [];
 
+  // Load the brand's voice pool + the voices used by the last N scripts so
+  // selection round-robins through the pool instead of clumping on the
+  // archetype-preferred default.
+  const voiceConfig = brand.voice as unknown as BrandVoiceConfig;
+  const voicePool = voiceConfig.pool ?? [];
+  const recentVoices = voicePool.length > 0
+    ? await loadRecentVoiceIds(brand.id, RECENT_VOICE_WINDOW)
+    : [];
+
   for (const script of generated) {
     const violations: string[] = [];
     const combined = `${script.hook}\n${script.body}\n${script.cta}`.toLowerCase();
@@ -261,6 +292,24 @@ export async function persistScripts(
     const status = violations.length > 0 ? "rejected_pre_render" : "draft";
     const rejectionReason = violations.length > 0 ? violations.join("; ") : null;
 
+    // Pick a voice for this script. The voice's vibe was already in the
+    // generator system prompt (so script style matched), but we persist
+    // the actual selection here so the renderer can call ElevenLabs with
+    // the correct voiceId.
+    let selectedVoiceId: string | null = null;
+    let selectedVoiceName: string | null = null;
+    if (voicePool.length > 0) {
+      const picked = selectVoiceForScript(voicePool, script.hookArchetype, recentVoices);
+      selectedVoiceId = picked.voiceId;
+      selectedVoiceName = picked.name;
+      // Track this voice so subsequent scripts in the same batch prefer
+      // others (rotation within a single generation cycle).
+      recentVoices.unshift(picked.voiceId);
+      if (recentVoices.length > RECENT_VOICE_WINDOW) {
+        recentVoices.pop();
+      }
+    }
+
     const [row] = await db
       .insert(cmoScripts)
       .values({
@@ -274,6 +323,8 @@ export async function persistScripts(
         lengthTargetSec: script.lengthTargetSec,
         brollQueries: script.brollQueries,
         scriptJson: script as unknown as Record<string, unknown>,
+        voiceId: selectedVoiceId,
+        voiceName: selectedVoiceName,
         status,
         rejectionReason,
         generationCostCents: perScriptCost,
@@ -285,4 +336,14 @@ export async function persistScripts(
   }
 
   return rows;
+}
+
+async function loadRecentVoiceIds(brandProfileId: number, limit: number): Promise<string[]> {
+  const rows = await db
+    .select({ voiceId: cmoScripts.voiceId })
+    .from(cmoScripts)
+    .where(eq(cmoScripts.brandProfileId, brandProfileId))
+    .orderBy(desc(cmoScripts.createdAt))
+    .limit(limit);
+  return rows.map((r) => r.voiceId).filter((v): v is string => Boolean(v));
 }

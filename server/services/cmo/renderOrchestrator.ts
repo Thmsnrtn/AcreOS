@@ -5,7 +5,8 @@
  * Pipeline (deterministic given inputs):
  *   1. Load brand profile + script
  *   2. Fetch B-roll clips (Pexels → Pixabay fallback, deduped vs last 30d)
- *   3. Generate voiceover (ElevenLabs cloned founder voice)
+ *   3. Generate voiceover (ElevenLabs preset voice from the brand profile pool;
+ *      the script row carries the voiceId chosen at generation time)
  *   4. Spawn Remotion render for each aspect ratio (parallel within budget)
  *   5. Persist cmo_ad_renders rows with manifest + cost breakdown
  *   6. Create one decisions_inbox_items row per bundle for founder approval
@@ -92,12 +93,22 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
   logger.info(`[cmo:render] script=${script.id.slice(0, 8)} fetching B-roll for ${script.brollQueries.length} queries…`);
   const brollClips = await fetchStockClips(script.brollQueries, { count: 6 });
 
-  // 2. Voiceover (one for the whole script, shared across aspect ratios)
-  logger.info(`[cmo:render] script=${script.id.slice(0, 8)} generating voiceover…`);
+  // 2. Voiceover (one for the whole script, shared across aspect ratios).
+  // The voice was chosen at script-generation time and persisted on the row;
+  // we read it back here so the renderer doesn't need to know about the
+  // brand profile's voice pool selection logic.
+  logger.info(`[cmo:render] script=${script.id.slice(0, 8)} generating voiceover (voice=${script.voiceName ?? "unknown"})…`);
+  const voicePool = (brand.voice as { pool?: Array<{ voiceId: string; name: string; stability: number; similarityBoost: number }> }).pool ?? [];
+  const poolEntry = script.voiceId
+    ? voicePool.find((v) => v.voiceId === script.voiceId)
+    : undefined;
+  if (!script.voiceId) {
+    throw new Error(`[cmo:render] script ${script.id} has no voiceId — re-run generation against the current brand profile (voice pool must be configured).`);
+  }
   const voSettings: VoiceSettings = {
-    voiceId: (brand.voice as VoiceSettings).voiceId!,
-    stability: (brand.voice as VoiceSettings).stability,
-    similarityBoost: (brand.voice as VoiceSettings).similarityBoost,
+    voiceId: script.voiceId,
+    stability: poolEntry?.stability ?? 0.55,
+    similarityBoost: poolEntry?.similarityBoost ?? 0.75,
   };
   const voScriptText = `${script.hook} ${script.body} ${script.cta}`;
   const voKey = renderKey(bundleId, "voice.mp3");

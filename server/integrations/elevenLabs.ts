@@ -1,16 +1,14 @@
 /**
- * ElevenLabs voiceover integration — cloned founder voice for AcreOS ads.
+ * ElevenLabs voiceover integration — generic voice pool for AcreOS ads.
  *
- * Voice clone setup (one-time, founder action):
- *   1. Founder records 1-3 min of clean audio (no background noise)
- *   2. Upload to ElevenLabs via their dashboard or POST /v1/voices/add
- *   3. Copy the resulting voiceId into Fly secret ELEVENLABS_FOUNDER_VOICE_ID
- *   4. The seeder picks up that env var on next deploy
+ * Voice selection happens at script-generation time (server/services/cmo/
+ * voicePool.ts + scriptGenerator.ts). The voiceId is persisted on the
+ * cmo_scripts row so the renderer can call ElevenLabs with the correct
+ * voice without re-deciding. Variety comes from rotating across a curated
+ * pool of ElevenLabs preset voices, biased by archetype.
  *
- * Until the voiceId is set, this module throws clear errors so the engine
- * fails loud — no silent fallback to a generic AI voice. Generic voices
- * are the single biggest quality regression we can ship; better to block
- * generation than to broadcast slop.
+ * No founder voice clone — generic voices only, on purpose. The pool
+ * lives in server/services/cmo/voicePool.ts; add or remove voices there.
  *
  * Caching: identical script text + voice settings → same VO file. We hash
  * (text, voiceId, stability, similarityBoost) and short-circuit on cache
@@ -57,9 +55,8 @@ function ensureApiKey(): string {
 function ensureVoiceId(settings: VoiceSettings): string {
   if (!settings.voiceId) {
     throw new Error(
-      "[cmo:voice] no voiceId set on brand profile. " +
-        "Clone the founder voice in ElevenLabs, then set ELEVENLABS_FOUNDER_VOICE_ID " +
-        "(picked up by the brand profile seeder) or update the brand_profiles row directly.",
+      "[cmo:voice] no voiceId — the script row should have selected one from the brand profile's voice pool. " +
+        "Check server/services/cmo/voicePool.ts (the pool must be non-empty) and rerun script generation.",
     );
   }
   return settings.voiceId;

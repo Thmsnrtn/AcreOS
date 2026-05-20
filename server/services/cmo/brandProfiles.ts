@@ -18,6 +18,7 @@ import { db } from "../../db";
 import { brandProfiles, cmoBudget, type BrandProfile } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { ACREOS_VOICE_POOL } from "./voicePool";
 
 const ACREOS_SLUG = "acreos";
 
@@ -103,9 +104,16 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
     },
     voice: {
       provider: "elevenlabs" as const,
-      voiceId: process.env.ELEVENLABS_FOUNDER_VOICE_ID ?? null,
-      stability: 0.55,        // balanced for natural delivery
-      similarityBoost: 0.75,  // hold the clone close to source recordings
+      // Curated pool of ElevenLabs preset voices — no founder clone. The
+      // script generator picks one per script (biased by archetype) so the
+      // ad library has tonal variety without sounding inconsistent. See
+      // server/services/cmo/voicePool.ts for the curated list.
+      pool: ACREOS_VOICE_POOL,
+      // Legacy fields kept for jsonb shape compatibility — the renderer reads
+      // voiceId from cmo_scripts.voice_id, not from the brand profile.
+      voiceId: null,
+      stability: 0.55,
+      similarityBoost: 0.75,
       sampleScripts: [
         "AcreOS pulls comps in thirty seconds for any APN. The same workflow that used to take an evening on PropStream.",
         "Three hundred leads in your spreadsheet. None of them ranked. Pax scores every one overnight and surfaces the four worth your morning call.",

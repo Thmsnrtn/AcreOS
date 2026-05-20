@@ -7,7 +7,7 @@ point it ingests.
 
 ## Pillars
 
-1. Generate — script (OpenRouter Haiku) → pre-render score → voice (ElevenLabs cloned founder) → stock B-roll (Pexels + Pixabay, deduped) → Remotion render in three aspect ratios
+1. Generate — script (OpenRouter Haiku) → pre-render score → voice (ElevenLabs preset voice pool, rotated by archetype) → stock B-roll (Pexels + Pixabay, deduped) → Remotion render in three aspect ratios
 2. Approve — every broadcastable artifact stops at `decisions_inbox_items` for founder review at `/founder/cmo`
 3. Broadcast — approved bundles ship to Meta + TikTok via durable, idempotent `outbox` jobs
 4. Learn — daily performance ingest writes day-grain `cmo_ad_performance` rows; the archetype scorer reweights generation toward winners
@@ -95,7 +95,7 @@ server/routes-cmo.ts      — founder-only API:
 |---|---|---|
 | `AI_INTEGRATIONS_OPENROUTER_API_KEY` | all script generation + scoring | openrouter.ai dashboard |
 | `ELEVENLABS_API_KEY` | voiceover | elevenlabs.io Pro plan |
-| `ELEVENLABS_FOUNDER_VOICE_ID` | cloned founder voice | output of one-time voice clone in ElevenLabs |
+| _(no voice ID secret)_ | voice selection happens in code via `server/services/cmo/voicePool.ts` — preset ElevenLabs voices, no clone | — |
 | `PEXELS_API_KEY` | B-roll primary | pexels.com/api |
 | `PIXABAY_API_KEY` | B-roll fallback | pixabay.com/api/docs |
 | `CMO_STORAGE_ROOT` | local FS path for renders (defaults `/data/cmo`) | Fly machine volume mount |
@@ -143,7 +143,7 @@ The first month is Creatify-replacement. By month three, the engine knows AcreOS
 
 - [ ] `AI_INTEGRATIONS_OPENROUTER_API_KEY` set on Fly ✅ (already live)
 - [ ] `ELEVENLABS_API_KEY` set on Fly
-- [ ] Founder voice cloned in ElevenLabs; `ELEVENLABS_FOUNDER_VOICE_ID` set on Fly
+- [ ] _(skipped — using preset voice pool, no clone)_
 - [ ] `PEXELS_API_KEY` and `PIXABAY_API_KEY` set on Fly
 - [ ] `META_PAGE_ID` set on Fly
 - [ ] `founder_ad_accounts` row exists for `platform='meta'` with valid access token + ad account ID

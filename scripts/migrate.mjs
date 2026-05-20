@@ -3719,6 +3719,10 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "cmo_scripts_brand_status_idx" ON "cmo_scripts" ("brand_profile_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "cmo_scripts_archetype_idx" ON "cmo_scripts" ("hook_archetype")`,
   `CREATE INDEX IF NOT EXISTS "cmo_scripts_created_at_idx" ON "cmo_scripts" ("created_at")`,
+  // Per-script voice tracking — added 2026-05-20 with the generic-voice-pool refactor.
+  // Idempotent so re-runs on a deploy that already migrated are no-ops.
+  `ALTER TABLE "cmo_scripts" ADD COLUMN IF NOT EXISTS "voice_id" text`,
+  `ALTER TABLE "cmo_scripts" ADD COLUMN IF NOT EXISTS "voice_name" text`,
 
   `CREATE TABLE IF NOT EXISTS "cmo_ad_renders" (
      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),

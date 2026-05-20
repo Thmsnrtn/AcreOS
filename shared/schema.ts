@@ -20833,6 +20833,13 @@ export const cmoScripts = pgTable("cmo_scripts", {
   lengthTargetSec: integer("length_target_sec").notNull(),
   brollQueries: text("broll_queries").array().notNull(),
   scriptJson: jsonb("script_json").$type<Record<string, unknown>>().notNull(),
+  // Voice the script generator selected from the brand profile's voice pool.
+  // Persisted at script-time (not render-time) so the script is written to
+  // match the narrator's vibe — sharp scripts for a deadpan voice, warm
+  // scripts for a casual narrator. Renderer reads this to know which voice
+  // ID to send to ElevenLabs.
+  voiceId: text("voice_id"),
+  voiceName: text("voice_name"),
   status: text("status").notNull().default("draft"),
   qualityScore: integer("quality_score"),
   scoreBreakdown: jsonb("score_breakdown").$type<{
