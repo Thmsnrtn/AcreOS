@@ -45,6 +45,18 @@ async function fetchAppUser(): Promise<AuthUser | null> {
     return null;
   }
 
+  if (response.status === 429) {
+    // A 429 on the session check means the global apiLimiter throttled us
+    // (a real user shouldn't trip this; misbehaving QA loops or a tab
+    // that auto-refreshes too aggressively can). Treat it like an auth
+    // failure rather than letting react-query throw — otherwise the SPA
+    // sits on "Loading AcreOS…" forever waiting for a 200 that never
+    // comes. The user is bounced to /auth and the session-purge guard
+    // there clears any stale Clerk cookies before re-rendering the form.
+    authFailCount = Math.max(authFailCount + 1, 3);
+    return null;
+  }
+
   if (!response.ok) {
     throw new Error(`${response.status}: ${response.statusText}`);
   }

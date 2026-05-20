@@ -337,12 +337,22 @@ app.use("/api/tenants/export", exportLimiter);
 // General authenticated API: 300 requests per minute, keyed by session ID (falls
 // back to IP for unauthenticated requests). Prevents a single user behind a
 // shared NAT/proxy from exhausting the per-IP bucket.
+//
+// /api/auth/user is skipped here for the same reason the auth limiter skips it
+// above: ProtectedRoute renders on every page transition and useAuth refetches
+// to validate the session cookie. A tight cap on it produced 429s that the SPA
+// treats as in-progress, infinite-looping on the "Loading AcreOS…" splash. The
+// Clerk-JS keepalive (/__clerk/...) is intentionally excluded too — same SPA
+// fan-out, no app data exposed.
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => (req as any).auth?.userId || req.ip || 'unknown',
+  skip: (req) =>
+    req.originalUrl.startsWith("/api/auth/user") ||
+    req.originalUrl.startsWith("/__clerk/"),
   message: { message: "Too many requests. Please slow down and try again shortly." },
 });
 app.use("/api", apiLimiter);
