@@ -3,39 +3,42 @@ import { openAICircuitBreaker, CircuitOpenError } from "./circuitBreaker";
 import { logger } from "./logger";
 
 let openaiClient: OpenAI | null = null;
+let warnedNoKey = false;
 
 /**
- * Returns the platform AI client.
+ * Returns the platform AI client — OpenRouter-only.
  *
- * Resolution order:
- *   1. OpenRouter (preferred) — AI_INTEGRATIONS_OPENROUTER_API_KEY
- *   2. AI Integrations key — AI_INTEGRATIONS_OPENAI_API_KEY (can point at any OpenAI-compatible API)
- *   3. Legacy bare key — OPENAI_API_KEY
+ * Every chat/completion call goes through OpenRouter so the tiered-model
+ * routing in `services/aiRouter.ts` (SIMPLE→DeepSeek, MODERATE→Haiku,
+ * COMPLEX→Sonnet, CRITICAL→Opus) can keep platform AI cost as low as the
+ * task allows. The previous OpenAI fallback was a cost trap: any service
+ * calling `getOpenAIClient()` without OPENROUTER configured would silently
+ * hit OpenAI at full price for tasks that should have routed to Haiku /
+ * DeepSeek. Better to fail explicitly and fix the config.
  *
- * Users who want to bring their own OpenAI key can set it via the Settings UI;
- * platform operations always go through OpenRouter.
+ * Whisper (audio transcription) is a separate concern — OpenRouter does
+ * not proxy /v1/audio/transcriptions, so the few callers that need it
+ * (server/routes-field-scout.ts, server/jobs/realtimeTranscription.ts)
+ * read process.env.OPENAI_API_KEY directly and hit OpenAI's API. Do not
+ * route those through this helper.
  */
 export function getOpenAIClient(): OpenAI | null {
   if (!openaiClient) {
-    // Prefer OpenRouter
     const openrouterKey = process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
-    if (openrouterKey) {
-      openaiClient = new OpenAI({
-        apiKey: openrouterKey,
-        baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-        defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
-      });
-      return openaiClient;
-    }
-
-    // Fall back to AI_INTEGRATIONS_OPENAI_API_KEY or OPENAI_API_KEY
-    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    if (!openrouterKey) {
+      if (!warnedNoKey) {
+        warnedNoKey = true;
+        logger.warn(
+          "[ai] AI_INTEGRATIONS_OPENROUTER_API_KEY is not set — AI features will be disabled. " +
+          "Platform AI is OpenRouter-only; set this secret to enable.",
+        );
+      }
       return null;
     }
     openaiClient = new OpenAI({
-      apiKey,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      apiKey: openrouterKey,
+      baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+      defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
     });
   }
   return openaiClient;
@@ -44,7 +47,10 @@ export function getOpenAIClient(): OpenAI | null {
 export function requireOpenAIClient(): OpenAI {
   const client = getOpenAIClient();
   if (!client) {
-    throw new Error("AI client not available - set AI_INTEGRATIONS_OPENROUTER_API_KEY or AI_INTEGRATIONS_OPENAI_API_KEY");
+    throw new Error(
+      "AI client not available — set AI_INTEGRATIONS_OPENROUTER_API_KEY. " +
+      "Platform AI routes through OpenRouter only; direct OpenAI keys are no longer used.",
+    );
   }
   return client;
 }

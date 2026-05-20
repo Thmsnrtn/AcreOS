@@ -60,7 +60,13 @@ class HealthCheckService {
   }
 
   /**
-   * Check if the AI client (OpenRouter or OpenAI) is configured and accessible
+   * Check if the platform AI client (OpenRouter) is configured and reachable.
+   *
+   * Reports as `openai` for backward compatibility with downstream dashboards
+   * that look up the service by that name — the actual provider is OpenRouter
+   * after the 2026-05-20 tiered-routing consolidation. Whisper / audio jobs
+   * read OPENAI_API_KEY directly; those aren't covered here because there's
+   * no shared health-check entry point for them.
    */
   async checkOpenAI(): Promise<ServiceHealth> {
     const name = 'openai';
@@ -70,7 +76,12 @@ class HealthCheckService {
       const { getOpenAIClient } = await import('../utils/openaiClient');
       const client = getOpenAIClient();
       if (!client) {
-        return this.createHealth(name, 'unconfigured', undefined, 'No AI API key configured (set AI_INTEGRATIONS_OPENROUTER_API_KEY or OPENAI_API_KEY)');
+        return this.createHealth(
+          name,
+          'unconfigured',
+          undefined,
+          'OpenRouter not configured — set AI_INTEGRATIONS_OPENROUTER_API_KEY',
+        );
       }
 
       await client.models.list();
@@ -80,10 +91,10 @@ class HealthCheckService {
     } catch (error: any) {
       const latency = Date.now() - start;
       if (error.status === 401) {
-        return this.createHealth(name, 'unavailable', latency, 'Invalid API key');
+        return this.createHealth(name, 'unavailable', latency, 'Invalid OpenRouter API key');
       }
       if (error.status === 429) {
-        return this.createHealth(name, 'degraded', latency, 'Rate limited');
+        return this.createHealth(name, 'degraded', latency, 'OpenRouter rate limited');
       }
       return this.createHealth(name, 'degraded', latency, error.message);
     }

@@ -37,10 +37,14 @@ const SECRETS: SecretSpec[] = [
   // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   { key: "FIELD_ENCRYPTION_KEY", required: true, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
 
-  // AI — OpenRouter is the primary AI provider (routes to Claude, GPT-4o, DeepSeek)
-  { key: "AI_INTEGRATIONS_OPENROUTER_API_KEY", required: false, description: "OpenRouter API key — primary AI provider (required for all AI features)", productionOnly: true },
-  { key: "AI_INTEGRATIONS_OPENAI_API_KEY", required: false, description: "OpenAI API key — fallback AI provider" },
-  { key: "OPENAI_API_KEY", required: false, description: "Fallback OpenAI API key (legacy)" },
+  // AI — OpenRouter is the SOLE chat/completion provider for the platform.
+  // The tiered router in services/aiRouter.ts maps complexity → model
+  // (SIMPLE→DeepSeek, MODERATE→Haiku, COMPLEX→Sonnet, CRITICAL→Opus) which
+  // keeps cost as low as the task allows. OPENAI_API_KEY is retained for
+  // Whisper transcription only (routes-field-scout.ts, jobs/realtimeTranscription.ts) —
+  // OpenRouter doesn't proxy /v1/audio so audio jobs hit OpenAI directly.
+  { key: "AI_INTEGRATIONS_OPENROUTER_API_KEY", required: false, description: "OpenRouter API key — sole chat/completion provider", productionOnly: true },
+  { key: "OPENAI_API_KEY", required: false, description: "OpenAI key for Whisper audio transcription only (no longer used for chat)" },
 
   // Email
   { key: "AWS_ACCESS_KEY_ID", required: false, description: "AWS access key for SES email sending" },

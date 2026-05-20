@@ -389,8 +389,11 @@ class AcreOSValuationModel {
       // GBM unavailable — continue to AI fallback
     }
 
-    // --- Path 2: OpenAI (richer context, used when GBM isn't trained yet) ---
-    if (estimateSource !== 'gbm_model' && process.env.OPENAI_API_KEY) {
+    // --- Path 2: AI fallback (richer context, used when GBM isn't trained yet) ---
+    // Routed through OpenRouter → gpt-4o-mini equivalent for cost efficiency.
+    // `requireOpenAIClient()` throws if OPENROUTER isn't configured, so the
+    // outer try/catch above the path-2 block handles that as a soft failure.
+    if (estimateSource !== 'gbm_model' && process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY) {
       try {
         const prompt = `You are a rural land valuation expert. Provide a realistic price-per-acre estimate for vacant land with these characteristics:
 

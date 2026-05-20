@@ -33,7 +33,6 @@ const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m
 // founder A/B testing but must NOT be imported in customer-facing code.
 const OnboardingWizard = React.lazy(() => import("@/components/onboarding/OnboardingWizard").then(m => ({ default: m.OnboardingWizard })));
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
-import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { DealModalsHost } from "@/components/modals";
@@ -1416,7 +1415,10 @@ function AppContent() {
       {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && !location.startsWith("/field-scout") && (
         <div className="md:hidden"><FloatingActionButton /></div>
       )}
-      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && <ConversationTray />}
+      {/* ConversationTray removed 2026-05-20 — the floating chat button opened
+          to a frosted/empty sheet on every screen (team-messaging feature isn't
+          mature enough to surface as a global FAB yet). When team messaging
+          ships properly, re-mount through a feature flag rather than always-on. */}
       {/* FloatingHelpButton removed 2026-05-01 — folded into ⌘K command
           palette (already shipped). The help search lives there now;
           one fewer FAB on every page. */}

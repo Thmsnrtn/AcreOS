@@ -554,13 +554,14 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
     queryKey: ["/api/health/cached"],
   });
 
-  const openaiService = healthData?.services?.find(s => s.name === "openai");
-  // Platform key is set in Fly secrets — free tier uses it transparently
-  // (rate-limited via usageLimitGate("ai_requests") on the server). The
-  // earlier "needs an OpenAI API key" empty state was misleading: it told
-  // users to BYOK when the platform key already covers them. Only show a
-  // truly-broken-state message if the platform key is missing entirely.
-  const aiUnavailable = openaiService?.status === "unconfigured";
+  // Platform AI is OpenRouter-only — the tiered router (SIMPLE → DeepSeek,
+  // MODERATE → Haiku, COMPLEX → Sonnet, CRITICAL → Opus) keeps cost as low
+  // as the task allows. Health check exposes the OpenRouter status; show a
+  // soft empty state only when the underlying provider can't be reached.
+  const aiService = healthData?.services?.find(
+    s => s.name === "openrouter" || s.name === "openai",
+  );
+  const aiUnavailable = aiService?.status === "unconfigured";
 
   if (isLoading) {
     return (
@@ -582,16 +583,9 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
             <h3 className="text-lg font-semibold">Pax is temporarily unavailable</h3>
             <p className="text-sm text-muted-foreground">
               The AI service is not reachable right now. This usually clears in a
-              minute or two — please try again shortly. Pro+ users can configure
-              their own OpenAI key in integrations to bypass platform outages.
+              minute or two — please try again shortly.
             </p>
           </div>
-          <Button variant="outline" asChild>
-            <Link href="/settings#integrations">
-              <Settings className="w-4 h-4 mr-2" aria-hidden="true" />
-              Bring your own key
-            </Link>
-          </Button>
         </CardContent>
       </Card>
     );

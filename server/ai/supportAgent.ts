@@ -19,16 +19,20 @@ import { validateCompliance } from "../services/complianceValidator";
 const MAX_TOOL_ITERATIONS = 10;
 
 function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  
+  // Support agent shares the platform AI router — OpenRouter-only since
+  // 2026-05-20 so the tiered model approach (Haiku for routine support
+  // replies, Sonnet for complex troubleshooting) keeps cost down.
+  const apiKey = process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
   if (!apiKey) {
-    throw new Error("OpenAI API key not configured. Please set up the AI integration.");
+    throw new Error(
+      "Support agent AI is not configured. Set AI_INTEGRATIONS_OPENROUTER_API_KEY.",
+    );
   }
-  
+
   return new OpenAI({
     apiKey,
-    baseURL,
+    baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
   });
 }
 

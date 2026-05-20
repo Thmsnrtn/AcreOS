@@ -61,8 +61,15 @@ export async function deepHealthCheck(): Promise<{
   // Check if email is configured
   services.email = { status: process.env.AWS_SES_REGION || process.env.SENDGRID_API_KEY ? "configured" : "not_configured", latencyMs: 0 };
 
-  // Check if AI is configured
-  services.ai = { status: process.env.OPENAI_API_KEY ? "configured" : "not_configured", latencyMs: 0 };
+  // Check if AI is configured. Platform AI is OpenRouter-only — OPENAI_API_KEY
+  // is still used by Whisper transcription jobs (server/jobs/realtimeTranscription.ts,
+  // server/routes-field-scout.ts) since OpenRouter doesn't proxy /v1/audio,
+  // but those are not the path that gates chat/completion features. The
+  // OpenRouter key is the right signal for "can Pax answer questions?"
+  services.ai = {
+    status: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY ? "configured" : "not_configured",
+    latencyMs: 0,
+  };
 
   // Check if Clerk is configured
   services.auth = { status: process.env.CLERK_SECRET_KEY ? "configured" : "not_configured", latencyMs: 0 };
