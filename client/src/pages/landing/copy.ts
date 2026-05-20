@@ -37,7 +37,7 @@ export const LANDING_COPY = {
     titleForPrefix: "for ",
     titleSuffix: ".",
     sub:
-      "One platform for every real-estate operator — pull lists, run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold, AcreOS does the busy work so the operator only handles judgment calls.",
+      "One platform for every property investor — pull lists, run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold, AcreOS does the busy work so the operator only handles judgment calls.",
     cta1: "Start free trial",
     cta2: "See how it works",
     ctaSub: "14 days free. No credit card required.",
@@ -83,7 +83,7 @@ export const LANDING_COPY = {
   },
   features: {
     eyebrow: "What's in the box",
-    title: "Every tool a real-estate operator needs, in one place.",
+    title: "Every tool a property investor needs, in one place.",
     sub: "Find, analyze, reach, close, service. No tab-juggling, no vertical-locked tools.",
   },
   quotes: {

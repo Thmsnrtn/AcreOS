@@ -11,7 +11,7 @@ import { hasAnyClerkCookie } from "@/lib/clerk-session-detect";
 export default function AuthPage() {
   usePageMeta(
     "Sign in",
-    "Sign in to AcreOS — the operating system real-estate investors use to manage leads, properties, deals, notes, and rehabs in one place."
+    "Sign in to AcreOS — the operating system property investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
   const { user, isLoading, authFailCount } = useAuth();
   // Dead-session guard: a Clerk cookie still in the jar after the server
@@ -181,7 +181,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The operating system for real-estate investors
+            The operating system for property investors
           </p>
         </div>
 

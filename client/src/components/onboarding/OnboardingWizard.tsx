@@ -119,7 +119,7 @@ const WIZARD_STEPS = [
     id: 0,
     name: "welcome",
     title: "Welcome to AcreOS",
-    description: "The operating system for real-estate investors",
+    description: "The operating system for property investors",
     icon: Sparkles,
   },
   {
