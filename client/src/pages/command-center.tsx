@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
+// Sidebar / useSidebarCollapsed removed 2026-05-20 — this page is no longer
+// rendered as a standalone route. The parent PageShell in pages/pax.tsx
+// provides the sidebar + collapsed-margin chrome.
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAgentTasks, useCreateAgentTask } from "@/hooks/use-agent-tasks";
@@ -1516,7 +1518,6 @@ export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const { isMobile } = useIsMobile();
   const { toast } = useToast();
-  const { isCollapsed } = useSidebarCollapsed();
   const [mainTab, setMainTab] = useState<string>("chat");
   const [input, setInput] = useState("");
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
@@ -1821,21 +1822,18 @@ export default function CommandCenterPage() {
 
   const messages = currentConversation?.messages || [];
 
+  // CommandCenterPage is mounted inside the /pax (AI hub) tab content via
+  // Suspense — it is no longer used as a standalone route (/command-center
+  // is just a Redirect → /ai#chat now). The earlier `<Sidebar />` + h-screen
+  // shell here duplicated the parent PageShell's chrome and was the source
+  // of the "weird spacing / unanchored / content cut off" reports: two
+  // sidebars overlapped on desktop and h-screen clipped the chat panel
+  // below the parent's topbar on mobile. Rendering as embedded content now;
+  // the parent provides scroll + sidebar + topbar.
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className={`flex-1 h-screen flex flex-col overflow-hidden transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
-        <div className="p-4 pt-16 md:pt-4 border-b border-border">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-primary rounded-lg text-primary-foreground">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold" data-testid="text-page-title">Assistant</h1>
-              <p className="text-sm text-muted-foreground">Your AI partner for land investing</p>
-            </div>
-          </div>
-          <DisclaimerBanner type="ai" className="mb-4" />
+    <div className="flex flex-col min-h-[60vh]">
+      <div className="pb-4 border-b border-border">
+        <DisclaimerBanner type="ai" className="mb-4" />
           <div className="flex items-center gap-2">
             <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1 min-w-0">
               {/* Five tabs × icon + label can't fit a 390px viewport when
@@ -2275,7 +2273,6 @@ export default function CommandCenterPage() {
             <AIOperationsTabContent />
           )}
         </div>
-      </main>
 
       <ConfirmDialog
         open={deleteConvoId !== null}

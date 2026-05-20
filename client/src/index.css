@@ -117,8 +117,8 @@
   --acr-line:         rgba(60,40,20,0.16);
   --acr-line-soft:    rgba(60,40,20,0.08);
   --acr-ink:          #1F1810;
-  --acr-ink-2:        #4D3E2C;
-  --acr-ink-3:        #7A6A50;
+  --acr-ink-2:        #3D2F1F;  /* darkened 4D3E2C → 3D2F1F for better contrast on cream surfaces */
+  --acr-ink-3:        #6B5C42;  /* darkened 7A6A50 → 6B5C42 — was below WCAG-AA 4.5:1 for small body text */
   --acr-ink-4:        #A8987A;
   --acr-brand:        #A04428;
   --acr-brand-ink:    #F7F0DD;
@@ -187,8 +187,8 @@
   --acr-line:         rgba(232,220,196,0.10);
   --acr-line-soft:    rgba(232,220,196,0.05);
   --acr-ink:          #E8DCC4;
-  --acr-ink-2:        #BDAE8E;
-  --acr-ink-3:        #897B5F;
+  --acr-ink-2:        #CCBFA1;  /* lightened BDAE8E → CCBFA1 for better contrast on dark backgrounds */
+  --acr-ink-3:        #9C8E72;  /* lightened 897B5F → 9C8E72 — was below WCAG-AA 4.5:1 for small body text on dark */
   --acr-ink-4:        #574B36;
   --acr-brand:        #C2604A;
   --acr-brand-ink:    #13100B;

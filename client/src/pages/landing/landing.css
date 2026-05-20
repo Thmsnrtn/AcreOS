@@ -90,9 +90,13 @@
   animation: lp-rise 0.7s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
 }
 .lp-hero-line:nth-child(2) {
+  /* Weight bumped 300 → 400 (2026-05-20) — the 300-weight italic serif at
+     48-80px in brand orange tested as hard to read on lighter backgrounds.
+     400 keeps the editorial italic feel without thinning the strokes to
+     the point of legibility loss. */
   color: var(--acr-brand);
   font-style: italic;
-  font-weight: 300;
+  font-weight: 400;
   font-variation-settings: "opsz" 144;
 }
 @keyframes lp-rise {
