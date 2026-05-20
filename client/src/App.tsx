@@ -814,18 +814,16 @@ function Router() {
       <Route path="/founder-home">
         {() => <Redirect to="/founder" />}
       </Route>
-      {/* Pillar S — canonical founder inbox. Replaces cross-checking
-          the 7 legacy surfaces (agent-queue, strategy, decisions,
-          notifications, feed, todo, daily-digest). */}
+      {/* Founder redesign Phase F — legacy /founder/now and /founder/cockpit
+          redirect to the new canonical surfaces. Pages themselves remain
+          live (rendered by the new /founder + /founder/steering routes);
+          only the URLs deprecate. 60-day window then 404 per the
+          founder-redesign plan. */}
       <Route path="/founder/now">
-        {() => <FounderProtectedRoute component={FounderNowPage} />}
+        {() => <Redirect to="/founder" />}
       </Route>
-      {/* Monthly check-in surface — sibling of /founder/now. Composes
-          the 13 fragmented summary endpoints into 5 sections + one
-          decision. Read once a month in 5 minutes; the founder's only
-          required surface alongside /founder/now. */}
       <Route path="/founder/cockpit">
-        {() => <FounderProtectedRoute component={FounderCockpitPage} />}
+        {() => <Redirect to="/founder/steering" />}
       </Route>
       {/* Pillar R — per-(agent, category) tier admin. Linked from the
           cockpit's autonomy section. */}
@@ -851,8 +849,19 @@ function Router() {
       <Route path="/founder/inspector/audit">
         {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
+      {/* Founder redesign Phase E — /founder is the canonical daily Now
+          surface. Previously rendered FounderHomePage (1,190 LOC Wave 23-26
+          page); now points at the existing /founder/now component which
+          already implements the daily-attention-capped inbox. /founder/now
+          stays live during the Phase F redirect window. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderHomePage} />}
+        {() => <FounderProtectedRoute component={FounderNowPage} />}
+      </Route>
+      {/* Founder redesign Phase E — /founder/steering is the canonical
+          weekly/monthly surface. Renders the existing cockpit component;
+          future enhancement folds in recovery console + cmo intelligence. */}
+      <Route path="/founder/steering">
+        {() => <FounderProtectedRoute component={FounderCockpitPage} />}
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
