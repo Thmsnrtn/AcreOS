@@ -62,15 +62,15 @@ interface RouteMeta {
 
 const META_BY_PATH: Record<string, RouteMeta> = {
   "/": {
-    title: "AcreOS — The Operating System for Real-Estate Investors",
+    title: "AcreOS — The Operating System for Property Investors",
     description:
-      "One platform for every real-estate operator — pull lists, run comps, send mail, draft replies, and track every deal through closing. Built for land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords.",
+      "One platform for every property investor — pull lists, run comps, send mail, draft replies, and track every deal through closing. Built for land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords.",
     ogType: "website",
   },
   "/pricing": {
     title: "Pricing · AcreOS",
     description:
-      "Transparent plans for every real-estate operator — same price regardless of vertical. CRM, direct mail, automated due diligence, note servicing, and rehab tracking in one platform.",
+      "Transparent plans for every property investor — same price regardless of vertical. CRM, direct mail, automated due diligence, note servicing, and rehab tracking in one platform.",
     ogType: "product",
   },
   "/security": {
@@ -86,9 +86,9 @@ const META_BY_PATH: Record<string, RouteMeta> = {
     ogType: "article",
   },
   "/glossary": {
-    title: "Real-estate operator glossary · AcreOS",
+    title: "Property investor glossary · AcreOS",
     description:
-      "Plain-English definitions of the vocabulary every real-estate operator needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
+      "Plain-English definitions of the vocabulary every property investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
     ogType: "website",
   },
 };
