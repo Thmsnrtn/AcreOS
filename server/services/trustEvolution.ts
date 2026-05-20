@@ -23,7 +23,15 @@ import {
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
+import { getSetting } from "./settings";
 import { logger } from "../utils/logger";
+
+interface TierBreakpoints {
+  observer: number;
+  assistant: number;
+  operator: number;
+  director: number;
+}
 
 /**
  * Run trust evolution for all agents.
@@ -36,6 +44,21 @@ export async function runTrustEvolution(): Promise<{
 }> {
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Read tunable thresholds from the founder settings substrate (Phase A).
+  // Defaults mirror prior hardcoded values so behavior is unchanged on
+  // first deploy; founder edits via /founder/studio shift the effective
+  // values without a restart.
+  const accuracyGate = await getSetting<number>("trust.promotion_accuracy_gate", 0.9);
+  const successGate = await getSetting<number>("trust.promotion_success_gate", 0.8);
+  const breakpoints = await getSetting<TierBreakpoints>("trust.tier_breakpoints", {
+    observer: 0,
+    assistant: 60,
+    operator: 75,
+    director: 90,
+  });
+  const accuracyPct = Math.round(accuracyGate * 100);
+  const successPct = Math.round(successGate * 100);
 
   const agents = await companyAgentService.getAllIncludingPaused();
   const updates: any[] = [];
@@ -87,10 +110,12 @@ export async function runTrustEvolution(): Promise<{
     let delta = 0;
     let reasons: string[] = [];
 
-    // Decision accuracy component
+    // Decision accuracy component. Thresholds read from settings:
+    //   trust.promotion_accuracy_gate (default 0.9) — at or above grants +1
+    //   below 60% is treated as a reliability concern → -1
     if (totalDecisions > 0) {
       const accuracyRate = (approvedDecisions / totalDecisions) * 100;
-      if (accuracyRate >= 90) {
+      if (accuracyRate >= accuracyPct) {
         delta += 1;
         reasons.push(`${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions`);
       } else if (accuracyRate < 60) {
@@ -103,10 +128,12 @@ export async function runTrustEvolution(): Promise<{
       }
     }
 
-    // Action outcome component (NEW in v3)
+    // Action outcome component. Threshold from settings:
+    //   trust.promotion_success_gate (default 0.8) — at or above with
+    //   2+ actions grants +1.
     if (totalActions > 0) {
       const successRate = (succeededActions / totalActions) * 100;
-      if (successRate >= 80 && totalActions >= 2) {
+      if (successRate >= successPct && totalActions >= 2) {
         delta += 1;
         reasons.push(`${succeededActions}/${totalActions} actions succeeded`);
       } else if (failedActions > 2) {
@@ -210,8 +237,8 @@ export async function runTrustEvolution(): Promise<{
     const crossedUp = (threshold: number) => previousScore < threshold && newScore >= threshold;
     const crossedDown = (threshold: number) => previousScore >= threshold && newScore < threshold;
 
-    if (crossedUp(90)) {
-      const suggestion = `${agent.title} has reached trust score 90. Eligible for maximum autonomy — promote remaining Level 1 actions to Level 0?`;
+    if (crossedUp(breakpoints.director)) {
+      const suggestion = `${agent.title} has reached trust score ${breakpoints.director}. Eligible for maximum autonomy — promote remaining Level 1 actions to Level 0?`;
       promotionSuggestions.push({ codename: agent.codename, title: agent.title, suggestion });
 
       await db.insert(trustEvolutionLog).values({
@@ -219,7 +246,7 @@ export async function runTrustEvolution(): Promise<{
         previousScore,
         newScore,
         delta,
-        reason: "Trust threshold crossed: 90 (full trust)",
+        reason: `Trust threshold crossed: ${breakpoints.director} (full trust)`,
         periodStart: oneDayAgo,
         periodEnd: now,
         decisionsInPeriod: totalDecisions,
@@ -227,8 +254,8 @@ export async function runTrustEvolution(): Promise<{
         promotionSuggested: true,
         promotionAction: "Promote Level 1 → Level 0",
       });
-    } else if (crossedUp(75)) {
-      const suggestion = `${agent.title} has reached trust score 75. Eligible for expanded autonomy — promote Level 2 actions to Level 1?`;
+    } else if (crossedUp(breakpoints.operator)) {
+      const suggestion = `${agent.title} has reached trust score ${breakpoints.operator}. Eligible for expanded autonomy — promote Level 2 actions to Level 1?`;
       promotionSuggestions.push({ codename: agent.codename, title: agent.title, suggestion });
 
       await db.insert(trustEvolutionLog).values({
@@ -236,7 +263,7 @@ export async function runTrustEvolution(): Promise<{
         previousScore,
         newScore,
         delta,
-        reason: "Trust threshold crossed: 75 (high trust)",
+        reason: `Trust threshold crossed: ${breakpoints.operator} (high trust)`,
         periodStart: oneDayAgo,
         periodEnd: now,
         decisionsInPeriod: totalDecisions,
@@ -244,13 +271,13 @@ export async function runTrustEvolution(): Promise<{
         promotionSuggested: true,
         promotionAction: "Promote Level 2 → Level 1",
       });
-    } else if (crossedUp(60)) {
-      const suggestion = `${agent.title} has reached trust score 60. Eligible for Level 2 → Level 1 promotions on low-risk actions.`;
+    } else if (crossedUp(breakpoints.assistant)) {
+      const suggestion = `${agent.title} has reached trust score ${breakpoints.assistant}. Eligible for Level 2 → Level 1 promotions on low-risk actions.`;
       promotionSuggestions.push({ codename: agent.codename, title: agent.title, suggestion });
     }
 
-    if (crossedDown(60)) {
-      const suggestion = `${agent.title} dropped below trust score 60. Consider restricting autonomy — demote Level 1 actions to Level 2?`;
+    if (crossedDown(breakpoints.assistant)) {
+      const suggestion = `${agent.title} dropped below trust score ${breakpoints.assistant}. Consider restricting autonomy — demote Level 1 actions to Level 2?`;
       promotionSuggestions.push({ codename: agent.codename, title: agent.title, suggestion });
     }
   }
