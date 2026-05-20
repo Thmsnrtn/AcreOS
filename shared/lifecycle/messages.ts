@@ -93,7 +93,7 @@ export const LIFECYCLE_MESSAGES: Record<LifecycleMessageKey, LifecycleMessage> =
     subject: "Welcome to AcreOS, {firstName}",
     body:
       "Glad you're here. AcreOS is built for Land Investors, not generic " +
-      "real-estate CRMs — so you'll see surfaces that map to how you " +
+      "property-investor CRMs — so you'll see surfaces that map to how you " +
       "actually work: parcels, due diligence, blind offers, deal pipeline. " +
       "Your first move is to add a parcel or import a county list. Need a " +
       "hand? Reply to this email — it goes to a human.",

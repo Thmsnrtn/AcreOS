@@ -24,7 +24,7 @@ interface LetterRow {
 export default function LettersArchivePage() {
   usePageMeta(
     "Letters from the AcreOS founder",
-    "Weekly founder letters — what we're building, what customers are telling us, lessons from real-estate operators using AcreOS in the field.",
+    "Weekly founder letters — what we're building, what customers are telling us, lessons from property investors using AcreOS in the field.",
   );
 
   const letters = useQuery<{ letters: LetterRow[] }>({
