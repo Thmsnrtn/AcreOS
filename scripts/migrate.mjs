@@ -3832,6 +3832,56 @@ const STATEMENTS = [
      "updated_at" timestamp DEFAULT now()
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "cmo_budget_brand_idx" ON "cmo_budget" ("brand_profile_id")`,
+
+  // Founder redesign Phase A — settings substrate + audit log + agent rejection notes.
+  // See shared/schema.ts and docs/.../founder-redesign for context.
+  `CREATE TABLE IF NOT EXISTS "founder_settings" (
+     "id" serial PRIMARY KEY,
+     "key" text NOT NULL,
+     "scope" text NOT NULL DEFAULT 'global',
+     "scope_ref" text,
+     "value" jsonb NOT NULL,
+     "default_value" jsonb NOT NULL,
+     "valid_range" jsonb,
+     "category" text NOT NULL,
+     "description" text NOT NULL,
+     "last_changed_by" text,
+     "last_changed_at" timestamp,
+     "last_changed_note" text,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "founder_settings_scope_key_idx" ON "founder_settings" ("scope", "scope_ref", "key")`,
+  `CREATE INDEX IF NOT EXISTS "founder_settings_category_idx" ON "founder_settings" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "founder_settings_key_idx" ON "founder_settings" ("key")`,
+
+  `CREATE TABLE IF NOT EXISTS "founder_audit" (
+     "id" serial PRIMARY KEY,
+     "founder_id" text,
+     "area" text NOT NULL,
+     "action" text NOT NULL,
+     "target_type" text,
+     "target_id" text,
+     "before" jsonb,
+     "after" jsonb,
+     "note" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_audit_area_created_idx" ON "founder_audit" ("area", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "founder_audit_target_idx" ON "founder_audit" ("target_type", "target_id")`,
+  `CREATE INDEX IF NOT EXISTS "founder_audit_created_idx" ON "founder_audit" ("created_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "agent_rejection_notes" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "decisions_inbox_item_id" integer,
+     "tags" text[] NOT NULL DEFAULT '{}'::text[],
+     "note" text,
+     "rejected_by" text NOT NULL,
+     "rejected_at" timestamp NOT NULL DEFAULT now(),
+     "consumed_at" timestamp
+   )`,
+  `CREATE INDEX IF NOT EXISTS "agent_rejection_notes_agent_idx" ON "agent_rejection_notes" ("agent_codename", "rejected_at")`,
+  `CREATE INDEX IF NOT EXISTS "agent_rejection_notes_rejected_at_idx" ON "agent_rejection_notes" ("rejected_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

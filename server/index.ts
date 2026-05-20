@@ -382,6 +382,19 @@ app.use("/api", apiLimiter);
       logger.warn(`[cmo] boot-seed failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
     }
   })();
+
+  // Founder redesign Phase A — seed founder_settings catalog. Idempotent;
+  // first deploy is a no-op for behavior (every key takes its current
+  // hardcoded value as default). Subsequent deploys refresh metadata but
+  // never overwrite a founder edit.
+  void (async () => {
+    try {
+      const { seedAllSettings } = await import("./services/settingsSeeder");
+      await seedAllSettings();
+    } catch (err) {
+      logger.warn(`[settings] boot-seed failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  })();
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
   // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.

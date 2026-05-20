@@ -20995,3 +20995,100 @@ export const cmoBudget = pgTable("cmo_budget", {
 ]);
 
 export type CmoBudget = typeof cmoBudget.$inferSelect;
+
+// ─── Founder Redesign — Settings substrate + Audit + Rejection notes (Phase A) ─
+//
+// The unified backbone for the four-canonical-surface founder redesign.
+// Every magic number that today requires a deploy moves to `founder_settings`;
+// every founder-visible mutation lands in `founder_audit`; every agent's
+// proposal generation reads the last N relevant rejections from
+// `agent_rejection_notes` (generalizing the CMO-only pattern shipped 2026-05-20).
+//
+// See /Users/user/.claude/plans/how-can-we-either-ticklish-ocean.md for the
+// full design context.
+
+export const founderSettings = pgTable("founder_settings", {
+  id: serial("id").primaryKey(),
+  // Dotted-key namespace. Examples:
+  //   trust.tier_breakpoints
+  //   cost.per_org_daily_cap_cents
+  //   autonomy.gate.sophie
+  //   autonomy.gate.sophie.send_retention_email
+  //   churn.intervention_rules
+  key: text("key").notNull(),
+  // Scope this row applies to. 'global' is the platform-wide default;
+  // 'org' / 'agent' / 'skill' narrow to a specific entity via scopeRef.
+  scope: text("scope").notNull().default("global"),
+  scopeRef: text("scope_ref"),
+  value: jsonb("value").$type<unknown>().notNull(),
+  defaultValue: jsonb("default_value").$type<unknown>().notNull(),
+  validRange: jsonb("valid_range").$type<{
+    type?: "number" | "string" | "array" | "object" | "boolean" | "enum";
+    min?: number;
+    max?: number;
+    oneOf?: unknown[];
+    schema?: Record<string, unknown>;
+  } | null>(),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  lastChangedBy: text("last_changed_by"),
+  lastChangedAt: timestamp("last_changed_at"),
+  lastChangedNote: text("last_changed_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("founder_settings_scope_key_idx").on(table.scope, table.scopeRef, table.key),
+  index("founder_settings_category_idx").on(table.category),
+  index("founder_settings_key_idx").on(table.key),
+]);
+
+export type FounderSetting = typeof founderSettings.$inferSelect;
+export type InsertFounderSetting = typeof founderSettings.$inferInsert;
+
+export const founderAudit = pgTable("founder_audit", {
+  id: serial("id").primaryKey(),
+  founderId: text("founder_id"),
+  area: text("area").notNull(),
+  action: text("action").notNull(),
+  // Optional pointers to the affected entity. Free-form so any future
+  // mutation can plug in without schema migration.
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  before: jsonb("before").$type<unknown>(),
+  after: jsonb("after").$type<unknown>(),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("founder_audit_area_created_idx").on(table.area, table.createdAt),
+  index("founder_audit_target_idx").on(table.targetType, table.targetId),
+  index("founder_audit_created_idx").on(table.createdAt),
+]);
+
+export type FounderAuditRow = typeof founderAudit.$inferSelect;
+export type InsertFounderAuditRow = typeof founderAudit.$inferInsert;
+
+export const agentRejectionNotes = pgTable("agent_rejection_notes", {
+  id: serial("id").primaryKey(),
+  // Which agent the rejection applies to. Allows targeted retrieval when
+  // building proposal context for a specific agent's next batch.
+  agentCodename: text("agent_codename").notNull(),
+  // The proposal/decision that was rejected, if there is one in the
+  // decisions_inbox lineage. Optional because some rejections come from
+  // surfaces that don't go through decisions_inbox (direct override, etc.).
+  decisionsInboxItemId: integer("decisions_inbox_item_id"),
+  // Optional taxonomy that lets retrieval narrow by topic. Mirrors the
+  // CMO rejection tags shape (tone_off / hook_weak / footage_mismatch / ...).
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  note: text("note"),
+  rejectedBy: text("rejected_by").notNull(),
+  rejectedAt: timestamp("rejected_at").defaultNow().notNull(),
+  // When the next-batch retrieval has consumed this note as context. Lets
+  // observability tools answer "did the agent see this feedback?" without
+  // having to reconstruct from logs.
+  consumedAt: timestamp("consumed_at"),
+}, (table) => [
+  index("agent_rejection_notes_agent_idx").on(table.agentCodename, table.rejectedAt),
+  index("agent_rejection_notes_rejected_at_idx").on(table.rejectedAt),
+]);
+
+export type AgentRejectionNote = typeof agentRejectionNotes.$inferSelect;
+export type InsertAgentRejectionNote = typeof agentRejectionNotes.$inferInsert;
