@@ -1628,6 +1628,9 @@ export async function registerRoutes(
     registerFounderV13Routes(app);
     const { registerFounderV14Routes } = await import("./routes-founder-v14");
     registerFounderV14Routes(app);
+    // CMO ad engine — native ad generation, founder approval, broadcast.
+    const { registerCmoRoutes } = await import("./routes-cmo");
+    registerCmoRoutes(app);
     // SCP v2 routes — golden-suite, briefing, evolution/dashboard, evolution/status,
     // costs, constitution, trust/promotions. File was orphaned from this
     // registration block; 7 GET endpoints were 404ing in production. Caught

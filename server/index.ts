@@ -367,6 +367,21 @@ app.use("/api", apiLimiter);
   // server boot" for the history.
 
   await initStripe();
+
+  // CMO ad engine — seed brand profile + archetypes on boot. Idempotent; safe
+  // to re-run every restart. Failure is non-fatal so a bad seeder never
+  // blocks the app from booting.
+  void (async () => {
+    try {
+      const { seedAcreosBrandProfile } = await import("./services/cmo/brandProfiles");
+      const { seedHookArchetypes } = await import("./services/cmo/archetypes");
+      await seedHookArchetypes();
+      await seedAcreosBrandProfile();
+      logger.info("[cmo] boot-seed complete");
+    } catch (err) {
+      logger.warn(`[cmo] boot-seed failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  })();
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
   // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.

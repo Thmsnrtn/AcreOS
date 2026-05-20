@@ -5,6 +5,7 @@
   ],
   "exclude": [
     "node_modules",
+    "apps/remotion/**",
     "client/src/components/activity-*",
     "client/src/components/onboarding/**",
     "client/src/components/ab-tests*",

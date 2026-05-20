@@ -20769,3 +20769,222 @@ export type UserSignInLocation = typeof userSignInLocations.$inferSelect;
 // (feedback_submissions table is unified above near the in-app widget definition;
 //  duplicate declaration removed 2026-05-11.)
 export type InsertUserSignInLocation = typeof userSignInLocations.$inferInsert;
+
+// ─── CMO Ad Engine — Native ad generation, approval, broadcast (2026-05-20) ───
+//
+// Replaces Creatify with an owned pipeline: script (OpenRouter Haiku) → voice
+// (ElevenLabs cloned founder voice) → assets (Pexels + Pixabay, deduped) →
+// Remotion render (9:16 + 1:1 + 16:9) → founder approval via decisionsInbox →
+// broadcast to Meta + TikTok via outbox.
+//
+// The learning loop is the long-term value: every render, approval, rejection
+// note, and CTR/ROAS data point flows into structured columns here so the
+// engine compounds over months. Cross-temporal queries (e.g. "which hook
+// archetype performs best in retargeting at $40/day on TikTok 9:16") must
+// be one query, not a research project.
+
+export const brandProfiles = pgTable("brand_profiles", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  oneLiner: text("one_liner").notNull(),
+  audiencePrimary: text("audience_primary").notNull(),
+  audienceSecondary: text("audience_secondary"),
+  toneDescriptors: text("tone_descriptors").array().notNull().default(sql`'{}'::text[]`),
+  usps: text("usps").array().notNull().default(sql`'{}'::text[]`),
+  bannedPhrases: text("banned_phrases").array().notNull().default(sql`'{}'::text[]`),
+  complianceRules: jsonb("compliance_rules").$type<Array<{ name: string; pattern: string; reason: string }>>().notNull().default([]),
+  brandKit: jsonb("brand_kit").$type<{
+    primaryColor: string;
+    secondaryColor: string;
+    accentColor?: string;
+    logoPath?: string;
+    fonts: { display: string; body: string };
+  }>().notNull(),
+  voice: jsonb("voice").$type<{
+    provider: "elevenlabs";
+    voiceId: string | null;
+    stability: number;
+    similarityBoost: number;
+    sampleScripts?: string[];
+  }>().notNull(),
+  funnelStages: jsonb("funnel_stages").$type<Record<string, { hookStyle: string; ctaLabel: string; ctaUrl: string }>>().notNull().default({}),
+  founderVoiceSamples: text("founder_voice_samples").array().notNull().default(sql`'{}'::text[]`),
+  referenceAds: jsonb("reference_ads").$type<Array<{ url: string; angle: string; notes: string }>>().notNull().default([]),
+  autoGenerationEnabled: boolean("auto_generation_enabled").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("brand_profiles_slug_idx").on(table.slug),
+]);
+
+export type BrandProfile = typeof brandProfiles.$inferSelect;
+export type InsertBrandProfile = typeof brandProfiles.$inferInsert;
+
+export const cmoScripts = pgTable("cmo_scripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  brandProfileId: integer("brand_profile_id").references(() => brandProfiles.id, { onDelete: "cascade" }).notNull(),
+  intent: text("intent").notNull(),
+  funnelStage: text("funnel_stage").notNull(),
+  hookArchetype: text("hook_archetype").notNull(),
+  hook: text("hook").notNull(),
+  body: text("body").notNull(),
+  cta: text("cta").notNull(),
+  lengthTargetSec: integer("length_target_sec").notNull(),
+  brollQueries: text("broll_queries").array().notNull(),
+  scriptJson: jsonb("script_json").$type<Record<string, unknown>>().notNull(),
+  status: text("status").notNull().default("draft"),
+  qualityScore: integer("quality_score"),
+  scoreBreakdown: jsonb("score_breakdown").$type<{
+    brandVoice: number; hookStrength: number; compliance: number; novelty: number;
+    notes: string;
+  }>(),
+  rejectionReason: text("rejection_reason"),
+  generationCostCents: integer("generation_cost_cents").notNull().default(0),
+  scoringCostCents: integer("scoring_cost_cents").notNull().default(0),
+  model: text("model").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("cmo_scripts_brand_status_idx").on(table.brandProfileId, table.status),
+  index("cmo_scripts_archetype_idx").on(table.hookArchetype),
+  index("cmo_scripts_created_at_idx").on(table.createdAt),
+]);
+
+export type CmoScript = typeof cmoScripts.$inferSelect;
+export type InsertCmoScript = typeof cmoScripts.$inferInsert;
+
+export const cmoAdRenders = pgTable("cmo_ad_renders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scriptId: varchar("script_id").references(() => cmoScripts.id, { onDelete: "cascade" }).notNull(),
+  brandProfileId: integer("brand_profile_id").references(() => brandProfiles.id, { onDelete: "cascade" }).notNull(),
+  trackingId: varchar("tracking_id").notNull().unique(),
+  aspectRatio: text("aspect_ratio").notNull(),
+  durationSec: integer("duration_sec").notNull(),
+  storagePath: text("storage_path").notNull(),
+  manifestJson: jsonb("manifest_json").$type<Record<string, unknown>>().notNull(),
+  status: text("status").notNull().default("queued"),
+  bundleId: varchar("bundle_id"),
+  costBreakdown: jsonb("cost_breakdown").$type<{
+    scriptCents: number;
+    scoringCents: number;
+    voiceCents: number;
+    assetsCents: number;
+    renderCents: number;
+    totalCents: number;
+  }>().notNull(),
+  voicePath: text("voice_path"),
+  brollAssetIds: text("broll_asset_ids").array(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: text("approved_by"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionNoteId: integer("rejection_note_id"),
+  broadcastAt: timestamp("broadcast_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("cmo_ad_renders_status_idx").on(table.status),
+  index("cmo_ad_renders_bundle_idx").on(table.bundleId),
+  index("cmo_ad_renders_script_idx").on(table.scriptId),
+  uniqueIndex("cmo_ad_renders_tracking_id_idx").on(table.trackingId),
+]);
+
+export type CmoAdRender = typeof cmoAdRenders.$inferSelect;
+export type InsertCmoAdRender = typeof cmoAdRenders.$inferInsert;
+
+export const cmoAssetUsage = pgTable("cmo_asset_usage", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  externalId: text("external_id").notNull(),
+  url: text("url").notNull(),
+  query: text("query").notNull(),
+  categoryTags: text("category_tags").array().notNull().default(sql`'{}'::text[]`),
+  durationSec: integer("duration_sec"),
+  dimensions: jsonb("dimensions").$type<{ width: number; height: number }>(),
+  firstUsedAt: timestamp("first_used_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at").defaultNow(),
+  useCount: integer("use_count").notNull().default(1),
+  shippedInRenderIds: text("shipped_in_render_ids").array().notNull().default(sql`'{}'::text[]`),
+}, (table) => [
+  uniqueIndex("cmo_asset_usage_provider_external_idx").on(table.provider, table.externalId),
+  index("cmo_asset_usage_last_used_idx").on(table.lastUsedAt),
+]);
+
+export type CmoAssetUsage = typeof cmoAssetUsage.$inferSelect;
+
+export const cmoHookArchetypes = pgTable("cmo_hook_archetypes", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull(),
+  examplePrompt: text("example_prompt").notNull(),
+  rollingCtrPpm: integer("rolling_ctr_ppm"),
+  rollingRoasBps: integer("rolling_roas_bps"),
+  spendCentsLast30d: integer("spend_cents_last_30d").notNull().default(0),
+  rendersLast30d: integer("renders_last_30d").notNull().default(0),
+  generationWeight: integer("generation_weight").notNull().default(100),
+  active: boolean("active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("cmo_hook_archetypes_slug_idx").on(table.slug),
+]);
+
+export type CmoHookArchetype = typeof cmoHookArchetypes.$inferSelect;
+
+export const cmoAdPerformance = pgTable("cmo_ad_performance", {
+  id: serial("id").primaryKey(),
+  renderId: varchar("render_id").references(() => cmoAdRenders.id, { onDelete: "cascade" }).notNull(),
+  platform: text("platform").notNull(),
+  externalAdId: text("external_ad_id").notNull(),
+  date: timestamp("date").notNull(),
+  spendCents: integer("spend_cents").notNull().default(0),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  conversions: integer("conversions").notNull().default(0),
+  ctrPpm: integer("ctr_ppm"),
+  cpmCents: integer("cpm_cents"),
+  roasBps: integer("roas_bps"),
+  ingestedAt: timestamp("ingested_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("cmo_ad_performance_unique_idx").on(table.renderId, table.platform, table.date),
+  index("cmo_ad_performance_render_idx").on(table.renderId),
+  index("cmo_ad_performance_date_idx").on(table.date),
+]);
+
+export type CmoAdPerformance = typeof cmoAdPerformance.$inferSelect;
+
+export const cmoRejectionNotes = pgTable("cmo_rejection_notes", {
+  id: serial("id").primaryKey(),
+  scriptId: varchar("script_id").references(() => cmoScripts.id, { onDelete: "cascade" }),
+  renderId: varchar("render_id").references(() => cmoAdRenders.id, { onDelete: "cascade" }),
+  brandProfileId: integer("brand_profile_id").references(() => brandProfiles.id, { onDelete: "cascade" }).notNull(),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  note: text("note"),
+  rejectedAt: timestamp("rejected_at").defaultNow(),
+  rejectedBy: text("rejected_by").notNull(),
+  appliedToProfileAt: timestamp("applied_to_profile_at"),
+}, (table) => [
+  index("cmo_rejection_notes_brand_idx").on(table.brandProfileId, table.rejectedAt),
+]);
+
+export type CmoRejectionNote = typeof cmoRejectionNotes.$inferSelect;
+
+export const cmoBudget = pgTable("cmo_budget", {
+  id: serial("id").primaryKey(),
+  brandProfileId: integer("brand_profile_id").references(() => brandProfiles.id, { onDelete: "cascade" }).notNull(),
+  dailyCapCents: integer("daily_cap_cents").notNull().default(2000),
+  weeklyCapCents: integer("weekly_cap_cents").notNull().default(10000),
+  monthlyCapCents: integer("monthly_cap_cents").notNull().default(35000),
+  spendTodayCents: integer("spend_today_cents").notNull().default(0),
+  spendWeekCents: integer("spend_week_cents").notNull().default(0),
+  spendMonthCents: integer("spend_month_cents").notNull().default(0),
+  resetTodayAt: timestamp("reset_today_at"),
+  resetWeekAt: timestamp("reset_week_at"),
+  resetMonthAt: timestamp("reset_month_at"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("cmo_budget_brand_idx").on(table.brandProfileId),
+]);
+
+export type CmoBudget = typeof cmoBudget.$inferSelect;

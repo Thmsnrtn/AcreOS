@@ -248,6 +248,7 @@ const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-que
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
+const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -828,6 +829,11 @@ function Router() {
           cockpit's autonomy section. */}
       <Route path="/founder/trust-graduation">
         {() => <FounderProtectedRoute component={FounderTrustGraduationPage} />}
+      </Route>
+      {/* CMO ad engine — single founder surface to review + ship ads to
+          Meta + TikTok. See server/services/cmo/ + apps/remotion/. */}
+      <Route path="/founder/cmo">
+        {() => <FounderProtectedRoute component={FounderCmoPage} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}

@@ -67,6 +67,11 @@ const HANDLED_EVENT_TYPES = [
   "embedding_refresh",
   "recognition_run",
   "1099_batch_generate",
+  // CMO ad engine (2026-05-20)
+  "cmo.manual-generate",      // founder hit "Generate" on /founder/cmo
+  "cmo.render-script",        // a scored script is ready to render to 3 MP4s
+  "cmo.broadcast",            // an approved render is ready to ship to a platform
+  "cmo.weekly-refresh",       // Monday morning batch
 ] as const;
 
 type HandledEventType = (typeof HANDLED_EVENT_TYPES)[number];
@@ -84,7 +89,35 @@ const HANDLERS: Record<HandledEventType, JobHandler> = {
   embedding_refresh: handleEmbeddingRefresh,
   recognition_run: handleRecognitionRun,
   "1099_batch_generate": handle1099BatchGenerate,
+  "cmo.manual-generate": handleCmoManualGenerate,
+  "cmo.render-script": handleCmoRenderScript,
+  "cmo.broadcast": handleCmoBroadcastEvent,
+  "cmo.weekly-refresh": handleCmoWeeklyRefresh,
 };
+
+async function handleCmoManualGenerate(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { handleCmoGenerateEvent } = await import("./services/agents/cmoAgent");
+  const result = await handleCmoGenerateEvent(payload as Parameters<typeof handleCmoGenerateEvent>[0]);
+  return result as unknown as Record<string, unknown>;
+}
+
+async function handleCmoRenderScript(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { handleCmoRender } = await import("./jobs/cmoVideoRender");
+  const result = await handleCmoRender(payload as Parameters<typeof handleCmoRender>[0]);
+  return result as unknown as Record<string, unknown>;
+}
+
+async function handleCmoBroadcastEvent(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { handleCmoBroadcast } = await import("./jobs/cmoBroadcast");
+  const result = await handleCmoBroadcast(payload as Parameters<typeof handleCmoBroadcast>[0]);
+  return result as unknown as Record<string, unknown>;
+}
+
+async function handleCmoWeeklyRefresh(_payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { runWeeklyRefresh } = await import("./services/agents/cmoAgent");
+  const result = await runWeeklyRefresh();
+  return result as unknown as Record<string, unknown>;
+}
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 // Each handler is intentionally thin — it imports the heavy service lazily
