@@ -1416,6 +1416,53 @@ function startPromptEvolutionJob() {
 }
 
 /**
+ * Phase B-2: outcome-driven prompt evolution — nightly per-agent sweep.
+ *
+ * Each night at 04:00 UTC walks every active agent and calls
+ * agentEvolutionEngine.proposePromptChangeFromOutcomes(). Below the
+ * minSignal threshold (3 combined rejections + failures in last 30d)
+ * the call returns null and nothing happens; above it, a Haiku-drafted
+ * prompt revision lands in agent_prompt_evolutions for founder review
+ * at /founder/prompt-evolutions.
+ *
+ * Closes the autonomy learning loop: founder rejections + verified
+ * failures → agent prompt evolves without manual triage. The proposal
+ * is always founder-gated; nothing applies without explicit approval.
+ */
+function startOutcomeDrivenEvolutionJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering outcome-driven evolution proposer (nightly 04:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCHours() !== 4) return;
+    // Nightly cron — TTL 60m covers the 04:xx window across workers.
+    withJobLock("outcome_driven_evolution_nightly", 60 * 60, async () => {
+      const { agentEvolutionEngine } = await import('../services/agentEvolutionEngine');
+      const { companyAgentService } = await import('../services/companyAgents');
+      const agents = await companyAgentService.getAllIncludingPaused();
+      let proposed = 0;
+      let skipped = 0;
+      for (const agent of agents) {
+        if (agent.status === 'disabled') { skipped++; continue; }
+        try {
+          const result = await agentEvolutionEngine.proposePromptChangeFromOutcomes(agent.codename);
+          if (result) proposed++;
+          else skipped++;
+        } catch (err: any) {
+          log(`[outcome-evolution] agent=${agent.codename} failed: ${err?.message ?? err}`, 'sovereign');
+        }
+      }
+      log(
+        `[outcome-evolution] nightly: agents=${agents.length} proposed=${proposed} skipped=${skipped}`,
+        'sovereign',
+      );
+    }).catch((err: any) => {
+      log(`[outcome-evolution] nightly failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, ONE_HOUR);
+}
+
+/**
  * Experiment auto-completion — weekly, Monday 09:00 UTC. Checks
  * running experiments for statistical-ish significance and auto-
  * ends confidently-won ones. Never auto-applies the winner; files
@@ -1905,6 +1952,11 @@ export async function runScheduledJobs(): Promise<void> {
   // 'proposed'; live prompts are only mutated after explicit
   // founder approval.
   startPromptEvolutionJob();
+
+  // Phase B-2 — outcome-driven evolution. Nightly sweep that turns
+  // founder rejections + verified failures into proposed prompt
+  // revisions. Same founder-approval gate as the monthly meta-agent.
+  startOutcomeDrivenEvolutionJob();
 
   // Monthly founder letter — one-page narrative synthesizing the
   // month's decisions, outcomes, and one thing the founder needs
