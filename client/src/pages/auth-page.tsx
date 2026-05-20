@@ -57,9 +57,23 @@ export default function AuthPage() {
       window.location.replace("/auth" + window.location.search);
     })();
   }, [isDeadSession]);
+  // Once-per-tab cap on the auto-resync. Clerk-JS can re-resurrect a session
+  // from device hints stored at Clerk's backend even after a successful
+  // signOut + cookie clear, so if we naively keep retrying we end up in a
+  // reload loop. After the first attempt, fall through to the manual-resync
+  // CTA below.
+  const RESYNC_ATTEMPTED_KEY = "acreos:auth-resync-attempted";
+  const [resyncBlocked, setResyncBlocked] = useState(false);
   useEffect(() => {
-    if (!isClerkServerDivergent || resyncingRef.current) return;
+    if (!isClerkServerDivergent) return;
+    if (resyncingRef.current) return;
+    if (sessionStorage.getItem(RESYNC_ATTEMPTED_KEY)) {
+      // Already tried once this tab — render the manual CTA instead of looping.
+      setResyncBlocked(true);
+      return;
+    }
     resyncingRef.current = true;
+    sessionStorage.setItem(RESYNC_ATTEMPTED_KEY, "1");
     void (async () => {
       try {
         await clerk.signOut({ redirectUrl: undefined });
@@ -81,6 +95,15 @@ export default function AuthPage() {
       window.location.replace("/auth" + window.location.search);
     })();
   }, [isClerkServerDivergent, clerk]);
+
+  // Clear the once-per-tab flag once we're in a healthy state (server agrees
+  // we're signed in OR cookies are fully gone). Otherwise a successful sign-in
+  // followed by a manual sign-out wouldn't get a second auto-resync chance.
+  useEffect(() => {
+    if (user || !hasAnyClerkCookie()) {
+      sessionStorage.removeItem(RESYNC_ATTEMPTED_KEY);
+    }
+  }, [user]);
   const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
@@ -154,7 +177,7 @@ export default function AuthPage() {
   }
 
   // Dead session being purged — show a loader while we hard-reload below.
-  if (isDeadSession || isClerkServerDivergent) {
+  if (isDeadSession || (isClerkServerDivergent && !resyncBlocked)) {
     return (
       <div
         className="min-h-screen flex items-center justify-center bg-background"
@@ -166,6 +189,47 @@ export default function AuthPage() {
           aria-hidden="true"
         />
         <span className="sr-only">Refreshing session…</span>
+      </div>
+    );
+  }
+
+  // Auto-resync exhausted its single attempt and Clerk-JS keeps reviving a
+  // session the server won't accept. Show a manual CTA so the user can
+  // explicitly sign out (clears Clerk-side state) and try signing in again.
+  if (isClerkServerDivergent && resyncBlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="max-w-md w-full text-center space-y-5">
+          <h1 className="text-xl font-semibold tracking-tight">
+            Your session expired
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            We couldn't refresh your sign-in. Sign out and back in to continue.
+          </p>
+          <div className="flex flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={async () => {
+                sessionStorage.removeItem(RESYNC_ATTEMPTED_KEY);
+                try {
+                  await clerk.signOut({ redirectUrl: "/auth" });
+                } catch {
+                  window.location.replace("/auth");
+                }
+              }}
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              Sign out and continue
+            </button>
+            <Link
+              href="/"
+              className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+              Back to home
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
