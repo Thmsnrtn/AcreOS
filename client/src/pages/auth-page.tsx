@@ -1,4 +1,4 @@
-import { SignIn, SignUp } from "@clerk/react";
+import { SignIn, SignUp, useClerk, useUser } from "@clerk/react";
 import { Link, Redirect } from "wouter";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,6 +14,8 @@ export default function AuthPage() {
     "Sign in to AcreOS — the operating system property investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
   const { user, isLoading, authFailCount } = useAuth();
+  const clerk = useClerk();
+  const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } = useUser();
   // Dead-session guard: a Clerk cookie still in the jar after the server
   // has 401'd /api/auth/user means the JWT can't be refreshed but Clerk-JS
   // still believes the user is signed in. Without intervention the SignIn
@@ -22,7 +24,17 @@ export default function AuthPage() {
   // the cookies + hard-reload so Clerk-JS re-initializes with no session.
   const isDeadSession =
     !isLoading && !user && authFailCount >= 3 && hasAnyClerkCookie();
+  // Divergence guard: Clerk-JS reports signed-in (because of __client_uat /
+  // device hint persistence) but the server says 401. In this state the
+  // <SignUp>/<SignIn> Clerk components render NOTHING (they hide themselves
+  // when a user is already signed in), and AuthPage doesn't redirect to
+  // /today either (server user is null). The user sees an empty page with
+  // just the logo + "Back to home." Detect the mismatch and force a Clerk
+  // signOut so the widget will render the form on the next render.
+  const isClerkServerDivergent =
+    !isLoading && !user && clerkLoaded === true && clerkSignedIn === true;
   const purgingRef = useRef(false);
+  const resyncingRef = useRef(false);
   useEffect(() => {
     if (!isDeadSession || purgingRef.current) return;
     purgingRef.current = true;
@@ -45,6 +57,30 @@ export default function AuthPage() {
       window.location.replace("/auth" + window.location.search);
     })();
   }, [isDeadSession]);
+  useEffect(() => {
+    if (!isClerkServerDivergent || resyncingRef.current) return;
+    resyncingRef.current = true;
+    void (async () => {
+      try {
+        await clerk.signOut({ redirectUrl: undefined });
+      } catch {
+        /* best effort — fall through to reload */
+      }
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch {
+        /* best effort */
+      }
+      // Hard reload so the SignUp/SignIn widget mounts with a fresh Clerk-JS
+      // state that matches what the server sees (signed-out). Without the
+      // reload, @clerk/react keeps the now-stale "signed in" snapshot in
+      // memory and continues to hide the form.
+      window.location.replace("/auth" + window.location.search);
+    })();
+  }, [isClerkServerDivergent, clerk]);
   const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
@@ -118,7 +154,7 @@ export default function AuthPage() {
   }
 
   // Dead session being purged — show a loader while we hard-reload below.
-  if (isDeadSession) {
+  if (isDeadSession || isClerkServerDivergent) {
     return (
       <div
         className="min-h-screen flex items-center justify-center bg-background"
@@ -167,7 +203,7 @@ export default function AuthPage() {
       />
       <div className="w-full max-w-md flex flex-col items-center gap-6">
         <h1 className="sr-only">
-          {mode === "sign-up" ? `Create a ${brandName} account` : `Sign in to ${brandName}`}
+          {mode === "sign-up" ? `Create an ${brandName} account` : `Sign in to ${brandName}`}
         </h1>
         {/* Branding — swaps to white-label tenant name when configured */}
         <div className="flex flex-col items-center gap-3">
