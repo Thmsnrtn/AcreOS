@@ -6,13 +6,45 @@ import { useBrandName } from "@/hooks/use-white-label";
 import { ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { hasAnyClerkCookie } from "@/lib/clerk-session-detect";
 
 export default function AuthPage() {
   usePageMeta(
     "Sign in",
     "Sign in to AcreOS — the operating system real-estate investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, authFailCount } = useAuth();
+  // Dead-session guard: a Clerk cookie still in the jar after the server
+  // has 401'd /api/auth/user means the JWT can't be refreshed but Clerk-JS
+  // still believes the user is signed in. Without intervention the SignIn
+  // widget's fallbackRedirectUrl bounces us straight to /today, which then
+  // ProtectedRoute-bounces back here, looping forever on the splash. Clear
+  // the cookies + hard-reload so Clerk-JS re-initializes with no session.
+  const isDeadSession =
+    !isLoading && !user && authFailCount >= 3 && hasAnyClerkCookie();
+  const purgingRef = useRef(false);
+  useEffect(() => {
+    if (!isDeadSession || purgingRef.current) return;
+    purgingRef.current = true;
+    void (async () => {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch {
+        /* best effort */
+      }
+      for (const name of ["__session", "__client_uat", "__client"]) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      }
+      // Hard reload (not wouter navigate) so Clerk-JS reboots from scratch
+      // without the stale __client_uat that triggers the false-positive
+      // signed-in state.
+      window.location.replace("/auth" + window.location.search);
+    })();
+  }, [isDeadSession]);
   const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
@@ -83,6 +115,23 @@ export default function AuthPage() {
   // back with a user, we're signed in — send to dashboard.
   if (user && !isHandlingCallback) {
     return <Redirect to="/today" />;
+  }
+
+  // Dead session being purged — show a loader while we hard-reload below.
+  if (isDeadSession) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center bg-background"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full"
+          aria-hidden="true"
+        />
+        <span className="sr-only">Refreshing session…</span>
+      </div>
+    );
   }
 
   // Still resolving the server-side auth check after ticket/OAuth — loader.
