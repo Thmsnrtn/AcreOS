@@ -1634,6 +1634,9 @@ export async function registerRoutes(
     // Founder studio (Phase C of founder redesign) — every dial in one API.
     const { registerFounderStudioRoutes } = await import("./routes-founder-studio");
     registerFounderStudioRoutes(app);
+    // Founder inspector (Phase D) — provenance lens for agents / decisions / audit.
+    const { registerFounderInspectorRoutes } = await import("./routes-founder-inspector");
+    registerFounderInspectorRoutes(app);
     // SCP v2 routes — golden-suite, briefing, evolution/dashboard, evolution/status,
     // costs, constitution, trust/promotions. File was orphaned from this
     // registration block; 7 GET endpoints were 404ing in production. Caught

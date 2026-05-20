@@ -250,6 +250,7 @@ const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
+const FounderInspectorRouter = React.lazy(() => import("@/pages/founder/inspector"));
 const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -841,6 +842,14 @@ function Router() {
           server/services/settingsSeeder.ts. */}
       <Route path="/founder/studio">
         {() => <FounderProtectedRoute component={FounderStudioPage} />}
+      </Route>
+      {/* Founder redesign Phase D — Inspector. Provenance lens for
+          agents, decisions, and the founder audit trail. */}
+      <Route path="/founder/inspector/:scope/:id">
+        {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
+      </Route>
+      <Route path="/founder/inspector/audit">
+        {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}
