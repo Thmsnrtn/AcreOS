@@ -249,6 +249,7 @@ const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
+const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
 const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -834,6 +835,12 @@ function Router() {
           Meta + TikTok. See server/services/cmo/ + apps/remotion/. */}
       <Route path="/founder/cmo">
         {() => <FounderProtectedRoute component={FounderCmoPage} />}
+      </Route>
+      {/* Founder redesign Phase C — Studio. Every dial in one place,
+          backed by founder_settings + the seeded catalog in
+          server/services/settingsSeeder.ts. */}
+      <Route path="/founder/studio">
+        {() => <FounderProtectedRoute component={FounderStudioPage} />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}
