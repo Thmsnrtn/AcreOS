@@ -44,7 +44,7 @@ export function RotatingVertical({ intervalMs = 2600 }: RotatingVerticalProps) {
   return (
     <span
       className="lp-vertical-rotator"
-      aria-label={`for ${VERTICAL_LABELS.join(", ")}`}
+      aria-label={VERTICAL_LABELS.join(", ")}
     >
       {/* Hidden sizer keeps the line width stable at the widest label so
          the rest of the headline doesn't jump as labels cycle. */}

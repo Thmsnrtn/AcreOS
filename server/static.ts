@@ -112,6 +112,13 @@ export function serveStatic(app: Express) {
   // so browsers always fetch the latest entry point (which references hashed assets).
   app.use(express.static(distPath, {
     index: false, // Don't serve index.html directly — fall through to catch-all for env injection
+    // Without `redirect: false`, express.static auto-301s a directory request
+    // like /pricing → /pricing/ (trailing slash) whenever dist/public/pricing/
+    // exists as a directory. The trailing-slash strip middleware then bounces
+    // /pricing/ → /pricing, creating an infinite redirect loop. Disabling the
+    // auto-redirect lets these SPA routes (/pricing, /security, /glossary,
+    // /changelog) fall through to the catch-all and render the React app.
+    redirect: false,
     maxAge: process.env.NODE_ENV === "production" ? "1y" : 0,
     immutable: process.env.NODE_ENV === "production",
     setHeaders: (res, filePath) => {

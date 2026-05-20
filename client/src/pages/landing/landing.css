@@ -1500,6 +1500,68 @@
   box-shadow: var(--acr-ring);
 }
 
+/* Hamburger button — only shown on mobile via the media query below.
+   Default state hides the button on desktop so the existing layout
+   (links + CTA row) is unaffected. */
+.lp-nav-burger {
+  display: none;
+  appearance: none;
+  background: transparent;
+  border: 0.5px solid var(--acr-line-soft);
+  border-radius: 9px;
+  padding: 0;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--acr-ink);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lp-nav-burger:hover,
+.lp-nav-burger:focus-visible {
+  background: color-mix(in srgb, var(--acr-ink) 6%, transparent);
+  outline: none;
+}
+.lp-nav-burger:focus-visible {
+  box-shadow: var(--acr-ring);
+}
+.lp-nav-burger-icon {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 14px;
+}
+.lp-nav-burger-icon span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.75px;
+  background: currentColor;
+  border-radius: 2px;
+  transition: transform 0.2s ease, top 0.2s ease, opacity 0.15s;
+}
+.lp-nav-burger-icon span:nth-child(1) { top: 0; }
+.lp-nav-burger-icon span:nth-child(2) { top: 6px; }
+.lp-nav-burger-icon span:nth-child(3) { top: 12px; }
+.lp-nav-burger-icon.is-open span:nth-child(1) {
+  top: 6px;
+  transform: rotate(45deg);
+}
+.lp-nav-burger-icon.is-open span:nth-child(2) {
+  opacity: 0;
+}
+.lp-nav-burger-icon.is-open span:nth-child(3) {
+  top: 6px;
+  transform: rotate(-45deg);
+}
+
+/* Mobile drop-down panel. Hidden by default on desktop; styled & shown
+   inside the media query so cascade order stays predictable. */
+.lp-nav-mobile {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .lp-nav-row {
     padding: 14px 20px;
@@ -1507,6 +1569,66 @@
   .lp-nav-links {
     display: none;
   }
+  /* Hide the desktop CTA row in favor of the burger-triggered mobile menu —
+     the sign-in/CTA links also live inside .lp-nav-mobile so users can
+     still reach them after tapping the hamburger. */
+  .lp-nav-cta {
+    display: none;
+  }
+  .lp-nav-burger {
+    display: inline-flex;
+  }
+  .lp-nav-mobile {
+    display: block;
+    background: color-mix(in srgb, var(--acr-bg) 96%, transparent);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-bottom: 0.5px solid var(--acr-line-soft);
+    box-shadow: 0 12px 24px -16px rgba(36, 22, 7, 0.4);
+    animation: lp-nav-mobile-in 160ms ease-out;
+  }
+  .lp-nav-mobile[hidden] {
+    display: none;
+  }
+  .lp-nav-mobile ul {
+    list-style: none;
+    margin: 0;
+    padding: 8px 20px 20px;
+  }
+  .lp-nav-mobile li {
+    margin: 0;
+  }
+  .lp-nav-mobile a {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 4px 4px;
+    font: 500 16px/1 var(--font-sans);
+    color: var(--acr-ink);
+    text-decoration: none;
+    border-radius: 8px;
+  }
+  .lp-nav-mobile a:hover,
+  .lp-nav-mobile a:focus-visible {
+    background: color-mix(in srgb, var(--acr-ink) 5%, transparent);
+    outline: none;
+  }
+  .lp-nav-mobile-divider {
+    height: 0.5px;
+    background: var(--acr-line-soft);
+    margin: 8px 0;
+  }
+  .lp-nav-mobile-cta {
+    margin-top: 4px;
+    background: var(--acr-ink);
+    color: var(--acr-brand-ink) !important;
+    justify-content: center;
+    font-weight: 600 !important;
+  }
+}
+@keyframes lp-nav-mobile-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ───────────────────────────────────────────────────── POSITIONING BAND */
