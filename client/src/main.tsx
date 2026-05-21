@@ -14,6 +14,30 @@ installCsrfFetchInterceptor();
 // Safety net for ticket/OAuth sign-ins that leave Clerk.session un-selected.
 installClerkSessionRecovery();
 
+// F-D10: detect lazy-chunk load failures and hard-reload to pull the new
+// bundle. When a deploy lands, an already-open tab still references the
+// pre-deploy chunk hashes; the next dynamic import resolves to a 404 (or,
+// before F-D10's server fix, to the SPA HTML shell that the browser
+// refuses to execute as a module). Without this self-heal the user lands
+// on the global 500 page and has to manually refresh. Guard against an
+// infinite reload loop by tagging sessionStorage with a per-window cap.
+if (typeof window !== "undefined") {
+  const RELOAD_KEY = "acreos:chunk-reloaded-at";
+  const handle = (msg: string) => {
+    if (!/Failed to fetch dynamically imported module|Loading (?:CSS )?chunk|Importing a module script failed|MIME type of "text\/html"/i.test(msg)) {
+      return;
+    }
+    try {
+      const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+      if (Date.now() - last < 10_000) return; // already reloaded recently
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    } catch { /* sessionStorage unavailable — still reload */ }
+    window.location.reload();
+  };
+  window.addEventListener("error", (e) => handle(String(e.message || "")));
+  window.addEventListener("unhandledrejection", (e) => handle(String((e as PromiseRejectionEvent).reason || "")));
+}
+
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();
 

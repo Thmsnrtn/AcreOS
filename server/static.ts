@@ -174,6 +174,16 @@ export function serveStatic(app: Express) {
     if (req.originalUrl.startsWith("/api/")) {
       return res.status(404).json({ message: "Not found" });
     }
+    // F-D10: Don't fall through to the SPA shell for asset URLs that didn't
+    // hit express.static. Without this, a stale lazy-chunk request (post-
+    // deploy, browser still holds old chunk hashes) gets served index.html
+    // with content-type text/html, the browser refuses the module load,
+    // dynamic import throws, and the whole app crashes to ErrorBoundary.
+    // Return 404 instead so the client-side chunk-error handler can detect
+    // the deploy and trigger a hard reload to fetch the new bundle.
+    if (/^\/assets\/.*\.(js|css|map|wasm)(\.(br|gz))?$/i.test(req.path)) {
+      return res.status(404).type("text/plain").send("asset not found");
+    }
 
     try {
       let html = fs.readFileSync(indexPath, "utf-8");

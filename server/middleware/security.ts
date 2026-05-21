@@ -44,7 +44,10 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     `style-src 'self' 'unsafe-inline' https://api.mapbox.com`,
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev wss: ws:",
+    // F-D09: Sentry ingest endpoints must be in connect-src or every event
+    // POST is refused and the dashboard sees nothing. Whitelist the wildcard
+    // (Sentry assigns per-org subdomains like o4511…ingest.us.sentry.io).
+    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
