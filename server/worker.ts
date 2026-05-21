@@ -103,13 +103,13 @@ async function handleCmoManualGenerate(payload: Record<string, unknown>): Promis
 
 async function handleCmoRenderScript(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { handleCmoRender } = await import("./jobs/cmoVideoRender");
-  const result = await handleCmoRender(payload as Parameters<typeof handleCmoRender>[0]);
+  const result = await handleCmoRender(payload as unknown as Parameters<typeof handleCmoRender>[0]);
   return result as unknown as Record<string, unknown>;
 }
 
 async function handleCmoBroadcastEvent(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { handleCmoBroadcast } = await import("./jobs/cmoBroadcast");
-  const result = await handleCmoBroadcast(payload as Parameters<typeof handleCmoBroadcast>[0]);
+  const result = await handleCmoBroadcast(payload as unknown as Parameters<typeof handleCmoBroadcast>[0]);
   return result as unknown as Record<string, unknown>;
 }
 
