@@ -204,10 +204,20 @@ export function OnboardingWizard() {
       const localState = getLocalState();
       
       if (!onboardingStatus.completed) {
+        // Permanent dismiss (Complete Later button) — persisted to localStorage.
         if (localState?.dismissed && localState?.dontShowAgain) {
           return;
         }
-        
+        // Session-scope dismiss (X button) — suppress re-opening across in-app
+        // navigations within the same tab session. F-D04: without this the
+        // wizard re-mounted on every page nav even after the user explicitly
+        // closed it, which felt like a bug to a real stranger.
+        try {
+          if (sessionStorage.getItem("acreos:onboarding-session-dismissed") === "1") {
+            return;
+          }
+        } catch { /* sessionStorage unavailable (private mode etc) — fall through */ }
+
         setOpen(true);
         setCurrentStep(localState?.currentStep ?? onboardingStatus.currentStep);
         
@@ -380,6 +390,18 @@ export function OnboardingWizard() {
       }
     } catch (error) {
       clientLogger.error("Error in handleNext:", error);
+      // F-D03: surface the failure so the user isn't left clicking Continue
+      // forever on a silent 401. The session-touch retry inside apiRequest
+      // handles most refresh-window cases; if we still end up here, it's
+      // a genuine error worth showing.
+      toast({
+        variant: "destructive",
+        title: "Couldn't save that step",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong saving your progress. Refresh and try again.",
+      });
     }
   };
 
@@ -394,6 +416,14 @@ export function OnboardingWizard() {
       }
     } catch (error) {
       clientLogger.error("Error in handleSkip:", error);
+      toast({
+        variant: "destructive",
+        title: "Couldn't skip that step",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong. Refresh and try again.",
+      });
     }
   };
 
@@ -406,7 +436,11 @@ export function OnboardingWizard() {
   const handleDismiss = (dontShowAgain: boolean = false) => {
     setOpen(false);
     setLocalState({ dismissed: true, dontShowAgain, currentStep });
-    
+    // F-D04: even a soft-dismiss (X button) should suppress wizard re-open
+    // for the rest of this tab session so the stranger isn't repeatedly
+    // interrupted on every page nav. Re-opens cleanly on next session.
+    try { sessionStorage.setItem("acreos:onboarding-session-dismissed", "1"); } catch {}
+
     if (dontShowAgain) {
       completeMutation.mutate();
     }

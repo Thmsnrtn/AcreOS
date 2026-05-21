@@ -23,7 +23,10 @@
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  position: relative;
+  /* Position is intentionally not set here so the Tailwind `fixed inset-0`
+     on the JSX wrapper wins. Earlier `position: relative` made the wizard
+     render in document flow (F-D01) — stranger landed on /today, never
+     saw the wizard until they scrolled past the zero-state CTAs. */
   background: var(--acr-bg);
   color: var(--acr-ink);
   font: 400 16px/1.5 var(--font-sans);
