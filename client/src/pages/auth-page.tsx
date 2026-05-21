@@ -50,8 +50,22 @@ export default function AuthPage() {
   // /today either (server user is null). The user sees an empty page with
   // just the logo + "Back to home." Detect the mismatch and force a Clerk
   // signOut so the widget will render the form on the next render.
+  //
+  // F-D13: do NOT fire the guard if we just landed with a Clerk ticket
+  // (?__clerk_ticket=…) in the URL. The legitimate ticket flow goes
+  // through a window where Clerk-JS reports signedIn=true a beat before
+  // the server's /api/auth/user catches up. Without this carve-out the
+  // guard kills the brand-new session we just established, sending the
+  // user back to the sign-in form they came from with a ticket attached.
+  const hasIncomingTicket =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("__clerk_ticket");
   const isClerkServerDivergent =
-    !effectiveIsLoading && !user && clerkLoaded === true && clerkSignedIn === true;
+    !effectiveIsLoading &&
+    !user &&
+    clerkLoaded === true &&
+    clerkSignedIn === true &&
+    !hasIncomingTicket;
   const purgingRef = useRef(false);
   const resyncingRef = useRef(false);
   useEffect(() => {
