@@ -21,11 +21,38 @@ async function hydrateUser(req: any, res: any, next: any) {
   let userId = req.auth?.userId;
 
   // Fallback: if clerkMiddleware couldn't verify (e.g., proxy/Cloudflare issues),
-  // manually decode the __session JWT using CLERK_JWT_KEY
+  // manually decode the __session JWT using CLERK_JWT_KEY.
+  //
+  // Cookie name shape: Clerk-JS sets the session JWT under a per-instance
+  // suffixed name like `__session_<hash>=…` in production. The bare
+  // `__session=` name is legacy and may either (a) not exist or (b) hold a
+  // stale value from a previous session that the user already signed out of.
+  // The original `/__session=([^;]+)/` regex only matched the bare name —
+  // when only the suffixed cookie was set, fallback found nothing and we
+  // 401'd every request with a perfectly valid session JWT in the jar.
+  // F-D14: walk every cookie, collect every __session* value, verify each
+  // until one passes — the first valid one wins. The suffixed cookie is
+  // almost always the fresh one in production.
   if (!userId) {
     try {
-      const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
-      if (sessionCookie && process.env.CLERK_JWT_KEY) {
+      const cookieHeader: string | undefined = req.headers.cookie;
+      const candidates: string[] = [];
+      if (cookieHeader && process.env.CLERK_JWT_KEY) {
+        for (const part of cookieHeader.split(";")) {
+          const eq = part.indexOf("=");
+          if (eq < 0) continue;
+          const name = part.slice(0, eq).trim();
+          const value = part.slice(eq + 1).trim();
+          if (/^__session(_[A-Za-z0-9_-]+)?$/.test(name) && value) {
+            candidates.push(value);
+          }
+        }
+      }
+      // Prefer suffixed cookies (production) before bare (legacy / possibly stale)
+      candidates.sort((a, b) => (a.length === b.length ? 0 : b.length - a.length));
+      for (const sessionCookie of candidates) {
+        if (userId) break;
+        try {
         const crypto = await import("crypto");
         const [headerB64, payloadB64, sigB64] = sessionCookie.split(".");
         const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
@@ -40,6 +67,10 @@ async function hydrateUser(req: any, res: any, next: any) {
         const GRACE_PERIOD_MS = 30 * 1000;
         if (isValid && payload.sub && payload.exp * 1000 > Date.now() - GRACE_PERIOD_MS) {
           userId = payload.sub;
+        }
+        } catch {
+          // try the next candidate cookie
+          continue;
         }
       }
     } catch (jwtErr: any) {
