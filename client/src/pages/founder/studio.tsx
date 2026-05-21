@@ -178,6 +178,7 @@ function DialCard({
   onSaved: () => void;
   toast: ReturnType<typeof useToast>["toast"];
 }) {
+  const queryClient = useQueryClient();
   const [pendingValue, setPendingValue] = useState<unknown>(dial.value);
   const [note, setNote] = useState("");
 
@@ -189,6 +190,7 @@ function DialCard({
         note: args.note || undefined,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/founder/studio/dials"] });
       toast({ title: "Saved", description: dial.key });
       onSaved();
     },
@@ -203,6 +205,7 @@ function DialCard({
         key: dial.key,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/founder/studio/dials"] });
       toast({ title: "Reset to default", description: dial.key });
       setPendingValue(dial.defaultValue);
       onSaved();

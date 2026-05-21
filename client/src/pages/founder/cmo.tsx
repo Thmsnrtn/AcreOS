@@ -43,6 +43,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface RenderShape {
   id: string;
@@ -337,7 +338,7 @@ export default function FounderCmoPage() {
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={approve.isPending}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={() => {
@@ -403,7 +404,7 @@ export default function FounderCmoPage() {
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={reject.isPending}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               variant="destructive"
