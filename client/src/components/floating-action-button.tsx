@@ -35,7 +35,11 @@ export function FloatingActionButton() {
       window.removeEventListener("storage", recheck);
     };
   }, []);
-  if (cookieBannerVisible) return null;
+  // NOTE: The early-return that gates this component on the cookie banner
+  // MUST come AFTER every hook in this file. Previously the gate sat here
+  // (before the two useEffects below), which meant the hook count jumped
+  // from 5 to 7 the moment a stranger accepted cookies — React error #310,
+  // the entire app crashed to the 500 page. F-D06.
 
   const quickActions: QuickAction[] = [
     {
@@ -115,6 +119,9 @@ export function FloatingActionButton() {
     }
     setIsOpen(false);
   };
+
+  // Gate render AFTER all hooks have been called (see F-D06 note above).
+  if (cookieBannerVisible) return null;
 
   return (
     <div
