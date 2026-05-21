@@ -66,7 +66,11 @@ const SECTION_ICONS = {
 };
 
 export default function FounderCockpitPage() {
-  useDocumentTitle("Cockpit — monthly check-in");
+  // F-D16: page is exposed at /founder/steering per Phase F; title kept in
+  // sync with the new IA name. Keep file name as cockpit.tsx for now to
+  // avoid a deleted-file noise commit; the route mapping in App.tsx is
+  // what users see.
+  useDocumentTitle("Steering — monthly check-in");
   const { data, isLoading, refetch, isError } = useQuery<CockpitResponse>({
     queryKey: ["/api/founder/cockpit"],
     refetchInterval: 5 * 60_000,
