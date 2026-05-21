@@ -16,6 +16,25 @@ export default function AuthPage() {
   const { user, isLoading, authFailCount } = useAuth();
   const clerk = useClerk();
   const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } = useUser();
+
+  // Loader stall guard: if useAuth.isLoading stays true longer than 4s
+  // (slow network, retried fetch, stuck touchClerkSession, etc.) the page
+  // would otherwise wedge on the "Signing you in…" splash with no recovery
+  // path. After the timer fires we treat the page as if isLoading is false
+  // so the divergence / dead-session guards downstream can run and the user
+  // either lands on the form, the resync CTA, or the redirect path —
+  // never a blank loader.
+  const [loaderStalled, setLoaderStalled] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      setLoaderStalled(false);
+      return;
+    }
+    const t = setTimeout(() => setLoaderStalled(true), 4000);
+    return () => clearTimeout(t);
+  }, [isLoading]);
+  const effectiveIsLoading = isLoading && !loaderStalled;
+
   // Dead-session guard: a Clerk cookie still in the jar after the server
   // has 401'd /api/auth/user means the JWT can't be refreshed but Clerk-JS
   // still believes the user is signed in. Without intervention the SignIn
@@ -23,7 +42,7 @@ export default function AuthPage() {
   // ProtectedRoute-bounces back here, looping forever on the splash. Clear
   // the cookies + hard-reload so Clerk-JS re-initializes with no session.
   const isDeadSession =
-    !isLoading && !user && authFailCount >= 3 && hasAnyClerkCookie();
+    !effectiveIsLoading && !user && authFailCount >= 3 && hasAnyClerkCookie();
   // Divergence guard: Clerk-JS reports signed-in (because of __client_uat /
   // device hint persistence) but the server says 401. In this state the
   // <SignUp>/<SignIn> Clerk components render NOTHING (they hide themselves
@@ -32,7 +51,7 @@ export default function AuthPage() {
   // just the logo + "Back to home." Detect the mismatch and force a Clerk
   // signOut so the widget will render the form on the next render.
   const isClerkServerDivergent =
-    !isLoading && !user && clerkLoaded === true && clerkSignedIn === true;
+    !effectiveIsLoading && !user && clerkLoaded === true && clerkSignedIn === true;
   const purgingRef = useRef(false);
   const resyncingRef = useRef(false);
   useEffect(() => {
@@ -238,7 +257,8 @@ export default function AuthPage() {
   }
 
   // Still resolving the server-side auth check after ticket/OAuth — loader.
-  if (isLoading && !isHandlingCallback) {
+  // Capped at 4s by the loaderStalled timer above so we never wedge here.
+  if (effectiveIsLoading && !isHandlingCallback) {
     return (
       <div
         className="min-h-screen flex items-center justify-center bg-background"
