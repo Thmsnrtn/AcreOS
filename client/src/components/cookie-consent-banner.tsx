@@ -47,10 +47,16 @@ export function CookieConsentBanner() {
       role="dialog"
       aria-label="Cookie consent"
       aria-live="polite"
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 backdrop-blur-sm p-4 shadow-lg"
+      // F-D05: render as a bottom-center card rather than a full-width strip.
+      // The strip stacked at z-50 covered the bottom of the sidebar — Sign Out
+      // (and any other bottom-sidebar control) became unclickable until the
+      // user accepted/declined cookies. Card form sits clear of the sidebar
+      // on desktop, still readable + reachable on mobile, and remains above
+      // app content via z-50.
+      className="fixed bottom-2 left-2 right-2 sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-50 rounded-xl border border-border/60 bg-background/95 backdrop-blur-sm p-4 shadow-2xl"
       data-testid="cookie-consent-banner"
     >
-      <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="flex-1 text-sm text-muted-foreground">
           We use cookies and similar technologies to improve your experience.
           By continuing, you agree to our{" "}

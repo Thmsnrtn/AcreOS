@@ -192,10 +192,34 @@ export default function AuthPage() {
     }
   }
 
+  // F-D07: when the user explicitly signed out, the logout flow plants
+  // a "just-logged-out" sentinel and hard-navigates here with ?_loggedout=1.
+  // Clerk-JS occasionally resurrects the session from its device hint a
+  // beat later, which would otherwise re-trip the bounce-to-/today branch
+  // below and trap the user back in the app they just left. Honor the
+  // sentinel for 30 seconds so the resurrection can't outrun an intentional
+  // logout. After 30s the sentinel is treated as stale (user may have
+  // wandered off and come back genuinely wanting to sign in).
+  const loggedOutParam = params.has("_loggedout");
+  let justLoggedOut = false;
+  try {
+    const ts = Number(sessionStorage.getItem("acreos:just-logged-out") || 0);
+    justLoggedOut = ts > 0 && Date.now() - ts < 30_000;
+  } catch { /* sessionStorage unavailable */ }
+  const suppressBounce = loggedOutParam || justLoggedOut;
+
   // Option B: server-backed auth is the truth. If /api/auth/user came
-  // back with a user, we're signed in — send to dashboard.
-  if (user && !isHandlingCallback) {
+  // back with a user, we're signed in — send to dashboard. UNLESS the
+  // user just explicitly logged out (see suppressBounce above).
+  if (user && !isHandlingCallback && !suppressBounce) {
     return <Redirect to="/today" />;
+  }
+
+  // If we're showing the form because of just-logged-out and Clerk-JS has
+  // re-resurrected the user, fire another signOut to clear the device hint.
+  // (Async; we still render the form below so the user can sign in fresh.)
+  if (user && suppressBounce && clerk) {
+    try { void clerk.signOut(); } catch { /* best-effort */ }
   }
 
   // Dead session being purged — show a loader while we hard-reload below.

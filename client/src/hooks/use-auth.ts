@@ -88,25 +88,49 @@ export function useAuth() {
   // - No cookie and no cached user → not loading, not authed
   const isLoading = cookiePresent && (userLoading || !isFetched);
 
-  const logout = () => {
+  const logout = async () => {
+    // F-D07: sign-out used to bounce back to /today because the steps below
+    // raced — Clerk-JS resurrected the session from its device hint before
+    // /api/auth/logout finished. We now (1) await the server logout so the
+    // HttpOnly cookies are gone before Clerk-JS gets a chance to re-fetch,
+    // (2) enumerate every cookie in document.cookie that smells like Clerk
+    // and clear it (the suffixed __session_<hash> + __client_uat_<hash> +
+    // __clerk_db_jwt_<hash> names that the canonical 3-name sweep missed),
+    // (3) plant a "just-logged-out" sentinel that AuthPage reads to suppress
+    // its bounce-to-/today branch, and (4) hard-navigate instead of letting
+    // Clerk's signOut do its own redirect.
     authFailCount = 0;
     queryClient.setQueryData(["/api/auth/user"], null);
     queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
-    // Clerk's instance cookies are suffixed (`__session_<hash>`, `__client_uat_<hash>`)
-    // and HttpOnly — client JS can't enumerate or clear them. Ask the server to
-    // clearCookie() every one it can see on the request, then fall through to
-    // Clerk's own sign-out which handles the non-HttpOnly names.
-    void fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => { /* best-effort */ });
-    // Also clear the canonical (non-suffixed) names from the client for old
-    // sessions that predate the suffixed-cookie rollout.
-    for (const name of ["__session", "__client_uat", "__client"]) {
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io`;
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    try {
+      sessionStorage.setItem("acreos:just-logged-out", String(Date.now()));
+      // Clear the divergence-guard one-tab cap so AuthPage will run a fresh
+      // resync attempt if Clerk-JS does manage to re-resurrect us.
+      sessionStorage.removeItem("acreos:auth-resync-attempted");
+    } catch { /* sessionStorage unavailable */ }
+
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch { /* best-effort — fall through */ }
+
+    // Clear every Clerk-shaped cookie visible to client JS, including the
+    // suffixed instance names. HttpOnly cookies remain server-cleared above.
+    for (const raw of document.cookie.split(";")) {
+      const name = raw.split("=")[0].trim();
+      if (!name) continue;
+      if (/^(__session|__client|__clerk)/.test(name)) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      }
     }
-    signOut({ redirectUrl: "/auth" });
+
+    try {
+      await signOut({ redirectUrl: undefined });
+    } catch { /* best-effort */ }
+
+    // Hard reload to /auth so Clerk-JS reboots clean and AuthPage mounts
+    // with the just-logged-out sentinel set.
+    window.location.replace("/auth?_loggedout=1");
   };
 
   return {
