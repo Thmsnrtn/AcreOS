@@ -61,6 +61,24 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // F-D17: chunk-load failures (post-deploy stale lazy imports) surface
+    // as React render-time errors and get caught here BEFORE the global
+    // unhandledrejection listener in main.tsx can act on them. Reload once
+    // per 10s window so a real user mid-deploy gets the new bundle instead
+    // of being trapped on the 500 page.
+    const msg = String(error?.message || "");
+    if (/Failed to fetch dynamically imported module|Loading (?:CSS )?chunk|Importing a module script failed|MIME type of "text\/html"/i.test(msg)) {
+      try {
+        const key = "acreos:chunk-reloaded-at";
+        const last = Number(sessionStorage.getItem(key) || 0);
+        if (Date.now() - last > 10_000) {
+          sessionStorage.setItem(key, String(Date.now()));
+          window.location.reload();
+          return;
+        }
+      } catch { /* sessionStorage unavailable — fall through to normal error UI */ }
+    }
+
     const errorId = logErrorToService(error, errorInfo);
     this.setState({ errorId });
 
