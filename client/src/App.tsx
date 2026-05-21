@@ -1503,9 +1503,16 @@ function AppContent() {
   );
 }
 
+// F-D12: pass wouter's location to the ErrorBoundary so a per-route crash
+// doesn't trap the user — boundary clears its error state on next nav.
+function LocationAwareErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+}
+
 function App() {
   return (
-    <ErrorBoundary>
+    <LocationAwareErrorBoundary>
       <MotionConfig reducedMotion="user">
       <ThemeProvider>
         <AccessibilityProvider>
@@ -1536,7 +1543,7 @@ function App() {
         </AccessibilityProvider>
       </ThemeProvider>
       </MotionConfig>
-    </ErrorBoundary>
+    </LocationAwareErrorBoundary>
   );
 }
 

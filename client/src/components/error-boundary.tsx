@@ -8,6 +8,10 @@ interface Props {
   children: ReactNode;
   fallback?: ReactNode;
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
+  // F-D12: when this value changes (typically wouter's `location`), the
+  // boundary clears its error state so a crash on one page doesn't trap
+  // the user on the 500 page for every subsequent navigation.
+  resetKey?: string;
 }
 
 interface State {
@@ -59,9 +63,18 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     const errorId = logErrorToService(error, errorInfo);
     this.setState({ errorId });
-    
+
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
+    }
+  }
+
+  componentDidUpdate(prevProps: Props) {
+    // F-D12: route changed (resetKey moved) → clear the trapped error so
+    // the next page renders normally. Without this, a single page crash
+    // shows the 500 page on every route until the user hard-refreshes.
+    if (this.state.hasError && this.props.resetKey !== prevProps.resetKey) {
+      this.setState({ hasError: false, error: null, errorId: null });
     }
   }
 
