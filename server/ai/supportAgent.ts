@@ -5255,10 +5255,10 @@ export async function processSupportChat(
   const { paxVerticalContext, getOrgInvestorType } = await import("../services/paxPersona");
   const investorType = await getOrgInvestorType(org.id);
   const verticalBlock = paxVerticalContext(investorType);
-  // Phase B-2 founder-redesign learning loop: pull the last 30 rejection
-  // notes for Pax so the agent sees what the founder has consistently
-  // pushed back on and avoids the same patterns. Best-effort; empty
-  // string when no signal so concat stays safe.
+  // Phase B-2 redesign learning loop: pull the last 30 rejection notes
+  // for Pax so the agent sees the operator's recent corrections and
+  // avoids repeating those patterns. Best-effort; empty string when
+  // no signal so concat stays safe.
   let rejectionBlock = "";
   try {
     const { loadRejectionContext } = await import("../services/agentRejectionContext");

@@ -3833,9 +3833,10 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "cmo_budget_brand_idx" ON "cmo_budget" ("brand_profile_id")`,
 
-  // Founder redesign Phase A — settings substrate + audit log + agent rejection notes.
-  // See shared/schema.ts and docs/.../founder-redesign for context.
-  `CREATE TABLE IF NOT EXISTS "founder_settings" (
+  // Founder redesign Phase A — platform_settings substrate + audit log + agent rejection notes.
+  // Renamed from founder_settings (which is a pre-existing simpler key/value
+  // table) to avoid the naming collision. See shared/schema.ts.
+  `CREATE TABLE IF NOT EXISTS "platform_settings" (
      "id" serial PRIMARY KEY,
      "key" text NOT NULL,
      "scope" text NOT NULL DEFAULT 'global',
@@ -3850,9 +3851,9 @@ const STATEMENTS = [
      "last_changed_note" text,
      "created_at" timestamp DEFAULT now()
    )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "founder_settings_scope_key_idx" ON "founder_settings" ("scope", "scope_ref", "key")`,
-  `CREATE INDEX IF NOT EXISTS "founder_settings_category_idx" ON "founder_settings" ("category")`,
-  `CREATE INDEX IF NOT EXISTS "founder_settings_key_idx" ON "founder_settings" ("key")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "platform_settings_scope_key_idx" ON "platform_settings" ("scope", "scope_ref", "key")`,
+  `CREATE INDEX IF NOT EXISTS "platform_settings_category_idx" ON "platform_settings" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "platform_settings_key_idx" ON "platform_settings" ("key")`,
 
   `CREATE TABLE IF NOT EXISTS "founder_audit" (
      "id" serial PRIMARY KEY,

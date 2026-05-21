@@ -29,7 +29,7 @@
  */
 
 import { db } from "../db";
-import { founderSettings, founderAudit, type FounderSetting } from "@shared/schema";
+import { platformSettings, founderAudit, type PlatformSetting } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -75,13 +75,13 @@ export async function getSetting<T = unknown>(
     }
 
     const [row] = await db
-      .select({ value: founderSettings.value })
-      .from(founderSettings)
+      .select({ value: platformSettings.value })
+      .from(platformSettings)
       .where(
         and(
-          eq(founderSettings.key, key),
-          eq(founderSettings.scope, scopeName),
-          scopeRef === null ? isNull(founderSettings.scopeRef) : eq(founderSettings.scopeRef, scopeRef),
+          eq(platformSettings.key, key),
+          eq(platformSettings.scope, scopeName),
+          scopeRef === null ? isNull(platformSettings.scopeRef) : eq(platformSettings.scopeRef, scopeRef),
         ),
       )
       .limit(1);
@@ -102,17 +102,17 @@ export async function getSetting<T = unknown>(
 export async function getSettingRow(
   key: string,
   scope: SettingScope = { scope: "global", scopeRef: null },
-): Promise<FounderSetting | null> {
+): Promise<PlatformSetting | null> {
   const scopeName = scope.scope ?? "global";
   const scopeRef = scope.scopeRef ?? null;
   const [row] = await db
     .select()
-    .from(founderSettings)
+    .from(platformSettings)
     .where(
       and(
-        eq(founderSettings.key, key),
-        eq(founderSettings.scope, scopeName),
-        scopeRef === null ? isNull(founderSettings.scopeRef) : eq(founderSettings.scopeRef, scopeRef),
+        eq(platformSettings.key, key),
+        eq(platformSettings.scope, scopeName),
+        scopeRef === null ? isNull(platformSettings.scopeRef) : eq(platformSettings.scopeRef, scopeRef),
       ),
     )
     .limit(1);
@@ -135,7 +135,7 @@ export interface SetSettingArgs {
  * to write an unknown key so typos don't silently create orphan rows. The
  * studio UI lists only registered keys.
  */
-export async function setSetting(args: SetSettingArgs): Promise<FounderSetting> {
+export async function setSetting(args: SetSettingArgs): Promise<PlatformSetting> {
   const scopeName = args.scope?.scope ?? "global";
   const scopeRef = args.scope?.scopeRef ?? null;
 
@@ -153,23 +153,23 @@ export async function setSetting(args: SetSettingArgs): Promise<FounderSetting> 
 
   const previousValue = existing?.value ?? null;
 
-  let row: FounderSetting;
+  let row: PlatformSetting;
   if (existing) {
     const [updated] = await db
-      .update(founderSettings)
+      .update(platformSettings)
       .set({
         value: args.value,
         lastChangedBy: args.founderId,
         lastChangedAt: new Date(),
         lastChangedNote: args.note ?? null,
       })
-      .where(eq(founderSettings.id, existing.id))
+      .where(eq(platformSettings.id, existing.id))
       .returning();
     row = updated;
   } else {
     // New scope override — clone the global row's metadata for shape.
     const [inserted] = await db
-      .insert(founderSettings)
+      .insert(platformSettings)
       .values({
         key: args.key,
         scope: scopeName,
@@ -222,16 +222,16 @@ export async function resetSetting(
 
   if (scopeName === "global") {
     await db
-      .update(founderSettings)
+      .update(platformSettings)
       .set({
         value: row.defaultValue,
         lastChangedBy: founderId,
         lastChangedAt: new Date(),
         lastChangedNote: "reset to default",
       })
-      .where(eq(founderSettings.id, row.id));
+      .where(eq(platformSettings.id, row.id));
   } else {
-    await db.delete(founderSettings).where(eq(founderSettings.id, row.id));
+    await db.delete(platformSettings).where(eq(platformSettings.id, row.id));
   }
 
   invalidateCache(key, scopeName, scopeRef);
@@ -253,7 +253,7 @@ export interface SeedSettingArgs {
   category: "autonomy" | "cost" | "lifecycle" | "voice" | "safety" | "compliance";
   description: string;
   defaultValue: unknown;
-  validRange?: FounderSetting["validRange"];
+  validRange?: PlatformSetting["validRange"];
 }
 
 /**
@@ -276,19 +276,19 @@ export async function seedSetting(args: SeedSettingArgs): Promise<void> {
       JSON.stringify(existing.validRange) !== JSON.stringify(args.validRange ?? null)
     ) {
       await db
-        .update(founderSettings)
+        .update(platformSettings)
         .set({
           category: args.category,
           description: args.description,
           defaultValue: args.defaultValue,
           validRange: args.validRange ?? null,
         })
-        .where(eq(founderSettings.id, existing.id));
+        .where(eq(platformSettings.id, existing.id));
     }
     return;
   }
 
-  await db.insert(founderSettings).values({
+  await db.insert(platformSettings).values({
     key: args.key,
     scope: "global",
     scopeRef: null,

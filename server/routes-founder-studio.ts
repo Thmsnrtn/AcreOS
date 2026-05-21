@@ -16,7 +16,7 @@
 
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
-import { founderSettings, founderAudit } from "@shared/schema";
+import { platformSettings, founderAudit } from "@shared/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getSettingRow, setSetting, resetSetting } from "./services/settings";
@@ -32,9 +32,9 @@ export function registerFounderStudioRoutes(app: Express) {
     async (_req: Request, res: Response) => {
       const rows = await db
         .select()
-        .from(founderSettings)
-        .where(and(eq(founderSettings.scope, "global"), isNull(founderSettings.scopeRef)))
-        .orderBy(founderSettings.category, founderSettings.key);
+        .from(platformSettings)
+        .where(and(eq(platformSettings.scope, "global"), isNull(platformSettings.scopeRef)))
+        .orderBy(platformSettings.category, platformSettings.key);
 
       const grouped: Record<string, typeof rows> = {};
       for (const row of rows) {
@@ -65,8 +65,8 @@ export function registerFounderStudioRoutes(app: Express) {
       }
       const allRows = await db
         .select()
-        .from(founderSettings)
-        .where(eq(founderSettings.key, key));
+        .from(platformSettings)
+        .where(eq(platformSettings.key, key));
       const overrides = allRows.filter(
         (r) => !(r.scope === "global" && r.scopeRef === null),
       );

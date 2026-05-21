@@ -20996,18 +20996,24 @@ export const cmoBudget = pgTable("cmo_budget", {
 
 export type CmoBudget = typeof cmoBudget.$inferSelect;
 
-// ─── Founder Redesign — Settings substrate + Audit + Rejection notes (Phase A) ─
+// ─── Founder Redesign — Platform settings substrate + Audit + Rejection notes (Phase A) ─
 //
 // The unified backbone for the four-canonical-surface founder redesign.
-// Every magic number that today requires a deploy moves to `founder_settings`;
+// Every magic number that today requires a deploy moves to `platform_settings`;
 // every founder-visible mutation lands in `founder_audit`; every agent's
 // proposal generation reads the last N relevant rejections from
 // `agent_rejection_notes` (generalizing the CMO-only pattern shipped 2026-05-20).
 //
+// Naming note: this is `platform_settings`, not `founder_settings` — there
+// is a pre-existing `founder_settings` table (shared/schema.ts line 12973)
+// with a simpler key/value/text shape used by the legacy /founder/settings
+// page. The new substrate needs scope hierarchy (global / org / agent /
+// skill) + JSON values + validRange metadata, so it lives as its own table.
+//
 // See /Users/user/.claude/plans/how-can-we-either-ticklish-ocean.md for the
 // full design context.
 
-export const founderSettings = pgTable("founder_settings", {
+export const platformSettings = pgTable("platform_settings", {
   id: serial("id").primaryKey(),
   // Dotted-key namespace. Examples:
   //   trust.tier_breakpoints
@@ -21036,13 +21042,13 @@ export const founderSettings = pgTable("founder_settings", {
   lastChangedNote: text("last_changed_note"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  uniqueIndex("founder_settings_scope_key_idx").on(table.scope, table.scopeRef, table.key),
-  index("founder_settings_category_idx").on(table.category),
-  index("founder_settings_key_idx").on(table.key),
+  uniqueIndex("platform_settings_scope_key_idx").on(table.scope, table.scopeRef, table.key),
+  index("platform_settings_category_idx").on(table.category),
+  index("platform_settings_key_idx").on(table.key),
 ]);
 
-export type FounderSetting = typeof founderSettings.$inferSelect;
-export type InsertFounderSetting = typeof founderSettings.$inferInsert;
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export type InsertPlatformSetting = typeof platformSettings.$inferInsert;
 
 export const founderAudit = pgTable("founder_audit", {
   id: serial("id").primaryKey(),
