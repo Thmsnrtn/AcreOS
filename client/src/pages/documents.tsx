@@ -119,35 +119,47 @@ export default function DocumentsPage() {
     return Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
   };
 
-  const { data: templates = [], isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useQuery<DocumentTemplate[]>({
+  // F-D11: react-query's `data: x = []` default ONLY kicks in when data is
+  // undefined. If a query landed with non-array data (e.g. a 200 response
+  // with an unexpected shape), every downstream `.map`/`.filter` would
+  // crash the whole tab and trip ErrorBoundary. Belt-and-suspenders: clamp
+  // every consumed value to an array at component-top via toArray().
+  const toArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+  const { data: rawTemplates, isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useQuery<DocumentTemplate[]>({
     queryKey: ["/api/document-templates"],
     queryFn: () => strictFetch("/api/document-templates"),
     retry: false,
   });
+  const templates = toArray<DocumentTemplate>(rawTemplates);
 
-  const { data: documents = [], isLoading: documentsLoading, isError: documentsError, refetch: refetchDocuments } = useQuery<GeneratedDocument[]>({
+  const { data: rawDocuments, isLoading: documentsLoading, isError: documentsError, refetch: refetchDocuments } = useQuery<GeneratedDocument[]>({
     queryKey: ["/api/generated-documents"],
     queryFn: () => strictFetch("/api/generated-documents"),
     retry: false,
   });
+  const documents = toArray<GeneratedDocument>(rawDocuments);
 
-  const { data: deals = [], isError: dealsError } = useQuery<Deal[]>({
+  const { data: rawDeals, isError: dealsError } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
     queryFn: () => strictFetch("/api/deals?page=1&pageSize=100"),
     retry: false,
   });
+  const deals = toArray<Deal>(rawDeals);
 
-  const { data: properties = [], isError: propertiesError } = useQuery<Property[]>({
+  const { data: rawProperties, isError: propertiesError } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
     queryFn: () => strictFetch("/api/properties?page=1&pageSize=100"),
     retry: false,
   });
+  const properties = toArray<Property>(rawProperties);
 
-  const { data: packages = [], isLoading: packagesLoading, isError: packagesError, refetch: refetchPackages } = useQuery<DocumentPackage[]>({
+  const { data: rawPackages, isLoading: packagesLoading, isError: packagesError, refetch: refetchPackages } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages"],
     queryFn: () => strictFetch("/api/document-packages"),
     retry: false,
   });
+  const packages = toArray<DocumentPackage>(rawPackages);
 
   useEffect(() => {
     if (templatesError) toast({ title: "Couldn't load templates", description: "Check your connection and try again.", variant: "destructive" });
