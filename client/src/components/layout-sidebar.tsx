@@ -76,6 +76,7 @@ import {
   DollarSign,
   FileSearch,
   Search,
+  Sliders,
   ContactRound,
   ChevronLeft,
   ChevronRight,
@@ -586,12 +587,19 @@ const NAV_MODULES: NavModule[] = [
     id: "founder-business",
     label: "Founder",
     icon: Crown,
-    href: "/founder/todo",
+    href: "/founder",
     description: "Autonomous-operation command center",
     founderOnly: true,
     children: [
-      // Daily founder-loop surfaces — todo, narrative, audit, trends, strategy.
-      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "Unified ranked feed across every inbox" },
+      // ── Canonical surfaces (founder redesign) ──────────────────────────
+      // The four-surface IA from /Users/user/.claude/plans/.
+      { label: "Now", icon: CheckCircle2, href: "/founder", description: "Daily inbox — what only the founder can decide today" },
+      { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
+      { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
+      { label: "Inspector", icon: Search, href: "/founder/inspector/audit", description: "Provenance lens — per-agent, per-decision, founder audit feed" },
+      { label: "CMO", icon: Megaphone, href: "/founder/cmo", description: "Native ad generation, approval, broadcast to Meta + TikTok" },
+      // ── Legacy daily-loop surfaces (60-day deprecation per MIGRATION-MAP.md) ──
+      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "[legacy] Unified ranked feed — see /founder for new canonical" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
       { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
