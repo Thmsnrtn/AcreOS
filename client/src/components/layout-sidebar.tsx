@@ -428,7 +428,7 @@ const NAV_MODULES: NavModule[] = [
   // in sidebar-hidden-routes.ts.
   {
     id: "notes",
-    label: "Notes",
+    label: "Mortgage Notes",
     icon: FileText,
     href: "/notes",
     description: "Servicing book — performing, late, default, paid off",

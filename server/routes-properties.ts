@@ -209,6 +209,13 @@ export function registerPropertyRoutes(app: Express): void {
       
       const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
       const sanitizedBody = { ...req.body };
+      // F-D27: callers sometimes send `acreage` (matches lead form + everyday English)
+      // while the property schema persists `sizeAcres`. Alias before validation so a
+      // typed body of `{ acreage: 5 }` doesn't fail with "sizeAcres required".
+      if (sanitizedBody.acreage !== undefined && sanitizedBody.sizeAcres === undefined) {
+        sanitizedBody.sizeAcres = sanitizedBody.acreage;
+        delete sanitizedBody.acreage;
+      }
       for (const field of numericFields) {
         if (sanitizedBody[field] === "" || sanitizedBody[field] === null || sanitizedBody[field] === undefined) {
           delete sanitizedBody[field];
@@ -219,7 +226,7 @@ export function registerPropertyRoutes(app: Express): void {
           }
         }
       }
-      
+
       const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
       const property = await storage.createProperty(input);
 

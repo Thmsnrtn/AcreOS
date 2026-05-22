@@ -60,6 +60,11 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
     ? ` · Est. impact $${(item.estimatedImpactCents / 100).toLocaleString()}/yr`
     : "";
 
+  // F-D26: server returns `recommendedActionLabel` but no card heading. Compose one
+  // from the action label so each item has scannable semantic text. Fall back to
+  // a humanized itemType if the agent omitted a label.
+  const cardTitle = item.recommendedActionLabel?.trim() || naturalItemType(item.itemType);
+
   return (
     <li className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
@@ -82,7 +87,8 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
         </button>
       </div>
 
-      <p className="text-sm text-foreground leading-snug">{item.sophieAnalysis}</p>
+      <h3 className="text-sm font-semibold text-foreground leading-tight">{cardTitle}</h3>
+      <p className="text-sm text-muted-foreground leading-snug">{item.sophieAnalysis}</p>
 
       {/* v3: Removed raw confidence score — CEO doesn't need technical metrics */}
 
