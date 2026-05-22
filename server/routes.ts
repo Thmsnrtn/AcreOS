@@ -600,11 +600,30 @@ export async function registerRoutes(
   // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
   // but @clerk/express expects CLERK_PUBLISHABLE_KEY by default.
   const clerkPK = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
-  app.use(clerkMiddleware({
+  const clerkMw = clerkMiddleware({
     publishableKey: clerkPK,
     jwtKey: process.env.CLERK_JWT_KEY,
     proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
-  }));
+  });
+  // F-D38 (2026-05-22): a malformed __session cookie value (e.g. "a.b.c") makes
+  // clerkMiddleware throw synchronously, which bubbled out as 500 — letting
+  // anonymous attackers burn CPU + fill logs by spamming junk cookies. Wrap
+  // so any auth-parse failure leaves req.auth undefined and downstream
+  // handlers cleanly return 401 via the normal path.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    try {
+      clerkMw(req, res, (err?: unknown) => {
+        if (err) {
+          logger.debug(`[clerkMiddleware] auth attempt failed: ${(err as Error)?.message || err}`);
+          return next();
+        }
+        next();
+      });
+    } catch (err) {
+      logger.debug(`[clerkMiddleware] sync throw: ${(err as Error)?.message || err}`);
+      next();
+    }
+  });
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
