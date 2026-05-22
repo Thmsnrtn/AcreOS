@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 
 // Auth imports
-import { clerkMiddleware, isAuthenticated, registerAuthRoutes } from "./auth";
+import { clerkMiddleware, isAuthenticated, registerAuthRoutes, requireFounder } from "./auth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -1498,58 +1498,65 @@ export async function registerRoutes(
   });
 
   
+  // F-D32 (2026-05-21): every /api/founder/* and /api/admin/* mount below
+  // was previously `isAuthenticated` only — any signed-in CUSTOMER could hit
+  // founder-only endpoints (vendor status, critical alerts, support tools,
+  // setup wizard, intelligence platform, etc.). Adding `requireFounder` at
+  // the mount layer is the canonical gate; the middleware 404s non-founders
+  // to hide existence.
+  //
   // Founder Intelligence API — passive monitoring & platform analytics
   {
     const founderIntelRouter = (await import("./routes-founder-intelligence")).default;
-    app.use('/api/founder/intelligence', isAuthenticated, founderIntelRouter);
+    app.use('/api/founder/intelligence', isAuthenticated, requireFounder, founderIntelRouter);
   }
 
   // Pillar S — one canonical founder inbox.
   {
     const founderNowRouter = (await import("./routes-founder-now")).default;
-    app.use('/api/founder/now', isAuthenticated, founderNowRouter);
+    app.use('/api/founder/now', isAuthenticated, requireFounder, founderNowRouter);
   }
 
   // Founder cockpit — the monthly check-in surface composing 13 fragmented summary endpoints.
   {
     const founderCockpitRouter = (await import("./routes-founder-cockpit")).default;
-    app.use('/api/founder/cockpit', isAuthenticated, founderCockpitRouter);
+    app.use('/api/founder/cockpit', isAuthenticated, requireFounder, founderCockpitRouter);
   }
 
   // Pillar R — founder admin for trust-graduation tiers.
   {
     const founderGraduationRouter = (await import("./routes-founder-graduation")).default;
-    app.use('/api/founder/graduation', isAuthenticated, founderGraduationRouter);
+    app.use('/api/founder/graduation', isAuthenticated, requireFounder, founderGraduationRouter);
   }
 
   // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
   {
     const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;
-    app.use('/api/founder/vendor-status', isAuthenticated, vendorStatusRouter);
+    app.use('/api/founder/vendor-status', isAuthenticated, requireFounder, vendorStatusRouter);
   }
 
   // Founder Critical Alerts — P0/P1 ack-timer + escalation banner backing
   {
     const criticalAlertsRouter = (await import("./routes-founder-critical-alerts")).default;
-    app.use('/api/founder/critical-alerts', isAuthenticated, criticalAlertsRouter);
+    app.use('/api/founder/critical-alerts', isAuthenticated, requireFounder, criticalAlertsRouter);
   }
 
   // Support — saved replies (operator pre-canned responses)
   {
     const savedRepliesRouter = (await import("./routes-support-saved-replies")).default;
-    app.use('/api/admin/support/saved-replies', isAuthenticated, savedRepliesRouter);
+    app.use('/api/admin/support/saved-replies', isAuthenticated, requireFounder, savedRepliesRouter);
   }
 
   // Support — customer-context sidebar feed (org details + recent activity + open tickets)
   {
     const customerContextRouter = (await import("./routes-support-customer-context")).default;
-    app.use('/api/admin/support/customer-context', isAuthenticated, customerContextRouter);
+    app.use('/api/admin/support/customer-context', isAuthenticated, requireFounder, customerContextRouter);
   }
 
   // Founder Setup API — interactive credential wizard
   {
     const setupRouter = (await import("./routes-setup")).default;
-    app.use('/api/founder/setup', isAuthenticated, setupRouter);
+    app.use('/api/founder/setup', isAuthenticated, requireFounder, setupRouter);
   }
 
   // ============================================
@@ -1599,17 +1606,25 @@ export async function registerRoutes(
   // DEFECT-0001: Previously used Router() with `as any` casting which silently
   // bypassed auth middleware. Now each path prefix explicitly enforces auth.
   {
-    // Apply auth middleware to every SCP path prefix
-    app.use('/api/founder/v6', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v7', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v8', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v10', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v11', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v12', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v13', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/v14', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/job-health', isAuthenticated, getOrCreateOrg);
-    app.use('/api/founder/agent-collaboration', isAuthenticated, getOrCreateOrg);
+    // F-D32: every /api/founder/v*/ surface also needs requireFounder before
+    // the per-route handlers run. Without it any customer can hit Sovereign
+    // Company Protocol endpoints (constitution, evolution, costs, briefing,
+    // etc.). /api/notifications stays customer-reachable.
+    app.use('/api/founder/v6', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v7', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v8', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v10', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v11', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v12', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v13', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/v14', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/job-health', isAuthenticated, getOrCreateOrg, requireFounder);
+    app.use('/api/founder/agent-collaboration', isAuthenticated, getOrCreateOrg, requireFounder);
+    // F-D32 (2026-05-21): /api/scp/v2/* registered all 16 routes with ZERO
+    // middleware. Anyone on the internet could POST /api/scp/v2/evolution/rollback,
+    // /trust/demote, or /trust/promote — anonymous attackers could roll back the
+    // company's agent evolution. Gate every SCPv2 surface at the mount layer.
+    app.use('/api/scp/v2', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/notifications', isAuthenticated, getOrCreateOrg);
 
     const { registerFounderV6Routes } = await import("./routes-founder-v6");

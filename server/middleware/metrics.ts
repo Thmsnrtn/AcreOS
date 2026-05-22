@@ -96,9 +96,28 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-// Metrics endpoint handler
-export function metricsHandler(_req: Request, res: Response) {
-  // Add system metrics
+// Metrics endpoint handler.
+//
+// F-D30 (2026-05-21): /metrics was publicly scrapable, leaking the full route
+// surface, traffic patterns, and error rates to anyone on the internet — an
+// attacker reconnaissance gift. Gated behind METRICS_BEARER_TOKEN now. If the
+// env var is unset, the endpoint is closed in production and open in dev/test
+// so local scrapes don't break.
+export function metricsHandler(req: Request, res: Response) {
+  const expected = process.env.METRICS_BEARER_TOKEN;
+
+  if (expected) {
+    const auth = req.headers.authorization || "";
+    const presented = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (presented !== expected) {
+      res.status(401).set("WWW-Authenticate", 'Bearer realm="metrics"').end();
+      return;
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    res.status(404).end();
+    return;
+  }
+
   const mem = process.memoryUsage();
   metrics.setGauge("acreos_memory_heap_used_bytes", mem.heapUsed);
   metrics.setGauge("acreos_memory_heap_total_bytes", mem.heapTotal);
