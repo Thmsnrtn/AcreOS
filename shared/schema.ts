@@ -21110,3 +21110,92 @@ export const agentRejectionNotes = pgTable("agent_rejection_notes", {
 
 export type AgentRejectionNote = typeof agentRejectionNotes.$inferSelect;
 export type InsertAgentRejectionNote = typeof agentRejectionNotes.$inferInsert;
+
+// ===========================
+// FINANCIAL LEDGER (Pillar 1)
+// ===========================
+//
+// Append-only signed-amount ledger that captures every flow of money
+// through the platform. The single source of truth for:
+//   - per-bucket balances (tax / refund / profit / draw / opex_available)
+//   - per-org contribution margin (revenue minus opex_spent)
+//   - per-provider / per-feature spend attribution
+//
+// Design notes:
+//
+//   - amount_cents is a SIGNED bigint. Positive credits the bucket (revenue,
+//     allocation in), negative debits it (opex spend, refund). Summing the
+//     column for a given bucket gives the live balance — no separate
+//     balances table to keep in sync.
+//
+//   - bucket is one of the five canonical names from
+//     shared/billing/allocation-policy.ts. Stored as text so the column is
+//     human-greppable in psql; validated at service boundary.
+//
+//   - category names the kind of flow (revenue | allocation | opex_spent |
+//     refund | manual_transfer). Distinct from `bucket` so we can ask
+//     questions like "all revenue rows last month" independently of which
+//     bucket they hit.
+//
+//   - external_event_id is UNIQUE. This is the idempotency key — every
+//     Stripe webhook, Lob postage event, Twilio message billed event posts
+//     with a stable id, so retries collapse into a single insert. A 5-row
+//     revenue split shares the same external_event_id with a `:row-N`
+//     suffix to keep the unique constraint while still grouping the split.
+//
+//   - feature / provider / external_event_id are nullable for manual
+//     postings (founder-initiated bucket transfers) where they don't apply.
+//
+//   - Indexes target the two hot read paths: (org, posted_at) for org
+//     contribution-margin queries and (bucket, posted_at) for live balance
+//     scans. The external_event_id unique index doubles as the idempotency
+//     lookup.
+export const financialLedger = pgTable("financial_ledger", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  // Organization the flow attributes to. Nullable for platform-level
+  // postings that aren't customer-attributable (e.g. founder manual
+  // transfers between buckets, platform-level credits).
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  // Five-bucket name from allocation-policy.ts.
+  bucket: text("bucket").notNull(),
+  // Flow taxonomy: revenue | allocation | opex_spent | refund | manual_transfer.
+  category: text("category").notNull(),
+  // Signed cents. Positive credits, negative debits. bigint mode "number"
+  // because no single posting will exceed 2^53 cents (~$90T) and downstream
+  // arithmetic is simpler without BigInt coercion.
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  // Feature the spend (or revenue) attributes to: "mail" | "sms" | "voice" |
+  // "email" | "skip_trace" | "property_data" | "ai" | "infra" | "stripe_fee"
+  // | "subscription" | "credit_topup" | etc. Free-form text; the founder UI
+  // groups on this column.
+  feature: text("feature"),
+  // External provider name (Lob, Stripe, Twilio, Telnyx, SendGrid, OpenRouter,
+  // ATTOM, Regrid, ElevenLabs, Fly, Neon, Sentry). NULL for internal flows.
+  provider: text("provider"),
+  // Idempotency anchor — the provider's own event id (Stripe event id, Lob
+  // event id, Twilio message SID) prefixed with the provider name so two
+  // providers can't collide. Allocation rows share the originating revenue
+  // event id with a `:alloc-<bucket>` suffix.
+  externalEventId: text("external_event_id").unique(),
+  // Soft pointers — kept as integers (no FK so a deleted invoice/campaign
+  // doesn't destroy ledger history).
+  invoiceId: integer("invoice_id"),
+  campaignId: integer("campaign_id"),
+  // When the flow occurred (provider event timestamp, not insert time).
+  postedAt: timestamp("posted_at", { withTimezone: true }).defaultNow().notNull(),
+  // Who/what posted the row: "stripe_webhook" | "lob_webhook" | "founder:<id>"
+  // | "system:<service-name>". Free-form text for audit traceability.
+  postedBy: text("posted_by").notNull(),
+  // Operator notes. NULL for system-generated rows.
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("financial_ledger_org_posted_idx").on(table.organizationId, table.postedAt),
+  index("financial_ledger_bucket_posted_idx").on(table.bucket, table.postedAt),
+  index("financial_ledger_posted_idx").on(table.postedAt),
+  index("financial_ledger_category_posted_idx").on(table.category, table.postedAt),
+  index("financial_ledger_provider_idx").on(table.provider),
+]);
+
+export type FinancialLedgerRow = typeof financialLedger.$inferSelect;
+export type InsertFinancialLedgerRow = typeof financialLedger.$inferInsert;

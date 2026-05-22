@@ -17,6 +17,19 @@ export interface TierLimits {
   includedSeats: number; // Seats included in the tier
   maxSeats: number | null; // Maximum seats allowed (null = unlimited)
   seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
+  /**
+   * Pillar 4 — Credit System + Tier Realignment (foundation, 2026-05-22).
+   *
+   * Monthly credit pool size (1 credit ≈ $0.01 of provider cost). Metered
+   * actions debit this pool per `shared/billing/credit-weights.ts`. Pool
+   * resets at each billing cycle. Pro+ tiers can also enable BYOK lanes
+   * that bypass the pool entirely (see `byokSupport`).
+   *
+   * NOTE: this field is foundation-only at present — action handlers do
+   * not yet draw from the pool. Hard-wall / pay-as-you-go enforcement
+   * ships in a follow-up task.
+   */
+  creditPool: number;
 }
 
 // Feature flags for higher tiers — Scale and Enterprise are hidden until manually enabled
@@ -60,6 +73,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     includedSeats: 1,
     maxSeats: 1, // Cannot add seats on free tier
     seatPriceCents: null,
+    creditPool: 50,
   },
   starter: {
     leads: 250,
@@ -72,6 +86,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     includedSeats: 1,
     maxSeats: 1,
     seatPriceCents: null,
+    creditPool: 750,
   },
   pro: {
     leads: 500,
@@ -84,6 +99,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     includedSeats: 2,
     maxSeats: 5,
     seatPriceCents: 2000, // $20/seat
+    creditPool: 2500,
   },
   // Scale and Enterprise are feature-flagged — not visible in UI until manually enabled
   scale: {
@@ -97,6 +113,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     includedSeats: 10,
     maxSeats: 100,
     seatPriceCents: 4000, // $40/seat
+    creditPool: 8000,
   },
   enterprise: {
     leads: null,
@@ -109,6 +126,8 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     includedSeats: 25,
     maxSeats: null, // Unlimited
     seatPriceCents: 5000, // $50/seat (negotiable)
+    // Enterprise pools are negotiated per-deal; this is the default floor.
+    creditPool: 25000,
   },
 };
 
@@ -124,6 +143,9 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   includedSeats: 1000, // Effectively unlimited
   maxSeats: null,
   seatPriceCents: null, // Founders don't pay for seats
+  // Founders are not metered — a very large pool serves as a sentinel for
+  // any consumer that does not separately gate on `isFounder`.
+  creditPool: 1_000_000,
 };
 
 function normalizeTier(tier: string): SubscriptionTier {

@@ -3883,6 +3883,33 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "agent_rejection_notes_agent_idx" ON "agent_rejection_notes" ("agent_codename", "rejected_at")`,
   `CREATE INDEX IF NOT EXISTS "agent_rejection_notes_rejected_at_idx" ON "agent_rejection_notes" ("rejected_at")`,
+
+  // ── Pillar 1: Financial Ledger ───────────────────────────────────────────
+  // Append-only signed-amount-cents ledger. external_event_id UNIQUE so
+  // Stripe / Lob / Twilio webhook retries collapse to one insert.
+  // organization_id is ON DELETE SET NULL so deleting an org doesn't wipe
+  // its money history (still attributable via invoice_id / external_event_id).
+  `CREATE TABLE IF NOT EXISTS "financial_ledger" (
+     "id" bigserial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+     "bucket" text NOT NULL,
+     "category" text NOT NULL,
+     "amount_cents" bigint NOT NULL,
+     "feature" text,
+     "provider" text,
+     "external_event_id" text UNIQUE,
+     "invoice_id" integer,
+     "campaign_id" integer,
+     "posted_at" timestamptz NOT NULL DEFAULT now(),
+     "posted_by" text NOT NULL,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "financial_ledger_org_posted_idx" ON "financial_ledger" ("organization_id", "posted_at")`,
+  `CREATE INDEX IF NOT EXISTS "financial_ledger_bucket_posted_idx" ON "financial_ledger" ("bucket", "posted_at")`,
+  `CREATE INDEX IF NOT EXISTS "financial_ledger_posted_idx" ON "financial_ledger" ("posted_at")`,
+  `CREATE INDEX IF NOT EXISTS "financial_ledger_category_posted_idx" ON "financial_ledger" ("category", "posted_at")`,
+  `CREATE INDEX IF NOT EXISTS "financial_ledger_provider_idx" ON "financial_ledger" ("provider")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
