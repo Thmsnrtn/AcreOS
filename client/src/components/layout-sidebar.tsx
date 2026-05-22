@@ -554,6 +554,8 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Email & SMS", icon: Mail, href: "/campaigns", description: "Campaign builder" },
       { label: "Direct Mail", icon: Newspaper, href: "/campaigns?channel=direct-mail", description: "Direct mail campaign automation" },
+      // Pillar 3 — new customer-facing mail surface (Compose + In-Flight tabs).
+      { label: "Mail (new)", icon: Newspaper, href: "/outreach/mail", description: "Composer + live in-flight tracker with router-priced sends" },
       { label: "Sequences", icon: Zap, href: "/campaigns?channel=sequences", description: "Automated follow-up sequences" },
     ],
     overflow: [

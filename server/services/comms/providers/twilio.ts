@@ -35,6 +35,23 @@ interface TwilioCredentials {
 }
 
 async function getOrgTwilioCredentials(organizationId: number): Promise<TwilioCredentials | null> {
+  // Universal BYOK (2026-05-22): prefer the canonical byok_credentials row.
+  // The plaintext format is "<accountSid>:<authToken>:<phoneNumber>" so the
+  // single-secret vault can carry a multi-secret tuple. If absent, fall
+  // back to the legacy organization_integrations row for back-compat.
+  try {
+    const { getByokCredential } = await import("../../byok/key-vault");
+    const blob = await getByokCredential({ organizationId, channel: "twilio" });
+    if (blob) {
+      const parts = blob.split(":");
+      if (parts.length === 3 && parts.every(Boolean)) {
+        return { accountSid: parts[0], authToken: parts[1], phoneNumber: parts[2] };
+      }
+    }
+  } catch {
+    /* fall through to legacy lookup */
+  }
+
   const [row] = await db
     .select()
     .from(organizationIntegrations)

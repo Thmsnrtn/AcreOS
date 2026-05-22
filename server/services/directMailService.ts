@@ -73,15 +73,31 @@ interface LobClientResult {
 }
 
 export async function getLobClient(orgId: number): Promise<LobClientResult> {
+  // Universal BYOK (2026-05-22) — preferred path. Falls back to the
+  // legacy organization_integrations row, then platform env.
+  try {
+    const { getByokCredential } = await import('./byok/key-vault');
+    const byokKey = await getByokCredential({ organizationId: orgId, channel: 'lob' });
+    if (byokKey) {
+      logger.info(`[DirectMailService] Using BYOK Lob credential for org ${orgId}`);
+      return {
+        client: new Lob({ apiKey: byokKey }),
+        source: 'organization',
+      };
+    }
+  } catch (error) {
+    logger.warn(`[DirectMailService] BYOK lookup failed for org ${orgId} — falling back to legacy`, error instanceof Error ? error : undefined);
+  }
+
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-    
+
     if (integration && integration.isEnabled && integration.credentials?.encrypted) {
       const decrypted = decryptJsonCredentials<{ apiKey: string }>(
         integration.credentials.encrypted,
         orgId
       );
-      
+
       if (decrypted.apiKey) {
         logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
         return {
@@ -192,6 +208,18 @@ async function postLobCostToLedger(
   pieceType: 'postcard' | 'letter',
 ): Promise<void> {
   if (amountCents <= 0 || !lobId) return;
+  // Universal BYOK: when the org is using its own Lob key, the spend
+  // was billed directly to the customer's Lob account — never our
+  // opex bucket. Short-circuit before posting.
+  try {
+    const { isByokEnabled } = await import('./byok/toggle');
+    if (await isByokEnabled(organizationId, 'lob')) {
+      logger.info(`[DirectMailService] Skipping opex ledger post (BYOK lob active) for org ${organizationId}`);
+      return;
+    }
+  } catch {
+    /* fall through — best-effort BYOK check, never blocks the send */
+  }
   try {
     const { postOpexSpent } = await import('./financial-ledger');
     await postOpexSpent({

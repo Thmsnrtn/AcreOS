@@ -3966,6 +3966,121 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "comms_provider_quotes_provider_country_idx" ON "comms_provider_quotes" ("provider", "destination_country")`,
   `CREATE INDEX IF NOT EXISTS "comms_provider_quotes_observed_idx" ON "comms_provider_quotes" ("observed_at")`,
+
+  // ── Pillar 2 + Pillar 3: Mail shipments + per-piece tracking ──────────
+  // Canonical mail_shipments table — backs both the MailRouter (server-side)
+  // and the /outreach/mail customer UX (composer + In-Flight tracker).
+  // status state machine: queued → sending → sent → partial_failed | failed,
+  // plus cancelled via the 30-minute hold window (leaves_at).
+  `CREATE TABLE IF NOT EXISTS "mail_shipments" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "created_by_user_id" varchar,
+     "status" text NOT NULL DEFAULT 'queued',
+     "piece_type" text NOT NULL,
+     "speed" text NOT NULL,
+     "provider" text,
+     "piece_count" integer NOT NULL,
+     "per_piece_cents" integer NOT NULL,
+     "total_cents" integer NOT NULL,
+     "saved_vs_lob_cents" integer NOT NULL DEFAULT 0,
+     "delivery_eta_days" integer,
+     "label" text,
+     "template_id" integer,
+     "copy_snapshot" text,
+     "audience_filter" jsonb,
+     "queued_at" timestamptz NOT NULL DEFAULT now(),
+     "leaves_at" timestamptz NOT NULL,
+     "sent_at" timestamptz,
+     "cancelled_at" timestamptz,
+     "cancellation_reason" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipments_org_status_idx" ON "mail_shipments" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipments_leaves_at_idx" ON "mail_shipments" ("leaves_at")`,
+
+  // Per-piece rows. Status/scan timestamps drive the In-Flight tracker.
+  // QR scan + inbound call counters wire to /api/outreach/mail later.
+  `CREATE TABLE IF NOT EXISTS "mail_shipment_pieces" (
+     "id" serial PRIMARY KEY,
+     "shipment_id" integer NOT NULL REFERENCES "mail_shipments"("id") ON DELETE CASCADE,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "lead_id" integer,
+     "recipient_name" text NOT NULL,
+     "address_line1" text NOT NULL,
+     "address_line2" text,
+     "city" text NOT NULL,
+     "state" text NOT NULL,
+     "zip" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "provider_piece_id" text,
+     "printed_at" timestamptz,
+     "in_transit_at" timestamptz,
+     "expected_delivery_at" timestamptz,
+     "delivered_at" timestamptz,
+     "returned_at" timestamptz,
+     "qr_scan_count" integer NOT NULL DEFAULT 0,
+     "inbound_call_count" integer NOT NULL DEFAULT 0,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipment_pieces_shipment_idx" ON "mail_shipment_pieces" ("shipment_id")`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipment_pieces_org_status_idx" ON "mail_shipment_pieces" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipment_pieces_provider_piece_idx" ON "mail_shipment_pieces" ("provider_piece_id")`,
+
+  // ── Pillar 6: Cross-Customer Data Cache ────────────────────────────────
+  // Shared cache for paid third-party data lookups. Two tables:
+  //   - cached_lookups: one row per (provider, entityType, queryFingerprint)
+  //   - cached_lookup_hits: one row per cache-served read (counter)
+  // Idempotent — safe to re-run. See shared/schema.ts for column commentary.
+  `CREATE TABLE IF NOT EXISTS "cached_lookups" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "entity_type" text NOT NULL,
+     "query_fingerprint" text NOT NULL,
+     "result_json" jsonb NOT NULL,
+     "freshness_hours" integer NOT NULL,
+     "first_fetched_at" timestamp NOT NULL DEFAULT now(),
+     "first_fetched_by" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+     "hits" integer NOT NULL DEFAULT 0,
+     "last_hit_at" timestamp,
+     "cost_cents" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "cached_lookups_fingerprint_uidx" ON "cached_lookups" ("provider", "entity_type", "query_fingerprint")`,
+  `CREATE INDEX IF NOT EXISTS "cached_lookups_entity_type_idx" ON "cached_lookups" ("entity_type")`,
+  `CREATE INDEX IF NOT EXISTS "cached_lookups_first_fetched_at_idx" ON "cached_lookups" ("first_fetched_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "cached_lookup_hits" (
+     "id" serial PRIMARY KEY,
+     "cached_lookup_id" integer NOT NULL REFERENCES "cached_lookups"("id") ON DELETE CASCADE,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "hit_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "cached_lookup_hits_lookup_hit_at_idx" ON "cached_lookup_hits" ("cached_lookup_id", "hit_at")`,
+  `CREATE INDEX IF NOT EXISTS "cached_lookup_hits_org_hit_at_idx" ON "cached_lookup_hits" ("organization_id", "hit_at")`,
+
+  // 2026-05-22 — Universal BYOK (Pillar 5 cross-cutting). Extends BYOK
+  // from organizations.byokSupport (data providers) to every paid channel
+  // — Twilio, Telnyx, SendGrid, SES, Lob, PostGrid, OpenRouter, Anthropic,
+  // OpenAI, BatchSkipTracing, Mapbox, S3. credential_key_encrypted holds
+  // the AES-256-GCM "enc:v1:..." envelope bytes from
+  // server/services/fieldEncryption.ts; never persist plaintext.
+  `CREATE TABLE IF NOT EXISTS "byok_credentials" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "channel" text NOT NULL,
+     "credential_key_encrypted" bytea NOT NULL,
+     "credential_key_fingerprint" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "last_used_at" timestamp,
+     "revoked_at" timestamp
+   )`,
+  `CREATE INDEX IF NOT EXISTS "byok_credentials_org_channel_idx" ON "byok_credentials" ("organization_id", "channel")`,
+  `CREATE INDEX IF NOT EXISTS "byok_credentials_channel_idx" ON "byok_credentials" ("channel")`,
+  // Partial UNIQUE: at most one active (non-revoked) credential per
+  // (org, channel) pair. Revoking the prior row releases the slot.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "byok_credentials_active_uidx" ON "byok_credentials" ("organization_id", "channel") WHERE "revoked_at" IS NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

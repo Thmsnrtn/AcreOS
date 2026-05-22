@@ -1,4 +1,9 @@
 import { logger } from "../utils/logger";
+import {
+  getCachedOrFetch,
+  normalizeQuery,
+  defaultFreshnessHours,
+} from "./data-cache/lookup-cache";
 /**
  * T26 — Skip Tracing Real Integration
  *
@@ -57,8 +62,21 @@ export interface SkipTraceResult {
   creditsUsed?: number;
 }
 
-async function traceViaBatchSkipTracing(input: SkipTraceInput): Promise<SkipTraceResult> {
-  const apiKey = process.env.BATCH_SKIP_TRACING_API_KEY;
+async function traceViaBatchSkipTracing(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
+  // Universal BYOK (2026-05-22): prefer customer-supplied key. Falls
+  // back to platform env. Customer keys are billed directly by
+  // BatchSkipTracing so postSkipTraceCostToLedger short-circuits when
+  // BYOK is active.
+  let apiKey: string | null = process.env.BATCH_SKIP_TRACING_API_KEY ?? null;
+  if (organizationId != null) {
+    try {
+      const { getEffectiveCredential } = await import("./byok/toggle");
+      const eff = await getEffectiveCredential(organizationId, "batch_skiptracing");
+      if (eff.credential) apiKey = eff.credential;
+    } catch {
+      /* best-effort */
+    }
+  }
   if (!apiKey) throw new Error("BATCH_SKIP_TRACING_API_KEY not configured");
 
   // BatchSkipTracing expects a CSV upload or single-record API call
@@ -187,6 +205,19 @@ async function postSkipTraceCostToLedger(
   const credits = result.creditsUsed ?? 1;
   const amountCents = credits * SKIP_TRACE_CREDIT_CENTS;
   if (amountCents <= 0) return;
+  // Universal BYOK: customer is billed directly when their own key was
+  // used. Only short-circuit on the matching channel — BatchSkipTracing
+  // BYOK should NOT suppress a REISkip ledger post.
+  if (result.source === "batch_skip_tracing") {
+    try {
+      const { isByokEnabled } = await import("./byok/toggle");
+      if (await isByokEnabled(organizationId, "batch_skiptracing")) {
+        return;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
   try {
     const { postOpexSpent } = await import("./financial-ledger");
     await postOpexSpent({
@@ -213,27 +244,88 @@ export const skipTracingService = {
    * is written.
    */
   async trace(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
-    let result: SkipTraceResult | undefined;
+    // Pillar 6 — cross-customer cache. Normalize the query so the same
+    // (name, address) typed two different ways collapses to one row.
+    // We only consult the cache when we have an orgId (the analytics +
+    // hit-counter both require it). Internal tooling without an org still
+    // hits the provider directly — same behaviour as before this change.
+    const fingerprintInput = {
+      name: `${(input.firstName || "").trim().toLowerCase()} ${(input.lastName || "").trim().toLowerCase()}`.trim(),
+      address: (input.address || "").trim().toLowerCase(),
+      city: (input.city || "").trim().toLowerCase(),
+      state: (input.state || "").trim().toLowerCase(),
+      zip: (input.zip || "").trim().toLowerCase(),
+      apn: (input.apn || "").trim().toLowerCase(),
+    };
+    const queryFingerprint = normalizeQuery(fingerprintInput);
+    // Stable seed for the ledger external_event_id (idempotency key).
+    const seed = [
+      input.apn, input.zip, input.address, input.lastName, input.firstName,
+    ].filter(Boolean).join("|") || queryFingerprint.slice(0, 16);
 
-    // Try primary provider
-    if (process.env.BATCH_SKIP_TRACING_API_KEY) {
-      try {
-        result = await traceViaBatchSkipTracing(input);
-      } catch (err: any) {
-        logger.warn(`[skipTrace] Primary provider failed: ${err.message}`);
+    const runProvider = async (): Promise<SkipTraceResult | undefined> => {
+      let result: SkipTraceResult | undefined;
+      // BYOK-aware: even without the platform env var, an org-scoped BYOK
+      // credential makes the primary provider callable. The function
+      // resolves both sources internally.
+      if (process.env.BATCH_SKIP_TRACING_API_KEY || organizationId != null) {
+        try {
+          result = await traceViaBatchSkipTracing(input, organizationId);
+        } catch (err: any) {
+          logger.warn(`[skipTrace] Primary provider failed: ${err.message}`);
+        }
       }
+      if (!result && process.env.REISKIP_API_KEY) {
+        try {
+          result = await traceViaREISkip(input);
+        } catch (err: any) {
+          logger.warn(`[skipTrace] Fallback provider failed: ${err.message}`);
+        }
+      }
+      return result;
+    };
+
+    // Path 1: no org → skip cache, call provider directly, no ledger row.
+    if (!organizationId) {
+      const result = await runProvider();
+      if (!result) {
+        return {
+          success: false,
+          source: "none",
+          contacts: [],
+          error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
+        };
+      }
+      return result;
     }
 
-    // Try fallback
-    if (!result && process.env.REISKIP_API_KEY) {
-      try {
-        result = await traceViaREISkip(input);
-      } catch (err: any) {
-        logger.warn(`[skipTrace] Fallback provider failed: ${err.message}`);
-      }
-    }
-
-    if (!result) {
+    // Path 2: org present → wrap in cache. On miss we call the provider
+    // AND post the ledger row exactly once (canonical post). On hit we
+    // serve the cached result for $0 and write only the hit row.
+    try {
+      const wrapped = await getCachedOrFetch<SkipTraceResult>({
+        provider: "batch_skiptrace",
+        entityType: "skip_trace",
+        queryFingerprint,
+        freshnessHours: defaultFreshnessHours("skip_trace"),
+        organizationId,
+        fetchFn: async () => {
+          const provided = await runProvider();
+          if (!provided || !provided.success) {
+            // Throw so the cache layer doesn't store a failure.
+            throw new Error(provided?.error || "no_skip_tracing_provider_configured");
+          }
+          const credits = provided.creditsUsed ?? 1;
+          const costCents = credits * SKIP_TRACE_CREDIT_CENTS;
+          // Canonical ledger post — single, deduped via externalEventId.
+          await postSkipTraceCostToLedger(organizationId, provided, seed);
+          return { result: provided, costCents };
+        },
+      });
+      return wrapped.result;
+    } catch (err) {
+      // Provider call genuinely failed — match the pre-cache behaviour.
+      logger.warn(`[skipTrace] cache-wrapped provider call failed: ${err instanceof Error ? err.message : String(err)}`);
       return {
         success: false,
         source: "none",
@@ -241,23 +333,6 @@ export const skipTracingService = {
         error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
       };
     }
-
-    if (organizationId) {
-      // Stable seed: provider + first non-empty input field. Falls back to
-      // a hash of input shape if no leads field is present.
-      const seed = [
-        input.apn,
-        input.zip,
-        input.address,
-        input.lastName,
-        input.firstName,
-      ]
-        .filter(Boolean)
-        .join("|") || `${Date.now()}`;
-      await postSkipTraceCostToLedger(organizationId, result, seed);
-    }
-
-    return result;
   },
 
   /**

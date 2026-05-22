@@ -75,6 +75,7 @@ import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
 import preferencesRouter from "./routes-preferences";
+import byokRouter from "./routes-byok";
 import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import featureFlagsRouter from "./routes-feature-flags";
@@ -146,6 +147,7 @@ import { registerDealRoutes } from "./routes-deals";
 import { registerFinanceRoutes } from "./routes-finance";
 import { registerDocumentRoutes } from "./routes-documents";
 import { registerCampaignRoutes } from "./routes-campaigns";
+import { registerOutreachMailRoutes } from "./routes-outreach-mail";
 import { registerAIRoutes } from "./routes-ai";
 import aiDraftRouter from "./routes-ai-draft";
 import { registerBillingRoutes } from "./routes-billing";
@@ -1302,6 +1304,7 @@ export async function registerRoutes(
   // User-scoped appearance preferences (theme/mode/font/density/motion).
   // No org context needed — preferences are user-level.
   app.use('/api/me/preferences', isAuthenticated, preferencesRouter);
+  app.use('/api/byok', isAuthenticated, getOrCreateOrg, byokRouter);
   // Per-agent autonomy matrix — split off from /preferences in JC#14 so
   // theme writes can't trample agent policy and agents have a narrow read
   // surface at action time.
@@ -1932,6 +1935,8 @@ export async function registerRoutes(
   registerFinanceRoutes(app);
   registerDocumentRoutes(app);
   registerCampaignRoutes(app);
+  // Pillar 3 — customer-facing /outreach/mail composer + in-flight tracker.
+  registerOutreachMailRoutes(app);
   registerAIRoutes(app);
   // Pax inbox drafted-reply (product-call #10) — uses the standard AI
   // router under /api/ai. Mounted after registerAIRoutes so its routes

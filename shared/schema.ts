@@ -2961,6 +2961,81 @@ export const providerCache = pgTable("provider_cache", {
 export type ProviderCache = typeof providerCache.$inferSelect;
 
 // ============================================
+// PILLAR 6 — CROSS-CUSTOMER DATA CACHE
+// ============================================
+//
+// Shared cache for paid third-party data lookups (skip-trace, parcel
+// ownership, AVM, flood-zone, liens, …). When customer A pays the provider
+// to look up a record, customer B looking up the same record gets the
+// cached result for free (cost-cents-charged = 0) until freshnessHours
+// expires. The per-org savings are summed via cachedLookupHits.
+//
+// The query is identified by a deterministic SHA-256 fingerprint of the
+// normalized input (lowercased addresses, trimmed names, …) so the same
+// physical fact lookup collapses to a single cache row regardless of
+// caller. UNIQUE(provider, entityType, queryFingerprint) prevents
+// duplicate rows.
+
+export const cachedLookups = pgTable("cached_lookups", {
+  id: serial("id").primaryKey(),
+  // Provider that originally produced the result. Examples:
+  //   "batch_skiptrace", "reiskip", "regrid", "attom", "batchdata",
+  //   "county_gis_<county>", "fema_nfhl", "usfws_nwi", "census".
+  provider: text("provider").notNull(),
+  // Type of fact cached. See TTL_BY_ENTITY_TYPE in
+  // server/services/data-cache/lookup-cache.ts for the canonical list.
+  entityType: text("entity_type").notNull(),
+  // SHA-256 of normalized query payload. See normalizeQuery().
+  queryFingerprint: text("query_fingerprint").notNull(),
+  // The provider response, stored verbatim so any consumer can re-parse.
+  resultJson: jsonb("result_json").notNull(),
+  // TTL in hours used to compute freshness. Stored per-row so the policy
+  // can evolve without invalidating historical rows.
+  freshnessHours: integer("freshness_hours").notNull(),
+  // First fetch — origin of truth.
+  firstFetchedAt: timestamp("first_fetched_at").notNull().defaultNow(),
+  firstFetchedBy: integer("first_fetched_by").references(() => organizations.id),
+  // Hit counter — incremented on every cache-served read (across orgs).
+  hits: integer("hits").notNull().default(0),
+  lastHitAt: timestamp("last_hit_at"),
+  // Original cost in cents. Used for "you saved $X" analytics.
+  costCents: integer("cost_cents").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("cached_lookups_fingerprint_uidx").on(
+    table.provider,
+    table.entityType,
+    table.queryFingerprint,
+  ),
+  index("cached_lookups_entity_type_idx").on(table.entityType),
+  index("cached_lookups_first_fetched_at_idx").on(table.firstFetchedAt),
+]);
+
+export type CachedLookup = typeof cachedLookups.$inferSelect;
+export type InsertCachedLookup = typeof cachedLookups.$inferInsert;
+
+// Per-hit log. Same org hitting the same cache row twice writes TWO rows
+// (it's a counter, not a dedupe). Drives "you saved $X this month" + the
+// cross-customer cache-hit-rate dashboard.
+export const cachedLookupHits = pgTable("cached_lookup_hits", {
+  id: serial("id").primaryKey(),
+  cachedLookupId: integer("cached_lookup_id")
+    .references(() => cachedLookups.id, { onDelete: "cascade" })
+    .notNull(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  hitAt: timestamp("hit_at").notNull().defaultNow(),
+}, (table) => [
+  index("cached_lookup_hits_lookup_hit_at_idx").on(table.cachedLookupId, table.hitAt),
+  index("cached_lookup_hits_org_hit_at_idx").on(table.organizationId, table.hitAt),
+]);
+
+export type CachedLookupHit = typeof cachedLookupHits.$inferSelect;
+export type InsertCachedLookupHit = typeof cachedLookupHits.$inferInsert;
+
+// ============================================
 // CUSTOM AUTONOMY RULES
 // ============================================
 
@@ -6290,6 +6365,17 @@ export const insertMailingOrderPieceSchema = createInsertSchema(mailingOrderPiec
 });
 export type InsertMailingOrderPiece = z.infer<typeof insertMailingOrderPieceSchema>;
 export type MailingOrderPiece = typeof mailingOrderPieces.$inferSelect;
+
+// ============================================
+// PILLAR 2 — Mail shipment + per-piece tables live further down
+// ============================================
+//
+// The canonical mailShipments + mailShipmentPieces tables (rich version
+// with status state-machine, 30-min hold window, audience snapshot,
+// per-piece USPS scan timestamps + QR/inbound counters) are declared
+// further down in this file alongside the rest of the Pillar 3 outreach
+// surfaces. An earlier draft duplicated a thinner version here — removed
+// (2026-05-22) so there's one canonical declaration.
 
 // ============================================
 // API USAGE LOGS (Cost Tracking)
@@ -21292,3 +21378,161 @@ export const commsProviderQuotes = pgTable("comms_provider_quotes", {
 
 export type CommsProviderQuote = typeof commsProviderQuotes.$inferSelect;
 export type InsertCommsProviderQuote = typeof commsProviderQuotes.$inferInsert;
+
+// ─── Universal BYOK (Bring-Your-Own-Key) — Pillar 5 cross-cutting ─────────────
+//
+// Extends BYOK from the data-provider niche (organizations.byokSupport, the
+// per-data-source pattern) to every paid channel in the platform:
+//   twilio | telnyx | sendgrid | ses | lob | postgrid | openrouter |
+//   anthropic | openai | batch_skiptracing | mapbox | s3
+//
+// Plaintext credentials NEVER leave the database in cleartext. The
+// credentialKeyEncrypted bytea column stores the AES-256-GCM ciphertext
+// produced by server/services/fieldEncryption.ts. We store the canonical
+// "enc:v1:<base64>" envelope as bytes so dump tools that print TEXT columns
+// don't accidentally leak the envelope into logs.
+//
+// credentialKeyFingerprint is a *non-secret* tail of the plaintext (last
+// 4 chars) used only for "...x4az" UI display. Never sufficient to derive
+// the plaintext.
+//
+// Active-credential semantics: exactly zero or one active row per (org,
+// channel) pair. Revoking sets `revokedAt`; the partial UNIQUE index
+// enforces "only one non-revoked row".
+//
+// When an active credential exists for (org, channel), spend on that
+// channel must NOT debit the customer's opex bucket — the customer pays
+// the provider directly, so AcreOS's contribution-margin math should skip
+// that row entirely. See server/services/byok/toggle.ts +
+// postOpexSpent call-sites.
+export const byokCredentials = pgTable("byok_credentials", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  // Channel discriminator. Free-form text rather than enum so future
+  // channels (mailgun, sendinblue, etc.) don't require a migration.
+  channel: text("channel").notNull(),
+  // AES-256-GCM ciphertext bytes. Decrypt via fieldEncryption.decrypt().
+  credentialKeyEncrypted: customType<{ data: Buffer; driverData: Buffer }>({
+    dataType() { return "bytea"; },
+  })("credential_key_encrypted").notNull(),
+  // Last 4 chars of plaintext for UI display ("...x4az"). NEVER full key.
+  credentialKeyFingerprint: text("credential_key_fingerprint").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => [
+  index("byok_credentials_org_channel_idx").on(table.organizationId, table.channel),
+  index("byok_credentials_channel_idx").on(table.channel),
+  // Partial unique: at most one active credential per (org, channel).
+  uniqueIndex("byok_credentials_active_uidx")
+    .on(table.organizationId, table.channel)
+    .where(sql`revoked_at IS NULL`),
+]);
+
+export type ByokCredential = typeof byokCredentials.$inferSelect;
+export type InsertByokCredential = typeof byokCredentials.$inferInsert;
+
+// Channels that accept BYOK. Keep in sync with key-vault.ts + ui rows.
+export const BYOK_CHANNELS = [
+  "twilio",
+  "telnyx",
+  "sendgrid",
+  "ses",
+  "lob",
+  "postgrid",
+  "openrouter",
+  "anthropic",
+  "openai",
+  "batch_skiptracing",
+  "mapbox",
+  "s3",
+] as const;
+export type ByokChannel = (typeof BYOK_CHANNELS)[number];
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pillar 3 — Outreach mail shipments (customer-facing /outreach/mail surface)
+//
+// One row per queued send batch. The 30-minute hold window means a row can
+// move from "queued" → "cancelled" before any provider is hit; once leavesAt
+// passes, the worker calls MailRouter.route() and updates the row in place.
+// Per-piece rows live in `mailShipmentPieces` so the In-Flight tab can render
+// per-recipient USPS scan timestamps + status chips without scanning a JSON
+// blob.
+// ────────────────────────────────────────────────────────────────────────────
+export const mailShipments = pgTable("mail_shipments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  createdByUserId: varchar("created_by_user_id"),
+  // queued | cancelled | sending | sent | partial_failed | failed
+  status: text("status").notNull().default("queued"),
+  pieceType: text("piece_type").notNull(), // postcard_4x6 | postcard_6x9 | letter_10 | handwritten
+  speed: text("speed").notNull(), // next_day | standard | batch_3d | batch_weekly | eddm_geo
+  // Resolved provider name once the router has chosen — null while queued.
+  provider: text("provider"),
+  // Snapshot of the quote we showed the user when they hit Send. Locks the
+  // cost so a mid-flight price drift can't surprise them.
+  pieceCount: integer("piece_count").notNull(),
+  perPieceCents: integer("per_piece_cents").notNull(),
+  totalCents: integer("total_cents").notNull(),
+  savedVsLobCents: integer("saved_vs_lob_cents").notNull().default(0),
+  deliveryEtaDays: integer("delivery_eta_days"),
+  // Free-text label the composer set ("Hidalgo absentees v3").
+  label: text("label"),
+  // Reference to the chosen template + copy snapshot.
+  templateId: integer("template_id"),
+  copySnapshot: text("copy_snapshot"),
+  // Audience filter snapshot (JSON) — replayable for "preview all" and audit.
+  audienceFilter: jsonb("audience_filter").$type<{
+    leadListIds?: number[];
+    savedViewIds?: number[];
+    states?: string[];
+    counties?: string[];
+    acreageMin?: number;
+    acreageMax?: number;
+  }>(),
+  // The 30-minute hold window. Worker only fires when leavesAt <= now and
+  // status === 'queued'.
+  queuedAt: timestamp("queued_at", { withTimezone: true }).defaultNow().notNull(),
+  leavesAt: timestamp("leaves_at", { withTimezone: true }).notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancellationReason: text("cancellation_reason"),
+}, (table) => [
+  index("mail_shipments_org_status_idx").on(table.organizationId, table.status),
+  index("mail_shipments_leaves_at_idx").on(table.leavesAt),
+]);
+
+export type MailShipmentRow = typeof mailShipments.$inferSelect;
+export type InsertMailShipmentRow = typeof mailShipments.$inferInsert;
+
+export const mailShipmentPieces = pgTable("mail_shipment_pieces", {
+  id: serial("id").primaryKey(),
+  shipmentId: integer("shipment_id").references(() => mailShipments.id, { onDelete: "cascade" }).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  leadId: integer("lead_id"),
+  recipientName: text("recipient_name").notNull(),
+  addressLine1: text("address_line1").notNull(),
+  addressLine2: text("address_line2"),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  zip: text("zip").notNull(),
+  // pending | printed | in_transit | delivered | returned | failed
+  status: text("status").notNull().default("pending"),
+  providerPieceId: text("provider_piece_id"),
+  printedAt: timestamp("printed_at", { withTimezone: true }),
+  inTransitAt: timestamp("in_transit_at", { withTimezone: true }),
+  expectedDeliveryAt: timestamp("expected_delivery_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  returnedAt: timestamp("returned_at", { withTimezone: true }),
+  qrScanCount: integer("qr_scan_count").notNull().default(0),
+  inboundCallCount: integer("inbound_call_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("mail_shipment_pieces_shipment_idx").on(table.shipmentId),
+  index("mail_shipment_pieces_org_status_idx").on(table.organizationId, table.status),
+  index("mail_shipment_pieces_lead_idx").on(table.leadId),
+]);
+
+export type MailShipmentPiece = typeof mailShipmentPieces.$inferSelect;
+export type InsertMailShipmentPiece = typeof mailShipmentPieces.$inferInsert;

@@ -59,6 +59,16 @@ async function postSmsCostToLedger(
   amountCents: number = TWILIO_SMS_COST_CENTS,
 ): Promise<void> {
   if (amountCents <= 0 || !sid || sid.startsWith("mock-")) return;
+  // Universal BYOK: customer is billed directly by Twilio when they
+  // bring their own SID/token. Don't debit our opex bucket.
+  try {
+    const { isByokEnabled } = await import("./byok/toggle");
+    if (await isByokEnabled(organizationId, "twilio")) {
+      return;
+    }
+  } catch {
+    /* best-effort */
+  }
   try {
     const { postOpexSpent } = await import("./financial-ledger");
     await postOpexSpent({

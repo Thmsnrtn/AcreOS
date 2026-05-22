@@ -171,6 +171,8 @@ const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
 const TitleSearchPage = React.lazy(() => import("@/pages/title-search"));
 const PropertyEnrichmentPage = React.lazy(() => import("@/pages/property-enrichment"));
 const DirectMailCampaignsPage = React.lazy(() => import("@/pages/direct-mail-campaigns"));
+// Pillar 3 — customer-facing /outreach/mail (Compose + In-Flight tabs).
+const OutreachMailPage = React.lazy(() => import("@/pages/outreach/mail"));
 const DripSequencesPage = React.lazy(() => import("@/pages/drip-sequences"));
 const ListingSyndicationPage = React.lazy(() => import("@/pages/listing-syndication"));
 const SyndicationPage = React.lazy(() => import("@/pages/syndication"));
@@ -1194,6 +1196,10 @@ function Router() {
       </Route>
       <Route path="/direct-mail-campaigns">
         {() => <Redirect to="/campaigns?channel=direct-mail" />}
+      </Route>
+      {/* Pillar 3 — customer-facing direct mail composer + in-flight tracker. */}
+      <Route path="/outreach/mail">
+        {() => <ProtectedRoute component={OutreachMailPage} />}
       </Route>
       <Route path="/syndication">
         {() => <ProtectedRoute component={SyndicationPage} />}

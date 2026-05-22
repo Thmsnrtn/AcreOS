@@ -37,6 +37,25 @@ function ensureConfigured(): void {
   }
 }
 
+/**
+ * Universal BYOK (2026-05-22): resolve the effective Telnyx API key for
+ * `organizationId`. Returns the BYOK key when present, else the platform
+ * default from TELNYX_API_KEY. Used once Telnyx is activated; today every
+ * send still throws TELNYX_NOT_CONFIGURED at the platform layer.
+ */
+export async function resolveTelnyxApiKey(organizationId?: number): Promise<string | null> {
+  if (organizationId != null) {
+    try {
+      const { getEffectiveCredential } = await import("../../byok/toggle");
+      const eff = await getEffectiveCredential(organizationId, "telnyx");
+      if (eff.credential) return eff.credential;
+    } catch {
+      /* fall through to platform env */
+    }
+  }
+  return process.env.TELNYX_API_KEY ?? null;
+}
+
 class TelnyxProvider implements CommsProvider {
   readonly name = "telnyx" as const;
 
