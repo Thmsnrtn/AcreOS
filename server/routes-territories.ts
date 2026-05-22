@@ -12,6 +12,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "./db";
 import { territories, teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.get("/", async (req: Request, res: Response) => {
       .where(eq(territories.organizationId, org.id));
     res.json({ territories: rows });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -51,7 +52,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     res.status(201).json({ territory });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -78,7 +79,7 @@ router.put("/:id", async (req: Request, res: Response) => {
     if (!updated) return res.status(404).json({ error: "Territory not found" });
     res.json({ territory: updated });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -94,7 +95,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
       .where(and(eq(territories.id, id), eq(territories.organizationId, org.id)));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -116,7 +117,7 @@ router.post("/:id/assign", async (req: Request, res: Response) => {
     if (!updated) return res.status(404).json({ error: "Territory not found" });
     res.json({ territory: updated });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

@@ -18,6 +18,7 @@ import { performanceReviewService } from "./services/agentPerformanceReviews";
 import { playbookService } from "./services/agentPlaybooks";
 import { ceoAbsenceService } from "./services/ceoAbsenceMode";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 export function registerFounderV6Routes(app: Express) {
 
@@ -28,7 +29,7 @@ export function registerFounderV6Routes(app: Express) {
       const workflows = await workflowEngine.getAll();
       res.json(workflows);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -37,7 +38,7 @@ export function registerFounderV6Routes(app: Express) {
       const runs = await workflowEngine.getRecentRuns(20);
       res.json(runs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -46,7 +47,7 @@ export function registerFounderV6Routes(app: Express) {
       const runId = await workflowEngine.triggerManual(parseInt(req.params.id), req.body);
       res.json({ runId });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -57,7 +58,7 @@ export function registerFounderV6Routes(app: Express) {
       const rooms = await warRoomService.getRecentRooms(10);
       res.json(rooms);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -66,7 +67,7 @@ export function registerFounderV6Routes(app: Express) {
       const messages = await warRoomService.getMessages(parseInt(req.params.id));
       res.json(messages);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -75,7 +76,7 @@ export function registerFounderV6Routes(app: Express) {
       await warRoomService.ceoDirective(parseInt(req.params.id), req.body.directive);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -84,7 +85,7 @@ export function registerFounderV6Routes(app: Express) {
       await warRoomService.resolve(parseInt(req.params.id), req.body.resolution, "ceo");
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -93,7 +94,7 @@ export function registerFounderV6Routes(app: Express) {
       const roomId = await warRoomService.convene(req.body.event, req.body.data || {});
       res.json({ roomId });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -107,7 +108,7 @@ export function registerFounderV6Routes(app: Express) {
         : await agentInitiativeService.getAll(status || "proposed");
       res.json(initiatives);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -116,7 +117,7 @@ export function registerFounderV6Routes(app: Express) {
       await agentInitiativeService.approve(parseInt(req.params.id), req.body.ceoNotes);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -125,7 +126,7 @@ export function registerFounderV6Routes(app: Express) {
       await agentInitiativeService.reject(parseInt(req.params.id), req.body.ceoNotes);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -134,7 +135,7 @@ export function registerFounderV6Routes(app: Express) {
       await agentInitiativeService.shelve(parseInt(req.params.id), req.body.ceoNotes);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -143,7 +144,7 @@ export function registerFounderV6Routes(app: Express) {
       const ids = await agentInitiativeService.generateAllInitiatives();
       res.json({ generated: ids.length, ids });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -154,7 +155,7 @@ export function registerFounderV6Routes(app: Express) {
       const reviews = await performanceReviewService.getRecentReviews();
       res.json(reviews);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -163,7 +164,7 @@ export function registerFounderV6Routes(app: Express) {
       const ids = await performanceReviewService.generateAllReviews();
       res.json({ generated: ids.length, ids });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -172,7 +173,7 @@ export function registerFounderV6Routes(app: Express) {
       await performanceReviewService.addCEOComments(parseInt(req.params.id), req.body.comments);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -183,7 +184,7 @@ export function registerFounderV6Routes(app: Express) {
       const playbooks = await playbookService.getAll();
       res.json(playbooks);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -192,7 +193,7 @@ export function registerFounderV6Routes(app: Express) {
       await playbookService.approve(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -207,7 +208,7 @@ export function registerFounderV6Routes(app: Express) {
       }
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -216,7 +217,7 @@ export function registerFounderV6Routes(app: Express) {
       const result = await playbookService.execute(parseInt(req.params.id), req.body);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -227,7 +228,7 @@ export function registerFounderV6Routes(app: Express) {
       const latest = await ceoAbsenceService.getLatest();
       res.json(latest || { isActive: false });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -239,7 +240,7 @@ export function registerFounderV6Routes(app: Express) {
       });
       res.json({ id, success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -248,7 +249,7 @@ export function registerFounderV6Routes(app: Express) {
       const briefing = await ceoAbsenceService.deactivate();
       res.json({ success: true, returnBriefing: briefing });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 

@@ -208,7 +208,7 @@ export default function SharedDealPage() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-1" aria-label="Closing checklist items">
-              {checklist.items.map((item, i) => (
+              {(Array.isArray(checklist.items) ? checklist.items : []).map((item, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm">
                   <CheckCircle
                     className={`h-3.5 w-3.5 shrink-0 ${item.completed ? "text-acr-pos" : "text-muted-foreground"}`}

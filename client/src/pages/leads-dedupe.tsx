@@ -235,7 +235,7 @@ function ClusterCard({
           role="radiogroup"
           aria-label={groupLabel}
         >
-          {cluster.leads.map((lead) => {
+          {(Array.isArray(cluster.leads) ? cluster.leads : []).map((lead) => {
             const isSelected = selectedId === lead.id;
             const fullName = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "Unnamed lead";
             return (
@@ -304,7 +304,7 @@ function ClusterCard({
             className="min-h-11 sm:min-h-9 shrink-0"
             onClick={() => {
               if (!selectedId) return;
-              const duplicateIds = cluster.leads.map((l) => l.id).filter((id) => id !== selectedId);
+              const duplicateIds = (Array.isArray(cluster.leads) ? cluster.leads : []).map((l) => l.id).filter((id) => id !== selectedId);
               if (duplicateIds.length === 0) return;
               onRequestMerge(selectedId, duplicateIds);
             }}

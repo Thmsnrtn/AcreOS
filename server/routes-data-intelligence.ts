@@ -42,6 +42,7 @@ import { db } from "./db";
 import { properties } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -105,7 +106,7 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -120,7 +121,7 @@ router.get("/land-value-trend/:state/:county", async (req: Request, res: Respons
     const trend = await getCachedLandTrend(state, county);
     res.json(trend);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -168,7 +169,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
     res.json(report);
   } catch (err: any) {
     if (handleLandStatusError(res, err)) return;
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -208,7 +209,7 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
 
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -232,7 +233,7 @@ router.post("/screen-counties", async (req: Request, res: Response) => {
     const results = await screenCountiesForCampaign(counties);
     res.json({ results, screened: results.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -252,7 +253,7 @@ router.get("/migration-hotspots", async (req: Request, res: Response) => {
 
     res.json({ hotspots, total: hotspots.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -381,7 +382,7 @@ router.get("/freedom-snapshot", async (req: Request, res: Response) => {
       dailyInsight,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -395,7 +396,7 @@ router.get("/state-land-rankings", async (req: Request, res: Response) => {
     const rankings = await rankStatesByLandAppreciation();
     res.json({ rankings, generatedAt: new Date().toISOString() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -411,7 +412,7 @@ router.get("/census-profile/:state/:county", async (req: Request, res: Response)
     const profile = await buildCountyOpportunityProfile(state, county, metroMiles);
     res.json(profile);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -449,7 +450,7 @@ router.get("/market-pulse", async (req: Request, res: Response) => {
     const report = await generateMarketPulseReport(org?.id ?? "demo", counties);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -467,7 +468,7 @@ router.get("/market-pulse/:state/:county", async (req: Request, res: Response) =
     ]);
     res.json({ ...snapshot, weeklyWisdom: wisdom });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -491,7 +492,7 @@ router.get("/lead-intelligence/batch", async (req: Request, res: Response) => {
     const result = await batchScoreLeadsForOrg(org?.id ?? "demo", limit);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -510,7 +511,7 @@ router.post("/lead-intelligence/score", async (req: Request, res: Response) => {
     const profile = await scoreLeadIntelligence(lead, nassData);
     res.json(profile);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -523,7 +524,7 @@ router.get("/lead-intelligence/focus", async (req: Request, res: Response) => {
     const { getWeeklyFocus } = await import("./services/leadIntelligenceEngine");
     res.json({ focus: getWeeklyFocus(), generatedAt: new Date().toISOString() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -556,7 +557,7 @@ router.post("/solar-potential", async (req: Request, res: Response) => {
       input: { lat, lng, acres, state, zoning, floodZone },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || "Solar potential calculation failed" });
+    Errors.internal(res, err);
   }
 });
 
@@ -573,7 +574,7 @@ router.get("/county-disaster-history/:state/:county", async (req: Request, res: 
     if (!result) return res.status(404).json({ error: "No disaster data found for this county" });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -590,7 +591,7 @@ router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request
     if (!result) return res.status(404).json({ error: "No migration flow data found" });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -605,7 +606,7 @@ router.get("/source-health", async (req: Request, res: Response) => {
     const health = getLatestHealth();
     res.json(health);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -626,7 +627,7 @@ router.post("/opportunity-score", async (req: Request, res: Response) => {
     const score = calculateOpportunityScore(req.body || {});
     res.json(score);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -643,7 +644,7 @@ router.get("/signal-catalog", async (_req: Request, res: Response) => {
       summary: "AcreOS fuses data across 5 layers: Parcel Identity, Ownership Signals, Physical Reality, Market Context, and Environmental Overlays.",
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -658,7 +659,7 @@ router.get("/data-freshness/:propertyId", async (req: Request, res: Response) =>
     const report = assessDataFreshness((property as any).enrichmentData, propertyId);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -668,7 +669,7 @@ router.post("/county-score", async (req: Request, res: Response) => {
     const score = scoreCounty(req.body || {});
     res.json(score);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -700,7 +701,7 @@ router.get("/freedom-number", async (req: Request, res: Response) => {
     const analysis = calculateFreedomNumber(monthlyExpenses, monthlyIncome, avgNotePayment, noteCount);
     res.json(analysis);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -734,7 +735,7 @@ router.get("/prospect/:leadId", async (req: Request, res: Response) => {
 
     res.json({ leadId, motivationScore: score, motivationTier: tier, activeSignals, topSignal, enrichmentPipeline, outreachRecommendation: outreach });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -745,7 +746,7 @@ router.post("/campaign-intel", async (req: Request, res: Response) => {
     const intel = getCampaignIntelligence(countyMedianDom, motivationTierDistribution, historicalResponseRate);
     res.json(intel);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

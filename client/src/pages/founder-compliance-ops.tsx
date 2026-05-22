@@ -499,7 +499,7 @@ export default function FounderComplianceOpsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pricing.data.rows.map((r: any, i: number) => (
+                    {(Array.isArray(pricing.data?.rows) ? pricing.data.rows : []).map((r: any, i: number) => (
                       <tr key={i} className="border-b border-border/40">
                         <td className="p-2 text-xs">{r.experimentKey}</td>
                         <td className="p-2 text-xs">{r.variantKey}</td>

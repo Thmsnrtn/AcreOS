@@ -13,6 +13,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { priceOptimizerService } from "./services/priceOptimizer";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -89,7 +90,7 @@ router.get("/:propertyId", async (req: Request, res: Response) => {
     const recommendations = await priceOptimizerService.getPropertyRecommendations(org.id, propertyId);
     res.json({ recommendations });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -107,7 +108,7 @@ router.post("/outcome/:id", async (req: Request, res: Response) => {
     await priceOptimizerService.recordPriceOutcome(id, Number(actualPrice), Boolean(accepted));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -118,7 +119,7 @@ router.get("/accuracy/stats", async (req: Request, res: Response) => {
     const metrics = await priceOptimizerService.analyzeRecommendationAccuracy(org.id);
     res.json({ metrics });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

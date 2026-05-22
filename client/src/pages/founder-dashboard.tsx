@@ -725,7 +725,7 @@ function SystemActivityPanel() {
     refetchInterval: 5 * 60_000,
   });
 
-  const rows: any[] = data?.rows ?? [];
+  const rows: any[] = Array.isArray(data?.rows) ? data!.rows : [];
 
   return (
     <Card className="col-span-full">

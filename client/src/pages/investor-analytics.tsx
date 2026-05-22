@@ -140,7 +140,7 @@ export default function InvestorAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.properties.map((p) => (
+                  {(Array.isArray(data.properties) ? data.properties : []).map((p) => (
                     <tr key={p.propertyId} className="border-b border-border/40">
                       <td className="px-3 py-2 font-medium">
                         <Link href={`/parcels/${p.propertyId}`} className="hover:underline">#{p.propertyId}</Link>

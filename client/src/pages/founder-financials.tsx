@@ -259,7 +259,7 @@ export default function FounderFinancialsPage() {
                 </tr>
               </thead>
               <tbody>
-                {byOrg.data?.rows.map((r) => {
+                {(Array.isArray(byOrg.data?.rows) ? byOrg.data!.rows : []).map((r) => {
                   const share = concentration.total > 0
                     ? ((r.recognizedCents ?? 0) / concentration.total) * 100
                     : 0;

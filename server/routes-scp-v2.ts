@@ -8,6 +8,7 @@
 
 import { type Express, type Request, type Response } from "express";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 // ─── Lazy imports to avoid circular dependencies ───────────────────────────
 
@@ -70,7 +71,7 @@ export function registerSCPv2Routes(app: Express) {
       });
     } catch (err: any) {
       logger.error("Evolution dashboard error", { error: err });
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -106,7 +107,7 @@ export function registerSCPv2Routes(app: Express) {
       });
     } catch (err: any) {
       logger.error("Agent evolution detail error", { error: err, agent: req.params.agent });
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -136,7 +137,7 @@ export function registerSCPv2Routes(app: Express) {
         })),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -152,7 +153,7 @@ export function registerSCPv2Routes(app: Express) {
       const result = await getAllGoldenCases();
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -166,7 +167,7 @@ export function registerSCPv2Routes(app: Express) {
       const cases = await getGoldenCases(req.params.agent);
       res.json({ agent: req.params.agent, cases, total: cases.length });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -182,7 +183,7 @@ export function registerSCPv2Routes(app: Express) {
       const suggestions = await checkTrustPromotions();
       res.json({ suggestions });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -215,7 +216,7 @@ export function registerSCPv2Routes(app: Express) {
         promoted: true,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -248,7 +249,7 @@ export function registerSCPv2Routes(app: Express) {
         demoted: true,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -268,7 +269,7 @@ export function registerSCPv2Routes(app: Express) {
       logger.info("Evolution paused", { reason });
       res.json({ paused: true, paused_at: evolutionPausedAt, reason });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -286,7 +287,7 @@ export function registerSCPv2Routes(app: Express) {
       logger.info("Evolution resumed", { was_paused_at: wasPausedAt });
       res.json({ paused: false, resumed_at: new Date().toISOString() });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -337,7 +338,7 @@ export function registerSCPv2Routes(app: Express) {
         rolled_back: true,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -364,7 +365,7 @@ export function registerSCPv2Routes(app: Express) {
       res.json(response);
     } catch (err: any) {
       logger.error("Talk query error", { error: err });
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -425,7 +426,7 @@ export function registerSCPv2Routes(app: Express) {
       });
     } catch (err: any) {
       logger.error("Enhanced briefing error", { error: err });
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -440,7 +441,7 @@ export function registerSCPv2Routes(app: Express) {
       const { getJudgeCosts } = await getLLMJudges();
       res.json(getJudgeCosts());
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -461,7 +462,7 @@ export function registerSCPv2Routes(app: Express) {
         principles: CONSTITUTION_PRINCIPLES,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 }
