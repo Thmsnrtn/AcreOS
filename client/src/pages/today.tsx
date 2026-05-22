@@ -27,6 +27,7 @@ import { plural } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem } from "@/components/today/DecisionQueue";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
@@ -234,6 +235,11 @@ export default function TodayPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/alerts/active"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

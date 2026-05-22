@@ -25,6 +25,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface Tenant {
   id: string;
@@ -90,6 +91,11 @@ export default function TenantsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
       setShowCreate(false);
       setFirst(""); setLast(""); setEmail(""); setPhone(""); setSmsConsent(false);
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/table";
 import { Beaker, CheckCircle2, TrendingUp, TrendingDown, Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface PromptVersion {
   id?: string;
@@ -96,6 +98,7 @@ function deltaBadge(delta: number | null): JSX.Element {
 
 export default function FounderPromptVersionsPage() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading, error } = useQuery<ListResponse>({
     queryKey: ["/api/founder/prompt-versions"],
   });
@@ -107,11 +110,21 @@ export default function FounderPromptVersionsPage() {
       return apiRequest("POST", "/api/founder/prompt-versions/promote", vars);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/prompt-versions"] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const autoPromote = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/founder/prompt-versions/auto-promote", {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/prompt-versions"] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const summaries = data?.prompts ?? [];

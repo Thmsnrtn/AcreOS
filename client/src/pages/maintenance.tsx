@@ -22,6 +22,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface Ticket {
   id: string;
@@ -116,6 +117,11 @@ export default function MaintenancePage() {
       setShowCreate(false);
       setPropertyId(""); setTitle(""); setDescription(""); setSeverity("standard");
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const dispatch = useMutation({
@@ -131,6 +137,11 @@ export default function MaintenancePage() {
       toast({ title: "Dispatched" });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance-tickets"] });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const complete = useMutation({
@@ -142,6 +153,11 @@ export default function MaintenancePage() {
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/maintenance-tickets"] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   return (

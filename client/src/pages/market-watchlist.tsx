@@ -52,6 +52,7 @@ import {
   Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { relative } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
@@ -193,6 +194,11 @@ export default function MarketWatchlistPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/alerts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/unread"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

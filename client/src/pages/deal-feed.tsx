@@ -12,15 +12,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RefreshCw, Bookmark, Filter } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 export default function DealFeedPage() {
   useDocumentTitle("Deal feed");
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [tab, setTab] = useState<"feed" | "saved">("feed");
 
   const refreshMutation = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/deal-feed/refresh"),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/deal-feed"] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   return (

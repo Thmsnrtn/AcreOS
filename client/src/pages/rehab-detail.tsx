@@ -25,6 +25,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { BidsSection } from "@/components/rehabs/bids-section";
 import { DrawsSection } from "@/components/rehabs/draws-section";
 
@@ -139,6 +140,11 @@ export default function RehabDetailPage() {
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const addItem = useMutation({
@@ -158,6 +164,11 @@ export default function RehabDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
       setNewScope(""); setNewBudget("");
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const updateItem = useMutation({
@@ -170,6 +181,11 @@ export default function RehabDetailPage() {
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const deleteItem = useMutation({
@@ -181,6 +197,11 @@ export default function RehabDetailPage() {
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const seedTemplate = useMutation({
@@ -198,6 +219,11 @@ export default function RehabDetailPage() {
     onSuccess: (r: any) => {
       toast({ title: `${r.inserted} line items added`, description: `Sized for ${r.sqft} sqft` });
       queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

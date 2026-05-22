@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { clientLogger } from "@/lib/clientLogger";
 import {
@@ -1561,6 +1562,11 @@ export default function CommandCenterPage() {
       setCurrentConversationId(conversation.id);
       queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const deleteConversationMutation = useMutation({
@@ -1573,12 +1579,22 @@ export default function CommandCenterPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const classifyIntentMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/assistant/classify-intent", { message });
       return res.json();
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

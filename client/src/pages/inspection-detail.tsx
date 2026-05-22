@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface ChecklistItem {
   area: string;
@@ -103,6 +104,11 @@ export default function InspectionDetailPage() {
       toast({ title: "Tenant signature recorded" });
       queryClient.invalidateQueries({ queryKey: ["/api/inspections", id] });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const signLandlord = useMutation({
@@ -116,6 +122,11 @@ export default function InspectionDetailPage() {
     onSuccess: () => {
       toast({ title: "Landlord signature recorded" });
       queryClient.invalidateQueries({ queryKey: ["/api/inspections", id] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

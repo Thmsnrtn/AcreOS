@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 interface OfferApproval {
@@ -82,6 +83,11 @@ export default function OfferApprovalsPage() {
     },
     onSuccess: () => {
       toast({ title: "Threshold updated" });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

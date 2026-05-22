@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 function csrf() {
   const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
@@ -62,6 +63,11 @@ export default function FounderComplianceOpsPage() {
     onSuccess: () => {
       toast({ title: "Self-test DSAR fired" });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/dsar/recent"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 
@@ -119,6 +125,11 @@ export default function FounderComplianceOpsPage() {
       toast({ title: `Fair-lending audit: ${data.outcomes?.length ?? 0} orgs evaluated` });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/compliance/fair-lending"] });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   // ── Vendor Telemetry ────────────────────────────────────────────
@@ -146,6 +157,11 @@ export default function FounderComplianceOpsPage() {
         description: `${data.sent} sent · ${data.skipped} skipped · ${data.failed} failed (of ${data.total})`,
       });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   // ── Reconciliation ──────────────────────────────────────────────
@@ -165,6 +181,11 @@ export default function FounderComplianceOpsPage() {
         title: "Reconciliation ran",
         description: `${ok} ok · ${div} divergent · ${fail} failing`,
       });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

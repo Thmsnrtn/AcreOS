@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 interface Session {
@@ -102,6 +103,11 @@ export default function AccountSecurityPage() {
     onSuccess: (r: any) => {
       toast({ title: "Other sessions revoked", description: `${r.revoked} ended, ${r.skipped} kept (current), ${r.failed} failed.` });
       queryClient.invalidateQueries({ queryKey: ["/api/account/sessions"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

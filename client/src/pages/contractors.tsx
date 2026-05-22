@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface Contractor {
   id: string;
@@ -85,6 +86,11 @@ export default function ContractorsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contractors"] });
       setShowCreate(false);
       setName(""); setBusinessName(""); setEmail(""); setPhone(""); setTaxId("");
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

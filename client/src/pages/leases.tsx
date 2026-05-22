@@ -23,6 +23,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface Lease {
   id: string;
@@ -102,6 +103,11 @@ export default function LeasesPage() {
       toast({ title: "Lease created" });
       queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
       setShowCreate(false);
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

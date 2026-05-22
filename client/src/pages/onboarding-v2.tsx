@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -992,6 +993,7 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
 export default function OnboardingV2() {
   useDocumentTitle("Welcome to AcreOS");
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [selectedPath, setSelectedPath] = useState<InvestorPath | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -1006,6 +1008,11 @@ export default function OnboardingV2() {
       const resp = await apiRequest("PATCH", "/api/onboarding/progress", data);
       return resp.json();
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const completeMutation = useMutation({
@@ -1014,6 +1021,11 @@ export default function OnboardingV2() {
       return resp.json();
     },
     onSuccess: () => navigate("/dashboard"),
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   // Per-step entry telemetry. Fires once on every step landing; the server

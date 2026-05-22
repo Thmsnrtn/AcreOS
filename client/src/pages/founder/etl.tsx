@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Database, Play, RefreshCw, AlertTriangle } from "lucide-react";
 
 interface EtlJobSummary {
@@ -140,6 +141,11 @@ export default function FounderEtlPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/founder/etl/jobs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/etl/dlq"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

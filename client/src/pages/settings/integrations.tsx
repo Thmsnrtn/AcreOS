@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Trash2 } from "lucide-react";
 
 interface SlackIntegration {
@@ -83,6 +84,11 @@ export default function IntegrationsSettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/slack-integrations"] });
       toast({ title: "Integration removed" });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

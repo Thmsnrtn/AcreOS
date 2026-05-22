@@ -17,6 +17,7 @@ import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { 
   DollarSign, 
@@ -1310,6 +1311,11 @@ export default function FounderDashboard() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
       toast({ title: "Alert acknowledged" });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const resolveMutation = useMutation({
@@ -1322,6 +1328,11 @@ export default function FounderDashboard() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
       toast({ title: "Alert resolved" });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 
@@ -5329,6 +5340,11 @@ function CompanyBriefingPanel() {
       toast({ title: "Decision approved" });
       refetch();
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const rejectMutation = useMutation({
@@ -5341,6 +5357,11 @@ function CompanyBriefingPanel() {
     onSuccess: () => {
       toast({ title: "Decision rejected" });
       refetch();
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 
@@ -5533,6 +5554,11 @@ function AgentTeamPanel() {
     onSuccess: (_, vars) => {
       toast({ title: `Agent ${vars.status === "paused" ? "paused" : "resumed"}` });
       refetch();
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

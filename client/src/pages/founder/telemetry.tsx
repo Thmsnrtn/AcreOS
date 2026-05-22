@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 interface RouteSummary {
   route: string;
@@ -62,6 +63,11 @@ export default function FounderTelemetryPage() {
     onSuccess: () => {
       toast({ title: "Telemetry reset" });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/telemetry"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

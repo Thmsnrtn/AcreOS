@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Trash2, Plus, FlaskConical, ArrowUp, ArrowDown } from "lucide-react";
 
 interface WeightedAssignee {
@@ -110,6 +111,11 @@ export default function LeadAssignmentSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/lead-assignment-rules"] });
       toast({ title: "Rule deleted" });
     },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
   });
 
   const reorderMutation = useMutation({
@@ -124,6 +130,11 @@ export default function LeadAssignmentSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/lead-assignment-rules"] });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 

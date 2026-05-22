@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FileText, RefreshCw, Archive } from "lucide-react";
 import { format } from "date-fns";
@@ -136,6 +137,11 @@ export default function MyLetterPage() {
     mutationFn: async (monthKey: string) => {
       const res = await apiRequest("POST", `/api/my-letter/${monthKey}/opened`, {});
       return res.json();
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
     },
   });
 
