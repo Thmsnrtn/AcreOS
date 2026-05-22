@@ -63,7 +63,7 @@ const autonomyConfigSchema = z.object({
 const queueTaskSchema = z.object({
   agentType: z.enum(["research", "deals", "communications", "operations"]),
   action: z.string().min(1),
-  parameters: z.record(z.any()).optional(),
+  parameters: z.record(z.string(), z.any()).optional(),
   relatedLeadId: z.number().int().optional(),
   relatedPropertyId: z.number().int().optional(),
   relatedDealId: z.number().int().optional(),
@@ -73,7 +73,7 @@ const queueTaskSchema = z.object({
 const evaluateActionSchema = z.object({
   agentType: z.enum(["research", "deals", "communications", "operations"]),
   actionDescription: z.string().min(1),
-  parameters: z.record(z.any()).optional(),
+  parameters: z.record(z.string(), z.any()).optional(),
   category: z
     .enum([
       "research", "draft", "data_write", "scheduling",

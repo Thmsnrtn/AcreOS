@@ -2072,7 +2072,7 @@ const browserAutomationInputSchema = z.object({
     extractAs: z.string().optional(),
     description: z.string(),
   })).optional().describe("Custom automation steps to execute"),
-  inputData: z.record(z.any()).optional().describe("Template input variables (e.g., apn, county)"),
+  inputData: z.record(z.string(), z.any()).optional().describe("Template input variables (e.g., apn, county)"),
   captureScreenshot: z.boolean().optional().default(true).describe("Whether to capture a screenshot"),
 });
 

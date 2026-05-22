@@ -16,7 +16,7 @@ export function registerCoreAIRoutes(app: Express): void {
   const agentTaskSchema = z.object({
     agentType: z.enum(["research", "deals", "communications", "operations"]),
     action: z.string(),
-    parameters: z.record(z.any()).optional(),
+    parameters: z.record(z.string(), z.any()).optional(),
   });
 
   api.get("/api/agents", isAuthenticated, async (req, res) => {

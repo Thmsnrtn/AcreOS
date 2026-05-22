@@ -94,7 +94,7 @@ const createOrderBodySchema = z.object({
 
 const inboundStatusBodySchema = z.object({
   status: z.string().min(1),
-  statusDetails: z.record(z.unknown()).optional(),
+  statusDetails: z.record(z.string(), z.unknown()).optional(),
   commitmentS3Key: z.string().optional(),
   scheduleBS3Key: z.string().optional(),
   policyS3Key: z.string().optional(),

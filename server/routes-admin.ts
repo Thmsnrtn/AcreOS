@@ -58,7 +58,7 @@ const countyGisEndpointCreateSchema = z.object({
   layerId: z.string().optional(),
   apnField: z.string().optional(),
   ownerField: z.string().optional(),
-  fieldMappings: z.record(z.string()).optional(),
+  fieldMappings: z.record(z.string(), z.string()).optional(),
   fipsCode: z.string().optional(),
   sourceUrl: z.string().url().optional(),
   notes: z.string().optional(),
@@ -4664,7 +4664,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     })).optional(),
     canAutoFix: z.boolean().optional(),
     autoFixToolName: z.string().optional(),
-    autoFixParameters: z.record(z.any()).optional(),
+    autoFixParameters: z.record(z.string(), z.any()).optional(),
     isPublished: z.boolean().optional(),
   });
 

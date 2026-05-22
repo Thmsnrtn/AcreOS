@@ -950,8 +950,8 @@ export function registerAIRoutes(app: Express): void {
 
   // POST /api/ai/connectors/:id/connect — save credentials and mark connected
   const connectConnectorSchema = z.object({
-    credentials: z.record(z.unknown()).optional(),
-    settings: z.record(z.unknown()).optional(),
+    credentials: z.record(z.string(), z.unknown()).optional(),
+    settings: z.record(z.string(), z.unknown()).optional(),
   });
 
   api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -1372,7 +1372,7 @@ export function registerAIRoutes(app: Express): void {
   const updateVaAgentSchema = z.object({
     isActive: z.boolean().optional(),
     autonomyLevel: z.enum(["suggest", "auto_execute", "manual"]).optional(),
-    settings: z.record(z.unknown()).optional(),
+    settings: z.record(z.string(), z.unknown()).optional(),
   }).passthrough();
 
   api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {

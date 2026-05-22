@@ -186,7 +186,7 @@ export function registerCampaignRoutes(app: Express): void {
         contactName: z.string().optional(),
         contactEmail: z.string().email().optional().or(z.literal("")),
         contactPhone: z.string().optional(),
-        metadata: z.record(z.unknown()).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
       });
       const bodyParsed = responseBodySchema.safeParse(req.body);
       if (!bodyParsed.success) {

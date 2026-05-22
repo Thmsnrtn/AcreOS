@@ -50,7 +50,7 @@ const updateOrganizationSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   onboardingCompleted: z.boolean().optional(),
   onboardingStep: z.number().int().min(0).optional(),
-  onboardingData: z.record(z.unknown()).optional(),
+  onboardingData: z.record(z.string(), z.unknown()).optional(),
   autoTopUpEnabled: z.boolean().optional(),
   autoTopUpThresholdCents: z.number().int().min(0).optional(),
   autoTopUpAmountCents: z.number().int().min(0).optional(),
@@ -885,7 +885,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   const onboardingStepSchema = z.object({
     step: z.number().int().min(0).max(4),
-    data: z.record(z.unknown()).optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
     skipped: z.boolean().optional(),
   });
 
@@ -912,7 +912,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   const completeStepSchema = z.object({
     stepId: z.number().int().min(0).max(5),
-    data: z.record(z.unknown()).optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
   });
 
   api.post("/api/onboarding/complete-step", isAuthenticated, getOrCreateOrg, async (req, res) => {
