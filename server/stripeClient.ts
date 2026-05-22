@@ -65,9 +65,15 @@ function wrapStripeForSimulation<T extends object>(stripe: T): T {
           await recordSimulatedAction("stripe", action, { args });
           // Return a synthetic response shaped enough like Stripe's to
           // not blow up downstream code: { id, object, simulated:true }.
+          //
+          // F-D37: include `type` so callers like the webhook claimEvent path
+          // (claimEvent(event.id, event.type)) don't pass undefined into a
+          // NOT NULL Postgres column. Without this the idempotency insert
+          // serializes event_type as DEFAULT and fails the column constraint.
           return {
             id: `sim_${methodName}_${Date.now().toString(36)}`,
             object: target.constructor?.name?.toLowerCase() || "object",
+            type: `sim.${methodName}`,
             simulated: true,
             status: "active",
             url: `https://sim.acreos.io/stripe/${methodName}`,

@@ -2850,8 +2850,14 @@ export const insertOrganizationSchema = createInsertSchema(organizations).omit({
 export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({ 
   id: true, invitedAt: true, joinedAt: true 
 });
+// F-D34 (2026-05-21): every insert schema below omits `organizationId` so the
+// safe pattern (server-side injection via `{ ...body, organizationId: org.id }`)
+// is enforced by the schema, not just convention. A misbehaving caller can no
+// longer mass-assign organizationId in the request body to write into another
+// org's data.
 export const insertLeadSchema = createInsertSchema(leads).omit({
   id: true, createdAt: true, updatedAt: true, lastScoreAt: true,
+  organizationId: true,
   // phoneNormalized is a STORED generated column — Postgres rejects
   // explicit writes. Omit from inserts. (Migration 0051.)
   phoneNormalized: true,
@@ -2862,14 +2868,14 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // only have a phone or just a parcel-owner name).
   email: z.string().email().optional().nullable(),
 });
-export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({ 
-  id: true, createdAt: true 
+export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
+  id: true, createdAt: true,
 });
-export const insertPropertySchema = createInsertSchema(properties).omit({ 
-  id: true, createdAt: true, updatedAt: true 
+export const insertPropertySchema = createInsertSchema(properties).omit({
+  id: true, createdAt: true, updatedAt: true, organizationId: true,
 });
-export const insertDealSchema = createInsertSchema(deals).omit({ 
-  id: true, createdAt: true, updatedAt: true 
+export const insertDealSchema = createInsertSchema(deals).omit({
+  id: true, createdAt: true, updatedAt: true, organizationId: true,
 });
 export const insertNoteSchema = createInsertSchema(notes).omit({ 
   id: true, createdAt: true, updatedAt: true 
