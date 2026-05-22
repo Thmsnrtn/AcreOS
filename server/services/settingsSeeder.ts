@@ -148,6 +148,176 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     defaultValue: 5,
     validRange: { type: "number", min: 1, max: 20 },
   },
+
+  // ─── Pillar 1 + 4 — Financial substrate (Round 1) ─────────────────────
+  {
+    key: "allocation.policy",
+    category: "cost",
+    description:
+      "Revenue allocation policy. Splits every paid invoice into the five buckets (tax / refund / profit / draw / opex). Fractions sum to 1.0.",
+    defaultValue: {
+      tax_reserve: 0.25,
+      refund_reserve: 0.10,
+      profit_reserve: 0.05,
+      owner_draw: 0.05,
+      opex_available: 0.55,
+    },
+    validRange: { type: "object" },
+  },
+
+  // ─── Credit weights — 1 credit ≈ 1¢ of cost-to-us ─────────────────────
+  ...["sms_outbound", "email_outbound", "postcard_eddm", "postcard_postgrid", "postcard_lob", "letter_presort", "letter_lob", "skip_trace", "ai_turn_avg"].map((action) => ({
+    key: `credits.weight.${action}`,
+    category: "cost" as const,
+    description: `Credit weight for ${action} action (1 credit ≈ 1¢ of platform cost). Tunable in /founder/studio/credits.`,
+    defaultValue: 0,  // 0 = use the canonical constant from shared/billing/credit-weights.ts
+    validRange: { type: "number", min: 0, max: 10000 },
+  })),
+
+  // ─── Revenue-trigger ladder ───────────────────────────────────────────
+  {
+    key: "revenue.triggers",
+    category: "cost",
+    description:
+      "Revenue-trigger ladder. List of MRR thresholds and the scale-up actions they unlock (Sentry, Fly machines, USPS permit, Telnyx, aggregation queue). Editable in /founder/studio/triggers.",
+    defaultValue: [
+      { threshold: 50_00, action: "sentry_starter", autoApprove: false },
+      { threshold: 200_00, action: "fly_app_shared_cpu_2x", autoApprove: false },
+      { threshold: 500_00, action: "fly_app_redundancy", autoApprove: false },
+      { threshold: 1000_00, action: "usps_mail_permit", autoApprove: false },
+      { threshold: 1000_00, action: "elevenlabs_pro", autoApprove: false },
+      { threshold: 2000_00, action: "postgres_paid_tier", autoApprove: false },
+      { threshold: 3000_00, action: "telnyx_a2p_10dlc", autoApprove: false },
+      { threshold: 5000_00, action: "mail_aggregation_queue", autoApprove: false },
+      { threshold: 10000_00, action: "fly_performance_2x", autoApprove: false },
+    ],
+    validRange: { type: "object" },
+  },
+
+  // ─── Provider routing rules (Pillars 2, 5, 6, 7) ──────────────────────
+  {
+    key: "routing.mail",
+    category: "cost",
+    description: "Mail provider routing rules: priority order, EDDM region rules, hold-and-batch threshold, co-marketing toggle.",
+    defaultValue: { priority: ["lob", "postgrid", "eddm", "presort", "lettrlabs"], eddmRegions: [], holdBatchThreshold: 500, comarketingEnabled: false },
+    validRange: { type: "object" },
+  },
+  {
+    key: "routing.comms",
+    category: "cost",
+    description: "SMS/voice routing: Telnyx vs Twilio priority, tracking-pool size limit, BYOK precedence.",
+    defaultValue: { priority: ["twilio", "telnyx", "bandwidth"], poolSizeLimit: 50, byokPrecedence: true },
+    validRange: { type: "object" },
+  },
+  {
+    key: "routing.data",
+    category: "cost",
+    description: "Data-cache TTL per entity-type + free-source-first toggle + provider fallback order.",
+    defaultValue: {
+      ttls: { skip_trace: 2160, parcel_ownership: 4320, parcel_polygon: 8760, avm: 720, flood_zone: 8760, liens: 720 },
+      freeSourceFirst: true,
+      fallbackOrder: ["batch_skiptracing", "reiskip"],
+    },
+    validRange: { type: "object" },
+  },
+  {
+    key: "routing.ai",
+    category: "cost",
+    description: "Per-task model floor (highest model allowed), cache TTL per complexity, prompt-cache enforcement.",
+    defaultValue: {
+      modelFloor: { classification: "haiku-4-5", extraction: "haiku-4-5", synthesis: "sonnet-4-6", agent_tool: "sonnet-4-6", other: "sonnet-4-6" },
+      cacheTtlMinutes: { exact: 60, semantic: 15 },
+      enforcePromptCache: true,
+    },
+    validRange: { type: "object" },
+  },
+
+  // ─── BYOK minimum tier per channel ────────────────────────────────────
+  ...["twilio", "telnyx", "sendgrid", "ses", "lob", "postgrid", "openrouter", "anthropic", "openai", "batch_skiptracing", "mapbox", "s3"].map((channel) => ({
+    key: `byok.minTier.${channel}`,
+    category: "cost" as const,
+    description: `Minimum tier that can BYOK for ${channel}. Defaults to "pro".`,
+    defaultValue: "pro",
+    validRange: { type: "string", oneOf: ["free", "starter", "pro", "scale", "enterprise", "founder_only"] },
+  })),
+
+  // ─── Infrastructure overrides (Pillar 8 — manual escape hatches) ──────
+  {
+    key: "infra.override.fly.size",
+    category: "cost",
+    description: "Manual Fly VM size override. When null, the revenue-trigger ladder manages this.",
+    defaultValue: null,
+    validRange: { type: "string", oneOf: ["shared-cpu-1x", "shared-cpu-2x", "shared-cpu-4x", "shared-cpu-8x", "performance-1x", "performance-2x", "performance-4x"] },
+  },
+  {
+    key: "infra.override.fly.minMachines",
+    category: "cost",
+    description: "Manual Fly min_machines_running override. When null, the revenue-trigger ladder manages this.",
+    defaultValue: null,
+    validRange: { type: "number", min: 0, max: 10 },
+  },
+  {
+    key: "infra.override.fly.autoStop",
+    category: "cost",
+    description: "Manual Fly auto_stop_machines override. When null, the revenue-trigger ladder manages this.",
+    defaultValue: null,
+    validRange: { type: "string", oneOf: ["off", "stop", "suspend"] },
+  },
+  {
+    key: "infra.override.sentry.sampleRate",
+    category: "cost",
+    description: "Manual Sentry traces sample rate (0–1) override. When null, env var SENTRY_TRACES_SAMPLE_RATE wins (default 0.05).",
+    defaultValue: null,
+    validRange: { type: "number", min: 0, max: 1 },
+  },
+  {
+    key: "infra.override.stripe.achEnabled",
+    category: "cost",
+    description: "Manual override for Stripe ACH-on-yearly behavior. When null, the routes-billing.ts auto-detect (yearly interval) wins.",
+    defaultValue: null,
+    validRange: { type: "boolean" },
+  },
+  {
+    key: "infra.override.readReplica.categories",
+    category: "cost",
+    description: "List of query categories routed to the Postgres read replica. Empty array means no replica adoption.",
+    defaultValue: [],
+    validRange: { type: "object" },
+  },
+
+  // ─── Mail aggregation thresholds (Pillar 2 batch queue) ───────────────
+  {
+    key: "mail.providers.enabled",
+    category: "cost",
+    description: "List of mail providers the router is allowed to use. Add 'postgrid' after POSTGRID_API_KEY is set.",
+    defaultValue: ["lob"],
+    validRange: { type: "object" },
+  },
+
+  // ─── Tracking-number pool auto-release (Pillar 5) ─────────────────────
+  {
+    key: "comms.pool.auto_release_days",
+    category: "cost",
+    description: "Number of idle days before a tracking number is auto-released back to the pool.",
+    defaultValue: 60,
+    validRange: { type: "number", min: 1, max: 365 },
+  },
+
+  // ─── Archival horizon (Pillar 9.2) ────────────────────────────────────
+  {
+    key: "archival.enabled",
+    category: "safety",
+    description: "Master toggle for the daily archival sweep. Off by default — only flip on once R2 storage is configured.",
+    defaultValue: false,
+    validRange: { type: "boolean" },
+  },
+  {
+    key: "archival.horizon_days",
+    category: "safety",
+    description: "Activity older than this many days is archived to cold storage on the daily sweep.",
+    defaultValue: 90,
+    validRange: { type: "number", min: 30, max: 730 },
+  },
 ];
 
 export async function seedAllSettings(): Promise<void> {
