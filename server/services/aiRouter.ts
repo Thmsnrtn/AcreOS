@@ -3,6 +3,11 @@ import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { computeCostUsd } from "./aiCostRates";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
+import {
+  recordAiCall as recordCascadeCall,
+  complexityClassFromTaskType,
+  classifyError as classifyAiError,
+} from "./ai-telemetry";
 
 // ============================================
 // AI RESPONSE CACHE — Dual-layer
@@ -906,14 +911,29 @@ export async function routeAITask(
     && task.complexity !== TaskComplexity.CRITICAL
     && (task.temperature ?? 0.7) <= 0.3;
   let cacheKey = '';
+  const cacheCheckStart = Date.now();
 
   if (isCacheable) {
     cacheKey = getCacheKey(task);
     const cached = getCachedResponse(cacheKey);
     if (cached) {
       cacheHits++;
+      const cacheHitLatency = Date.now() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: 0, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
+      // Pillar 7 — cascade telemetry: cache hits are model="cache".
+      void recordCascadeCall({
+        organizationId: config.orgId ?? null,
+        model: "cache",
+        complexityClass: complexityClassFromTaskType(task.taskType),
+        feature: task.taskType || "unknown",
+        promptTokens: 0,
+        cachedInputTokens: 0,
+        completionTokens: 0,
+        costCents: 0,
+        latencyMs: cacheHitLatency,
+        cacheHit: true,
+      });
       return { content: cached.content, provider: cached.provider, model: cached.model, usage: cached.usage, estimatedCost: 0 };
     }
 
@@ -921,8 +941,21 @@ export async function routeAITask(
     const semanticHit = findSemanticCacheHit(task);
     if (semanticHit) {
       semanticCacheHits++;
+      const semanticLatency = Date.now() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: 0, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
+      void recordCascadeCall({
+        organizationId: config.orgId ?? null,
+        model: "cache",
+        complexityClass: complexityClassFromTaskType(task.taskType),
+        feature: task.taskType || "unknown",
+        promptTokens: 0,
+        cachedInputTokens: 0,
+        completionTokens: 0,
+        costCents: 0,
+        latencyMs: semanticLatency,
+        cacheHit: true,
+      });
       return { content: semanticHit.content, provider: semanticHit.provider, model: semanticHit.model, usage: semanticHit.usage, estimatedCost: 0 };
     }
 
@@ -964,6 +997,8 @@ export async function routeAITask(
   let content = '';
   let usage: any;
   let finalModel = model;
+  let openrouterResponseId: string | null = null;
+  let cachedInputTokens = 0;
 
   try {
     // ── Prompt caching: annotate system message with cache_control when eligible ─
@@ -1021,9 +1056,25 @@ export async function routeAITask(
       content = rawContent || "";
     }
     usage = response.usage;
+    openrouterResponseId = (response as any).id ?? null;
+    // OpenRouter passes Anthropic prompt-cache token counts through under
+    // prompt_tokens_details.cached_tokens (OpenAI-compatible field).
+    cachedInputTokens =
+      (usage as any)?.prompt_tokens_details?.cached_tokens
+      ?? (usage as any)?.cache_read_input_tokens
+      ?? 0;
   } catch (err: any) {
     const latencyMs = Date.now() - startTime;
     recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
+    void recordCascadeCall({
+      organizationId: config.orgId ?? null,
+      model,
+      complexityClass: complexityClassFromTaskType(task.taskType),
+      feature: task.taskType || "unknown",
+      latencyMs,
+      cacheHit: false,
+      errorClass: classifyAiError(err),
+    });
     throw err;
   }
 
@@ -1110,6 +1161,22 @@ export async function routeAITask(
     cacheHit: false,
     complexity: task.complexity,
     success: true,
+  });
+
+  // Pillar 7 — cascade telemetry + financial_ledger debit. Fire-and-forget;
+  // any failure logs inside ai-telemetry.ts but never breaks the caller.
+  void recordCascadeCall({
+    organizationId: config.orgId ?? null,
+    model: finalModel,
+    complexityClass: complexityClassFromTaskType(task.taskType),
+    feature: task.taskType || "unknown",
+    promptTokens: usage?.prompt_tokens ?? 0,
+    cachedInputTokens,
+    completionTokens: usage?.completion_tokens ?? 0,
+    costCents: costEstimate * 100,
+    latencyMs,
+    cacheHit: false,
+    openrouterResponseId,
   });
 
   // ── Phase 3 Week 9: increment per-org daily usage ───────────────────────────

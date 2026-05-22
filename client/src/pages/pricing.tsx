@@ -173,6 +173,11 @@ export default function PricingPage() {
             </Badge>
           )}
         </div>
+        {annual && (
+          <p className="text-center text-xs text-muted-foreground mt-3">
+            Pay by ACH on yearly plans to save ~$18 in processing fees per payment.
+          </p>
+        )}
       </section>
 
       {/* Tier cards */}

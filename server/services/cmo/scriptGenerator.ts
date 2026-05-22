@@ -195,12 +195,23 @@ Return strict JSON only.`;
     );
   }
 
+  // Anthropic prompt caching: the system prompt here is multi-kilobyte (brand
+  // profile + archetypes + voice pool + compliance rules) and identical across
+  // all generation cycles for a given brand. Marking it with cache_control
+  // ephemeral cuts 70-90% off the input cost on repeat generations within the
+  // 5-minute Anthropic cache TTL. OpenRouter forwards this directive to
+  // Anthropic transparently for Claude models. (Pillar 7 — AI cost.)
+  const isAnthropicModel = model.startsWith("anthropic/");
+  const messages: any[] = [
+    isAnthropicModel
+      ? { role: "system", content: systemPrompt, cache_control: { type: "ephemeral" } }
+      : { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
   const response = await client.chat.completions.create({
     model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
+    messages,
     response_format: { type: "json_object" },
     temperature: 0.85, // High enough to produce real variant diversity across N scripts
     max_tokens: 4000,

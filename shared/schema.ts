@@ -11865,6 +11865,41 @@ export const aiRoutingOverrides = pgTable("ai_routing_overrides", {
 export type AiRoutingOverride = typeof aiRoutingOverrides.$inferSelect;
 export type InsertAiRoutingOverride = typeof aiRoutingOverrides.$inferInsert;
 
+// ─── AI Call Log (Pillar 7 — AI Cascade Telemetry) ───────────────────────────
+// Per-call cascade-focused telemetry. Distinct from ai_telemetry_events which
+// captures generic provider metrics — this table is designed for cascade
+// distribution + prompt-cache adoption analysis (Pillar 7 of the overhead
+// reduction plan). Every aiRouter call emits one row here (cache hits AND
+// upstream calls), so we can answer:
+//   - "what % of last 7d calls went to each model tier?"
+//   - "what % of prompt tokens were cache reads vs writes?"
+//   - "what fraction of calls came from the in-process cache (no upstream)?"
+//
+// complexityClass is normalized into a small enum so distribution queries are
+// cheap; feature is caller-provided ("pax_chat", "lead_scoring", etc.).
+export const aiCallLog = pgTable("ai_call_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  model: text("model").notNull(),               // e.g. "anthropic/claude-haiku-4-5-20251001", "cache"
+  complexityClass: text("complexity_class").notNull(), // classification | extraction | synthesis | agent_tool | other
+  feature: text("feature").notNull(),           // caller-tag: pax_chat | lead_scoring | cmo_script_gen | ...
+  promptTokens: integer("prompt_tokens").notNull().default(0),
+  cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+  completionTokens: integer("completion_tokens").notNull().default(0),
+  costCents: numeric("cost_cents", { precision: 10, scale: 4 }).notNull().default("0"),
+  latencyMs: integer("latency_ms").notNull().default(0),
+  cacheHit: boolean("cache_hit").notNull().default(false),
+  errorClass: text("error_class"),              // rate_limit | timeout | ctx_overflow | ... | null
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("ai_call_log_org_created_idx").on(table.organizationId, table.createdAt),
+  index("ai_call_log_model_idx").on(table.model),
+  index("ai_call_log_feature_created_idx").on(table.feature, table.createdAt),
+]);
+
+export type AiCallLogRow = typeof aiCallLog.$inferSelect;
+export type InsertAiCallLogRow = typeof aiCallLog.$inferInsert;
+
 // ─── Cost Optimization Runs (Wave 10) ────────────────────────────────────────
 // Nightly meta-job snapshots. Each row is one run of server/jobs/costOptimizer
 // and carries the cost / MRR / margin numbers, the structured recommendation
@@ -21199,3 +21234,61 @@ export const financialLedger = pgTable("financial_ledger", {
 
 export type FinancialLedgerRow = typeof financialLedger.$inferSelect;
 export type InsertFinancialLedgerRow = typeof financialLedger.$inferInsert;
+
+// ── Pillar 5: Communications Router ──────────────────────────────────────
+// Tracking-number assignments. A "tracking number" is a phone number we
+// rent (currently from Twilio) and assign to a specific (org, campaign)
+// pair so inbound calls/SMS can be attributed back to the campaign that
+// triggered them. Releasing a number lets us recycle it into the pool;
+// idle numbers (no inbound activity within `comms.pool.auto_release_days`)
+// are auto-released by the tracking-pool cron.
+//
+// `provider` is the carrier the number was rented from — "twilio" today,
+// "telnyx" once the $3k-MRR trigger flips on. `releasedAt` IS NULL marks
+// an active assignment; a non-null value freezes the row for audit but
+// marks the number reusable.
+export const trackingNumberAssignments = pgTable("tracking_number_assignments", {
+  id: serial("id").primaryKey(),
+  number: text("number").notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  campaignId: integer("campaign_id"),
+  // Provider that owns the underlying phone number ("twilio" | "telnyx" | "bandwidth").
+  provider: text("provider").notNull(),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+  // When set, the number is no longer attributing inbound to this org/campaign.
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  // Last time we observed an inbound SMS or call on this number — used by
+  // the auto-release sweeper to decide when the number is idle.
+  lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  // Active-lookup: finding the current owner of an inbound number means
+  // "WHERE number = $1 AND released_at IS NULL". The composite covers it.
+  index("tracking_number_assignments_number_released_idx").on(table.number, table.releasedAt),
+  // Org timeline lookup.
+  index("tracking_number_assignments_org_assigned_idx").on(table.organizationId, table.assignedAt),
+]);
+
+export type TrackingNumberAssignment = typeof trackingNumberAssignments.$inferSelect;
+export type InsertTrackingNumberAssignment = typeof trackingNumberAssignments.$inferInsert;
+
+// Observed per-provider unit costs. Refreshed by a periodic job that
+// reconciles real provider invoices against our internal cost estimates,
+// so router cost decisions stay accurate as carrier pricing drifts.
+// Optional; the router falls back to hardcoded estimateCostCents() if
+// no row exists.
+export const commsProviderQuotes = pgTable("comms_provider_quotes", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  // ISO 3166-1 alpha-2 country code ("US" today, "CA"/"MX" later).
+  destinationCountry: text("destination_country").notNull(),
+  smsCostCents: integer("sms_cost_cents"),
+  voiceCostCentsPerMin: integer("voice_cost_cents_per_min"),
+  observedAt: timestamp("observed_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("comms_provider_quotes_provider_country_idx").on(table.provider, table.destinationCountry),
+  index("comms_provider_quotes_observed_idx").on(table.observedAt),
+]);
+
+export type CommsProviderQuote = typeof commsProviderQuotes.$inferSelect;
+export type InsertCommsProviderQuote = typeof commsProviderQuotes.$inferInsert;

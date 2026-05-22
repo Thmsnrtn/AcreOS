@@ -173,36 +173,91 @@ async function traceViaREISkip(input: SkipTraceInput): Promise<SkipTraceResult> 
   return { success: true, source: "reiskip", contacts };
 }
 
+// Pillar 1.6 — per-credit skip-trace cost in cents. BatchSkipTracing bills
+// ~$0.20 per traced record by default; override via env. Idempotent on the
+// caller-supplied external id (org+input hash if no native id available).
+const SKIP_TRACE_CREDIT_CENTS = Number(process.env.SKIP_TRACE_CREDIT_CENTS ?? 20);
+
+async function postSkipTraceCostToLedger(
+  organizationId: number,
+  result: SkipTraceResult,
+  externalSeed: string,
+): Promise<void> {
+  if (!result.success || result.source === "none") return;
+  const credits = result.creditsUsed ?? 1;
+  const amountCents = credits * SKIP_TRACE_CREDIT_CENTS;
+  if (amountCents <= 0) return;
+  try {
+    const { postOpexSpent } = await import("./financial-ledger");
+    await postOpexSpent({
+      organizationId,
+      amountCents,
+      category: "skip_trace",
+      feature: "skip_trace",
+      providerName: result.source,
+      providerEventId: externalSeed,
+      externalEventId: `${result.source}:skiptrace:${externalSeed}`,
+    });
+  } catch (err) {
+    logger.warn(`[skipTrace] ledger postOpexSpent failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export const skipTracingService = {
   /**
    * Trace a property owner's contact information.
    * Tries BatchSkipTracing first, then REISkip as fallback.
+   *
+   * Pass `organizationId` to debit opex_available on success. Without an
+   * orgId the lookup still runs (e.g. internal tooling) but no ledger row
+   * is written.
    */
-  async trace(input: SkipTraceInput): Promise<SkipTraceResult> {
+  async trace(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
+    let result: SkipTraceResult | undefined;
+
     // Try primary provider
     if (process.env.BATCH_SKIP_TRACING_API_KEY) {
       try {
-        return await traceViaBatchSkipTracing(input);
+        result = await traceViaBatchSkipTracing(input);
       } catch (err: any) {
         logger.warn(`[skipTrace] Primary provider failed: ${err.message}`);
       }
     }
 
     // Try fallback
-    if (process.env.REISKIP_API_KEY) {
+    if (!result && process.env.REISKIP_API_KEY) {
       try {
-        return await traceViaREISkip(input);
+        result = await traceViaREISkip(input);
       } catch (err: any) {
         logger.warn(`[skipTrace] Fallback provider failed: ${err.message}`);
       }
     }
 
-    return {
-      success: false,
-      source: "none",
-      contacts: [],
-      error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
-    };
+    if (!result) {
+      return {
+        success: false,
+        source: "none",
+        contacts: [],
+        error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
+      };
+    }
+
+    if (organizationId) {
+      // Stable seed: provider + first non-empty input field. Falls back to
+      // a hash of input shape if no leads field is present.
+      const seed = [
+        input.apn,
+        input.zip,
+        input.address,
+        input.lastName,
+        input.firstName,
+      ]
+        .filter(Boolean)
+        .join("|") || `${Date.now()}`;
+      await postSkipTraceCostToLedger(organizationId, result, seed);
+    }
+
+    return result;
   },
 
   /**

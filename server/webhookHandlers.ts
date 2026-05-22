@@ -158,6 +158,14 @@ export class WebhookHandlers {
       return;
     }
 
+    // Pillar 1.5 — capture Stripe processing fees as opex_spent. We listen
+    // to charge.succeeded (a sibling of invoice.paid) because Stripe only
+    // computes the balance_transaction fee on the charge itself.
+    if (event.type === 'charge.succeeded') {
+      await WebhookHandlers.processChargeSucceeded(event.data.object as Stripe.Charge);
+      return;
+    }
+
     // Unhandled event type — log and acknowledge
     logger.info(`[webhook] Unhandled Stripe event type: ${event.type}`);
   }
@@ -716,6 +724,28 @@ export class WebhookHandlers {
           recogErr instanceof Error ? recogErr : undefined,
         );
       }
+
+      // Pillar 1.5 — financial ledger split. Posts five bucket rows summing
+      // to amount_paid via the canonical allocation policy. Idempotent by
+      // externalEventId (stripe:invoice:<id>); fully isolated in try/catch so
+      // a ledger failure can NEVER 5xx the webhook back to Stripe.
+      try {
+        if (invoice.amount_paid > 0 && invoice.id) {
+          const { postRevenue } = await import('./services/financial-ledger');
+          await postRevenue({
+            organizationId: org.id,
+            amountCents: invoice.amount_paid,
+            externalEventId: `stripe:invoice:${invoice.id}`,
+            providerEventId: invoice.id,
+            notes: `Stripe invoice ${invoice.id}`,
+          });
+        }
+      } catch (ledgerErr) {
+        logger.warn(
+          '[webhook] financial-ledger.postRevenue failed (non-fatal)',
+          ledgerErr instanceof Error ? ledgerErr : undefined,
+        );
+      }
     } catch (err) {
       logger.error('Error processing invoice paid', err instanceof Error ? err : undefined);
     }
@@ -743,8 +773,95 @@ export class WebhookHandlers {
         invoiceId: typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id,
         description: `Stripe refund — charge ${charge.id}`,
       });
+
+      // Pillar 1.5 — financial ledger refund debit against refund_reserve.
+      // Idempotent by externalEventId; never propagates failure to Stripe.
+      try {
+        const refundCents = charge.amount_refunded ?? 0;
+        // Stripe issues one charge.refunded event per refund object. Prefer the
+        // latest refund's id for a stable externalEventId per refund event.
+        const latestRefund =
+          (charge as any).refunds?.data?.[(charge as any).refunds?.data?.length - 1];
+        const refundId: string = latestRefund?.id || `charge_${charge.id}`;
+        if (refundCents > 0) {
+          const { postRefund } = await import('./services/financial-ledger');
+          await postRefund({
+            organizationId: org.id,
+            amountCents: refundCents,
+            externalEventId: `stripe:refund:${refundId}`,
+            originalRevenueEventId:
+              typeof charge.invoice === 'string'
+                ? `stripe:invoice:${charge.invoice}`
+                : charge.invoice?.id
+                ? `stripe:invoice:${charge.invoice.id}`
+                : undefined,
+          });
+        }
+      } catch (ledgerErr) {
+        logger.warn(
+          '[webhook] financial-ledger.postRefund failed (non-fatal)',
+          ledgerErr instanceof Error ? ledgerErr : undefined,
+        );
+      }
     } catch (err) {
       logger.error('[webhook] Error processing charge.refunded', err instanceof Error ? err : undefined);
+    }
+  }
+
+  /**
+   * Pillar 1.5 — `charge.succeeded`. Stripe attaches a balance_transaction id
+   * to every successful charge; that BalanceTransaction is the only object
+   * that exposes the processing fee. We retrieve it and post the fee as
+   * opex_spent (category=stripe_fee) so contribution-margin math accounts
+   * for the cost of accepting cards. Idempotent on charge.id.
+   */
+  static async processChargeSucceeded(charge: Stripe.Charge): Promise<void> {
+    try {
+      const customerId = typeof charge.customer === 'string'
+        ? charge.customer
+        : charge.customer?.id;
+      if (!customerId) return;
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      let feeCents = 0;
+      const btId = typeof charge.balance_transaction === 'string'
+        ? charge.balance_transaction
+        : charge.balance_transaction?.id;
+      if (btId) {
+        try {
+          const stripe = await getUncachableStripeClient();
+          const bt = await stripe.balanceTransactions.retrieve(btId);
+          feeCents = bt.fee ?? 0;
+        } catch (btErr) {
+          logger.warn(
+            '[webhook] could not retrieve balance_transaction for fee',
+            btErr instanceof Error ? btErr : undefined,
+          );
+        }
+      }
+
+      if (feeCents <= 0) return;
+      try {
+        const { postOpexSpent } = await import('./services/financial-ledger');
+        await postOpexSpent({
+          organizationId: org.id,
+          amountCents: feeCents,
+          category: 'stripe_fee',
+          feature: 'subscription',
+          providerName: 'stripe',
+          providerEventId: charge.id,
+          externalEventId: `stripe:fee:${charge.id}`,
+          notes: `Stripe processing fee for charge ${charge.id}`,
+        });
+      } catch (ledgerErr) {
+        logger.warn(
+          '[webhook] financial-ledger.postOpexSpent (stripe_fee) failed',
+          ledgerErr instanceof Error ? ledgerErr : undefined,
+        );
+      }
+    } catch (err) {
+      logger.error('[webhook] Error processing charge.succeeded', err instanceof Error ? err : undefined);
     }
   }
 

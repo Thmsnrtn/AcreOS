@@ -1,17 +1,88 @@
+/**
+ * SMS service — THIN SHIM over the CommsRouter (Pillar 5).
+ *
+ * Original file (582 LOC) was a Twilio-only sender. Pillar 5 introduced a
+ * provider-pluggable router (`server/services/comms/router.ts`) plus a
+ * Twilio adapter. This file now exposes the same public surface every
+ * existing caller relies on, but delegates the actual carrier work to
+ * `commsRouter`.
+ *
+ * Preserved API:
+ *   - `smsService` singleton: .isConfigured() / .sendSMS(...) /
+ *     .sendBulkSMS(...) / .getDeliveryStatus(...)
+ *   - sendOrgSMS / sendSMSToLead / handleIncomingSMS
+ *   - checkTwilioConfiguration / saveTwilioCredentials
+ *
+ * Preserved behaviour:
+ *   - Simulation mode still short-circuits sends (handled inside the
+ *     Twilio adapter so all paths agree)
+ *   - BYOK Twilio creds still resolved from organizationIntegrations
+ *     when `organizationId` is supplied (handled inside the adapter)
+ *   - Pillar 1.6 ledger post on successful send still fires per
+ *     organization-scoped send
+ *   - STOP-keyword TCPA handling unchanged
+ *   - Twilio webhook-replay idempotency unchanged
+ */
 import { db } from "../db";
-import { messages, conversations, leads, organizationIntegrations, sequenceEnrollments } from "@shared/schema";
+import {
+  messages,
+  conversations,
+  leads,
+  organizationIntegrations,
+  sequenceEnrollments,
+} from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { commsRouter, type CommsRouter } from "./comms/router";
+import { twilioProvider } from "./comms/providers/twilio";
+// Side-effect import: ensures the Telnyx adapter registers itself with
+// the router even though no caller uses it directly today.
+import "./comms/providers/telnyx";
 
 const SMS_STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
+
+/**
+ * Pillar 1.6 — per-segment Twilio SMS cost in cents.
+ * Twilio currently bills ~$0.0079 per US outbound SMS segment; we round to
+ * 1¢ to keep the ledger integer-clean. Override via env if Twilio repriced.
+ */
+const TWILIO_SMS_COST_CENTS = Number(process.env.TWILIO_SMS_COST_CENTS ?? 1);
+
+/**
+ * Best-effort ledger post for a successful Twilio send. Never throws —
+ * a ledger-post failure must not break the SMS-send acknowledgement to
+ * the caller. Idempotent on the Twilio message sid.
+ */
+async function postSmsCostToLedger(
+  organizationId: number,
+  sid: string,
+  amountCents: number = TWILIO_SMS_COST_CENTS,
+): Promise<void> {
+  if (amountCents <= 0 || !sid || sid.startsWith("mock-")) return;
+  try {
+    const { postOpexSpent } = await import("./financial-ledger");
+    await postOpexSpent({
+      organizationId,
+      amountCents,
+      category: "sms",
+      feature: "sms",
+      providerName: "twilio",
+      providerEventId: sid,
+      externalEventId: `twilio:sms:${sid}`,
+    });
+  } catch (err) {
+    logger.warn(
+      "[SMS] ledger postOpexSpent failed (non-fatal)",
+      err instanceof Error ? err : undefined,
+    );
+  }
+}
 
 export interface SmsOptions {
   to: string;
   message: string;
   from?: string;
   // MMS: when non-empty, Twilio treats this as MMS rather than SMS.
-  // Twilio's REST API accepts MediaUrl as a repeated form field; we send
-  // one per URL. Public https URLs to images or short videos only.
   mediaUrls?: string[];
 }
 
@@ -21,219 +92,98 @@ export interface SmsResult {
   error?: string;
 }
 
-interface TwilioCredentials {
-  accountSid: string;
-  authToken: string;
-  phoneNumber: string;
-}
-
-async function getOrgTwilioCredentials(organizationId: number): Promise<TwilioCredentials | null> {
-  const [twilioIntegration] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "twilio"),
-        eq(organizationIntegrations.isEnabled, true)
-      )
-    )
-    .limit(1);
-
-  if (!twilioIntegration || !twilioIntegration.credentials) {
-    return null;
-  }
-
-  const creds = twilioIntegration.credentials;
-  if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) {
-    return null;
-  }
-  
-  return {
-    accountSid: creds.accountSid,
-    authToken: creds.authToken,
-    phoneNumber: creds.fromPhoneNumber,
-  };
-}
-
+/**
+ * Class-style API preserved verbatim. Internally the work is delegated
+ * to the router; tests can swap a custom CommsRouter into the
+ * constructor.
+ */
 export class SmsService {
-  private accountSid: string | undefined;
-  private authToken: string | undefined;
-  private fromNumber: string | undefined;
-
-  constructor() {
-    this.accountSid = process.env.TWILIO_ACCOUNT_SID;
-    this.authToken = process.env.TWILIO_AUTH_TOKEN;
-    this.fromNumber = process.env.TWILIO_PHONE_NUMBER;
-  }
+  constructor(private readonly router: CommsRouter = commsRouter) {}
 
   isConfigured(): boolean {
-    return !!(this.accountSid && this.authToken && this.fromNumber);
+    // Historically derived from process.env Twilio creds. Now derived
+    // from the Twilio adapter's same env check so semantics are unchanged.
+    return twilioProvider.isConfigured();
   }
 
   async sendSMS(options: SmsOptions): Promise<SmsResult> {
-    // SIMULATION_MODE short-circuits every SMS send — no Twilio API call,
-    // no real SMS delivered. Returns a fake messageId the caller can log.
-    const { isCategorySimulated, recordSimulatedAction } = await import("../utils/simulationMode");
-    if (isCategorySimulated("sms")) {
-      const rec = await recordSimulatedAction("sms", "twilio.messages.create", {
-        to: options.to,
-        from: options.from || this.fromNumber,
-        body: options.message.slice(0, 500),
-        mediaUrls: options.mediaUrls,
-      });
-      return { success: true, messageId: rec.id };
-    }
-
-    if (!this.isConfigured()) {
-      logger.info(`[SMS] Not configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
-      return { success: true, messageId: `mock-${Date.now()}` };
-    }
-
     try {
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`;
-      const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
-
-      const body = new URLSearchParams({
-        To: options.to,
-        From: options.from || this.fromNumber!,
-        Body: options.message,
+      const result = await this.router.route({
+        to: options.to,
+        from: options.from,
+        body: options.message,
+        mediaUrls: options.mediaUrls,
+        feature: "sms",
       });
-      // MMS: Twilio accepts MediaUrl as a repeated form field. Append one
-      // per URL — URLSearchParams.append preserves multiple values.
-      if (options.mediaUrls?.length) {
-        for (const mu of options.mediaUrls) {
-          body.append("MediaUrl", mu);
-        }
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return { success: true, messageId: data.sid };
-      } else {
-        const error = await response.text();
-        return { success: false, error };
-      }
-    } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: true, messageId: result.sid };
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? "send failed" };
     }
   }
 
   async sendBulkSMS(messages: SmsOptions[]): Promise<SmsResult[]> {
     const results: SmsResult[] = [];
     for (const msg of messages) {
-      const result = await this.sendSMS(msg);
-      results.push(result);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      results.push(await this.sendSMS(msg));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return results;
   }
 
-  async getDeliveryStatus(messageId: string): Promise<'pending' | 'delivered' | 'failed' | 'unknown'> {
-    if (!this.isConfigured()) {
-      return 'unknown';
-    }
-
+  /**
+   * Twilio-specific status check kept here because no other provider
+   * needs it yet. When Telnyx activates, this moves into a provider
+   * method on the CommsProvider interface.
+   */
+  async getDeliveryStatus(
+    messageId: string,
+  ): Promise<"pending" | "delivered" | "failed" | "unknown"> {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return "unknown";
     try {
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages/${messageId}.json`;
-      const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
-
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Basic ${auth}` },
-      });
-
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages/${messageId}.json`;
+      const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+      const response = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
       if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'delivered') return 'delivered';
-        if (data.status === 'failed' || data.status === 'undelivered') return 'failed';
-        return 'pending';
+        const data: any = await response.json();
+        if (data.status === "delivered") return "delivered";
+        if (data.status === "failed" || data.status === "undelivered") return "failed";
+        return "pending";
       }
     } catch (error) {
-      logger.error('[SMS] Error checking status', error);
+      logger.error("[SMS] Error checking status", error);
     }
-    return 'unknown';
+    return "unknown";
   }
 }
 
 export const smsService = new SmsService();
 
+/**
+ * Org-scoped SMS send. The Twilio adapter handles BYOK credential
+ * resolution + sim-mode short-circuit; here we only need to post the
+ * cost to the financial ledger after a real send succeeds.
+ */
 export async function sendOrgSMS(
   organizationId: number,
   to: string,
   message: string,
-  mediaUrls?: string[]
+  mediaUrls?: string[],
 ): Promise<SmsResult> {
-  // SIMULATION_MODE short-circuits per-org SMS too. Read both env +
-  // org.settings.simulationMode so the test org can be simulated
-  // independently of the deployment-wide flag.
-  const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
-  const { storage } = await import("../storage");
-  const org = await storage.getOrganization(organizationId).catch(() => null);
-  if (shouldSimulate("sms", org)) {
-    const rec = await recordSimulatedAction(
-      "sms",
-      "twilio.messages.create",
-      { to, body: message.slice(0, 500), mediaUrls },
-      org
-    );
-    return { success: true, messageId: rec.id };
-  }
-
-  const credentials = await getOrgTwilioCredentials(organizationId);
-
-  if (!credentials) {
-    if (smsService.isConfigured()) {
-      return smsService.sendSMS({ to, message, mediaUrls });
-    }
-    return {
-      success: false,
-      error: "Twilio credentials not configured. Please add your Twilio API keys in Settings.",
-    };
-  }
-
   try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/Messages.json`;
-    const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
-
-    const body = new URLSearchParams({
-      To: to,
-      From: credentials.phoneNumber,
-      Body: message,
+    const result = await commsRouter.route({
+      to,
+      body: message,
+      mediaUrls,
+      organizationId,
+      feature: "sms",
     });
-    // MMS pass-through (mirrors SmsService.sendSMS above).
-    if (mediaUrls?.length) {
-      for (const mu of mediaUrls) {
-        body.append("MediaUrl", mu);
-      }
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return { success: true, messageId: data.sid };
-    } else {
-      const error = await response.text();
-      return { success: false, error };
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message };
+    // Pillar 1.6 — record opex on successful real send.
+    await postSmsCostToLedger(organizationId, result.sid);
+    return { success: true, messageId: result.sid };
+  } catch (err: any) {
+    return { success: false, error: err?.message ?? "send failed" };
   }
 }
 
@@ -241,32 +191,19 @@ export async function sendSMSToLead(
   organizationId: number,
   leadId: number,
   messageContent: string,
-  userId: string
+  _userId: string,
 ): Promise<SmsResult & { conversationId?: number; dbMessageId?: number }> {
   const [lead] = await db
     .select()
     .from(leads)
-    .where(
-      and(
-        eq(leads.organizationId, organizationId),
-        eq(leads.id, leadId)
-      )
-    )
+    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
     .limit(1);
 
-  if (!lead) {
-    return { success: false, error: "Lead not found" };
-  }
-
-  if (!lead.phone) {
-    return { success: false, error: "Lead has no phone number" };
-  }
+  if (!lead) return { success: false, error: "Lead not found" };
+  if (!lead.phone) return { success: false, error: "Lead has no phone number" };
 
   const smsResult = await sendOrgSMS(organizationId, lead.phone, messageContent);
-
-  if (!smsResult.success) {
-    return smsResult;
-  }
+  if (!smsResult.success) return smsResult;
 
   let [existingConversation] = await db
     .select()
@@ -275,8 +212,8 @@ export async function sendSMSToLead(
       and(
         eq(conversations.organizationId, organizationId),
         eq(conversations.leadId, leadId),
-        eq(conversations.channel, "sms")
-      )
+        eq(conversations.channel, "sms"),
+      ),
     )
     .orderBy(desc(conversations.lastMessageAt))
     .limit(1);
@@ -310,9 +247,7 @@ export async function sendSMSToLead(
 
   await db
     .update(conversations)
-    .set({
-      lastMessageAt: new Date(),
-    })
+    .set({ lastMessageAt: new Date() })
     .where(eq(conversations.id, existingConversation.id));
 
   return {
@@ -328,51 +263,83 @@ export async function handleIncomingSMS(
   fromPhone: string,
   toPhone: string,
   body: string,
-  messageSid: string
-): Promise<{ success: boolean; conversationId?: number; dbMessageId?: number; leadId?: number; error?: string }> {
+  messageSid: string,
+): Promise<{
+  success: boolean;
+  conversationId?: number;
+  dbMessageId?: number;
+  leadId?: number;
+  error?: string;
+}> {
   const cleanPhone = fromPhone.replace(/\D/g, "");
   const last10Digits = cleanPhone.slice(-10);
 
   // ── TCPA opt-out: handle STOP keywords immediately ───────────────────────
   const normalizedBody = body.trim().toLowerCase();
   if (SMS_STOP_WORDS.has(normalizedBody)) {
-    // Find all leads in this org with this phone number and opt them out
-    const allLeadsInOrg = await db.select().from(leads).where(eq(leads.organizationId, organizationId));
-    const matchingLeads = allLeadsInOrg.filter(l => {
+    const allLeadsInOrg = await db
+      .select()
+      .from(leads)
+      .where(eq(leads.organizationId, organizationId));
+    const matchingLeads = allLeadsInOrg.filter((l) => {
       const p = l.phone?.replace(/\D/g, "") || "";
       return p.length >= 7 && (p.slice(-10) === last10Digits || p.includes(last10Digits));
     });
     for (const lead of matchingLeads) {
-      await db.update(leads).set({ tcpaConsent: false, optOutDate: new Date() }).where(eq(leads.id, lead.id));
-      // Cancel all active sequence enrollments for this lead
-      await db.update(sequenceEnrollments)
+      await db
+        .update(leads)
+        .set({ tcpaConsent: false, optOutDate: new Date() })
+        .where(eq(leads.id, lead.id));
+      await db
+        .update(sequenceEnrollments)
         .set({ status: "cancelled", completedAt: new Date() })
-        .where(and(eq(sequenceEnrollments.leadId, lead.id), eq(sequenceEnrollments.status, "active")));
-      // Fire Pax nudge so the owner knows
+        .where(
+          and(eq(sequenceEnrollments.leadId, lead.id), eq(sequenceEnrollments.status, "active")),
+        );
       try {
         const { handleDomainEvent } = await import("./paxNudges");
         await handleDomainEvent({
           organizationId,
           eventType: "lead.opted_out",
-          payload: { leadId: lead.id, leadName: lead.firstName ? `${lead.firstName} ${lead.lastName ?? ""}`.trim() : lead.email ?? fromPhone },
+          payload: {
+            leadId: lead.id,
+            leadName: lead.firstName
+              ? `${lead.firstName} ${lead.lastName ?? ""}`.trim()
+              : lead.email ?? fromPhone,
+          },
         });
       } catch {}
     }
-    logger.info(`[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`);
+    logger.info(
+      `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`,
+    );
     return { success: true, leadId: matchingLeads[0]?.id };
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const allLeads = await db
-    .select()
-    .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+  // Pillar 5: bump the tracking-number assignment's last-inbound timestamp
+  // so the auto-release sweeper sees the number is still active.
+  // Non-fatal — old hand-assigned numbers won't have a row here.
+  try {
+    const { attributeInbound } = await import("./comms/tracking-pool");
+    await attributeInbound(toPhone, fromPhone, new Date());
+  } catch (err: any) {
+    logger.warn("[SMS] tracking-pool attribution failed (non-fatal)", {
+      metadata: { error: err?.message },
+    });
+  }
 
-  const matchedLead = allLeads.find(l => {
+  const allLeads = await db.select().from(leads).where(eq(leads.organizationId, organizationId));
+
+  const matchedLead = allLeads.find((l) => {
     const leadPhone = l.phone?.replace(/\D/g, "") || "";
     if (leadPhone.length < 7) return false;
     const leadLast10 = leadPhone.slice(-10);
-    return leadLast10 === last10Digits || leadPhone.includes(last10Digits) || last10Digits.includes(leadLast10);
+    return (
+      leadLast10 === last10Digits ||
+      leadPhone.includes(last10Digits) ||
+      last10Digits.includes(leadLast10)
+    );
   });
 
   const leadId = matchedLead?.id;
@@ -387,8 +354,8 @@ export async function handleIncomingSMS(
         and(
           eq(conversations.organizationId, organizationId),
           eq(conversations.leadId, leadId),
-          eq(conversations.channel, "sms")
-        )
+          eq(conversations.channel, "sms"),
+        ),
       )
       .orderBy(desc(conversations.lastMessageAt))
       .limit(1);
@@ -410,18 +377,18 @@ export async function handleIncomingSMS(
   }
 
   if (!existingConversation) {
-    logger.info(`[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`);
-    return { 
-      success: false, 
-      error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.` 
+    logger.info(
+      `[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`,
+    );
+    return {
+      success: false,
+      error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.`,
     };
   }
 
-  // Webhook-replay defense (Hessam §2.2 + §2.4): rely on the partial unique
-  // index `messages_external_id_unique` on (external_id) WHERE NOT NULL to
-  // make replayed Twilio webhooks idempotent. ON CONFLICT DO NOTHING +
-  // .returning() yields an empty array on conflict, which lets us skip
-  // downstream side effects (notifications, autoresponders) for replays.
+  // Webhook-replay defense: partial unique index on (external_id) makes
+  // replayed Twilio webhooks idempotent. ON CONFLICT DO NOTHING +
+  // .returning() yields an empty array on conflict.
   const insertedRows = await db
     .insert(messages)
     .values({
@@ -441,19 +408,12 @@ export async function handleIncomingSMS(
 
   if (isReplay) {
     logger.warn(`[SMS] Duplicate Twilio MessageSid ${messageSid} — webhook replay ignored`);
-    return {
-      success: true,
-      conversationId: existingConversation.id,
-      leadId,
-    };
+    return { success: true, conversationId: existingConversation.id, leadId };
   }
 
   await db
     .update(conversations)
-    .set({
-      lastMessageAt: new Date(),
-      status: "active",
-    })
+    .set({ lastMessageAt: new Date(), status: "active" })
     .where(eq(conversations.id, existingConversation.id));
 
   return {
@@ -469,45 +429,38 @@ export async function checkTwilioConfiguration(organizationId: number): Promise<
   phoneNumber?: string;
   error?: string;
 }> {
-  const credentials = await getOrgTwilioCredentials(organizationId);
-  
-  if (!credentials) {
-    if (smsService.isConfigured()) {
-      return {
-        configured: true,
-        phoneNumber: process.env.TWILIO_PHONE_NUMBER,
-      };
+  const [twilioIntegration] = await db
+    .select()
+    .from(organizationIntegrations)
+    .where(
+      and(
+        eq(organizationIntegrations.organizationId, organizationId),
+        eq(organizationIntegrations.provider, "twilio"),
+        eq(organizationIntegrations.isEnabled, true),
+      ),
+    )
+    .limit(1);
+
+  if (!twilioIntegration || !twilioIntegration.credentials) {
+    if (twilioProvider.isConfigured()) {
+      return { configured: true, phoneNumber: process.env.TWILIO_PHONE_NUMBER };
     }
-    return {
-      configured: false,
-      error: "Twilio credentials not configured",
-    };
+    return { configured: false, error: "Twilio credentials not configured" };
+  }
+
+  const creds = twilioIntegration.credentials as any;
+  if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) {
+    return { configured: false, error: "Twilio credentials incomplete" };
   }
 
   try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}.json`;
-    const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
-
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Basic ${auth}` },
-    });
-
-    if (response.ok) {
-      return {
-        configured: true,
-        phoneNumber: credentials.phoneNumber,
-      };
-    } else {
-      return {
-        configured: false,
-        error: "Invalid Twilio credentials",
-      };
-    }
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}.json`;
+    const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64");
+    const response = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    if (response.ok) return { configured: true, phoneNumber: creds.fromPhoneNumber };
+    return { configured: false, error: "Invalid Twilio credentials" };
   } catch (error: any) {
-    return {
-      configured: false,
-      error: error.message || "Failed to verify credentials",
-    };
+    return { configured: false, error: error.message || "Failed to verify credentials" };
   }
 }
 
@@ -515,22 +468,13 @@ export async function saveTwilioCredentials(
   organizationId: number,
   accountSid: string,
   authToken: string,
-  fromPhoneNumber: string
+  fromPhoneNumber: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`;
-    const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Basic ${auth}` },
-    });
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: "Invalid Twilio credentials",
-      };
-    }
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+    const response = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    if (!response.ok) return { success: false, error: "Invalid Twilio credentials" };
   } catch (error: any) {
     return {
       success: false,
@@ -544,16 +488,12 @@ export async function saveTwilioCredentials(
     .where(
       and(
         eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "twilio")
-      )
+        eq(organizationIntegrations.provider, "twilio"),
+      ),
     )
     .limit(1);
 
-  const credentials = {
-    accountSid,
-    authToken,
-    fromPhoneNumber,
-  };
+  const credentials = { accountSid, authToken, fromPhoneNumber };
 
   if (existing) {
     await db
@@ -567,15 +507,13 @@ export async function saveTwilioCredentials(
       })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
-    await db
-      .insert(organizationIntegrations)
-      .values({
-        organizationId,
-        provider: "twilio",
-        isEnabled: true,
-        credentials,
-        lastValidatedAt: new Date(),
-      });
+    await db.insert(organizationIntegrations).values({
+      organizationId,
+      provider: "twilio",
+      isEnabled: true,
+      credentials,
+      lastValidatedAt: new Date(),
+    });
   }
 
   return { success: true };

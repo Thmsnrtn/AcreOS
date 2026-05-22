@@ -1,3 +1,4 @@
+import type Stripe from 'stripe';
 import { getUncachableStripeClient } from './stripeClient';
 import crypto from 'crypto';
 import { stripeCircuitBreaker } from './utils/circuitBreaker';
@@ -26,12 +27,18 @@ export class StripeService {
     cancelUrl: string,
     metadata?: Record<string, string>,
     trialDays?: number,
-    options?: { couponId?: string; allowPromoCodes?: boolean }
+    options?: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean }
   ) {
     const stripe = await getUncachableStripeClient();
+    // Pillar 8.5 — yearly checkout adds ACH. ACH costs ~$0.80 vs Stripe's
+    // ~2.9% + $0.30 card fee → saves ~$18 on a $700 annual seat. Cards
+    // remain the default on monthly because ACH adds 3-5 days of payment
+    // settlement, which we don't want to interleave with monthly billing.
+    const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] =
+      options?.enableAch ? ['card', 'us_bank_account'] : ['card'];
     const sessionConfig: any = {
       customer: customerId,
-      payment_method_types: ['card'],
+      payment_method_types: paymentMethodTypes,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: successUrl,

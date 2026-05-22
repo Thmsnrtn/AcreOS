@@ -3910,6 +3910,62 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "financial_ledger_posted_idx" ON "financial_ledger" ("posted_at")`,
   `CREATE INDEX IF NOT EXISTS "financial_ledger_category_posted_idx" ON "financial_ledger" ("category", "posted_at")`,
   `CREATE INDEX IF NOT EXISTS "financial_ledger_provider_idx" ON "financial_ledger" ("provider")`,
+
+  // 2026-05-22 (Pillar 7 — AI Cascade Telemetry). Per-call cascade row.
+  // Emitted from server/services/ai-telemetry.ts for every aiRouter
+  // invocation (cache hits AND upstream calls). Distinct from the older
+  // ai_telemetry_events table which captures generic provider metrics —
+  // ai_call_log is purpose-built for cascade distribution + prompt-cache
+  // adoption queries. organizationId is nullable / ON DELETE SET NULL so
+  // org deletion doesn't blow up historical telemetry.
+  `CREATE TABLE IF NOT EXISTS "ai_call_log" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+     "model" text NOT NULL,
+     "complexity_class" text NOT NULL,
+     "feature" text NOT NULL,
+     "prompt_tokens" integer NOT NULL DEFAULT 0,
+     "cached_input_tokens" integer NOT NULL DEFAULT 0,
+     "completion_tokens" integer NOT NULL DEFAULT 0,
+     "cost_cents" numeric(10, 4) NOT NULL DEFAULT 0,
+     "latency_ms" integer NOT NULL DEFAULT 0,
+     "cache_hit" boolean NOT NULL DEFAULT false,
+     "error_class" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "ai_call_log_org_created_idx" ON "ai_call_log" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "ai_call_log_model_idx" ON "ai_call_log" ("model")`,
+  `CREATE INDEX IF NOT EXISTS "ai_call_log_feature_created_idx" ON "ai_call_log" ("feature", "created_at")`,
+
+  // ── Pillar 5: Communications Router ─────────────────────────────────────
+  // Tracking-number assignments. See shared/schema.ts for column-level
+  // commentary. Idempotent — safe to re-run.
+  `CREATE TABLE IF NOT EXISTS "tracking_number_assignments" (
+     "id" serial PRIMARY KEY,
+     "number" text NOT NULL,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+     "campaign_id" integer,
+     "provider" text NOT NULL,
+     "assigned_at" timestamptz NOT NULL DEFAULT now(),
+     "released_at" timestamptz,
+     "last_inbound_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "tracking_number_assignments_number_released_idx" ON "tracking_number_assignments" ("number", "released_at")`,
+  `CREATE INDEX IF NOT EXISTS "tracking_number_assignments_org_assigned_idx" ON "tracking_number_assignments" ("organization_id", "assigned_at")`,
+
+  // Per-provider observed unit costs. Optional — router falls back to
+  // estimateCostCents() when no row exists for a (provider, country).
+  `CREATE TABLE IF NOT EXISTS "comms_provider_quotes" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "destination_country" text NOT NULL,
+     "sms_cost_cents" integer,
+     "voice_cost_cents_per_min" integer,
+     "observed_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "comms_provider_quotes_provider_country_idx" ON "comms_provider_quotes" ("provider", "destination_country")`,
+  `CREATE INDEX IF NOT EXISTS "comms_provider_quotes_observed_idx" ON "comms_provider_quotes" ("observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

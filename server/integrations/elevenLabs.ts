@@ -85,6 +85,11 @@ export async function generateVoiceover(
   text: string,
   settings: VoiceSettings,
   outputKey: string,
+  /**
+   * Pillar 1.6 — pass the calling org's id to debit opex_available on
+   * non-cache renders. Cache hits cost zero and skip the ledger post.
+   */
+  organizationId?: number,
 ): Promise<VoiceoverResult> {
   const apiKey = ensureApiKey();
   const voiceId = ensureVoiceId(settings);
@@ -138,6 +143,33 @@ export async function generateVoiceover(
   const durationSec = estimateDurationSec(text);
 
   logger.info(`[cmo:voice] generated ${charCount}ch ≈ ${durationSec}s ≈ ${(costCents / 100).toFixed(3)}USD`);
+
+  // Pillar 1.6 — post ElevenLabs synthesis cost to the financial ledger.
+  // Only on a true synthesis (not a cache hit, which exited above) and only
+  // when we know which org to bill. Hash of (voiceId, text) gives a stable,
+  // collision-safe externalEventId for idempotency on retries.
+  if (organizationId && costCents > 0) {
+    try {
+      const eventId = crypto
+        .createHash("sha256")
+        .update(`${voiceId}|${text}`)
+        .digest("hex")
+        .slice(0, 24);
+      const { postOpexSpent } = await import("../services/financial-ledger");
+      await postOpexSpent({
+        organizationId,
+        amountCents: costCents,
+        category: "voice",
+        feature: "elevenlabs_tts",
+        providerName: "elevenlabs",
+        providerEventId: eventId,
+        externalEventId: `elevenlabs:tts:${eventId}`,
+        notes: `${charCount} chars`,
+      });
+    } catch (err) {
+      logger.warn(`[cmo:voice] ledger postOpexSpent failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   return {
     storagePath: outputPath,

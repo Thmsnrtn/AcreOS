@@ -170,6 +170,44 @@ async function recordUsage(organizationId: number, metadata: Record<string, any>
   await usageMeteringService.recordUsage(organizationId, 'direct_mail', 1, metadata);
 }
 
+// Pillar 1.6 — Lob piece-cost table (cents). Numbers approximate Lob's
+// public 2026 pricing; adjust if Lob repriced. Read once per call from
+// env overrides so a founder can re-tune without redeploying.
+function lobPieceCostCents(type: 'postcard' | 'letter', size?: string, color?: boolean): number {
+  if (type === 'postcard') {
+    if (size === '6x11') return Number(process.env.LOB_POSTCARD_6X11_CENTS ?? 110);
+    if (size === '6x9') return Number(process.env.LOB_POSTCARD_6X9_CENTS ?? 85);
+    return Number(process.env.LOB_POSTCARD_4X6_CENTS ?? 65);
+  }
+  // letter — color flips the rate up a notch
+  return color
+    ? Number(process.env.LOB_LETTER_COLOR_CENTS ?? 120)
+    : Number(process.env.LOB_LETTER_BW_CENTS ?? 85);
+}
+
+async function postLobCostToLedger(
+  organizationId: number,
+  lobId: string,
+  amountCents: number,
+  pieceType: 'postcard' | 'letter',
+): Promise<void> {
+  if (amountCents <= 0 || !lobId) return;
+  try {
+    const { postOpexSpent } = await import('./financial-ledger');
+    await postOpexSpent({
+      organizationId,
+      amountCents,
+      category: 'mail',
+      feature: pieceType,
+      providerName: 'lob',
+      providerEventId: lobId,
+      externalEventId: `lob:${pieceType}:${lobId}`,
+    });
+  } catch (err) {
+    logger.warn('[DirectMailService] ledger postOpexSpent failed (non-fatal)', err instanceof Error ? err : undefined);
+  }
+}
+
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
 
@@ -224,11 +262,14 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     });
     
     logger.info(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
-    
+
     if (!skipCredits) {
       await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
     }
-    
+
+    // Pillar 1.6 — debit opex_available by Lob piece cost.
+    await postLobCostToLedger(organizationId, result.id, lobPieceCostCents('postcard', size), 'postcard');
+
     return {
       lobId: result.id,
       url: (result as any).url || '',
@@ -293,11 +334,19 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
     });
     
     logger.info(`[DirectMailService] Letter sent successfully: ${result.id} (source: ${source})`);
-    
+
     if (!skipCredits) {
       await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
     }
-    
+
+    // Pillar 1.6 — debit opex_available by Lob piece cost.
+    await postLobCostToLedger(
+      organizationId,
+      result.id,
+      lobPieceCostCents('letter', undefined, color),
+      'letter',
+    );
+
     return {
       lobId: result.id,
       url: (result as any).url || '',

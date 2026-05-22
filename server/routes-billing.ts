@@ -317,7 +317,8 @@ export function registerBillingRoutes(app: Express): void {
       const trialDays = org.trialUsed ? undefined : 14;
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
-      let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean } = {};
+      // and detect yearly billing to opt the session into ACH (Pillar 8.5).
+      let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean } = {};
       try {
         const price = await stripeService.getPrice(priceId);
         const tierFromMeta = (price?.metadata?.tier || price?.metadata?.plan) as string | undefined;
@@ -329,6 +330,12 @@ export function registerBillingRoutes(app: Express): void {
           } else if (pricingCfg?.allowPromoCodes) {
             checkoutOptions.allowPromoCodes = true;
           }
+        }
+        // Pillar 8.5 — yearly plans accept ACH in addition to card. ACH
+        // costs ~$0.80 flat vs ~$20+ in card fees on a $700 annual seat.
+        const recurringInterval = (price as any)?.recurring?.interval;
+        if (recurringInterval === 'year') {
+          checkoutOptions.enableAch = true;
         }
       } catch {
         // Non-fatal: proceed without promo
