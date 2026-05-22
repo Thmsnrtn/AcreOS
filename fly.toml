@@ -38,16 +38,21 @@ primary_region = 'iad'
 [http_service]
   internal_port = 5000
   force_https = true
-  # Task #116: Never auto-stop in production — keep 2 machines warm at all times
-  auto_stop_machines = 'off'
+  # Phase 0 (2026-05-22) — zero-capital survival mode. The previous config
+  # kept 2 performance-2x machines hot 24/7 (~$576/mo) for HA. With $0
+  # working capital pre-launch, we trade 1–2s cold-start latency on the
+  # first request after idle for $560/mo of recovered runway. Fly's
+  # auto_stop suspends machines after ~5 minutes of no traffic; the next
+  # request triggers a wake. Revisit at $200 MRR (revenue-trigger ladder
+  # in docs/financial-mail-platform/PLAN.md).
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
-  # Task #116: Minimum 2 instances for high-availability (no single point of failure)
-  min_machines_running = 2
+  min_machines_running = 0
   processes = ['app']
 
   [http_service.concurrency]
     type = 'requests'
-    # Task #117: Scale out at 70% concurrency, scale in at 20%
+    # Scale out at 70% concurrency, scale in at 20%
     soft_limit = 200
     hard_limit = 250
 
@@ -62,11 +67,15 @@ primary_region = 'iad'
     path = '/api/health/cached'
     processes = ['app']
 
-# Default VM (app process group) — performance class for customer traffic.
+# Default VM (app process group). Phase 0: shared-cpu-4x (2 shared vCPU,
+# 1 GB RAM) is the smallest VM the Node + Express + Drizzle bundle
+# starts reliably on. Combined with auto_stop_machines=suspend above,
+# typical idle-month cost is <$5/mo. When MRR crosses $200, the
+# revenue-trigger ladder bumps this back up.
 [[vm]]
-  size = 'performance-2x'
-  memory = '4gb'
-  cpu_kind = 'performance'
+  size = 'shared-cpu-4x'
+  memory = '1gb'
+  cpu_kind = 'shared'
   cpus = 2
   processes = ['app']
 
