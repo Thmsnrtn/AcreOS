@@ -1562,6 +1562,15 @@ export async function registerRoutes(
     app.use('/api/founder/graduation', isAuthenticated, requireFounder, founderGraduationRouter);
   }
 
+  // Founder Chat (Atlas) — chat-spine SSE stream + thread management.
+  // Phase B of the founder-chat plan; mounts the only new founder-side
+  // HTTP surface (the 40 tools live behind this endpoint). Importing
+  // the routes module side-effect-registers the tool inventory.
+  {
+    const { registerFounderChatRoutes } = await import("./routes-founder-chat");
+    registerFounderChatRoutes(app);
+  }
+
   // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
   {
     const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;

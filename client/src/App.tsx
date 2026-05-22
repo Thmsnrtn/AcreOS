@@ -249,6 +249,15 @@ const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedba
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
+// Phase C — Atlas chat shell. Becomes the /founder default landing;
+// legacy tile-driven Now layout stays reachable at /founder/dashboard
+// via LegacyNowSurface until Phase F deprecates it.
+const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+const FounderLegacyDashboard = React.lazy(() =>
+  import("@/components/founder-chat/LegacyNowSurface").then((m) => ({
+    default: m.LegacyNowSurface,
+  })),
+);
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
@@ -851,13 +860,16 @@ function Router() {
       <Route path="/founder/inspector/audit">
         {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
-      {/* Founder redesign Phase E — /founder is the canonical daily Now
-          surface. Previously rendered FounderHomePage (1,190 LOC Wave 23-26
-          page); now points at the existing /founder/now component which
-          already implements the daily-attention-capped inbox. /founder/now
-          stays live during the Phase F redirect window. */}
+      {/* Founder Chat (Atlas) Phase C — /founder is now the chat shell.
+          The previous tile-driven Now-surface (FounderNowPage) moves to
+          /founder/dashboard via LegacyNowSurface during the transition;
+          Phase E folds its tiles into the chat as a morning-brief
+          artifact and Phase F deprecates the dashboard surface. */}
+      <Route path="/founder/dashboard">
+        {() => <FounderProtectedRoute component={FounderLegacyDashboard} />}
+      </Route>
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderNowPage} />}
+        {() => <FounderProtectedRoute component={FounderChatPage} />}
       </Route>
       {/* Founder redesign Phase E — /founder/steering is the canonical
           weekly/monthly surface. Renders the existing cockpit component;
