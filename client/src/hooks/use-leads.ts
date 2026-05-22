@@ -93,7 +93,15 @@ export function useCreateLead() {
       return api.leads.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      // F-D20: invalidate AND force refetch — the paginated list uses
+      // keepPreviousData, so a passive invalidation leaves the user staring
+      // at the old list (without their new lead) until the user navigates.
+      // refetchType: "active" forces an immediate refetch on any mounted
+      // query matching the prefix.
+      queryClient.invalidateQueries({
+        queryKey: [api.leads.list.path],
+        refetchType: "active",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
       toast({
         title: "Success",

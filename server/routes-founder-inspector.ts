@@ -42,7 +42,23 @@ export function registerFounderInspectorRoutes(app: Express) {
       const agent = await db.query.companyAgents.findFirst({
         where: eq(companyAgents.codename, codename),
       });
-      if (!agent) return res.status(404).json({ error: `agent ${codename} not found` });
+      // F-D18: return graceful empty-state instead of 404. The companyAgents
+      // row is created lazily by trustEvolution/agentOrchestration the first
+      // time an agent actually does work in this environment — sidebar links
+      // shouldn't 404 just because the agent hasn't acted yet.
+      if (!agent) {
+        return res.json({
+          agent: { codename, title: codename, exists: false, trustScore: null, trustTier: null },
+          trustCurve: [],
+          recentDecisions: [],
+          actionStats: { total: 0, succeeded: 0, failed: 0, escalated: 0 },
+          memoryNotes: [],
+          promptHistory: [],
+          rejectionSummary: { count: 0, recent: [] },
+          llmTraces: [],
+          empty: true,
+        });
+      }
 
       // Trust curve — last 30 evolution log entries
       const trustCurve = await db

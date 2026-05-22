@@ -35,6 +35,15 @@ import { logger } from "../utils/logger";
 
 const CACHE_TTL_MS = 30_000;
 
+// F-D21: thrown by setSetting() when a value is outside the registered
+// validRange. The route handler catches this and translates to a 422.
+export class SettingsValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettingsValidationError";
+  }
+}
+
 interface CachedSetting {
   value: unknown;
   expiresAt: number;
@@ -145,6 +154,26 @@ export async function setSetting(args: SetSettingArgs): Promise<PlatformSetting>
       `[settings] unknown key '${args.key}' — must be seeded via seedSetting() before it can be set. ` +
         "This guard prevents typos from creating orphan rows that the studio UI can't render.",
     );
+  }
+
+  // F-D21: validate value against validRange before persisting. The studio
+  // UI already constrains inputs but direct API callers (or buggy clients)
+  // could send out-of-range values that PATCH would silently accept.
+  const range = globalRow.validRange as { type?: string; min?: number; max?: number; oneOf?: unknown[] } | null;
+  if (range && typeof range === "object") {
+    if (range.type === "number" && typeof args.value === "number") {
+      if (typeof range.min === "number" && args.value < range.min) {
+        throw new SettingsValidationError(`value ${args.value} is below min ${range.min}`);
+      }
+      if (typeof range.max === "number" && args.value > range.max) {
+        throw new SettingsValidationError(`value ${args.value} is above max ${range.max}`);
+      }
+    }
+    if (Array.isArray(range.oneOf) && !range.oneOf.includes(args.value as never)) {
+      throw new SettingsValidationError(
+        `value '${String(args.value)}' is not one of [${range.oneOf.map(String).join(", ")}]`,
+      );
+    }
   }
 
   const existing = scopeName === "global" && scopeRef === null

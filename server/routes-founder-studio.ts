@@ -19,7 +19,7 @@ import { db } from "./db";
 import { platformSettings, founderAudit } from "@shared/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
-import { getSettingRow, setSetting, resetSetting } from "./services/settings";
+import { getSettingRow, setSetting, resetSetting, SettingsValidationError } from "./services/settings";
 
 export function registerFounderStudioRoutes(app: Express) {
   // GET /api/founder/studio/dials — full catalog at global scope, grouped by category.
@@ -102,6 +102,11 @@ export function registerFounderStudioRoutes(app: Express) {
         res.json({ dial: row });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // F-D21: validRange violations return 422 so the UI can show a real
+        // rejection message instead of pretending the save succeeded.
+        if (err instanceof SettingsValidationError) {
+          return res.status(422).json({ error: "VALIDATION_FAILED", message });
+        }
         res.status(400).json({ error: message });
       }
     },
