@@ -1153,7 +1153,15 @@ export function registerIntegrationRoutes(app: Express): void {
   // Update variant metrics (for tracking)
   api.patch("/api/ab-test-variants/:id/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const variantId = Number(req.params.id);
+      // F-D39: variants reference an A/B test which is org-scoped — resolve and
+      // gate so another org can't poison metrics on yours.
+      const { abTestVariants } = await import("@shared/schema");
+      const [variant] = await db.select().from(abTestVariants).where(eq(abTestVariants.id, variantId));
+      if (!variant) return Errors.notFound(res, "Variant");
+      const parentTest = await storage.getAbTest(org.id, variant.testId);
+      if (!parentTest) return Errors.notFound(res, "Variant");
       const { sent, delivered, opened, clicked, responded, converted } = req.body;
       
       const updates: any = {};

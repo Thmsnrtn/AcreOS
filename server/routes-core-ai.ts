@@ -271,12 +271,15 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.delete("/api/agents/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const memoryId = parseInt(req.params.id);
       if (isNaN(memoryId)) {
         return Errors.badRequest(res, "Invalid memory ID");
       }
 
-      await storage.deleteAgentMemory(memoryId);
+      // F-D39: storage method already accepts an optional org filter — pass it
+      // so a customer can't delete another org's agent memories.
+      await storage.deleteAgentMemory(memoryId, org.id);
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Delete agent memory error", err);

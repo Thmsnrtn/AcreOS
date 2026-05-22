@@ -1048,14 +1048,25 @@ export function registerCampaignRoutes(app: Express): void {
   
   api.put("/api/optimizations/:id/implement", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const optimizationId = parseInt(req.params.id);
       const { resultDelta } = req.body;
-      
+      // F-D39: refuse to mark another org's optimization as implemented.
+      const { campaignOptimizations } = await import("@shared/schema");
+      const { eq: dEq } = await import("drizzle-orm");
+      const [existing] = await db
+        .select()
+        .from(campaignOptimizations)
+        .where(dEq(campaignOptimizations.id, optimizationId));
+      if (!existing || existing.organizationId !== org.id) {
+        return Errors.notFound(res, "Optimization");
+      }
+
       const updated = await storage.markOptimizationImplemented(optimizationId, resultDelta || null);
       if (!updated) {
         return Errors.notFound(res, "Optimization");
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to mark optimization as implemented"));

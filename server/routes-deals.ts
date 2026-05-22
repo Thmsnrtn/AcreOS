@@ -8,10 +8,22 @@ import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry } from "@shared/schema";
+import { outcomeTelemetry, dueDiligenceItems } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+
+// F-D39: small helper used by the due-diligence-item routes below to resolve
+// `(itemId, orgId) → item` only when the item's parent property belongs to
+// the caller's org. Without this gate, callers were mutating/deleting items
+// across tenants by guessing the numeric id.
+async function getDueDiligenceItemOrgScoped(itemId: number, orgId: number) {
+  const [item] = await db.select().from(dueDiligenceItems).where(eq(dueDiligenceItems.id, itemId));
+  if (!item || item.propertyId == null) return null;
+  const property = await storage.getProperty(orgId, item.propertyId);
+  return property ? item : null;
+}
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -663,22 +675,35 @@ export function registerDealRoutes(app: Express): void {
   const updateDueDiligenceTemplateSchema = createDueDiligenceTemplateSchema.partial();
 
   api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const parsed = updateDueDiligenceTemplateSchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
+    // F-D39: refuse to mutate another org's template.
+    const existing = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), parsed.data);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
 
   api.delete("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    // F-D39: refuse to delete another org's template.
+    const existing = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     await storage.deleteDueDiligenceTemplate(Number(req.params.id));
     res.status(204).send();
   });
-  
+
   api.get("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const items = await storage.getPropertyDueDiligence(Number(req.params.id));
+    const org = req.organization;
+    const propertyId = Number(req.params.id);
+    // F-D39: refuse to list another org's checklist.
+    const property = await storage.getProperty(org.id, propertyId);
+    if (!property) return Errors.notFound(res, "Property");
+    const items = await storage.getPropertyDueDiligence(propertyId);
     res.json(items);
   });
   
@@ -688,12 +713,20 @@ export function registerDealRoutes(app: Express): void {
 
   api.post("/api/properties/:id/due-diligence/apply-template", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const parsed = applyTemplateSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { templateId } = parsed.data;
-      const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
+      const propertyId = Number(req.params.id);
+      // F-D39: both the property AND the template must belong to this org. Either
+      // mismatch hides as 404 to avoid leaking which side was the cross-tenant ref.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
+      const template = await storage.getDueDiligenceTemplate(templateId);
+      if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
+      const items = await storage.applyTemplateToProperty(propertyId, templateId);
       res.json(items);
     } catch (err: any) {
       Errors.badRequest(res, err.message || "Failed to apply template");
@@ -712,13 +745,18 @@ export function registerDealRoutes(app: Express): void {
 
   api.post("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
+      const propertyId = Number(req.params.id);
       const parsed = createDueDiligenceItemSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
+      // F-D39: refuse to attach a checklist item to another org's property.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
       const item = await storage.createDueDiligenceItem({
         ...parsed.data,
-        propertyId: Number(req.params.id),
+        propertyId,
       });
       res.status(201).json(item);
     } catch (err) {
@@ -732,6 +770,7 @@ export function registerDealRoutes(app: Express): void {
   const updateDueDiligenceItemSchema = createDueDiligenceItemSchema.partial();
 
   api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const parsed = updateDueDiligenceItemSchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
@@ -742,12 +781,19 @@ export function registerDealRoutes(app: Express): void {
     if (updates.completed === true && userId) {
       updates.completedBy = userId;
     }
+    // F-D39: org-scoped via parent property.
+    const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
+    if (!existing) return Errors.notFound(res, "Item");
     const item = await storage.updateDueDiligenceItem(Number(req.params.id), updates);
     if (!item) return Errors.notFound(res, "Item");
     res.json(item);
   });
-  
+
   api.delete("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    // F-D39: org-scoped via parent property.
+    const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
+    if (!existing) return Errors.notFound(res, "Item");
     await storage.deleteDueDiligenceItem(Number(req.params.id));
     res.status(204).send();
   });
@@ -946,6 +992,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = req.organization;
       const propertyId = Number(req.params.propertyId);
+      // F-D39: verify property ownership before touching its checklist. Previously
+      // getDueDiligenceChecklist(propertyId) returned any org's checklist as long
+      // as the propertyId existed, and the subsequent updateChecklist(existing.id)
+      // wrote into that foreign org's row.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
       const existing = await storage.getDueDiligenceChecklist(propertyId);
       if (!existing) {
         return Errors.notFound(res, "Checklist");
@@ -1538,12 +1590,20 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
 
   api.put("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    // F-D39: refuse to mutate another org's checklist template.
+    const existing = await storage.getChecklistTemplate(Number(req.params.id));
+    if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     const template = await storage.updateChecklistTemplate(Number(req.params.id), req.body);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
 
   api.delete("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    // F-D39: refuse to delete another org's checklist template.
+    const existing = await storage.getChecklistTemplate(Number(req.params.id));
+    if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     await storage.deleteChecklistTemplate(Number(req.params.id));
     res.status(204).send();
   });
