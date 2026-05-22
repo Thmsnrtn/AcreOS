@@ -3960,6 +3960,64 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "ai_call_log_model_idx" ON "ai_call_log" ("model")`,
   `CREATE INDEX IF NOT EXISTS "ai_call_log_feature_created_idx" ON "ai_call_log" ("feature", "created_at")`,
 
+  // ── Founder Chat (Atlas) Phase A: schema additions ────────────────────
+  // Extend aiConversations with scope + isDefault + threadTitle +
+  // pinnedMessageIds. The partial unique index guarantees exactly one
+  // is_default=true row per (userId, scope='founder').
+  `DO $$ BEGIN
+     ALTER TABLE "ai_conversations" ADD COLUMN "scope" text NOT NULL DEFAULT 'customer';
+   EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+  `DO $$ BEGIN
+     ALTER TABLE "ai_conversations" ADD COLUMN "is_default" boolean NOT NULL DEFAULT false;
+   EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+  `DO $$ BEGIN
+     ALTER TABLE "ai_conversations" ADD COLUMN "thread_title" text;
+   EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+  `DO $$ BEGIN
+     ALTER TABLE "ai_conversations" ADD COLUMN "pinned_message_ids" integer[] NOT NULL DEFAULT '{}'::integer[];
+   EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ai_conversations_one_default_per_founder"
+     ON "ai_conversations" ("user_id", "scope")
+     WHERE is_default = true AND scope = 'founder'`,
+
+  // Pending destructive tool calls awaiting confirmation. Single-use,
+  // 5-min TTL. The confirm endpoint deletes the row and runs the tool.
+  `CREATE TABLE IF NOT EXISTS "chat_pending_tool_calls" (
+     "id" text PRIMARY KEY,
+     "thread_id" integer NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
+     "founder_user_id" text NOT NULL,
+     "tool_name" text NOT NULL,
+     "args" jsonb NOT NULL,
+     "ctx_snapshot" jsonb NOT NULL,
+     "expires_at" timestamptz NOT NULL,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "chat_pending_tool_calls_expires_idx" ON "chat_pending_tool_calls" ("expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "chat_pending_tool_calls_thread_idx" ON "chat_pending_tool_calls" ("thread_id")`,
+
+  // Background tasks (audits, deep analyses, weekly letter gen). Outbox-
+  // backed; worker dispatches by runnerKey + payload. parentTaskId allows
+  // sub-agent nesting (Phase A Reliability Req 4B).
+  `CREATE TABLE IF NOT EXISTS "founder_chat_background_tasks" (
+     "id" text PRIMARY KEY,
+     "thread_id" integer NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
+     "founder_user_id" text NOT NULL,
+     "label" text NOT NULL,
+     "runner_key" text NOT NULL,
+     "payload" jsonb NOT NULL,
+     "status" text NOT NULL DEFAULT 'queued',
+     "result_artifact" jsonb,
+     "error" text,
+     "estimated_seconds" integer,
+     "parent_task_id" text REFERENCES "founder_chat_background_tasks"("id") ON DELETE SET NULL,
+     "started_at" timestamptz,
+     "completed_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_chat_bg_tasks_thread_idx" ON "founder_chat_background_tasks" ("thread_id")`,
+  `CREATE INDEX IF NOT EXISTS "founder_chat_bg_tasks_status_idx" ON "founder_chat_background_tasks" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "founder_chat_bg_tasks_parent_idx" ON "founder_chat_background_tasks" ("parent_task_id") WHERE parent_task_id IS NOT NULL`,
+
   // ── Pillar 5: Communications Router ─────────────────────────────────────
   // Tracking-number assignments. See shared/schema.ts for column-level
   // commentary. Idempotent — safe to re-run.

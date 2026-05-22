@@ -2150,9 +2150,64 @@ export const aiConversations = pgTable("ai_conversations", {
   agentRole: text("agent_role").notNull().default("executive"),
   activeProjectId: integer("active_project_id"),
   contextSummary: text("context_summary"), // Auto-compaction summary of older messages
+  // Founder Chat Phase A — Atlas thread scope discriminator. "customer" preserves
+  // legacy Pax behavior; "founder" marks Atlas threads (the founder chat-spine).
+  scope: text("scope").notNull().default("customer"),
+  isDefault: boolean("is_default").notNull().default(false),
+  threadTitle: text("thread_title"),
+  pinnedMessageIds: integer("pinned_message_ids").array().notNull().default(sql`'{}'::integer[]`),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Exactly one isDefault=true row per (userId, scope='founder'). The partial
+  // index makes the constraint a runtime invariant, not just a convention.
+  uniqueIndex("ai_conversations_one_default_per_founder")
+    .on(table.userId, table.scope)
+    .where(sql`is_default = true AND scope = 'founder'`),
+]);
+
+// Founder Chat — pending destructive tool calls awaiting confirmation. The
+// executor returns a confirmation_request artifact and persists the call here;
+// when the founder confirms, the row is consumed (single-use) and the tool runs.
+export const chatPendingToolCalls = pgTable("chat_pending_tool_calls", {
+  id: text("id").primaryKey(),  // random 32-char hex (the confirmationRequestId)
+  threadId: integer("thread_id").references(() => aiConversations.id, { onDelete: "cascade" }).notNull(),
+  founderUserId: text("founder_user_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  args: jsonb("args").notNull(),
+  ctxSnapshot: jsonb("ctx_snapshot").notNull(),  // FounderToolContext at time of request
+  expiresAt: timestamp("expires_at").notNull(),  // 5 min from creation
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("chat_pending_tool_calls_expires_idx").on(table.expiresAt),
+  index("chat_pending_tool_calls_thread_idx").on(table.threadId),
+]);
+
+// Founder Chat — background tasks (audits, long analyses, weekly letter gen).
+// Outbox-backed; worker picks runnerKey + payload, runs, posts resultArtifact
+// back to the thread as a chat message. parentTaskId allows sub-agent nesting
+// (a parent Atlas turn can spawn an explore sub-agent whose own task tree
+// nests under the parent).
+export const founderChatBackgroundTasks: any = pgTable("founder_chat_background_tasks", {
+  id: text("id").primaryKey(),  // random 32-char hex
+  threadId: integer("thread_id").references(() => aiConversations.id, { onDelete: "cascade" }).notNull(),
+  founderUserId: text("founder_user_id").notNull(),
+  label: text("label").notNull(),  // human-readable, shown in background_task_card
+  runnerKey: text("runner_key").notNull(),  // dispatches to a specific worker handler
+  payload: jsonb("payload").notNull(),
+  status: text("status").notNull().default("queued"),  // queued | running | complete | failed
+  resultArtifact: jsonb("result_artifact"),
+  error: text("error"),
+  estimatedSeconds: integer("estimated_seconds"),
+  parentTaskId: text("parent_task_id"),  // self-FK; null for top-level tasks
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("founder_chat_bg_tasks_thread_idx").on(table.threadId),
+  index("founder_chat_bg_tasks_status_idx").on(table.status),
+  index("founder_chat_bg_tasks_parent_idx").on(table.parentTaskId),
+]);
 
 // AI Messages - individual messages in conversations
 export const aiMessages = pgTable("ai_messages", {
