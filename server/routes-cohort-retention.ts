@@ -15,7 +15,7 @@
  */
 
 import type { Express, Response } from "express";
-import { db } from "./db";
+import { dbForReads } from "./db-replica";
 import { sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
@@ -42,7 +42,8 @@ export function registerCohortRetentionRoutes(app: Express): void {
         // per week, then for each cohort count which orgs had an
         // engagement event within each window. One query per window so
         // the SQL stays readable.
-        const signups = await db.execute(sql.raw(`
+        const reader = await dbForReads("cohort.retention");
+        const signups = await reader.execute(sql.raw(`
           SELECT
             to_char(date_trunc('week', occurred_at), 'IYYY-"W"IW') AS cohort,
             organization_id,
@@ -79,7 +80,7 @@ export function registerCohortRetentionRoutes(app: Express): void {
               const start = signupAtByOrg.get(orgId);
               if (!start) continue;
               const end = new Date(start.getTime() + window * 24 * 60 * 60 * 1000);
-              const probe = await db.execute(sql.raw(`
+              const probe = await reader.execute(sql.raw(`
                 SELECT 1
                 FROM lifecycle_events
                 WHERE organization_id = ${orgId}

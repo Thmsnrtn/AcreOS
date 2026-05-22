@@ -1,24 +1,28 @@
 /**
- * /outreach/mail — Pillar 3 customer-facing mail surface (Round 3 scope).
+ * /outreach/mail — Pillar 3 customer-facing mail surface.
  *
- * Two tabs in this round: Compose + In-Flight. EDDM map, Results, and
- * Mail-Credits tabs land in Round 4. Hash-driven state so deep links
- * survive reload + share.
+ * Five tabs: Compose, In-Flight, Results, EDDM map, Mail Credits.
+ * Hash-driven state so deep links survive reload + share.
  */
 
 import { useEffect, useState } from "react";
-import { Mail, Send, Truck } from "lucide-react";
+import { BarChart3, Coins, Mail, MapPinned, Send, Truck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import ComposeTab from "./compose";
 import InFlightTab from "./in-flight";
+import EddmTab from "./eddm";
+import ResultsTab from "./results";
+import CreditsTab from "./credits";
 
-type TabValue = "compose" | "in-flight";
+type TabValue = "compose" | "in-flight" | "results" | "eddm" | "credits";
+
+const TABS: TabValue[] = ["compose", "in-flight", "results", "eddm", "credits"];
 
 function readHashTab(): TabValue {
   if (typeof window === "undefined") return "compose";
   const hash = window.location.hash.replace("#", "");
-  return hash === "in-flight" ? "in-flight" : "compose";
+  return (TABS as string[]).includes(hash) ? (hash as TabValue) : "compose";
 }
 
 export default function OutreachMailPage() {
@@ -32,7 +36,7 @@ export default function OutreachMailPage() {
   }, []);
 
   const onChange = (next: string) => {
-    const v = next === "in-flight" ? "in-flight" : "compose";
+    const v: TabValue = (TABS as string[]).includes(next) ? (next as TabValue) : "compose";
     setTab(v);
     const path = window.location.pathname;
     if (v === "compose") {
@@ -77,6 +81,18 @@ export default function OutreachMailPage() {
               <Truck className="w-4 h-4" aria-hidden="true" />
               In flight
             </TabsTrigger>
+            <TabsTrigger value="results" data-testid="tab-results" className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" aria-hidden="true" />
+              Results
+            </TabsTrigger>
+            <TabsTrigger value="eddm" data-testid="tab-eddm" className="flex items-center gap-2">
+              <MapPinned className="w-4 h-4" aria-hidden="true" />
+              EDDM map
+            </TabsTrigger>
+            <TabsTrigger value="credits" data-testid="tab-credits" className="flex items-center gap-2">
+              <Coins className="w-4 h-4" aria-hidden="true" />
+              Mail credits
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="compose" className="mt-6">
@@ -84,6 +100,15 @@ export default function OutreachMailPage() {
           </TabsContent>
           <TabsContent value="in-flight" className="mt-6">
             <InFlightTab />
+          </TabsContent>
+          <TabsContent value="results" className="mt-6">
+            <ResultsTab />
+          </TabsContent>
+          <TabsContent value="eddm" className="mt-6">
+            <EddmTab />
+          </TabsContent>
+          <TabsContent value="credits" className="mt-6">
+            <CreditsTab />
           </TabsContent>
         </Tabs>
       </div>

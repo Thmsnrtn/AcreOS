@@ -26,6 +26,7 @@
 
 import { and, eq, gte, sql, sum } from "drizzle-orm";
 import { db, withTransaction } from "../db";
+import { dbForReads } from "../db-replica";
 import { financialLedger, type InsertFinancialLedgerRow } from "@shared/schema";
 import {
   BUCKET_NAMES,
@@ -322,7 +323,9 @@ export async function getBucketBalance(
     ? and(eq(financialLedger.bucket, bucket), gte(financialLedger.postedAt, since))
     : eq(financialLedger.bucket, bucket);
 
-  const [row] = await db
+  // Pillar 8.6 — bucket balance is a pure aggregation, route to replica.
+  const reader = await dbForReads("financial-ledger.bucket-balance");
+  const [row] = await reader
     .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
     .from(financialLedger)
     .where(whereClause);
@@ -343,7 +346,10 @@ export async function getContributionMargin(
 ): Promise<ContributionMargin> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
 
-  const [revRow] = await db
+  // Pillar 8.6 — pure analytical reads, route to replica.
+  const reader = await dbForReads("financial-ledger.contribution-margin");
+
+  const [revRow] = await reader
     .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
     .from(financialLedger)
     .where(
@@ -354,7 +360,7 @@ export async function getContributionMargin(
       ),
     );
 
-  const [opexRow] = await db
+  const [opexRow] = await reader
     .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
     .from(financialLedger)
     .where(

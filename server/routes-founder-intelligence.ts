@@ -17,6 +17,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { db } from "./db";
+import { dbForReads } from "./db-replica";
 import {
   organizations, users, payments, deals, leads, properties,
   supportTickets, subscriptionEvents, systemAlerts, activityLog,
@@ -87,13 +88,14 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
     ]);
 
     // ── Count pending decisions ────────────────────────────────────────
-    const pendingResult = await db.select({ c: count() })
+    const dailyReader = await dbForReads("founder.intelligence.daily");
+    const pendingResult = await dailyReader.select({ c: count() })
       .from(decisionsInboxItems)
       .where(eq(decisionsInboxItems.status, "pending"));
     const pendingDecisions = Number(pendingResult[0]?.c || 0);
 
     // ── Get recent agent actions (last 24h) ───────────────────────────
-    const recentActions = await db.select({
+    const recentActions = await dailyReader.select({
       agentCodename: agentActionLog.agentCodename,
       total: count(),
       succeeded: sql<number>`count(*) filter (where outcome = 'success')`,
@@ -107,7 +109,7 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
     );
 
     // ── Get trust changes ─────────────────────────────────────────────
-    const trustChanges = await db.select()
+    const trustChanges = await dailyReader.select()
       .from(trustEvolutionLog)
       .where(and(
         gte(trustEvolutionLog.createdAt, yesterday),
@@ -280,6 +282,9 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
+    // Pillar 8.6 — route the pulse aggregation block to the read replica.
+    const reader = await dbForReads("founder.intelligence.pulse");
+
     const [
       orgStats,
       revenueToday,
@@ -295,39 +300,39 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
       topGrowthOrgs,
     ] = await Promise.allSettled([
       // Org stats
-      db.select({
+      reader.select({
         total: count(),
         active: sql<number>`count(*) filter (where subscription_status = 'active')`,
         paying: sql<number>`count(*) filter (where subscription_tier not in ('free') and subscription_status = 'active')`,
       }).from(organizations),
 
       // Revenue today
-      db.select({ total: sum(payments.amount) })
+      reader.select({ total: sum(payments.amount) })
         .from(payments)
         .where(gte(payments.createdAt, yesterday)),
 
       // Revenue last 7d
-      db.select({ total: sum(payments.amount) })
+      reader.select({ total: sum(payments.amount) })
         .from(payments)
         .where(gte(payments.createdAt, sevenDaysAgo)),
 
       // Revenue last 30d
-      db.select({ total: sum(payments.amount) })
+      reader.select({ total: sum(payments.amount) })
         .from(payments)
         .where(gte(payments.createdAt, thirtyDaysAgo)),
 
       // New orgs today
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(organizations)
         .where(gte(organizations.createdAt, yesterday)),
 
       // New orgs last 7d
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(organizations)
         .where(gte(organizations.createdAt, sevenDaysAgo)),
 
       // Cancellations last 7d
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(subscriptionEvents)
         .where(
           and(
@@ -337,12 +342,12 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
         ),
 
       // Open support tickets
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(supportTickets)
         .where(eq(supportTickets.status, "open")),
 
       // Critical alerts
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(systemAlerts)
         .where(
           and(
@@ -352,12 +357,12 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
         ),
 
       // AI cost last 7d
-      db.select({ total: sum(apiUsageLogs.estimatedCostCents) })
+      reader.select({ total: sum(apiUsageLogs.estimatedCostCents) })
         .from(apiUsageLogs)
         .where(gte(apiUsageLogs.createdAt, sevenDaysAgo)),
 
       // Count of active automated jobs (by checking recent activity)
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(activityLog)
         .where(
           and(
@@ -367,7 +372,7 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
         ),
 
       // Top growth orgs (most active this week)
-      db.select({
+      reader.select({
         id: organizations.id,
         name: organizations.name,
         tier: organizations.subscriptionTier,
@@ -443,26 +448,26 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
     }
 
     // ── Traffic light computations for ThePulse component ──────────────────
-    const pendingInboxItems = await db.select({ c: count() })
+    const pendingInboxItems = await reader.select({ c: count() })
       .from(decisionsInboxItems)
       .where(eq(decisionsInboxItems.status, "pending"));
     const pendingInboxCount = Number(pendingInboxItems[0]?.c ?? 0);
 
     // Job health: count unhealthy jobs
-    const recentJobFailures = await db.select({ jobName: jobHealthLogs.jobName })
+    const recentJobFailures = await reader.select({ jobName: jobHealthLogs.jobName })
       .from(jobHealthLogs)
       .where(and(eq(jobHealthLogs.status, "failed"), gte(jobHealthLogs.runStartedAt, sevenDaysAgo)));
     const failingJobNames = new Set(recentJobFailures.map((r: any) => r.jobName));
 
     // Sophie auto-resolution rate (last 7d)
-    const sophieResolved7d = await db.select({ c: count() })
+    const sophieResolved7d = await reader.select({ c: count() })
       .from(supportTickets)
       .where(and(
         sql`${supportTickets.resolvedAt} IS NOT NULL`,
         gte(supportTickets.resolvedAt, sevenDaysAgo),
         eq(supportTickets.assignedAgent, "sophie"),
       ));
-    const totalResolved7d = await db.select({ c: count() })
+    const totalResolved7d = await reader.select({ c: count() })
       .from(supportTickets)
       .where(and(
         sql`${supportTickets.resolvedAt} IS NOT NULL`,
@@ -473,13 +478,13 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
     const sophieAutoResolutionRate = totalResolvedCount > 0 ? (sophieResolvedCount / totalResolvedCount) * 100 : 100;
 
     // Churn: orgs in red/critical band
-    const criticalChurnOrgs = await db.select({ c: count() })
+    const criticalChurnOrgs = await reader.select({ c: count() })
       .from(churnRiskScores)
       .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
     const criticalChurnCount = Number(criticalChurnOrgs[0]?.c ?? 0);
 
     // Dunning restricted+ orgs
-    const restrictedOrgs = await db.select({ c: count() })
+    const restrictedOrgs = await reader.select({ c: count() })
       .from(organizations)
       .where(sql`${organizations.dunningStage} IN ('restricted', 'suspended')`);
     const restrictedCount = Number(restrictedOrgs[0]?.c ?? 0);
@@ -569,6 +574,9 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
     const months = parseInt(req.query.months as string) || 12;
     const mrrByMonth: Array<{ month: string; revenueCents: number; newOrgs: number; churned: number; net: number }> = [];
 
+    // Pillar 8.6 — MRR roll-up is pure analytics, route to replica.
+    const reader = await dbForReads("founder.intelligence.mrr");
+
     for (let i = months - 1; i >= 0; i--) {
       const start = addMonths(new Date(), -i);
       start.setDate(1);
@@ -577,13 +585,13 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
       const end = addMonths(new Date(start), 1);
 
       const [revResult, newOrgsResult, churnResult] = await Promise.all([
-        db.select({ total: sum(payments.amount) })
+        reader.select({ total: sum(payments.amount) })
           .from(payments)
           .where(and(gte(payments.createdAt, start), lt(payments.createdAt, end))),
-        db.select({ count: count() })
+        reader.select({ count: count() })
           .from(organizations)
           .where(and(gte(organizations.createdAt, start), lt(organizations.createdAt, end))),
-        db.select({ count: count() })
+        reader.select({ count: count() })
           .from(subscriptionEvents)
           .where(and(
             eq(subscriptionEvents.eventType, "subscription_cancelled"),
@@ -644,6 +652,9 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
     const oneDayAgo = new Date(Date.now() - 86400000);
 
+    // Pillar 8.6 — automation roll-up is pure analytics, route to replica.
+    const reader = await dbForReads("founder.intelligence.automation");
+
     // Check automation activity by querying activity logs for automated events
     const [
       leadNurturerActivity,
@@ -655,42 +666,42 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
       workflowActivity,
       dealProgressionActivity,
     ] = await Promise.allSettled([
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action = 'lead_nurtured' or action = 'follow_up_sent'`
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'campaign_%'`
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action = 'lead_scored' or action = 'score_updated'`
         )),
-      db.select({ count: count() }).from(supportTickets)
+      reader.select({ count: count() }).from(supportTickets)
         .where(and(
           gte(supportTickets.createdAt, sevenDaysAgo),
           eq(supportTickets.aiHandled, true)
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'enrich%'`
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'sentinel%' or action like 'portfolio_monitor%'`
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'workflow_%' or action like 'automation_%'`
         )),
-      db.select({ count: count() }).from(activityLog)
+      reader.select({ count: count() }).from(activityLog)
         .where(and(
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'deal_%' or action like 'offer_%'`
@@ -719,13 +730,13 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
     ); // max 100
 
     // Open decisions: founder manual action needed reduces passive score
-    const openDecisions = await db.select({ count: count() }).from(decisionsInboxItems)
+    const openDecisions = await reader.select({ count: count() }).from(decisionsInboxItems)
       .where(eq(decisionsInboxItems.status, "pending"))
       .catch(() => [{ count: 0 }]);
     const pendingDecisions = Number(openDecisions[0]?.count || 0);
 
     // Job failures reduce score
-    const recentJobFailures = await db.select({ count: count() }).from(jobHealthLogs)
+    const recentJobFailures = await reader.select({ count: count() }).from(jobHealthLogs)
       .where(and(
         gte(jobHealthLogs.runStartedAt, oneDayAgo),
         eq(jobHealthLogs.status, "failed")
@@ -888,8 +899,11 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
     const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
 
+    // Pillar 8.6 — churn analytics is pure-read, route to replica.
+    const reader = await dbForReads("founder.intelligence.churn");
+
     // Find organizations that were active before but not recently
-    const atRiskOrgs = await db
+    const atRiskOrgs = await reader
       .select({
         id: organizations.id,
         name: organizations.name,
@@ -910,7 +924,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
       .limit(20);
 
     // Recent cancellations with tier data
-    const recentCancels = await db
+    const recentCancels = await reader
       .select({
         organizationId: subscriptionEvents.organizationId,
         fromTier: subscriptionEvents.fromTier,
@@ -929,9 +943,9 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
 
     // Calculate churn rate
     const [totalPayingResult, cancelCountResult] = await Promise.all([
-      db.select({ count: count() }).from(organizations)
+      reader.select({ count: count() }).from(organizations)
         .where(sql`subscription_tier not in ('free') and subscription_status = 'active'`),
-      db.select({ count: count() }).from(subscriptionEvents)
+      reader.select({ count: count() }).from(subscriptionEvents)
         .where(and(
           eq(subscriptionEvents.eventType, "subscription_cancelled"),
           gte(subscriptionEvents.createdAt, thirtyDaysAgo)
@@ -974,6 +988,9 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
 
+    // Pillar 8.6 — growth roll-up is pure analytics, route to replica.
+    const reader = await dbForReads("founder.intelligence.growth");
+
     const [
       tierDistribution,
       upgrades30d,
@@ -981,7 +998,7 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
       freeToAnyConversions,
     ] = await Promise.allSettled([
       // Current tier distribution
-      db.select({
+      reader.select({
         tier: organizations.subscriptionTier,
         count: count(),
       })
@@ -991,7 +1008,7 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
         .orderBy(desc(count())),
 
       // Upgrades in last 30d
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(subscriptionEvents)
         .where(and(
           eq(subscriptionEvents.eventType, "subscription_upgraded"),
@@ -999,7 +1016,7 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
         )),
 
       // Downgrades in last 30d
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(subscriptionEvents)
         .where(and(
           eq(subscriptionEvents.eventType, "subscription_downgraded"),
@@ -1007,7 +1024,7 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
         )),
 
       // Free → any paid conversion in 30d
-      db.select({ count: count() })
+      reader.select({ count: count() })
         .from(subscriptionEvents)
         .where(and(
           eq(subscriptionEvents.fromTier, "free"),
@@ -2471,7 +2488,10 @@ router.post("/job-health/:jobName/restart", requireFounder, async (req: Request,
 
 router.get("/revenue-protection", requireFounder, async (req: Request, res: Response) => {
   try {
-    const riskDistribution = await db.select({
+    // Pillar 8.6 — revenue protection roll-up is pure-read, route to replica.
+    const reader = await dbForReads("founder.intelligence.revenue-protection");
+
+    const riskDistribution = await reader.select({
       band: churnRiskScores.riskBand,
       count: count(),
     })
@@ -2484,11 +2504,11 @@ router.get("/revenue-protection", requireFounder, async (req: Request, res: Resp
     });
 
     // MRR at risk = sum of monthly_price_cents for orgs in red/critical
-    const atRiskOrgIds = await db.select({ orgId: churnRiskScores.organizationId })
+    const atRiskOrgIds = await reader.select({ orgId: churnRiskScores.organizationId })
       .from(churnRiskScores)
       .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
     const mrrAtRiskCents = atRiskOrgIds.length > 0
-      ? await db.select({ total: sum(organizations.monthlyPriceCents) })
+      ? await reader.select({ total: sum(organizations.monthlyPriceCents) })
           .from(organizations)
           .where(sql`${organizations.id} IN (${atRiskOrgIds.map((r: any) => r.orgId).join(",") || "NULL"})`)
           .then((r: any) => Number(r[0]?.total ?? 0))
@@ -2532,18 +2552,21 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
+    // Pillar 8.6 — BI roll-up is pure analytics, route to replica.
+    const reader = await dbForReads("founder.intelligence.business");
+
     // ARR: MRR × 12
-    const mrrResult = await db.select({ total: sql<number>`COALESCE(SUM(monthly_price_cents), 0)` })
+    const mrrResult = await reader.select({ total: sql<number>`COALESCE(SUM(monthly_price_cents), 0)` })
       .from(organizations)
       .where(sql`${organizations.subscriptionStatus} IN ('active', 'trialing')`);
     const mrrCents = Number(mrrResult[0]?.total ?? 0);
     const arrCents = mrrCents * 12;
 
     // Churn rate: cancellations last 30d / active orgs
-    const activeLast30 = await db.select({ c: count() })
+    const activeLast30 = await reader.select({ c: count() })
       .from(organizations)
       .where(sql`${organizations.subscriptionStatus} IN ('active', 'trialing')`);
-    const cancellationsLast30 = await db.select({ c: count() })
+    const cancellationsLast30 = await reader.select({ c: count() })
       .from(subscriptionEvents)
       .where(and(
         eq(subscriptionEvents.eventType, "subscription_cancelled"),
@@ -2554,13 +2577,13 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
     const churnRate = activeCount > 0 ? (cancelCount / activeCount) * 100 : 0;
 
     // NRR: (revenue end of period) / (revenue start of period) from subscription events
-    const upgrades = await db.select({ total: sum(subscriptionEvents.amountCents) })
+    const upgrades = await reader.select({ total: sum(subscriptionEvents.amountCents) })
       .from(subscriptionEvents)
       .where(and(
         eq(subscriptionEvents.eventType, "subscription_upgraded"),
         gte(subscriptionEvents.createdAt, thirtyDaysAgo),
       ));
-    const downgrades = await db.select({ total: sum(subscriptionEvents.amountCents) })
+    const downgrades = await reader.select({ total: sum(subscriptionEvents.amountCents) })
       .from(subscriptionEvents)
       .where(and(
         eq(subscriptionEvents.eventType, "subscription_downgraded"),
@@ -2572,7 +2595,7 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
       : 100;
 
     // Customer health distribution from churnRiskScores
-    const healthDist = await db.select({ band: churnRiskScores.riskBand, count: count() })
+    const healthDist = await reader.select({ band: churnRiskScores.riskBand, count: count() })
       .from(churnRiskScores)
       .groupBy(churnRiskScores.riskBand);
 

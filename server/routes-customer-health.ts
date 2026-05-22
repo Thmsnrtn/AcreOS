@@ -9,7 +9,7 @@
  */
 
 import type { Express, Response } from "express";
-import { db } from "./db";
+import { dbForReads } from "./db-replica";
 import { customerHealthScores, organizations, HEALTH_BANDS } from "@shared/schema";
 import { eq, sql, desc } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -29,7 +29,8 @@ export function registerCustomerHealthRoutes(app: Express): void {
 
         // Most recent score per org via DISTINCT ON. Joined to organizations
         // for name + tier display.
-        const rows = await db.execute(sql.raw(`
+        const reader = await dbForReads("customer-health.list");
+        const rows = await reader.execute(sql.raw(`
           SELECT DISTINCT ON (h.organization_id)
             h.organization_id,
             o.name,
@@ -68,7 +69,8 @@ export function registerCustomerHealthRoutes(app: Express): void {
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
         // Distribution = count per band of the LATEST score per org.
-        const rows = await db.execute(sql.raw(`
+        const reader = await dbForReads("customer-health.distribution");
+        const rows = await reader.execute(sql.raw(`
           WITH latest AS (
             SELECT DISTINCT ON (organization_id) organization_id, band, score, calculated_at
             FROM customer_health_scores

@@ -148,6 +148,7 @@ import { registerFinanceRoutes } from "./routes-finance";
 import { registerDocumentRoutes } from "./routes-documents";
 import { registerCampaignRoutes } from "./routes-campaigns";
 import { registerOutreachMailRoutes } from "./routes-outreach-mail";
+import { registerEddmRoutes } from "./routes-eddm";
 import { registerAIRoutes } from "./routes-ai";
 import aiDraftRouter from "./routes-ai-draft";
 import { registerBillingRoutes } from "./routes-billing";
@@ -1958,6 +1959,8 @@ export async function registerRoutes(
   registerCampaignRoutes(app);
   // Pillar 3 — customer-facing /outreach/mail composer + in-flight tracker.
   registerOutreachMailRoutes(app);
+  // Pillar 3 Tab 4 — EDDM map endpoints (routes / parcels / queue).
+  registerEddmRoutes(app);
   registerAIRoutes(app);
   // Pax inbox drafted-reply (product-call #10) — uses the standard AI
   // router under /api/ai. Mounted after registerAIRoutes so its routes

@@ -179,6 +179,9 @@ vi.mock("../../server/db", () => {
     pool: {},
     replicaPool: {},
     dbReadOnly: db,
+    // Pillar 8.6 — when null, server/db-replica.ts falls back to primary.
+    // The in-memory test store backs both reads and writes anyway.
+    dbReplica: null,
   };
 });
 

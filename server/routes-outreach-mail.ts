@@ -27,12 +27,16 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { db } from "./db";
 import {
+  deals,
+  financialLedger,
   leads,
   mailShipments,
   mailShipmentPieces,
   marketingLists,
   type MailShipmentRow,
 } from "@shared/schema";
+import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
+import { creditExamples } from "@shared/billing/credit-weights";
 import {
   mailRouter,
   type MailPiece,
@@ -542,6 +546,558 @@ export function registerOutreachMailRoutes(app: Express): void {
       } catch (err) {
         Errors.internal(res, err);
       }
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Results tab (Pillar 3 Tab 3) — per-campaign attribution analytics
+  // ────────────────────────────────────────────────────────────────────────
+
+  // GET /api/outreach/mail/results/funnel/:shipmentId
+  app.get(
+    "/api/outreach/mail/results/funnel/:shipmentId",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const shipmentId = Number(req.params.shipmentId);
+      if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
+        return Errors.badRequest(res, "Invalid shipment id");
+      }
+      const orgId = getOrganizationId(req);
+
+      try {
+        const [shipment] = await db
+          .select()
+          .from(mailShipments)
+          .where(and(eq(mailShipments.id, shipmentId), eq(mailShipments.organizationId, orgId)))
+          .limit(1);
+        if (!shipment) return Errors.notFound(res, "Mail shipment");
+
+        // Sent / delivered / response sums from mail_shipment_pieces.
+        const [pieceAgg] = await db
+          .select({
+            sent: sql<number>`count(*) filter (where ${mailShipmentPieces.status} != 'pending')::int`,
+            delivered: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'delivered')::int`,
+            qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
+            callsReceived: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+          })
+          .from(mailShipmentPieces)
+          .where(eq(mailShipmentPieces.shipmentId, shipmentId));
+
+        // callsAnswered — no call-status table yet; return 0.
+        // TODO: once a call_status / call_log table tracks answered state,
+        // join here on the inbound-call attribution to compute properly.
+        const callsAnswered = 0;
+
+        // Deals attribution — deals table has no source_campaign_id column,
+        // and there's no reliable lead-side link from a mail shipment to a
+        // deal yet (leads.sourceCampaignId points at marketing campaigns,
+        // not mail shipments). Return 0 so the funnel renders cleanly; the
+        // numbers light up once attribution lands.
+        // TODO: add deals.source_campaign_id and wire mailpiece → deal
+        // attribution. Then count distinct deals.id where source_campaign_id
+        // = shipmentId, and the same filter + status='closed' for closed.
+        const dealAgg = { opened: 0, closed: 0 };
+        void deals; // silence unused import until attribution column lands
+        void leads;
+
+        const sent = pieceAgg?.sent ?? 0;
+        const delivered = pieceAgg?.delivered ?? 0;
+        const qrScans = pieceAgg?.qrScans ?? 0;
+        const callsReceived = pieceAgg?.callsReceived ?? 0;
+        const dealsOpened = dealAgg?.opened ?? 0;
+        const dealsClosed = dealAgg?.closed ?? 0;
+
+        const costCentsTotal = shipment.totalCents;
+        const safeDiv = (n: number, d: number): number => (d > 0 ? Math.round(n / d) : 0);
+
+        res.json({
+          sent,
+          delivered,
+          qrScans,
+          callsReceived,
+          callsAnswered,
+          dealsOpened,
+          dealsClosed,
+          costCentsTotal,
+          costPerSentCents: safeDiv(costCentsTotal, sent),
+          costPerDeliveredCents: safeDiv(costCentsTotal, delivered),
+          costPerQrScanCents: safeDiv(costCentsTotal, qrScans),
+          costPerCallCents: safeDiv(costCentsTotal, callsReceived),
+          costPerDealCents: safeDiv(costCentsTotal, dealsOpened),
+        });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/results/response-timeline/:shipmentId
+  app.get(
+    "/api/outreach/mail/results/response-timeline/:shipmentId",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const shipmentId = Number(req.params.shipmentId);
+      if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
+        return Errors.badRequest(res, "Invalid shipment id");
+      }
+      const orgId = getOrganizationId(req);
+
+      try {
+        const [shipment] = await db
+          .select({
+            id: mailShipments.id,
+            sentAt: mailShipments.sentAt,
+            queuedAt: mailShipments.queuedAt,
+          })
+          .from(mailShipments)
+          .where(and(eq(mailShipments.id, shipmentId), eq(mailShipments.organizationId, orgId)))
+          .limit(1);
+        if (!shipment) return Errors.notFound(res, "Mail shipment");
+
+        // Anchor: prefer sentAt; fall back to queuedAt for pre-send drafts.
+        const anchor = shipment.sentAt ?? shipment.queuedAt;
+        const anchorDate = new Date(anchor);
+        const days: Array<{ day: string; qrScans: number; calls: number; cumulativeQr: number; cumulativeCalls: number }> = [];
+
+        // We approximate per-day response counts using piece.updatedAt as a
+        // proxy for "scan event posted". When a per-event log table lands,
+        // swap to that join. For now this gives a 30-day daily bucket of
+        // QR + call totals for pieces in this shipment.
+        const rows = await db
+          .select({
+            day: sql<string>`to_char(date_trunc('day', ${mailShipmentPieces.updatedAt}), 'YYYY-MM-DD')`,
+            qr: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
+            calls: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+          })
+          .from(mailShipmentPieces)
+          .where(
+            and(
+              eq(mailShipmentPieces.shipmentId, shipmentId),
+              gte(mailShipmentPieces.updatedAt, anchorDate),
+              lt(mailShipmentPieces.updatedAt, new Date(anchorDate.getTime() + 31 * 24 * 60 * 60 * 1000)),
+            ),
+          )
+          .groupBy(sql`date_trunc('day', ${mailShipmentPieces.updatedAt})`);
+
+        const byDay = new Map<string, { qr: number; calls: number }>();
+        for (const r of rows) byDay.set(r.day, { qr: r.qr, calls: r.calls });
+
+        let cumQr = 0;
+        let cumCalls = 0;
+        for (let i = 0; i < 30; i++) {
+          const d = new Date(anchorDate.getTime() + i * 24 * 60 * 60 * 1000);
+          const key = d.toISOString().slice(0, 10);
+          const bucket = byDay.get(key) ?? { qr: 0, calls: 0 };
+          cumQr += bucket.qr;
+          cumCalls += bucket.calls;
+          days.push({
+            day: key,
+            qrScans: bucket.qr,
+            calls: bucket.calls,
+            cumulativeQr: cumQr,
+            cumulativeCalls: cumCalls,
+          });
+        }
+        res.json(days);
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/results/compare-templates?days=90
+  app.get(
+    "/api/outreach/mail/results/compare-templates",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const orgId = getOrganizationId(req);
+      const days = Math.max(1, Math.min(Number(req.query.days ?? 90) || 90, 365));
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      try {
+        const rows = await db
+          .select({
+            templateId: mailShipments.templateId,
+            shipments: sql<number>`count(distinct ${mailShipments.id})::int`,
+            totalSent: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+            totalResponses: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}) + sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+          })
+          .from(mailShipments)
+          .leftJoin(mailShipmentPieces, eq(mailShipmentPieces.shipmentId, mailShipments.id))
+          .where(
+            and(
+              eq(mailShipments.organizationId, orgId),
+              gte(mailShipments.queuedAt, since),
+              sql`${mailShipments.templateId} IS NOT NULL`,
+            ),
+          )
+          .groupBy(mailShipments.templateId);
+
+        res.json(
+          rows.map((r) => ({
+            templateId: r.templateId,
+            name: r.templateId ? `Template #${r.templateId}` : "Untitled",
+            shipments: r.shipments,
+            totalSent: r.totalSent,
+            totalResponses: r.totalResponses,
+            responseRatePct:
+              r.totalSent > 0 ? Math.round((r.totalResponses / r.totalSent) * 1000) / 10 : 0,
+          })),
+        );
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/results/cohort-by-month?days=180
+  app.get(
+    "/api/outreach/mail/results/cohort-by-month",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const orgId = getOrganizationId(req);
+      const days = Math.max(30, Math.min(Number(req.query.days ?? 180) || 180, 730));
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      try {
+        const rows = await db
+          .select({
+            month: sql<string>`to_char(date_trunc('month', ${mailShipments.queuedAt}), 'YYYY-MM')`,
+            shipments: sql<number>`count(distinct ${mailShipments.id})::int`,
+            sent: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+            delivered: sql<number>`count(${mailShipmentPieces.id}) filter (where ${mailShipmentPieces.status} = 'delivered')::int`,
+            qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
+            calls: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            spendCents: sql<number>`coalesce(sum(${mailShipments.totalCents}), 0)::int`,
+          })
+          .from(mailShipments)
+          .leftJoin(mailShipmentPieces, eq(mailShipmentPieces.shipmentId, mailShipments.id))
+          .where(
+            and(
+              eq(mailShipments.organizationId, orgId),
+              gte(mailShipments.queuedAt, since),
+            ),
+          )
+          .groupBy(sql`date_trunc('month', ${mailShipments.queuedAt})`)
+          .orderBy(sql`date_trunc('month', ${mailShipments.queuedAt}) desc`);
+
+        res.json(rows);
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/results/:shipmentId/export.csv
+  app.get(
+    "/api/outreach/mail/results/:shipmentId/export.csv",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const shipmentId = Number(req.params.shipmentId);
+      if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
+        return Errors.badRequest(res, "Invalid shipment id");
+      }
+      const orgId = getOrganizationId(req);
+
+      try {
+        const [shipment] = await db
+          .select({ id: mailShipments.id, label: mailShipments.label })
+          .from(mailShipments)
+          .where(and(eq(mailShipments.id, shipmentId), eq(mailShipments.organizationId, orgId)))
+          .limit(1);
+        if (!shipment) return Errors.notFound(res, "Mail shipment");
+
+        const rows = await db
+          .select({
+            recipientName: mailShipmentPieces.recipientName,
+            addressLine1: mailShipmentPieces.addressLine1,
+            city: mailShipmentPieces.city,
+            state: mailShipmentPieces.state,
+            zip: mailShipmentPieces.zip,
+            deliveredAt: mailShipmentPieces.deliveredAt,
+            qrScanCount: mailShipmentPieces.qrScanCount,
+            inboundCallCount: mailShipmentPieces.inboundCallCount,
+          })
+          .from(mailShipmentPieces)
+          .where(
+            and(
+              eq(mailShipmentPieces.shipmentId, shipmentId),
+              eq(mailShipmentPieces.organizationId, orgId),
+            ),
+          );
+
+        const esc = (v: string | number | null | undefined): string => {
+          if (v === null || v === undefined) return "";
+          const s = String(v);
+          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replace(/"/g, '""')}"`;
+          }
+          return s;
+        };
+
+        const header = [
+          "recipient",
+          "address",
+          "city",
+          "state",
+          "zip",
+          "delivered_at",
+          "qr_scan_count",
+          "inbound_call_count",
+        ].join(",");
+
+        const body = rows
+          .map((r) =>
+            [
+              esc(r.recipientName),
+              esc(r.addressLine1),
+              esc(r.city),
+              esc(r.state),
+              esc(r.zip),
+              esc(r.deliveredAt ? new Date(r.deliveredAt).toISOString() : ""),
+              esc(r.qrScanCount),
+              esc(r.inboundCallCount),
+            ].join(","),
+          )
+          .join("\n");
+
+        const safeLabel = (shipment.label ?? `shipment-${shipmentId}`).replace(/[^a-z0-9-_]+/gi, "_");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="mail-${safeLabel}-${shipmentId}.csv"`,
+        );
+        res.send(`${header}\n${body}\n`);
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Mail Credits tab (Pillar 3 Tab 5) — self-serve top-up + history
+  // ────────────────────────────────────────────────────────────────────────
+
+  const TRACKED_CATEGORIES = [
+    "postcard",
+    "sms",
+    "email",
+    "skip_trace",
+    "ai_tokens",
+    "voice",
+  ];
+
+  // GET /api/outreach/mail/credits/summary
+  app.get(
+    "/api/outreach/mail/credits/summary",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const org = getOrganization(req);
+      const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
+      const limits = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
+      const creditPoolMonthly = limits.creditPool;
+
+      try {
+        const now = new Date();
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+        const [agg] = await db
+          .select({
+            usedAbsCents: sql<number>`coalesce(sum(abs(${financialLedger.amountCents})), 0)::int`,
+          })
+          .from(financialLedger)
+          .where(
+            and(
+              eq(financialLedger.organizationId, org.id),
+              eq(financialLedger.category, "opex_spent"),
+              inArray(financialLedger.feature, TRACKED_CATEGORIES),
+              gte(financialLedger.postedAt, monthStart),
+            ),
+          );
+
+        // 1 credit ≈ 1¢; treat sum of opex cents as credits used.
+        const creditPoolUsedThisMonth = agg?.usedAbsCents ?? 0;
+        const creditPoolRemainingThisMonth = Math.max(
+          0,
+          creditPoolMonthly - creditPoolUsedThisMonth,
+        );
+
+        const dayMs = 24 * 60 * 60 * 1000;
+        const daysIntoMonth = Math.max(1, Math.floor((now.getTime() - monthStart.getTime()) / dayMs) + 1);
+        const daysRemainingInMonth = Math.max(
+          0,
+          Math.ceil((monthEnd.getTime() - now.getTime()) / dayMs),
+        );
+
+        const burnRateCreditsPerDay = creditPoolUsedThisMonth / daysIntoMonth;
+        let projectedRunoutDate: string | null = null;
+        if (burnRateCreditsPerDay > 0) {
+          const daysUntilEmpty = creditPoolMonthly / burnRateCreditsPerDay;
+          if (daysUntilEmpty < daysIntoMonth + daysRemainingInMonth) {
+            const runoutMs = monthStart.getTime() + daysUntilEmpty * dayMs;
+            projectedRunoutDate = new Date(runoutMs).toISOString();
+          }
+        }
+
+        res.json({
+          tier,
+          creditPoolMonthly,
+          creditPoolUsedThisMonth,
+          creditPoolRemainingThisMonth,
+          daysIntoMonth,
+          daysRemainingInMonth,
+          burnRateCreditsPerDay: Math.round(burnRateCreditsPerDay * 10) / 10,
+          projectedRunoutDate,
+        });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/credits/history?days=30&category=...&limit=&offset=
+  app.get(
+    "/api/outreach/mail/credits/history",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const orgId = getOrganizationId(req);
+      const days = Math.max(1, Math.min(Number(req.query.days ?? 30) || 30, 365));
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
+      const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
+      const category = typeof req.query.category === "string" ? req.query.category : null;
+
+      try {
+        const conditions = [
+          eq(financialLedger.organizationId, orgId),
+          eq(financialLedger.category, "opex_spent"),
+          gte(financialLedger.postedAt, since),
+        ];
+        if (category && TRACKED_CATEGORIES.includes(category)) {
+          conditions.push(eq(financialLedger.feature, category));
+        } else {
+          conditions.push(inArray(financialLedger.feature, TRACKED_CATEGORIES));
+        }
+
+        const rows = await db
+          .select({
+            id: financialLedger.id,
+            postedAt: financialLedger.postedAt,
+            feature: financialLedger.feature,
+            provider: financialLedger.provider,
+            amountCents: financialLedger.amountCents,
+            externalEventId: financialLedger.externalEventId,
+            notes: financialLedger.notes,
+          })
+          .from(financialLedger)
+          .where(and(...conditions))
+          .orderBy(desc(financialLedger.postedAt))
+          .limit(limit)
+          .offset(offset);
+
+        res.json({
+          items: rows.map((r) => ({
+            id: r.id,
+            dateIso: r.postedAt instanceof Date ? r.postedAt.toISOString() : r.postedAt,
+            action: r.notes ?? r.feature ?? "spend",
+            category: r.feature ?? "unknown",
+            cents: Math.abs(Number(r.amountCents)),
+            providerName: r.provider,
+            pieceProviderId: r.externalEventId,
+            leadName: null,
+          })),
+          limit,
+          offset,
+        });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // POST /api/outreach/mail/credits/recharge { packCents }
+  const rechargeSchema = z.object({
+    packCents: z.number().int().refine((n) => [2000, 5000, 10000, 25000].includes(n), {
+      message: "packCents must be one of 2000, 5000, 10000, 25000",
+    }),
+  });
+
+  app.post(
+    "/api/outreach/mail/credits/recharge",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = rechargeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const org = getOrganization(req);
+      const userId = getUserId(req);
+      const { packCents } = parsed.data;
+
+      try {
+        const { stripeService } = await import("./stripeService");
+        const { storage } = await import("./storage");
+
+        let customerId = org.stripeCustomerId;
+        if (!customerId) {
+          // Best-effort: create the Stripe customer using a placeholder
+          // email — the canonical billing flow lives in routes-billing.ts
+          // and will overwrite/repair this on first real touch.
+          const customer = await stripeService.createCustomer(
+            `${userId}@unknown.acreos`,
+            String(userId),
+            org.name,
+          );
+          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+          customerId = customer.id;
+        }
+
+        const packId = `mail-credits-${packCents}`;
+        const packName = `$${(packCents / 100).toFixed(0)} Mail Credit Pack`;
+
+        const protocol = (req.protocol || "https") as string;
+        const host = req.get("host") ?? "app.acreos.com";
+
+        const session = await stripeService.createCreditPurchaseCheckout(
+          customerId,
+          packId,
+          packCents,
+          packName,
+          `${protocol}://${host}/outreach/mail?credits=success#credits`,
+          `${protocol}://${host}/outreach/mail?credits=cancelled#credits`,
+          {
+            organizationId: String(org.id),
+            type: "mail_credit_recharge",
+            packCents: String(packCents),
+          },
+        );
+
+        res.json({ checkoutUrl: session.url });
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/outreach/mail/credits/examples — what-costs-what reference card
+  app.get(
+    "/api/outreach/mail/credits/examples",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const org = getOrganization(req);
+      const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
+      const poolSize = (TIER_LIMITS[tier] ?? TIER_LIMITS.free).creditPool;
+      res.json({ poolSize, examples: creditExamples(poolSize) });
     },
   );
 }

@@ -14,7 +14,7 @@
  */
 
 import type { Express, Response } from "express";
-import { db } from "./db";
+import { dbForReads } from "./db-replica";
 import { sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
@@ -38,7 +38,8 @@ export function registerCohortLtvRoutes(app: Express): void {
       try {
         // Build the cohort assignments + per-org cumulative recognized
         // revenue at each horizon. One query per horizon keeps SQL legible.
-        const cohortRowsRaw = await db.execute(sql.raw(`
+        const reader = await dbForReads("cohort.ltv");
+        const cohortRowsRaw = await reader.execute(sql.raw(`
           SELECT
             to_char(date_trunc('week', created_at), 'IYYY-"W"IW') AS cohort,
             id AS organization_id,
@@ -77,7 +78,7 @@ export function registerCohortLtvRoutes(app: Express): void {
               // Don't credit horizons that haven't elapsed yet — would
               // under-report newer cohorts and skew averages.
               if (end > new Date()) continue;
-              const probe = await db.execute(sql.raw(`
+              const probe = await reader.execute(sql.raw(`
                 SELECT COALESCE(SUM(recognized_cents), 0)::bigint AS sum
                 FROM revenue_recognition_periods
                 WHERE organization_id = ${orgId}

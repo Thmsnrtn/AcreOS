@@ -207,6 +207,68 @@ export async function registerEnhancementRoutes(app: Express) {
     }
   });
 
+  // Pillar 8.6 — read replica health check
+  app.get("/api/health/replica", async (_req, res) => {
+    try {
+      const { sql } = await import("drizzle-orm");
+      const { db, dbReplica } = await import("./db");
+      const { snapshotAdoption } = await import("./db-replica");
+
+      const configured = dbReplica !== null;
+      const target = dbReplica ?? db;
+
+      // Latency probe: `SELECT 1` round-trip against whichever DB we actually
+      // route reads to. Cheap and consistent across primary/replica configs.
+      const probeStart = Date.now();
+      let latencyMs: number | null = null;
+      let probeError: string | null = null;
+      try {
+        await target.execute(sql`SELECT 1`);
+        latencyMs = Date.now() - probeStart;
+      } catch (err) {
+        probeError = (err as Error)?.message ?? "probe failed";
+      }
+
+      // Replication lag — only meaningful when DATABASE_REPLICA_URL points at
+      // an actual replica. We query pg_stat_replication on the PRIMARY (the
+      // upstream knows about its standbys) and surface the largest lag.
+      let lagMs: number | null = null;
+      let lagSource: "pg_stat_replication" | "unavailable" = "unavailable";
+      if (configured) {
+        try {
+          const lagRows = await db.execute(sql`
+            SELECT EXTRACT(EPOCH FROM COALESCE(write_lag, '0 seconds'::interval)) * 1000 AS lag_ms
+            FROM pg_stat_replication
+            ORDER BY lag_ms DESC NULLS LAST
+            LIMIT 1
+          `);
+          const rows = (lagRows as unknown as Array<{ lag_ms: number | string }>) ?? [];
+          if (rows.length > 0 && rows[0].lag_ms != null) {
+            lagMs = Number(rows[0].lag_ms);
+            lagSource = "pg_stat_replication";
+          }
+        } catch {
+          // pg_stat_replication is empty on databases without standbys, and
+          // managed Postgres providers sometimes restrict the view. Either
+          // way we just leave lagMs = null.
+          lagMs = null;
+        }
+      }
+
+      res.status(probeError ? 503 : 200).json({
+        configured,
+        latencyMs,
+        lastReplicationLagMs: lagMs,
+        lagSource,
+        adoption: snapshotAdoption(),
+        probeError,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   // ── Analytics (Domain N) ──
 
   // Item 241: Signup funnel

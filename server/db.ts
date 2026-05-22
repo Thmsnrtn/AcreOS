@@ -84,6 +84,11 @@ replicaPool.on("error", (err) => {
 
 export const dbReadOnly = drizzle(replicaPool, { schema });
 
+// Pillar 8.6 — canonical alias preferred by `server/db-replica.ts` and new
+// call sites. `dbReplica` is null when no replica is configured so the
+// `dbForReads()` helper can transparently fall back to the primary.
+export const dbReplica = process.env.DATABASE_REPLICA_URL ? dbReadOnly : null;
+
 // ── Transaction helper ───────────────────────────────────────────────────────
 // Wraps a callback in a Drizzle transaction so that all DB operations within
 // `fn` share the same underlying Postgres transaction and are committed or
