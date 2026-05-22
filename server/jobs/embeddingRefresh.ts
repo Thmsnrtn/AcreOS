@@ -28,8 +28,34 @@ import { sql } from "drizzle-orm";
 import { dealPatterns } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { generateQueryEmbedding } from "../services/embeddingClient";
+import { generateQueryEmbedding, generateQueryEmbeddingsBatch } from "../services/embeddingClient";
 import { scheduleSelfRescheduling } from "./scheduler";
+
+// Pillar 9.4 — embedding-batch metrics. Rolling counters reset at
+// process restart; surface via getEmbeddingBatchMetrics().
+let _batchesToday = 0;
+let _rowsBatchedToday = 0;
+let _metricsResetAt = new Date(new Date().toDateString()).getTime();
+
+function resetMetricsIfNewDay(): void {
+  const todayStart = new Date(new Date().toDateString()).getTime();
+  if (todayStart > _metricsResetAt) {
+    _batchesToday = 0;
+    _rowsBatchedToday = 0;
+    _metricsResetAt = todayStart;
+  }
+}
+
+export function getEmbeddingBatchMetrics(): {
+  embedding_batches_per_day: number;
+  embedding_rows_per_batch_avg: number;
+} {
+  resetMetricsIfNewDay();
+  return {
+    embedding_batches_per_day: _batchesToday,
+    embedding_rows_per_batch_avg: _batchesToday > 0 ? Math.round(_rowsBatchedToday / _batchesToday) : 0,
+  };
+}
 
 /**
  * Sweep up to `batchSize` patterns whose embedding is stale (older
@@ -61,22 +87,41 @@ export async function refreshStaleEmbeddings(
   const rows = (candidates as any)?.rows ?? [];
   if (rows.length === 0) return 0;
 
+  // Pillar 9.4 — coalesce N rows into one OpenAI call.  The per-row loop
+  // below previously hit the embeddings API once per row, which at
+  // batchSize=100 = 100 round-trips × 200ms latency = ~20s of wall time
+  // and 100× the rate-limit cost.  The model accepts an array input;
+  // submit them all at once.
+  const texts = rows.map((r: any) => fingerprintToText(r.fingerprint));
+  const embeddings = await generateQueryEmbeddingsBatch(texts);
+
+  if (embeddings == null) {
+    // OpenAI unavailable for the whole batch — bail and let the next
+    // tick retry. This prevents hammering a degraded upstream.
+    logger.warn("[embeddingRefresh] batched embedding call returned null — pausing");
+    return 0;
+  }
+
+  resetMetricsIfNewDay();
+  _batchesToday += 1;
+  _rowsBatchedToday += rows.length;
+
   let refreshed = 0;
 
-  for (const row of rows) {
-    try {
-      // Re-derive the natural-language fingerprint and embed.
-      const text = fingerprintToText(row.fingerprint);
-      const embedding = await generateQueryEmbedding(text);
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const embedding = embeddings[i];
 
+    try {
       if (!embedding) {
-        // OpenAI unavailable — bail out of the whole batch; the next
-        // tick will retry. This prevents us from hammering a degraded
-        // upstream and burning through DLQ retries.
-        logger.warn(
-          "[embeddingRefresh] embedding API returned null — pausing batch",
-        );
-        break;
+        // Single-row failure within the batch (empty fingerprint text
+        // or dim mismatch).  Mark touched so we don't re-pick it next
+        // tick.
+        await db
+          .update(dealPatterns)
+          .set({ embeddingRefreshedAt: new Date() })
+          .where(eq(dealPatterns.id, row.id));
+        continue;
       }
 
       await db.execute(sql`
@@ -89,12 +134,9 @@ export async function refreshStaleEmbeddings(
       refreshed += 1;
     } catch (err) {
       logger.error(
-        `[embeddingRefresh] failed to refresh pattern ${row.id}`,
+        `[embeddingRefresh] failed to write embedding for pattern ${row.id}`,
         err,
       );
-      // Mark as touched so we don't loop on the same broken row every
-      // tick. A separate audit pass can retry permanent-failure rows
-      // by hand.
       try {
         await db
           .update(dealPatterns)
@@ -107,8 +149,13 @@ export async function refreshStaleEmbeddings(
   }
 
   if (refreshed > 0) {
-    logger.info(`[embeddingRefresh] refreshed ${refreshed}/${rows.length} pattern embeddings`);
+    logger.info(`[embeddingRefresh] refreshed ${refreshed}/${rows.length} pattern embeddings (1 batched API call)`);
   }
+
+  // Pillar 9.4 — silence linter while keeping the per-row import
+  // available for future single-row callers (e.g. on-demand refresh
+  // triggered from /api/admin tooling).
+  void generateQueryEmbedding;
 
   return refreshed;
 }

@@ -296,28 +296,66 @@ async function markFailedTerminal(
   err: unknown,
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
-  await db
-    .update(outbox)
-    .set({
-      status: "failed",
-      lastErrorAt: new Date(),
-      lastErrorMessage: message.slice(0, 1000),
-    })
-    .where(eq(outbox.id, id));
+  const truncated = message.slice(0, 1000);
+  const now = new Date();
 
-  // Dead-letter for operator inspection.
+  // Pillar 9.1 — atomic DLQ move.  Insert into outbox_dlq + delete the
+  // outbox row in a single transaction.  Either both rows transition or
+  // neither does; no scenario can land the job in both tables (which
+  // would risk a phantom retry against an already-DLQ'd payload) or
+  // neither (which would silently lose the audit trail).
   try {
-    await db.insert(outboxDlq).values({
-      originalOutboxId: id,
-      eventType,
-      payload,
-      status: "failed",
-      attempts,
-      lastErrorAt: new Date(),
-      failureReason: message.slice(0, 1000),
+    await db.transaction(async (tx) => {
+      // Pull the original `created_at` so first_failed_at / last_failed_at
+      // tell an honest story for forensic review.  If the outbox row was
+      // already vacuumed for some reason, gracefully default to now().
+      const [existing] = await tx
+        .select({
+          id: outbox.id,
+          createdAt: outbox.createdAt,
+          lastErrorAt: outbox.lastErrorAt,
+        })
+        .from(outbox)
+        .where(eq(outbox.id, id))
+        .limit(1);
+
+      await tx.insert(outboxDlq).values({
+        originalOutboxId: id,
+        eventType,
+        payload,
+        status: "failed",
+        attempts,
+        lastErrorAt: now,
+        failureReason: truncated,
+        lastError: truncated,
+        failureCount: attempts,
+        firstFailedAt: existing?.createdAt ?? now,
+        lastFailedAt: existing?.lastErrorAt ?? now,
+        movedToDlqAt: now,
+      });
+
+      if (existing) {
+        await tx.delete(outbox).where(eq(outbox.id, id));
+      }
     });
   } catch (dlqErr) {
-    logger.error("[worker] failed to write outbox_dlq row", dlqErr instanceof Error ? dlqErr : undefined);
+    // If the atomic move fails, fall back to the prior best-effort
+    // behavior so we at least record a terminal failure status on the
+    // outbox row.  The next worker tick won't re-pick this row because
+    // status='failed' is excluded from claimBatch().
+    logger.error("[worker] atomic DLQ move failed — falling back to status='failed'", dlqErr instanceof Error ? dlqErr : undefined);
+    try {
+      await db
+        .update(outbox)
+        .set({
+          status: "failed",
+          lastErrorAt: now,
+          lastErrorMessage: truncated,
+        })
+        .where(eq(outbox.id, id));
+    } catch (updErr) {
+      logger.error("[worker] fallback outbox status update failed", updErr instanceof Error ? updErr : undefined);
+    }
   }
 }
 

@@ -125,7 +125,52 @@ function serializeEntry(entry: LogEntry): string {
   return formatLogEntry(entry);
 }
 
+// ─── Pillar 9.3 — per-request log budget ───────────────────────────────────
+//
+// A handler that fires more than LOG_BUDGET_PER_REQUEST info logs is almost
+// certainly chatty by accident — a loop logging each iteration, a debug
+// spew that escaped into a hot path, etc. Hard-blocking would lose
+// observability; instead, after the budget is exhausted we transparently
+// demote remaining info logs to debug. The first N still surface at full
+// fidelity; the rest stay in the dev console without flooding aggregators
+// like Datadog / Logtail (where ingestion is the unit cost).
+//
+// Counters live on the Express request via AsyncLocalStorage. When we're
+// not inside a request context (worker jobs, scheduled tasks, boot), the
+// budget is a no-op and every info log flows through normally.
+
+import { AsyncLocalStorage } from "node:async_hooks";
+
+export const LOG_BUDGET_PER_REQUEST = 5;
+
+interface RequestLogBudget {
+  count: number;
+}
+
+const requestLogContext = new AsyncLocalStorage<RequestLogBudget>();
+
+/**
+ * Run `fn` inside a per-request log-budget context. After
+ * LOG_BUDGET_PER_REQUEST info calls, additional info logs are demoted
+ * to debug. Wraps middleware setup so handlers don't need to know.
+ */
+export function withRequestLogBudget<T>(fn: () => T): T {
+  return requestLogContext.run({ count: 0 }, fn);
+}
+
+function shouldDemoteInfoToDebug(): boolean {
+  const ctx = requestLogContext.getStore();
+  if (!ctx) return false;
+  ctx.count += 1;
+  return ctx.count > LOG_BUDGET_PER_REQUEST;
+}
+
 function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}): void {
+  // Pillar 9.3 — demote info logs past the per-request budget.
+  if (level === "info" && shouldDemoteInfoToDebug()) {
+    level = "debug";
+  }
+
   // Pillar D / D7 — strip PII unless explicitly waived. Callers can pass
   // `metadata: { __pii_safe: true }` for messages where the format guarantees
   // no PII leak (e.g. metric names + numeric values).
@@ -257,31 +302,47 @@ function generateRequestId(): string {
 export function requestLoggingMiddleware(req: Request, res: Response, next: NextFunction): void {
   const startTime = Date.now();
   const requestId = generateRequestId();
-  
+
   (req as Request & { requestId: string }).requestId = requestId;
   // Task #155: Propagate request ID to client for correlation with server logs
   res.setHeader("X-Request-Id", requestId);
 
-  if (req.path.startsWith("/api")) {
-    logger.debug(`Incoming request: ${req.method} ${req.path}`, {
-      source: "http",
-      requestId,
-      metadata: {
-        query: Object.keys(req.query).length > 0 ? req.query : undefined,
-        contentType: req.get("content-type"),
-      },
-    });
-  }
-
-  res.on("finish", () => {
-    const duration = Date.now() - startTime;
-    
+  // Pillar 9.3 — open a per-request log-budget context.  Info calls past
+  // LOG_BUDGET_PER_REQUEST get auto-demoted to debug so a single chatty
+  // handler can't drown out aggregator-bound output.
+  withRequestLogBudget(() => {
     if (req.path.startsWith("/api")) {
-      logger.response(req, res, duration, { requestId });
+      logger.debug(`Incoming request: ${req.method} ${req.path}`, {
+        source: "http",
+        requestId,
+        metadata: {
+          query: Object.keys(req.query).length > 0 ? req.query : undefined,
+          contentType: req.get("content-type"),
+        },
+      });
     }
-  });
 
-  next();
+    res.on("finish", () => {
+      const duration = Date.now() - startTime;
+
+      if (req.path.startsWith("/api")) {
+        // Pillar 9.3 — demote successful response logs to debug.  4xx
+        // and 5xx remain at warn/error per the logger.response level
+        // ladder; only 2xx is noise on the hot path.
+        if (res.statusCode < 400) {
+          logger.debug(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`, {
+            source: "http",
+            requestId,
+            metadata: { statusCode: res.statusCode, duration },
+          });
+        } else {
+          logger.response(req, res, duration, { requestId });
+        }
+      }
+    });
+
+    next();
+  });
 }
 
 export function errorLoggingMiddleware(err: Error, req: Request, res: Response, next: NextFunction): void {

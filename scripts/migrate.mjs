@@ -1270,6 +1270,29 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "outbox_dlq_event_type_idx" ON "outbox_dlq" ("event_type")',
   'CREATE INDEX IF NOT EXISTS "outbox_dlq_failed_at_idx" ON "outbox_dlq" ("failed_at" DESC)',
+
+  // Pillar 9.1 — DLQ provenance columns.  Existing rows back-fill via
+  // COALESCE so the dashboard never sees NULL where a timestamp is
+  // expected.  failure_count seeds from `attempts` (best available proxy).
+  'ALTER TABLE "outbox_dlq" ADD COLUMN IF NOT EXISTS "last_error" text',
+  'ALTER TABLE "outbox_dlq" ADD COLUMN IF NOT EXISTS "failure_count" integer NOT NULL DEFAULT 0',
+  'ALTER TABLE "outbox_dlq" ADD COLUMN IF NOT EXISTS "first_failed_at" timestamp',
+  'ALTER TABLE "outbox_dlq" ADD COLUMN IF NOT EXISTS "last_failed_at" timestamp',
+  'ALTER TABLE "outbox_dlq" ADD COLUMN IF NOT EXISTS "moved_to_dlq_at" timestamp NOT NULL DEFAULT now()',
+  'UPDATE "outbox_dlq" SET "first_failed_at" = COALESCE("first_failed_at", "failed_at"), "last_failed_at" = COALESCE("last_failed_at", "last_error_at", "failed_at"), "failure_count" = COALESCE(NULLIF("failure_count", 0), "attempts"), "last_error" = COALESCE("last_error", "failure_reason") WHERE "first_failed_at" IS NULL OR "last_failed_at" IS NULL',
+  'CREATE INDEX IF NOT EXISTS "outbox_dlq_moved_at_idx" ON "outbox_dlq" ("moved_to_dlq_at" DESC)',
+
+  // Pillar 9.5 — generic webhook idempotency table.
+  `CREATE TABLE IF NOT EXISTS "processed_webhook_events" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "event_id" text NOT NULL,
+     "event_type" text NOT NULL,
+     "processed_at" timestamp NOT NULL DEFAULT now(),
+     "metadata" jsonb
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "processed_webhook_events_provider_event_uidx" ON "processed_webhook_events" ("provider", "event_id")',
+  'CREATE INDEX IF NOT EXISTS "processed_webhook_events_processed_at_idx" ON "processed_webhook_events" ("processed_at" DESC)',
   `CREATE TABLE IF NOT EXISTS "job_runs" (
      "id" serial PRIMARY KEY,
      "job_name" text NOT NULL,

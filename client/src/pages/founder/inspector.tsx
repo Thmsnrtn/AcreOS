@@ -10,10 +10,18 @@
  *   /founder/inspector/agent/:codename
  *   /founder/inspector/decision/:id
  *   /founder/inspector/audit               (no id — recent founder mutations feed)
+ *   /founder/inspector/org/:id             (handed off to ./inspector/org.tsx)
+ *   /founder/inspector/cost-event/:id      (handed off to ./inspector/cost-event.tsx)
+ *   /founder/inspector/provider/:name      (handed off to ./inspector/provider.tsx)
  */
 
+import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
+
+const OrgInspector = React.lazy(() => import("./inspector/org"));
+const CostEventInspector = React.lazy(() => import("./inspector/cost-event"));
+const ProviderInspector = React.lazy(() => import("./inspector/provider"));
 import {
   Activity,
   ArrowLeft,
@@ -94,6 +102,9 @@ export default function FounderInspectorRouter() {
   const [agentMatch, agentParams] = useRoute<{ codename: string }>("/founder/inspector/agent/:codename");
   const [decisionMatch, decisionParams] = useRoute<{ id: string }>("/founder/inspector/decision/:id");
   const [auditMatch] = useRoute("/founder/inspector/audit");
+  const [orgMatch] = useRoute("/founder/inspector/org/:id");
+  const [costEventMatch] = useRoute("/founder/inspector/cost-event/:id");
+  const [providerMatch] = useRoute("/founder/inspector/provider/:name");
 
   if (agentMatch && agentParams) {
     return <AgentInspector codename={agentParams.codename} />;
@@ -104,13 +115,34 @@ export default function FounderInspectorRouter() {
   if (auditMatch) {
     return <AuditInspector />;
   }
+  if (orgMatch) {
+    return (
+      <React.Suspense fallback={<PageShell label="Org inspector"><div className="text-sm text-muted-foreground">Loading…</div></PageShell>}>
+        <OrgInspector />
+      </React.Suspense>
+    );
+  }
+  if (costEventMatch) {
+    return (
+      <React.Suspense fallback={<PageShell label="Cost event"><div className="text-sm text-muted-foreground">Loading…</div></PageShell>}>
+        <CostEventInspector />
+      </React.Suspense>
+    );
+  }
+  if (providerMatch) {
+    return (
+      <React.Suspense fallback={<PageShell label="Provider audit"><div className="text-sm text-muted-foreground">Loading…</div></PageShell>}>
+        <ProviderInspector />
+      </React.Suspense>
+    );
+  }
 
   return (
     <PageShell label="Inspector">
       <p className="text-sm text-muted-foreground">
         Choose a scope:{" "}
         <Link href="/founder/inspector/audit" className="underline">audit</Link>, or open from an
-        agent/decision link.
+        agent/decision/org/cost-event/provider link.
       </p>
     </PageShell>
   );

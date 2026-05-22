@@ -25,6 +25,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+// Founder finance tiles — Bucket alarm / Net-negative orgs / Scale-up triggers.
+// Conditional render (component decides whether to surface). Folded in here per
+// the founder-side integration map; no new top-level /founder/finance route.
+import { FounderFinanceNowTiles } from "@/components/founder/finance-now-tiles";
 
 interface InboxItem {
   id: string;
@@ -102,6 +106,7 @@ export default function FounderNowPage() {
           </Card>
         ) : (
           <>
+            <FounderFinanceNowTiles />
             <InboxSection
               title="Needs you in the next hour"
               tone="red"

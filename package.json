@@ -146,6 +146,7 @@
     "openai": "^6.33.0",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
+    "parquetjs-lite": "0.8.7",
     "pdf-parse": "2.4.5",
     "pdfkit": "^0.18.0",
     "pg": "^8.20.0",

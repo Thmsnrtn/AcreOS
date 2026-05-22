@@ -62,3 +62,62 @@ export async function generateQueryEmbedding(
     return null;
   }
 }
+
+/**
+ * Pillar 9.4 — batched embedding generation.
+ *
+ * OpenAI's text-embedding-3-small accepts an array of strings in a
+ * single API call. Submitting K=100 rows per call instead of K calls
+ * collapses ~100× network overhead. The price is the same per-token
+ * either way ($0.02/M); the saving is in latency, request count, and
+ * rate-limit headroom.
+ *
+ * Returns an array of (embedding | null) aligned by input index.  Any
+ * row that came back with the wrong dim is returned as null so the
+ * caller can skip the UPDATE for that row.  Returns null (not an array)
+ * when the API call itself fails — same semantic as the per-row helper.
+ */
+export async function generateQueryEmbeddingsBatch(
+  texts: string[],
+): Promise<Array<number[] | null> | null> {
+  if (!Array.isArray(texts) || texts.length === 0) return [];
+
+  const openai = getOpenAIClient();
+  if (!openai) {
+    logger.debug("[embeddingClient] OpenAI client not configured (batch)");
+    return null;
+  }
+
+  // Drop empties before the API call — OpenAI rejects empty strings.
+  // We preserve original positions so callers can rebuild the result
+  // aligned with their input array.
+  const nonEmptyIdx: number[] = [];
+  const nonEmptyTexts: string[] = [];
+  for (let i = 0; i < texts.length; i++) {
+    const t = texts[i];
+    if (t && t.trim()) {
+      nonEmptyIdx.push(i);
+      nonEmptyTexts.push(t);
+    }
+  }
+
+  const out: Array<number[] | null> = new Array(texts.length).fill(null);
+  if (nonEmptyTexts.length === 0) return out;
+
+  try {
+    const response = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: nonEmptyTexts,
+    });
+    for (let i = 0; i < nonEmptyTexts.length; i++) {
+      const embedding = response.data[i]?.embedding;
+      if (embedding && embedding.length === EMBEDDING_DIMENSIONS) {
+        out[nonEmptyIdx[i]] = embedding;
+      }
+    }
+    return out;
+  } catch (err) {
+    logger.error("[embeddingClient] batched embedding API call failed", err);
+    return null;
+  }
+}

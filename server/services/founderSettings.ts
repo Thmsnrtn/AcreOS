@@ -112,6 +112,26 @@ export const KNOBS: KnobDefinition[] = [
     max: 300,
     units: "seconds",
   },
+  // Pillar 9.2 — Cold-storage archival knobs.
+  {
+    key: "archival.enabled",
+    valueType: "boolean",
+    defaultValue: "false",
+    description:
+      "Enable nightly cold-storage archival of activity tables to Cloudflare R2 in Parquet format. Off by default — flip on once CMO_R2_* env vars are configured in Fly and the bucket exists.",
+    category: "scheduling",
+  },
+  {
+    key: "archival.horizon_days",
+    valueType: "number",
+    defaultValue: "90",
+    description:
+      "Rows older than this many days become eligible for archival. Lower = more aggressive (smaller hot DB, more R2 reads); higher = larger hot DB, fewer cold-storage hops.",
+    category: "scheduling",
+    min: 7,
+    max: 3650,
+    units: "days",
+  },
 ];
 
 const cache = new Map<string, { value: string; fetchedAt: number }>();

@@ -11854,6 +11854,28 @@ export const stripeProcessedEvents = pgTable("stripe_processed_events", {
   index("stripe_processed_events_event_id_idx").on(table.stripeEventId),
 ]);
 
+// Pillar 9.5 — generic webhook idempotency.
+// Provider-agnostic dedup ledger for inbound webhooks (Twilio, SendGrid,
+// Lob, PostGrid, Telnyx, …). Stripe keeps its dedicated table because the
+// existing flow is battle-tested and we don't want to risk regression.
+// UNIQUE(provider, event_id) guarantees a single insert per
+// (provider, event) pair; an INSERT … ON CONFLICT DO NOTHING claim
+// makes the dispatch exactly-once even when the provider retries.
+export const processedWebhookEvents = pgTable("processed_webhook_events", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(), // twilio | sendgrid | lob | postgrid | telnyx
+  eventId: text("event_id").notNull(),
+  eventType: text("event_type").notNull(),
+  processedAt: timestamp("processed_at").notNull().defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+}, (table) => [
+  uniqueIndex("processed_webhook_events_provider_event_uidx").on(table.provider, table.eventId),
+  index("processed_webhook_events_processed_at_idx").on(table.processedAt),
+]);
+
+export type ProcessedWebhookEvent = typeof processedWebhookEvents.$inferSelect;
+export type InsertProcessedWebhookEvent = typeof processedWebhookEvents.$inferInsert;
+
 // P0-10 (master findings): Dropbox Sign / HelloSign webhook events claimed
 // before processing. Mirrors the stripeProcessedEvents pattern: an INSERT
 // ON CONFLICT DO NOTHING claim guarantees exactly-once dispatch even when
@@ -17623,6 +17645,9 @@ export const outboxDlq = pgTable("outbox_dlq", {
   id: serial("id").primaryKey(),
   originalOutboxId: integer("original_outbox_id"),
   eventType: text("event_type").notNull(),
+  // Pillar 9.1 — keep the canonical column name for parity with the spec's
+  // `jobType` while the rest of the codebase reads `event_type`. Same
+  // column; both Drizzle field names point here.
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   status: text("status").notNull().default("failed"),
   attempts: integer("attempts").notNull().default(0),
@@ -17630,9 +17655,18 @@ export const outboxDlq = pgTable("outbox_dlq", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   failedAt: timestamp("failed_at").notNull().defaultNow(),
   failureReason: text("failure_reason").notNull(),
+  // Pillar 9.1 — explicit DLQ provenance columns. `lastError` mirrors
+  // failureReason but is kept distinct so that callers re-running a row
+  // can see the most-recent error after a retry-discard round-trip.
+  lastError: text("last_error"),
+  failureCount: integer("failure_count").notNull().default(0),
+  firstFailedAt: timestamp("first_failed_at"),
+  lastFailedAt: timestamp("last_failed_at"),
+  movedToDlqAt: timestamp("moved_to_dlq_at").notNull().defaultNow(),
 }, (table) => [
   index("outbox_dlq_event_type_idx").on(table.eventType),
   index("outbox_dlq_failed_at_idx").on(table.failedAt),
+  index("outbox_dlq_moved_at_idx").on(table.movedToDlqAt),
 ]);
 
 export const insertOutboxDlqSchema = createInsertSchema(outboxDlq).omit({

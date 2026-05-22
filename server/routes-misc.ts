@@ -13,6 +13,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { verifyTwilioSignature } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { withIdempotency } from "./services/webhook-idempotency";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -301,13 +302,27 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.post("/api/webhooks/twilio/sms", verifyTwilioSignature, async (req, res) => {
     try {
       const { From, To, Body, MessageSid, AccountSid } = req.body;
-      
+
       if (!From || !Body || !MessageSid) {
         return res.status(400).send("Invalid webhook payload");
       }
 
+      // Pillar 9.5 — dedup by MessageSid. Twilio retries on 5xx and on
+      // any timeout >15s; without this dedup, transient processing slow-
+      // downs caused duplicate inbound-SMS rows in the messages table.
+      const dedupCheck = await withIdempotency(
+        "twilio",
+        MessageSid,
+        "sms.inbound",
+        async () => "ok",
+      );
+      if (dedupCheck.duplicate) {
+        logger.debug(`[Twilio Webhook] duplicate inbound SMS ${MessageSid} — already processed`);
+        return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+      }
+
       logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
-      
+
       const orgIntegrations = await db
         .select()
         .from(organizationIntegrations)
@@ -382,6 +397,17 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
     if (!MessageSid || !MessageStatus) return;
 
+    // Pillar 9.5 — dedup by (MessageSid + MessageStatus). The same SMS
+    // can transition through multiple statuses (sent → delivered) so we
+    // include the status to distinguish each transition.
+    const dedup = await withIdempotency(
+      "twilio",
+      `${MessageSid}:${MessageStatus}`,
+      "sms.status",
+      async () => "ok",
+    );
+    if (dedup.duplicate) return;
+
     try {
       const { messages } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
@@ -415,6 +441,20 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     const { CallSid, RecordingUrl, RecordingSid, RecordingStatus } = req.body;
 
     if (RecordingStatus !== "completed" || !RecordingUrl || !CallSid) return;
+
+    // Pillar 9.5 — dedup by RecordingSid (Twilio's globally-unique id for
+    // the recording). Falls back to CallSid when RecordingSid is absent
+    // — older Twilio API versions on legacy accounts.
+    const recordingDedup = await withIdempotency(
+      "twilio",
+      RecordingSid || `call:${CallSid}`,
+      "recording.complete",
+      async () => "ok",
+    );
+    if (recordingDedup.duplicate) {
+      logger.debug(`[Twilio Recording] duplicate recording-status ${RecordingSid ?? CallSid}`);
+      return;
+    }
 
     try {
       // MP3 format requires appending .mp3 to the Twilio URL

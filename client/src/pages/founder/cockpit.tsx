@@ -30,6 +30,13 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
+// Founder Finance — Buckets / MRR+margin / Cost-mix / Scale-up history /
+// Recovery transfer. Folded in here (above existing letter + strategy
+// sections) per the founder-side integration map; no new top-level
+// /founder/finance route. Section deliberately renders ABOVE the existing
+// content so financial state is the first thing the founder sees on the
+// steering surface.
+import { FounderFinanceSteeringSections } from "@/components/founder/finance-steering-sections";
 
 interface CockpitSection {
   title: string;
@@ -115,6 +122,12 @@ export default function FounderCockpitPage() {
           </Card>
         ) : data ? (
           <>
+            {/* Founder Finance sections — buckets / MRR + margin / cost mix /
+                scale-up history / recovery actions. Render ABOVE the existing
+                letter + strategic-move sections so financial state is the
+                first thing visible on the steering surface. */}
+            <FounderFinanceSteeringSections />
+
             {/* The one decision — pinned at the top because it's the only thing the founder MUST act on */}
             {data.sections.decision ? (
               <Card className="border-acr-brand/30 bg-acr-brand-soft/40">

@@ -148,6 +148,31 @@ function PaletteDialog({
     navigate(path);
   };
 
+  // Inspector shortcuts: "lob" → provider page, "org #12" → org cost tab,
+  // "#12345" → cost-event provenance. These run on every keystroke (cheap
+  // pattern match) and surface as a top-of-list group so a single Enter
+  // keypress lands the founder where they meant to go.
+  const trimmed = query.trim().toLowerCase();
+  const SUPPORTED_PROVIDERS = [
+    "lob",
+    "postgrid",
+    "twilio",
+    "telnyx",
+    "sendgrid",
+    "ses",
+    "openrouter",
+    "anthropic",
+    "openai",
+    "elevenlabs",
+    "stripe",
+    "sentry",
+    "fly",
+    "neon",
+  ];
+  const providerHit = SUPPORTED_PROVIDERS.find((p) => p === trimmed) ?? null;
+  const orgIdHit = /^org[ #]+(\d+)$/.exec(trimmed)?.[1] ?? null;
+  const ledgerIdHit = /^#?(\d{4,})$/.exec(trimmed)?.[1] ?? null;
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen} data-testid="command-palette">
       <CommandInput
@@ -164,9 +189,60 @@ function PaletteDialog({
               <li>• A customer slug or name</li>
               <li>• A keyword from a decision ("churn", "dunning")</li>
               <li>• A month (2026-04)</li>
+              <li>• A provider name ("lob", "twilio") for the provider audit</li>
+              <li>• "org 12" or a ledger id (#12345) for the inspector</li>
             </ul>
             <p className="mt-4 text-[11px] text-muted-foreground/70">Press Esc to close.</p>
           </div>
+        )}
+        {(providerHit || orgIdHit || ledgerIdHit) && (
+          <CommandGroup heading="Inspector shortcuts">
+            {providerHit && (
+              <CommandItem
+                key={`shortcut-provider-${providerHit}`}
+                onSelect={() => go(`/founder/inspector/provider/${providerHit}`)}
+                data-testid={`palette-provider-${providerHit}`}
+              >
+                <ListChecks className="h-4 w-4 mr-2 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">Provider audit: {providerHit}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    /founder/inspector/provider/{providerHit}
+                  </p>
+                </div>
+              </CommandItem>
+            )}
+            {orgIdHit && (
+              <CommandItem
+                key={`shortcut-org-${orgIdHit}`}
+                onSelect={() => go(`/founder/inspector/org/${orgIdHit}`)}
+                data-testid={`palette-org-${orgIdHit}`}
+              >
+                <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">Org #{orgIdHit} — Cost tab</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    /founder/inspector/org/{orgIdHit}
+                  </p>
+                </div>
+              </CommandItem>
+            )}
+            {ledgerIdHit && (
+              <CommandItem
+                key={`shortcut-ledger-${ledgerIdHit}`}
+                onSelect={() => go(`/founder/inspector/cost-event/${ledgerIdHit}`)}
+                data-testid={`palette-cost-event-${ledgerIdHit}`}
+              >
+                <ListChecks className="h-4 w-4 mr-2 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">Cost event #{ledgerIdHit}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    /founder/inspector/cost-event/{ledgerIdHit}
+                  </p>
+                </div>
+              </CommandItem>
+            )}
+          </CommandGroup>
         )}
         {query.trim().length > 0 && !isFetching && (data?.groups?.length ?? 0) === 0 && (
           <CommandEmpty>No matches.</CommandEmpty>
@@ -225,7 +301,7 @@ function PaletteDialog({
                 {g.items.map((o) => (
                   <CommandItem
                     key={`o-${o.id}`}
-                    onSelect={() => go(`/organizations/${o.id}`)}
+                    onSelect={() => go(`/founder/inspector/org/${o.id}`)}
                     data-testid={`palette-org-${o.id}`}
                   >
                     <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />

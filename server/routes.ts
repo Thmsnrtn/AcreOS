@@ -1545,6 +1545,16 @@ export async function registerRoutes(
     app.use('/api/founder/cockpit', isAuthenticated, requireFounder, founderCockpitRouter);
   }
 
+  // Founder Finance — buckets/MRR/contribution-margin/cost-mix/triggers/recovery
+  // transfers. Read-side aggregation of `financial_ledger` + write-side recovery
+  // controls. Weaves into /founder (Now) tiles + /founder/steering sections
+  // per the founder-side integration map; no new top-level /founder/finance
+  // route. See server/routes-finance-ledger.ts.
+  {
+    const financeLedgerRouter = (await import("./routes-finance-ledger")).default;
+    app.use('/api/founder/finance', isAuthenticated, getOrCreateOrg, requireFounder, financeLedgerRouter);
+  }
+
   // Pillar R — founder admin for trust-graduation tiers.
   {
     const founderGraduationRouter = (await import("./routes-founder-graduation")).default;
@@ -1671,9 +1681,20 @@ export async function registerRoutes(
     // Founder studio (Phase C of founder redesign) — every dial in one API.
     const { registerFounderStudioRoutes } = await import("./routes-founder-studio");
     registerFounderStudioRoutes(app);
+    // Founder studio dial sub-surfaces (allocation, credits, triggers,
+    // routing, BYOK, infra) — each writes through the same settings service
+    // so the legacy dial catalog reflects every change automatically.
+    const { registerFounderStudioDialRoutes } = await import("./routes-founder-studio-dials");
+    registerFounderStudioDialRoutes(app);
     // Founder inspector (Phase D) — provenance lens for agents / decisions / audit.
     const { registerFounderInspectorRoutes } = await import("./routes-founder-inspector");
     registerFounderInspectorRoutes(app);
+    // Founder inspector finance enrichments — Cost tab for /org/:id, per-event
+    // provenance, per-provider audit, and emergency channel overrides.
+    const { registerFounderInspectorFinanceRoutes } = await import(
+      "./routes-founder-inspector-finance"
+    );
+    registerFounderInspectorFinanceRoutes(app);
     // SCP v2 routes — golden-suite, briefing, evolution/dashboard, evolution/status,
     // costs, constitution, trust/promotions. File was orphaned from this
     // registration block; 7 GET endpoints were 404ing in production. Caught
@@ -2095,6 +2116,8 @@ export async function registerRoutes(
   registerInboundEmailRoutes(app);
   // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
   registerSendGridEventRoutes(app);
+  // Pillar 9.1 — Founder DLQ inspection + retry/discard endpoints.
+  (await import("./routes-founder-dlq")).registerFounderDlqRoutes(app);
   // Eleonora deliverability — Phase 1 §10 / Week 7-8: per-org DKIM/SPF/DMARC
   // identity provisioning, one-click List-Unsubscribe handler, founder
   // deliverability dashboard.

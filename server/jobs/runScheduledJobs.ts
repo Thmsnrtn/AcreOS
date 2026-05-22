@@ -2743,4 +2743,68 @@ export async function runScheduledJobs(): Promise<void> {
   }).catch((err) => {
     log(`Failed to import schema drift detector: ${err}`, "ops");
   });
+
+  // ─── Pillar 9.1 — Surface poison jobs into the decision queue (hourly).
+  // Watches outbox_dlq and inserts at most one decisions_inbox_items row
+  // per (event_type) so the founder sees "N poison jobs in DLQ — review,
+  // retry, or discard?" in their inbox.
+  import("../routes-founder-dlq").then(({ surfacePoisonJobDecision }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("DLQ poison-job surfacer registered (hourly)", "ops");
+      scheduleSelfRescheduling({
+        name: "dlq_poison_job_surfacer",
+        intervalMs: 60 * 60 * 1000,
+        initialDelayMs: 60_000,
+        run: async () => {
+          await withJobLock("dlq_poison_job_surfacer", 30 * 60, async () => {
+            const r = await surfacePoisonJobDecision();
+            if (r.surfaced > 0) {
+              log(`[dlq-surfacer] inserted ${r.surfaced} decision-queue item(s)`, "ops");
+            }
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import DLQ surfacer: ${err}`, "ops");
+  });
+
+  // ─── Pillar 9.2 — Cold-storage archival (daily 4am UTC) ────────────────
+  // Sweeps archive-eligible tables for rows older than archival.horizon_days
+  // (default 90) and writes them to Cloudflare R2 in Parquet. Opt-in via
+  // founder_settings.archival.enabled — defaults to false until Tom flips it
+  // on. See server/jobs/archival.ts for the table registry + FDW notes.
+  import("./archival").then(({ runArchivalSweep }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      // 24h cadence, initial delay aligned roughly to 4am UTC. The exact
+      // wall-clock time will drift if the worker restarts mid-day; that's
+      // fine — archival is idempotent and cumulative.
+      const FOUR_AM_INITIAL_DELAY_MS = (() => {
+        const now = new Date();
+        const fourAm = new Date(now);
+        fourAm.setUTCHours(4, 0, 0, 0);
+        if (fourAm.getTime() <= now.getTime()) {
+          fourAm.setUTCDate(fourAm.getUTCDate() + 1);
+        }
+        return fourAm.getTime() - now.getTime();
+      })();
+
+      log("Archival sweep registered (daily 4am UTC)", "ops");
+      scheduleSelfRescheduling({
+        name: "archival_sweep",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: FOUR_AM_INITIAL_DELAY_MS,
+        run: async () => {
+          await withJobLock("archival_sweep", 60 * 60, async () => {
+            const r = await runArchivalSweep();
+            if (r.enabled) {
+              log(`[archival] swept ${r.results.length} table(s)`, "ops");
+            }
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import archival job: ${err}`, "ops");
+  });
 }
