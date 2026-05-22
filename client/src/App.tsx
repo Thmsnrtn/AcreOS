@@ -42,7 +42,7 @@ const CommandPalette = React.lazy(() => import("@/components/command-palette").t
 import { FounderCommandPaletteProvider } from "@/components/founder-command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
-import { MobileBottomNav } from "@/components/mobile";
+import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
 import { DynamicIsland } from "@/components/dynamic-island";
@@ -1470,8 +1470,13 @@ function AppContent() {
         </Suspense>
       )}
       {/* Suppress MobileBottomNav on founder routes — customer-side nav
-          items don't apply to founder mode (#9 audit finding). */}
+          items don't apply to founder mode (#9 audit finding). The founder
+          gets a dedicated FounderMobileBottomNav with the 5 canonical
+          surfaces, otherwise mobile founders are stranded on whatever page
+          they landed on with no nav (F-D22, reported as "single dashboard
+          and no controls"). */}
       {user && !location.startsWith("/founder") && <MobileBottomNav />}
+      {user && location.startsWith("/founder") && <FounderMobileBottomNav />}
       {user && (
         <Suspense fallback={null}>
           <OnboardingWizard />
