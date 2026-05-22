@@ -2855,6 +2855,12 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // phoneNormalized is a STORED generated column — Postgres rejects
   // explicit writes. Omit from inserts. (Migration 0051.)
   phoneNormalized: true,
+}).extend({
+  // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
+  // emails like "not-an-email" sailed through to the DB. Tighten to email
+  // format (still optional since the column is nullable for callers who
+  // only have a phone or just a parcel-owner name).
+  email: z.string().email().optional().nullable(),
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({ 
   id: true, createdAt: true 
