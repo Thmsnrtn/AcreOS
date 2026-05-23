@@ -13,9 +13,12 @@ import { ArrowLeft, ArrowRight, Building2, Layers } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sparkles } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { discussWithAtlas } from "@/lib/atlas-discuss";
 
 interface CostEventResponse {
   event: {
@@ -105,8 +108,27 @@ export default function CostEventInspector() {
 
         {/* Cost figure */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-sm">Charge</CardTitle>
+            {/* Phase D — Atlas Dock entry. Pre-fills a question about
+                this exact cost event so the founder doesn't have to
+                re-state the id. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              data-testid="discuss-cost-event"
+              onClick={() =>
+                discussWithAtlas({
+                  message: `Tell me about this cost event (id ${id}). Why did it route this way and what would have been cheaper?`,
+                  artifactType: "cost_event",
+                  artifactId: id,
+                })
+              }
+            >
+              <Sparkles className="w-3 h-3" aria-hidden="true" />
+              Discuss with Atlas
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-baseline gap-3">

@@ -5,7 +5,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["**/*.test.ts"],
+    // .test.ts runs under node by default; .test.tsx files opt into
+    // jsdom via the `// @vitest-environment jsdom` pragma at file head
+    // (Phase D — dock.test.tsx is the first such test).
+    include: ["**/*.test.ts", "**/*.test.tsx"],
     exclude: ["node_modules", "dist", "client", ".claude"],
     setupFiles: ["./tests/setup.ts"],
     testTimeout: 15000,

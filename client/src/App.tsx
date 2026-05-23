@@ -41,8 +41,13 @@ import { EarlyAccessBanner } from "@/components/early-access-banner";
 const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
 import { FounderCommandPaletteProvider } from "@/components/founder-command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
+import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
+// Phase D — Atlas Dock follows Tom across every founder surface. Lazy
+// so non-founder users never download the chat bundle.
+const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
+import { usePageContext } from "@/hooks/use-page-context";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
 import { DynamicIsland } from "@/components/dynamic-island";
@@ -1375,6 +1380,29 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * AtlasDockHost — thin wrapper that resolves the current page context
+ * (route + URL params) and hands it to the lazy Dock. Lives in App.tsx
+ * because both the gating logic and the dock mount belong to the global
+ * shell; pulling it into its own file would split a 4-line concern.
+ */
+function AtlasDockHost() {
+  const pageContext = usePageContext();
+  // Subscribe to the global "atlas:discuss" event so any artifact card
+  // can request the dock open with a prefilled question. See
+  // client/src/lib/atlas-discuss.ts for the publisher helper.
+  const [prefill, setPrefill] = React.useState<string | undefined>(undefined);
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      setPrefill(detail?.message ?? undefined);
+    };
+    window.addEventListener("atlas:discuss", handler);
+    return () => window.removeEventListener("atlas:discuss", handler);
+  }, []);
+  return <AtlasDock pageContext={pageContext} prefillMessage={prefill} />;
+}
+
 function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1421,6 +1449,24 @@ function AppContent() {
       setSentryUser(null);
     }
   }, [user]);
+
+  // Cmd+; (Ctrl+; on Windows/Linux) — toggle persona mode. Solves Tom's
+  // #1 nav pain (founder dashboard → had to hit Back repeatedly).
+  // Skipped when the user is typing in an input/textarea/contenteditable.
+  const { toggle: togglePersonaMode } = usePersonaMode();
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      // ";" is the key on both US and most international layouts; we
+      // match by .key (not .code) so it works on the unshifted glyph.
+      if (e.key !== ";") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      togglePersonaMode();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [togglePersonaMode]);
 
   // One-time first-launch hint for the command palette.
   // Phase 4 Week 19-20 (cmdk-v2 / Anya §8): promoted from DEV-only to
@@ -1495,6 +1541,15 @@ function AppContent() {
           and no controls"). */}
       {user && !location.startsWith("/founder") && <MobileBottomNav />}
       {user && location.startsWith("/founder") && <FounderMobileBottomNav />}
+      {/* Atlas Dock — Phase D. Appears on every /founder/* page EXCEPT
+          /founder itself (which IS the chat shell — dual surfaces would
+          duplicate the UI). Page-context is auto-resolved from the
+          current location so Atlas can answer "what am I looking at?". */}
+      {user && location.startsWith("/founder") && location !== "/founder" && (
+        <Suspense fallback={null}>
+          <AtlasDockHost />
+        </Suspense>
+      )}
       {user && (
         <Suspense fallback={null}>
           <OnboardingWizard />

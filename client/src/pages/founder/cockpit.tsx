@@ -27,9 +27,11 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
+  Sparkles,
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
+import { discussWithAtlas } from "@/lib/atlas-discuss";
 // Founder Finance — Buckets / MRR+margin / Cost-mix / Scale-up history /
 // Recovery transfer. Folded in here (above existing letter + strategy
 // sections) per the founder-side integration map; no new top-level
@@ -193,11 +195,31 @@ function SectionCard({
   const Icon = SECTION_ICONS[iconKey];
   return (
     <Card className={wide ? "md:col-span-2" : ""}>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Icon className="w-4 h-4" aria-hidden="true" />
           {section.title}
         </CardTitle>
+        {/* Phase D — per-tile "Discuss with Atlas" affordance. Pre-fills
+            a question scoped to this steering section so the dock opens
+            with Atlas already on-topic. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+          data-testid={`discuss-section-${iconKey}`}
+          onClick={() =>
+            discussWithAtlas({
+              message: `On the steering surface, the "${section.title}" section says: "${section.headline}". Walk me through what's driving this and what one move would move the needle.`,
+              artifactType: "steering_section",
+              artifactId: iconKey,
+            })
+          }
+          aria-label={`Discuss ${section.title} with Atlas`}
+        >
+          <Sparkles className="w-3 h-3" aria-hidden="true" />
+          Discuss
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">

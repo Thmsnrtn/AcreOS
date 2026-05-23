@@ -16,6 +16,9 @@ const SYNTHESIS_TOOLS = [
   "audit_provider_savings",
   "compare_templates",
   "forecast_runout",
+  // Phase E — background-task queueing tools
+  "start_idor_audit",
+  "start_provider_savings_analysis",
 ];
 
 vi.mock("../../server/db", () => ({
@@ -39,7 +42,7 @@ beforeAll(async () => {
 });
 
 describe("founder-chat synthesis tools", () => {
-  it("registers all 6 synthesis tools", () => {
+  it("registers all 8 synthesis tools (including Phase E task-queue tools)", () => {
     const names = listTools({ category: "synthesis" }).map((t) => t.name).sort();
     expect(names).toEqual([...SYNTHESIS_TOOLS].sort());
   });

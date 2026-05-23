@@ -68,10 +68,27 @@ import {
 // Ensure tool side-effect registration on module import.
 import "./services/founder-chat/tools";
 
+// Phase D — the chat client sends a structured pageContext (currentPath
+// plus already-resolved entity hints from useFounderChat/use-page-context).
+// All fields optional; the server's buildFounderToolContext re-derives
+// hints from currentPath for the legacy code path, then the explicit
+// fields below override / augment.
+const pageContextSchema = z.object({
+  currentPath: z.string().max(500).optional(),
+  currentOrgId: z.number().int().positive().optional(),
+  currentShipmentId: z.number().int().positive().optional(),
+  currentLedgerEventId: z.number().int().positive().optional(),
+  currentProviderName: z.string().max(120).optional(),
+  currentDialCategory: z.string().max(120).optional(),
+}).partial();
+
 const streamSchema = z.object({
   message: z.string().min(1).max(8000),
   threadId: z.number().int().positive().optional(),
+  /** Legacy field — pre-Phase-D clients only sent currentPath. */
   currentPath: z.string().max(500).optional(),
+  /** Phase D — structured page-context hints from the Atlas dock. */
+  pageContext: pageContextSchema.optional(),
 });
 
 const createThreadSchema = z.object({
@@ -299,6 +316,7 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
     const toolCtx = await buildFounderToolContext({
       founderUserId: userId, organizationId: orgId, threadId,
       currentPath: parsed.data.currentPath,
+      pageContext: parsed.data.pageContext,
       recentMessages: history.map((m: any) => ({ role: m.role, content: m.content, toolCalls: m.toolCalls })),
     });
 

@@ -16,20 +16,24 @@ describe("founder-chat stream route module", () => {
     expect(mod.default).toBeDefined();
   });
 
-  it("after loading, registry has 40 founder-chat tools", async () => {
+  it("after loading, registry has at least 40 founder-chat tools", async () => {
     await import("../../server/routes-founder-chat");
     const { listTools } = await import("../../server/services/founder-chat/tool-registry");
     const total = listTools().length;
-    // 16 inquiry + 13 action (12 + run_ceo_command) + 6 synthesis + 9 delegation = 44
+    // Initial: 16 inquiry + 13 action + 6 synthesis + 9 delegation = 44.
+    // Phase G read-only Fly batch adds 4 more inquiry tools → 48.
     expect(total).toBeGreaterThanOrEqual(40);
   });
 
   it("inquiry/action/synthesis/delegation counts are correct", async () => {
     await import("../../server/routes-founder-chat");
     const { listTools } = await import("../../server/services/founder-chat/tool-registry");
-    expect(listTools({ category: "inquiry" }).length).toBe(16);
-    expect(listTools({ category: "action" }).length).toBe(13);
-    expect(listTools({ category: "synthesis" }).length).toBe(6);
+    // Inquiry: 16 core + 4 Fly read-only + 3 Stripe read-only (Phase G batch 1).
+    expect(listTools({ category: "inquiry" }).length).toBe(23);
+    // Action: 13 core + 2 navigation (switch_to_customer/founder_mode).
+    expect(listTools({ category: "action" }).length).toBe(15);
+    // Synthesis: 6 core + 2 added by the pre-Phase-D synthesis-tools update.
+    expect(listTools({ category: "synthesis" }).length).toBe(8);
     expect(listTools({ category: "delegation" }).length).toBe(9);
   });
 

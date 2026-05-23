@@ -188,6 +188,73 @@ registerTool({
   },
 });
 
+// ─── 7. start_idor_audit (T2 — queues a background runner) ─────────────────
+registerTool({
+  name: "start_idor_audit",
+  description: "Queue a background IDOR audit on a file path or directory glob. Posts results back to the thread when complete.",
+  category: "synthesis",
+  destructive: true,
+  tier: 2,
+  schema: z.object({ filePathOrGlob: z.string().min(1).max(500) }),
+  artifactType: "background_task_card",
+  async handler(args, ctx) {
+    const { startBackgroundTask } = await import("../background-tasks");
+    const { taskId } = await startBackgroundTask({
+      threadId: ctx.threadId,
+      founderUserId: ctx.founderUserId,
+      label: `IDOR audit: ${args.filePathOrGlob}`,
+      runnerKey: "idor_audit",
+      payload: { filePathOrGlob: args.filePathOrGlob },
+      estimatedSeconds: 20,
+    });
+    return {
+      artifact: {
+        type: "background_task_card",
+        task: {
+          id: taskId,
+          label: `IDOR audit: ${args.filePathOrGlob}`,
+          status: "queued",
+          etaSeconds: 20,
+        },
+      },
+      followUp: `Queued IDOR audit on \`${args.filePathOrGlob}\` — I'll post the findings here when done.`,
+    };
+  },
+});
+
+// ─── 8. start_provider_savings_analysis (T2 — queues runner) ───────────────
+registerTool({
+  name: "start_provider_savings_analysis",
+  description: "Queue a background provider-savings analysis (spend + estimated swap savings). Posts results back when complete.",
+  category: "synthesis",
+  destructive: true,
+  tier: 2,
+  schema: z.object({
+    provider: z.string().min(1).max(60),
+    days: z.number().int().positive().max(365),
+  }),
+  artifactType: "background_task_card",
+  async handler(args, ctx) {
+    const { startBackgroundTask } = await import("../background-tasks");
+    const label = `Provider savings: ${args.provider} (${args.days}d)`;
+    const { taskId } = await startBackgroundTask({
+      threadId: ctx.threadId,
+      founderUserId: ctx.founderUserId,
+      label,
+      runnerKey: "provider_savings_analysis",
+      payload: { provider: args.provider, days: args.days },
+      estimatedSeconds: 10,
+    });
+    return {
+      artifact: {
+        type: "background_task_card",
+        task: { id: taskId, label, status: "queued", etaSeconds: 10 },
+      },
+      followUp: `Queued savings analysis for ${args.provider} over ${args.days}d.`,
+    };
+  },
+});
+
 // ─── 6. forecast_runout (T1) ────────────────────────────────────────────────
 registerTool({
   name: "forecast_runout",

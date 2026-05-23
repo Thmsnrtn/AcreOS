@@ -26,6 +26,7 @@ const DecisionCardArtifact = lazy(() => import("./artifacts/decision_card"));
 const TriggerCardArtifact = lazy(() => import("./artifacts/trigger_card"));
 const ConfirmationRequestArtifact = lazy(() => import("./artifacts/confirmation_request"));
 const BriefCardArtifact = lazy(() => import("./artifacts/brief_card"));
+const NavigationArtifact = lazy(() => import("./artifacts/navigation"));
 
 interface ArtifactRendererProps {
   artifact: Artifact;
@@ -84,6 +85,8 @@ function renderArtifact(artifact: Artifact): React.ReactNode {
       return (
         <BriefCardArtifact title={artifact.title} sections={artifact.sections} />
       );
+    case "navigation":
+      return <NavigationArtifact target={artifact.target} label={artifact.label} />;
 
     // ── Stubs — render placeholder. Phase D/E/G/H/I replace these. ────
     case "dlq_card":

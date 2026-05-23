@@ -27,7 +27,7 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { Menu, ExternalLink } from "lucide-react";
+import { Menu, ExternalLink, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useFounderChat } from "@/hooks/use-founder-chat";
@@ -35,6 +35,9 @@ import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { ThreadSidebar } from "@/components/founder-chat/ThreadSidebar";
+import { PersonaSheet } from "@/components/persona-sheet";
+import { usePersonaMode } from "@/hooks/use-persona-mode";
+import { TOUCH_TARGET_PT } from "@/lib/spacing";
 
 export default function FounderChatPage() {
   useDocumentTitle("Atlas — founder chat");
@@ -43,6 +46,8 @@ export default function FounderChatPage() {
     threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? "default";
   const [activeThreadId, setActiveThreadId] = useState<string>(defaultThreadId);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
+  const { mode: personaMode } = usePersonaMode();
 
   const {
     messages,
@@ -78,41 +83,60 @@ export default function FounderChatPage() {
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Header */}
-        <header className="flex items-center gap-2 px-3 sm:px-4 py-2.5 border-b border-border">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="md:hidden h-8 w-8"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="Open thread list"
-            data-testid="header-open-sidebar"
-          >
-            <Menu className="w-4 h-4" aria-hidden="true" />
-          </Button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-semibold truncate" data-testid="header-title">
-              {headerTitle}
-            </h1>
-            {isStreaming && (
-              <p className="text-[10px] text-acr-brand" aria-live="polite">
-                streaming…
-              </p>
-            )}
+        <header className="flex flex-col gap-1.5 px-3 sm:px-4 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="md:hidden h-8 w-8"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open thread list"
+              data-testid="header-open-sidebar"
+            >
+              <Menu className="w-4 h-4" aria-hidden="true" />
+            </Button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-semibold truncate" data-testid="header-title">
+                {headerTitle}
+              </h1>
+              {isStreaming && (
+                <p className="text-[10px] text-acr-brand" aria-live="polite">
+                  streaming…
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              asChild
+              className="text-xs gap-1.5"
+              data-testid="header-view-dashboard"
+            >
+              <Link href="/founder/dashboard" aria-label="View legacy dashboard">
+                <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">View dashboard</span>
+                <span className="sm:hidden">Dashboard</span>
+              </Link>
+            </Button>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            asChild
-            className="text-xs gap-1.5"
-            data-testid="header-view-dashboard"
+          {/* Mode chip — mobile-only. Tap opens the persona sheet. The
+              desktop header has the full PersonaSwitcher dropdown in the
+              PageTopbar, so we don't double up on md+. */}
+          <button
+            type="button"
+            onClick={() => setPersonaSheetOpen(true)}
+            aria-label={`Switch mode. Currently ${personaMode === "founder" ? "Founder" : "Customer"} mode.`}
+            data-testid="chat-header-persona-chip"
+            style={{ minHeight: TOUCH_TARGET_PT }}
+            className="md:hidden self-start inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 text-[11px] font-medium text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Link href="/founder/dashboard" aria-label="View legacy dashboard">
-              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">View dashboard</span>
-              <span className="sm:hidden">Dashboard</span>
-            </Link>
-          </Button>
+            <span className="text-muted-foreground">Mode:</span>
+            <span>{personaMode === "founder" ? "Founder" : "Customer"}</span>
+            <ChevronDown className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+          </button>
         </header>
+
+        <PersonaSheet open={personaSheetOpen} onOpenChange={setPersonaSheetOpen} />
 
         {/* Messages */}
         <MessageList

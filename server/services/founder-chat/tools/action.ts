@@ -436,6 +436,44 @@ registerTool({
   },
 });
 
+// ─── 12.5. switch_to_customer_mode (T1, non-destructive) ───────────────────
+// Persona-mode switcher tool. Atlas calls this when the founder says
+// things like "go back to my dashboard" or "show me my deals". The
+// navigation artifact auto-fires wouter on render — no confirmation
+// gate, no audit row (it's purely client-side navigation).
+registerTool({
+  name: "switch_to_customer_mode",
+  description: "Navigate the founder out of /founder/* and back to the customer surface (/today).",
+  category: "action",
+  destructive: false,
+  tier: 1,
+  schema: z.object({}),
+  artifactType: "navigation",
+  slashAliases: ["customer", "exit-founder"],
+  async handler() {
+    return {
+      artifact: { type: "navigation", target: "/today", label: "Switching to customer mode…" },
+    };
+  },
+});
+
+// ─── 12.6. switch_to_founder_mode (T1, non-destructive) ────────────────────
+registerTool({
+  name: "switch_to_founder_mode",
+  description: "Navigate from any customer surface into the founder dashboard (/founder).",
+  category: "action",
+  destructive: false,
+  tier: 1,
+  schema: z.object({}),
+  artifactType: "navigation",
+  slashAliases: ["founder", "atlas"],
+  async handler() {
+    return {
+      artifact: { type: "navigation", target: "/founder", label: "Switching to founder mode…" },
+    };
+  },
+});
+
 // ─── 13. run_ceo_command (T2) ───────────────────────────────────────────────
 // CEO command bridge integration — Atlas decides when terse imperatives
 // ("pause marketing", "show forecast") should route through the existing

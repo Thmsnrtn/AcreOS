@@ -951,6 +951,46 @@ function startFounderBriefingJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Atlas Morning Brief (Phase E) ────────────────────────────────────────────
+// Posts a single assistant message containing a brief_card to each founder's
+// default Atlas thread at 07:00 wall-clock. Idempotent — the job de-dupes
+// per-thread per-UTC-day inside morningBrief.ts. Separate from the customer
+// founder-briefing email above (that's a customer-side daily email; this is
+// the founder-chat morning brief).
+async function processAtlasMorningBrief() {
+  try {
+    const { runMorningBriefForAllFounders } = await import("./morningBrief");
+    const r = await runMorningBriefForAllFounders();
+    log(`Atlas morning brief: ran=${r.ran}, skipped=${r.skipped}`, 'atlas-morning-brief');
+    jobSupervisor.notifyResult('atlas_morning_brief', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Atlas morning brief error: ${err}`, 'atlas-morning-brief');
+    jobSupervisor.notifyResult('atlas_morning_brief', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startAtlasMorningBriefJob() {
+  log('Starting Atlas morning brief job (daily at 7am)', 'atlas-morning-brief');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 7 && now.getMinutes() < 5) {
+      withJobLock("atlas_morning_brief_daily", 60 * 60, processAtlasMorningBrief).catch((err: any) => {
+        log(`Atlas morning brief lock error: ${err}`, 'atlas-morning-brief');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Atlas Background-Task Runner (Phase E) ───────────────────────────────────
+// Polls founder_chat_background_tasks every 10s. Started once at boot; the
+// runner self-loops, so no setInterval wrapper needed.
+function startAtlasBackgroundTaskRunner() {
+  log('Starting Atlas background-task runner (10s poll)', 'atlas-bg-runner');
+  void import('./founderChatBackgroundTaskRunner').then(({ startFounderChatBackgroundTaskRunner }) => {
+    startFounderChatBackgroundTaskRunner(10_000);
+  }).catch((err) => log(`Atlas background-task runner import failed: ${err}`, 'atlas-bg-runner'));
+}
+
 // ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
 async function processOutcomeAnalyzerJob() {
   try {
@@ -1920,6 +1960,12 @@ export async function runScheduledJobs(): Promise<void> {
     .catch((err) =>
       log(`Vision re-imaging scheduler import failed: ${err}`, "vision-reimaging"),
     );
+
+  // Atlas Morning Brief (Phase E) — daily 7am wall-clock, per-founder
+  startAtlasMorningBriefJob();
+
+  // Atlas Background-Task Runner (Phase E) — 10s poller on the worker
+  startAtlasBackgroundTaskRunner();
 
   // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
   startAutonomousDecisionExecutorJob();

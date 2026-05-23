@@ -21,6 +21,20 @@ interface BuildContextOpts {
   currentPath?: string;
   /** Recent thread messages — used to mine entity mentions. */
   recentMessages?: Array<{ role: string; content: string; toolCalls?: unknown }>;
+  /**
+   * Phase D — explicit page-context hints from the Atlas dock. When
+   * present, these override the regex-derived hints from currentPath
+   * (so callers that already resolved an id client-side don't get
+   * second-guessed by a stale path).
+   */
+  pageContext?: {
+    currentPath?: string;
+    currentOrgId?: number;
+    currentShipmentId?: number;
+    currentLedgerEventId?: number;
+    currentProviderName?: string;
+    currentDialCategory?: string;
+  };
 }
 
 const PATH_RESOLVERS: Array<{
@@ -89,7 +103,24 @@ function mineRecentMentions(
 }
 
 export async function buildFounderToolContext(opts: BuildContextOpts): Promise<FounderToolContext> {
-  const pathHints = resolvePathHints(opts.currentPath);
+  // Resolve hints in three layers (each later one wins for collisions):
+  //   1. regex-from-currentPath  (legacy clients)
+  //   2. regex-from-pageContext.currentPath
+  //   3. explicit pageContext.currentXyz fields (Phase D dock — most
+  //      trustworthy because the client already resolved the id from
+  //      its route params).
+  const currentPath = opts.pageContext?.currentPath ?? opts.currentPath;
+  const pathHints = resolvePathHints(currentPath);
+  const explicitHints: Partial<FounderToolContext> = {};
+  if (opts.pageContext) {
+    const pc = opts.pageContext;
+    if (pc.currentOrgId !== undefined) explicitHints.currentOrgId = pc.currentOrgId;
+    if (pc.currentShipmentId !== undefined) explicitHints.currentShipmentId = pc.currentShipmentId;
+    if (pc.currentLedgerEventId !== undefined) explicitHints.currentLedgerEventId = pc.currentLedgerEventId;
+    if (pc.currentProviderName !== undefined) explicitHints.currentProviderName = pc.currentProviderName;
+    if (pc.currentDialCategory !== undefined) explicitHints.currentDialCategory = pc.currentDialCategory;
+  }
+
   const recentMentions = mineRecentMentions(opts.recentMessages);
 
   const auditLog: FounderToolContext["auditLog"] = async (action, before, after) => {
@@ -100,7 +131,7 @@ export async function buildFounderToolContext(opts: BuildContextOpts): Promise<F
         action,
         before: (before as any) ?? null,
         after: (after as any) ?? null,
-        note: `thread=${opts.threadId}${opts.currentPath ? `; path=${opts.currentPath}` : ""}`,
+        note: `thread=${opts.threadId}${currentPath ? `; path=${currentPath}` : ""}`,
       } as any);
     } catch {
       // Never throw from audit-log — must not break the tool call.
@@ -110,8 +141,9 @@ export async function buildFounderToolContext(opts: BuildContextOpts): Promise<F
   return {
     founderUserId: opts.founderUserId,
     organizationId: opts.organizationId,
-    currentPath: opts.currentPath,
+    currentPath,
     ...pathHints,
+    ...explicitHints,
     recentMentions,
     threadId: opts.threadId,
     auditLog,

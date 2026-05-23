@@ -77,8 +77,22 @@ export interface RevenueTrigger {
 export interface BriefSection {
   /** Human label for the section, e.g. "Overnight cash", "Net-negative orgs". */
   title: string;
-  /** Embedded artifacts that render inside the brief. */
-  artifacts: Artifact[];
+  /** Embedded artifacts that render inside the brief (used by /brief tool). */
+  artifacts?: Artifact[];
+  /**
+   * Phase E morning-brief shape: a markdown paragraph + optional headline
+   * number + inline action buttons that translate to chat input text. The
+   * renderer accepts either `artifacts` OR (`markdown` + optional metrics).
+   */
+  markdown?: string;
+  /** Big-Fraunces headline metric for this section, e.g. "$42,100" or "3". */
+  headline?: string;
+  /** Sub-label under the headline number, e.g. "opex available". */
+  headlineLabel?: string;
+  /** Inline action buttons. label is shown; toolCallText is dropped into chat. */
+  actions?: Array<{ label: string; toolCallText: string }>;
+  /** Optional tone hint for the section card. */
+  tone?: "neutral" | "positive" | "warning" | "danger";
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -152,7 +166,12 @@ export type Artifact =
   | { type: "secret_paste"; key: string; placeholder?: string }
   | { type: "fly_releases_card"; data: Record<string, unknown> }
   | { type: "stripe_customer_card"; data: Record<string, unknown> }
-  | { type: "clerk_user_card"; data: Record<string, unknown> };
+  | { type: "clerk_user_card"; data: Record<string, unknown> }
+  // ── Navigation — emitted by Atlas mode-switch tools. The client-side
+  //    renderer auto-navigates on mount via wouter's useLocation. The
+  //    label is a short human-readable summary the chat can show while
+  //    the navigation is in flight (typically a single frame).
+  | { type: "navigation"; target: string; label?: string };
 
 // ───────────────────────────────────────────────────────────────────────
 // Chat messages + threads + stream events

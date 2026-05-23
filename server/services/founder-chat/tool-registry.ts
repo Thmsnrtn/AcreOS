@@ -54,7 +54,9 @@ export type ArtifactType =
   | "fly_releases_card"
   | "fly_machine_metrics_card"
   | "stripe_customer_card"
-  | "clerk_user_card";
+  | "clerk_user_card"
+  // Persona-mode tools (Phase G slice)
+  | "navigation";
 
 export type ToolCategory = "inquiry" | "action" | "synthesis" | "delegation";
 
@@ -73,6 +75,8 @@ export interface FounderToolContext {
   currentShipmentId?: number;
   currentLedgerEventId?: number;
   currentProviderName?: string;
+  /** Phase D — the active Studio tab/dial category when the dock fires. */
+  currentDialCategory?: string;
   recentMentions: Array<{ kind: string; id: number; label?: string }>;
   threadId: number;
   /** Append a row to founder_audit with the tool's before/after state. */

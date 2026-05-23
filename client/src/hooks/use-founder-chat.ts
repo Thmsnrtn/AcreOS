@@ -24,11 +24,29 @@ import type {
 
 export type ChatStatus = "idle" | "submitting" | "streaming" | "error";
 
+/**
+ * Page-context hints forwarded to /api/founder/chat/stream so Atlas can
+ * resolve "this org / this cost event / this shipment" without the user
+ * spelling out the id. Mirrors PageContext in use-page-context.ts.
+ */
+export interface ChatPageContext {
+  currentPath?: string;
+  currentOrgId?: number;
+  currentShipmentId?: number;
+  currentLedgerEventId?: number;
+  currentProviderName?: string;
+  currentDialCategory?: string;
+}
+
+interface SendMessageOptions {
+  pageContext?: ChatPageContext;
+}
+
 interface UseFounderChatResult {
   messages: ChatMessage[];
   status: ChatStatus;
   error: Error | null;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, options?: SendMessageOptions) => Promise<void>;
   /** Drop a local placeholder message — used by Composer for optimistic echo. */
   appendLocal: (message: ChatMessage) => void;
   /** True while the streaming response is still arriving. */
@@ -179,7 +197,7 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, options?: SendMessageOptions) => {
       if (!threadId || !text.trim()) return;
       setError(null);
       setStatus("submitting");
@@ -198,10 +216,15 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
         // live, the POST seeds a turn and the SSE stream emits the
         // assistant response. Pre-Phase-B the POST may 404; we still
         // surface the user message so the UI works.
+        //
+        // Phase D — forward pageContext so Atlas resolves "this org /
+        // this cost event" without round-tripping for the id.
+        const payload: Record<string, unknown> = { text };
+        if (options?.pageContext) payload.pageContext = options.pageContext;
         await apiRequest(
           "POST",
           `/api/founder/chat/threads/${threadId}/messages`,
-          { text },
+          payload,
         ).catch(() => {
           // Pre-Phase-B fallback: stub a "Atlas backend is not wired
           // yet" assistant message so the UI shows something.

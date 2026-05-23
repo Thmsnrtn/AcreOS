@@ -72,15 +72,30 @@ function fakeCtx(): FounderToolContext {
   };
 }
 
+// Tier-1 navigation tools added by the Phase G persona-switcher work:
+// non-destructive client-side mode toggles that produce a navigation artifact.
+const ACTION_TOOLS_TIER1_NAV = ["switch_to_customer_mode", "switch_to_founder_mode"] as const;
+
 describe("founder-chat action tools", () => {
-  it("registers all 13 action tools (12 spec + run_ceo_command)", () => {
+  it("registers the full action-tool set (Tier 2 + Tier 3 + Tier 1 nav)", () => {
     const names = listTools({ category: "action" }).map((t) => t.name).sort();
-    expect(names).toEqual([...ACTION_TOOLS_TIER2, ...ACTION_TOOLS_TIER3].sort());
+    const expected = [
+      ...ACTION_TOOLS_TIER2,
+      ...ACTION_TOOLS_TIER3,
+      ...ACTION_TOOLS_TIER1_NAV,
+    ].sort();
+    expect(names).toEqual(expected);
   });
 
-  it("every action tool is destructive", () => {
+  it("Tier 2/3 action tools are destructive; Tier 1 navigation tools are not", () => {
     for (const t of listTools({ category: "action" })) {
-      expect(t.destructive, `${t.name} should be destructive`).toBe(true);
+      const expectedDestructive = !ACTION_TOOLS_TIER1_NAV.includes(
+        t.name as typeof ACTION_TOOLS_TIER1_NAV[number],
+      );
+      expect(
+        t.destructive,
+        `${t.name} destructive flag`,
+      ).toBe(expectedDestructive);
     }
   });
 

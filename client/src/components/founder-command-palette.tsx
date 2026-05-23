@@ -34,8 +34,10 @@ import {
   FileText,
   Lightbulb,
   ListChecks,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { usePersonaMode } from "@/hooks/use-persona-mode";
 
 interface DecisionHit {
   id: number;
@@ -128,6 +130,7 @@ function PaletteDialog({
 }) {
   const [query, setQuery] = useState("");
   const [, navigate] = useLocation();
+  const { mode: personaMode, setMode: setPersonaMode } = usePersonaMode();
 
   const { data, isFetching } = useQuery<SearchResponse>({
     queryKey: ["/api/founder/intelligence/search", query],
@@ -181,6 +184,36 @@ function PaletteDialog({
         onValueChange={setQuery}
       />
       <CommandList>
+        {/* Mode-switch shortcut — always surfaced (with or without
+            query). Solves the #1 nav pain of having to hit Back to
+            escape /founder/*. Cmd+; toggles the same action globally. */}
+        <CommandGroup heading="Switch mode">
+          <CommandItem
+            key="persona-toggle"
+            onSelect={() => {
+              const next = personaMode === "founder" ? "customer" : "founder";
+              setOpen(false);
+              setQuery("");
+              setPersonaMode(next);
+            }}
+            data-testid="palette-persona-toggle"
+          >
+            <User className="h-4 w-4 mr-2 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground">
+                {personaMode === "founder"
+                  ? "Switch to customer mode"
+                  : "Switch to founder mode"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {personaMode === "founder" ? "/today" : "/founder"}
+              </p>
+            </div>
+            <kbd className="ml-2 hidden shrink-0 items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] sm:inline-flex">
+              ⌘;
+            </kbd>
+          </CommandItem>
+        </CommandGroup>
         {query.trim().length === 0 && (
           <div className="p-6 text-sm text-muted-foreground">
             <p className="mb-3">Try searching by:</p>

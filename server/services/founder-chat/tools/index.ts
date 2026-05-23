@@ -11,5 +11,6 @@ import "./inquiry";
 import "./action";
 import "./synthesis";
 import "./delegation";
+import "./operations";
 
 export const TOOLS_REGISTERED = true;

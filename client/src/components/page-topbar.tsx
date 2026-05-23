@@ -30,6 +30,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { OrgSwitcher } from "@/components/org-switcher";
+import { PersonaSwitcher } from "@/components/persona-switcher";
 
 interface PageTopbarProps {
   /** Optional explicit title; falls back to document.title minus AcreOS suffix */
@@ -144,6 +145,10 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
         {/* Reyna §2 — VAs flip orgs without logging out. Hidden by the
             component itself when the user only belongs to one org. */}
         <OrgSwitcher compact={isMobile} />
+        {/* Persona switcher (founder-only). Solves Tom's #1 nav pain —
+            one-tap exit from /founder/* back to /today and vice versa.
+            Cmd+; binds to the same toggle (see App.tsx). */}
+        <PersonaSwitcher compact={isMobile} />
         {!isMobile && (
           <Button
             variant="ghost"
