@@ -28,8 +28,10 @@ describe("founder-chat stream route module", () => {
   it("inquiry/action/synthesis/delegation counts are correct", async () => {
     await import("../../server/routes-founder-chat");
     const { listTools } = await import("../../server/services/founder-chat/tool-registry");
-    // Inquiry: 16 core + 4 Fly read-only + 3 Stripe read-only (Phase G batch 1).
-    expect(listTools({ category: "inquiry" }).length).toBe(23);
+    // Inquiry: 16 core + 4 Fly read-only + 3 Stripe read-only (Phase G batch 1)
+    // + 6 GitHub read-only (Phase H batch 1)
+    // + 4 DB + 2 Sentry read-only (Phase I batch 1) = 35.
+    expect(listTools({ category: "inquiry" }).length).toBe(35);
     // Action: 13 core + 2 navigation (switch_to_customer/founder_mode).
     expect(listTools({ category: "action" }).length).toBe(15);
     // Synthesis: 6 core + 2 added by the pre-Phase-D synthesis-tools update.

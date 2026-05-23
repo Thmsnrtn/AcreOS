@@ -991,6 +991,15 @@ function startAtlasBackgroundTaskRunner() {
   }).catch((err) => log(`Atlas background-task runner import failed: ${err}`, 'atlas-bg-runner'));
 }
 
+// Phase F push wiring — nudges Tom when a destructive confirmation has been
+// sitting idle for >60s. Best-effort; silently skips if VAPID is unset.
+function startAtlasPendingConfirmationNudger() {
+  log('Starting Atlas pending-confirmation nudger (60s poll)', 'atlas-confirm-nudger');
+  void import('./atlasPendingConfirmationNudger').then(({ startAtlasPendingConfirmationNudger: start }) => {
+    start();
+  }).catch((err) => log(`Atlas pending-confirmation nudger import failed: ${err}`, 'atlas-confirm-nudger'));
+}
+
 // ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
 async function processOutcomeAnalyzerJob() {
   try {
@@ -1966,6 +1975,10 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Atlas Background-Task Runner (Phase E) — 10s poller on the worker
   startAtlasBackgroundTaskRunner();
+
+  // Atlas Pending-Confirmation Nudger (Phase F) — 60s poller; pushes Tom when
+  // a destructive confirmation has been sitting idle past the nudge window.
+  startAtlasPendingConfirmationNudger();
 
   // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
   startAutonomousDecisionExecutorJob();
