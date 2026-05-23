@@ -157,6 +157,113 @@ export interface FlyAppHealth {
   oldestMachineAgeHours: number | null;
 }
 
+// ─── Destructive operations (Phase G/H/I batch 2) ───────────────────────────
+// These methods are ONLY invoked from a confirmed Tier-3 tool handler (see
+// tools/operations.ts). The kill-switch + cooldown live in the executor, NOT
+// here — this layer just talks to the Fly API.
+
+/** POST /apps/:app/machines/:id/restart — returns the API ack. */
+export async function restartMachine(
+  machineId: string,
+  app?: string,
+): Promise<{ ok: boolean; raw: unknown }> {
+  const raw = await flyFetch<unknown>(
+    `/apps/${appName(app)}/machines/${encodeURIComponent(machineId)}/restart`,
+    { method: "POST" },
+  );
+  return { ok: true, raw };
+}
+
+/**
+ * Scale a process group to N machines. The Fly Machines API does this by
+ * cloning / removing machines; we use the higher-level /apps/:app/processes
+ * scale endpoint when present, and fall back to a POST against the
+ * /apps/:app/scale endpoint shape used by older flyctl.
+ */
+export async function scaleApp(
+  processGroup: string,
+  count: number,
+  app?: string,
+): Promise<{ ok: boolean; raw: unknown }> {
+  const body = JSON.stringify({ process_group: processGroup, count });
+  try {
+    const raw = await flyFetch<unknown>(`/apps/${appName(app)}/scale`, {
+      method: "POST",
+      body,
+    });
+    return { ok: true, raw };
+  } catch (err) {
+    if (err instanceof FlyClientError && (err.status === 404 || err.status === 405)) {
+      logger.warn("[fly] /scale not available; falling back to process-group POST", {
+        metadata: { app: appName(app), processGroup, count, status: err.status },
+      });
+      const raw = await flyFetch<unknown>(
+        `/apps/${appName(app)}/processes/${encodeURIComponent(processGroup)}/scale`,
+        { method: "POST", body: JSON.stringify({ count }) },
+      );
+      return { ok: true, raw };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Set (or rotate) a Fly secret. ONLY called from the sealed-paste
+ * endpoint — never from a tool handler. The value never enters the
+ * LLM context. Returns a SHA-256 fingerprint of the value so the audit
+ * row can later prove "same value as last time" without revealing it.
+ */
+export async function setSecret(
+  keyName: string,
+  value: string,
+  app?: string,
+): Promise<{ fingerprint: string; raw: unknown }> {
+  if (!keyName || !/^[A-Z][A-Z0-9_]{2,}$/.test(keyName)) {
+    throw new FlyClientError(
+      `Invalid secret name '${keyName}' — must be UPPER_SNAKE_CASE`,
+      400,
+      "",
+    );
+  }
+  if (typeof value !== "string" || value.length < 1) {
+    throw new FlyClientError(`Secret value missing`, 400, "");
+  }
+  const { createHash } = await import("node:crypto");
+  const fingerprint = createHash("sha256").update(value).digest("hex");
+  const body = JSON.stringify({ secrets: { [keyName]: value } });
+  const raw = await flyFetch<unknown>(`/apps/${appName(app)}/secrets`, {
+    method: "POST",
+    body,
+  });
+  return { fingerprint, raw };
+}
+
+/**
+ * Trigger a deploy by dispatching the deploy.yml workflow on GitHub. We
+ * route deploys through GitHub Actions (not the Machines API direct)
+ * because that's where the build pipeline lives.
+ */
+export async function triggerDeploy(
+  commitSha?: string,
+): Promise<{ ok: boolean; commitSha: string }> {
+  const { dispatchWorkflow, latestMainSha } = await import("./github");
+  const ref = commitSha ?? (await latestMainSha());
+  await dispatchWorkflow("deploy.yml", "main", { sha: ref });
+  return { ok: true, commitSha: ref };
+}
+
+/**
+ * Roll back to a prior release. The Machines API doesn't expose a
+ * dedicated rollback for all app types; the universal path is "re-deploy
+ * the image_ref of the desired prior version", which we do via the
+ * deploy workflow.
+ */
+export async function rollbackToVersion(version: number): Promise<{ ok: boolean; version: number }> {
+  const { dispatchWorkflow } = await import("./github");
+  await dispatchWorkflow("deploy.yml", "main", { rollback_version: String(version) });
+  return { ok: true, version };
+}
+
 export async function getAppHealth(app?: string): Promise<FlyAppHealth> {
   const name = appName(app);
   const machines = await listMachines(name);

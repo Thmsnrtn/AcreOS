@@ -280,6 +280,93 @@ export async function runReadOnlyQuery(
   }
 }
 
+// ─── Destructive write path (Phase G/H/I batch 2) ────────────────────────────
+// Tier 3 only — invoked from db_query when parseSqlSafety returns
+// isReadOnly=false. Always routes against the PRIMARY db (never the replica).
+// Captures a SELECT snapshot of the affected rows when feasible so
+// undo_last_action can offer a reverse template.
+
+export interface DbWriteResult {
+  rowCount: number;
+  snapshot: Array<Record<string, unknown>> | null;
+  snapshotTable: string | null;
+}
+
+/**
+ * Best-effort parse of the leading table name from a DELETE / UPDATE
+ * statement so we can snapshot before executing. Returns null when the
+ * shape isn't recognized (e.g. multi-table joins, complex CTEs).
+ */
+function parseTargetTable(rawSql: string): { table: string; whereClause: string | null } | null {
+  const cleaned = stripComments(rawSql).replace(/;\s*$/, "").trim();
+  const delMatch = cleaned.match(/^DELETE\s+FROM\s+"?([a-z_][a-z0-9_]*)"?(?:\s+(WHERE\s+.+))?$/is);
+  if (delMatch) {
+    return { table: delMatch[1], whereClause: delMatch[2] ?? null };
+  }
+  const updMatch = cleaned.match(/^UPDATE\s+"?([a-z_][a-z0-9_]*)"?\s+SET\s+.+?(?:\s+(WHERE\s+.+))?$/is);
+  if (updMatch) {
+    return { table: updMatch[1], whereClause: updMatch[2] ?? null };
+  }
+  return null;
+}
+
+/**
+ * Execute a destructive SQL statement. Refuses anything `parseSqlSafety`
+ * reports as readOnly (i.e. force the caller through runReadOnlyQuery
+ * for those). Captures a snapshot of affected rows when the statement
+ * is a single-table DELETE or UPDATE with a parseable WHERE.
+ */
+export async function runDestructiveQuery(
+  rawSql: string,
+): Promise<DbWriteResult> {
+  const safety = parseSqlSafety(rawSql);
+  if (safety.isReadOnly) {
+    throw new DbOpsError(
+      "runDestructiveQuery called with a read-only statement — use runReadOnlyQuery",
+      "safety",
+    );
+  }
+
+  let snapshot: Array<Record<string, unknown>> | null = null;
+  let snapshotTable: string | null = null;
+  const target = parseTargetTable(rawSql);
+  if (target) {
+    snapshotTable = target.table;
+    try {
+      const selectSql = target.whereClause
+        ? `SELECT * FROM "${target.table.replace(/"/g, '""')}" ${target.whereClause} LIMIT 500`
+        : `SELECT * FROM "${target.table.replace(/"/g, '""')}" LIMIT 500`;
+      // Use primary db (not reader()) so the snapshot reflects what the
+      // write is about to mutate.
+      const snapResult = await db.execute(sql.raw(selectSql));
+      snapshot = (snapResult as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+    } catch (err) {
+      logger.warn("[db-ops] snapshot capture failed; proceeding without it", {
+        metadata: { error: err instanceof Error ? err.message : String(err), target: target.table },
+      });
+      snapshot = null;
+    }
+  }
+
+  logger.warn("[db-ops] runDestructiveQuery", {
+    metadata: { reason: safety.reason, snapshotRows: snapshot?.length ?? 0 },
+  });
+
+  try {
+    const result = await db.execute(sql.raw(rawSql));
+    const rowCount =
+      typeof (result as { rowCount?: number | null }).rowCount === "number"
+        ? ((result as { rowCount: number }).rowCount)
+        : 0;
+    return { rowCount, snapshot, snapshotTable };
+  } catch (err) {
+    throw new DbOpsError(
+      err instanceof Error ? err.message : String(err),
+      "exec",
+    );
+  }
+}
+
 /** Public-schema table list (sorted). */
 export async function getTableList(): Promise<string[]> {
   try {

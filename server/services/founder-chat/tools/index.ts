@@ -12,5 +12,7 @@ import "./action";
 import "./synthesis";
 import "./delegation";
 import "./operations";
+import "./destructive";
+import "./meta";
 
 export const TOOLS_REGISTERED = true;

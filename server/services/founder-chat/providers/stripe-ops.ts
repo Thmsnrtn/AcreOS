@@ -125,6 +125,148 @@ export async function getActiveSubscriptions(customerId: string): Promise<Stripe
     }));
 }
 
+// ─── Destructive operations (Phase G/H/I batch 2) ───────────────────────────
+// Tier 3 (audit at ERROR): refundCharge, cancelSubscription
+// Tier 2 (audit at WARN):  grantCredit, pauseSubscription
+// Each is invoked only from a confirmed tool handler. The kill-switch +
+// cooldown live in the executor; the verifyFn lives in the tool.
+
+export interface StripeRefundResult {
+  id: string;
+  amount: number;
+  status: string | null;
+  charge: string;
+  reason: string | null;
+}
+
+export interface StripeCanceledSubscription {
+  id: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  canceled_at: number | null;
+}
+
+export interface StripeCreditNoteSummary {
+  id: string;
+  amount: number;
+  customer: string;
+}
+
+export async function refundCharge(
+  chargeId: string,
+  cents: number | undefined,
+  reason: string,
+): Promise<StripeRefundResult> {
+  if (!/^ch_[A-Za-z0-9]+/.test(chargeId) && !/^py_[A-Za-z0-9]+/.test(chargeId)) {
+    throw new Error("refundCharge requires a charge id (ch_… or py_…)");
+  }
+  if (cents !== undefined && (!Number.isFinite(cents) || cents <= 0)) {
+    throw new Error("refundCharge cents must be a positive integer");
+  }
+  const stripe = await getUncachableStripeClient();
+  const refund = await stripe.refunds.create({
+    charge: chargeId,
+    ...(cents !== undefined ? { amount: cents } : {}),
+    metadata: { atlas_reason: reason.slice(0, 480) },
+  });
+  logger.warn("[stripe-ops] refundCharge", {
+    metadata: { chargeId, cents: cents ?? "full", refundId: refund.id },
+  });
+  return {
+    id: refund.id,
+    amount: refund.amount,
+    status: refund.status ?? null,
+    charge: chargeId,
+    reason: refund.reason ?? null,
+  };
+}
+
+export async function cancelSubscription(
+  subId: string,
+  atPeriodEnd: boolean,
+  reason: string,
+): Promise<StripeCanceledSubscription> {
+  const stripe = await getUncachableStripeClient();
+  let updated: any;
+  if (atPeriodEnd) {
+    updated = await stripe.subscriptions.update(subId, {
+      cancel_at_period_end: true,
+      metadata: { atlas_cancel_reason: reason.slice(0, 480) },
+    });
+  } else {
+    updated = await stripe.subscriptions.cancel(subId);
+  }
+  logger.warn("[stripe-ops] cancelSubscription", {
+    metadata: { subId, atPeriodEnd, status: updated.status },
+  });
+  return {
+    id: updated.id,
+    status: updated.status,
+    cancel_at_period_end: Boolean(updated.cancel_at_period_end),
+    canceled_at: updated.canceled_at ?? null,
+  };
+}
+
+export async function reactivateSubscription(subId: string): Promise<StripeCanceledSubscription> {
+  const stripe = await getUncachableStripeClient();
+  const updated: any = await stripe.subscriptions.update(subId, {
+    cancel_at_period_end: false,
+  });
+  return {
+    id: updated.id,
+    status: updated.status,
+    cancel_at_period_end: Boolean(updated.cancel_at_period_end),
+    canceled_at: updated.canceled_at ?? null,
+  };
+}
+
+export async function grantCredit(
+  customerId: string,
+  cents: number,
+  reason: string,
+): Promise<StripeCreditNoteSummary> {
+  if (!/^cus_/.test(customerId)) {
+    throw new Error("grantCredit requires a customer id (cus_…)");
+  }
+  if (!Number.isFinite(cents) || cents <= 0) {
+    throw new Error("grantCredit cents must be a positive integer");
+  }
+  const stripe = await getUncachableStripeClient();
+  const txn: any = await stripe.customers.createBalanceTransaction(customerId, {
+    amount: -Math.abs(cents),  // negative balance = customer credit
+    currency: "usd",
+    description: `Atlas credit: ${reason.slice(0, 240)}`,
+  });
+  logger.warn("[stripe-ops] grantCredit", {
+    metadata: { customerId, cents, txnId: txn.id },
+  });
+  return { id: txn.id, amount: cents, customer: customerId };
+}
+
+export async function pauseSubscription(
+  subId: string,
+  resumeAtUnix: number | undefined,
+  reason: string,
+): Promise<StripeCanceledSubscription> {
+  const stripe = await getUncachableStripeClient();
+  const updated: any = await stripe.subscriptions.update(subId, {
+    pause_collection: {
+      behavior: "void",
+      ...(resumeAtUnix ? { resumes_at: resumeAtUnix } : {}),
+    },
+    metadata: { atlas_pause_reason: reason.slice(0, 480) },
+  });
+  logger.warn("[stripe-ops] pauseSubscription", {
+    metadata: { subId, resumeAtUnix, status: updated.status },
+  });
+  return {
+    id: updated.id,
+    status: updated.status,
+    cancel_at_period_end: Boolean(updated.cancel_at_period_end),
+    canceled_at: updated.canceled_at ?? null,
+  };
+}
+
 function summarizeCustomer(c: any): StripeCustomerSummary {
   return {
     id: c.id,

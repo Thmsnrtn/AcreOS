@@ -17,7 +17,33 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../../db";
 import { chatPendingToolCalls } from "@shared/schema";
+import { getSetting } from "../founderSettings";
+import { logger } from "../../utils/logger";
 import { getTool, type FounderTool, type FounderToolContext, type ToolResult } from "./tool-registry";
+
+/** Kill-switch key in founder_settings. Defaults false (Tom decision #13). */
+export const ATLAS_KILL_SWITCH_KEY = "atlas.kill_switch";
+
+/**
+ * Atlas kill-switch — when truthy in founder_settings, every destructive
+ * tool refuses fast. Read-only tools are unaffected. Tom flips this from
+ * /founder/studio/atlas during incidents.
+ */
+export async function isAtlasKillSwitchOn(): Promise<boolean> {
+  try {
+    const raw = await getSetting(ATLAS_KILL_SWITCH_KEY);
+    return raw === "true" || raw === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Test override — when set, isAtlasKillSwitchOn returns this value
+ *  instead of reading founder_settings. */
+let killSwitchOverrideForTests: boolean | null = null;
+export function __setKillSwitchOverrideForTests(v: boolean | null): void {
+  killSwitchOverrideForTests = v;
+}
 
 /** Phase A default. Founder can tune via founder_settings `atlas.max_tool_calls_per_turn`. */
 export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 10;
@@ -28,7 +54,13 @@ const TIER3_COOLDOWN_MS = 5 * 60 * 1000;
 /** TTL on a pending tool call awaiting confirmation. */
 const PENDING_TTL_MS = 5 * 60 * 1000;
 
-type RecentCallTracker = Map<string, number>;  // `${founderUserId}::${toolName}` → last-call epoch ms
+/**
+ * In-memory tracker of `${founderUserId}:${toolName}` → last-confirmed-at
+ * epoch ms. A second invocation of the same Tier-3 tool by the same
+ * founder within TIER3_COOLDOWN_MS requires a fresh confirmation request
+ * (the auto-pass-through on `confirmed:true` is suppressed).
+ */
+type RecentCallTracker = Map<string, number>;
 const recentCalls: RecentCallTracker = new Map();
 
 export interface RunToolOpts {
@@ -65,6 +97,23 @@ export async function runTool(opts: RunToolOpts): Promise<RunToolOutcome> {
   }
   const validatedArgs = parsed.data;
 
+  // 1a. Kill-switch — every destructive tool refuses fast when atlas.kill_switch
+  //     is set in founder_settings. Read-only tools pass through unchanged.
+  if (tool.destructive) {
+    const killed =
+      killSwitchOverrideForTests !== null
+        ? killSwitchOverrideForTests
+        : await isAtlasKillSwitchOn();
+    if (killed) {
+      logger.warn("[founder-chat] kill switch active — destructive tool refused", {
+        metadata: { toolName: tool.name, founderUserId: opts.ctx.founderUserId },
+      });
+      throw new Error(
+        `Atlas write operations disabled — see /founder/studio/atlas to re-enable.`,
+      );
+    }
+  }
+
   // 2. Destructive → confirmation flow.
   if (tool.destructive && !opts.confirmed) {
     const requestId = await persistPendingCall(tool, validatedArgs, opts.ctx);
@@ -82,12 +131,16 @@ export async function runTool(opts: RunToolOpts): Promise<RunToolOutcome> {
     };
   }
 
-  // 3. Tier-3 cooldown — same tool by same founder within 5 min requires
-  //    a second confirmation. The chat client handles re-prompting.
+  // 3. Tier-3 cooldown — second invocation of the same Tier-3 tool by the
+  //    same founder within TIER3_COOLDOWN_MS demands a *fresh* confirmation
+  //    even when `confirmed:true` would otherwise pass it through. This
+  //    prevents Tom from accidentally double-firing a destructive op by
+  //    re-confirming a stale request, or by tabbing back to a pending
+  //    request that was already executed once.
   if (tool.tier === 3 && !opts.cooldownAcknowledged) {
-    const key = `${opts.ctx.founderUserId}::${tool.name}`;
-    const lastCall = recentCalls.get(key);
-    if (lastCall && Date.now() - lastCall < TIER3_COOLDOWN_MS) {
+    const key = `${opts.ctx.founderUserId}:${tool.name}`;
+    const lastConfirmedAt = recentCalls.get(key);
+    if (lastConfirmedAt && Date.now() - lastConfirmedAt < TIER3_COOLDOWN_MS) {
       const requestId = await persistPendingCall(tool, validatedArgs, opts.ctx, { cooldownBlocked: true });
       return {
         artifact: {
@@ -96,7 +149,7 @@ export async function runTool(opts: RunToolOpts): Promise<RunToolOutcome> {
           args: validatedArgs as unknown,
           tier: tool.tier,
           category: tool.category,
-          preview: `Tier-3 cooldown: this tool was called within the last 5 min. Confirm to re-run.`,
+          preview: `Tier-3 cooldown: this tool was confirmed within the last 5 min. Confirm again to re-run.`,
           cooldownBlocked: true,
         },
         requiresConfirmation: true,
@@ -114,12 +167,13 @@ export async function runTool(opts: RunToolOpts): Promise<RunToolOutcome> {
     throw err;
   }
 
-  // 5. Record this call for Tier-3 cooldown tracking.
+  // 5. Record this call's confirmed-at for Tier-3 cooldown tracking.
   if (tool.tier === 3) {
-    recentCalls.set(`${opts.ctx.founderUserId}::${tool.name}`, Date.now());
+    recentCalls.set(`${opts.ctx.founderUserId}:${tool.name}`, Date.now());
   }
 
-  // 6. Audit-log the successful call.
+  // 6. Audit-log the successful call. Persist the rollbackRecipe verbatim
+  //    so `undo_last_action` can find and replay it.
   await opts.ctx.auditLog(`tool_call:${tool.name}`, validatedArgs as unknown, {
     artifactType: result.artifact.type,
     rollbackRecipe: result.rollbackRecipe ?? null,

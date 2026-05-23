@@ -163,7 +163,17 @@ export type Artifact =
   | { type: "explain_plan"; plan: string }
   | { type: "error_event_card"; data: Record<string, unknown> }
   | { type: "log_stream"; lines: string[]; source?: string }
-  | { type: "secret_paste"; key: string; placeholder?: string }
+  | {
+      type: "secret_paste";
+      requestId: string;
+      keyName: string;
+      /** Optional human-readable warning rendered in warm-amber tone. */
+      warning?: string;
+      /** Optional placeholder hint for the sealed input. */
+      placeholder?: string;
+      /** Legacy field — preserved for backwards-compat with the Phase G stub. */
+      key?: string;
+    }
   | { type: "fly_releases_card"; data: Record<string, unknown> }
   | { type: "stripe_customer_card"; data: Record<string, unknown> }
   | { type: "clerk_user_card"; data: Record<string, unknown> }

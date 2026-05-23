@@ -84,6 +84,24 @@ export interface FounderToolContext {
 }
 
 /**
+ * Rollback recipe — the executor persists this on the audit row so
+ * `undo_last_action` can reverse the most recent destructive op.
+ *
+ * - `reverseToolName` is the tool the meta-undo will invoke (omitted for
+ *   no-op rollbacks like fly_restart_machine — surfaces a friendly
+ *   "nothing to undo" notice instead).
+ * - `reverseArgs` are passed verbatim to that tool's handler. For
+ *   secret-set rollbacks, only a SHA-256 fingerprint of the prior value
+ *   lives here — never the value itself.
+ * - `humanLabel` is shown in the chat when undo runs.
+ */
+export interface RollbackRecipe {
+  reverseToolName?: string;
+  reverseArgs?: unknown;
+  humanLabel: string;
+}
+
+/**
  * What every tool returns. The artifact is what the chat renders. The
  * verifyFn (if present) is invoked AFTER the action by the executor —
  * this is the post-action verification pattern from Reliability Req 3A.
@@ -92,7 +110,12 @@ export interface ToolResult {
   artifact: { type: ArtifactType } & Record<string, unknown>;
   followUp?: string;
   destructivePending?: boolean;
-  rollbackRecipe?: { tool: string; args: unknown };
+  /**
+   * Persisted to founder_audit.after.rollbackRecipe — the meta-tool
+   * `undo_last_action` reads it back. `null` is a deliberate "no
+   * rollback available" signal (e.g. Stripe refunds can't be un-refunded).
+   */
+  rollbackRecipe?: RollbackRecipe | null;
   /**
    * Optional post-action verifier. Executor invokes after the tool
    * succeeds and appends `{ ok, evidence }` to the audit row. Atlas

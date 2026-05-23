@@ -27,6 +27,7 @@ const TriggerCardArtifact = lazy(() => import("./artifacts/trigger_card"));
 const ConfirmationRequestArtifact = lazy(() => import("./artifacts/confirmation_request"));
 const BriefCardArtifact = lazy(() => import("./artifacts/brief_card"));
 const NavigationArtifact = lazy(() => import("./artifacts/navigation"));
+const SecretPasteArtifact = lazy(() => import("./artifacts/secret_paste"));
 
 interface ArtifactRendererProps {
   artifact: Artifact;
@@ -87,6 +88,15 @@ function renderArtifact(artifact: Artifact): React.ReactNode {
       );
     case "navigation":
       return <NavigationArtifact target={artifact.target} label={artifact.label} />;
+    case "secret_paste":
+      return (
+        <SecretPasteArtifact
+          requestId={artifact.requestId}
+          keyName={artifact.keyName}
+          warning={artifact.warning}
+          placeholder={artifact.placeholder}
+        />
+      );
 
     // ── Stubs — render placeholder. Phase D/E/G/H/I replace these. ────
     case "dlq_card":
@@ -109,7 +119,6 @@ function renderArtifact(artifact: Artifact): React.ReactNode {
     case "explain_plan":
     case "error_event_card":
     case "log_stream":
-    case "secret_paste":
     case "fly_releases_card":
     case "stripe_customer_card":
     case "clerk_user_card":

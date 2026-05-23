@@ -28,12 +28,20 @@ describe("founder-chat stream route module", () => {
   it("inquiry/action/synthesis/delegation counts are correct", async () => {
     await import("../../server/routes-founder-chat");
     const { listTools } = await import("../../server/services/founder-chat/tool-registry");
-    // Inquiry: 16 core + 4 Fly read-only + 3 Stripe read-only (Phase G batch 1)
-    // + 6 GitHub read-only (Phase H batch 1)
-    // + 4 DB + 2 Sentry read-only (Phase I batch 1) = 35.
+    // Inquiry (35): 16 core + 4 Fly + 3 Stripe + 6 GitHub + 4 DB + 2 Sentry — all read-only.
     expect(listTools({ category: "inquiry" }).length).toBe(35);
-    // Action: 13 core + 2 navigation (switch_to_customer/founder_mode).
-    expect(listTools({ category: "action" }).length).toBe(15);
+    // Action (36):
+    //   13 core + 2 navigation (switch_to_customer/founder_mode) = 15 existing
+    // + Phase G/H/I batch 2 destructive set =
+    //     5 Fly (restart/scale/deploy/secret_set/rollback)
+    //   + 5 Stripe (refund/cancel/reactivate/credit/pause)
+    //   + 3 Clerk (suspend/restore/force_password_reset)
+    //   + 4 GitHub (propose_edit/merge_pr/comment_on_pr/create_issue)
+    //   + 1 DB (db_query_write)
+    //   + 2 Sentry (resolve/unresolve)
+    //   + 1 meta (undo_last_action)
+    //   = 21 new → 36 total.
+    expect(listTools({ category: "action" }).length).toBe(36);
     // Synthesis: 6 core + 2 added by the pre-Phase-D synthesis-tools update.
     expect(listTools({ category: "synthesis" }).length).toBe(8);
     expect(listTools({ category: "delegation" }).length).toBe(9);

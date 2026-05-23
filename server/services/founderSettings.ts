@@ -121,6 +121,18 @@ export const KNOBS: KnobDefinition[] = [
       "Enable nightly cold-storage archival of activity tables to Cloudflare R2 in Parquet format. Off by default — flip on once CMO_R2_* env vars are configured in Fly and the bucket exists.",
     category: "scheduling",
   },
+  // Atlas operational-hands kill switch (Phase G/H/I batch 2).
+  // When true, every destructive Atlas tool refuses fast with a pointer
+  // to /founder/studio/atlas. Read-only tools are unaffected. Defaults
+  // OFF per Tom's decision #13 (2026-05-23).
+  {
+    key: "atlas.kill_switch",
+    valueType: "boolean",
+    defaultValue: "false",
+    description:
+      "Panic button for Atlas. When ON, every destructive Atlas tool refuses immediately; inquiry tools still work. Use during incidents where Atlas is misbehaving.",
+    category: "safety",
+  },
   {
     key: "archival.horizon_days",
     valueType: "number",

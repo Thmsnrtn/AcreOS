@@ -2183,6 +2183,28 @@ export const chatPendingToolCalls = pgTable("chat_pending_tool_calls", {
   index("chat_pending_tool_calls_thread_idx").on(table.threadId),
 ]);
 
+// Founder Chat — sealed paste requests for secret rotation (Phase G/H/I batch 2).
+// One-time-use tokens minted by `fly_secret_set`. The chat client POSTs the
+// secret value to /api/founder/chat/secret-paste/:id; the value NEVER enters
+// the LLM context or any audit row in plaintext (only a SHA-256 fingerprint
+// is stored on the audit row).
+export const chatSecretPasteRequests = pgTable("chat_secret_paste_requests", {
+  id: text("id").primaryKey(),  // random 32-char hex
+  founderUserId: text("founder_user_id").notNull(),
+  toolName: text("tool_name").notNull(),  // e.g. "fly_secret_set"
+  keyName: text("key_name").notNull(),    // the secret NAME (never the value)
+  threadId: integer("thread_id").references(() => aiConversations.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),  // 5-min TTL
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("chat_secret_paste_requests_expires_idx").on(table.expiresAt),
+  index("chat_secret_paste_requests_founder_idx").on(table.founderUserId),
+]);
+
+export type ChatSecretPasteRequest = typeof chatSecretPasteRequests.$inferSelect;
+export type InsertChatSecretPasteRequest = typeof chatSecretPasteRequests.$inferInsert;
+
 // Founder Chat — background tasks (audits, long analyses, weekly letter gen).
 // Outbox-backed; worker picks runnerKey + payload, runs, posts resultArtifact
 // back to the thread as a chat message. parentTaskId allows sub-agent nesting

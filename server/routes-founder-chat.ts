@@ -35,6 +35,8 @@ import { db } from "./db";
 import {
   aiConversations,
   aiMessages,
+  chatSecretPasteRequests,
+  founderAudit,
 } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -264,6 +266,108 @@ router.post("/cancel/:requestId", async (req: AuthenticatedRequest, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason : undefined;
     const result = await cancelPendingToolCall(req.params.requestId, ctx, reason);
     res.json({ result });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * Sealed-paste endpoint — the ONLY code path that ever sees a secret value.
+ *
+ * Atlas's fly_secret_set tool emits a `secret_paste` artifact carrying a
+ * one-time-use requestId. The chat client renders a sealed input; on
+ * submit, this endpoint:
+ *   1. validates the request row exists, hasn't expired, hasn't been
+ *      consumed, and matches the calling founder
+ *   2. calls fly setSecret(keyName, value)
+ *   3. stamps consumedAt
+ *   4. writes ONLY a SHA-256 fingerprint to founder_audit — never the value
+ *
+ * The value never enters the LLM context, never lands in chat history,
+ * and never appears in any log line in plaintext.
+ */
+const secretPasteSchema = z.object({
+  value: z.string().min(1).max(8000),
+});
+
+router.post("/secret-paste/:requestId", async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const parsed = secretPasteSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+    const [row] = await db
+      .select()
+      .from(chatSecretPasteRequests)
+      .where(eq(chatSecretPasteRequests.id, req.params.requestId))
+      .limit(1);
+
+    if (!row) return Errors.notFound(res, "Sealed paste request");
+    if (row.founderUserId !== userId) return Errors.forbidden(res, "Paste request belongs to a different founder");
+    if (row.consumedAt) return Errors.badRequest(res, "Paste request already consumed");
+    if (row.expiresAt.getTime() < Date.now()) return Errors.badRequest(res, "Paste request expired");
+
+    // Lazy-import so the fly provider isn't loaded at module-eval time
+    // for environments without FLY_API_TOKEN.
+    const { setSecret } = await import("./services/founder-chat/providers/fly");
+    let fingerprint: string;
+    try {
+      const result = await setSecret(row.keyName, parsed.data.value);
+      fingerprint = result.fingerprint;
+    } catch (err) {
+      logger.warn("[founder-chat] secret-paste setSecret failed", {
+        metadata: {
+          keyName: row.keyName,
+          requestId: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+      return Errors.badRequest(res, "setSecret failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Stamp consumedAt (single-use).
+    await db
+      .update(chatSecretPasteRequests)
+      .set({ consumedAt: new Date() as any })
+      .where(eq(chatSecretPasteRequests.id, row.id));
+
+    // Audit: ONLY the fingerprint — never the value.
+    try {
+      await db.insert(founderAudit).values({
+        founderId: userId,
+        area: "atlas.tool_call",
+        action: `tool_call:${row.toolName}`,
+        targetType: "fly_secret",
+        targetId: row.keyName,
+        after: {
+          fingerprint,
+          requestId: row.id,
+          consumedAt: new Date().toISOString(),
+          rollbackRecipe: {
+            // The reverse is: paste the prior value again — but we have
+            // ONLY the fingerprint, not the value. So this is a no-undo
+            // recipe with a human label that says exactly that.
+            humanLabel: `Re-paste prior ${row.keyName} value (fingerprint preserved in audit).`,
+          },
+        } as any,
+        note: `thread=${row.threadId ?? "—"}`,
+      } as any);
+    } catch (err) {
+      logger.warn("[founder-chat] secret-paste audit insert failed", {
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+
+    return res.json({
+      ok: true,
+      evidence: {
+        keyName: row.keyName,
+        fingerprint,
+        fingerprintShort: fingerprint.slice(0, 12),
+      },
+    });
   } catch (err) {
     Errors.internal(res, err);
   }

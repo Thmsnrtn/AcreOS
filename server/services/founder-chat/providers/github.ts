@@ -226,3 +226,152 @@ export async function getCheckRuns(ref: string): Promise<GithubCheckRunsResponse
     `/repos/${repoOwner()}/${repoName()}/commits/${encodeURIComponent(ref)}/check-runs`,
   );
 }
+
+/** Latest commit sha on main (or the named branch). */
+export async function latestMainSha(branch = "main"): Promise<string> {
+  const data = await gh<{ commit: { sha: string } }>(
+    `/repos/${repoOwner()}/${repoName()}/branches/${encodeURIComponent(branch)}`,
+  );
+  return data?.commit?.sha;
+}
+
+// ─── Destructive operations (Phase G/H/I batch 2) ───────────────────────────
+// Only invoked from a confirmed Tier-3 tool handler. The fine-grained PAT
+// is scoped to the AcreOS repo only (Tom decision #12, 2026-05-23).
+
+export interface GithubPullRequest {
+  number: number;
+  html_url: string;
+  title: string;
+  state: string;
+  merged: boolean;
+  draft: boolean;
+  head: { sha: string; ref: string };
+  base: { sha: string; ref: string };
+  user?: { login?: string };
+}
+
+export interface GithubIssue {
+  number: number;
+  html_url: string;
+  title: string;
+  state: string;
+  labels: Array<{ name: string }>;
+}
+
+/**
+ * Create a branch from a base ref. Idempotent for the same ref — POST to
+ * /git/refs returns 422 if the ref already exists; we surface that as a
+ * GithubClientError the caller can handle.
+ */
+export async function createBranch(
+  branchName: string,
+  fromSha: string,
+): Promise<{ ok: boolean }> {
+  await gh(`/repos/${repoOwner()}/${repoName()}/git/refs`, {
+    method: "POST",
+    body: JSON.stringify({
+      ref: `refs/heads/${branchName}`,
+      sha: fromSha,
+    }),
+  });
+  return { ok: true };
+}
+
+/**
+ * Create-or-update a file on a branch. The contents API accepts a
+ * base64-encoded value + a `sha` (the existing file's blob sha when
+ * updating). The caller must supply `sha` when overwriting.
+ */
+export async function putFileOnBranch(
+  branchName: string,
+  path: string,
+  contentBase64: string,
+  message: string,
+  existingSha?: string,
+): Promise<{ commitSha: string }> {
+  const safePath = path.split("/").map(encodeURIComponent).join("/");
+  const body: Record<string, unknown> = {
+    message,
+    content: contentBase64,
+    branch: branchName,
+  };
+  if (existingSha) body.sha = existingSha;
+  const data = await gh<{ commit?: { sha?: string } }>(
+    `/repos/${repoOwner()}/${repoName()}/contents/${safePath}`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
+  return { commitSha: data?.commit?.sha ?? "" };
+}
+
+export async function createPullRequest(
+  branchName: string,
+  title: string,
+  body: string,
+  base = "main",
+): Promise<GithubPullRequest> {
+  return gh<GithubPullRequest>(`/repos/${repoOwner()}/${repoName()}/pulls`, {
+    method: "POST",
+    body: JSON.stringify({ title, body, head: branchName, base }),
+  });
+}
+
+export async function mergePullRequest(
+  prNumber: number,
+  squash = true,
+): Promise<{ merged: boolean; sha?: string; message: string }> {
+  const data = await gh<{ merged: boolean; sha?: string; message: string }>(
+    `/repos/${repoOwner()}/${repoName()}/pulls/${prNumber}/merge`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ merge_method: squash ? "squash" : "merge" }),
+    },
+  );
+  return data;
+}
+
+export async function getPullRequest(prNumber: number): Promise<GithubPullRequest> {
+  return gh<GithubPullRequest>(
+    `/repos/${repoOwner()}/${repoName()}/pulls/${prNumber}`,
+  );
+}
+
+export async function commentOnPr(
+  prNumber: number,
+  body: string,
+): Promise<{ id: number; html_url: string }> {
+  return gh<{ id: number; html_url: string }>(
+    `/repos/${repoOwner()}/${repoName()}/issues/${prNumber}/comments`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+}
+
+export async function createIssue(
+  title: string,
+  body: string,
+  labels?: string[],
+): Promise<GithubIssue> {
+  return gh<GithubIssue>(`/repos/${repoOwner()}/${repoName()}/issues`, {
+    method: "POST",
+    body: JSON.stringify({ title, body, labels: labels ?? [] }),
+  });
+}
+
+/**
+ * Dispatch a workflow_dispatch event on a workflow filename. Inputs map
+ * to the workflow's `on.workflow_dispatch.inputs` section.
+ */
+export async function dispatchWorkflow(
+  workflowFile: string,
+  ref: string,
+  inputs?: Record<string, string>,
+): Promise<{ ok: true }> {
+  await gh(
+    `/repos/${repoOwner()}/${repoName()}/actions/workflows/${encodeURIComponent(workflowFile)}/dispatches`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ref, inputs: inputs ?? {} }),
+    },
+  );
+  return { ok: true };
+}

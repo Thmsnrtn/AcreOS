@@ -3995,6 +3995,23 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "chat_pending_tool_calls_expires_idx" ON "chat_pending_tool_calls" ("expires_at")`,
   `CREATE INDEX IF NOT EXISTS "chat_pending_tool_calls_thread_idx" ON "chat_pending_tool_calls" ("thread_id")`,
 
+  // Sealed-paste requests for secret rotation (Phase G/H/I batch 2). The
+  // chat client POSTs the secret VALUE directly to a dedicated endpoint;
+  // the value never enters the LLM context, only a SHA-256 fingerprint
+  // ever lands in an audit row.
+  `CREATE TABLE IF NOT EXISTS "chat_secret_paste_requests" (
+     "id" text PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "tool_name" text NOT NULL,
+     "key_name" text NOT NULL,
+     "thread_id" integer REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
+     "expires_at" timestamptz NOT NULL,
+     "consumed_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "chat_secret_paste_requests_expires_idx" ON "chat_secret_paste_requests" ("expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "chat_secret_paste_requests_founder_idx" ON "chat_secret_paste_requests" ("founder_user_id")`,
+
   // Background tasks (audits, deep analyses, weekly letter gen). Outbox-
   // backed; worker dispatches by runnerKey + payload. parentTaskId allows
   // sub-agent nesting (Phase A Reliability Req 4B).

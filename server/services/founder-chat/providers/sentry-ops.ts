@@ -172,3 +172,31 @@ export async function getLatestEventForIssue(
   token();
   return sentryFetch<SentryEvent>(`/issues/${encodeURIComponent(issueId)}/events/latest/`);
 }
+
+// ─── Destructive operations (Phase G/H/I batch 2) ───────────────────────────
+
+/**
+ * Mark a Sentry issue resolved. Tier 2 destructive.
+ */
+export async function resolveIssue(
+  issueId: string,
+  reason: string,
+): Promise<SentryIssueSummary> {
+  logger.warn("[sentry-ops] resolveIssue", { metadata: { issueId, reason: reason.slice(0, 200) } });
+  const updated = await sentryFetch<SentryIssueSummary>(
+    `/issues/${encodeURIComponent(issueId)}/`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ status: "resolved" }),
+    },
+  );
+  return updated;
+}
+
+/** Reopen a Sentry issue. Used by the rollback recipe. */
+export async function unresolveIssue(issueId: string): Promise<SentryIssueSummary> {
+  return sentryFetch<SentryIssueSummary>(
+    `/issues/${encodeURIComponent(issueId)}/`,
+    { method: "PUT", body: JSON.stringify({ status: "unresolved" }) },
+  );
+}
