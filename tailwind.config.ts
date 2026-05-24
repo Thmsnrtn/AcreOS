@@ -164,12 +164,19 @@ export default {
           from: { height: "var(--radix-collapsible-content-height)", opacity: "1" },
           to: { height: "0", opacity: "0" },
         },
+        // Bridge live-indicator breathing. Subtle opacity oscillation,
+        // never scale (scale at 6px reads as a flicker).
+        "bridge-breathe": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "collapsible-down": "collapsible-down 0.25s ease-out",
         "collapsible-up": "collapsible-up 0.2s ease-out",
+        "bridge-breathe": "bridge-breathe 1.5s ease-in-out infinite",
       },
     },
   },

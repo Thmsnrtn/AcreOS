@@ -23,16 +23,41 @@ interface ComposerProps {
   disabled?: boolean;
   /** Optional placeholder text. */
   placeholder?: string;
+  /**
+   * One-shot text to seed the textarea with. When this prop changes
+   * (and is non-empty) the composer overwrites its current value and
+   * focuses the textarea so the user can edit before sending. Used by
+   * the Bridge tile→chat handoff to pipe context like "about Active
+   * leads: " into the composer without auto-sending.
+   */
+  initialText?: string;
 }
 
 const MAX_ROWS = 8;
 const MIN_ROWS = 1;
 
-export function Composer({ onSubmit, disabled, placeholder }: ComposerProps) {
+export function Composer({ onSubmit, disabled, placeholder, initialText }: ComposerProps) {
   const [text, setText] = useState("");
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const lastInitialRef = useRef<string | undefined>(undefined);
+
+  // Seed-on-change: when initialText flips to a new non-empty value,
+  // overwrite the textarea contents and focus. Ignore repeated
+  // identical values so the user's in-progress edits aren't clobbered.
+  useEffect(() => {
+    if (!initialText || initialText === lastInitialRef.current) return;
+    lastInitialRef.current = initialText;
+    setText(initialText);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      const end = ta.value.length;
+      ta.setSelectionRange(end, end);
+    });
+  }, [initialText]);
 
   // Slash-command query (only when the input starts with "/").
   const slashQuery = useMemo(() => {

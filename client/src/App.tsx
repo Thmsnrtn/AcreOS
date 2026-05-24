@@ -258,6 +258,7 @@ const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
 // legacy tile-driven Now layout stays reachable at /founder/dashboard
 // via LegacyNowSurface until Phase F deprecates it.
 const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+const FounderBridgePage = React.lazy(() => import("@/pages/founder/bridge"));
 const FounderLegacyDashboard = React.lazy(() =>
   import("@/components/founder-chat/LegacyNowSurface").then((m) => ({
     default: m.LegacyNowSurface,
@@ -875,6 +876,12 @@ function Router() {
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderChatPage} />}
+      </Route>
+      {/* Bridge — fused chat + telemetry surface. Gated by
+          founder_settings `atlas.bridge_enabled` (default OFF). When
+          dogfooded, this swaps in for /founder. */}
+      <Route path="/founder/bridge">
+        {() => <FounderProtectedRoute component={FounderBridgePage} />}
       </Route>
       {/* Founder redesign Phase E — /founder/steering is the canonical
           weekly/monthly surface. Renders the existing cockpit component;

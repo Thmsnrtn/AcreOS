@@ -22,18 +22,27 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   const nonce = crypto.randomBytes(16).toString("base64");
   res.locals.cspNonce = nonce;
 
+  const isDev = process.env.NODE_ENV !== "production";
+
   const scriptSrcSources = [
     "'self'",
-    `'nonce-${nonce}'`,
     "https://js.stripe.com",
     "https://api.mapbox.com",
     "https://*.clerk.accounts.dev",
     "https://challenges.cloudflare.com",
   ];
 
-  // unsafe-eval is only needed in development (Vite HMR / source maps)
-  if (process.env.NODE_ENV !== "production") {
+  if (isDev) {
+    // Dev needs both unsafe-eval (Vite HMR / source maps) AND unsafe-inline
+    // (the @vitejs/plugin-react preamble is injected as an inline <script>
+    // without our per-request nonce). Per CSP spec, 'unsafe-inline' is
+    // silently ignored when a nonce is also present — so dev intentionally
+    // omits the nonce and relies on unsafe-inline alone. Prod keeps the
+    // nonce-only path; nothing relaxes.
     scriptSrcSources.push("'unsafe-eval'");
+    scriptSrcSources.push("'unsafe-inline'");
+  } else {
+    scriptSrcSources.push(`'nonce-${nonce}'`);
   }
 
   const cspDirectives = [

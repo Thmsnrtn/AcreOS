@@ -133,6 +133,17 @@ export const KNOBS: KnobDefinition[] = [
       "Panic button for Atlas. When ON, every destructive Atlas tool refuses immediately; inquiry tools still work. Use during incidents where Atlas is misbehaving.",
     category: "safety",
   },
+  // Bridge dashboard — fused chat + telemetry surface at /founder/bridge.
+  // Default OFF; flip ON for personal dogfooding before the planned
+  // /founder swap (founder-dashboard-v2 redesign, 2026-05-23 decision).
+  {
+    key: "atlas.bridge_enabled",
+    valueType: "boolean",
+    defaultValue: "false",
+    description:
+      "Enables the Bridge dashboard at /founder/bridge — a fused chat-first + modular-telemetry surface. Default OFF. Flip ON to dogfood the redesign before it replaces /founder.",
+    category: "general",
+  },
   {
     key: "archival.horizon_days",
     valueType: "number",

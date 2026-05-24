@@ -1546,6 +1546,13 @@ export async function registerRoutes(
     app.use('/api/founder/cockpit', isAuthenticated, requireFounder, founderCockpitRouter);
   }
 
+  // Founder Bridge — single-shot data endpoint for /founder/bridge. Returns
+  // hero metric + 3 telemetry tiles + agents + action queue in one read.
+  {
+    const founderBridgeRouter = (await import("./routes-founder-bridge")).default;
+    app.use('/api/founder/bridge', isAuthenticated, requireFounder, founderBridgeRouter);
+  }
+
   // Founder Finance — buckets/MRR/contribution-margin/cost-mix/triggers/recovery
   // transfers. Read-side aggregation of `financial_ledger` + write-side recovery
   // controls. Weaves into /founder (Now) tiles + /founder/steering sections

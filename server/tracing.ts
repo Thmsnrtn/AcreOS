@@ -142,22 +142,25 @@ export async function initTracing(): Promise<void> {
 export function getTracer(): Tracer {
   if (_tracer) return _tracer;
   if (trace?.getTracer) return trace.getTracer(SERVICE_NAME);
-  // Return a no-op tracer when OpenTelemetry is not available
+  // Return a no-op tracer when OpenTelemetry is not available. The
+  // shape mirrors OTel's `NonRecordingSpan` so callers that reach for
+  // `spanContext()`, `setAttributes()`, `addEvent()`, or `updateName()`
+  // (e.g. middleware/telemetry.ts) don't crash with "is not a function"
+  // in environments where the OTel SDK never initialized.
+  const noopSpan = {
+    end: () => {},
+    setAttribute: () => {},
+    setAttributes: () => {},
+    addEvent: () => {},
+    setStatus: () => {},
+    updateName: () => {},
+    recordException: () => {},
+    isRecording: () => false,
+    spanContext: () => ({ traceId: "", spanId: "", traceFlags: 0 }),
+  };
   return {
-    startSpan: (name: string) => ({
-      end: () => {},
-      setAttribute: () => {},
-      setStatus: () => {},
-      recordException: () => {},
-      isRecording: () => false,
-    }),
-    startActiveSpan: (_name: string, fn: any) => fn({
-      end: () => {},
-      setAttribute: () => {},
-      setStatus: () => {},
-      recordException: () => {},
-      isRecording: () => false,
-    }),
+    startSpan: (_name: string) => noopSpan,
+    startActiveSpan: (_name: string, fn: any) => fn(noopSpan),
   } as any;
 }
 
