@@ -1,10 +1,10 @@
-// Bumped to v8 to force cache eviction for users still seeing pre-Bridge
-// UI (and pre-bedrock theme) after the 2026-05-24 deploy. The v7 → v8
-// rename invalidates STATIC_CACHE + API_CACHE for every previously
+// Bumped to v9 to force cache eviction so the new "Apex" app icon
+// + redesigned PWA assets reach all clients. The v8 → v9 rename
+// invalidates STATIC_CACHE + API_CACHE for every previously
 // registered client; on next page load they fetch the new index.html
-// (which references the new chunk hashes — index-_781lI_N.js +
-// bridge-DnXRSIfl.js) instead of the stale entries from v7.
-const CACHE_NAME = 'acreos-v8';
+// and the redesigned apple-touch-icon.png / pwa-192 / pwa-512 /
+// pwa-maskable-512 instead of the hex-A holdovers.
+const CACHE_NAME = 'acreos-v9';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 

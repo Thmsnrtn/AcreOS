@@ -1,10 +1,80 @@
-<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-  <path d="M5 6 L27 4 L29 18 L24 27 L7 26 L3 14 Z" fill="url(#g)"/>
-  <path d="M16 9 L22 22 L18.75 22 L17.5 19 L14 19 L12.75 22 L9.5 22 Z M15 17 L17 17 L16 14 Z" fill="#fff" fill-opacity="0.95"/>
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    AcreOS app icon — "Apex"
+
+    Design language: deep #0A0B0D canvas + a bold serif "A" with the
+    crossbar replaced by a single warm-amber land-line bar. Same
+    palette + vocabulary as the Bridge dashboard.
+
+    - Canvas: vertical gradient #0F1013 → #060709 for subtle depth
+    - 1px top inner highlight band (matches the Bridge tile chrome)
+    - The "A" is pure geometry (no system font dependency) so it
+      renders pixel-identical on every device
+    - Amber #FFB547 crossbar — the one accent
+    - Full bleed; iOS applies its squircle mask automatically. For
+      Android/maskable use the apex stays inside a 20% safe zone.
+  -->
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="hsl(25 70% 35%)"/>
-      <stop offset="100%" stop-color="hsl(160 25% 40%)"/>
+    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10131A"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </linearGradient>
+    <linearGradient id="aFill" x1="512" y1="180" x2="512" y2="860" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F7F1E5"/>
+      <stop offset="100%" stop-color="#E6DCC9"/>
+    </linearGradient>
+    <linearGradient id="topHL" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
   </defs>
+
+  <!-- Canvas -->
+  <rect width="1024" height="1024" fill="url(#canvas)"/>
+  <rect width="1024" height="64" fill="url(#topHL)"/>
+
+  <!--
+    "A" outline — bold serif, two legs converging at an apex with
+    flared feet. Coordinates were tuned by hand to read confidently
+    at 60×60 (smallest iOS Spotlight size). Crossbar omitted; the
+    amber land-line bar below substitutes for it.
+
+    Path walk (clockwise from apex):
+      apex top-right → outer right edge → right foot top
+      → right foot outer flare → right baseline outer
+      → right baseline inner → right foot inner flare
+      → inner right edge → apex inner-right
+      → apex inner-left → inner left edge
+      → left foot inner flare → left baseline inner
+      → left baseline outer → left foot outer flare
+      → outer left edge → apex top-left → close
+  -->
+  <path fill="url(#aFill)" d="
+    M 540,196
+    L 760,816
+    L 832,816
+    L 858,838
+    L 720,838
+    L 700,790
+    L 632,790
+    L 632,734
+    L 680,734
+    L 512,272
+    L 344,734
+    L 392,734
+    L 392,790
+    L 324,790
+    L 304,838
+    L 166,838
+    L 192,816
+    L 264,816
+    L 484,196
+    Z"/>
+
+  <!--
+    Amber land-line bar — replaces the crossbar of the A. Sits at
+    ~62% glyph height (rule-of-thirds anchor). 16px-tall, end caps
+    rounded to suggest the warm horizon line / property edge.
+  -->
+  <rect x="332" y="612" width="360" height="20" rx="10" fill="#FFB547"/>
 </svg>
