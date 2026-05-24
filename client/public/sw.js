@@ -1,9 +1,10 @@
-// Bumped to v7 to force cache eviction for users seeing stale UI in Safari.
-// Paired with main.tsx changes: updateViaCache:'none' on registration,
-// active registration.update() on load, and a controllerchange listener
-// that auto-reloads when the new SW takes control. Without those three,
-// Safari can sit on a stale v6 SW for up to 24h before re-checking.
-const CACHE_NAME = 'acreos-v7';
+// Bumped to v8 to force cache eviction for users still seeing pre-Bridge
+// UI (and pre-bedrock theme) after the 2026-05-24 deploy. The v7 → v8
+// rename invalidates STATIC_CACHE + API_CACHE for every previously
+// registered client; on next page load they fetch the new index.html
+// (which references the new chunk hashes — index-_781lI_N.js +
+// bridge-DnXRSIfl.js) instead of the stale entries from v7.
+const CACHE_NAME = 'acreos-v8';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
