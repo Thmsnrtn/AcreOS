@@ -144,6 +144,24 @@ export const KNOBS: KnobDefinition[] = [
       "Enables the Bridge dashboard at /founder/bridge — a fused chat-first + modular-telemetry surface. Default OFF. Flip ON to dogfood the redesign before it replaces /founder.",
     category: "general",
   },
+  // Frugal Autonomy — total daily AI spend ceiling (cents). Every call into
+  // routeAITask checks this before firing; once today's spend (across all
+  // categories) hits the cap, further calls are refused with a
+  // BudgetExceededError. Default $10/day (pre-launch). Raise to ~$200/day
+  // once paying customers exist. The total is split into per-category
+  // buckets via DEFAULT_SHARES in intelligence/budget.ts; founder can
+  // override per-category via `ai.budget.{category}_share_pct` knobs.
+  {
+    key: "ai.daily_budget_cents",
+    valueType: "number",
+    defaultValue: "1000",
+    description:
+      "Total daily AI spend cap across the whole platform, in cents. When today's spend hits this, autonomous jobs refuse further LLM calls until UTC midnight. The cap is sliced into per-category budgets (executor, briefing, founder_brief, etc.) — see ai.budget.* knobs.",
+    category: "safety",
+    min: 100,           // $1/day absolute floor
+    max: 1_000_000,     // $10k/day absolute ceiling
+    units: "cents",
+  },
   {
     key: "archival.horizon_days",
     valueType: "number",

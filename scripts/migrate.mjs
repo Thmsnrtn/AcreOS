@@ -1771,6 +1771,21 @@ const STATEMENTS = [
   'CREATE UNIQUE INDEX IF NOT EXISTS "ai_usage_daily_org_date_uniq" ON "ai_usage_daily" ("organization_id", "date")',
   'CREATE INDEX IF NOT EXISTS "ai_usage_daily_date_idx" ON "ai_usage_daily" ("date")',
 
+  // ai_budget_runs — Frugal Autonomy Phase 2.1 (2026-05-25).
+  // Platform-wide daily budget tracking by category. Idempotent; safe to re-run.
+  `CREATE TABLE IF NOT EXISTS "ai_budget_runs" (
+     "id"           serial PRIMARY KEY,
+     "day"          date NOT NULL,
+     "category"     text NOT NULL,
+     "cap_cents"    integer NOT NULL,
+     "spent_cents"  numeric(12, 4) NOT NULL DEFAULT 0,
+     "calls"        integer NOT NULL DEFAULT 0,
+     "exceeded_at"  timestamp,
+     "updated_at"   timestamp DEFAULT now()
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ai_budget_runs_day_category_uniq" ON "ai_budget_runs" ("day", "category")',
+  'CREATE INDEX IF NOT EXISTS "ai_budget_runs_day_idx" ON "ai_budget_runs" ("day")',
+
   // customer_concentration — 0048
   `CREATE TABLE IF NOT EXISTS "customer_concentration" (
      "id"                    SERIAL PRIMARY KEY,

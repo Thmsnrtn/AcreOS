@@ -73,6 +73,20 @@ export interface BridgePayload {
     href?: string;
     discussPrefill?: string;
   }>;
+  aiBudget: {
+    totalCapCents: number;
+    totalSpentCents: number;
+    totalRemainingCents: number;
+    pctSpent: number; // 0-100
+    categories: Array<{
+      category: string;
+      capCents: number;
+      spentCents: number;
+      pctSpent: number;
+      calls: number;
+      exceededAt: string | null;
+    }>;
+  };
 }
 
 const ACTIVE_LEAD_STATUSES_EXCLUDED = ["dead", "closed"];
@@ -235,6 +249,20 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       return { codename, healthPct, status };
     });
 
+    // Frugal Autonomy tile data — today's per-category AI spend.
+    // Wrapped in a safe() so a budget module hiccup doesn't take down
+    // the whole Bridge payload.
+    const budgetSnapshot = await safe(
+      (async () => {
+        const { getTodayBudgetSnapshot } = await import("./services/intelligence/budget");
+        return getTodayBudgetSnapshot();
+      })(),
+      [] as Awaited<ReturnType<typeof import("./services/intelligence/budget").getTodayBudgetSnapshot>>,
+      "ai_budget",
+    );
+    const totalCapCents = budgetSnapshot.reduce((s, r) => s + r.capCents, 0);
+    const totalSpentCents = budgetSnapshot.reduce((s, r) => s + r.spentCents, 0);
+
     const payload: BridgePayload = {
       generatedAt: now.toISOString(),
       hero: {
@@ -252,6 +280,20 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       agents: agentsOut,
       agentsLastSyncAt: now.toISOString(),
       actionQueue: [], // v1 — wired to /api/founder/intelligence/todo next iteration
+      aiBudget: {
+        totalCapCents,
+        totalSpentCents,
+        totalRemainingCents: Math.max(0, totalCapCents - totalSpentCents),
+        pctSpent: totalCapCents > 0 ? Math.min(100, Math.round((totalSpentCents / totalCapCents) * 100)) : 0,
+        categories: budgetSnapshot.map((r) => ({
+          category: r.category,
+          capCents: r.capCents,
+          spentCents: r.spentCents,
+          pctSpent: r.capCents > 0 ? Math.min(100, Math.round((r.spentCents / r.capCents) * 100)) : 0,
+          calls: r.calls,
+          exceededAt: r.exceededAt ? r.exceededAt.toISOString() : null,
+        })),
+      },
     };
 
     res.json(payload);

@@ -114,6 +114,23 @@ export async function recordAiCall(opts: RecordAiCallOpts): Promise<void> {
     return;
   }
 
+  // Frugal Autonomy: increment today's per-category budget. Fires for
+  // every billed call (non-cache, positive cost) regardless of whether
+  // the call had an organizationId — platform-wide cap is the point.
+  if (!opts.cacheHit && (opts.costCents ?? 0) > 0) {
+    try {
+      const { categoryFor, recordSpend } = await import(
+        "./intelligence/budget"
+      );
+      const category = categoryFor(opts.feature);
+      void recordSpend(category, opts.costCents!);
+    } catch (err) {
+      logger.warn("[ai-telemetry] budget recordSpend skipped", {
+        metadata: { feature: opts.feature, err: err instanceof Error ? err.message : err },
+      });
+    }
+  }
+
   // Ledger debit: only for non-cache upstream calls with attributable cost
   // and an idempotency key.
   if (

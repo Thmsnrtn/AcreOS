@@ -12022,6 +12022,36 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
 export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
+// ─── AI Budget Runs (Frugal Autonomy — Phase 2.1) ────────────────────────────
+// Platform-wide daily budget tracking by category. Separate from aiUsageDaily
+// (which is per-org for customer billing/quota); this table is the *engine*
+// of the cost ceiling — every call into routeAITask checks against it BEFORE
+// firing, and recordAiCall increments it AFTER firing.
+//
+// Category is a coarse routing bucket (executor, briefing, founder_brief,
+// nurturing, cmo, analysis, general) — mapped from task_type via
+// server/services/intelligence/budget.ts → categoryFor(taskType).
+//
+// One row per (day, category). Auto-created on first call. capCents reads
+// from founder_settings (ai.daily_budget_cents + category share knobs);
+// recomputed daily so founder edits take effect next day.
+export const aiBudgetRuns = pgTable("ai_budget_runs", {
+  id: serial("id").primaryKey(),
+  day: date("day").notNull(),            // UTC date (YYYY-MM-DD)
+  category: text("category").notNull(),  // executor | briefing | founder_brief | nurturing | cmo | analysis | general
+  capCents: integer("cap_cents").notNull(),
+  spentCents: numeric("spent_cents", { precision: 12, scale: 4 }).notNull().default("0"),
+  calls: integer("calls").notNull().default(0),
+  exceededAt: timestamp("exceeded_at"),  // first time spent_cents crossed cap (null if still within)
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("ai_budget_runs_day_category_uniq").on(table.day, table.category),
+  index("ai_budget_runs_day_idx").on(table.day),
+]);
+
+export type AiBudgetRun = typeof aiBudgetRuns.$inferSelect;
+export type InsertAiBudgetRun = typeof aiBudgetRuns.$inferInsert;
+
 // ─── AI Routing Overrides ────────────────────────────────────────────────────
 // Wave 8 — eval-gated rollback table. The aiRouter consults this table at
 // routing time and prefers the override tier/model when an active row exists

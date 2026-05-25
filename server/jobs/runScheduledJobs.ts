@@ -958,10 +958,22 @@ function startFounderBriefingJob() {
 // founder-briefing email above (that's a customer-side daily email; this is
 // the founder-chat morning brief).
 async function processAtlasMorningBrief() {
+  // Frugal Autonomy gate: budget check + min-interval. The brief is
+  // founder-essential so mustRunCondition stays true regardless of activity.
+  const { shouldRunAIJob, recordJobRun } = await import("../services/intelligence/coordinator");
+  const gate = await shouldRunAIJob("atlas_morning_brief", {
+    category: "founder_brief",
+    minIntervalMinutes: 12 * 60, // 12h — block accidental double-fires
+  });
+  if (!gate.run) {
+    log(`Atlas morning brief skipped: ${gate.reason}`, 'atlas-morning-brief');
+    return;
+  }
   try {
     const { runMorningBriefForAllFounders } = await import("./morningBrief");
     const r = await runMorningBriefForAllFounders();
     log(`Atlas morning brief: ran=${r.ran}, skipped=${r.skipped}`, 'atlas-morning-brief');
+    await recordJobRun("atlas_morning_brief");
     jobSupervisor.notifyResult('atlas_morning_brief', 24 * 60 * 60 * 1000, true);
   } catch (err) {
     log(`Atlas morning brief error: ${err}`, 'atlas-morning-brief');
@@ -1002,9 +1014,37 @@ function startAtlasPendingConfirmationNudger() {
 
 // ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
 async function processOutcomeAnalyzerJob() {
+  // Skip when there's no recent outcome telemetry to analyze — no point
+  // paying for an LLM to "analyze" zero data points on a pre-launch
+  // platform.
+  const { shouldRunAIJob, recordJobRun } = await import("../services/intelligence/coordinator");
+  const gate = await shouldRunAIJob("outcome_analyzer", {
+    category: "analysis",
+    minIntervalMinutes: 18 * 60,
+    mustRunCondition: async () => {
+      try {
+        const { db } = await import("../db");
+        const { outcomeTelemetry } = await import("@shared/schema");
+        const { sql: sqlOp, gte: gteOp } = await import("drizzle-orm");
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const [{ n }] = await db
+          .select({ n: sqlOp<number>`count(*)` })
+          .from(outcomeTelemetry)
+          .where(gteOp(outcomeTelemetry.createdAt, since));
+        return Number(n) > 0;
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (!gate.run) {
+    log(`Outcome analyzer skipped: ${gate.reason}`, 'outcome-analyzer');
+    return;
+  }
   try {
     const { runOutcomeAnalysis } = await import("../services/outcomeAnalyzer");
     await runOutcomeAnalysis();
+    await recordJobRun("outcome_analyzer");
     jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, true);
   } catch (err) {
     log(`Outcome analyzer job error: ${err}`, 'outcome-analyzer');
@@ -1028,10 +1068,37 @@ function startOutcomeAnalyzerJob() {
 
 // ── Telemetry Optimizer: nightly model routing optimization (3am) ─────────────
 async function processTelemetryOptimizerJob() {
+  // Skip when there's no recent AI telemetry to optimize against.
+  const { shouldRunAIJob, recordJobRun } = await import("../services/intelligence/coordinator");
+  const gate = await shouldRunAIJob("telemetry_optimizer", {
+    category: "analysis",
+    minIntervalMinutes: 18 * 60,
+    mustRunCondition: async () => {
+      try {
+        const { db } = await import("../db");
+        const { aiTelemetryEvents } = await import("@shared/schema");
+        const { sql: sqlOp, gte: gteOp } = await import("drizzle-orm");
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const [{ n }] = await db
+          .select({ n: sqlOp<number>`count(*)` })
+          .from(aiTelemetryEvents)
+          .where(gteOp(aiTelemetryEvents.createdAt, since));
+        // Optimizer wants meaningful sample — at least 100 calls in 24h.
+        return Number(n) >= 100;
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (!gate.run) {
+    log(`Telemetry optimizer skipped: ${gate.reason}`, 'telemetry-optimizer');
+    return;
+  }
   try {
     const { runTelemetryOptimizer } = await import("../services/telemetryOptimizer");
     const result = await runTelemetryOptimizer();
     log(`Telemetry optimizer: ${result.tiersOptimized} tiers optimized, ${result.changesApplied} changes applied`, 'telemetry-optimizer');
+    await recordJobRun("telemetry_optimizer");
     jobSupervisor.notifyResult('telemetry_optimizer', 24 * 60 * 60 * 1000, true);
   } catch (err) {
     log(`Telemetry optimizer job error: ${err}`, 'telemetry-optimizer');
@@ -1763,19 +1830,59 @@ function startCompanyBriefingJob() {
 
     // 11:45 UTC = 6:45 AM CT
     if (utcHour === 11 && utcMin >= 45 && utcMin < 50) {
-      import('../services/companyBriefingGenerator').then(({ generateCompanyBriefing }) => {
-        withJobLock('company_briefing_generator', TTL_SECONDS, async () => {
-          const result = await generateCompanyBriefing();
-          // Phase B+C: Publish briefing event + broadcast via WebSocket
-          import('../services/eventMeshPublisher').then(({ eventMeshPublisher }) => {
-            eventMeshPublisher.briefingReady(0, { type: 'morning', highlights: 'Daily briefing generated' }).catch(() => {});
-          }).catch(() => {});
-          wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: new Date().toISOString() });
-          return result;
-        }).catch(err => {
-          log(`Company briefing generation failed: ${err}`, 'sovereign');
+      void (async () => {
+        // Frugal Autonomy gate — skip when no inputs changed since
+        // yesterday's brief AND the founder hasn't checked in lately.
+        // The brief composes 10 agent reports, so a no-op morning saves
+        // ~10 Haiku calls.
+        const { shouldRunAIJob, recordJobRun, fingerprintOf } = await import(
+          "../services/intelligence/coordinator"
+        );
+        const gate = await shouldRunAIJob("company_briefing", {
+          category: "briefing",
+          minIntervalMinutes: 18 * 60, // 18h — won't fire twice in one day
+          fingerprintInputs: async () => {
+            // Coarse input fingerprint: rerun only if active agent count
+            // or decisions-inbox depth has materially shifted since last.
+            try {
+              const { companyAgentService } = await import("../services/companyAgents");
+              const { db } = await import("../db");
+              const { decisionsInboxItems } = await import("@shared/schema");
+              const { sql: sqlOp, eq: eqOp } = await import("drizzle-orm");
+              const agents = await companyAgentService.getAllIncludingPaused();
+              const [{ n }] = await db
+                .select({ n: sqlOp<number>`count(*)` })
+                .from(decisionsInboxItems)
+                .where(eqOp(decisionsInboxItems.status, "pending"));
+              return fingerprintOf({
+                activeAgents: agents.filter((a) => a.status === "active").map((a) => a.codename).sort(),
+                pendingDecisions: Number(n) || 0,
+              });
+            } catch {
+              return null;
+            }
+          },
         });
-      }).catch(err => log(`Company briefing import failed: ${err}`, 'sovereign'));
+        if (!gate.run) {
+          log(`Company briefing skipped: ${gate.reason}`, 'sovereign');
+          return;
+        }
+        try {
+          await import('../services/companyBriefingGenerator').then(({ generateCompanyBriefing }) =>
+            withJobLock('company_briefing_generator', TTL_SECONDS, async () => {
+              const result = await generateCompanyBriefing();
+              await import('../services/eventMeshPublisher').then(({ eventMeshPublisher }) => {
+                eventMeshPublisher.briefingReady(0, { type: 'morning', highlights: 'Daily briefing generated' }).catch(() => {});
+              }).catch(() => {});
+              wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: new Date().toISOString() });
+              return result;
+            }),
+          );
+          await recordJobRun("company_briefing");
+        } catch (err) {
+          log(`Company briefing generation failed: ${err}`, 'sovereign');
+        }
+      })();
     }
   }, 5 * 60 * 1000); // Check every 5 minutes
 }

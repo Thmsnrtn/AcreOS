@@ -406,6 +406,15 @@ export interface AIRouterConfig {
    */
   skipQuota?: boolean;
   /**
+   * Frugal Autonomy (Phase 2.1, 2026-05-25): platform-wide per-category
+   * daily AI budget gate. When unset (default), every routeAITask call
+   * checks today's spend in the category for task.taskType against the
+   * configured cap and throws BudgetExceededError if exhausted. Set
+   * `skipBudget: true` ONLY for interactive founder-facing calls that
+   * should never be silently refused (e.g. founder typing into Atlas).
+   */
+  skipBudget?: boolean;
+  /**
    * Per-org daily cap in USD. When provided, this value is used directly and
    * the DB lookup is skipped. Useful for callers that already have the org
    * row in hand.  When undefined, the router queries organizations.
@@ -910,6 +919,35 @@ export async function routeAITask(
         }
         throw err;
       }
+    }
+  }
+
+  // ── Frugal Autonomy: platform-wide per-category daily budget gate ───────────
+  // Sits in front of the cache check so even cache misses get blocked when
+  // the day's spend has exhausted the category. Fail-open on DB hiccups —
+  // see intelligence/budget.ts. Callers (autonomous jobs) catch
+  // BudgetExceededError and defer the work; interactive calls bubble up
+  // and let the founder see what was refused.
+  if (!config.skipBudget) {
+    try {
+      const { categoryFor, checkBudget, BudgetExceededError } = await import(
+        "./intelligence/budget"
+      );
+      const category = categoryFor(task.taskType ?? "ad_hoc");
+      const { withinBudget, capCents, spentCents } = await checkBudget(category);
+      if (!withinBudget) {
+        throw new BudgetExceededError(category, capCents, spentCents);
+      }
+    } catch (err) {
+      // Re-throw budget errors so callers can defer; swallow any other
+      // unexpected error so the platform doesn't deadlock on a budget
+      // module bug.
+      if ((err as { name?: string })?.name === "BudgetExceededError") {
+        throw err;
+      }
+      logger.warn("[AIRouter] budget check failed — allowing call", {
+        metadata: { taskType: task.taskType, detail: err instanceof Error ? err.message : err },
+      });
     }
   }
 

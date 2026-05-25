@@ -126,11 +126,16 @@ function inferExecutorComplexity(item: {
 }
 
 /**
- * Tiered replacement for the previous unconditional routeCriticalTask
- * call in processInboxItem. Picks the right model for the work in
- * front of it, then routes through routeAITask which honors the model
- * tier system (Haiku/Sonnet/Opus) and emits telemetry tagged with the
- * resolved complexity so we can audit the distribution later.
+ * Phase 2.3 — Reasoning Cascade.
+ *
+ * Routes the executor's LLM call through the Haiku→Sonnet→Opus
+ * confidence cascade in intelligence/cascade.ts. Triage has already
+ * decided that this item needs a model; the cascade now picks the
+ * cheapest model that's confident enough at the item's stakes.
+ *
+ * `inferExecutorComplexity` is still used to pre-pin the tier when
+ * the item type / impact warrants it (e.g. capital_allocation skips
+ * straight to Opus); otherwise we let the cascade self-escalate.
  */
 async function routeExecutorDecision(
   item: {
@@ -143,18 +148,34 @@ async function routeExecutorDecision(
   userPrompt: string,
 ) {
   const complexity = inferExecutorComplexity(item);
-  if (complexity === TaskComplexity.CRITICAL) {
-    return routeCriticalTask("executive_decision", systemPrompt, userPrompt);
-  }
-  return routeAITask({
+  // Pin the cascade when triage's tier inference says "this needs
+  // Opus / Sonnet outright" — saves a wasted Haiku call on items we
+  // know the cheap model can't handle.
+  let forceTier: "haiku" | "sonnet" | "opus" | null = null;
+  if (complexity === TaskComplexity.CRITICAL) forceTier = "opus";
+  else if (complexity === TaskComplexity.COMPLEX) forceTier = "sonnet";
+
+  const { cascade } = await import("./intelligence/cascade");
+  const decision = await cascade({
     taskType: "executor_inbox_decision",
-    complexity,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    enablePromptCaching: systemPrompt.length >= 1024,
+    systemPrompt,
+    userPrompt,
+    impactCents: item.estimatedImpactCents ?? 0,
+    forceTier,
   });
+  // Return an AIResponse-shaped object so existing callers can JSON-parse
+  // the content as before. The downstream parser strips fences + extracts
+  // {action, confidence, reasoning} — feed it our cascade's raw JSON.
+  return {
+    content: JSON.stringify({
+      action: decision.action,
+      confidence: decision.confidence,
+      reasoning: `[tier:${decision.tierUsed}] ${decision.reasoning}`,
+    }),
+    // Best-effort additional metadata; downstream code only reads .content.
+    model: `cascade:${decision.tierUsed}`,
+    raw: decision,
+  };
 }
 import { getCrossWingContext } from "./companyMind";
 import { emailService } from "./emailService";
@@ -654,6 +675,84 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     } catch {}
   }
 
+  // ── Frugal Autonomy: rule-based triage gate ─────────────────────────────────
+  // Most inbox items can be resolved without consulting an LLM. The triage
+  // engine returns auto-approve / auto-reject / auto-defer for ~60-80% of
+  // items; only "escalate-to-llm" outcomes fall through to the cascade below.
+  // This is the single biggest lever for keeping AI cost in line with real
+  // intelligence demand.
+  try {
+    const { triageWithLog } = await import("./intelligence/triage");
+    const triageDecision = triageWithLog({
+      id: item.id,
+      itemType: item.itemType,
+      riskLevel: item.riskLevel ?? "medium",
+      urgencyScore: item.urgencyScore ?? 50,
+      estimatedImpactCents: item.estimatedImpactCents ?? null,
+      ownerAgentCodename: item.ownerAgentCodename ?? null,
+      recommendedAction: item.recommendedAction ?? "",
+      contextBundle: item.contextBundle ?? null,
+      actionPayload: item.actionPayload ?? null,
+    });
+
+    if (triageDecision.kind === "auto-approve") {
+      result.decision = {
+        action: "approve",
+        confidence: triageDecision.confidence,
+        reasoning: `Triage auto-approve: ${triageDecision.reason}`,
+      };
+      result.executedAction = "auto_approved_via_triage";
+      result.executionSuccess = true;
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "approved",
+          resolvedAt: new Date(),
+          resolvedBy: "intelligence/triage",
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      return result;
+    }
+    if (triageDecision.kind === "auto-reject") {
+      result.decision = {
+        action: "reject",
+        confidence: triageDecision.confidence,
+        reasoning: `Triage auto-reject: ${triageDecision.reason}`,
+      };
+      result.executedAction = "auto_rejected_via_triage";
+      result.executionSuccess = true;
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "rejected",
+          resolvedAt: new Date(),
+          resolvedBy: "intelligence/triage",
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      return result;
+    }
+    if (triageDecision.kind === "auto-defer") {
+      result.decision = {
+        action: "defer",
+        confidence: 60,
+        reasoning: `Triage auto-defer: ${triageDecision.reason}`,
+      };
+      result.executedAction = "auto_deferred_via_triage";
+      result.executionSuccess = true;
+      const until = new Date(Date.now() + triageDecision.deferMinutes * 60_000);
+      await db.update(decisionsInboxItems)
+        .set({ status: "deferred", deferredUntil: until, updatedAt: new Date() })
+        .where(eq(decisionsInboxItems.id, item.id));
+      return result;
+    }
+    // Else: kind === "escalate-to-llm" — fall through to the cascade.
+  } catch (err) {
+    logger.warn("[AutonomousExecutor] triage failed — falling through to LLM", {
+      itemId: item.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // v11: Graduated financial authority — route through tiered approval system
   const impactCents = item.estimatedImpactCents ?? 0;
   if (impactCents > 0 && EXECUTOR_CONFIG.GRADUATED_FINANCIAL_AUTHORITY_ENABLED) {
@@ -836,9 +935,9 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     .filter(Boolean)
     .join("\n\n---\n\n");
 
-  // Tier-route the model by item type + risk + impact. Most items
-  // resolve at Haiku/Sonnet; Opus only fires when stakes warrant it.
-  // See inferExecutorComplexity() above for the routing table.
+  // Tier-route the model by item type + risk + impact through the
+  // reasoning cascade. Most items resolve at Haiku; Sonnet/Opus only
+  // fire when confidence is low at the cheaper tier AND stakes warrant.
   let aiDecision: ExecutionDecision;
   try {
     const aiResponse = await routeExecutorDecision(
@@ -857,7 +956,24 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       executionNotes: parsed.executionNotes,
     };
   } catch (err: any) {
-    // AI call failed — defer safely
+    // Budget exhausted for today — defer the item to the start of
+    // tomorrow (UTC) so it gets picked back up under the fresh cap.
+    if (err?.name === "BudgetExceededError") {
+      const tomorrowMidnightUtc = new Date();
+      tomorrowMidnightUtc.setUTCHours(24, 0, 0, 0);
+      result.decision = {
+        action: "defer",
+        confidence: 100,
+        reasoning: `AI budget exhausted (category=${err.category}, cap=${err.capCents}¢, spent=${err.spentCents}¢). Deferred until 00:00 UTC.`,
+      };
+      result.executedAction = "deferred_budget_exhausted";
+      result.executionSuccess = true;
+      await db.update(decisionsInboxItems)
+        .set({ status: "deferred", deferredUntil: tomorrowMidnightUtc, updatedAt: new Date() })
+        .where(eq(decisionsInboxItems.id, item.id));
+      return result;
+    }
+    // Any other AI failure — defer safely for 4h.
     result.decision = {
       action: "defer",
       confidence: 0,

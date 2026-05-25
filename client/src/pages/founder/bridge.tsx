@@ -31,6 +31,7 @@ import { HeroMetricTile } from "@/components/founder-bridge/HeroMetricTile";
 import { TelemetryTile } from "@/components/founder-bridge/TelemetryTile";
 import { ActionQueueTile } from "@/components/founder-bridge/ActionQueueTile";
 import { AgentRowTile } from "@/components/founder-bridge/AgentRowTile";
+import { AIBudgetTile } from "@/components/founder-bridge/AIBudgetTile";
 import { BridgeAtlasPane } from "@/components/founder-bridge/BridgeAtlasPane";
 import { BridgeAtlasSheet } from "@/components/founder-bridge/BridgeAtlasSheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -61,6 +62,20 @@ interface BridgePayload {
     href?: string;
     discussPrefill?: string;
   }>;
+  aiBudget: {
+    totalCapCents: number;
+    totalSpentCents: number;
+    totalRemainingCents: number;
+    pctSpent: number;
+    categories: Array<{
+      category: string;
+      capCents: number;
+      spentCents: number;
+      pctSpent: number;
+      calls: number;
+      exceededAt: string | null;
+    }>;
+  };
 }
 
 interface SettingRow {
@@ -262,6 +277,16 @@ function BridgeSurface() {
               lastSyncAt={data?.agentsLastSyncAt}
               isLoading={isLoading}
               onDiscuss={() => discuss("about agent health: ")}
+            />
+          </motion.div>
+          <motion.div variants={staggerItem}>
+            <AIBudgetTile
+              totalCapCents={data?.aiBudget.totalCapCents ?? 0}
+              totalSpentCents={data?.aiBudget.totalSpentCents ?? 0}
+              pctSpent={data?.aiBudget.pctSpent ?? 0}
+              categories={data?.aiBudget.categories ?? []}
+              isLoading={isLoading}
+              onDiscuss={() => discuss("about today's AI spend: ")}
             />
           </motion.div>
         </motion.section>
