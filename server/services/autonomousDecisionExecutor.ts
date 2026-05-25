@@ -52,7 +52,110 @@ import {
   revenueProtectionInterventions,
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
-import { routeCriticalTask } from "./aiRouter";
+import { routeAITask, routeCriticalTask, TaskComplexity } from "./aiRouter";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost-tier routing for inbox items (added 2026-05-25 — see commit log).
+//
+// Prior to this, every item flowing through the executor was sent to
+// Opus 4.6 via routeCriticalTask("executive_decision", …). That was
+// the platform's #1 AI cost driver — ~940 calls/day @ $30/day on a
+// no-customer platform — because ~98% of items are routine agent
+// housekeeping (initiatives, DLQ replays, agent recommendations)
+// that don't need Opus-tier reasoning.
+//
+// The new policy: route by item_type + risk_level + estimated impact,
+// not by a blanket label. Opus is reserved for items that genuinely
+// touch money, legal exposure, or the customer surface. Everything
+// else gets Haiku (MODERATE) or Sonnet (COMPLEX).
+//
+// Founder can still force a specific complexity via item.metadata.forceComplexity.
+// ─────────────────────────────────────────────────────────────────────────────
+function inferExecutorComplexity(item: {
+  itemType: string;
+  riskLevel: string;
+  estimatedImpactCents: number | null;
+  contextBundle?: Record<string, any> | null;
+}): TaskComplexity {
+  // Honor explicit override (e.g. founder marked an item "use Opus").
+  // Lives in contextBundle since decisions_inbox_items has no metadata col.
+  const forced = item.contextBundle?.forceComplexity;
+  if (forced === "critical") return TaskComplexity.CRITICAL;
+  if (forced === "complex") return TaskComplexity.COMPLEX;
+  if (forced === "moderate") return TaskComplexity.MODERATE;
+  if (forced === "simple") return TaskComplexity.SIMPLE;
+
+  // Hard Opus triggers — these item types touch real-world consequences.
+  const HARD_OPUS_TYPES = new Set([
+    "capital_allocation",
+    "refund_decision",
+    "regulatory_filing",
+    "legal_action",
+    "customer_retention_at_risk_high_value",
+    "security_incident_response",
+  ]);
+  if (HARD_OPUS_TYPES.has(item.itemType)) return TaskComplexity.CRITICAL;
+
+  // Financial impact triggers — anything where a wrong call costs >$1k.
+  const impactCents = item.estimatedImpactCents ?? 0;
+  if (impactCents >= 100_000) return TaskComplexity.CRITICAL;   // ≥$1,000
+  if (impactCents >= 10_000) return TaskComplexity.COMPLEX;     // $100-$1,000
+
+  // Risk-level escalation for ambiguous types.
+  if (item.riskLevel === "critical") return TaskComplexity.CRITICAL;
+
+  // Per-itemType defaults — the 98% of routine work.
+  switch (item.itemType) {
+    case "dlq_poison_job":
+      // Replaying dead-letter jobs — simple categorize-and-retry.
+      return TaskComplexity.SIMPLE;
+    case "agent_event":
+      // Activity notifications — usually auto-approve.
+      return TaskComplexity.SIMPLE;
+    case "agent_initiative":
+    case "agent_recommendation":
+      // Agent-proposed work scored against priorities — Haiku is plenty.
+      // Sonnet only when the risk_level signals it could matter more.
+      return item.riskLevel === "high"
+        ? TaskComplexity.COMPLEX
+        : TaskComplexity.MODERATE;
+    default:
+      // Unknown item types lean conservative but never to Opus by default.
+      return TaskComplexity.MODERATE;
+  }
+}
+
+/**
+ * Tiered replacement for the previous unconditional routeCriticalTask
+ * call in processInboxItem. Picks the right model for the work in
+ * front of it, then routes through routeAITask which honors the model
+ * tier system (Haiku/Sonnet/Opus) and emits telemetry tagged with the
+ * resolved complexity so we can audit the distribution later.
+ */
+async function routeExecutorDecision(
+  item: {
+    itemType: string;
+    riskLevel: string;
+    estimatedImpactCents: number | null;
+    contextBundle?: Record<string, any> | null;
+  },
+  systemPrompt: string,
+  userPrompt: string,
+) {
+  const complexity = inferExecutorComplexity(item);
+  if (complexity === TaskComplexity.CRITICAL) {
+    return routeCriticalTask("executive_decision", systemPrompt, userPrompt);
+  }
+  return routeAITask({
+    taskType: "executor_inbox_decision",
+    complexity,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    enablePromptCaching: systemPrompt.length >= 1024,
+  });
+}
 import { getCrossWingContext } from "./companyMind";
 import { emailService } from "./emailService";
 import { format } from "date-fns";
@@ -733,11 +836,13 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     .filter(Boolean)
     .join("\n\n---\n\n");
 
-  // Call Opus 4.6 to make the decision
+  // Tier-route the model by item type + risk + impact. Most items
+  // resolve at Haiku/Sonnet; Opus only fires when stakes warrant it.
+  // See inferExecutorComplexity() above for the routing table.
   let aiDecision: ExecutionDecision;
   try {
-    const aiResponse = await routeCriticalTask(
-      "executive_decision",
+    const aiResponse = await routeExecutorDecision(
+      item,
       EXECUTOR_SYSTEM_PROMPT,
       contextWithMind,
     );

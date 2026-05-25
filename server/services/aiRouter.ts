@@ -465,7 +465,14 @@ const CRITICAL_TASKS = [
   "note_securitization",   // Structuring seller-financed note portfolios
   "regulatory_compliance", // Compliance determinations with legal exposure
   "fraud_detection",       // Financial fraud analysis — false negatives costly
-  "executive_decision",    // Atlas high-stakes strategic decisions
+  // NOTE: "executive_decision" was removed 2026-05-25 — the autonomous
+  // decision executor was sending 940+ items/day through this label,
+  // 98% of which were routine agent housekeeping (initiatives, dlq
+  // replays, agent recommendations) that don't need Opus. Real
+  // high-stakes founder strategy still gets Opus by passing
+  // `complexity: TaskComplexity.CRITICAL` explicitly; the executor now
+  // tiers per item_type via inferExecutorComplexity() in
+  // autonomousDecisionExecutor.ts. See $30/day → $1/day cost fix.
 ];
 
 // ============================================
