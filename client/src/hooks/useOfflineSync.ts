@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { clientLogger } from "@/lib/clientLogger";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,18 @@ export interface QueuedMutation {
   body?: unknown;
   timestamp: number;
   retries: number;
+  /**
+   * Stable per-mutation Idempotency-Key, generated at queue time and
+   * reused on every drain attempt. Critical for money-side paths:
+   * without this a queued POST /api/notes/:id/payments would mint a
+   * fresh UUID on every replay, defeating the server-side dedupe and
+   * potentially producing duplicate ledger entries if the original
+   * optimistic attempt also reached the server before going offline.
+   *
+   * Optional in the type for backwards-compat with rows persisted by
+   * the v1 schema (drainMutationQueue backfills a key for those).
+   */
+  idempotencyKey?: string;
 }
 
 export interface CachedData {
@@ -45,7 +58,12 @@ export interface UseOfflineSyncResult {
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
 const DB_NAME = 'acreos-offline';
-const DB_VERSION = 1;
+// v2: QueuedMutation now carries an idempotencyKey so drain replays
+// collapse to one server-side effect. No store shape changed — the
+// version bump simply forces onupgradeneeded to fire so any future
+// migration hook has a place to land. Rows persisted by v1 (no
+// idempotencyKey) are handled at drain time, see drainMutationQueue.
+const DB_VERSION = 2;
 
 async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -108,6 +126,13 @@ async function idbAddMutation(db: IDBDatabase, mutation: QueuedMutation): Promis
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "k-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
 }
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
@@ -251,21 +276,60 @@ export function useOfflineSync(): UseOfflineSyncResult {
 
       for (const mutation of mutations) {
         try {
-          const res = await fetch(mutation.url, {
-            method: mutation.method,
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: mutation.body ? JSON.stringify(mutation.body) : undefined,
-          });
-          if (res.ok) {
+          // Backfill an idempotency key for legacy v1 rows that pre-date
+          // the schema change. Persist the backfilled key so subsequent
+          // retries (e.g. after a 5xx) reuse the same value.
+          let idempotencyKey = mutation.idempotencyKey;
+          if (!idempotencyKey) {
+            idempotencyKey = generateIdempotencyKey();
+            await idbAddMutation(db, { ...mutation, idempotencyKey });
+          }
+
+          // Replay via apiRequest so we inherit the central CSRF +
+          // Idempotency-Key + 401-retry plumbing. Pass the stored key
+          // explicitly (NOT `idempotent: true`) — the whole point of
+          // persisting the key is that every drain attempt for this
+          // queued mutation hits the server with the same value, and
+          // the server collapses duplicates into one effect.
+          //
+          // We swallow errors from apiRequest (which throws on !ok) and
+          // mirror the original status-code branching by inspecting
+          // err.message ("404: …", "500: …").
+          let succeeded = false;
+          let isHttpError = false;
+          try {
+            await apiRequest(
+              mutation.method,
+              mutation.url,
+              mutation.body,
+              { idempotencyKey },
+            );
+            succeeded = true;
+          } catch (err) {
+            // apiRequest throws `${status}: ${message}` for HTTP errors.
+            // Anything else (network / abort) means the request never
+            // landed → leave the mutation in the queue and bail.
+            const msg = (err as Error)?.message ?? "";
+            isHttpError = /^\d{3}:/.test(msg);
+            if (!isHttpError) {
+              throw err; // caught below — break the drain loop
+            }
+          }
+
+          if (succeeded) {
             await idbDelete(db, 'mutations', mutation.id);
           } else if (mutation.retries >= 3) {
-            // Give up after 3 retries
+            // Give up after 3 retries on persistent HTTP errors
             await idbDelete(db, 'mutations', mutation.id);
             clientLogger.warn('[OfflineSync] Dropped mutation after 3 retries:', mutation.url);
           } else {
-            // Increment retry count
-            await idbAddMutation(db, { ...mutation, retries: mutation.retries + 1 });
+            // Increment retry count; preserve the idempotencyKey so
+            // the next attempt collapses with prior ones server-side.
+            await idbAddMutation(db, {
+              ...mutation,
+              idempotencyKey,
+              retries: mutation.retries + 1,
+            });
           }
         } catch {
           // Network still down; leave in queue
@@ -312,6 +376,12 @@ export function useOfflineSync(): UseOfflineSyncResult {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         timestamp: Date.now(),
         retries: 0,
+        // Mint the key ONCE here. If the caller already attempted the
+        // mutation optimistically before going offline, ideally they
+        // pass that same key in — but most callers won't, so we still
+        // get same-key dedupe across drain retries (the more common
+        // double-submit vector).
+        idempotencyKey: mutation.idempotencyKey ?? generateIdempotencyKey(),
       };
 
       await idbAddMutation(db, full);

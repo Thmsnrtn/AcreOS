@@ -206,7 +206,7 @@ function StripeConnectSettings() {
 
   const connectMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stripe/connect/link", {});
+      const res = await apiRequest("POST", "/api/stripe/connect/link", {}, { idempotent: true });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
@@ -226,7 +226,7 @@ function StripeConnectSettings() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stripe/connect/refresh", {});
+      const res = await apiRequest("POST", "/api/stripe/connect/refresh", {}, { idempotent: true });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
@@ -248,7 +248,7 @@ function StripeConnectSettings() {
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stripe/connect/disconnect", {});
+      const res = await apiRequest("POST", "/api/stripe/connect/disconnect", {}, { idempotent: true });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
@@ -503,7 +503,7 @@ function SeatManagement() {
   
   const purchaseSeatsMutation = useMutation({
     mutationFn: async ({ quantity, billingPeriod }: { quantity: number; billingPeriod: string }) => {
-      const res = await apiRequest("POST", "/api/organization/seats/purchase", { quantity, billingPeriod });
+      const res = await apiRequest("POST", "/api/organization/seats/purchase", { quantity, billingPeriod }, { idempotent: true });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },

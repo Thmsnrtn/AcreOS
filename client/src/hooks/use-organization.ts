@@ -133,7 +133,7 @@ export function useCreateCheckoutSession() {
 export function useCreatePortalSession() {
   return useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stripe/portal", {});
+      const res = await apiRequest("POST", "/api/stripe/portal", {}, { idempotent: true });
       return res.json() as Promise<{ url: string }>;
     },
   });

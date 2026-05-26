@@ -50,7 +50,7 @@ export function SeatBillingSummary() {
 
   const updateSeats = useMutation({
     mutationFn: async (count: number) => {
-      const res = await apiRequest("POST", "/api/team-readiness/seat-count", { seatCount: count });
+      const res = await apiRequest("POST", "/api/team-readiness/seat-count", { seatCount: count }, { idempotent: true });
       return await res.json();
     },
     onSuccess: () => {

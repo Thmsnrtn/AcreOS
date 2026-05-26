@@ -83,7 +83,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
       const res = await apiRequest("POST", "/api/subscription/cancel", {
         reason,
         feedback: feedback || undefined,
-      });
+      }, { idempotent: true });
       return res.json() as Promise<{ portalUrl?: string }>;
     },
     onSuccess: (data) => {

@@ -148,7 +148,7 @@ export function useCancelMailShipment() {
     { shipmentId: number; reason?: string }
   >({
     mutationFn: async ({ shipmentId, reason }) => {
-      const res = await apiRequest("POST", `/api/outreach/mail/cancel/${shipmentId}`, { reason });
+      const res = await apiRequest("POST", `/api/outreach/mail/cancel/${shipmentId}`, { reason }, { idempotent: true });
       return res.json();
     },
     onSuccess: () => {

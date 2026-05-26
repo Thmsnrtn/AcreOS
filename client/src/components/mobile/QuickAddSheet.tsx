@@ -328,7 +328,7 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
         unappliedCents: cents,
         paymentMethod: "other",
         notes: notesText.trim() || undefined,
-      });
+      }, { idempotent: true });
       return res.json();
     },
     onSuccess: () => {

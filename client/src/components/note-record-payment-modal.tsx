@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AcquiredNote, NotePaymentType } from "@/pages/note-detail";
 
 interface Props {
@@ -216,7 +216,6 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
       const body: Record<string, unknown> = {
         paymentDate,
         paymentMethod,
@@ -251,19 +250,19 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
         body.lateFeeCents = dollarsToCents(lateFeeDollars);
       }
 
-      const res = await fetch(`/api/notes/${note.id}/payments`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": decodeURIComponent(csrfToken),
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Recording failed" }));
-        throw new Error(err.message || "Recording failed");
-      }
+      // Route via apiRequest so we inherit:
+      //   - centralized CSRF (csrf_token cookie → x-csrf-token header)
+      //   - Idempotency-Key (mandatory here — every ledger write is
+      //     irreversible without an explicit NSF reversal, so a
+      //     mid-flight network retry must collapse to one effect)
+      //   - 401 → Clerk session-touch → retry
+      //   - 30s timeout + standardized error envelope parsing
+      const res = await apiRequest(
+        "POST",
+        `/api/notes/${note.id}/payments`,
+        body,
+        { idempotent: true },
+      );
       return res.json();
     },
     onSuccess: () => {

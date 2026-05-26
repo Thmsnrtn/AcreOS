@@ -21,7 +21,11 @@ export function useRecordPayment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: InsertPayment) => {
-      const res = await apiRequest("POST", "/api/payments", data);
+      // Money path — Idempotency-Key opt-in so a network-layer retry
+      // (TanStack default is no-retry, but Safari can retry transparently
+      // on cellular timeouts) does not double-record a payment ledger
+      // entry. See queryClient.ts → ApiRequestOptions.
+      const res = await apiRequest("POST", "/api/payments", data, { idempotent: true });
       return res.json();
     },
     onSuccess: (_, variables) => {
