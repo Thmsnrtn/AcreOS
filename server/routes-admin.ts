@@ -4202,11 +4202,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // ============================================
 
   // POST /api/feedback — submit user feedback
-  api.post("/api/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/feedback", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
-      const user = req.user as any;
-      const userId = user?.id || user.id;
+      const org = getOrganization(req);
+      const userId = getUserId(req);
       const { page, feedback } = req.body as { page: string; feedback: string };
       if (!feedback?.trim()) return res.status(400).json({ message: "Feedback required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");
@@ -4218,9 +4217,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/feedback — all feedback (founder only)
-  api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const limit = Number(req.query.limit) || 100;
@@ -4233,9 +4232,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/admin/feedback/process — process unprocessed feedback (founder only)
-  api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const processed = await feedbackProcessor.processNewFeedback();
@@ -4246,9 +4245,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/feedback/summary — feedback summary by category/severity (founder only)
-  api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const summary = await feedbackProcessor.getFeedbackSummary();
@@ -4259,11 +4258,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/analytics/session/start — start a user session
-  api.post("/api/analytics/session/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/analytics/session/start", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
-      const user = req.user as any;
-      const userId = user?.id || user.id;
+      const org = getOrganization(req);
+      const userId = getUserId(req);
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const sessionId = await betaAnalytics.startSession(userId, org.id);
       res.json({ sessionId });
@@ -4299,11 +4297,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/analytics/activation — track activation event
-  api.post("/api/analytics/activation", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/analytics/activation", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
-      const user = req.user as any;
-      const userId = user?.id || user.id;
+      const org = getOrganization(req);
+      const userId = getUserId(req);
       const { eventName } = req.body as { eventName: string };
       if (!eventName) return res.status(400).json({ message: "eventName required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");
@@ -4315,9 +4312,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/agents/status — agent status (founder only)
-  api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { getAgentStatus } = await import("./agents/index");
       res.json(getAgentStatus());
@@ -4327,9 +4324,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/admin/agents/:name/toggle — enable/disable agent (founder only)
-  api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { setAgentEnabled } = await import("./agents/index");
       const { enabled } = req.body as { enabled: boolean };
@@ -4342,9 +4339,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/digests — list recent digests (founder only)
-  api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt", read_at as "readAt"
@@ -4359,9 +4356,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/digests/latest — latest digest (founder only)
-  api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt"
@@ -4380,9 +4377,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/beta-analytics — founder analytics dashboard data
-  api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const [signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback] = await Promise.all([
@@ -4401,9 +4398,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // ── Tier Override (Section 10) ──
-  app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
       const targetOrgId = parseInt(req.params.id);
       const { tier, reason, expiresAt } = req.body;
@@ -4430,9 +4427,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
       const targetOrgId = parseInt(req.params.orgId);
       const { organizations } = await import("@shared/schema");
@@ -4462,9 +4459,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
       const targetOrgId = parseInt(req.params.id);
       const { features } = req.body;
@@ -4480,9 +4477,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { detectStage } = await import("./services/companyStageDetector");
       const stage = await detectStage();
@@ -4492,9 +4489,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
       const { computeLeadingIndicators } = await import("./services/leadingIndicators");
       const indicators = await computeLeadingIndicators();
