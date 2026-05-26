@@ -48,9 +48,7 @@ import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
 // `mobile.new_shell_enabled` (surfaced via /api/config/features) and
 // useIsMobile. Suppressed on /founder/* routes (founder keeps its own nav).
 import { MobileShell } from "@/components/mobile/MobileShell";
-const MobileInboxTab = React.lazy(() =>
-  import("@/components/mobile/InboxTab").then((m) => ({ default: m.InboxTab })),
-);
+import { renderPersonaTab } from "@/components/mobile/persona-tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
 // so non-founder users never download the chat bundle.
@@ -1515,22 +1513,11 @@ function AppContent() {
     mobileShellEnabled &&
     !location.startsWith("/founder")
   ) {
+    const persona = (user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor";
     return (
       <MobileShell
-        persona={(user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor"}
-        renderTab={(tab) => {
-          // 2026-05-26: Inbox tab gets the real triage component now;
-          // Today / Pipeline / Portfolio still show persona placeholders
-          // until their per-persona content lands.
-          if (tab === "inbox") {
-            return (
-              <Suspense fallback={<div className="text-sm text-muted-foreground py-8 text-center">Loading inbox…</div>}>
-                <MobileInboxTab />
-              </Suspense>
-            );
-          }
-          return null; // falls through to the shell's default placeholder
-        }}
+        persona={persona}
+        renderTab={(tab) => renderPersonaTab(tab, persona)}
       />
     );
   }

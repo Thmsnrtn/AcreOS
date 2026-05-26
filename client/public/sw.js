@@ -1,10 +1,11 @@
-// Bumped to v11 for the 2026-05-26 quick-fixes batch: cookie banner
-// safe-area-inset + explicit dismiss-for-now affordance; decisions
-// inbox "Clear stale" purge action; localStorage migration nudge for
-// users still on the pre-rename "homestead" theme so they pick up
-// the new bedrock default. Forces eviction of the prior icon-deploy
-// bundle so all clients get the fixes on next page load.
-const CACHE_NAME = 'acreos-v11';
+// Bumped to v12 for the persona-mobile push (2026-05-26 evening): the
+// new mobile shell rolls out persona-aware Today/Portfolio tabs for
+// 3 priority personas + a mobile redemption-clock card view, and
+// /api/auction-listings + /api/conversations join the offline-queue
+// list so CourthouseMode bids and Inbox swipes survive a connection
+// drop. Forces eviction of v11 so every client picks up the new shell
+// + offline-routing on next page load.
+const CACHE_NAME = 'acreos-v12';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
@@ -26,10 +27,16 @@ const CACHEABLE_API_ROUTES = [
   '/api/team-members',
 ];
 
-// Routes where offline POST/PUT will be queued for background sync
+// Routes where offline POST/PUT will be queued for background sync.
+// Added 2026-05-26: /api/auction-listings powers the CourthouseMode bid
+// log. Tax-Delinquent auctions happen in courthouses with no WiFi, so
+// log-bid POSTs MUST be queueable — without this the indicator's
+// "we'll sync when online" promise was theatre.
 const OFFLINE_QUEUEABLE_ROUTES = [
   '/api/leads',
   '/api/activity-feed',
+  '/api/auction-listings',
+  '/api/conversations', // Inbox triage swipes — same use case
 ];
 
 // ---------------------------------------------------------------------------
