@@ -37,6 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -262,6 +263,11 @@ export default function EarnestMoneyPage() {
 
 function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents: number }) {
   const { toast } = useToast();
+  // Trust gap: prior to this change, Release / Refund / Forfeit all fired
+  // instantly on click — Trey: "I'd forfeit a $10K EMD with one misclick
+  // and no warning." Each terminal disposition now confirms first.
+  const [pending, setPending] = useState<null | "release" | "refund" | "forfeit">(null);
+
   const action = useMutation({
     mutationFn: async (kind: "release" | "refund" | "forfeit") => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
@@ -285,17 +291,67 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
     onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
+  const confirmCopy: Record<"release" | "refund" | "forfeit", { title: string; description: string }> = {
+    release: {
+      title: `Release ${fmtUsd(amountCents)} to seller?`,
+      description: `Marks this EMD as released to the seller — final disposition, cannot be undone from the UI. Confirm the wire from title before clicking through.`,
+    },
+    refund: {
+      title: `Refund ${fmtUsd(amountCents)} to buyer?`,
+      description: `Marks this EMD as refunded to the buyer — final disposition, cannot be undone from the UI. Confirm with title that the wire-back has cleared.`,
+    },
+    forfeit: {
+      title: `Forfeit ${fmtUsd(amountCents)}?`,
+      description: `Marks this EMD as forfeited — final disposition, cannot be undone from the UI. This is the disposition you choose when the buyer walked after the inspection period and the deposit is non-refundable.`,
+    },
+  };
+
   return (
     <div className="flex items-center gap-1 justify-end">
-      <Button variant="ghost" size="sm" className="h-7 text-xs text-acr-pos" onClick={() => action.mutate("release")} disabled={action.isPending}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs text-acr-pos"
+        onClick={() => setPending("release")}
+        disabled={action.isPending}
+        data-testid={`emd-release-${holdId}`}
+      >
         Released
       </Button>
-      <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => action.mutate("refund")} disabled={action.isPending}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs text-muted-foreground"
+        onClick={() => setPending("refund")}
+        disabled={action.isPending}
+        data-testid={`emd-refund-${holdId}`}
+      >
         Refunded
       </Button>
-      <Button variant="ghost" size="sm" className="h-7 text-xs text-acr-neg" onClick={() => action.mutate("forfeit")} disabled={action.isPending}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs text-acr-neg"
+        onClick={() => setPending("forfeit")}
+        disabled={action.isPending}
+        data-testid={`emd-forfeit-${holdId}`}
+      >
         Forfeit
       </Button>
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => { if (!open) setPending(null); }}
+        title={pending ? confirmCopy[pending].title : ""}
+        description={pending ? confirmCopy[pending].description : ""}
+        confirmLabel={pending === "forfeit" ? "Forfeit deposit" : pending === "release" ? "Release to seller" : "Refund to buyer"}
+        variant="destructive"
+        isLoading={action.isPending}
+        onConfirm={() => {
+          if (pending) {
+            action.mutate(pending, { onSettled: () => setPending(null) });
+          }
+        }}
+      />
     </div>
   );
 }

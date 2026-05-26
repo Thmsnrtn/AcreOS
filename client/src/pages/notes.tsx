@@ -114,12 +114,16 @@ function statusLabel(status: AcquiredNoteRow["status"]): string {
   }
 }
 
+// Notes list shows current balance to the cent. Rounding off the cents
+// breaks borrower-statement reconciliation — Linnea: "if my number doesn't
+// match their bank's number to the penny they call me."
 function fmtUsd(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Math.round(cents / 100));
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
 }
 
 function nextPaymentLabel(note: AcquiredNoteRow): string {

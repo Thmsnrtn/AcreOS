@@ -519,6 +519,24 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
       </p>
     );
   }
+
+  // Footer totals — Linnea explicitly called out "I want a total row I can
+  // reconcile against my bank deposits." We sum every bucket so the operator
+  // can match against ACH batches without exporting to a spreadsheet.
+  const totals = payments.reduce(
+    (acc, p) => {
+      acc.principal += p.principalCents;
+      acc.interest += p.interestCents;
+      acc.escrow += p.escrowCents;
+      acc.lateFee += p.lateFeeCents;
+      acc.unapplied += p.unappliedCents;
+      return acc;
+    },
+    { principal: 0, interest: 0, escrow: 0, lateFee: 0, unapplied: 0 },
+  );
+  const grandTotal =
+    totals.principal + totals.interest + totals.escrow + totals.lateFee + totals.unapplied;
+
   return (
     <div className="overflow-x-auto -mx-2">
       <table className="w-full text-sm">
@@ -531,6 +549,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
             <th className="px-2 py-2 text-right font-medium">Escrow</th>
             <th className="px-2 py-2 text-right font-medium">Late fee</th>
             <th className="px-2 py-2 text-right font-medium">Unapplied</th>
+            <th className="px-2 py-2 text-right font-medium">Total</th>
             <th className="px-2 py-2 text-right font-medium">Method</th>
           </tr>
         </thead>
@@ -551,11 +570,29 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
                 <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.escrowCents)}</td>
                 <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.lateFeeCents)}</td>
                 <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.unappliedCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs font-semibold">{fmtCents(total)}</td>
                 <td className="px-2 py-2 text-right text-xs uppercase">{p.paymentMethod}</td>
               </tr>
             );
           })}
         </tbody>
+        <tfoot>
+          <tr
+            className="border-t-2 border-border bg-muted/30 text-xs"
+            data-testid="payment-ledger-totals"
+          >
+            <td className="px-2 py-2 font-semibold" colSpan={2}>
+              Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}
+            </td>
+            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.principal)}</td>
+            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.interest)}</td>
+            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.escrow)}</td>
+            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.lateFee)}</td>
+            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.unapplied)}</td>
+            <td className="px-2 py-2 text-right font-mono font-semibold">{fmtCents(grandTotal)}</td>
+            <td className="px-2 py-2" />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );

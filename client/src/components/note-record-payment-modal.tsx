@@ -13,6 +13,7 @@
 
 import { useState, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -122,6 +123,96 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
     () => TYPE_OPTIONS.find((t) => t.value === paymentType)!,
     [paymentType],
   );
+
+  // Derived totals — Linnea's #1 trust ask: "show me what I'm about to
+  // commit before I commit it." We compute the gross cash applied, the
+  // delta to current balance, and the delta to unapplied so a payment
+  // operator can sanity-check before clicking Record.
+  const preview = useMemo(() => {
+    const principal = dollarsToCents(principalDollars);
+    const interest = dollarsToCents(interestDollars);
+    const escrow = dollarsToCents(escrowDollars);
+    const lateFee = dollarsToCents(lateFeeDollars);
+    const partial = dollarsToCents(partialDollars);
+    const apply = dollarsToCents(unappliedApplyDollars);
+
+    let principalApplied = 0;
+    let unappliedDelta = 0;
+    let grossCash = 0;
+
+    if (paymentType === "partial") {
+      grossCash = partial;
+      unappliedDelta = partial;
+    } else if (paymentType === "unapplied_apply") {
+      principalApplied = principal;
+      unappliedDelta = -apply;
+      grossCash = 0;
+    } else if (paymentType === "extra_principal") {
+      principalApplied = principal;
+      grossCash = principal;
+    } else if (paymentType === "nsf_reversal") {
+      principalApplied = -principal;
+      grossCash = -(principal + interest + escrow + lateFee);
+    } else {
+      // regular | payoff
+      principalApplied = principal;
+      grossCash = principal + interest + escrow + lateFee;
+    }
+
+    const newCurrentBalance = Math.max(
+      0,
+      (note.currentBalanceCents ?? 0) - principalApplied,
+    );
+    const newUnappliedBalance = Math.max(
+      0,
+      (note.unappliedBalanceCents ?? 0) + unappliedDelta,
+    );
+
+    // Validation flags — surface to user, not just block the submit.
+    const exceedsUnapplied =
+      paymentType === "unapplied_apply" &&
+      apply > (note.unappliedBalanceCents ?? 0);
+    const exceedsBalance =
+      principalApplied > (note.currentBalanceCents ?? 0) &&
+      paymentType !== "nsf_reversal";
+    const payoffMismatch =
+      paymentType === "payoff" &&
+      principal > 0 &&
+      principal !== (note.currentBalanceCents ?? 0);
+    const noteAlreadyPaidOff =
+      (note.status === "paid_off" || note.status === "sold") &&
+      paymentType !== "nsf_reversal";
+    const everythingZero =
+      grossCash === 0 && unappliedDelta === 0 && principalApplied === 0;
+
+    return {
+      principal,
+      interest,
+      escrow,
+      lateFee,
+      grossCash,
+      principalApplied,
+      unappliedDelta,
+      newCurrentBalance,
+      newUnappliedBalance,
+      exceedsUnapplied,
+      exceedsBalance,
+      payoffMismatch,
+      noteAlreadyPaidOff,
+      everythingZero,
+    };
+  }, [
+    paymentType,
+    principalDollars,
+    interestDollars,
+    escrowDollars,
+    lateFeeDollars,
+    partialDollars,
+    unappliedApplyDollars,
+    note.currentBalanceCents,
+    note.unappliedBalanceCents,
+    note.status,
+  ]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -316,6 +407,97 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
             </div>
           )}
 
+          {/* Trust banner: warn before user commits when something is off.
+              Linnea: "if the math doesn't reconcile I want to know before
+              I hit the button, not after." Soft warnings (yellow) don't
+              block; hard blockers (red) disable submit. */}
+          {(preview.exceedsUnapplied ||
+            preview.exceedsBalance ||
+            preview.payoffMismatch ||
+            preview.noteAlreadyPaidOff) && (
+            <div
+              role="alert"
+              data-testid="record-payment-warning"
+              className={`rounded-md border p-3 text-sm flex items-start gap-2 ${
+                preview.exceedsUnapplied || preview.noteAlreadyPaidOff
+                  ? "border-destructive/40 bg-destructive/5 text-foreground"
+                  : "border-acr-warning/30 bg-acr-warning/5 text-foreground"
+              }`}
+            >
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-acr-warning" aria-hidden="true" />
+              <div className="space-y-1">
+                {preview.noteAlreadyPaidOff && (
+                  <p>
+                    This note is <strong>{note.status === "sold" ? "sold" : "paid off"}</strong>. Recording
+                    a new payment will create an orphan ledger entry and corrupt the
+                    1099-INT for the year. Use NSF reversal instead if a prior payment bounced.
+                  </p>
+                )}
+                {preview.exceedsUnapplied && (
+                  <p>
+                    Draw of {fmtUsd(dollarsToCents(unappliedApplyDollars))} exceeds the{" "}
+                    {fmtUsd(note.unappliedBalanceCents)} held in unapplied funds.
+                  </p>
+                )}
+                {preview.exceedsBalance && (
+                  <p>
+                    Principal of {fmtUsd(preview.principal)} exceeds the current
+                    balance of {fmtUsd(note.currentBalanceCents)} — did you mean to
+                    record a payoff instead?
+                  </p>
+                )}
+                {preview.payoffMismatch && (
+                  <p>
+                    Payoff principal of {fmtUsd(preview.principal)} doesn't match
+                    the current balance of {fmtUsd(note.currentBalanceCents)}. Use
+                    the payoff calculator to compute per-diem first if the difference is
+                    intentional; otherwise this will leave a stub balance behind.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Preview totals — the "before you commit" panel. Visible
+              whenever any input has a value so the operator can sanity-check
+              the math before the irreversible submit. */}
+          {!preview.everythingZero && (
+            <div
+              className="rounded-md border bg-muted/30 p-3 text-sm space-y-1.5"
+              data-testid="record-payment-preview"
+              aria-label="Payment preview"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Gross cash applied</span>
+                <span className="font-mono tabular-nums">
+                  {fmtUsd(preview.grossCash)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">New current balance</span>
+                <span className="font-mono tabular-nums">
+                  {fmtUsd(preview.newCurrentBalance)}{" "}
+                  <span className="text-xs text-muted-foreground">
+                    ({preview.principalApplied >= 0 ? "−" : "+"}
+                    {fmtUsd(Math.abs(preview.principalApplied))})
+                  </span>
+                </span>
+              </div>
+              {preview.unappliedDelta !== 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">New unapplied balance</span>
+                  <span className="font-mono tabular-nums">
+                    {fmtUsd(preview.newUnappliedBalance)}{" "}
+                    <span className="text-xs text-muted-foreground">
+                      ({preview.unappliedDelta >= 0 ? "+" : "−"}
+                      {fmtUsd(Math.abs(preview.unappliedDelta))})
+                    </span>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ref">Reference</Label>
@@ -342,7 +524,18 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={submitMutation.isPending}
+            disabled={
+              submitMutation.isPending ||
+              preview.everythingZero ||
+              preview.exceedsUnapplied ||
+              preview.noteAlreadyPaidOff
+            }
+            aria-disabled={
+              submitMutation.isPending ||
+              preview.everythingZero ||
+              preview.exceedsUnapplied ||
+              preview.noteAlreadyPaidOff
+            }
             data-testid="record-payment-submit"
           >
             {submitMutation.isPending ? "Recording…" : "Record payment"}

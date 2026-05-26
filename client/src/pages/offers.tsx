@@ -71,6 +71,11 @@ export default function OffersPage() {
   const [pendingDeleteOffer, setPendingDeleteOffer] = useState<OfferLetter | null>(null);
   const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState<OfferTemplate | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  // Sending an offer is a binding act of communication — once queued
+  // it'll be mailed/emailed to the seller and is the operator's word
+  // on price. Confirm before sending.
+  const [pendingSendOffer, setPendingSendOffer] = useState<OfferLetter | null>(null);
+  const [pendingBulkSend, setPendingBulkSend] = useState(false);
   
   // Queries — fetchJsonArray handles both raw [] and {data:[...]} envelopes
   // so all four queries are safe even though some endpoints wrap in envelopes.
@@ -380,7 +385,7 @@ export default function OffersPage() {
                     <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">{selectedOffers.length} selected</span>
                     <Button
                       size="sm"
-                      onClick={handleSendSelected}
+                      onClick={() => setPendingBulkSend(true)}
                       disabled={sendOfferMutation.isPending}
                       data-testid="button-send-selected"
                       aria-label={`Send ${selectedOffers.length} selected offer${selectedOffers.length === 1 ? "" : "s"}`}
@@ -491,7 +496,7 @@ export default function OffersPage() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    onClick={() => sendOfferMutation.mutate(offer.id)}
+                                    onClick={() => setPendingSendOffer(offer)}
                                     disabled={sendOfferMutation.isPending}
                                     aria-label={`Send offer to ${lead ? `${lead.firstName} ${lead.lastName}` : "lead"} for ${property?.address || "property"}`}
                                     data-testid={`button-send-${offer.id}`}
@@ -954,6 +959,54 @@ export default function OffersPage() {
             onConfirm={() => {
               handleDeleteSelected();
               setPendingBulkDelete(false);
+            }}
+          />
+
+          {/* Send-offer confirmation. Sending an offer is the operator's
+              binding word on price — gate it behind a confirm with the
+              actual dollar amount and recipient surfaced so they can't
+              accidentally email an offer they don't intend to. */}
+          <ConfirmDialog
+            open={!!pendingSendOffer}
+            onOpenChange={(open) => { if (!open) setPendingSendOffer(null); }}
+            title="Send this offer?"
+            description={(() => {
+              if (!pendingSendOffer) return "";
+              const lead = leads?.find(l => l.id === pendingSendOffer.leadId);
+              const property = properties?.find(p => p.id === pendingSendOffer.propertyId);
+              const who = lead ? `${lead.firstName} ${lead.lastName}` : "the lead";
+              const where = property?.address || "the property";
+              return `Queues a ${usd(Number(pendingSendOffer.offerAmount))} offer to ${who} for ${where}. Delivery method: ${pendingSendOffer.deliveryMethod?.replace(/_/g, " ") || "direct mail"}. Once queued, this represents your written commitment to the seller at this price.`;
+            })()}
+            confirmLabel="Queue offer"
+            variant="default"
+            onConfirm={() => {
+              if (pendingSendOffer) sendOfferMutation.mutate(pendingSendOffer.id);
+              setPendingSendOffer(null);
+            }}
+          />
+
+          <ConfirmDialog
+            open={pendingBulkSend}
+            onOpenChange={(open) => { if (!open) setPendingBulkSend(false); }}
+            title={`Send ${selectedOffers.length} offer${selectedOffers.length === 1 ? "" : "s"}?`}
+            description={(() => {
+              const draftCount = selectedOffers.filter((id) => {
+                const o = offerLetters?.find(o => o.id === id);
+                return o?.status === "draft";
+              }).length;
+              const totalCents = selectedOffers.reduce((sum, id) => {
+                const o = offerLetters?.find(o => o.id === id);
+                if (o?.status === "draft") return sum + Number(o.offerAmount);
+                return sum;
+              }, 0);
+              return `Queues ${draftCount} draft offer${draftCount === 1 ? "" : "s"} totaling ${usd(totalCents)} for delivery. Already-sent offers in the selection are skipped. Once queued, each represents your written commitment to the seller at the listed price.`;
+            })()}
+            confirmLabel={`Send ${selectedOffers.length}`}
+            variant="default"
+            onConfirm={() => {
+              handleSendSelected();
+              setPendingBulkSend(false);
             }}
           />
     </PageShell>
