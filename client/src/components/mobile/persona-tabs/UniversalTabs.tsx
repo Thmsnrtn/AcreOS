@@ -23,6 +23,8 @@ import {
   TrendingUp,
   Send,
   Sparkles,
+  Phone,
+  MessageSquare,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,9 +41,28 @@ interface DashboardStats {
     id: number;
     action: string;
     entityType: string;
+    entityId?: number;
     description: string;
     createdAt: string;
   }>;
+}
+
+/**
+ * Map a dashboard activity row to its detail route. Falls back to the
+ * list page for the entity when we don't have an id. Used by the
+ * "Recent activity" feed so taps reach the entity that changed.
+ */
+function activityHref(a: {
+  entityType: string;
+  entityId?: number;
+}): string {
+  const t = (a.entityType || "").toLowerCase();
+  const id = a.entityId;
+  if (t === "lead") return id ? `/leads/${id}` : "/leads";
+  if (t === "deal") return id ? `/deals/${id}` : "/deals";
+  if (t === "property" || t === "parcel") return id ? `/parcels/${id}` : "/properties";
+  if (t === "note") return id ? `/notes/${id}` : "/notes";
+  return "/today";
 }
 
 interface Lead {
@@ -222,7 +243,8 @@ export function UniversalToday() {
         </section>
       )}
 
-      {/* Hot leads */}
+      {/* Hot leads with inline action chips — tap the card to drill into
+          detail, tap the chips to act without leaving Today. */}
       {hotLeads.length > 0 && (
         <section>
           <SectionHead icon={<Flame className="h-3.5 w-3.5 text-amber-500" />}>
@@ -230,14 +252,13 @@ export function UniversalToday() {
           </SectionHead>
           <div className="space-y-2">
             {hotLeads.map((l) => (
-              <Card
-                key={l.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setLocation(`/leads/${l.id}`)}
-                className="p-4 cursor-pointer active:bg-muted/50"
-              >
-                <div className="flex items-center justify-between gap-3">
+              <Card key={l.id} className="p-4 active:bg-muted/50">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setLocation(`/leads/${l.id}`)}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
                   <div className="min-w-0">
                     <div className="font-medium truncate">
                       {l.firstName} {l.lastName}
@@ -257,6 +278,37 @@ export function UniversalToday() {
                     </div>
                   </div>
                 </div>
+                {l.phone && (
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/60">
+                    <a
+                      href={`tel:${l.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
+                      data-testid={`hot-lead-call-${l.id}`}
+                    >
+                      <Phone className="h-3.5 w-3.5" /> Call
+                    </a>
+                    <a
+                      href={`sms:${l.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
+                      data-testid={`hot-lead-sms-${l.id}`}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" /> Text
+                    </a>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocation(`/leads/${l.id}`);
+                      }}
+                      className="h-9 px-3 flex items-center gap-1 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
+                      aria-label="Open lead detail"
+                    >
+                      Open <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
@@ -272,21 +324,25 @@ export function UniversalToday() {
           <Card>
             <ul className="divide-y divide-border/40">
               {recentActivity.map((a) => (
-                <li
-                  key={a.id}
-                  className="px-4 py-3 flex items-start justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {a.description || a.action}
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => setLocation(activityHref(a))}
+                    className="w-full text-left px-4 py-3 flex items-start justify-between gap-3 active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    data-testid={`activity-${a.id}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {a.description || a.action}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {a.entityType}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {a.entityType}
+                    <div className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                      {fmtRelativeTime(a.createdAt)}
                     </div>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground tabular-nums shrink-0">
-                    {fmtRelativeTime(a.createdAt)}
-                  </div>
+                  </button>
                 </li>
               ))}
             </ul>

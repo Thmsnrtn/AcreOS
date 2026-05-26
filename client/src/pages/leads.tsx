@@ -24,6 +24,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileLeadList } from "@/components/mobile/MobileLeadList";
 
 // Module-level hook removed — use inside component instead
 
@@ -637,6 +639,28 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
+  // Mobile gets a swipeable card list. The desktop spreadsheet remains
+  // reachable from any mobile by appending ?desktop=1 to the URL — that
+  // escape valve is honored here as well as on /leads/:id.
+  //
+  // We branch FIRST (before any other hook) so neither subtree runs the
+  // other's heavy data hooks — the desktop body alone instantiates
+  // ~20 hooks that would otherwise mount on mobile for no reason.
+  const { isMobile } = useIsMobile();
+  const wantsDesktop =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("desktop") === "1";
+  if (isMobile && !wantsDesktop) {
+    return (
+      <PageShell>
+        <MobileLeadList />
+      </PageShell>
+    );
+  }
+  return <LeadsPageDesktop />;
+}
+
+function LeadsPageDesktop() {
   const leadsLabel = useTerm("entity.lead.plural");
   const leadLabel = useTerm("entity.lead");
   useDocumentTitle(`${leadsLabel} — AcreOS`);

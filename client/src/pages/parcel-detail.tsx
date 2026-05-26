@@ -18,6 +18,8 @@ import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobilePropertyDetail } from "@/components/mobile/MobilePropertyDetail";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,6 +145,20 @@ function formatUsd(n: string | number | null | undefined, fallback = "—"): str
 export default function ParcelDetailPage() {
   const [, params] = useRoute<{ id: string }>("/parcels/:id");
   const id = params?.id ? parseInt(params.id, 10) : null;
+
+  // Mobile gets a phone-shaped surface; ?desktop=1 forces the full
+  // widget grid (linked from the mobile header's external icon).
+  const { isMobile } = useIsMobile();
+  const wantsDesktop =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("desktop") === "1";
+  if (id != null && !Number.isNaN(id) && isMobile && !wantsDesktop) {
+    return <MobilePropertyDetail propertyId={id} />;
+  }
+  return <ParcelDetailDesktop id={id} />;
+}
+
+function ParcelDetailDesktop({ id }: { id: number | null }) {
   // Persona-aware title — "Parcel #5" for land_investor; "Note #5" for
   // note_investor; "Subject property #5" for wholesaler; etc. URL stays
   // /parcels/:id (route compat); the visible noun adapts.

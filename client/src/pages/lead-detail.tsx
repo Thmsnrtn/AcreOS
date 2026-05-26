@@ -17,6 +17,8 @@ import { LeadDetailContent } from "@/components/lead-detail-content";
 import { useLead } from "@/hooks/use-leads";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileLeadDetail } from "@/components/mobile/MobileLeadDetail";
 import { ArrowLeft, User } from "lucide-react";
 
 export default function LeadDetailPage() {
@@ -26,6 +28,27 @@ export default function LeadDetailPage() {
   const leadLabel = useTerm("entity.lead");
   useDocumentTitle(id ? `${leadLabel} #${id}` : leadLabel);
 
+  const { isMobile } = useIsMobile();
+
+  // Mobile gets a phone-shaped surface (call/text/email/maps tiles +
+  // mark-contacted + notes capture). The `?desktop=1` query escape is
+  // honored so the desktop view stays reachable from mobile when the
+  // user explicitly asks for it via the header overflow icon.
+  const wantsDesktop =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("desktop") === "1";
+
+  // Branch into two distinct subtrees so hook order stays stable inside
+  // each one (the desktop body calls useLead; the mobile component
+  // calls its own copy).
+  if (id != null && !Number.isNaN(id) && isMobile && !wantsDesktop) {
+    return <MobileLeadDetail leadId={id} />;
+  }
+
+  return <LeadDetailDesktop id={id} />;
+}
+
+function LeadDetailDesktop({ id }: { id: number | null }) {
   const { data: lead, isLoading, error, refetch } = useLead(id ?? 0);
 
   if (id == null || Number.isNaN(id)) {
