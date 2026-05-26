@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
+import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
@@ -253,9 +254,9 @@ export function registerLeadRoutes(app: Express): void {
   // Batch dedupe scan — find every cluster of likely-duplicate leads
   // across the org. Result sorted by cluster size so operators work
   // highest-leverage merges first. Used by /leads/dedupe UI.
-  api.get("/api/leads/duplicate-clusters", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/leads/duplicate-clusters", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       const { findDuplicateClusters } = await import("./services/leadDedupeScanner");
       const clusters = await findDuplicateClusters(org.id);
       res.json({ clusters });
@@ -1181,10 +1182,10 @@ export function registerLeadRoutes(app: Express): void {
     res.json(trace || null);
   });
 
-  api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_write"), async (req, res) => {
+  api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_write"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization;
-      const userId = (req as any).user?.id;
+      const org = getOrganization(req);
+      const userId = getUserId(req);
       const { leadId, inputData, purposeOfUse, justification } = req.body;
 
       if (!leadId) {
