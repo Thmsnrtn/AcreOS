@@ -231,6 +231,16 @@ export default function PricingPage() {
             );
           })}
         </div>
+        {/* Trust microcopy under the pricing cards. The /security page
+            describes encryption + SOC 2 in flight; surface a one-liner
+            at the moment the user is about to give us their card. */}
+        <div className="mt-8 mx-auto max-w-2xl text-center text-xs text-muted-foreground">
+          Payments processed by Stripe. Your card never touches our servers.{" "}
+          <Link href="/security" className="underline hover:text-foreground">
+            How we keep your data safe
+          </Link>
+          .
+        </div>
       </section>
 
       {/* Feature comparison table */}

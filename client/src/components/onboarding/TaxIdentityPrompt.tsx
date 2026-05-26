@@ -28,7 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Loader2, AlertTriangle } from "lucide-react";
+import { ShieldCheck, Loader2, AlertTriangle, Lock } from "lucide-react";
+import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   formatTaxIdAsTyped,
@@ -175,6 +176,22 @@ export function TaxIdentityPrompt({
             <p className="text-xs text-muted-foreground">
               Must match the entity name registered with the IRS exactly.
             </p>
+          </div>
+
+          {/* Trust microcopy at the moment of entry. Customers giving us
+              an SSN/EIN are at peak anxiety — the /security page describes
+              encryption at rest + audit-trail-per-access, but you have to
+              go look for it. Surface it here, the one moment they need
+              the reassurance. */}
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+            <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-foreground/70" aria-hidden />
+            <span>
+              Encrypted at rest, never shown back to support, audit-logged on every read.{" "}
+              <Link href="/security" className="underline hover:text-foreground">
+                How we protect your data
+              </Link>
+              .
+            </span>
           </div>
 
           <div className="space-y-2">

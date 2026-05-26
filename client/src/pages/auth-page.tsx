@@ -357,6 +357,20 @@ export default function AuthPage() {
             fallbackRedirectUrl="/today"
           />
         )}
+        {/* One-liner reassurance at the highest-anxiety moment — first
+            credential entry. The /security page goes deeper (encryption
+            at rest, SOC 2 in flight, audit trail per access). */}
+        <p className="text-[11px] text-muted-foreground text-center max-w-sm">
+          Encrypted in transit and at rest. Auth is handled by Clerk; we
+          never see your password.{" "}
+          <Link
+            href="/security"
+            className="underline hover:text-foreground"
+          >
+            How we protect your data
+          </Link>
+          .
+        </p>
         {/* Clerk's widget already renders "Don't have an account? Sign up"
             inside its card, so we don't duplicate it here. The mode
             toggle still exists via route/hash if needed programmatically. */}

@@ -97,6 +97,18 @@ interface PaxSuggestionsResponse {
   suggestions: PaxSuggestion[];
 }
 
+interface JobHealth {
+  name: string;
+  label: string;
+  lastSuccessAt: string | null;
+  consecutiveFailures: number;
+  status: "ok" | "stale" | "failing" | "never_ran";
+}
+
+interface JobHealthResponse {
+  jobs: JobHealth[];
+}
+
 function fmtMoney(v: number | string | null | undefined): string {
   if (v == null) return "$0";
   const n = typeof v === "string" ? Number(v) : v;
@@ -164,6 +176,10 @@ export function UniversalToday() {
     queryKey: ["/api/pax/pax-suggestions"],
     staleTime: 5 * 60_000,
   });
+  const { data: jobsData } = useQuery<JobHealthResponse>({
+    queryKey: ["/api/jobs/health"],
+    staleTime: 60_000,
+  });
 
   if (statsLoading) {
     return (
@@ -208,6 +224,12 @@ export function UniversalToday() {
 
   const recentActivity = (stats?.recentActivity ?? []).slice(0, 4);
   const paxSuggestions = (paxData?.suggestions ?? []).slice(0, 3);
+  // Surface only "behind" jobs — when everything is green this section
+  // stays hidden so the canvas remains calm. A failing or stale job
+  // is the signal worth pulling the user's eye toward.
+  const unhealthyJobs = (jobsData?.jobs ?? []).filter(
+    (j) => j.status === "failing" || j.status === "stale",
+  );
 
   // "Brand new account" detection — no leads, no deals, no activity, no
   // Pax nudges. Show a clear next-step instead of a screen full of zeros.
@@ -249,6 +271,47 @@ export function UniversalToday() {
           onClick={() => setLocation("/money")}
         />
       </section>
+
+      {/* Scheduled-job health — only renders when something is behind.
+          Scheduled work (morning brief, Pax nudges, deal autopilot) can
+          silently stop; without this surface the only signal is server
+          logs. A quiet section here is the right "everything's fine"
+          tell; a visible card means real action is overdue. */}
+      {unhealthyJobs.length > 0 && (
+        <section data-testid="job-health-mobile">
+          <SectionHead icon={<TrendingUp className="h-3.5 w-3.5 text-amber-500" />}>
+            Behind schedule
+          </SectionHead>
+          <Card className="p-3 border-amber-500/30 bg-amber-500/[0.04]">
+            <ul className="text-sm divide-y divide-border/40">
+              {unhealthyJobs.map((j) => (
+                <li key={j.name} className="py-2 flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground">{j.label}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {j.status === "failing"
+                        ? `${j.consecutiveFailures} consecutive failures`
+                        : j.lastSuccessAt
+                          ? `Last ran ${fmtRelativeTime(j.lastSuccessAt)}`
+                          : "Never run"}
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold",
+                      j.status === "failing"
+                        ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                        : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+                    )}
+                  >
+                    {j.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
 
       {/* Pax suggestions — proactive AI nudges. Hidden when none, so the
           surface stays calm. Tap a card → routes to the relevant entity. */}

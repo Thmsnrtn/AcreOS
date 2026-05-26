@@ -1885,6 +1885,19 @@ export default function Settings() {
                   <p className="text-muted-foreground text-sm">
                     Connect your own API keys to external services for unlimited usage and complete control.
                   </p>
+                  {/* Trust microcopy at the moment of key entry. BYOK
+                      adoption is gated on the user believing we won't
+                      leak their OpenAI / Twilio / SendGrid secret. */}
+                  <div className="mt-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+                    <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-foreground/70" aria-hidden />
+                    <span>
+                      Keys are encrypted at rest with per-org KMS, never logged, and only decrypted in-memory to make the upstream call.{" "}
+                      <a href="/security" className="underline hover:text-foreground">
+                        Security details
+                      </a>
+                      .
+                    </span>
+                  </div>
                 </div>
                 <ByokSettings />
               </div>
