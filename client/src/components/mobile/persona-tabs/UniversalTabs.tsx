@@ -22,6 +22,7 @@ import {
   DollarSign,
   TrendingUp,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,6 +61,19 @@ interface Deal {
   status: string;
   acceptedAmount?: string | null;
   offerAmount?: string | null;
+}
+
+interface PaxSuggestion {
+  id: string;
+  suggestion: string;
+  rationale: string;
+  actionLabel: string;
+  actionUrl: string;
+  confidence: number;
+}
+
+interface PaxSuggestionsResponse {
+  suggestions: PaxSuggestion[];
 }
 
 function fmtMoney(v: number | string | null | undefined): string {
@@ -105,6 +119,10 @@ export function UniversalToday() {
     queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=50"),
     staleTime: 60_000,
   });
+  const { data: paxData } = useQuery<PaxSuggestionsResponse>({
+    queryKey: ["/api/pax/pax-suggestions"],
+    staleTime: 5 * 60_000,
+  });
 
   if (statsLoading) {
     return (
@@ -132,6 +150,7 @@ export function UniversalToday() {
   );
 
   const recentActivity = (stats?.recentActivity ?? []).slice(0, 4);
+  const paxSuggestions = (paxData?.suggestions ?? []).slice(0, 3);
 
   return (
     <div className="space-y-5">
@@ -164,6 +183,44 @@ export function UniversalToday() {
           onClick={() => setLocation("/money")}
         />
       </section>
+
+      {/* Pax suggestions — proactive AI nudges. Hidden when none, so the
+          surface stays calm. Tap a card → routes to the relevant entity. */}
+      {paxSuggestions.length > 0 && (
+        <section data-testid="pax-suggestions-mobile">
+          <SectionHead icon={<Sparkles className="h-3.5 w-3.5 text-primary" />}>
+            Pax suggests
+          </SectionHead>
+          <div className="space-y-2">
+            {paxSuggestions.map((s) => (
+              <Card
+                key={s.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setLocation(s.actionUrl)}
+                className="p-4 cursor-pointer active:bg-muted/50 border-primary/15 bg-primary/[0.03]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm">{s.suggestion}</div>
+                    {s.rationale && (
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                        {s.rationale}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-primary mt-1.5 font-medium">
+                      {s.actionLabel} →
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                    {Math.round(s.confidence * 100)}%
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Hot leads */}
       {hotLeads.length > 0 && (

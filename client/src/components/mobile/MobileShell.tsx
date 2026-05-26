@@ -16,13 +16,14 @@
  */
 
 import { useState, type ReactNode } from "react";
-import { Link, useLocation } from "wouter";
-import { Calendar, Inbox, ListChecks, BarChart3, Plus, Sparkles, Search } from "lucide-react";
+import { useLocation } from "wouter";
+import { Calendar, Inbox, ListChecks, BarChart3, Plus, Sparkles, Search, MapIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Persona } from "@shared/models/auth";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
+import { QuickAddSheet } from "./QuickAddSheet";
 
 type TabId = "today" | "inbox" | "pipeline" | "portfolio";
 
@@ -146,6 +147,7 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
   const [active, setActive] = useState<TabId>("today");
   const [, setLocation] = useLocation();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const fab = fabLabel(persona);
 
   // renderTab returning null means "no persona content for this tab" —
@@ -172,10 +174,32 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
         data-testid="mobile-shell-header"
       >
-        <Link href="/today" className="flex items-center gap-2">
+        {/*
+          Brand tap opens Settings — there's no other escape hatch in
+          the mobile shell, so use the only persistent surface (the
+          brand) as the user-menu affordance. Long-press would be
+          another option but iOS Safari can't preventDefault context
+          menus reliably; tap is unambiguous.
+        */}
+        <button
+          type="button"
+          onClick={() => setLocation("/settings")}
+          aria-label="Open settings"
+          data-testid="mobile-shell-brand"
+          className="flex items-center gap-2 -ml-1 px-2 h-10 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
+        >
           <span className="font-semibold tracking-tight">AcreOS</span>
-        </Link>
+        </button>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setLocation("/maps")}
+            aria-label="Open maps"
+            data-testid="mobile-shell-maps"
+            className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MapIcon className="h-5 w-5" aria-hidden />
+          </button>
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
@@ -207,13 +231,15 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
       {/* Mobile search/quick-actions drawer — Cmd-K equivalent. */}
       <MobileCommandDrawer open={searchOpen} onOpenChange={setSearchOpen} />
 
-      {/* Persona-aware FAB. Label-only for the spike; no real action. */}
+      {/* Persona-aware FAB. Opens QuickAddSheet which runs the actual
+          capture flow (lead / payment / maintenance) for the persona. */}
       <div
         className="fixed right-4 z-50"
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 88px)" }}
       >
         <Button
           type="button"
+          onClick={() => setQuickAddOpen(true)}
           className="shadow-lg rounded-full h-12 px-5 gap-2"
           aria-label={fab}
           data-testid="mobile-shell-fab"
@@ -222,6 +248,12 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
           <span className="text-sm font-medium">{fab}</span>
         </Button>
       </div>
+
+      <QuickAddSheet
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        persona={persona}
+      />
 
       <nav
         aria-label="Mobile shell navigation"
