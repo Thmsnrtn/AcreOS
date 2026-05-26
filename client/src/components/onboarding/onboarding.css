@@ -530,21 +530,60 @@
     padding: 0 20px 24px;
   }
   .ob-stage {
-    padding: 16px 20px 60px;
+    /* Extra bottom pad so the sticky footer doesn't cover the last form
+       field when the iOS keyboard is open; also accounts for the safe
+       area inset on notched devices. */
+    padding: 16px 20px 96px;
   }
   .ob-footer {
-    padding: 20px;
+    padding: 16px 20px;
+    /* Sticky footer covers the content under it — keep blur + opaque
+       background so cards behind don't bleed through. */
+    background: var(--acr-bg);
+    border-top: 0.5px solid var(--acr-line);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .ob-actions {
+    /* Two-row layout on phones: nav buttons row, then a full-width
+       primary CTA. The desktop single-row with "Step N of N · 80%"
+       label is too crowded at 375px and the Continue button gets
+       squeezed. */
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .ob-actions > .flex {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .ob-btn {
+    min-height: 44px;  /* iOS tap target */
+  }
+  .ob-btn-primary {
+    /* Full-width primary CTA on mobile — thumb-friendly. */
+    flex: 1 1 100%;
+    order: 99;
+    padding: 14px 26px;
+  }
+  .ob-meta {
+    flex: 1 1 auto;
+    text-align: left;
   }
   .ob-title {
     font-size: 32px;
   }
   .ob-welcome-title {
-    font-size: 42px;
+    font-size: 36px;
   }
   .ob-reveal-title {
-    font-size: 38px;
+    font-size: 32px;
   }
   .ob-sub {
     font-size: 16px;
+  }
+  .ob-letter {
+    font-size: 15px;
   }
 }

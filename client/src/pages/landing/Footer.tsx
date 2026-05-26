@@ -27,7 +27,17 @@ export function Footer() {
     <footer className="lp-footer">
       <div className="lp-footer-inner">
         <div className="lp-footer-brand">
-          <a href="#" className="lp-footer-logo">
+          {/* Brand mark scrolls to top of the landing page — the only
+              page Footer renders on. Avoids a dead `href="#"`. */}
+          <a
+            href="#top"
+            onClick={(e) => {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="lp-footer-logo"
+            aria-label="Back to top"
+          >
             <span className="lp-footer-logo-mark">A</span>AcreOS
           </a>
           <p className="lp-footer-tag">

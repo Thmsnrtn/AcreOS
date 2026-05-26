@@ -26,7 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock, Bot } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock, Bot, ArrowLeft } from "lucide-react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -867,6 +867,25 @@ export default function Settings() {
 
   return (
     <PageShell label="Settings" maxWidth="4xl">
+          {/* Mobile back-to-app affordance. PageTopbar's breadcrumb is hidden
+              on mobile, so without this an entrant from the MobileShell brand
+              tap has no obvious return path other than the bottom nav. The
+              link is md:hidden because desktop already shows breadcrumb +
+              Home icon in the topbar. */}
+          <div className="md:hidden -mt-2 mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2 -ml-2 text-muted-foreground"
+              onClick={() => setLocation("/today")}
+              data-testid="button-back-to-today"
+              aria-label="Back to Today"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" aria-hidden="true" />
+              Back to Today
+            </Button>
+          </div>
+
           <div className="acr-cc-hero" style={{ marginTop: 0 }}>
             <div>
               <div className="acr-eyebrow">Settings</div>

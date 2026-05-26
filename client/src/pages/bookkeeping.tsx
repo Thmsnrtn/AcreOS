@@ -66,7 +66,39 @@ export default function BookkeepingPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => toast({ title: "Export coming soon", description: "Your bookkeeping data is unchanged — we'll add download in a follow-up release." })}
+          disabled={!report || loadingReport}
+          onClick={() => {
+            // Build a CSV from the annual interest report client-side
+            // (server export not shipped yet — but the data Tom needs
+            // is already loaded). Beats a toast that says "coming soon".
+            if (!report) return;
+            const lines = [
+              "Note ID,Borrower,Interest collected,Principal collected,1099 required",
+              ...report.notes.map((n) => [
+                n.noteId,
+                JSON.stringify(n.borrowerName ?? ""),
+                (n.interestCollected / 100).toFixed(2),
+                (n.principalCollected / 100).toFixed(2),
+                n.requires1099 ? "yes" : "no",
+              ].join(",")),
+              "",
+              `Total interest,${(report.totalInterestIncome / 100).toFixed(2)}`,
+              `Total principal,${(report.totalPrincipalReceived / 100).toFixed(2)}`,
+              `Total late fees,${(report.totalLateFeesCollected / 100).toFixed(2)}`,
+              `Notes requiring 1099,${report.notesWith1099Required}`,
+            ];
+            const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `bookkeeping-${taxYear}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast({ title: "Export ready", description: `bookkeeping-${taxYear}.csv downloaded.` });
+          }}
+          data-testid="button-export-bookkeeping"
         >
           <Download className="w-4 h-4 mr-2" aria-hidden="true" /> Export
         </Button>

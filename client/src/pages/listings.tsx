@@ -131,7 +131,7 @@ export default function ListingsPage() {
   // fetchJsonArray normalizer to unwrap + default to []. (2026-05-26)
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
-    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=200"),
+    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=100"),
   });
 
   const createMutation = useMutation({

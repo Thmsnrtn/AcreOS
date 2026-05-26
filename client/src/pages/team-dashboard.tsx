@@ -85,7 +85,10 @@ export default function TeamDashboardPage() {
   const { data: activityData, isLoading: activityLoading } = useQuery<ActivityResponse>({
     queryKey: ["/api/activity", "team-dashboard"],
     queryFn: async () => {
-      const res = await fetch("/api/activity?limit=500", { credentials: "include" });
+      // limit=200 is plenty for the team-week panel below (we only
+      // bucket events by "since startOfWeek" / "since startOfMonth").
+      // limit=500 was the single heaviest request on this dashboard.
+      const res = await fetch("/api/activity?limit=200", { credentials: "include" });
       if (!res.ok) return { events: [] } as ActivityResponse;
       const j = await res.json().catch(() => null);
       if (Array.isArray(j)) return { events: j } as ActivityResponse;

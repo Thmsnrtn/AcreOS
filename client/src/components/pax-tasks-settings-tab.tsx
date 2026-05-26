@@ -213,15 +213,14 @@ export function PaxTasksSettingsTab() {
                   {run.summary && (
                     <p className="text-[11px] text-muted-foreground line-clamp-2 pl-5">{run.summary}</p>
                   )}
+                  {/* "View conversation" was a dead link — pax deep-link
+                      by conversationId isn't wired yet. Surface the id
+                      as a passive label until /pax supports it. */}
                   {run.conversationId && (
-                    <a
-                      href="#"
-                      className="text-[10px] text-primary hover:underline flex items-center gap-0.5 pl-5"
-                      onClick={(e) => { e.preventDefault(); setHistoryTaskId(null); }}
-                    >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      View conversation
-                    </a>
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-0.5 pl-5">
+                      <ExternalLink className="w-2.5 h-2.5" aria-hidden="true" />
+                      Conversation #{run.conversationId}
+                    </div>
                   )}
                 </div>
               ))

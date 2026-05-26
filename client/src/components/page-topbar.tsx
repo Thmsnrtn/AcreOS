@@ -173,20 +173,20 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
         >
           {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
         </Button>
+        {/* Notifications bell — until a dedicated notifications drawer
+            ships, route the user to /decision-queue which already
+            surfaces the same alerts/decisions stream the bell would
+            preview. Beats dispatching an event no one listens for. */}
         <Button
+          asChild
           variant="ghost"
           size="icon"
           aria-label="Notifications"
           className={cn("min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-9 md:min-w-9")}
-          onClick={() => {
-            // Notifications bell is a stub for v1 — clicking dispatches a
-            // custom event the existing NotificationBanner can wire into
-            // when the proper drawer ships. Until then, this button is a
-            // visual anchor without behavior.
-            window.dispatchEvent(new CustomEvent("acreos:notifications:open"));
-          }}
         >
-          <Bell className="w-4 h-4" aria-hidden="true" />
+          <Link href="/decision-queue" data-testid="topbar-notifications">
+            <Bell className="w-4 h-4" aria-hidden="true" />
+          </Link>
         </Button>
       </div>
     </header>

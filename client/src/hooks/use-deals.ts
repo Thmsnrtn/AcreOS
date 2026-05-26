@@ -39,13 +39,18 @@ export function useDealsPaginated(params: { page: number; pageSize: number; sort
 
 /**
  * Legacy hook: returns the flat deals array for backward compatibility.
- * Fetches page 1 with large pageSize from the paginated endpoint.
+ * Fetches page 1 with pageSize=100 (capped — pageSize=1000 was loading
+ * the entire deals table on every consumer mount, which is the kind of
+ * unbounded query that makes pages feel sluggish on cold cache or
+ * cellular). UIs that need server-paginated access should use
+ * useDealsPaginated. The queryKey is intentionally bare ['/api/deals']
+ * so write-side mutation invalidations still cascade through.
  */
 export function useDeals() {
   return useQuery<Deal[]>({
     queryKey: ['/api/deals'],
     queryFn: async () => {
-      const res = await fetch('/api/deals?page=1&pageSize=1000', { credentials: "include" });
+      const res = await fetch('/api/deals?page=1&pageSize=100', { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch deals");
       const json = await res.json();
       return json.data ?? json;

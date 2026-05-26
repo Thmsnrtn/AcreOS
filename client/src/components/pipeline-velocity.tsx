@@ -72,9 +72,13 @@ const STALL_THRESHOLD_DAYS: Record<string, number> = {
 export function PipelineVelocity() {
   // /api/deals returns a paginated envelope; normalize to an array
   // so the .filter / velocity-computation below is safe. (2026-05-26)
+  // Velocity stats are computed from recent deals; pageSize=500 was
+  // pulling ~half a meg of JSON every time any page that renders this
+  // widget mounted. pageSize=100 keeps it consistent with the other
+  // ["/api/deals"] consumers so they share cache cleanly.
   const { data: deals = [], isLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=500"),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
   });
 
   const velocityData = useMemo<StageVelocity[]>(() => {

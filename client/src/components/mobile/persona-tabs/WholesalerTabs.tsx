@@ -70,7 +70,7 @@ export function WholesalerToday() {
   const [, setLocation] = useLocation();
   const { data: deals = [], isLoading: dLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=200"),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
     staleTime: 60_000,
   });
   const { data: blasts = [] } = useQuery<BuyerBlast[]>({
@@ -252,7 +252,7 @@ export function WholesalerPortfolio() {
   const [, setLocation] = useLocation();
   const { data: deals = [], isLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=200"),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
     staleTime: 60_000,
   });
 

@@ -379,7 +379,7 @@ export function UniversalPipeline() {
   const [, setLocation] = useLocation();
   const { data: deals = [], isLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=200"),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
     staleTime: 60_000,
   });
 

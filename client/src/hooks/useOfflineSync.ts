@@ -200,9 +200,13 @@ export function useOfflineSync(): UseOfflineSyncResult {
   // ── Fetch fresh data from server and cache it ─────────────────────────────
   const fetchAndCache = useCallback(async (db: IDBDatabase) => {
     const endpoints: Array<{ key: keyof CachedData; url: string }> = [
-      { key: 'leads', url: '/api/leads?limit=500' },
-      { key: 'properties', url: '/api/properties?limit=500' },
-      { key: 'deals', url: '/api/deals?limit=200' },
+      // Caps lowered from 500/500/200 to 200/200/100 — the offline
+      // primer was pulling ~1MB of JSON on every mount and stalling
+      // cold loads on slow cellular. The cached page-1 slice is the
+      // useful "see your recent stuff while offline" data anyway.
+      { key: 'leads', url: '/api/leads?limit=200' },
+      { key: 'properties', url: '/api/properties?limit=200' },
+      { key: 'deals', url: '/api/deals?limit=100' },
     ];
 
     const results: Partial<CachedData> = {};
