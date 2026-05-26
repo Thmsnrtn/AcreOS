@@ -44,6 +44,11 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
+// Mobile shell spike — persona-aware 4-tab IA. Gated by founder_settings
+// `mobile.new_shell_enabled` (surfaced via /api/config/features) and
+// useIsMobile. Suppressed on /founder/* routes (founder keeps its own nav).
+import { MobileShell } from "@/components/mobile/MobileShell";
+import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
 // so non-founder users never download the chat bundle.
 const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
@@ -1414,6 +1419,8 @@ function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [location] = useLocation();
+  const { mobileShellEnabled } = useFeatureFlags();
+  const { isMobile } = useIsMobile();
   useSwipeNavigation();
   useWhiteLabel();
   useCursorGlass();
@@ -1491,6 +1498,25 @@ function AppContent() {
         });
       }, 800);
     }
+  }
+
+  // Mobile shell spike — when the founder flips `mobile.new_shell_enabled`
+  // ON and the viewport is mobile-sized, render the new 4-tab persona-aware
+  // shell INSTEAD of the per-page layout. Suppressed for unauthenticated
+  // visitors (landing/auth need their own layout) and for founder routes
+  // (which keep FounderMobileBottomNav). The shell carries its own bottom
+  // bar + FAB, so the rest of the standard chrome is bypassed.
+  if (
+    user &&
+    isMobile &&
+    mobileShellEnabled &&
+    !location.startsWith("/founder")
+  ) {
+    return (
+      <MobileShell
+        persona={(user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor"}
+      />
+    );
   }
 
   return (
