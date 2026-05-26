@@ -42,7 +42,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { telemetry } from "@/lib/telemetry";
-import { queryClient, apiRequest, prefetchRoute } from "@/lib/queryClient";
+import { queryClient, apiRequest, prefetchRoute, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useProviderStatus } from "@/hooks/use-provider-status";
 import {
@@ -231,9 +231,24 @@ export function CommandPalette() {
 
   const [query, setQuery] = useState("");
 
-  const { data: leadsData } = useQuery<Lead[]>({ queryKey: ["/api/leads"], enabled: open });
-  const { data: propertiesData } = useQuery<Property[]>({ queryKey: ["/api/properties"], enabled: open });
-  const { data: dealsData } = useQuery<Deal[]>({ queryKey: ["/api/deals"], enabled: open });
+  // /api/leads /api/properties /api/deals all return paginated
+  // envelopes {data, total, page, pageSize, totalPages}. Bare useQuery
+  // here previously yielded the envelope object — every downstream
+  // .filter / .find call (matchingLeads, selectedLead etc.) crashed
+  // when the founder typed in the command palette. Normalize via
+  // fetchJsonArray so the data is always an array. (2026-05-26)
+  const { data: leadsData = [] } = useQuery<Lead[]>({
+    queryKey: ["/api/leads"], enabled: open,
+    queryFn: () => fetchJsonArray<Lead>("/api/leads?pageSize=200"),
+  });
+  const { data: propertiesData = [] } = useQuery<Property[]>({
+    queryKey: ["/api/properties"], enabled: open,
+    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=200"),
+  });
+  const { data: dealsData = [] } = useQuery<Deal[]>({
+    queryKey: ["/api/deals"], enabled: open,
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=200"),
+  });
 
   // Phase 3 Week 14 (Anaïs §2): server-side fuzzy/hybrid search.
   // The local `leadsData.filter(...)` paths above are kept as a hot

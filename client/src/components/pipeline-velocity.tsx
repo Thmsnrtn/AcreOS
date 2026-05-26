@@ -7,6 +7,7 @@
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { fetchJsonArray } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,8 +70,11 @@ const STALL_THRESHOLD_DAYS: Record<string, number> = {
 };
 
 export function PipelineVelocity() {
-  const { data: deals, isLoading } = useQuery<Deal[]>({
+  // /api/deals returns a paginated envelope; normalize to an array
+  // so the .filter / velocity-computation below is safe. (2026-05-26)
+  const { data: deals = [], isLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=500"),
   });
 
   const velocityData = useMemo<StageVelocity[]>(() => {

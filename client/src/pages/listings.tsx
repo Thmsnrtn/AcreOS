@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import type { PropertyListing, Property } from "@shared/schema";
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -124,8 +124,14 @@ export default function ListingsPage() {
     queryKey: ["/api/listings"],
   });
 
-  const { data: properties } = useQuery<Property[]>({
+  // /api/properties returns a paginated envelope {data, total, page, pageSize, totalPages}.
+  // A bare useQuery here previously produced an envelope object that
+  // crashed .find / .map downstream and threw the page to the error
+  // boundary (the "click and crash" / "logged out" UX symptom). Use the
+  // fetchJsonArray normalizer to unwrap + default to []. (2026-05-26)
+  const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=200"),
   });
 
   const createMutation = useMutation({
