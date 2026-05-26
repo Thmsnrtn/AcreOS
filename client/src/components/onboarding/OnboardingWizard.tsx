@@ -97,6 +97,47 @@ const SECONDARY_INVESTOR_TYPES: { value: BusinessType; label: string; icon: Luci
 const INVESTOR_TYPES = [...CORE_INVESTOR_TYPES, ...SECONDARY_INVESTOR_TYPES];
 const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_INVESTOR_TYPES.map((t) => t.value));
 
+/**
+ * Persona ↔ data-model coupling.
+ *
+ * The Critic agent flagged that `users.persona` (the 9-value union that
+ * drives every persona-specific mobile tab, sidebar item, and copy
+ * vocabulary substitution) was NEVER written by the onboarding wizard
+ * — every user was effectively defaulted to "land_investor", and the
+ * wholesaler / tax-delinquent / note-originator / etc. surfaces were
+ * silently inert. We capture two signals at step 0 (granular
+ * businessType + 3-way investorType) and derive the canonical persona
+ * from them. Server-side mirror lives in `routes-onboarding.ts`
+ * /complete so the persona is always set even if this PUT fails.
+ */
+function derivePersona(
+  businessType: BusinessType,
+  investorType: InvestorTypeChoice,
+): "land_investor" | "note_investor" | "note_originator" | "note_servicer" | "tax_delinquent" | "wholesaler" | "subdivider" | "fix_flipper" | "landlord" {
+  // Note vertical first — investorType is the authoritative fork for
+  // 1099-INT batches and the lender/servicer modules.
+  if (investorType === "notes" && businessType === "note_investor") return "note_investor";
+
+  switch (businessType) {
+    case "note_investor":        return "note_investor";
+    case "residential_wholesaler": return "wholesaler";
+    case "fix_and_flip":         return "fix_flipper";
+    case "buy_and_hold":
+    case "short_term_rental":
+    case "multifamily":
+    case "mobile_home":          return "landlord";
+    case "subdivider":
+    case "developer":            return "subdivider";
+    case "tax_lien_deed":        return "tax_delinquent";
+    case "land_flipper":
+    case "hybrid":
+    case "commercial":
+    case "creative_finance":
+    case "agent_investor":
+    default:                     return "land_investor";
+  }
+}
+
 type OnboardingStatus = {
   completed: boolean;
   currentStep: number;
@@ -360,6 +401,23 @@ export function OnboardingWizard() {
           } catch (err) {
             clientLogger.error("Couldn't persist investorType", err);
           }
+        }
+
+        // Persist the derived persona on users.persona. Without this,
+        // every user defaults to "land_investor" and the wholesaler /
+        // note-investor / tax-delinquent / landlord persona-specific
+        // surfaces are inert — which is exactly the systemic bug the
+        // multi-persona thesis depended on NOT having. The PUT is
+        // best-effort; the server-side /onboarding/complete derives
+        // the same persona as a safety net so step-0 latency doesn't
+        // strand a user without the persona set.
+        const persona = derivePersona(businessType, investorType);
+        try {
+          await apiRequest("PUT", "/api/me/persona", { persona });
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/me/persona"] });
+        } catch (err) {
+          clientLogger.error("Couldn't persist persona (server will derive)", err);
         }
         await completeStepMutation.mutateAsync({
           stepId: currentStep,

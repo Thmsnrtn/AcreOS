@@ -9,13 +9,41 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { eq } from "drizzle-orm";
 import { onboardingService } from "./services/onboarding";
 import { storage } from "./storage";
 import { logger } from "./utils/logger";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import type { Persona } from "@shared/models/auth";
 
 const router = Router();
 
 function getUser(req: Request) { return req.user; }
+
+/**
+ * Server-side mirror of `client/src/components/onboarding/OnboardingWizard.tsx`
+ * `derivePersona`. Keep these two in sync. The client PUTs to
+ * /api/me/persona at step 0; this function is the safety net so a user
+ * who finishes onboarding offline (or whose step-0 PUT failed silently)
+ * still ends up with the correct persona on /onboarding/complete.
+ */
+function derivePersona(businessType: string | undefined, investorType: string | undefined): Persona {
+  if (investorType === "notes" && businessType === "note_investor") return "note_investor";
+  switch (businessType) {
+    case "note_investor":          return "note_investor";
+    case "residential_wholesaler": return "wholesaler";
+    case "fix_and_flip":           return "fix_flipper";
+    case "buy_and_hold":
+    case "short_term_rental":
+    case "multifamily":
+    case "mobile_home":            return "landlord";
+    case "subdivider":
+    case "developer":              return "subdivider";
+    case "tax_lien_deed":          return "tax_delinquent";
+    default:                       return "land_investor";
+  }
+}
 
 router.post("/complete", async (req: Request, res: Response) => {
   try {
@@ -48,6 +76,24 @@ router.post("/complete", async (req: Request, res: Response) => {
       });
     } catch (updateErr: any) {
       logger.warn("Non-fatal: failed to save onboarding data", { error: updateErr.message });
+    }
+
+    // Safety-net persona write. The client also PUTs /api/me/persona at
+    // step 0; this catches the case where that call failed (offline,
+    // 401-recovery race, etc.) and the user is now closing out the
+    // wizard with users.persona still on its "land_investor" default.
+    // No-op when the current value already matches the derived one.
+    if (user?.id && businessType) {
+      try {
+        const investorType = formData.investorType || body.investorType;
+        const persona = derivePersona(businessType, investorType);
+        await db
+          .update(users)
+          .set({ persona, updatedAt: new Date() })
+          .where(eq(users.id, user.id));
+      } catch (personaErr: any) {
+        logger.warn("Non-fatal: failed to derive/persist persona", { error: personaErr.message });
+      }
     }
 
     await onboardingService.completeOnboarding(org.id);
