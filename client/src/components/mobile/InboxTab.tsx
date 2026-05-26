@@ -32,7 +32,6 @@ import {
   Mail,
   MessageSquare,
   Phone,
-  Facebook,
   MessageCircle,
   Inbox as InboxIcon,
   Check,
@@ -74,7 +73,7 @@ function ChannelIcon({ channel }: { channel: string }) {
     case "voicemail":
       return <Phone className="h-4 w-4" aria-label="Phone" />;
     case "facebook":
-      return <Facebook className="h-4 w-4" aria-label="Facebook" />;
+      return <MessageCircle className="h-4 w-4" aria-label="Facebook" />;
     case "whatsapp":
       return <MessageCircle className="h-4 w-4" aria-label="WhatsApp" />;
     default:
