@@ -1487,8 +1487,9 @@ function AppContent() {
   // Phase 4 Week 19-20 (cmdk-v2 / Anya §8): promoted from DEV-only to
   // production so every signed-in user sees the ⌘K hint exactly once.
   // localStorage key 'hint_cmdk_shown' guarantees idempotency across
-  // navigations and reloads.
-  if (typeof window !== 'undefined') {
+  // navigations and reloads. Suppressed on mobile — there is no Cmd
+  // key, and the mobile shell already exposes Search as a header icon.
+  if (typeof window !== 'undefined' && !isMobile) {
     const seen = localStorage.getItem('hint_cmdk_shown');
     if (!seen && user) {
       localStorage.setItem('hint_cmdk_shown', '1');
@@ -1501,17 +1502,26 @@ function AppContent() {
     }
   }
 
-  // Mobile shell spike — when the founder flips `mobile.new_shell_enabled`
-  // ON and the viewport is mobile-sized, render the new 4-tab persona-aware
-  // shell INSTEAD of the per-page layout. Suppressed for unauthenticated
-  // visitors (landing/auth need their own layout) and for founder routes
-  // (which keep FounderMobileBottomNav). The shell carries its own bottom
-  // bar + FAB, so the rest of the standard chrome is bypassed.
+  // Mobile shell — owns only the four "home base" routes. Previously
+  // it intercepted every non-founder route, so tapping into /settings,
+  // /leads/:id, /parcels/:id, /money, etc. would change the URL but
+  // leave the shell rendering its 4 tabs — which felt like nothing was
+  // clickable. Now the shell renders ONLY when the user is on a
+  // shell-owned path, and Router handles the rest (mobile-shaped
+  // detail pages live there, branched via useIsMobile inside each).
+  // The shell is the "home base" — only /today and / use it. Other
+  // shell tabs (Inbox/Pipeline/Portfolio) switch via internal state
+  // inside the shell, so they share the /today URL. Leaving /inbox
+  // etc. in the set means a direct URL hit still lands the user on
+  // the shell rather than 404, even though the shell will then default
+  // to Today.
+  const SHELL_PATHS = new Set(["/", "/today", "/inbox", "/pipeline", "/portfolio"]);
   if (
     user &&
     isMobile &&
     mobileShellEnabled &&
-    !location.startsWith("/founder")
+    !location.startsWith("/founder") &&
+    SHELL_PATHS.has(location)
   ) {
     const persona = (user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor";
     return (

@@ -53,14 +53,21 @@ export function CookieConsentBanner() {
   };
 
   /**
-   * Dismiss-for-now — hides the banner for 24h without recording an
-   * explicit accept/decline. Gives the user a way to scroll past on
-   * mobile when they don't want to commit yet.
+   * Dismiss (X) — records a persistent decline.
+   *
+   * The previous behavior was a 24h snooze that left the banner to
+   * reappear on the next return visit. That gets read as "I have to
+   * keep dealing with this every time I open the app" — which is
+   * exactly what users complained about. Treat X as a real "no": the
+   * decision sticks until they explicitly revisit consent in settings.
+   * Settings still lets them flip to "accepted."
    */
   const snooze = () => {
-    const until = Date.now() + 24 * 60 * 60 * 1000;
-    localStorage.setItem(SNOOZE_KEY, String(until));
-    setStatus("declined" as ConsentStatus); // hides for this session
+    localStorage.setItem(STORAGE_KEY, "declined");
+    // Clear any legacy snooze key so we never re-prompt from a stale
+    // 24h timer after upgrading to this build.
+    localStorage.removeItem(SNOOZE_KEY);
+    setStatus("declined");
     window.dispatchEvent(new Event("acreos:cookieconsent"));
   };
 
