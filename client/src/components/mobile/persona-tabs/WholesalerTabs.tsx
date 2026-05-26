@@ -52,6 +52,15 @@ interface BuyerBlast {
   notInterestedCount?: number;
 }
 
+function activateOnKey(fn: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  };
+}
+
 function daysUntil(iso?: string | null): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -134,8 +143,10 @@ export function WholesalerToday() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/deals/${d.id}`)}
+                  onKeyDown={activateOnKey(() => setLocation(`/deals/${d.id}`))}
+                  aria-label={`Open deal ${d.id}`}
                   className={cn(
-                    "p-4 cursor-pointer active:bg-muted/50",
+                    "p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     tone === "rose" && "border-rose-400/60",
                     tone === "amber" && "border-amber-400/60",
                   )}
@@ -199,7 +210,9 @@ export function WholesalerToday() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/buyer-blasts/${b.id}`)}
-                  className="p-4 cursor-pointer active:bg-muted/50"
+                  onKeyDown={activateOnKey(() => setLocation(`/buyer-blasts/${b.id}`))}
+                  aria-label={`Open buyer blast ${b.name}`}
+                  className="p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
@@ -284,12 +297,14 @@ export function WholesalerPortfolio() {
           label="In-flight contracts"
           value={String(inFlight.length)}
           sub={`${inEscrow.length} in escrow`}
+          onClick={() => setLocation("/deals")}
         />
         <StatTile
           label="EMD at risk (est.)"
           value={fmtMoney(totalEmdAtRisk)}
           sub="rough 1% across escrow"
           tone={expiringInEscrow.length > 0 ? "amber" : "neutral"}
+          onClick={() => setLocation("/earnest-money")}
         />
       </section>
       {expiringInEscrow.length > 0 && (
@@ -306,7 +321,9 @@ export function WholesalerPortfolio() {
         role="button"
         tabIndex={0}
         onClick={() => setLocation("/buyer-analytics")}
-        className="p-4 cursor-pointer active:bg-muted/50"
+        onKeyDown={activateOnKey(() => setLocation("/buyer-analytics"))}
+        aria-label="Open buyer list health"
+        className="p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div className="flex items-center justify-between">
           <div>
@@ -338,14 +355,28 @@ function StatTile({
   value,
   sub,
   tone = "neutral",
+  onClick,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "neutral" | "amber";
+  onClick?: () => void;
 }) {
+  const interactive = !!onClick;
   return (
-    <Card className={cn("p-4", tone === "amber" && "border-amber-400/40")}>
+    <Card
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={interactive && onClick ? activateOnKey(onClick) : undefined}
+      aria-label={interactive ? `${label} ${value}`.trim() : undefined}
+      className={cn(
+        "p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        tone === "amber" && "border-amber-400/40",
+        interactive && "cursor-pointer active:bg-muted/50",
+      )}
+    >
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>

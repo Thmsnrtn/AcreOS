@@ -41,7 +41,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
-import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { relative } from "@/lib/format";
 
 interface Conversation {
@@ -181,9 +181,15 @@ function InboxCard({ conversation: c, onAction, onOpen }: InboxCardProps) {
 export function InboxTab() {
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
 
-  const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
+  const {
+    data: conversations = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
     queryFn: () => fetchJsonArray<Conversation>("/api/conversations"),
     refetchOnWindowFocus: true,
@@ -216,12 +222,19 @@ export function InboxTab() {
     actionMutation.mutate(
       { id, action },
       {
-        onError: () => {
-          // Restore — swipe didn't commit.
+        onError: (err: unknown) => {
+          // Restore — swipe didn't commit. Surface the failure so the
+          // user knows the action didn't stick (silent rollback is
+          // worse than a destructive toast for trust).
           setDismissedIds((prev) => {
             const next = new Set(prev);
             next.delete(id);
             return next;
+          });
+          toast({
+            title: action === "contacted" ? "Couldn't mark contacted" : "Couldn't snooze",
+            description: (err as Error)?.message ?? "Try again — the card is restored.",
+            variant: "destructive",
           });
         },
       },
@@ -247,6 +260,23 @@ export function InboxTab() {
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-24 w-full rounded-2xl" />
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+        <div className="rounded-full bg-muted p-4 mb-4">
+          <InboxIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        </div>
+        <h2 className="text-base font-semibold mb-1">Couldn't load inbox</h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Network or session issue. Try again to pull replies.
+        </p>
+        <Button variant="outline" size="sm" className="mt-6" onClick={() => refetch()}>
+          Try again
+        </Button>
       </div>
     );
   }

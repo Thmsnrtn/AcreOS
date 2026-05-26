@@ -48,6 +48,20 @@ function fmtMoney(v: string | number | null | undefined): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+/**
+ * Keyboard handler for Card-as-button surfaces. Enter and Space both
+ * activate, matching native <button>. Mirrors the helper in
+ * UniversalTabs so non-pointer users can reach the entity behind the tile.
+ */
+function activateOnKey(fn: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  };
+}
+
 function daysAgo(iso?: string | null): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -67,6 +81,31 @@ export function NoteInvestorToday() {
     return (
       <div className="space-y-3">
         {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
+      </div>
+    );
+  }
+
+  // Brand-new account: zero notes in the inventory. Skip the per-section
+  // empty cards and show a single CTA — there's nothing to triage yet.
+  if (notes.length === 0) {
+    return (
+      <div className="space-y-4">
+        <Card className="p-6 text-center">
+          <CheckCircle2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" aria-hidden />
+          <h2 className="text-base font-semibold">No notes yet</h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+            Add a note to start tracking payments, delinquencies, and 1099
+            readiness from your phone.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => setLocation("/notes")}
+          >
+            Open Notes
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -106,6 +145,8 @@ export function NoteInvestorToday() {
                 role="button"
                 tabIndex={0}
                 onClick={() => setLocation(`/notes/${n.id}`)}
+                onKeyDown={activateOnKey(() => setLocation(`/notes/${n.id}`))}
+                aria-label={`Open note ${n.borrowerName ?? n.id}`}
                 className="p-4 cursor-pointer active:bg-muted/50"
               >
                 <div className="flex items-center justify-between">
@@ -140,6 +181,8 @@ export function NoteInvestorToday() {
                 role="button"
                 tabIndex={0}
                 onClick={() => setLocation(`/notes/${n.id}`)}
+                onKeyDown={activateOnKey(() => setLocation(`/notes/${n.id}`))}
+                aria-label={`Open delinquent note ${n.borrowerName ?? n.id}`}
                 className={cn(
                   "p-4 cursor-pointer active:bg-muted/50",
                   (n.daysSincePayment ?? 0) > 60 && "border-rose-400/60",
@@ -225,28 +268,34 @@ export function NoteInvestorPortfolio() {
           label="Active notes"
           value={String(active.length)}
           sub={`${performing.length} performing`}
+          onClick={() => setLocation("/notes")}
         />
         <StatTile
           label="Delinquent"
           value={String(delinquent.length)}
           sub={delinquent.length > 0 ? "needs attention" : "all current"}
           tone={delinquent.length > 0 ? "amber" : "neutral"}
+          onClick={() => setLocation("/notes?filter=delinquent")}
         />
         <StatTile
           label="Total balance"
           value={fmtMoney(totalBalance)}
           sub="outstanding principal"
+          onClick={() => setLocation("/notes")}
         />
         <StatTile
           label="MTD received"
           value={fmtMoney(mtdInterest)}
           sub="this month's payments"
+          onClick={() => setLocation("/finance")}
         />
       </section>
       <Card
         role="button"
         tabIndex={0}
         onClick={() => setLocation("/notes/tax-readiness")}
+        onKeyDown={activateOnKey(() => setLocation("/notes/tax-readiness"))}
+        aria-label="Open 1099-INT readiness"
         className="p-4 cursor-pointer active:bg-muted/50"
       >
         <div className="flex items-center justify-between">
@@ -266,6 +315,8 @@ export function NoteInvestorPortfolio() {
         role="button"
         tabIndex={0}
         onClick={() => setLocation("/finance")}
+        onKeyDown={activateOnKey(() => setLocation("/finance"))}
+        aria-label="Open cash flow and forecasting"
         className="p-4 cursor-pointer active:bg-muted/50"
       >
         <div className="flex items-center justify-between">
@@ -290,14 +341,29 @@ function StatTile({
   value,
   sub,
   tone = "neutral",
+  onClick,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "neutral" | "amber" | "rose";
+  onClick?: () => void;
 }) {
+  const interactive = !!onClick;
   return (
-    <Card className={cn("p-4", tone === "amber" && "border-amber-400/40", tone === "rose" && "border-rose-400/40")}>
+    <Card
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={interactive && onClick ? activateOnKey(onClick) : undefined}
+      aria-label={interactive ? `${label} ${value}`.trim() : undefined}
+      className={cn(
+        "p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        tone === "amber" && "border-amber-400/40",
+        tone === "rose" && "border-rose-400/40",
+        interactive && "cursor-pointer active:bg-muted/50",
+      )}
+    >
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>

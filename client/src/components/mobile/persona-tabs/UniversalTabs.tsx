@@ -106,6 +106,21 @@ function fmtMoney(v: number | string | null | undefined): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+/**
+ * Keyboard handler for Card-as-button surfaces. Enter and Space both
+ * activate, matching native <button>. Used by every "div role=button"
+ * Card in this file so non-pointer users (keyboard, screen reader) can
+ * actually reach the entity behind the tile.
+ */
+function activateOnKey(fn: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  };
+}
+
 function fmtRelativeTime(iso: string): string {
   try {
     const t = new Date(iso).getTime();
@@ -126,7 +141,12 @@ function fmtRelativeTime(iso: string): string {
 export function UniversalToday() {
   const [, setLocation] = useLocation();
 
-  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
     staleTime: 60_000,
   });
@@ -155,6 +175,22 @@ export function UniversalToday() {
     );
   }
 
+  // Stats failed entirely — show a real error with retry so the user
+  // isn't stuck staring at zeros they can't trust.
+  if (statsError) {
+    return (
+      <Card className="p-6 text-center">
+        <h2 className="text-base font-semibold">Couldn't load Today</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Network or session issue. Pull down to refresh or try again.
+        </p>
+        <Button variant="outline" size="sm" className="mt-4" onClick={() => refetchStats()}>
+          Try again
+        </Button>
+      </Card>
+    );
+  }
+
   // Top scored leads — anything with a score, descending, top 3
   const hotLeads = [...leads]
     .filter((l) => typeof l.score === "number")
@@ -172,6 +208,15 @@ export function UniversalToday() {
 
   const recentActivity = (stats?.recentActivity ?? []).slice(0, 4);
   const paxSuggestions = (paxData?.suggestions ?? []).slice(0, 3);
+
+  // "Brand new account" detection — no leads, no deals, no activity, no
+  // Pax nudges. Show a clear next-step instead of a screen full of zeros.
+  const isBlankSlate =
+    (stats?.totalLeads ?? 0) === 0 &&
+    activeDeals.length === 0 &&
+    recentActivity.length === 0 &&
+    paxSuggestions.length === 0 &&
+    hotLeads.length === 0;
 
   return (
     <div className="space-y-5">
@@ -219,6 +264,7 @@ export function UniversalToday() {
                 role="button"
                 tabIndex={0}
                 onClick={() => setLocation(s.actionUrl)}
+                onKeyDown={activateOnKey(() => setLocation(s.actionUrl))}
                 className="p-4 cursor-pointer active:bg-muted/50 border-primary/15 bg-primary/[0.03]"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -257,6 +303,8 @@ export function UniversalToday() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/leads/${l.id}`)}
+                  onKeyDown={activateOnKey(() => setLocation(`/leads/${l.id}`))}
+                  aria-label={`Open lead ${l.firstName ?? ""} ${l.lastName ?? ""}`.trim()}
                   className="flex items-center justify-between gap-3 cursor-pointer"
                 >
                   <div className="min-w-0">
@@ -350,6 +398,28 @@ export function UniversalToday() {
         </section>
       )}
 
+      {/* Brand-new account: give a clear first step instead of a screen
+          full of zeros. The FAB already opens QuickAddSheet, but the user
+          doesn't know that — point at it explicitly. */}
+      {isBlankSlate && (
+        <Card className="p-6 text-center border-dashed">
+          <Flame className="h-8 w-8 text-muted-foreground mx-auto mb-3" aria-hidden />
+          <h2 className="text-base font-semibold">Capture your first lead</h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+            Tap the Quick add button below to log a call or text. Today
+            fills in as you go.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => setLocation("/leads")}
+          >
+            Open Leads
+          </Button>
+        </Card>
+      )}
+
       {/* Quick jumps */}
       <section className="grid grid-cols-2 gap-2">
         <Button
@@ -367,7 +437,9 @@ export function UniversalToday() {
           className="h-12 justify-between"
           onClick={() => setLocation("/ai")}
         >
-          <span className="flex items-center gap-2">✨ Ask Pax</span>
+          <span className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" /> Ask Pax
+          </span>
           <ArrowRight className="h-3.5 w-3.5" />
         </Button>
       </section>
@@ -425,6 +497,8 @@ export function UniversalPipeline() {
             role="button"
             tabIndex={0}
             onClick={() => setLocation(`/deals?stage=${s.id}`)}
+            onKeyDown={activateOnKey(() => setLocation(`/deals?stage=${s.id}`))}
+            aria-label={`Open ${s.label} deals`}
             className="p-4 cursor-pointer active:bg-muted/50"
           >
             <div className="flex items-center justify-between">
@@ -511,6 +585,8 @@ export function UniversalPortfolio() {
         role="button"
         tabIndex={0}
         onClick={() => setLocation("/portfolio")}
+        onKeyDown={activateOnKey(() => setLocation("/portfolio"))}
+        aria-label="Open full portfolio"
         className="p-4 cursor-pointer active:bg-muted/50"
       >
         <div className="flex items-center justify-between">
@@ -548,8 +624,10 @@ function StatTile({
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={interactive && onClick ? activateOnKey(onClick) : undefined}
+      aria-label={interactive ? `${label} ${value || sub || ""}`.trim() : undefined}
       className={cn(
-        "p-4",
+        "p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
@@ -557,8 +635,17 @@ function StatTile({
         {icon}
         <span>{label}</span>
       </div>
-      {value && (
+      {value ? (
         <div className="text-2xl font-semibold tabular-nums mt-1">{value}</div>
+      ) : (
+        // Keep visual rhythm when this tile is a "jump" with no number —
+        // an arrow hints that tapping moves you elsewhere instead of
+        // collapsing the card to a sad two-liner.
+        interactive && (
+          <div className="text-2xl font-semibold mt-1 text-muted-foreground">
+            <ArrowRight className="h-5 w-5" aria-hidden />
+          </div>
+        )
       )}
       {sub && (
         <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>

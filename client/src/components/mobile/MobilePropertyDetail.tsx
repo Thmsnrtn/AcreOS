@@ -162,15 +162,25 @@ export function MobilePropertyDetail({ propertyId }: Props) {
   }
 
   if (error || !data) {
+    // data === null specifically means the server returned 404 — the
+    // parcel was deleted or the URL is wrong. error means the request
+    // itself failed (network, auth, 500). Different remedies.
+    const isNotFound = !error && data === null;
     return (
       <div className="min-h-[100dvh] bg-background px-4 pt-16 flex flex-col items-center justify-center text-center">
-        <h2 className="text-lg font-semibold">Property unavailable</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          We couldn't load this parcel. It may have been removed.
+        <h2 className="text-lg font-semibold">
+          {isNotFound ? "Parcel not found" : "Couldn't load parcel"}
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+          {isNotFound
+            ? "This parcel was removed or the link is wrong."
+            : "Network or session issue. Try again, or pick another parcel."}
         </p>
-        <Button variant="outline" className="mt-4" onClick={() => refetch()}>
-          Try again
-        </Button>
+        {!isNotFound && (
+          <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+            Try again
+          </Button>
+        )}
         <Link href="/properties" className="text-sm text-primary mt-3">
           ← All properties
         </Link>
@@ -247,18 +257,20 @@ export function MobilePropertyDetail({ propertyId }: Props) {
         </section>
 
         {/* Actions */}
-        <section className="grid grid-cols-3 gap-2">
+        <section className="grid grid-cols-3 gap-2" aria-label="Property actions">
           <ActionTile
             label="Map"
             icon={<MapIcon className="h-5 w-5" />}
             href={mapsHref ?? undefined}
             disabled={!mapsHref}
             external
+            testId="mobile-property-map"
           />
           <ActionTile
             label="Comps"
             icon={<Building2 className="h-5 w-5" />}
             onClick={() => setLocation(`/parcels/${data.id}?desktop=1#comps`)}
+            testId="mobile-property-comps"
           />
           <ActionTile
             label="Seller"
@@ -269,6 +281,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
                 : toast({ title: "No seller linked to this parcel" })
             }
             disabled={!data.sellerId}
+            testId="mobile-property-seller"
           />
         </section>
 
@@ -376,6 +389,7 @@ function ActionTile({
   onClick,
   disabled,
   external,
+  testId,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -383,14 +397,16 @@ function ActionTile({
   onClick?: () => void;
   disabled?: boolean;
   external?: boolean;
+  testId?: string;
 }) {
   const base =
-    "flex flex-col items-center justify-center gap-1 h-16 rounded-xl text-xs font-medium transition-colors";
+    "flex flex-col items-center justify-center gap-1 h-16 rounded-xl text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   if (disabled) {
     return (
       <div
         className={`${base} bg-muted/40 text-muted-foreground/60 cursor-not-allowed`}
         aria-disabled
+        data-testid={testId}
       >
         {icon}
         {label}
@@ -404,6 +420,7 @@ function ActionTile({
         target={external ? "_blank" : undefined}
         rel={external ? "noreferrer" : undefined}
         className={`${base} bg-primary/10 text-primary active:bg-primary/20`}
+        data-testid={testId}
       >
         {icon}
         {label}
@@ -415,6 +432,7 @@ function ActionTile({
       type="button"
       onClick={onClick}
       className={`${base} bg-primary/10 text-primary active:bg-primary/20`}
+      data-testid={testId}
     >
       {icon}
       {label}
@@ -429,8 +447,15 @@ export function MobilePropertyDetailRoute() {
   const id = params?.id ? parseInt(params.id, 10) : NaN;
   if (!id || Number.isNaN(id)) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center text-sm text-muted-foreground">
-        Bad parcel URL.
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 text-center gap-3">
+        <h2 className="text-base font-semibold">Bad parcel URL</h2>
+        <p className="text-sm text-muted-foreground">
+          That link doesn't point to a valid parcel. Open the properties
+          list to pick one.
+        </p>
+        <Link href="/properties" className="text-sm text-primary">
+          ← All properties
+        </Link>
       </div>
     );
   }

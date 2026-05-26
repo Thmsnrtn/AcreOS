@@ -52,6 +52,15 @@ interface AuctionListing {
   saleDate: string;
 }
 
+function activateOnKey(fn: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  };
+}
+
 function fmtCents(cents: number | null | undefined): string {
   if (cents == null) return "—";
   return `$${Math.round(cents / 100).toLocaleString()}`;
@@ -116,8 +125,10 @@ export function TaxDelinquentToday() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/redemption-clock?certId=${c.id}`)}
+                  onKeyDown={activateOnKey(() => setLocation(`/redemption-clock?certId=${c.id}`))}
+                  aria-label={`Open certificate ${c.apn ?? c.id}`}
                   className={cn(
-                    "p-4 cursor-pointer active:bg-muted/50",
+                    "p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     tone === "red" && "border-rose-400/60",
                     tone === "amber" && "border-amber-400/60",
                   )}
@@ -172,7 +183,9 @@ export function TaxDelinquentToday() {
                 role="button"
                 tabIndex={0}
                 onClick={() => setLocation(`/quiet-title/${c.id}`)}
-                className="p-4 cursor-pointer active:bg-muted/50"
+                onKeyDown={activateOnKey(() => setLocation(`/quiet-title/${c.id}`))}
+                aria-label={`Open quiet-title case ${c.caseRef}`}
+                className="p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -254,11 +267,13 @@ export function TaxDelinquentPortfolio() {
           label="Active certificates"
           value={String(activeCerts.length)}
           sub={`${within30} due within 30d`}
+          onClick={() => setLocation("/redemption-clock")}
         />
         <StatTile
           label="Total redemption $"
           value={fmtCents(totalExposure)}
           sub="currently outstanding"
+          onClick={() => setLocation("/redemption-clock")}
         />
       </section>
       <section>
@@ -266,7 +281,9 @@ export function TaxDelinquentPortfolio() {
           role="button"
           tabIndex={0}
           onClick={() => setLocation("/quiet-title")}
-          className="p-4 cursor-pointer active:bg-muted/50"
+          onKeyDown={activateOnKey(() => setLocation("/quiet-title"))}
+          aria-label="Open quiet-title pipeline"
+          className="p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex items-center justify-between">
             <div>
@@ -298,13 +315,26 @@ function StatTile({
   label,
   value,
   sub,
+  onClick,
 }: {
   label: string;
   value: string;
   sub?: string;
+  onClick?: () => void;
 }) {
+  const interactive = !!onClick;
   return (
-    <Card className="p-4">
+    <Card
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={interactive && onClick ? activateOnKey(onClick) : undefined}
+      aria-label={interactive ? `${label} ${value}`.trim() : undefined}
+      className={cn(
+        "p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        interactive && "cursor-pointer active:bg-muted/50",
+      )}
+    >
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>

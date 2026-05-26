@@ -180,14 +180,25 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
     : null;
 
   const markContacted = () => {
-    updateLead.mutate({
-      id: lead.id,
-      // Stamp lastContactedAt server-side via PUT (the route accepts
-      // any partial). For 'new' leads, also bump status to 'contacted'
-      // so the lead leaves the "untouched" pile.
-      lastContactedAt: new Date().toISOString() as any,
-      ...(lead.status === "new" ? { status: "contacted" as any } : {}),
-    });
+    updateLead.mutate(
+      {
+        id: lead.id,
+        // Stamp lastContactedAt server-side via PUT (the route accepts
+        // any partial). For 'new' leads, also bump status to 'contacted'
+        // so the lead leaves the "untouched" pile.
+        lastContactedAt: new Date().toISOString() as any,
+        ...(lead.status === "new" ? { status: "contacted" as any } : {}),
+      },
+      {
+        onSuccess: () => toast({ title: "Marked contacted" }),
+        onError: (err: any) =>
+          toast({
+            title: "Couldn't update lead",
+            description: err?.message ?? "Try again later.",
+            variant: "destructive",
+          }),
+      },
+    );
   };
 
   const appendNote = () => {
@@ -199,7 +210,18 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
       : `[${stamp}] ${draft}`;
     updateLead.mutate(
       { id: lead.id, notes: merged },
-      { onSuccess: () => setNoteDraft("") },
+      {
+        onSuccess: () => {
+          setNoteDraft("");
+          toast({ title: "Note saved" });
+        },
+        onError: (err: any) =>
+          toast({
+            title: "Couldn't save note",
+            description: err?.message ?? "Note kept in the draft — try again.",
+            variant: "destructive",
+          }),
+      },
     );
   };
 
@@ -444,8 +466,15 @@ export function MobileLeadDetailRoute() {
   const id = params?.id ? parseInt(params.id, 10) : NaN;
   if (!id || Number.isNaN(id)) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center text-sm text-muted-foreground">
-        Bad lead URL.
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 text-center gap-3">
+        <h2 className="text-base font-semibold">Bad lead URL</h2>
+        <p className="text-sm text-muted-foreground">
+          That link doesn't point to a valid lead. Open the leads list to
+          pick one.
+        </p>
+        <Link href="/leads" className="text-sm text-primary">
+          ← All leads
+        </Link>
       </div>
     );
   }

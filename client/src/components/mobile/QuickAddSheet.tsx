@@ -193,6 +193,7 @@ function LeadForm({ onDone }: { onDone: () => void }) {
           toast({
             title: "Need a name or phone",
             description: "Capture at least one identifier so the lead is reachable.",
+            variant: "destructive",
           });
           return;
         }
@@ -294,7 +295,7 @@ interface Note {
 function PaymentForm({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: notes = [] } = useQuery<Note[]>({
+  const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>({
     queryKey: ["/api/notes"],
     queryFn: () => fetchJsonArray<Note>("/api/notes"),
     staleTime: 60_000,
@@ -347,12 +348,40 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
     },
   });
 
+  // No notes in the inventory yet — the payment form has nothing to
+  // attach to. Show a clear explanation + jump-to-notes CTA instead of
+  // an empty dropdown the user can't interact with.
+  if (!notesLoading && notes.length === 0) {
+    return (
+      <div className="text-center py-8 px-2">
+        <p className="text-sm font-medium">No notes to log against</p>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+          Add a note first, then log payments from this sheet.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => {
+            onDone();
+            window.location.href = "/notes";
+          }}
+        >
+          Open Notes
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         if (!noteId || !amount) {
-          toast({ title: "Pick a note and enter the amount." });
+          toast({
+            title: "Pick a note and enter the amount.",
+            variant: "destructive",
+          });
           return;
         }
         mut.mutate();
@@ -429,7 +458,7 @@ interface Property {
 function MaintenanceForm({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: properties = [] } = useQuery<Property[]>({
+  const { data: properties = [], isLoading: propsLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
     queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=100"),
     staleTime: 60_000,
@@ -465,12 +494,39 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
     },
   });
 
+  // No properties — can't open a ticket against nothing. Same pattern
+  // as the payment form: clear pointer at where to start.
+  if (!propsLoading && properties.length === 0) {
+    return (
+      <div className="text-center py-8 px-2">
+        <p className="text-sm font-medium">No properties yet</p>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+          Add a rental property before logging maintenance issues.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => {
+            onDone();
+            window.location.href = "/properties";
+          }}
+        >
+          Open Properties
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         if (!propertyId || !title.trim()) {
-          toast({ title: "Pick a property and describe the issue." });
+          toast({
+            title: "Pick a property and describe the issue.",
+            variant: "destructive",
+          });
           return;
         }
         mut.mutate();
