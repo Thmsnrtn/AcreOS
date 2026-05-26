@@ -16,6 +16,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { db } from "./db";
 import { dbForReads } from "./db-replica";
 import {
@@ -1156,7 +1157,7 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request,
   }
 });
 
-router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, res: Response) => {
+router.post("/decisions-inbox/:id/reject", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     const { reason } = req.body;
@@ -1193,7 +1194,7 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, 
           decisionsInboxItemId: id,
           tags: [],
           note: reason,
-          rejectedBy: ((req as any).user?.email as string | undefined) ?? "founder",
+          rejectedBy: (req.user?.email as string | undefined) ?? "founder",
         });
       } catch (rejErr: any) {
         logger.warn(`[decisions-inbox] agent_rejection_notes mirror failed: ${rejErr?.message ?? rejErr}`);
@@ -2041,13 +2042,13 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
 
 // ── Unified founder todo ────────────────────────────────────────────
 
-router.get("/todo", requireFounder, async (req: Request, res: Response) => {
+router.get("/todo", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { getFounderTodos } = await import("./services/founderTodo");
     // Cascade-aware annotations need an orgId. Founder is org-scoped via
     // their session — use it if present so the feed surfaces autoResolveCandidate
     // hints; falls back gracefully to plain feed if missing.
-    const orgId = (req as any).organization?.id ?? (req as any).organizationId;
+    const orgId = req.organization?.id ?? req.organizationId;
     const limit = req.query.limit ? Math.min(200, Number(req.query.limit)) : 100;
     const report = await getFounderTodos(orgId, limit);
 

@@ -1,5 +1,6 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import express from "express";
+import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
@@ -606,10 +607,10 @@ export function registerBillingRoutes(app: Express): void {
   // FREE TRIAL
   // ============================================
 
-  api.get("/api/trial/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/trial/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { trialService } = await import("./services/trialService");
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       const status = await trialService.getTrialStatus(org.id);
       res.json(status);
     } catch (error: any) {
@@ -621,10 +622,10 @@ export function registerBillingRoutes(app: Express): void {
     tier: z.enum(["starter", "pro"]).optional().default("starter"),
   });
 
-  api.post("/api/trial/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/trial/start", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { trialService } = await import("./services/trialService");
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       const parsed = trialStartSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -640,10 +641,10 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/trial/expire-check", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/trial/expire-check", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { trialService } = await import("./services/trialService");
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (!org.isFounder) {
         return Errors.forbidden(res, "Founder only");
       }

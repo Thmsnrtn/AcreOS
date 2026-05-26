@@ -15,6 +15,7 @@
  */
 
 import type { Express, Request, Response } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { db } from "./db";
 import { platformSettings, founderAudit } from "@shared/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -79,7 +80,7 @@ export function registerFounderStudioRoutes(app: Express) {
     "/api/founder/studio/dial",
     isAuthenticated,
     requireFounder,
-    async (req: Request, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const body = req.body as {
         key: string;
         value: unknown;
@@ -90,7 +91,7 @@ export function registerFounderStudioRoutes(app: Express) {
       if (!body.key) return res.status(400).json({ error: "key required" });
       if (body.value === undefined) return res.status(400).json({ error: "value required" });
 
-      const founderEmail = (req as any).user?.email as string | undefined;
+      const founderEmail = req.user?.email as string | undefined;
       try {
         const row = await setSetting({
           key: body.key,
@@ -117,7 +118,7 @@ export function registerFounderStudioRoutes(app: Express) {
     "/api/founder/studio/dial/reset",
     isAuthenticated,
     requireFounder,
-    async (req: Request, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const body = req.body as {
         key: string;
         scope?: "global" | "org" | "agent" | "skill";
@@ -125,7 +126,7 @@ export function registerFounderStudioRoutes(app: Express) {
       };
       if (!body.key) return res.status(400).json({ error: "key required" });
 
-      const founderEmail = (req as any).user?.email as string | undefined;
+      const founderEmail = req.user?.email as string | undefined;
       try {
         await resetSetting(body.key, founderEmail ?? "founder", {
           scope: body.scope ?? "global",

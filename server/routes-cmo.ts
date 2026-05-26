@@ -18,6 +18,7 @@
  */
 
 import type { Express, Request, Response } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { db } from "./db";
@@ -176,7 +177,7 @@ export function registerCmoRoutes(app: Express) {
   });
 
   // ─── Approval + broadcast ──────────────────────────────────────────────
-  app.post("/api/founder/cmo/approve", isAuthenticated, requireFounder, async (req: Request, res: Response) => {
+  app.post("/api/founder/cmo/approve", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const { inboxItemId, platforms } = req.body as { inboxItemId: number; platforms?: string[] };
     if (!inboxItemId) return res.status(400).json({ error: "inboxItemId is required" });
 
@@ -204,7 +205,7 @@ export function registerCmoRoutes(app: Express) {
       .set({
         status: "approved",
         approvedAt: new Date(),
-        approvedBy: ((req as any).user?.email ?? "founder"),
+        approvedBy: req.user?.email ?? "founder",
         updatedAt: new Date(),
       })
       .where(inArray(cmoAdRenders.id, renderIds));
@@ -214,7 +215,7 @@ export function registerCmoRoutes(app: Express) {
       .set({
         status: "approved",
         resolvedAt: new Date(),
-        resolvedBy: (req as any).user?.email ?? "founder",
+        resolvedBy: req.user?.email ?? "founder",
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, inboxItemId));
@@ -236,7 +237,7 @@ export function registerCmoRoutes(app: Express) {
     });
   });
 
-  app.post("/api/founder/cmo/reject", isAuthenticated, requireFounder, async (req: Request, res: Response) => {
+  app.post("/api/founder/cmo/reject", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const { inboxItemId, tags, note } = req.body as {
       inboxItemId: number;
       tags?: string[];
@@ -271,7 +272,7 @@ export function registerCmoRoutes(app: Express) {
         brandProfileId: brand.id,
         tags: tags ?? [],
         note: note ?? null,
-        rejectedBy: (req as any).user?.email ?? "founder",
+        rejectedBy: req.user?.email ?? "founder",
       })
       .returning();
 
@@ -292,7 +293,7 @@ export function registerCmoRoutes(app: Express) {
       .set({
         status: "rejected",
         resolvedAt: new Date(),
-        resolvedBy: (req as any).user?.email ?? "founder",
+        resolvedBy: req.user?.email ?? "founder",
         founderModification: note ?? null,
         updatedAt: new Date(),
       })
@@ -311,7 +312,7 @@ export function registerCmoRoutes(app: Express) {
         decisionsInboxItemId: inboxItemId,
         tags: tags ?? [],
         note: note ?? null,
-        rejectedBy: (req as any).user?.email ?? "founder",
+        rejectedBy: req.user?.email ?? "founder",
       });
     } catch (err) {
       logger.warn(`[cmo:reject] failed to mirror rejection into agent_rejection_notes: ${err instanceof Error ? err.message : err}`);

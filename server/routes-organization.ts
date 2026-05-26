@@ -27,6 +27,7 @@ import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
+import type { Response } from "express";
 import {
   generateInviteToken,
   hashInviteToken,
@@ -1607,12 +1608,11 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // POST /api/organization/invitations — create one or many invites
-  api.post("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+  api.post("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = (req as AuthenticatedRequest).organization;
+      const org = req.organization;
       if (!org) return Errors.unauthorized(res);
-      const user = (req as any).user;
-      const inviterId = user?.id || user?.id || null;
+      const inviterId = req.user?.id ?? null;
       // Accept either a single invite or { invites: [...] } for bulk.
       const bulkParsed = bulkInvitationSchema.safeParse(req.body);
       const singleParsed = createInvitationSchema.safeParse(req.body);
@@ -1813,11 +1813,11 @@ export function registerOrganizationRoutes(app: Express): void {
 
   // POST /api/organization/invitations/accept — called by a signed-in user
   // after landing on /auth?invite=<token>. Attaches them to the inviting org.
-  api.post("/api/organization/invitations/accept", isAuthenticated, async (req, res) => {
+  api.post("/api/organization/invitations/accept", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const user = (req as any).user;
-      const userId = user?.id || user?.id;
-      const userEmail = (user?.email || user?.email || "").toLowerCase();
+      const user = req.user;
+      const userId = user?.id;
+      const userEmail = (user?.email ?? "").toLowerCase();
       const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
