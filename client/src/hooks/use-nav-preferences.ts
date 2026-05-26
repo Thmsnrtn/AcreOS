@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_SIDEBAR_ITEMS, DEFAULT_MOBILE_ITEMS, ALL_NAV_ITEMS } from "@/lib/nav-items";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DEFAULT_SIDEBAR_ITEMS,
+  DEFAULT_MOBILE_ITEMS,
+  ALL_NAV_ITEMS,
+  defaultMobileItemsFor,
+} from "@/lib/nav-items";
 import { clientLogger } from "@/lib/clientLogger";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { useContextProfile } from "@/hooks/use-context-profile";
 
 /**
  * Sidebar + mobile-nav preferences.
@@ -137,9 +143,23 @@ export function useNavPreferences() {
     update(DEFAULTS);
   }, [update]);
 
+  // 2026-05-26: persona-aware default mobile bottom-nav. When the user
+  // has NOT customized their mobile nav (saved prefs match the generic
+  // DEFAULT_MOBILE_ITEMS), substitute the persona-specific default so a
+  // Wholesaler doesn't open the app and see a Land-Flipper-shaped set.
+  // Saved customizations still win — only the unset case is overridden.
+  const { investorType } = useContextProfile();
+  const effectiveMobileItems = useMemo(() => {
+    const personaDefault = defaultMobileItemsFor(investorType);
+    const isStillGenericDefault =
+      prefs.mobileItems.length === DEFAULT_MOBILE_ITEMS.length &&
+      prefs.mobileItems.every((id, idx) => id === DEFAULT_MOBILE_ITEMS[idx]);
+    return isStillGenericDefault ? personaDefault : prefs.mobileItems;
+  }, [prefs.mobileItems, investorType]);
+
   return {
     sidebarItems: prefs.sidebarItems,
-    mobileItems: prefs.mobileItems,
+    mobileItems: effectiveMobileItems,
     setSidebarItems,
     setMobileItems,
     reset,

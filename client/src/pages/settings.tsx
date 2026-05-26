@@ -187,9 +187,22 @@ function StripeConnectSettings() {
   const { toast } = useToast();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
-  const { data: connectStatus, isLoading: statusLoading, refetch } = useQuery<StripeConnectStatusResponse>({
+  // Surface load errors via toast — previously a Stripe Connect status
+  // failure was silent, leaving the user looking at "No plan selected"
+  // with no explanation. (2026-05-26 crash-sweep)
+  const { data: connectStatus, isLoading: statusLoading, isError: statusIsError, error: statusError, refetch } = useQuery<StripeConnectStatusResponse>({
     queryKey: ["/api/stripe/connect/status"],
+    retry: 1,
   });
+  useEffect(() => {
+    if (statusIsError) {
+      toast({
+        title: "Couldn't load billing status",
+        description: (statusError as any)?.message ?? "Stripe Connect status unavailable. Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [statusIsError, statusError, toast]);
 
   const connectMutation = useMutation({
     mutationFn: async () => {

@@ -43,6 +43,8 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { CourthouseMode } from "@/components/mobile/CourthouseMode";
 
 interface Listing {
   id: number;
@@ -105,6 +107,12 @@ export default function AuctionWorksheetPage() {
   const url = new URL(window.location.origin + location);
   const auctionId = url.searchParams.get("auctionId");
   const dayOfMode = !!auctionId;
+  // 2026-05-26: mobile courthouse-mode leapfrog. When the user is on
+  // mobile AND in day-of mode (?auctionId=…), swap the row-based table
+  // for the single-card CourthouseMode component — single-handed,
+  // big-button, offline-tolerant. See components/mobile/CourthouseMode.tsx.
+  const { isMobile } = useIsMobile();
+  const courthouseMode = isMobile && dayOfMode;
 
   const { data, isLoading } = useQuery<{ listings: Listing[] }>({
     queryKey: ["/api/tax-researcher/auction-worksheet", auctionId],
@@ -146,6 +154,21 @@ export default function AuctionWorksheetPage() {
           icon={Gavel}
           title="No listings on the worksheet"
           description="Add tax-sale listings to your watchlist via /tax-researcher, then return here to set max bids and walk-away rules before the sale."
+        />
+      ) : courthouseMode ? (
+        <CourthouseMode
+          listings={listings.map((l) => ({
+            id: l.id,
+            apn: l.apn,
+            address: l.address,
+            county: l.county,
+            state: l.state,
+            minimumBid: l.minimumBid,
+            assessedValue: l.assessedValue,
+            maxBidCents: l.maxBidCents,
+            walkAwayAboveCents: l.walkAwayAboveCents,
+            status: l.status,
+          }))}
         />
       ) : (
         <div className="space-y-3">

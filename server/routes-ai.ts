@@ -111,6 +111,38 @@ export function registerAIRoutes(app: Express): void {
     const messages = await storage.getMessages(conversationId);
     res.json(messages);
   });
+
+  // 2026-05-26 — mobile Inbox tab triage. Accepts a status patch
+  // ("closed" | "active" | "escalated") with the same IDOR gating as
+  // GET /:id/messages. No storage helper; inline drizzle keeps the
+  // patch path small and obvious.
+  api.patch("/api/conversations/:id", isAuthenticated, getOrCreateOrg, async (req: any, res) => {
+    const org = req.organization;
+    const conversationId = Number(req.params.id);
+    const conv = await storage.getConversation(org.id, conversationId);
+    if (!conv) return Errors.notFound(res, "Conversation");
+
+    const allowedStatuses = new Set(["active", "closed", "escalated"]);
+    const nextStatus = typeof req.body?.status === "string" ? req.body.status : null;
+    if (!nextStatus || !allowedStatuses.has(nextStatus)) {
+      return Errors.badRequest(res, "status must be one of: active, closed, escalated");
+    }
+
+    try {
+      const { db } = await import("./db");
+      const { conversations } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const [updated] = await db
+        .update(conversations)
+        .set({ status: nextStatus })
+        .where(and(eq(conversations.id, conversationId), eq(conversations.organizationId, org.id)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Conversation");
+      res.json(updated);
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
   
   // ============================================
   // AI COMMAND CENTER

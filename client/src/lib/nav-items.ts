@@ -108,3 +108,54 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
 // AI Hub stays on mobile bottom-nav (Today/Deals/Money/AI Hub + More).
 export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "outreach", "money", "settings"];
 export const DEFAULT_MOBILE_ITEMS  = ["today", "deals", "money", "ai-hub"];
+
+/**
+ * Persona-aware default mobile bottom-nav.
+ *
+ * The 4-tab default above is a Land-Flipper-shaped set; a Note Investor
+ * shouldn't open the app and see a Deals tab as their primary action.
+ * This returns the right 4 IDs per persona so brand-new users land on
+ * tabs that match their workflow. User-customized prefs (saved in
+ * `useNavPreferences`) still override.
+ *
+ * Persona inputs come from `useContextProfile()`'s `investorType` —
+ * see client/src/hooks/use-context-profile.ts.
+ */
+export function defaultMobileItemsFor(
+  investorType:
+    | "wholesaler"
+    | "note_investor"
+    | "fix_and_flip"
+    | "portfolio_builder"
+    | "auction_hunter"
+    | "developer"
+    | "new_investor"
+    | undefined,
+): string[] {
+  switch (investorType) {
+    case "wholesaler":
+      // Wholesalers' day is contracts + EMD timer + buyer blasts.
+      return ["today", "deals", "campaigns", "money"];
+    case "note_investor":
+      // Note investors monitor payments, manage delinquencies, prep taxes.
+      // No native "notes" id in nav (yet); finance is the canonical hub.
+      return ["today", "finance", "money", "ai-hub"];
+    case "fix_and_flip":
+      // Rehab projects + properties + deals dominate their day.
+      return ["today", "properties", "deals", "money"];
+    case "portfolio_builder":
+      // Buy-and-hold landlords — rent collection + maintenance.
+      // "finance" surfaces rent roll + cash flow until we ship persona-specific tabs.
+      return ["today", "properties", "finance", "money"];
+    case "auction_hunter":
+      // Tax-delinquent auction buyers — counties, properties, deals.
+      return ["today", "properties", "deals", "money"];
+    case "developer":
+      // Subdividers — properties + listings + deals.
+      return ["today", "properties", "listings", "money"];
+    case "new_investor":
+    default:
+      // Land Flipper / unknown — the launch vertical default.
+      return DEFAULT_MOBILE_ITEMS;
+  }
+}
