@@ -12,7 +12,7 @@ import { insertNoteSchema, type Note, type Lead, type Property } from "@shared/s
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { clientLogger } from "@/lib/clientLogger";
 
 // Client-side form schema that omits organizationId (added by server)
@@ -55,7 +55,20 @@ export default function FinancePage() {
   const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // /finance?action=new opens the new-note dialog — wires the global FAB /
+  // new-item-menu's "New Note" entry to a real action.
+  const financeSearch = useSearch();
+  const financeAction = new URLSearchParams(financeSearch).get("action");
+  const [isCreateOpen, setIsCreateOpen] = useState(financeAction === "new");
+  useEffect(() => {
+    if (financeAction === "new") {
+      const params = new URLSearchParams(financeSearch);
+      params.delete("action");
+      const next = params.toString();
+      window.history.replaceState(null, "", next ? `/finance?${next}` : "/finance");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [selectedNote, setSelectedNote] = useState<NoteWithDetails | null>(null);
   const [deletingNote, setDeletingNote] = useState<NoteWithDetails | null>(null);
   const [isExporting, setIsExporting] = useState(false);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearch } from "wouter";
 import DOMPurify from "isomorphic-dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -86,7 +87,21 @@ export default function DocumentsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("templates");
   const [templateFilter, setTemplateFilter] = useState<"all" | "my" | "system">("all");
-  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
+  // /documents?action=new opens the create-template dialog — wires the
+  // global FAB / new-item-menu's "New Document" entry to a real action
+  // instead of a no-op landing.
+  const searchString = useSearch();
+  const actionFromUrl = new URLSearchParams(searchString).get("action");
+  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(actionFromUrl === "new");
+  useEffect(() => {
+    if (actionFromUrl === "new") {
+      const params = new URLSearchParams(searchString);
+      params.delete("action");
+      const next = params.toString();
+      window.history.replaceState(null, "", next ? `/documents?${next}` : "/documents");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isEditTemplateOpen, setIsEditTemplateOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
