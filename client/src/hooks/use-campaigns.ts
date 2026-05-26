@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { Campaign, InsertCampaign, CampaignOptimization } from "@shared/schema";
 
 // Direct mail status response type
@@ -63,15 +64,16 @@ export function useCreateCampaign() {
 }
 
 export function useUpdateCampaign() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & Partial<InsertCampaign>) => {
+  // Optimistic campaign update — pause/resume + name edits should feel
+  // instant. Backed by useOptimisticUpdate (client/src/lib/optimistic-mutation.ts).
+  return useOptimisticUpdate<{ id: number } & Partial<InsertCampaign>, Campaign>({
+    mutationFn: async ({ id, ...data }) => {
       const res = await apiRequest("PUT", `/api/campaigns/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
-    },
+    listKeys: [["/api/campaigns"]],
+    detailKey: ({ id }) => ["/api/campaigns", id],
+    getId: ({ id }) => id,
   });
 }
 

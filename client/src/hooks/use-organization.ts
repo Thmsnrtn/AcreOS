@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { Organization } from "@shared/schema";
 
 export interface DashboardStats {
@@ -230,48 +231,38 @@ export function useTeamMembers() {
 }
 
 export function useUpdateTeamMemberRole() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ memberId, role }: { memberId: number; role: Role }) => {
+  // Optimistic role update — settings UI should reflect the new role
+  // instantly in the team table. Rolls back on permission rejection.
+  return useOptimisticUpdate<{ memberId: number; role: Role }, TeamMember>({
+    mutationFn: async ({ memberId, role }) => {
       const res = await apiRequest("PATCH", `/api/team/${memberId}/role`, { role });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to update role");
-      }
-      return res.json() as Promise<TeamMember>;
+      return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/team"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/permissions"] });
-    },
+    listKeys: [["/api/team"]],
+    getId: ({ memberId }) => memberId,
+    // Patch maps memberId -> id; emit only the role field.
+    buildPatch: ({ role }) => ({ role }),
+    extraInvalidateKeys: [["/api/me/permissions"]],
   });
 }
 
 // Reyna §1: per-user assigned-leads-only override.
 export function useUpdateTeamMemberViewOnly() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      memberId,
-      viewOnlyAssignedLeads,
-    }: {
-      memberId: number;
-      viewOnlyAssignedLeads: boolean;
-    }) => {
+  return useOptimisticUpdate<
+    { memberId: number; viewOnlyAssignedLeads: boolean },
+    TeamMember
+  >({
+    mutationFn: async ({ memberId, viewOnlyAssignedLeads }) => {
       const res = await apiRequest(
         "PATCH",
         `/api/team/${memberId}/view-only-assigned-leads`,
         { viewOnlyAssignedLeads },
       );
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to update lead visibility");
-      }
-      return res.json() as Promise<TeamMember>;
+      return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/team"] });
-    },
+    listKeys: [["/api/team"]],
+    getId: ({ memberId }) => memberId,
+    buildPatch: ({ viewOnlyAssignedLeads }) => ({ viewOnlyAssignedLeads }),
   });
 }
 

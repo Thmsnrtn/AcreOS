@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { Deal, InsertDeal } from "@shared/schema";
 
 export interface PaginatedDealsResponse {
@@ -96,63 +97,18 @@ export function useCreateDeal() {
 }
 
 export function useUpdateDeal() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & Partial<InsertDeal>) => {
+  // Optimistic deal update — primary use case is stage/status drag-and-drop
+  // on the deals board, where instant feedback is critical. Backed by the
+  // useOptimisticUpdate factory (client/src/lib/optimistic-mutation.ts).
+  return useOptimisticUpdate<{ id: number } & Partial<InsertDeal>, Deal>({
+    mutationFn: async ({ id, ...data }) => {
       const res = await apiRequest("PUT", `/api/deals/${id}`, data);
       return res.json();
     },
-    // Optimistic deal update — primary use case is stage/status drag-and-drop
-    // on the deals board, where instant feedback is critical.
-    onMutate: async ({ id, ...updates }) => {
-      await queryClient.cancelQueries({ queryKey: ['/api/deals'] });
-
-      const snapshots: Array<[readonly unknown[], unknown]> = [];
-
-      const listEntries = queryClient.getQueriesData({ queryKey: ['/api/deals'] });
-      for (const [key, value] of listEntries) {
-        snapshots.push([key, value]);
-        if (Array.isArray(value)) {
-          queryClient.setQueryData(key, value.map((deal: any) =>
-            deal?.id === id ? { ...deal, ...updates } : deal
-          ));
-        } else if (value && typeof value === "object" && Array.isArray((value as any).data)) {
-          const v = value as { data: any[] };
-          queryClient.setQueryData(key, {
-            ...value,
-            data: v.data.map((deal: any) => (deal?.id === id ? { ...deal, ...updates } : deal)),
-          });
-        } else if (value && typeof value === "object" && (value as any).id === id) {
-          queryClient.setQueryData(key, { ...(value as object), ...updates });
-        }
-      }
-
-      return { snapshots };
-    },
-    onError: (error, _vars, context) => {
-      if (context?.snapshots) {
-        for (const [key, value] of context.snapshots) {
-          queryClient.setQueryData(key, value);
-        }
-      }
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({
-        title,
-        description,
-        variant: "destructive",
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Deal updated successfully.",
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-    },
+    listKeys: [["/api/deals"]],
+    detailKey: ({ id }) => ["/api/deals", id],
+    getId: ({ id }) => id,
+    successToast: { title: "Success", description: "Deal updated successfully." },
   });
 }
 

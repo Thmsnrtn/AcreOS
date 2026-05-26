@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { DueDiligenceTemplate, DueDiligenceItem, InsertDueDiligenceTemplate, InsertDueDiligenceItem, DueDiligenceChecklist, DueDiligenceDossier } from "@shared/schema";
 
 // AI Dossier hooks - Phase 3 dueDiligencePods service
@@ -47,23 +48,25 @@ export function useDueDiligenceChecklist(propertyId: number) {
 }
 
 export function useUpdateDueDiligenceChecklist() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      propertyId,
-      updates,
-    }: {
-      propertyId: number;
-      updates: Partial<DueDiligenceChecklist>;
-    }) => {
+  // Optimistic checklist update — toggling flood-zone status, wetlands
+  // assessment, etc. should feel instant. The cache here is a single
+  // checklist object (not a list), so we use detailKey only and pass
+  // an empty listKeys; the helper invalidates the detail key via
+  // extraInvalidateKeys on settle.
+  return useOptimisticUpdate<
+    { propertyId: number; updates: Partial<DueDiligenceChecklist> },
+    DueDiligenceChecklist
+  >({
+    mutationFn: async ({ propertyId, updates }) => {
       const res = await apiRequest("PUT", `/api/due-diligence/${propertyId}`, updates);
       return res.json();
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/due-diligence", variables.propertyId],
-      });
-    },
+    listKeys: [],
+    detailKey: ({ propertyId }) => ["/api/due-diligence", propertyId],
+    getId: ({ propertyId }) => propertyId,
+    // updates is nested inside variables — flatten it for the patch.
+    buildPatch: ({ updates }) => ({ ...updates }),
+    extraInvalidateKeys: [["/api/due-diligence"]],
   });
 }
 
@@ -158,25 +161,23 @@ export function useApplyDueDiligenceTemplate() {
 }
 
 export function useUpdateDueDiligenceItem() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      itemId,
-      propertyId,
-      updates,
-    }: {
-      itemId: number;
-      propertyId: number;
-      updates: Partial<InsertDueDiligenceItem>;
-    }) => {
+  // Optimistic item update — checking off a DD item from the property
+  // sidebar should feel instant. List cache is a flat array of items
+  // keyed by ["/api/properties", propertyId, "due-diligence"], items
+  // have an `id` field matching itemId.
+  return useOptimisticUpdate<
+    { itemId: number; propertyId: number; updates: Partial<InsertDueDiligenceItem> },
+    DueDiligenceItem
+  >({
+    mutationFn: async ({ itemId, updates }) => {
       const res = await apiRequest("PUT", `/api/due-diligence/items/${itemId}`, updates);
       return res.json();
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/properties", variables.propertyId, "due-diligence"],
-      });
-    },
+    // listKey resolves per-call against the variables — items live
+    // under a property-scoped key.
+    listKeys: [({ propertyId }) => ["/api/properties", propertyId, "due-diligence"]],
+    getId: ({ itemId }) => itemId,
+    buildPatch: ({ updates }) => ({ ...updates }),
   });
 }
 
