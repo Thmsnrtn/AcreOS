@@ -11,6 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { DollarSign, AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface EscrowStatus {
   noteId: number;
@@ -47,9 +49,12 @@ export default function PropertyTaxPage() {
   const portalStateId = useId();
   const portalCountyId = useId();
 
-  const { data: summary, isLoading } = useQuery<PortfolioTaxSummary>({
+  const { data: summary, isLoading, error, refetch } = useQuery<PortfolioTaxSummary>({
     queryKey: ["/api/property-tax/portfolio"],
-    queryFn: () => fetch("/api/property-tax/portfolio").then(r => r.json()),
+    queryFn: () => fetch("/api/property-tax/portfolio").then(r => {
+      if (!r.ok) throw new Error(`Failed to load tax portfolio (${r.status})`);
+      return r.json();
+    }),
   });
 
   async function lookupPortal() {
@@ -94,9 +99,31 @@ export default function PropertyTaxPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading tax data…
-        </div>
+        <>
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-3" aria-busy="true" aria-label="Loading tax summary">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-7 w-24" />
+                </CardContent>
+              </Card>
+            ))}
+          </dl>
+          <Card>
+            <CardContent className="p-4 space-y-2">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-2 w-full" />
+              <Skeleton className="h-3 w-40" />
+            </CardContent>
+          </Card>
+        </>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load tax portfolio"
+        />
       ) : (
         <>
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-3">

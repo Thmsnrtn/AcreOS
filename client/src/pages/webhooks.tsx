@@ -29,6 +29,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Verbs } from "@/lib/labels";
+import { SkeletonList } from "@/components/ui/skeleton-list";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface WebhookEndpoint {
   url: string;
@@ -74,9 +77,12 @@ export default function WebhooksPage() {
     description: "",
   });
 
-  const { data, isLoading } = useQuery<{ endpoints: WebhookEndpoint[] }>({
+  const { data, isLoading, error, refetch } = useQuery<{ endpoints: WebhookEndpoint[] }>({
     queryKey: ["/api/webhooks"],
-    queryFn: () => fetch("/api/webhooks").then(r => r.json()),
+    queryFn: () => fetch("/api/webhooks").then(r => {
+      if (!r.ok) throw new Error(`Failed to load webhooks (${r.status})`);
+      return r.json();
+    }),
   });
 
   const saveMutation = useMutation({
@@ -164,22 +170,28 @@ export default function WebhooksPage() {
       </Card>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-40" role="status" aria-live="polite">
-          <span className="sr-only">Loading webhooks…</span>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
+        <div aria-busy="true" aria-label="Loading webhook endpoints">
+          <SkeletonList items={3} showAvatar={false} showBadge />
         </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load webhook endpoints"
+        />
       ) : endpoints.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <Webhook className="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
-            <h2 className="text-lg font-semibold mb-2">No webhook endpoints</h2>
-            <p className="text-muted-foreground mb-4">Connect AcreOS to Zapier, Make, or your own systems.</p>
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
-              Add your first endpoint
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Webhook}
+          title="No webhook endpoints"
+          description="Webhooks push events to any URL in real time — wire AcreOS into Zapier, Make, or your own systems."
+          actionLabel="Add your first endpoint"
+          onAction={() => setAddOpen(true)}
+          tips={[
+            "Each endpoint can subscribe to specific events (lead.created, payment.received, etc).",
+            "Every payload is signed — verify the signature header on your receiver.",
+          ]}
+          testId="webhooks-empty"
+        />
       ) : (
         <ul className="space-y-3" aria-label="Webhook endpoints">
           {endpoints.map(ep => (

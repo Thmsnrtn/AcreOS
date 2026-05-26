@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { BarChart3, Loader2, TrendingUp } from "lucide-react";
+import { SkeletonList } from "@/components/ui/skeleton-list";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 type Segment = "source" | "state" | "county" | "campaign" | "import_month" | "import_quarter";
 
@@ -46,10 +49,13 @@ export default function CohortAnalysisPage() {
   const [segmentBy, setSegmentBy] = useState<Segment>("source");
   const segmentSelectId = useId();
 
-  const { data, isLoading } = useQuery<CohortReport>({
+  const { data, isLoading, error, refetch } = useQuery<CohortReport>({
     queryKey: ["/api/analytics/cohorts", segmentBy],
     queryFn: () =>
-      fetch(`/api/analytics/cohorts?segmentBy=${segmentBy}`).then(r => r.json()),
+      fetch(`/api/analytics/cohorts?segmentBy=${segmentBy}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load cohort report (${r.status})`);
+        return r.json();
+      }),
   });
 
   const cohorts = data?.cohorts ?? [];
@@ -104,16 +110,25 @@ export default function CohortAnalysisPage() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading cohorts…
+        <div aria-busy="true" aria-label="Loading cohorts">
+          <SkeletonList items={5} showAvatar={false} showBadge />
         </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load cohort report"
+        />
       ) : cohorts.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <BarChart3 className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-            <p className="text-muted-foreground text-sm">No cohort data available.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={BarChart3}
+          title="Not enough lead data yet"
+          description="Cohort analysis needs a baseline of leads to compare. Import or capture more leads, then come back to see conversion patterns by segment."
+          actionLabel="Import leads"
+          onAction={() => { window.location.assign("/leads/import"); }}
+          actionIcon={null}
+          testId="cohort-analysis-empty"
+        />
       ) : (
         <ul className="space-y-2" aria-label="Cohorts">
           {cohorts.map(c => (

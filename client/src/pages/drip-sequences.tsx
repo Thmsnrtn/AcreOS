@@ -12,6 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Mail, MessageSquare, Phone, Plus, Play, Pause, Users, BarChart3, Loader2, ChevronRight } from "lucide-react";
+import { SkeletonList } from "@/components/ui/skeleton-list";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface Sequence {
   id: number;
@@ -46,11 +49,11 @@ export default function DripSequencesPage() {
   const [search, setSearch] = useState("");
   const searchId = useId();
 
-  const { data, isLoading } = useQuery<{ sequences: Sequence[] }>({
+  const { data, isLoading, error, refetch } = useQuery<{ sequences: Sequence[] }>({
     queryKey: ["/api/sequences"],
     queryFn: async () => {
       const res = await fetch("/api/sequences", { credentials: "include" });
-      if (!res.ok) return { sequences: [] };
+      if (!res.ok) throw new Error(`Failed to load sequences (${res.status})`);
       const j = await res.json();
       if (Array.isArray(j)) return { sequences: j as Sequence[] };
       if (Array.isArray(j?.sequences)) return j as { sequences: Sequence[] };
@@ -153,18 +156,32 @@ export default function DripSequencesPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading sequences…
+        <div aria-busy="true" aria-label="Loading sequences">
+          <SkeletonList items={4} showAvatar={false} showBadge />
         </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load sequences"
+        />
       ) : sequences.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-            <p className="text-muted-foreground text-sm">
-              {search ? "No sequences match your search." : "No sequences yet."}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Mail}
+          title={search ? "No matching sequences" : "No drip sequences yet"}
+          description={
+            search
+              ? "No sequences match your search. Try a broader term, or clear the filter."
+              : "Drip sequences send a series of emails, texts, or call tasks on a schedule — perfect for warming cold leads or onboarding new buyers."
+          }
+          actionLabel={search ? undefined : "Create your first sequence"}
+          onAction={search ? undefined : () => { window.location.assign("/drip-sequences/new"); }}
+          tips={search ? undefined : [
+            "Three steps over two weeks works well for cold lead nurture.",
+            "Mix channels — email + SMS lifts response rates 30%+.",
+          ]}
+          testId="drip-sequences-empty"
+        />
       ) : (
         <ul className="space-y-2" aria-label="Drip sequences">
           {sequences.map(seq => {

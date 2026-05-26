@@ -214,7 +214,14 @@ function FunnelCard({
         ) : funnel.data ? (
           <FunnelBars data={funnel.data} />
         ) : (
-          <p className="text-sm text-muted-foreground">No data.</p>
+          <EmptyState
+            icon={BarChart3}
+            title="No funnel data yet"
+            description="Once your campaign ships and recipients start engaging, the sent→delivered→QR→call→deal funnel populates here."
+            actionIcon={null}
+            className="py-8"
+            testId="results-funnel-empty"
+          />
         )}
       </CardContent>
     </Card>

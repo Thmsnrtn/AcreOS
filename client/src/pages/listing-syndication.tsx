@@ -9,6 +9,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Globe, CheckCircle2, XCircle, RefreshCw, Loader2, AlertTriangle } from "lucide-react";
+import { SkeletonList } from "@/components/ui/skeleton-list";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface SyndicationChannel {
   id: string;
@@ -43,9 +46,12 @@ export default function ListingSyndicationPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<SyndicationSummary>({
+  const { data, isLoading, error, refetch } = useQuery<SyndicationSummary>({
     queryKey: ["/api/syndication/status"],
-    queryFn: () => fetch("/api/syndication/status").then(r => r.json()),
+    queryFn: () => fetch("/api/syndication/status").then(r => {
+      if (!r.ok) throw new Error(`Failed to load syndication status (${r.status})`);
+      return r.json();
+    }),
   });
 
   const syncAllMutation = useMutation({
@@ -152,9 +158,29 @@ export default function ListingSyndicationPage() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading channels…
+        <div aria-busy="true" aria-label="Loading syndication channels">
+          <SkeletonList items={4} showAvatar={false} showBadge />
         </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load syndication channels"
+        />
+      ) : channels.length === 0 ? (
+        <EmptyState
+          icon={Globe}
+          title="No syndication channels"
+          description="Connect MLS feeds, listing portals, or marketplaces to push your listings everywhere at once."
+          actionLabel="Browse channels"
+          onAction={() => { window.location.assign("/integrations"); }}
+          actionIcon={null}
+          tips={[
+            "MLS connections require board credentials.",
+            "Portals like Zillow and Realtor.com sync automatically once connected.",
+          ]}
+          testId="listing-syndication-empty"
+        />
       ) : (
         <ul className="space-y-2" aria-label="Syndication channels">
           {channels.map(ch => (

@@ -40,6 +40,9 @@ import { format, differenceInDays } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
+import { SkeletonCard } from "@/components/ui/skeleton-card";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 
 interface Goal {
   id: number;
@@ -104,11 +107,11 @@ export default function GoalsPage() {
   const targetId = useId();
   const deadlineId = useId();
 
-  const { data, isLoading } = useQuery<{ goals: Goal[] }>({
+  const { data, isLoading, error, refetch } = useQuery<{ goals: Goal[] }>({
     queryKey: ["/api/goals"],
     queryFn: async () => {
       const res = await fetch("/api/goals", { credentials: "include" });
-      if (!res.ok) return { goals: [] };
+      if (!res.ok) throw new Error(`Failed to load goals (${res.status})`);
       const j = await res.json();
       if (Array.isArray(j)) return { goals: j as Goal[] };
       if (Array.isArray(j?.goals)) return j as { goals: Goal[] };
@@ -214,22 +217,31 @@ export default function GoalsPage() {
       </dl>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-40" role="status" aria-live="polite">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
-          <span className="sr-only">Loading goals…</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-busy="true" aria-label="Loading goals">
+          <SkeletonCard lines={2} showFooter />
+          <SkeletonCard lines={2} showFooter />
+          <SkeletonCard lines={2} showFooter />
+          <SkeletonCard lines={2} showFooter />
         </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load goals"
+        />
       ) : goals.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
-            <h3 className="text-lg font-semibold mb-2">No goals yet.</h3>
-            <p className="text-muted-foreground mb-4">Set revenue targets, deal counts, and other KPIs to track your progress.</p>
-            <Button onClick={() => setCreateOpen(true)} className="min-h-11">
-              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
-              Create your first goal
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Target}
+          title="No goals yet"
+          description="Set revenue targets, deal counts, and other KPIs to track your progress over time."
+          actionLabel="Create your first goal"
+          onAction={() => setCreateOpen(true)}
+          tips={[
+            "Tie revenue goals to a deadline to see weekly pace.",
+            "Mix outcome goals (closed deals) with leading-indicator goals (offers sent).",
+          ]}
+          testId="goals-empty"
+        />
       ) : (
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-label="Your goals">
           {goals.map(goal => {

@@ -35,6 +35,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface TaxPosition {
   taxYear: number;
@@ -106,10 +108,13 @@ export default function TaxOptimizerPage() {
   const currentYear = new Date().getFullYear();
   const [taxYear, setTaxYear] = useState(currentYear.toString());
 
-  const { data: position, isLoading, refetch } = useQuery<TaxPosition>({
+  const { data: position, isLoading, error, refetch } = useQuery<TaxPosition>({
     queryKey: ["/api/tax-optimizer/position", taxYear],
     queryFn: () =>
-      fetch(`/api/tax-optimizer/position?year=${taxYear}`).then(r => r.json()),
+      fetch(`/api/tax-optimizer/position?year=${taxYear}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load tax position (${r.status})`);
+        return r.json();
+      }),
   });
 
   const reportMutation = useMutation({
@@ -129,10 +134,42 @@ export default function TaxOptimizerPage() {
   if (isLoading) {
     return (
       <PageShell label="Tax optimizer">
-        <div className="flex items-center justify-center h-48" role="status" aria-live="polite">
-          <span className="sr-only">Loading tax position…</span>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
+        <div className="space-y-6" aria-busy="true" aria-label="Loading tax optimizer">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="space-y-2">
+              <Skeleton className="h-7 w-44" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-9" />
+              <Skeleton className="h-9 w-28" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="pt-5 space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-7 w-28" />
+                  <Skeleton className="h-3 w-20" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
+      </PageShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageShell label="Tax optimizer">
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load tax position"
+        />
       </PageShell>
     );
   }
