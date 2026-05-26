@@ -17,6 +17,7 @@
 
 import { Router, type Request, type Response } from "express";
 import type { AuthenticatedRequest } from "./types/request";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { dbForReads } from "./db-replica";
 import {
@@ -52,7 +53,7 @@ const router = Router();
 function requireFounder(req: any, res: any, next: any) {
   const userEmail = req.user?.email || req.user?.email;
   if (!isFounderEmail(userEmail)) {
-    return res.status(403).json({ error: "Founder access required" });
+    return Errors.forbidden(res, "Founder access required");
   }
   next();
 }
@@ -267,7 +268,7 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
     });
   } catch (err: any) {
     logger.error("[MorningBriefing] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -639,7 +640,7 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -886,7 +887,7 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
         : `${scoreLabel}. Configure missing services to reach full automation: ${missingCreds.join(", ") || "all credentials set"}.`,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -976,7 +977,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
       recommendations: generateChurnRecommendations(monthlyChurnRate, atRiskOrgs.length),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1064,7 +1065,7 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
       ].filter(Boolean),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1153,7 +1154,7 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request,
     const result = await decisionsInboxService.approve(id);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1203,7 +1204,7 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1214,7 +1215,7 @@ router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, r
     await decisionsInboxService.defer(id, hours ?? 24);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1222,7 +1223,7 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
   try {
     const id = parseInt(req.params.id);
     const { customAction } = req.body;
-    if (!customAction) return res.status(400).json({ error: "customAction required" });
+    if (!customAction) return Errors.badRequest(res, "customAction required");
 
     // Fetch the decision item before overriding so we can learn from it
     const item = await decisionsInboxService.getById?.(id) ??
@@ -1248,7 +1249,7 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1313,7 +1314,7 @@ router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: 
     res.json({ purged: updated.length, mode: "soft_reject" });
   } catch (err: any) {
     logger.error("[decisions-inbox] purge failed", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1417,7 +1418,7 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
     });
   } catch (err: any) {
     logger.error("[decision-log] Error fetching log", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1430,17 +1431,14 @@ router.post("/scenario/run", requireFounder, async (req: Request, res: Response)
   try {
     const { isGlobalSimulationMode } = await import("./utils/simulationMode");
     if (!isGlobalSimulationMode()) {
-      return res.status(400).json({
-        error:
-          "Scenario harness requires SIMULATION_MODE=true. Flip the env flag before firing scenarios.",
-      });
+      return Errors.badRequest(res, "Scenario harness requires SIMULATION_MODE=true. Flip the env flag before firing scenarios.");
     }
     const { scenario, slug, allAtRisk } = req.body as {
       scenario?: string;
       slug?: string;
       allAtRisk?: boolean;
     };
-    if (!scenario) return res.status(400).json({ error: "scenario is required" });
+    if (!scenario) return Errors.badRequest(res, "scenario is required");
     // Shell out to the seed-scenario script so the harness logic lives
     // in one place. Safe because SIMULATION_MODE is on and the script
     // refuses any non-sim-* target.
@@ -1467,7 +1465,7 @@ router.post("/scenario/run", requireFounder, async (req: Request, res: Response)
     });
   } catch (err: any) {
     logger.error("[scenario/run] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1537,7 +1535,7 @@ router.get("/agent-activity", requireFounder, async (req: Request, res: Response
     });
   } catch (err: any) {
     logger.error("[agent-activity] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1553,7 +1551,7 @@ router.get("/budget-summary", requireFounder, async (_req: Request, res: Respons
     res.json({ ...summary, swept: swept.expired });
   } catch (err: any) {
     logger.error("[budget-summary] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1568,7 +1566,7 @@ router.get("/autonomy-health", requireFounder, async (_req: Request, res: Respon
     res.json(report);
   } catch (err: any) {
     logger.error("[autonomy-health] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1582,7 +1580,7 @@ router.post("/autonomy-health/grade-outcomes", requireFounder, async (_req: Requ
     res.json(result);
   } catch (err: any) {
     logger.error("[grade-outcomes] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1595,7 +1593,7 @@ router.get("/prompt-evolutions", requireFounder, async (_req: Request, res: Resp
     res.json({ proposals: rows });
   } catch (err: any) {
     logger.error("[prompt-evolutions] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1604,7 +1602,7 @@ router.get("/prompt-evolutions", requireFounder, async (_req: Request, res: Resp
 router.get("/prompt-history", requireFounder, async (req: Request, res: Response) => {
   try {
     const agentCodename = (req.query.agent as string | undefined)?.trim();
-    if (!agentCodename) return res.status(400).json({ error: "agent query param required" });
+    if (!agentCodename) return Errors.badRequest(res, "agent query param required");
     const { db } = await import("./db");
     const { agentVersions } = await import("@shared/schema");
     const { eq, desc } = await import("drizzle-orm");
@@ -1628,7 +1626,7 @@ router.get("/prompt-history", requireFounder, async (req: Request, res: Response
     res.json({ agentCodename, versions: rows });
   } catch (err: any) {
     logger.error("[prompt-history] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1650,17 +1648,17 @@ router.get("/prompt-history/agents", requireFounder, async (_req: Request, res: 
     res.json({ agents: (rows as any).rows ?? [] });
   } catch (err: any) {
     logger.error("[prompt-history agents] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { getPromptChange } = await import("./services/promptEvolutionMetaAgent");
     const row = await getPromptChange(id);
-    if (!row) return res.status(404).json({ error: "Proposal not found" });
+    if (!row) return Errors.notFound(res, "Proposal");
     // Attach the currently-active prompt so the client can render a diff.
     let currentPrompt: string | null = null;
     try {
@@ -1672,33 +1670,33 @@ router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: R
     }
     res.json({ proposal: row, currentPrompt });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.post("/prompt-evolutions/:id/approve", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { agentEvolutionEngine } = await import("./services/agentEvolutionEngine");
     const result = await agentEvolutionEngine.applyPromptChange(id);
-    if (!result.success) return res.status(400).json({ error: result.message });
+    if (!result.success) return Errors.badRequest(res, result.message);
     res.json(result);
   } catch (err: any) {
     logger.error("[prompt-evolutions approve] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.post("/prompt-evolutions/:id/reject", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { rejectPromptChange } = await import("./services/promptEvolutionMetaAgent");
     await rejectPromptChange(id);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1712,7 +1710,7 @@ router.post("/prompt-evolutions/run-now", requireFounder, async (_req: Request, 
     res.json(result);
   } catch (err: any) {
     logger.error("[prompt-evolutions run] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1724,7 +1722,7 @@ router.get("/letter/current", requireFounder, async (_req: Request, res: Respons
     const letter = await getCurrentLetter();
     res.json({ letter });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1734,7 +1732,7 @@ router.get("/letter/archive", requireFounder, async (_req: Request, res: Respons
     const letters = await listLetterArchive();
     res.json({ letters });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1742,10 +1740,10 @@ router.get("/letter/:monthKey", requireFounder, async (req: Request, res: Respon
   try {
     const { getLetterByMonth } = await import("./services/founderNarrative");
     const letter = await getLetterByMonth(req.params.monthKey);
-    if (!letter) return res.status(404).json({ error: "Letter not found for that month" });
+    if (!letter) return Errors.notFound(res, "Letter not found for that month");
     res.json({ letter });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1756,7 +1754,7 @@ router.post("/letter/generate", requireFounder, async (req: Request, res: Respon
     res.json(result);
   } catch (err: any) {
     logger.error("[letter generate] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1766,7 +1764,7 @@ router.post("/letter/:monthKey/mark-delivered", requireFounder, async (req: Requ
     await markLetterDelivered(req.params.monthKey);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1778,7 +1776,7 @@ router.get("/strategic-proposals", requireFounder, async (_req: Request, res: Re
     const proposals = await listPendingProposals();
     res.json({ proposals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1788,7 +1786,7 @@ router.get("/strategic-proposals/month/:monthKey", requireFounder, async (req: R
     const proposals = await listSynthesizedForMonth(req.params.monthKey);
     res.json({ proposals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1799,7 +1797,7 @@ async function handleStrategicProposalAction(
 ) {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
-    return res.status(400).json({ error: "Invalid id" });
+    return Errors.badRequest(res, "Invalid id");
   }
   try {
     const { resolveProposal } = await import("./services/strategicProposals");
@@ -1816,7 +1814,7 @@ async function handleStrategicProposalAction(
       .where(eq(strategicProposals.id, id))
       .limit(1);
     if (!existing) {
-      return res.status(404).json({ error: `Strategic proposal #${id} not found` });
+      return Errors.notFound(res, `Strategic proposal #${id}`);
     }
 
     const feedback = (typeof req.body?.feedback === "string" ? req.body.feedback : "") || undefined;
@@ -1827,7 +1825,7 @@ async function handleStrategicProposalAction(
     logger.error("[strategic-proposals] action failed", err, {
       metadata: { action, id, userId: req.user?.email ?? null, msg: err?.message ?? String(err) },
     });
-    res.status(500).json({ error: err?.message ?? "Internal error", action, id });
+    Errors.internal(res, err);
   }
 }
 
@@ -1846,7 +1844,7 @@ router.post("/strategic-proposals/run-weekly", requireFounder, async (_req: Requ
     res.json(result);
   } catch (err: any) {
     logger.error("[strategic-proposals weekly] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1857,7 +1855,7 @@ router.post("/strategic-proposals/run-synthesis", requireFounder, async (req: Re
     res.json(result);
   } catch (err: any) {
     logger.error("[strategic-proposals synth] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1870,7 +1868,7 @@ router.get("/calibration", requireFounder, async (req: Request, res: Response) =
     const report = await computeCalibration("all", Number.isFinite(windowDays) ? windowDays : 60);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1884,7 +1882,7 @@ router.get("/calibration/:agentCodename", requireFounder, async (req: Request, r
     );
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1896,7 +1894,7 @@ router.get("/settings", requireFounder, async (_req: Request, res: Response) => 
     const settings = await listSettings();
     res.json({ settings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1908,7 +1906,7 @@ router.post("/settings/:key", requireFounder, async (req: any, res: Response) =>
     await setSetting(req.params.key, value, userId);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message);
   }
 });
 
@@ -1921,23 +1919,23 @@ router.get("/tool-proposals", requireFounder, async (req: Request, res: Response
     const proposals = await listToolProposals(status);
     res.json({ proposals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.post("/tool-proposals/:id/resolve", requireFounder, async (req: any, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { resolveToolProposal } = await import("./services/toolProposals");
     const status = req.body?.status as "approved" | "rejected" | "building" | "shipped";
     if (!["approved", "rejected", "building", "shipped"].includes(status))
-      return res.status(400).json({ error: "Invalid status" });
+      return Errors.badRequest(res, "Invalid status");
     const userId = req.permissionContext?.userId ?? "founder";
     await resolveToolProposal(id, status, req.body?.notes, userId);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1949,20 +1947,20 @@ router.get("/action-previews", requireFounder, async (_req: Request, res: Respon
     const [pending, recent] = await Promise.all([listPendingPreviews(), listRecentPreviews()]);
     res.json({ pending, recent });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { cancelPreview } = await import("./services/actionPreview");
     const userId = req.permissionContext?.userId ?? "founder";
     await cancelPreview(id, userId, req.body?.reason);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1974,20 +1972,20 @@ router.get("/onboarding/journeys", requireFounder, async (_req: Request, res: Re
     const [journeys, stats] = await Promise.all([listJourneys(), getActivationStats()]);
     res.json({ journeys, stats });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.get("/onboarding/journeys/:orgId", requireFounder, async (req: Request, res: Response) => {
   try {
     const orgId = parseInt(req.params.orgId, 10);
-    if (!Number.isFinite(orgId)) return res.status(400).json({ error: "Invalid orgId" });
+    if (!Number.isFinite(orgId)) return Errors.badRequest(res, "Invalid orgId");
     const { getJourneyDetail } = await import("./services/onboardingAutonomy");
     const detail = await getJourneyDetail(orgId);
-    if (!detail) return res.status(404).json({ error: "No journey for that org" });
+    if (!detail) return Errors.notFound(res, "No journey for that org");
     res.json(detail);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -1997,7 +1995,7 @@ router.post("/onboarding/sweep-now", requireFounder, async (_req: Request, res: 
     const result = await sweepAndFireDueSteps();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2010,7 +2008,7 @@ router.get("/expansion", requireFounder, async (req: Request, res: Response) => 
     const candidates = await listExpansionCandidates(status);
     res.json({ candidates });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2020,23 +2018,23 @@ router.post("/expansion/run-now", requireFounder, async (_req: Request, res: Res
     const result = await runWeeklyExpansionScan();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const status = req.body?.status as any;
     if (!["approved", "rejected", "offered", "converted", "declined"].includes(status))
-      return res.status(400).json({ error: "Invalid status" });
+      return Errors.badRequest(res, "Invalid status");
     const { resolveExpansionCandidate } = await import("./services/expansionRadar");
     const userId = req.permissionContext?.userId ?? "founder";
     await resolveExpansionCandidate(id, status, req.body?.notes, userId);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2086,7 +2084,7 @@ router.get("/todo", requireFounder, async (req: AuthenticatedRequest, res: Respo
     }
   } catch (err: any) {
     logger.error("[founder-todo] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2105,7 +2103,7 @@ router.get("/traces", requireFounder, async (req: Request, res: Response) => {
     res.json({ traces: rows });
   } catch (err: any) {
     logger.error("[traces list] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2113,13 +2111,13 @@ router.get("/traces", requireFounder, async (req: Request, res: Response) => {
 router.get("/traces/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { getTraceById } = await import("./services/agentLlmTraces");
     const trace = await getTraceById(id);
-    if (!trace) return res.status(404).json({ error: "Trace not found" });
+    if (!trace) return Errors.notFound(res, "Trace");
     res.json({ trace });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2131,7 +2129,7 @@ router.get("/agent-memory", requireFounder, async (_req: Request, res: Response)
     const notes = await listAllNotes();
     res.json({ notes });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2141,7 +2139,7 @@ router.post("/agent-memory/run-now", requireFounder, async (_req: Request, res: 
     const result = await runWeeklyMemoryConsolidation();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2154,7 +2152,7 @@ router.get("/providers", requireFounder, async (req: Request, res: Response) => 
     const summary = await getProviderSummary(Number.isFinite(windowDays) ? windowDays : 30);
     res.json(summary);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2166,20 +2164,20 @@ router.get("/experiments", requireFounder, async (_req: Request, res: Response) 
     const experiments = await listExperiments();
     res.json({ experiments });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
 router.get("/experiments/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { analyzeExperiment } = await import("./services/decisionExperiments");
     const analysis = await analyzeExperiment(id);
-    if (!analysis) return res.status(404).json({ error: "Not found" });
+    if (!analysis) return Errors.notFound(res, "Not found");
     res.json(analysis);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2189,19 +2187,19 @@ router.post("/experiments", requireFounder, async (req: Request, res: Response) 
     const id = await createExperiment(req.body);
     res.json({ id });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message);
   }
 });
 
 router.post("/experiments/:id/start", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { startExperiment } = await import("./services/decisionExperiments");
     await startExperiment(id);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2212,7 +2210,7 @@ router.post("/experiments/:id/pause", requireFounder, async (req: Request, res: 
     await pauseExperiment(id);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2220,11 +2218,11 @@ router.post("/experiments/:id/complete", requireFounder, async (req: Request, re
   try {
     const id = parseInt(req.params.id, 10);
     const { completeExperiment } = await import("./services/decisionExperiments");
-    if (!req.body?.winningVariant) return res.status(400).json({ error: "winningVariant required" });
+    if (!req.body?.winningVariant) return Errors.badRequest(res, "winningVariant required");
     await completeExperiment(id, req.body.winningVariant, req.body.notes);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2235,7 +2233,7 @@ router.post("/experiments/:id/abort", requireFounder, async (req: Request, res: 
     await abortExperiment(id, req.body?.notes);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2245,7 +2243,7 @@ router.post("/experiments/sweep-now", requireFounder, async (_req: Request, res:
     const result = await sweepAndAutoComplete();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2259,7 +2257,7 @@ router.get("/system-trends", requireFounder, async (req: Request, res: Response)
     res.json(report);
   } catch (err: any) {
     logger.error("[system-trends] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2363,7 +2361,7 @@ router.get("/search", requireFounder, async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[search] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2372,17 +2370,17 @@ router.get("/search", requireFounder, async (req: Request, res: Response) => {
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const [row] = await db
       .select()
       .from(decisionsInboxItems)
       .where(eq(decisionsInboxItems.id, id))
       .limit(1);
-    if (!row) return res.status(404).json({ error: "Decision not found" });
+    if (!row) return Errors.notFound(res, "Decision");
     res.json({ decision: row });
   } catch (err: any) {
     logger.error("[decision-log detail] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2395,14 +2393,14 @@ router.get("/decision-log/:id", requireFounder, async (req: Request, res: Respon
 router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { reason } = req.body as { reason?: string };
     const [row] = await db
       .select()
       .from(decisionsInboxItems)
       .where(eq(decisionsInboxItems.id, id))
       .limit(1);
-    if (!row) return res.status(404).json({ error: "Decision not found" });
+    if (!row) return Errors.notFound(res, "Decision");
     await db
       .update(decisionsInboxItems)
       .set({
@@ -2430,7 +2428,7 @@ router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, re
     res.json({ success: true });
   } catch (err: any) {
     logger.error("[decision-log reverse] Error", undefined, { metadata: { detail: err.message } });
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2538,7 +2536,7 @@ router.get("/job-health", requireFounder, async (req: Request, res: Response) =>
 
     res.json({ jobs, overallStatus, unhealthyCount, totalJobs: jobs.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2582,7 +2580,7 @@ router.get("/revenue-protection", requireFounder, async (req: Request, res: Resp
 
     res.json({ riskDistribution, recentInterventions, mrrAtRiskCents });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2595,7 +2593,7 @@ router.post("/digest/generate", requireFounder, async (req: Request, res: Respon
     const result = await founderDigestService.generate();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2604,7 +2602,7 @@ router.get("/digest/history", requireFounder, async (req: Request, res: Response
     const history = await founderDigestService.getRecentHistory(30);
     res.json(history);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2676,7 +2674,7 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
       ltvCac: { ltv: null, cac: null, ratio: null, note: "Enter CAC in org settings to enable LTV:CAC" },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2901,7 +2899,7 @@ router.patch("/company-agents/:codename/status", requireFounder, async (req: Req
     const { status } = req.body;
 
     if (!["active", "paused", "disabled"].includes(status)) {
-      return res.status(400).json({ error: "Status must be active, paused, or disabled" });
+      return Errors.badRequest(res, "Status must be active, paused, or disabled");
     }
 
     await companyAgentService.setStatus(codename, status);
@@ -2917,7 +2915,7 @@ router.patch("/company-agents/:codename/status", requireFounder, async (req: Req
 
     res.json({ success: true, codename, status });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -2931,7 +2929,7 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
     const { message, targetAgent, conversationId: clientConvId } = req.body;
 
     if (!message) {
-      return res.status(400).json({ error: "Message is required" });
+      return Errors.badRequest(res, "Message is required");
     }
 
     // v6: Route CEO commands through the command bridge FIRST
@@ -3111,7 +3109,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
     });
   } catch (err: any) {
     logger.error("[agent-chat] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3127,7 +3125,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
 router.post("/agent-goals", requireFounder, async (req: Request, res: Response) => {
   try {
     const { assignedAgent, goal, successCriteria, priority, deadline } = req.body;
-    if (!assignedAgent || !goal) return res.status(400).json({ error: "assignedAgent and goal required" });
+    if (!assignedAgent || !goal) return Errors.badRequest(res, "assignedAgent and goal required");
 
     const { createGoal } = await import("./services/agentGoalManager");
     const goalId = await createGoal({
@@ -3140,7 +3138,7 @@ router.post("/agent-goals", requireFounder, async (req: Request, res: Response) 
     });
     res.json({ success: true, goalId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3154,7 +3152,7 @@ router.get("/agent-goals", requireFounder, async (req: Request, res: Response) =
     });
     res.json(goals);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3170,11 +3168,11 @@ router.patch("/agent-goals/:id", requireFounder, async (req: Request, res: Respo
       const { reprioritizeGoal } = await import("./services/agentGoalManager");
       await reprioritizeGoal(id, priority);
     } else {
-      return res.status(400).json({ error: "Valid action required: cancel or reprioritize" });
+      return Errors.badRequest(res, "Valid action required: cancel or reprioritize");
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3193,7 +3191,7 @@ router.get("/agent-actions/:codename", requireFounder, async (req: Request, res:
       .limit(limit);
     res.json(actions);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3211,7 +3209,7 @@ router.get("/agent-trust-history/:codename", requireFounder, async (req: Request
       .limit(52); // 1 year of weekly data
     res.json(history);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3223,7 +3221,7 @@ router.get("/company-agents/:codename/detail", requireFounder, async (req: Reque
   try {
     const { codename } = req.params;
     const agent = await companyAgentService.getByCodename(codename);
-    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    if (!agent) return Errors.notFound(res, "Agent");
 
     // Resolve live data
     const { resolveAgentData } = await import("./services/agentDataResolvers");
@@ -3263,7 +3261,7 @@ router.get("/company-agents/:codename/detail", requireFounder, async (req: Reque
       decisions,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3290,7 +3288,7 @@ router.get("/agent-messages", requireFounder, async (req: Request, res: Response
 
     res.json({ messages, channelActivity });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3424,7 +3422,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
     });
   } catch (err: any) {
     logger.error("[activity-timeline] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3437,13 +3435,13 @@ router.post("/undo/:actionLogId", requireFounder, async (req: Request, res: Resp
   try {
     const actionLogId = parseInt(req.params.actionLogId);
     if (isNaN(actionLogId)) {
-      return res.status(400).json({ error: "Invalid actionLogId" });
+      return Errors.badRequest(res, "Invalid actionLogId");
     }
     const result = await executeUndo(actionLogId);
     res.json(result);
   } catch (err: any) {
     logger.error("[undo] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3461,7 +3459,7 @@ router.get("/trends", requireFounder, async (req: Request, res: Response) => {
     res.json({ period, trends });
   } catch (err: any) {
     logger.error("[trends] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3475,7 +3473,7 @@ router.get("/priorities", requireFounder, async (req: Request, res: Response) =>
     res.json(priorities);
   } catch (err: any) {
     logger.error("[priorities] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3483,13 +3481,13 @@ router.post("/priorities", requireFounder, async (req: Request, res: Response) =
   try {
     const { priority, description, weight } = req.body;
     if (!priority) {
-      return res.status(400).json({ error: "priority is required" });
+      return Errors.badRequest(res, "priority is required");
     }
     const result = await createPriority({ priority, description, weight });
     res.json({ success: true, ...result });
   } catch (err: any) {
     logger.error("[priorities] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3497,13 +3495,13 @@ router.delete("/priorities/:id", requireFounder, async (req: Request, res: Respo
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      return res.status(400).json({ error: "Invalid priority id" });
+      return Errors.badRequest(res, "Invalid priority id");
     }
     await deactivatePriority(id);
     res.json({ success: true });
   } catch (err: any) {
     logger.error("[priorities] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3517,7 +3515,7 @@ router.get("/quiet-hours", requireFounder, async (req: Request, res: Response) =
     res.json(config);
   } catch (err: any) {
     logger.error("[quiet-hours] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3525,13 +3523,13 @@ router.put("/quiet-hours", requireFounder, async (req: Request, res: Response) =
   try {
     const { startHour, endHour, timezone, isActive } = req.body;
     if (startHour === undefined || endHour === undefined) {
-      return res.status(400).json({ error: "startHour and endHour are required" });
+      return Errors.badRequest(res, "startHour and endHour are required");
     }
     await setQuietHours({ startHour, endHour, timezone, isActive });
     res.json({ success: true });
   } catch (err: any) {
     logger.error("[quiet-hours] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3593,7 +3591,7 @@ router.get("/chat-history", requireFounder, async (req: Request, res: Response) 
     }
   } catch (err: any) {
     logger.error("[chat-history] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3606,7 +3604,7 @@ router.post("/command", requireFounder, async (req: Request, res: Response) => {
   try {
     const { input } = req.body;
     if (!input || typeof input !== "string") {
-      return res.status(400).json({ error: "Missing 'input' string in request body" });
+      return Errors.badRequest(res, "Missing 'input' string in request body");
     }
 
     const { processCEOCommand } = await import("./services/ceoCommandBridge");
@@ -3615,7 +3613,7 @@ router.post("/command", requireFounder, async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     logger.error("[command] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3640,7 +3638,7 @@ router.get("/forecast", requireFounder, async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[forecast] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3661,7 +3659,7 @@ router.get("/customer-health", requireFounder, async (req: Request, res: Respons
     res.json({ customers, summary });
   } catch (err: any) {
     logger.error("[customer-health] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3669,16 +3667,16 @@ router.get("/customer-health", requireFounder, async (req: Request, res: Respons
 router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: Response) => {
   try {
     const orgId = parseInt(req.params.orgId);
-    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org ID" });
+    if (isNaN(orgId)) return Errors.badRequest(res, "Invalid org ID");
 
     const { getCustomerHealth } = await import("./services/customerHealthScoring");
     const health = await getCustomerHealth(orgId);
 
-    if (!health) return res.status(404).json({ error: "Customer not found" });
+    if (!health) return Errors.notFound(res, "Customer");
     res.json(health);
   } catch (err: any) {
     logger.error("[customer-health] Error", err);
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3693,7 +3691,7 @@ router.get("/delegations", requireFounder, async (req: Request, res: Response) =
     const { getActiveDelegations } = await import("./services/temporaryDelegation");
     res.json({ delegations: getActiveDelegations() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3701,7 +3699,7 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
   try {
     const { agentCodename, actions, toLevel, durationHours, reason } = req.body;
     if (!agentCodename || !durationHours) {
-      return res.status(400).json({ error: "agentCodename and durationHours required" });
+      return Errors.badRequest(res, "agentCodename and durationHours required");
     }
 
     const { grantTemporaryAuthority } = await import("./services/temporaryDelegation");
@@ -3715,7 +3713,7 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
 
     res.json({ delegation });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3725,7 +3723,7 @@ router.delete("/delegations/:id", requireFounder, async (req: Request, res: Resp
     const success = revokeDelegation(req.params.id);
     res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3736,7 +3734,7 @@ router.get("/reminders", requireFounder, async (req: Request, res: Response) => 
     const [pending, due] = await Promise.all([getPendingReminders(), getDueReminders()]);
     res.json({ pending, due });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -3746,7 +3744,7 @@ router.delete("/reminders/:id", requireFounder, async (req: Request, res: Respon
     const success = await dismissReminder(req.params.id);
     res.json({ success });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
