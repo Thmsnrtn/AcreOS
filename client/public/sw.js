@@ -1,9 +1,10 @@
-// Bumped to v10 for the 2026-05-25 brand-mark refresh: the new
-// terracotta squircle with the 2×2 acre-grid (top-right cell cream).
-// theme-color flips from #0A0B0D → #C45C3E so installed PWA splash +
-// status bar match the icon. Invalidating v9 evicts the prior "Apex"
-// serif-A bundle on every client so the new mark shows up on next load.
-const CACHE_NAME = 'acreos-v10';
+// Bumped to v11 for the 2026-05-26 quick-fixes batch: cookie banner
+// safe-area-inset + explicit dismiss-for-now affordance; decisions
+// inbox "Clear stale" purge action; localStorage migration nudge for
+// users still on the pre-rename "homestead" theme so they pick up
+// the new bedrock default. Forces eviction of the prior icon-deploy
+// bundle so all clients get the fixes on next page load.
+const CACHE_NAME = 'acreos-v11';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 

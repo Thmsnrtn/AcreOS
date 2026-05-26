@@ -80,6 +80,16 @@ function loadStoredConfig(): ThemeConfig {
       if (parsed.theme && (THEME_IDS as readonly string[]).includes(parsed.theme)) {
         next.theme = parsed.theme;
       }
+      // 2026-05-26 migration: the previous client default was "homestead"
+      // for months before the dirtpass→bedrock rename. Anyone with
+      // theme: "homestead" in localStorage almost certainly inherited it
+      // as the default and never explicitly chose it — server-side
+      // migrate.mjs already cleared the corresponding appearance_preferences
+      // row. Mirror that here so clients land on the new default (bedrock).
+      // Real homestead fans can re-pick from Settings → Appearance in one click.
+      if (next.theme === "homestead") {
+        next.theme = "bedrock";
+      }
       // Migrate legacy "system" mode value → "auto" (semantic rename).
       const m = parsed.mode as string | undefined;
       if (m === "light" || m === "dark" || m === "auto") next.mode = m;

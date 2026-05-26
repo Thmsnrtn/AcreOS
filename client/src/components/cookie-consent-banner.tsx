@@ -9,9 +9,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { X } from "lucide-react";
 import { initSentryAfterConsent } from "@/lib/sentry";
 
 const STORAGE_KEY = "acreos_cookie_consent";
+const SNOOZE_KEY = "acreos_cookie_consent_snoozed_until";
 type ConsentStatus = "accepted" | "declined" | null;
 
 export function CookieConsentBanner() {
@@ -19,7 +21,18 @@ export function CookieConsentBanner() {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as ConsentStatus | null;
-    setStatus(stored);
+    if (stored) {
+      setStatus(stored);
+      return;
+    }
+    // Snooze check — "Dismiss for now" hides the banner for 24h so the
+    // founder can scroll past it without committing to accept/decline.
+    const snoozedUntil = Number(localStorage.getItem(SNOOZE_KEY) || 0);
+    if (snoozedUntil && Date.now() < snoozedUntil) {
+      setStatus("declined" as ConsentStatus); // sentinel to hide; real decision still null
+    } else {
+      setStatus(null);
+    }
   }, []);
 
   const accept = () => {
@@ -39,6 +52,18 @@ export function CookieConsentBanner() {
     window.dispatchEvent(new Event("acreos:cookieconsent"));
   };
 
+  /**
+   * Dismiss-for-now — hides the banner for 24h without recording an
+   * explicit accept/decline. Gives the user a way to scroll past on
+   * mobile when they don't want to commit yet.
+   */
+  const snooze = () => {
+    const until = Date.now() + 24 * 60 * 60 * 1000;
+    localStorage.setItem(SNOOZE_KEY, String(until));
+    setStatus("declined" as ConsentStatus); // hides for this session
+    window.dispatchEvent(new Event("acreos:cookieconsent"));
+  };
+
   // Don't render during SSR hydration or after consent already given
   if (status !== null) return null;
 
@@ -48,15 +73,27 @@ export function CookieConsentBanner() {
       aria-label="Cookie consent"
       aria-live="polite"
       // F-D05: render as a bottom-center card rather than a full-width strip.
-      // The strip stacked at z-50 covered the bottom of the sidebar — Sign Out
-      // (and any other bottom-sidebar control) became unclickable until the
-      // user accepted/declined cookies. Card form sits clear of the sidebar
-      // on desktop, still readable + reachable on mobile, and remains above
-      // app content via z-50.
-      className="fixed bottom-2 left-2 right-2 sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-50 rounded-xl border border-border/60 bg-background/95 backdrop-blur-sm p-4 shadow-2xl"
+      // F-D06: respect iOS safe-area-inset-bottom so the buttons don't sit
+      // under the home-bar gesture zone (the previous bottom-2 had them
+      // landing in iOS's tap-intercept area, making the banner feel
+      // impossible to click out of on mobile).
+      className="fixed inset-x-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-50 rounded-xl border border-border/60 bg-background/95 backdrop-blur-sm p-4 pr-12 shadow-2xl"
+      style={{
+        bottom: "max(env(safe-area-inset-bottom, 0px) + 8px, 8px)",
+      }}
       data-testid="cookie-consent-banner"
     >
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      {/* Explicit dismiss-for-now affordance — top-right X. Snoozes 24h. */}
+      <button
+        type="button"
+        onClick={snooze}
+        aria-label="Dismiss for now"
+        data-testid="cookie-consent-dismiss"
+        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex-1 text-sm text-muted-foreground">
           We use cookies and similar technologies to improve your experience.
           By continuing, you agree to our{" "}
@@ -75,14 +112,14 @@ export function CookieConsentBanner() {
           </Link>
           .
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex w-full gap-2 sm:w-auto sm:shrink-0">
           <Button
             type="button"
             variant="outline"
             onClick={decline}
             aria-label="Decline cookies"
             data-testid="cookie-consent-decline"
-            className="min-h-11"
+            className="min-h-11 flex-1 sm:flex-initial"
           >
             Decline
           </Button>
@@ -91,7 +128,7 @@ export function CookieConsentBanner() {
             onClick={accept}
             aria-label="Accept all cookies"
             data-testid="cookie-consent-accept"
-            className="min-h-11"
+            className="min-h-11 flex-1 sm:flex-initial"
           >
             Accept all
           </Button>

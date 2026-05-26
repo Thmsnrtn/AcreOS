@@ -1251,6 +1251,71 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
   }
 });
 
+/**
+ * Bulk purge for the decisions inbox. Founder-only escape hatch — wipes
+ * stale items that built up during dev or before triage was tightened.
+ *
+ * Body shape (all optional):
+ *   olderThanDays: number  // default 7 — only items older than this
+ *   statuses: string[]     // default ["pending","deferred"]
+ *   itemTypes: string[]    // optional filter
+ *   hardDelete: boolean    // default false — by default we mark as
+ *                          // 'rejected' with a "purged" reason, preserving
+ *                          // history. Pass true to actually DELETE rows.
+ *
+ * Returns { purged: number }.
+ */
+router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const olderThanDays = Number(req.body?.olderThanDays ?? 7);
+    const statuses: string[] = Array.isArray(req.body?.statuses)
+      ? req.body.statuses
+      : ["pending", "deferred"];
+    const itemTypes: string[] | null = Array.isArray(req.body?.itemTypes) && req.body.itemTypes.length > 0
+      ? req.body.itemTypes
+      : null;
+    const hardDelete = Boolean(req.body?.hardDelete);
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+    const { inArray, lte, and } = await import("drizzle-orm");
+    const whereClauses = [
+      inArray(decisionsInboxItems.status, statuses),
+      lte(decisionsInboxItems.createdAt, cutoff),
+    ];
+    if (itemTypes) whereClauses.push(inArray(decisionsInboxItems.itemType, itemTypes));
+
+    if (hardDelete) {
+      const deleted = await db
+        .delete(decisionsInboxItems)
+        .where(and(...whereClauses))
+        .returning({ id: decisionsInboxItems.id });
+      logger.info(`[decisions-inbox] purged ${deleted.length} rows (hard delete)`, {
+        metadata: { olderThanDays, statuses, itemTypes },
+      });
+      return res.json({ purged: deleted.length, mode: "hard_delete" });
+    }
+
+    const updated = await db
+      .update(decisionsInboxItems)
+      .set({
+        status: "rejected",
+        resolvedAt: new Date(),
+        resolvedBy: "founder:purge",
+        founderModification: `Purged: stale ${statuses.join("/")} item ≥${olderThanDays}d old`,
+        updatedAt: new Date(),
+      })
+      .where(and(...whereClauses))
+      .returning({ id: decisionsInboxItems.id });
+    logger.info(`[decisions-inbox] purged ${updated.length} rows (soft, status=rejected)`, {
+      metadata: { olderThanDays, statuses, itemTypes },
+    });
+    res.json({ purged: updated.length, mode: "soft_reject" });
+  } catch (err: any) {
+    logger.error("[decisions-inbox] purge failed", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DECISION LOG — audit trail of every autonomous-executor decision
 //

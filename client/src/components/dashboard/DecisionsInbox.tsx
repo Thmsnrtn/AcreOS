@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, X, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, X, Clock, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import {
@@ -160,10 +160,21 @@ export function DecisionsInbox() {
     );
   }
 
+  const purgeMutation = useMutation({
+    mutationFn: (vars: { olderThanDays: number }) =>
+      apiRequest("POST", "/api/founder/intelligence/decisions-inbox/purge", {
+        olderThanDays: vars.olderThanDays,
+        statuses: ["pending", "deferred"],
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
+    },
+  });
+
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">
             Decisions inbox
             {pending > 0 && (
@@ -172,6 +183,26 @@ export function DecisionsInbox() {
               </Badge>
             )}
           </CardTitle>
+          {pending > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              aria-label="Purge stale items (older than 7 days)"
+              disabled={purgeMutation.isPending}
+              onClick={() => {
+                const ok = window.confirm(
+                  "Mark every pending or deferred item older than 7 days as rejected? This clears stale dev/test rows but preserves history.",
+                );
+                if (ok) purgeMutation.mutate({ olderThanDays: 7 });
+              }}
+              data-testid="decisions-inbox-purge"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Clear stale
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
