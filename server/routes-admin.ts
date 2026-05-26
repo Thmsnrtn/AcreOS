@@ -87,7 +87,7 @@ export function registerAdminRoutes(app: Express): void {
       const user = req.user as any;
       const userId = user?.id || user.id;
       const parsed = createSupportCaseSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { subject, message } = parsed.data;
       
       if (!subject || !message) {
@@ -153,7 +153,7 @@ export function registerAdminRoutes(app: Express): void {
       const supportCase = await storage.getSupportCase(caseId);
       
       if (!supportCase || supportCase.organizationId !== org.id) {
-        return res.status(404).json({ error: "Case not found" });
+        return Errors.notFound(res, "Case");
       }
 
       const messages = await storage.getSupportMessages(caseId);
@@ -172,12 +172,12 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseMessageSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { message } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
-        return res.status(404).json({ error: "Case not found" });
+        return Errors.notFound(res, "Case");
       }
 
       if (supportCase.status === "closed" || supportCase.status === "resolved") {
@@ -205,12 +205,12 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseRatingSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { rating } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
-        return res.status(404).json({ error: "Case not found" });
+        return Errors.notFound(res, "Case");
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
@@ -231,7 +231,7 @@ export function registerAdminRoutes(app: Express): void {
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
-        return res.status(404).json({ error: "Case not found" });
+        return Errors.notFound(res, "Case");
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
@@ -291,7 +291,7 @@ export function registerAdminRoutes(app: Express): void {
       const userEmail = user?.email || user.email;
       const caseId = parseInt(req.params.id);
       const parsed = adminRespondSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { message, resolve } = parsed.data;
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
@@ -301,7 +301,7 @@ export function registerAdminRoutes(app: Express): void {
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase) {
-        return res.status(404).json({ error: "Case not found" });
+        return Errors.notFound(res, "Case");
       }
 
       await storage.createSupportMessage({
@@ -376,13 +376,13 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ error: "Note not found" });
+      if (!note) return Errors.notFound(res, "Note");
       const msgs = await storage.getBorrowerMessages(noteId);
       // Mark borrower messages as read since lender is viewing them
       await storage.markBorrowerMessagesRead(noteId, "borrower");
       res.json(msgs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -392,13 +392,13 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const parsed = z.object({ content: z.string().min(1).max(10000) }).safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { content } = parsed.data;
       if (!content || !content.trim()) {
         return res.status(400).json({ error: "Message content is required" });
       }
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ error: "Note not found" });
+      if (!note) return Errors.notFound(res, "Note");
       const msg = await storage.createBorrowerMessage({
         noteId,
         orgId: org.id,
@@ -408,7 +408,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.status(201).json(msg);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -418,11 +418,11 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ error: "Note not found" });
+      if (!note) return Errors.notFound(res, "Note");
       const count = await storage.countUnreadBorrowerMessages(noteId, "borrower");
       res.json({ count });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -504,7 +504,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const parsed = featureRequestUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { status, founderNotes, priority } = parsed.data;
 
       const updates: Record<string, any> = {};
@@ -628,7 +628,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Seed error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -648,7 +648,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true, message: "All data cleared for your organization" });
     } catch (err: any) {
       logger.error("Clear data error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -658,7 +658,7 @@ export function registerAdminRoutes(app: Express): void {
   
   const isFounderAdmin: RequestHandler = async (req, res, next) => {
     if (!req.user) {
-      res.status(401).json({ message: "Unauthorized" });
+      Errors.unauthorized(res);
       return;
     }
 
@@ -698,7 +698,7 @@ export function registerAdminRoutes(app: Express): void {
       const summary = getTelemetrySummary();
       res.json({ ...summary, generatedAt: new Date().toISOString() });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -708,7 +708,7 @@ export function registerAdminRoutes(app: Express): void {
       resetTelemetry();
       res.json({ reset: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -740,7 +740,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(alerts);
     } catch (err: any) {
       logger.error("Admin alerts error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -751,7 +751,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(updated);
     } catch (err: any) {
       logger.error("Acknowledge alert error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -762,7 +762,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(updated);
     } catch (err: any) {
       logger.error("Resolve alert error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -772,7 +772,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true, count, message: `${count} alerts acknowledged` });
     } catch (err: any) {
       logger.error("Acknowledge all alerts error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -782,7 +782,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true, count, message: `${count} alerts resolved` });
     } catch (err: any) {
       logger.error("Resolve all alerts error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -792,7 +792,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(orgs);
     } catch (err: any) {
       logger.error("Admin orgs error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -805,7 +805,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Admin revenue error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -815,7 +815,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(stats);
     } catch (err: any) {
       logger.error("API usage stats error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -827,7 +827,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(stats);
     } catch (err: any) {
       logger.error("GIS health stats error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -840,7 +840,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("GIS sample validation error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -880,7 +880,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("GIS full validation error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -914,7 +914,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("GIS job status error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -935,7 +935,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(jobs);
     } catch (err: any) {
       logger.error("GIS jobs list error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -962,7 +962,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -988,7 +988,7 @@ export function registerAdminRoutes(app: Express): void {
         .returning();
       
       if (!updated) {
-        return res.status(404).json({ message: "Organization not found" });
+        return Errors.notFound(res, "Organization");
       }
       
       res.json({ 
@@ -998,7 +998,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Set founder status error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1009,7 +1009,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(orgs);
     } catch (err: any) {
       logger.error("Admin users error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1019,7 +1019,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(stats);
     } catch (err: any) {
       logger.error("Subscription stats error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1030,7 +1030,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(events);
     } catch (err: any) {
       logger.error("Subscription events error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1045,7 +1045,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(stats);
     } catch (err: any) {
       logger.error("Data source stats error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1084,7 +1084,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(sources);
     } catch (err: any) {
       logger.error("Data sources list error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1098,7 +1098,7 @@ export function registerAdminRoutes(app: Express): void {
       if (sourceId) {
         const [source] = await db.select().from(dataSources).where(eq(dataSources.id, sourceId));
         if (!source) {
-          return res.status(404).json({ message: "Source not found" });
+          return Errors.notFound(res, "Source");
         }
         const result = await dataSourceValidator.validateSource(source);
         return res.json(result);
@@ -1117,7 +1117,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Data source validation error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1128,7 +1128,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(status);
     } catch (err: any) {
       logger.error("Validation status error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1150,13 +1150,13 @@ export function registerAdminRoutes(app: Express): void {
         .returning();
       
       if (!updated) {
-        return res.status(404).json({ message: "Source not found" });
+        return Errors.notFound(res, "Source");
       }
       
       res.json(updated);
     } catch (err: any) {
       logger.error("Update data source error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1175,7 +1175,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(categories);
     } catch (err: any) {
       logger.error("Data source categories error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1190,7 +1190,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(endpoints);
     } catch (err: any) {
       logger.error("Get county GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1224,7 +1224,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(endpoint[0]);
     } catch (err: any) {
       logger.error("Add county GIS endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1235,7 +1235,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ message: `Seeded ${result.added} endpoints, ${result.skipped} already existed` });
     } catch (err: any) {
       logger.error("Seed county GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1248,7 +1248,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Delete county GIS endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1257,12 +1257,12 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
 
       const endpoint = await storage.getCountyGisEndpoint(id);
       if (!endpoint) {
-        return res.status(404).json({ message: "Endpoint not found" });
+        return Errors.notFound(res, "Endpoint");
       }
 
       let success = false;
@@ -1318,7 +1318,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success, message, details });
     } catch (err: any) {
       logger.error("Test GIS endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1398,7 +1398,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ tested: results.length, passed, failed, results });
     } catch (err: any) {
       logger.error("Test all GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1662,7 +1662,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Scan GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1693,7 +1693,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Bulk add GIS endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1702,12 +1702,12 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
 
       const endpoint = await storage.getCountyGisEndpoint(id);
       if (!endpoint) {
-        return res.status(404).json({ message: "Endpoint not found" });
+        return Errors.notFound(res, "Endpoint");
       }
 
       const issues: string[] = [];
@@ -1769,7 +1769,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ issues, suggestions, endpoint: { state: endpoint.state, county: endpoint.county, lastError: endpoint.lastError } });
     } catch (err: any) {
       logger.error("Diagnose GIS endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1817,7 +1817,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("ArcGIS discovery scan error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1829,7 +1829,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(endpoints);
     } catch (err: any) {
       logger.error("Get pending discovery endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1840,7 +1840,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(endpoints);
     } catch (err: any) {
       logger.error("Get all discovery endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1848,12 +1848,12 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
       
       const endpoint = await storage.getDiscoveredEndpoint(id);
       if (!endpoint) {
-        return res.status(404).json({ message: "Endpoint not found" });
+        return Errors.notFound(res, "Endpoint");
       }
       
       const { validateEndpoint } = await import('./services/arcgis-discovery');
@@ -1870,7 +1870,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ ...result, endpoint: updated });
     } catch (err: any) {
       logger.error("Validate discovery endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1878,14 +1878,14 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
       
       const result = await storage.approveDiscoveredEndpoint(id);
       res.json(result);
     } catch (err: any) {
       logger.error("Approve discovery endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1893,14 +1893,14 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
       
       const endpoint = await storage.rejectDiscoveredEndpoint(id);
       res.json({ success: true, endpoint });
     } catch (err: any) {
       logger.error("Reject discovery endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1938,7 +1938,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Batch validate discovery endpoints error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1946,7 +1946,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid endpoint ID" });
+        return Errors.badRequest(res, "Invalid endpoint ID");
       }
       
       const { discoveredEndpoints } = await import('@shared/schema');
@@ -1955,7 +1955,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Delete discovery endpoint error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1978,7 +1978,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(sources);
     } catch (err: any) {
       logger.error("Get data sources error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1988,7 +1988,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(stats);
     } catch (err: any) {
       logger.error("Get data sources stats error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1996,7 +1996,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid data source ID" });
+        return Errors.badRequest(res, "Invalid data source ID");
       }
       
       const parseResult = updateDataSourceSchema.safeParse(req.body);
@@ -2006,14 +2006,14 @@ export function registerAdminRoutes(app: Express): void {
       
       const source = await storage.getDataSource(id);
       if (!source) {
-        return res.status(404).json({ message: "Data source not found" });
+        return Errors.notFound(res, "Data source");
       }
       
       const updated = await storage.updateDataSource(id, parseResult.data);
       res.json(updated);
     } catch (err: any) {
       logger.error("Update data source error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2021,19 +2021,19 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid data source ID" });
+        return Errors.badRequest(res, "Invalid data source ID");
       }
       
       const source = await storage.getDataSource(id);
       if (!source) {
-        return res.status(404).json({ message: "Data source not found" });
+        return Errors.notFound(res, "Data source");
       }
       
       await storage.deleteDataSource(id);
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Delete data source error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2042,12 +2042,12 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid data source ID" });
+        return Errors.badRequest(res, "Invalid data source ID");
       }
 
       const source = await storage.getDataSource(id);
       if (!source) {
-        return res.status(404).json({ message: "Data source not found" });
+        return Errors.notFound(res, "Data source");
       }
 
       if (!source.apiUrl) {
@@ -2080,7 +2080,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Test data source error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2111,7 +2111,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Test all data sources error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2123,7 +2123,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(status);
     } catch (err: any) {
       logger.error("Validation status error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2177,7 +2177,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ imported, skipped, errors: errors.slice(0, 20) });
     } catch (err: any) {
       logger.error("Bulk import error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2211,7 +2211,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("Broker lookup error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2240,7 +2240,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("Property enrichment error", { error: err.message, propertyId: req.body?.propertyId });
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2266,7 +2266,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("Coordinates enrichment error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2282,7 +2282,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(layers);
     } catch (err: any) {
       logger.error("Get map layers error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2291,7 +2291,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const user = req.user as any;
       const userId: string = user?.id || user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       const { userMapLayerPreferences } = await import("@shared/schema");
       const prefs = await db.select().from(userMapLayerPreferences).where(eq(userMapLayerPreferences.userId, userId));
@@ -2304,7 +2304,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       logger.error("Get map layer prefs error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2312,7 +2312,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const user = req.user as any;
       const userId: string = user?.id || user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       const layerId = Number(req.params.layerId);
       const parsedPref = z.object({ enabled: z.boolean().optional(), opacity: z.coerce.number().min(0).max(1).optional() }).safeParse(req.body);
@@ -2348,7 +2348,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Update map layer pref error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2361,7 +2361,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(categories.map((c: any) => c.category).filter(Boolean));
     } catch (err: any) {
       logger.error("Get map layer categories error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2413,7 +2413,7 @@ export function registerAdminRoutes(app: Express): void {
       })();
     } catch (err: any) {
       logger.error("Batch enrich error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2430,7 +2430,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ health, usage, cost });
     } catch (err: any) {
       logger.error("Broker metrics error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2443,7 +2443,7 @@ export function registerAdminRoutes(app: Express): void {
       const configs = await db.select().from(aiModelConfigs).orderBy(aiModelConfigs.weight);
       res.json(configs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2464,7 +2464,7 @@ export function registerAdminRoutes(app: Express): void {
       invalidateDbModelCache();
       res.json(created);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2479,7 +2479,7 @@ export function registerAdminRoutes(app: Express): void {
       invalidateDbModelCache();
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2491,7 +2491,7 @@ export function registerAdminRoutes(app: Express): void {
       invalidateDbModelCache();
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2513,7 +2513,7 @@ export function registerAdminRoutes(app: Express): void {
       }).from(systemApiKeys).orderBy(systemApiKeys.provider);
       res.json(keys);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2537,7 +2537,7 @@ export function registerAdminRoutes(app: Express): void {
         res.json(created);
       }
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2593,7 +2593,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ enabled: true, queues: queueStats, timestamp: new Date().toISOString() });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2601,7 +2601,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { queueName } = req.params;
       const redisUrl = process.env.REDIS_URL;
-      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+      if (!redisUrl) return Errors.badRequest(res, "Redis not configured");
 
       const { Queue } = await import("bullmq");
       const IORedis = (await import("ioredis")).default;
@@ -2612,7 +2612,7 @@ export function registerAdminRoutes(app: Express): void {
       await connection.quit();
       res.json({ message: "Failed jobs cleared" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2620,7 +2620,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { queueName } = req.params;
       const redisUrl = process.env.REDIS_URL;
-      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+      if (!redisUrl) return Errors.badRequest(res, "Redis not configured");
 
       const { Queue } = await import("bullmq");
       const IORedis = (await import("ioredis")).default;
@@ -2632,7 +2632,7 @@ export function registerAdminRoutes(app: Express): void {
       await connection.quit();
       res.json({ retried: failed.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2650,7 +2650,7 @@ export function registerAdminRoutes(app: Express): void {
       }
       res.json({ report });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2661,7 +2661,7 @@ export function registerAdminRoutes(app: Express): void {
       const report = await runIndexAnalysis();
       res.json({ report, success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2678,7 +2678,7 @@ export function registerAdminRoutes(app: Express): void {
       const alerts = await proactiveMonitor.getAllAlerts(org.id, limit);
       res.json({ alerts, count: alerts.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2698,7 +2698,7 @@ export function registerAdminRoutes(app: Express): void {
         checkedAt: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2904,7 +2904,7 @@ export function registerAdminRoutes(app: Express): void {
       const enabledRoutes = flags.flatMap(f => f.controlledRoutes as string[]);
       res.json({ enabledKeys, enabledRoutes });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2913,7 +2913,7 @@ export function registerAdminRoutes(app: Express): void {
       const flags = await storage.getAllFeatureFlags();
       res.json(flags);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2927,7 +2927,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!flag) return res.status(404).json({ message: "Feature flag not found" });
       res.json(flag);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2950,7 +2950,7 @@ export function registerAdminRoutes(app: Express): void {
       }));
       res.json(cleaned);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2959,7 +2959,7 @@ export function registerAdminRoutes(app: Express): void {
       const configs = await storage.getAllPricingConfig();
       res.json(configs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2975,7 +2975,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!updated) return res.status(404).json({ message: "Tier not found" });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3003,7 +3003,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3014,7 +3014,7 @@ export function registerAdminRoutes(app: Express): void {
       await storage.clearPricingPromo(tier);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3028,7 +3028,7 @@ export function registerAdminRoutes(app: Express): void {
       const signups = await storage.getRecentSignupsWithAttribution(limit);
       res.json(signups);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3040,7 +3040,7 @@ export function registerAdminRoutes(app: Express): void {
       // Mask the access token for display
       res.json({ ...account, accessToken: account.accessToken ? "••••••••" + account.accessToken.slice(-4) : null });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3061,7 +3061,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json({ ...account, accessToken: "••••••••" + account.accessToken.slice(-4) });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3071,7 +3071,7 @@ export function registerAdminRoutes(app: Express): void {
       const { growthAdService } = await import("./services/growthAdService");
       res.json(growthAdService.getTemplates());
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3081,7 +3081,7 @@ export function registerAdminRoutes(app: Express): void {
       const campaigns = await storage.getGrowthCampaigns();
       res.json(campaigns);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3122,7 +3122,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(campaign);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3146,7 +3146,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.updateGrowthCampaign(id, { status });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3169,7 +3169,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3205,7 +3205,7 @@ export function registerAdminRoutes(app: Express): void {
         }
       })();
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3213,10 +3213,10 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/founder/growth/creative-bundles/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const bundle = await storage.getAdCreativeBundle(req.params.id);
-      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      if (!bundle) return Errors.notFound(res, "Bundle");
       res.json(bundle);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3238,7 +3238,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.updateAdCreativeBundle(bundle.id, { copies });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3249,7 +3249,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!name) return res.status(400).json({ message: "Campaign name is required" });
 
       const bundle = await storage.getAdCreativeBundle(req.params.id);
-      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      if (!bundle) return Errors.notFound(res, "Bundle");
       if (bundle.status !== "ready") return res.status(400).json({ message: `Bundle is ${bundle.status}, not ready` });
 
       const adAccount = await storage.getFounderAdAccount("meta");
@@ -3289,7 +3289,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ campaign, bundleId: bundle.id });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3497,7 +3497,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const resolved = await proactiveMonitor.autoResolveAlert(alertId, details || "Manually resolved", "user");
       res.json({ success: resolved });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3539,7 +3539,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const draft = completion.choices[0].message.content?.trim() || "";
       res.json({ draft, ticketId });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3565,7 +3565,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ ok: true, resolved: !!resolve });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3679,7 +3679,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ orgs: rows, total: rows.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3694,7 +3694,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const score = await churnEngine.scoreOrg(orgId, { dunningStage: org.dunningStage });
       res.json({ message: "Rescue triggered", riskScore: score });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3731,7 +3731,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ observations, learnings });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3773,7 +3773,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ message: "Action executed", actionTaken });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3787,7 +3787,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       await sendDailyBriefing();
       res.json({ message: "Briefing sent" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3798,7 +3798,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       churnEngine.runForAllOrgs().catch(err => logger.error("Churn engine background run failed", err)); // run in background
       res.json({ message: "Churn engine started in background" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3827,7 +3827,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .orderBy(desc(orgApiKeys.createdAt));
       res.json(rows);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3868,7 +3868,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ ...row, key: rawKey });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3885,7 +3885,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       if (!updated) return res.status(404).json({ error: "Key not found" });
       res.json({ message: "Key revoked" });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3902,7 +3902,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(50);
       res.json(rows);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -3981,7 +3981,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         industryBenchmarkMax: 3,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4000,7 +4000,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(50);
       res.json({ proposals });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4015,7 +4015,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(100);
       res.json({ history });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4031,7 +4031,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(100);
       res.json({ catalog });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4042,7 +4042,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const result = await runModelIntelligence();
       res.json({ success: true, ...result });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4053,7 +4053,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const result = await runTelemetryOptimizer();
       res.json({ success: true, ...result });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4064,7 +4064,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const stats = await getTelemetryStats();
       res.json({ stats });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4075,7 +4075,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const [breaker] = await db.select().from(evolutionCircuitBreaker).limit(1);
       res.json({ breaker: breaker || { isTripped: false, consecutiveReverts: 0 } });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4089,7 +4089,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .where(eq(evolutionCircuitBreaker.id, 1));
       res.json({ success: true, message: "Evolution pipeline resumed" });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4117,7 +4117,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(limit);
       res.json({ events });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4156,7 +4156,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         complexityDistribution: complexityCounts,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4177,7 +4177,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(100);
       res.json({ memories });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4191,7 +4191,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .where(and(eq(paxMemory.id, memoryId), eq(paxMemory.organizationId, org.id)));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4212,7 +4212,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const id = await betaAnalytics.submitFeedback(userId, org.id, page || "/", feedback.trim());
       res.json({ id, success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4220,14 +4220,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const limit = Number(req.query.limit) || 100;
       const offset = Number(req.query.offset) || 0;
       const feedback = await betaAnalytics.getAllFeedback(limit, offset);
       res.json(feedback);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4235,12 +4235,12 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const processed = await feedbackProcessor.processNewFeedback();
       res.json({ processed });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4248,12 +4248,12 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const summary = await feedbackProcessor.getFeedbackSummary();
       res.json(summary);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4266,7 +4266,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const sessionId = await betaAnalytics.startSession(userId, org.id);
       res.json({ sessionId });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4279,7 +4279,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       await betaAnalytics.endSession(sessionId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4292,7 +4292,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       await betaAnalytics.recordPageView(sessionId, path);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4307,7 +4307,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const recorded = await betaAnalytics.trackActivation(userId, org.id, eventName as any);
       res.json({ recorded });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4315,11 +4315,11 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { getAgentStatus } = await import("./agents/index");
       res.json(getAgentStatus());
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4327,14 +4327,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { setAgentEnabled } = await import("./agents/index");
       const { enabled } = req.body as { enabled: boolean };
       const success = setAgentEnabled(req.params.name, enabled);
       if (!success) return res.status(404).json({ message: "Agent not found" });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4342,7 +4342,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt", read_at as "readAt"
         FROM founder_briefs
@@ -4351,7 +4351,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       `);
       res.json((result as any).rows ?? []);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4359,7 +4359,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt"
         FROM founder_briefs
@@ -4372,7 +4372,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       }
       res.json(row);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4380,7 +4380,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const [signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback] = await Promise.all([
         betaAnalytics.getSignupCount(),
@@ -4393,7 +4393,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       ]);
       res.json({ signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4401,7 +4401,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { tier, reason, expiresAt } = req.body;
       if (!tier || !reason) return res.status(400).json({ message: "tier and reason are required" });
@@ -4411,7 +4411,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .set({ subscriptionTier: tier, updatedAt: new Date() } as any)
         .where(eq(organizations.id, targetOrgId))
         .returning();
-      if (!updated) return res.status(404).json({ message: "Organization not found" });
+      if (!updated) return Errors.notFound(res, "Organization");
       // Log to audit
       const { activityLog } = await import("@shared/schema");
       await db.insert(activityLog).values({
@@ -4423,19 +4423,19 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       } as any);
       res.json({ success: true, message: `Tier overridden to ${tier} for org #${targetOrgId}`, expiresAt });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.orgId);
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const target = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
-      if (!target) return res.status(404).json({ message: "Organization not found" });
+      if (!target) return Errors.notFound(res, "Organization");
       // Log impersonation
       const { activityLog } = await import("@shared/schema");
       await db.insert(activityLog).values({
@@ -4455,14 +4455,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { features } = req.body;
       if (!features || typeof features !== "object") return res.status(400).json({ message: "features object required" });
@@ -4473,31 +4473,31 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .where(eq(organizations.id, targetOrgId));
       res.json({ success: true, message: `Feature overrides set for org #${targetOrgId}`, features });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { detectStage } = await import("./services/companyStageDetector");
       const stage = await detectStage();
       res.json(stage);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { computeLeadingIndicators } = await import("./services/leadingIndicators");
       const indicators = await computeLeadingIndicators();
       res.json(indicators);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4601,7 +4601,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         topFeatureRequests: topRequests.map(r => ({ id: r.id, title: r.title, status: r.status })),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4637,7 +4637,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         results,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4672,14 +4672,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(1000);
       res.json({ articles });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.post("/api/founder/knowledge-base", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsed = kbArticleSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const data = parsed.data;
       const slug = data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -4702,43 +4702,43 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.status(201).json({ article });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.put("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
       const parsed = kbArticleSchema.partial().safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [updated] = await db.update(knowledgeBaseArticles)
         .set({ ...parsed.data, updatedAt: new Date() })
         .where(eq(knowledgeBaseArticles.id, id))
         .returning();
 
-      if (!updated) return res.status(404).json({ error: "Article not found" });
+      if (!updated) return Errors.notFound(res, "Article");
       res.json({ article: updated });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.delete("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
       const [deleted] = await db.delete(knowledgeBaseArticles)
         .where(eq(knowledgeBaseArticles.id, id))
         .returning();
 
-      if (!deleted) return res.status(404).json({ error: "Article not found" });
+      if (!deleted) return Errors.notFound(res, "Article");
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -4747,7 +4747,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const schema = z.object({ articles: z.array(kbArticleSchema) });
       const parsed = schema.safeParse(req.body);
-      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.issues });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const results = [];
       for (const data of parsed.data.articles) {
@@ -4772,7 +4772,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ created: results.length, articles: results });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
