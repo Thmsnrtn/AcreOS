@@ -85,7 +85,6 @@ import {
   Shield,
   BarChart2,
   Store,
-  GraduationCap,
   TrendingUp,
   Brain,
   Activity,
@@ -193,7 +192,6 @@ const pages = [
   { name: "Document Intelligence", icon: FileSearch, path: "/document-intelligence" },
   { name: "Property Map", icon: Map, path: "/maps" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
-  { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Hub", icon: Bot, path: "/ai" },
   { name: "Settings", icon: Settings, path: "/settings" },
 ];
@@ -239,15 +237,15 @@ export function CommandPalette() {
   // fetchJsonArray so the data is always an array. (2026-05-26)
   const { data: leadsData = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"], enabled: open,
-    queryFn: () => fetchJsonArray<Lead>("/api/leads?pageSize=200"),
+    queryFn: () => fetchJsonArray<Lead>("/api/leads?pageSize=100"),
   });
   const { data: propertiesData = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"], enabled: open,
-    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=200"),
+    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=100"),
   });
   const { data: dealsData = [] } = useQuery<Deal[]>({
     queryKey: ["/api/deals"], enabled: open,
-    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=200"),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
   });
 
   // Phase 3 Week 14 (Anaïs §2): server-side fuzzy/hybrid search.

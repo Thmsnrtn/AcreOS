@@ -13,10 +13,10 @@
  * tone.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { FileText, Filter, Plus } from "lucide-react";
+import { useLocation, useSearch } from "wouter";
+import { FileText, Filter, Upload } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/empty-state";
+import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
@@ -146,6 +147,24 @@ export default function NotesPage() {
   const [, navigate] = useLocation();
   const { data: organization } = useOrganization();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // /notes?action=new opens the import dialog (the realistic add-path for
+  // bringing notes into the system — manual entry would require a full
+  // origination form not yet built). Reading the action= query honors the
+  // app-wide convention used by /leads, /properties, /deals.
+  const searchString = useSearch();
+  const actionFromUrl = new URLSearchParams(searchString).get("action");
+  const [isImportOpen, setIsImportOpen] = useState(actionFromUrl === "new");
+  // Strip the action param after opening so back-nav doesn't re-trigger.
+  useEffect(() => {
+    if (actionFromUrl === "new") {
+      const params = new URLSearchParams(searchString);
+      params.delete("action");
+      const next = params.toString();
+      const url = next ? `/notes?${next}` : "/notes";
+      window.history.replaceState(null, "", url);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resolve persona for vocabulary lookups. When investorType is 'notes'
   // or 'both' the registry returns note-investor copy; otherwise it falls
@@ -173,6 +192,7 @@ export default function NotesPage() {
 
   return (
     <PageShell isLoading={false} label="Acquired notes">
+      <NotesImportDialog open={isImportOpen} onOpenChange={setIsImportOpen} />
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" data-testid="notes-page-title">
@@ -218,11 +238,11 @@ export default function NotesPage() {
             Tax readiness
           </Button>
           <Button
-            onClick={() => navigate("/notes?action=new")}
+            onClick={() => setIsImportOpen(true)}
             data-testid="notes-add-button"
           >
-            <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
-            Add note
+            <Upload className="w-4 h-4 mr-1" aria-hidden="true" />
+            Import notes
           </Button>
         </div>
       </div>
@@ -254,9 +274,9 @@ export default function NotesPage() {
           icon={FileText}
           title="No notes yet"
           description="Acquired notes you import or add will appear here. Track payer, balance, status, and next-payment in one place."
-          actionLabel="Add a note"
-          onAction={() => navigate("/notes?action=new")}
-          actionIcon={Plus}
+          actionLabel="Import notes"
+          onAction={() => setIsImportOpen(true)}
+          actionIcon={Upload}
           tips={[
             "Import an existing portfolio via CSV — column-mapped to acquired_notes.",
             "Each payment recorded feeds your annual 1099-INT batch automatically.",
