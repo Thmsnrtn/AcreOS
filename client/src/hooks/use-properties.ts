@@ -109,6 +109,30 @@ export function useDeleteProperty() {
         throw new Error(error.message || `${res.status}: Failed to delete property`);
       }
     },
+    // 2026-05-26: optimistic delete so the row disappears the instant
+    // the user confirms — matches the perceived-speed bar set by Linear
+    // and Attio. Snapshot every cached list so we can roll back on error.
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: [api.properties.list.path] });
+      const snapshots: Array<[readonly unknown[], unknown]> = [];
+      const listEntries = queryClient.getQueriesData({ queryKey: [api.properties.list.path] });
+      for (const [key, value] of listEntries) {
+        snapshots.push([key, value]);
+        if (Array.isArray(value)) {
+          queryClient.setQueryData(
+            key,
+            value.filter((p: any) => p?.id !== id),
+          );
+        } else if (value && typeof value === "object" && Array.isArray((value as any).data)) {
+          const v = value as { data: any[] };
+          queryClient.setQueryData(key, {
+            ...value,
+            data: v.data.filter((p: any) => p?.id !== id),
+          });
+        }
+      }
+      return { snapshots };
+    },
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -119,7 +143,13 @@ export function useDeleteProperty() {
         description: "Property deleted successfully.",
       });
     },
-    onError: (error) => {
+    onError: (error, _id, context) => {
+      // Roll back the optimistic delete.
+      if (context?.snapshots) {
+        for (const [key, value] of context.snapshots) {
+          queryClient.setQueryData(key, value);
+        }
+      }
       const title = getErrorTitle(error);
       const description = getErrorMessage(error);
       toast({

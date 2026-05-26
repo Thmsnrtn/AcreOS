@@ -57,8 +57,11 @@ function formatMinutes(mins: number | null): string {
 export function JobQueueHealth() {
   const { data, isLoading, refetch } = useQuery<JobHealthResponse>({
     queryKey: ["/api/founder/intelligence/job-health"],
-    refetchInterval: 60000,
-    refetchIntervalInBackground: false,
+    // 2026-05-26: dropped 60s polling — refresh on focus only. Founder
+    // hits this during incident response; explicit refresh available
+    // via the refetch fn surfaced below.
+    refetchOnWindowFocus: true,
+    staleTime: 120_000,
   });
 
   const restartMutation = useMutation({

@@ -675,15 +675,13 @@ function LandStatusVerificationCard({ property }: { property: Property }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <CardContent className="border-t pt-4">
-        <div className="flex items-start gap-2 text-xs text-muted-foreground">
-          <span className="font-medium">TODO (Phase B):</span>
-          <span>
-            Auto-resolve this field from the BIA Land Area Representations shapefile overlay.
-            Phase A ships manual verification only.
-          </span>
-        </div>
-      </CardContent>
+      {/*
+        Phase A ships manual verification. Phase B will auto-resolve from
+        the BIA Land Area Representations shapefile overlay; tracked in
+        docs/exhaustive-completion/founder-dashboard-extraction-queue.md.
+        Removed customer-facing "TODO" footer 2026-05-26 — internal-only
+        note now lives here as a code comment.
+      */}
     </Card>
   );
 }

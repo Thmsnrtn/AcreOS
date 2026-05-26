@@ -138,8 +138,11 @@ export function DecisionsInbox() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<InboxResponse>({
     queryKey: ["/api/founder/intelligence/decisions-inbox"],
-    refetchInterval: 30000,
-    refetchIntervalInBackground: false,
+    // 2026-05-26: dropped 30s background polling → refetch on focus only.
+    // The decisions inbox isn't a real-time surface; freshness on tab
+    // return is enough and saves continuous queries from every open tab.
+    refetchOnWindowFocus: true,
+    staleTime: 60_000,
   });
 
   const items = data?.items ?? [];

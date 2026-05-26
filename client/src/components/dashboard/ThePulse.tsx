@@ -31,8 +31,9 @@ const lights = [
 export function ThePulse({ decisionsInboxCount }: ThePulseProps) {
   const { data, isLoading } = useQuery<{ pulseStatus: PulseStatus }>({
     queryKey: ["/api/founder/intelligence/pulse"],
-    refetchInterval: 30000,
-    refetchIntervalInBackground: false,
+    // 2026-05-26: dropped 30s polling — refresh on focus only.
+    refetchOnWindowFocus: true,
+    staleTime: 60_000,
   });
 
   const pulse = data?.pulseStatus;

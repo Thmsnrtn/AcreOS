@@ -39,7 +39,13 @@
  *   "secondary"> showBadge instances
  * - Optional "Workspace · ⌃" affordance below the brand
  */
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
+// PrefetchLink is a drop-in for wouter's Link that warms the
+// destination's primary query on hover/focus so navigation feels
+// instant. Aliased as Link so existing JSX needs no changes; links
+// pointing to routes without a known query mapping no-op the prefetch
+// at zero overhead.
+import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,

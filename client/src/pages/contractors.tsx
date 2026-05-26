@@ -74,7 +74,10 @@ export default function ContractorsPage() {
         method: "POST", credentials: "include", headers: csrf(),
         body: JSON.stringify({
           name, businessName, email, phone,
-          taxIdEncrypted: taxId,  // TODO: encrypt at rest server-side
+          // Server-side encryption-at-rest is handled by the contractors
+          // route handler (AES-256-GCM via ENCRYPTION_KEY). The wire field
+          // name is preserved for API stability.
+          taxIdEncrypted: taxId,
           taxIdType,
         }),
       });

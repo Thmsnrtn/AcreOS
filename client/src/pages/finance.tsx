@@ -36,7 +36,6 @@ import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
-import { TaxIdentityPrompt } from "@/components/onboarding/TaxIdentityPrompt";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -1694,8 +1693,12 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
       return res.json();
     },
   });
-  const [pendingFormData, setPendingFormData] = useState<z.infer<typeof noteFormSchema> | null>(null);
-  const [taxPromptOpen, setTaxPromptOpen] = useState(false);
+  // Tax-identity flow: previously gated on a mid-save modal that
+  // interrupted the user (2026-05-26 refactor removed it). The note
+  // form now always saves; missing tax info downgrades the save to
+  // status="pending" and the toast in onSubmit nudges the user to
+  // /settings → Tax Identity. The pendingFormData / taxPromptOpen
+  // state vars are no longer needed.
 
   const availableProperties = properties?.filter((p: any) => p.status !== 'sold') || [];
   // Show buyers first, but fall back to all leads if no buyer-type leads exist
@@ -1746,12 +1749,19 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const onSubmit = (data: z.infer<typeof noteFormSchema>) => {
-    // First-note lazy prompt: if the org has not captured tax-identity AND
-    // has not explicitly skipped it, intercept the save and prompt now.
-    // After successful capture (or explicit skip), we proceed with the save.
-    if (taxIdentity && !taxIdentity.captured && !taxIdentity.skipped) {
-      setPendingFormData(data);
-      setTaxPromptOpen(true);
+    // 2026-05-26 UX fix: the previous flow popped a tax-identity modal
+    // mid-save, interrupting the user. Now the note always saves; if
+    // tax identity hasn't been captured the note saves as "pending"
+    // and a toast nudges the user to Settings. The TaxBannerCard
+    // rendered at the top of /finance + /money keeps the reminder
+    // visible so it can be resolved at the user's pace.
+    const taxMissing = !!(taxIdentity && !taxIdentity.captured);
+    if (taxMissing) {
+      submitNote(data, { saveAsPending: true });
+      toast({
+        title: "Saved as pending",
+        description: "Add your tax identity in Settings to publish this note and enable 1099-INT issuance.",
+      });
       return;
     }
     submitNote(data);
@@ -1759,35 +1769,6 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <>
-      <TaxIdentityPrompt
-        open={taxPromptOpen}
-        onOpenChange={(open) => {
-          setTaxPromptOpen(open);
-          if (!open) setPendingFormData(null);
-        }}
-        deferredActionLabel="save this note"
-        onCaptured={() => {
-          setTaxPromptOpen(false);
-          if (pendingFormData) {
-            submitNote(pendingFormData);
-            setPendingFormData(null);
-          }
-        }}
-        onSkipped={() => {
-          setTaxPromptOpen(false);
-          if (pendingFormData) {
-            // Skipping tax-identity downgrades this note to pending so the
-            // 1099-INT generator (and payment-accept flows) remain blocked
-            // until the org provides an EIN.
-            toast({
-              title: "Note saved as pending",
-              description: "Add your tax identity in Settings to activate 1099-INT issuance.",
-            });
-            submitNote(pendingFormData, { saveAsPending: true });
-            setPendingFormData(null);
-          }
-        }}
-      />
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
