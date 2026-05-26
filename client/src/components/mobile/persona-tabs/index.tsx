@@ -47,50 +47,53 @@ const InboxTab = lazy(() =>
   import("../InboxTab").then((m) => ({ default: m.InboxTab })),
 );
 
+const UniversalToday = lazy(() =>
+  import("./UniversalTabs").then((m) => ({ default: m.UniversalToday })),
+);
+const UniversalPipeline = lazy(() =>
+  import("./UniversalTabs").then((m) => ({ default: m.UniversalPipeline })),
+);
+const UniversalPortfolio = lazy(() =>
+  import("./UniversalTabs").then((m) => ({ default: m.UniversalPortfolio })),
+);
+
 function tabFallback() {
   return (
     <div className="text-sm text-muted-foreground py-8 text-center">Loading…</div>
   );
 }
 
+function wrap(node: ReactNode): ReactNode {
+  return <Suspense fallback={tabFallback()}>{node}</Suspense>;
+}
+
 export function renderPersonaTab(tab: TabId, persona: Persona | undefined): ReactNode {
   // Universal — same for all personas.
-  if (tab === "inbox") {
-    return (
-      <Suspense fallback={tabFallback()}>
-        <InboxTab />
-      </Suspense>
-    );
-  }
+  if (tab === "inbox") return wrap(<InboxTab />);
 
-  // Persona-specific Today / Portfolio. Pipeline still falls through to
-  // the generic placeholder; the existing `/deals` page handles that
-  // surface today and a persona-aware Pipeline tab is the next iteration.
+  // Persona-specific Today / Portfolio + Universal fallback for personas
+  // without dedicated content (Land Flipper, Fix & Flip, Subdivider,
+  // Buy-and-Hold Landlord). Pipeline always uses the Universal stage view
+  // today; persona-specific Pipeline is the next iteration.
   if (tab === "today") {
-    if (persona === "tax_delinquent") {
-      return <Suspense fallback={tabFallback()}><TaxDelinquentToday /></Suspense>;
-    }
+    if (persona === "tax_delinquent") return wrap(<TaxDelinquentToday />);
     if (persona === "note_investor" || persona === "note_originator" || persona === "note_servicer") {
-      return <Suspense fallback={tabFallback()}><NoteInvestorToday /></Suspense>;
+      return wrap(<NoteInvestorToday />);
     }
-    if (persona === "wholesaler") {
-      return <Suspense fallback={tabFallback()}><WholesalerToday /></Suspense>;
-    }
+    if (persona === "wholesaler") return wrap(<WholesalerToday />);
+    return wrap(<UniversalToday />);
   }
 
   if (tab === "portfolio") {
-    if (persona === "tax_delinquent") {
-      return <Suspense fallback={tabFallback()}><TaxDelinquentPortfolio /></Suspense>;
-    }
+    if (persona === "tax_delinquent") return wrap(<TaxDelinquentPortfolio />);
     if (persona === "note_investor" || persona === "note_originator" || persona === "note_servicer") {
-      return <Suspense fallback={tabFallback()}><NoteInvestorPortfolio /></Suspense>;
+      return wrap(<NoteInvestorPortfolio />);
     }
-    if (persona === "wholesaler") {
-      return <Suspense fallback={tabFallback()}><WholesalerPortfolio /></Suspense>;
-    }
+    if (persona === "wholesaler") return wrap(<WholesalerPortfolio />);
+    return wrap(<UniversalPortfolio />);
   }
 
-  // Pipeline + unsupported persona/tab combos fall through to the
-  // shell's generic placeholder card.
+  if (tab === "pipeline") return wrap(<UniversalPipeline />);
+
   return null;
 }

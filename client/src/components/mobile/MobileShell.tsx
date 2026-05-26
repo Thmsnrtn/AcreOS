@@ -16,11 +16,13 @@
  */
 
 import { useState, type ReactNode } from "react";
-import { Calendar, Inbox, ListChecks, BarChart3, Plus } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Calendar, Inbox, ListChecks, BarChart3, Plus, Sparkles, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Persona } from "@shared/models/auth";
+import { MobileCommandDrawer } from "./MobileCommandDrawer";
 
 type TabId = "today" | "inbox" | "pipeline" | "portfolio";
 
@@ -142,23 +144,68 @@ interface MobileShellProps {
 
 export function MobileShell({ persona, renderTab }: MobileShellProps) {
   const [active, setActive] = useState<TabId>("today");
+  const [, setLocation] = useLocation();
+  const [searchOpen, setSearchOpen] = useState(false);
   const fab = fabLabel(persona);
 
-  const body = renderTab
-    ? renderTab(active, persona)
-    : <TabPlaceholder tab={active} persona={persona} />;
+  // renderTab returning null means "no persona content for this tab" —
+  // fall through to the generic placeholder. Empty screens are a bug.
+  const body =
+    (renderTab ? renderTab(active, persona) : null) ||
+    <TabPlaceholder tab={active} persona={persona} />;
 
   return (
     <div
       className="min-h-[100dvh] bg-background text-foreground flex flex-col"
       data-testid="mobile-shell"
     >
+      {/*
+        Header — slim brand bar with AI + Search affordances. Cmd-K is
+        a desktop primitive; the Search button is its mobile equivalent
+        (reuses the existing MobileCommandDrawer which scopes results
+        to the persona's allowed routes + entities). Sparkles → /ai
+        gets the user to Pax (or Atlas for the founder via the persona
+        switcher at Cmd+; on desktop).
+      */}
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background/95 backdrop-blur-md px-4 h-12"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+        data-testid="mobile-shell-header"
+      >
+        <Link href="/today" className="flex items-center gap-2">
+          <span className="font-semibold tracking-tight">AcreOS</span>
+        </Link>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Search and quick actions"
+            data-testid="mobile-shell-search"
+            className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Search className="h-5 w-5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocation("/ai")}
+            aria-label="Open AI assistant"
+            data-testid="mobile-shell-ai"
+            className="h-10 w-10 flex items-center justify-center rounded-full text-primary active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Sparkles className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+      </header>
+
       <main
-        className="flex-1 overflow-y-auto px-4 pt-6 pb-32"
+        className="flex-1 overflow-y-auto px-4 pt-4 pb-32"
         // pb-32 leaves room for the bottom bar + safe-area + FAB.
       >
         {body}
       </main>
+
+      {/* Mobile search/quick-actions drawer — Cmd-K equivalent. */}
+      <MobileCommandDrawer open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* Persona-aware FAB. Label-only for the spike; no real action. */}
       <div
