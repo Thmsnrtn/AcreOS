@@ -1,10 +1,9 @@
-// Bumped to v9 to force cache eviction so the new "Apex" app icon
-// + redesigned PWA assets reach all clients. The v8 → v9 rename
-// invalidates STATIC_CACHE + API_CACHE for every previously
-// registered client; on next page load they fetch the new index.html
-// and the redesigned apple-touch-icon.png / pwa-192 / pwa-512 /
-// pwa-maskable-512 instead of the hex-A holdovers.
-const CACHE_NAME = 'acreos-v9';
+// Bumped to v10 for the 2026-05-25 brand-mark refresh: the new
+// terracotta squircle with the 2×2 acre-grid (top-right cell cream).
+// theme-color flips from #0A0B0D → #C45C3E so installed PWA splash +
+// status bar match the icon. Invalidating v9 evicts the prior "Apex"
+// serif-A bundle on every client so the new mark shows up on next load.
+const CACHE_NAME = 'acreos-v10';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 

@@ -2,52 +2,25 @@
   <!--
     AcreOS app icon — maskable variant.
 
-    Identical design to favicon.svg but with the glyph shrunk and
-    inset so it stays inside the central 80% safe zone that Android
-    adaptive icons require. The deep canvas extends full bleed; the
-    A + amber bar are scaled to ~62% of canvas so no mask shape
-    (circle, squircle, rounded square, teardrop) clips it.
+    Same brand mark as favicon.svg but the grid glyph is shrunk and
+    inset so it stays inside the central 80% safe zone Android's
+    adaptive-icon masks (circle, squircle, teardrop, rounded square)
+    require. The terracotta canvas remains full-bleed.
   -->
-  <defs>
-    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10131A"/>
-      <stop offset="100%" stop-color="#050608"/>
-    </linearGradient>
-    <linearGradient id="aFill" x1="512" y1="305" x2="512" y2="720" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F7F1E5"/>
-      <stop offset="100%" stop-color="#E6DCC9"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="1024" height="1024" fill="url(#canvas)"/>
+  <rect width="1024" height="1024" fill="#C45C3E"/>
 
   <!--
-    Same A path as favicon.svg, but transformed: translate to centre
-    + scale 0.62 so the entire glyph sits within the 80% safe zone.
-    Origin remains the original canvas centre (512,512).
+    Grid centred at (512,512), scaled to ~62% of canvas — comfortably
+    inside the 80% safe-zone circle.
   -->
   <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
-    <path fill="url(#aFill)" d="
-      M 540,196
-      L 760,816
-      L 832,816
-      L 858,838
-      L 720,838
-      L 700,790
-      L 632,790
-      L 632,734
-      L 680,734
-      L 512,272
-      L 344,734
-      L 392,734
-      L 392,790
-      L 324,790
-      L 304,838
-      L 166,838
-      L 192,816
-      L 264,816
-      L 484,196
-      Z"/>
-    <rect x="332" y="612" width="360" height="20" rx="10" fill="#FFB547"/>
+    <rect x="512" y="242" width="270" height="270" fill="#F9EDDB"/>
+    <rect
+      x="242" y="242" width="540" height="540"
+      fill="none" stroke="#F9EDDB" stroke-width="12"
+      stroke-linejoin="miter"
+    />
+    <line x1="512" y1="242" x2="512" y2="782" stroke="#F9EDDB" stroke-width="12"/>
+    <line x1="242" y1="512" x2="782" y2="512" stroke="#F9EDDB" stroke-width="12"/>
   </g>
 </svg>

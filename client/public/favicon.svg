@@ -1,80 +1,42 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <!--
-    AcreOS app icon — "Apex"
+    AcreOS app icon — new brand mark (2026-05-25).
 
-    Design language: deep #0A0B0D canvas + a bold serif "A" with the
-    crossbar replaced by a single warm-amber land-line bar. Same
-    palette + vocabulary as the Bridge dashboard.
+    Design: 2×2 acre-grid (the parcel motif) on terracotta. Three cells
+    are empty (terracotta showing through cream hairlines); the top-right
+    cell is filled cream — the "claimed acre."
 
-    - Canvas: vertical gradient #0F1013 → #060709 for subtle depth
-    - 1px top inner highlight band (matches the Bridge tile chrome)
-    - The "A" is pure geometry (no system font dependency) so it
-      renders pixel-identical on every device
-    - Amber #FFB547 crossbar — the one accent
-    - Full bleed; iOS applies its squircle mask automatically. For
-      Android/maskable use the apex stays inside a 20% safe zone.
+    Canvas is FULL-BLEED terracotta. iOS and Android apply their own
+    squircle / adaptive-icon mask, so we do NOT bake rounded corners
+    here — that would result in a double-rounded "icon-on-white" look.
+
+    Companion file `favicon-maskable.svg` shrinks the grid into the
+    central 80% safe zone for Android adaptive-icon masks that may crop
+    aggressively (circle / teardrop / etc).
   -->
-  <defs>
-    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10131A"/>
-      <stop offset="100%" stop-color="#050608"/>
-    </linearGradient>
-    <linearGradient id="aFill" x1="512" y1="180" x2="512" y2="860" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F7F1E5"/>
-      <stop offset="100%" stop-color="#E6DCC9"/>
-    </linearGradient>
-    <linearGradient id="topHL" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.05"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
 
-  <!-- Canvas -->
-  <rect width="1024" height="1024" fill="url(#canvas)"/>
-  <rect width="1024" height="64" fill="url(#topHL)"/>
+  <!-- Full-bleed terracotta canvas -->
+  <rect width="1024" height="1024" fill="#C45C3E"/>
 
   <!--
-    "A" outline — bold serif, two legs converging at an apex with
-    flared feet. Coordinates were tuned by hand to read confidently
-    at 60×60 (smallest iOS Spotlight size). Crossbar omitted; the
-    amber land-line bar below substitutes for it.
-
-    Path walk (clockwise from apex):
-      apex top-right → outer right edge → right foot top
-      → right foot outer flare → right baseline outer
-      → right baseline inner → right foot inner flare
-      → inner right edge → apex inner-right
-      → apex inner-left → inner left edge
-      → left foot inner flare → left baseline inner
-      → left baseline outer → left foot outer flare
-      → outer left edge → apex top-left → close
+    2×2 grid. The mark sits in the central ~52% of the canvas:
+    glyph 540×540 centred at (512,512). Each cell is 270×270.
+    Hairlines are cream at 12px (the brand stroke thickness — visible
+    even at 60px iOS Spotlight size after downscale).
   -->
-  <path fill="url(#aFill)" d="
-    M 540,196
-    L 760,816
-    L 832,816
-    L 858,838
-    L 720,838
-    L 700,790
-    L 632,790
-    L 632,734
-    L 680,734
-    L 512,272
-    L 344,734
-    L 392,734
-    L 392,790
-    L 324,790
-    L 304,838
-    L 166,838
-    L 192,816
-    L 264,816
-    L 484,196
-    Z"/>
+  <g>
+    <!-- Filled top-right cell -->
+    <rect x="512" y="242" width="270" height="270" fill="#F9EDDB"/>
 
-  <!--
-    Amber land-line bar — replaces the crossbar of the A. Sits at
-    ~62% glyph height (rule-of-thirds anchor). 16px-tall, end caps
-    rounded to suggest the warm horizon line / property edge.
-  -->
-  <rect x="332" y="612" width="360" height="20" rx="10" fill="#FFB547"/>
+    <!-- Outer frame (single rect for clean joins) -->
+    <rect
+      x="242" y="242" width="540" height="540"
+      fill="none" stroke="#F9EDDB" stroke-width="12"
+      stroke-linejoin="miter"
+    />
+
+    <!-- Inner crosshair -->
+    <line x1="512" y1="242" x2="512" y2="782" stroke="#F9EDDB" stroke-width="12"/>
+    <line x1="242" y1="512" x2="782" y2="512" stroke="#F9EDDB" stroke-width="12"/>
+  </g>
 </svg>
