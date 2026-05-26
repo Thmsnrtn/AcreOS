@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
+import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { insertTaskSchema, notificationPreferences } from "@shared/schema";
@@ -17,7 +18,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   // AI OFFER GENERATION
   // ============================================
   
-  api.post("/api/ai/generate-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/ai/generate-offer", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const propertyData: PropertyData = req.body;
 
@@ -28,7 +29,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       }
 
       // Aniyah §2 — block AI offer generation on Indian-Country parcels.
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (propertyData.id && org?.id) {
         const parcel = await storage.getProperty(org.id, Number(propertyData.id));
         assertFeeSimpleOrThrow(parcel ?? null, "blind-offer");
@@ -50,7 +51,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/ai/generate-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/ai/generate-letter", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const request: OfferLetterRequest = req.body;
 
@@ -67,7 +68,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       }
 
       // Aniyah §2 — block AI offer letter generation on Indian-Country parcels.
-      const org = (req as any).organization;
+      const org = getOrganization(req);
       if (request.property?.id && org?.id) {
         const parcel = await storage.getProperty(org.id, Number(request.property.id));
         assertFeeSimpleOrThrow(parcel ?? null, "offer-letter");

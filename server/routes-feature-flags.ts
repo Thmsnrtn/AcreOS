@@ -28,7 +28,7 @@ const router = Router();
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const all = await featureFlagService.getAll();
-    const ctx = buildFlagContext(req as any);
+    const ctx = buildFlagContext(req);
     const resolved = all.map((flag) => ({
       key: flag.key,
       state: flag.state,
@@ -60,7 +60,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 
 router.get("/admin", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ctx = buildFlagContext(req as any);
+    const ctx = buildFlagContext(req);
     if (!ctx.isFounder) return Errors.forbidden(res, "Founder access required");
     const all = await featureFlagService.getAll();
     res.json(all);
@@ -79,7 +79,7 @@ const adminPatchSchema = z.object({
 
 router.patch("/admin/:key", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const ctx = buildFlagContext(req as any);
+    const ctx = buildFlagContext(req);
     if (!ctx.isFounder) return Errors.forbidden(res, "Founder access required");
 
     const parsed = adminPatchSchema.safeParse(req.body);

@@ -45,7 +45,7 @@ const releaseHoldSchema = z.object({
 
 // ─── Founder gate ───────────────────────────────────────────────────────────
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
-  const user = req.user as any;
+  const user = req.user;
   const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
@@ -55,8 +55,8 @@ function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   return true;
 }
 
-function actorUserId(req: Request): string | null {
-  const user = (req as any).user as { id?: string } | undefined;
+function actorUserId(req: AuthenticatedRequest): string | null {
+  const user = req.user;
   const auth = (req as any).auth as { userId?: string } | undefined;
   return user?.id ?? auth?.userId ?? null;
 }

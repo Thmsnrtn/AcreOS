@@ -520,8 +520,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         const parsed = approvalDecisionSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-        const user = (req as any).user;
-        const reviewerId = user?.id || user?.id || null;
+        const reviewerId = (req as AuthenticatedRequest).user?.id ?? null;
 
         const [existing] = await db
           .select()

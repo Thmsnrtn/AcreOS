@@ -249,8 +249,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         const termsOffer = parseFloat(String(validated.termsOffer ?? 0)) || 0;
         const offerAmount = Math.max(cashOffer, termsOffer);
         if (threshold != null && offerAmount > parseFloat(String(threshold))) {
-          const user = (req as any).user;
-          const userId = user?.id || user?.id || null;
+          const userId = req.user?.id ?? null;
           const { db } = await import("./storage");
           const { offerApprovals } = await import("@shared/schema");
           await db.insert(offerApprovals).values({

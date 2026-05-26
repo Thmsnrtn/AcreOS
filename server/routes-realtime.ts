@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import type { AuthenticatedRequest } from './types/request';
 import { realtimeAlertsService } from './services/realtimeAlerts';
 import { certificationService } from './services/certification';
 import { wsServer } from './websocket';
@@ -26,7 +27,7 @@ function getUser(req: Request) {
  * Answers a natural language question about the user's real estate business.
  * Returns a reply and optionally an action path to navigate to.
  */
-router.post('/ask', async (req: Request, res: Response) => {
+router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
@@ -34,7 +35,7 @@ router.post('/ask', async (req: Request, res: Response) => {
     }
 
     // Credit check — block if org can't afford the AI call
-    const org = (req as any).organization;
+    const org = req.organization;
     if (org) {
       const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
       if (!hasCredits) {
