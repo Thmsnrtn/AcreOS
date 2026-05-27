@@ -27,7 +27,7 @@ const TIERS = [
     features: [
       "1 user",
       "10 leads / 3 properties / 2 notes",
-      "All 3 agents (limited daily AI)",
+      "Pax assistant (limited daily AI)",
       "Pax inbox",
       "6 free data sources",
     ],
@@ -42,7 +42,7 @@ const TIERS = [
     features: [
       "1 user",
       "3 counties in buy-box",
-      "All 3 agents",
+      "Full Pax assistant",
       "500 mailers / mo",
       "Pax inbox",
       "Audit log",
@@ -58,9 +58,9 @@ const TIERS = [
     features: [
       "5 users",
       "Unlimited counties",
-      "All 3 agents + automation builder",
+      "Pax automation builder + advanced workflows",
       "2,500 mailers / mo",
-      "Sophie note servicing",
+      "Note servicing automation",
       "Roles + permissions",
       "Priority support",
     ],

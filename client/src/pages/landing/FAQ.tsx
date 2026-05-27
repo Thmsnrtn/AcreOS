@@ -16,11 +16,11 @@ const ITEMS = [
   },
   {
     q: "Where does the data come from?",
-    a: "County assessors, recorder offices, and licensed parcel datasets in all 50 states. We disclose the source on every Atlas analysis.",
+    a: "County assessors, recorder offices, and licensed parcel datasets in all 50 states. We disclose the source on every Pax analysis.",
   },
   {
-    q: "Can I turn off the AI agents?",
-    a: "Yes. Each agent has its own autonomy slider — Off, Suggest, Review-then-send, or Auto-send. Default is Suggest. You're always in control.",
+    q: "Can I turn off the AI assistant?",
+    a: "Yes. Pax has an autonomy slider per surface — Off, Suggest, Review-then-send, or Auto-send. Default is Suggest. You're always in control.",
   },
   {
     q: "Does this replace my CRM?",

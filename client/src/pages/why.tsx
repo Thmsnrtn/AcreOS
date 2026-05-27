@@ -59,16 +59,15 @@ export default function WhyPage() {
             </p>
 
             <p>
-              AcreOS is what came out the other side. Three agents — Atlas, Pax,
-              Sophie — that handle the parts of the job that should never have
-              been manual. Comping, replies, loan servicing, follow-ups. They
-              run in the background. You stay on the decisions only you should
-              make.
+              AcreOS is what came out the other side. One AI partner, Pax, that
+              handles the parts of the job that should never have been manual.
+              Comping, replies, loan servicing, follow-ups. It runs in the
+              background. You stay on the decisions only you should make.
             </p>
 
             <p>
-              The rule is honesty. Every agent shows its work — what it did,
-              what it used, how confident it is, what it skipped. You can pause
+              The rule is honesty. Pax shows its work — what it did, what it
+              used, how confident it is, what it skipped. You can pause
               anything, edit anything, override anything, in one click.
             </p>
 
