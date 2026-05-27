@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { visionAI } from './services/visionAI';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -11,8 +12,8 @@ router.post('/analyze-photo', async (req: Request, res: Response) => {
     const { photoId, imageUrl } = req.body;
     const result = await visionAI.analyzePhoto(org.id.toString(), parseInt(photoId), imageUrl);
     res.json({ analysis: result });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -21,8 +22,8 @@ router.post('/properties/:id/analyze', async (req: Request, res: Response) => {
   try {
     const result = await visionAI.analyzePropertyPhotos(parseInt(req.params.id));
     res.json({ results: result });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -31,8 +32,8 @@ router.get('/properties/:id/best-photo', async (req: Request, res: Response) => 
   try {
     const photo = await visionAI.getBestMarketingPhoto(parseInt(req.params.id));
     res.json({ photo });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -41,8 +42,8 @@ router.post('/properties/:id/description', async (req: Request, res: Response) =
   try {
     const description = await visionAI.generatePropertyDescription(parseInt(req.params.id));
     res.json({ description });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -51,8 +52,8 @@ router.get('/properties/:id/snapshots', async (req: Request, res: Response) => {
   try {
     const snapshots = await visionAI.getPropertySnapshots(parseInt(req.params.id));
     res.json({ snapshots });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -66,8 +67,8 @@ router.post('/properties/:id/satellite', async (req: Request, res: Response) => 
       zoom || 15
     );
     res.json({ snapshot });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -81,8 +82,8 @@ router.post('/properties/:id/detect-changes', async (req: Request, res: Response
       parseInt(snapshotId2)
     );
     res.json({ changes: result });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -91,8 +92,8 @@ router.get('/properties/:id/summary', async (req: Request, res: Response) => {
   try {
     const summary = await visionAI.getPropertyAnalysisSummary(parseInt(req.params.id));
     res.json({ summary });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -102,8 +103,8 @@ router.post('/find-similar', async (req: Request, res: Response) => {
     const { propertyId, limit } = req.body;
     const similar = await visionAI.findSimilarProperties(parseInt(propertyId), limit || 10);
     res.json({ properties: similar });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -114,8 +115,8 @@ router.post('/batch-analyze', async (req: Request, res: Response) => {
     const { propertyId } = req.body;
     const results = await visionAI.batchAnalyzePhotos(parseInt(propertyId), org.id.toString());
     res.json({ results });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

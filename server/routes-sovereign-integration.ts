@@ -14,6 +14,7 @@ import { jobHealthLogs, agentMessages, agentEvents } from "@shared/schema";
 import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 export function registerSovereignIntegrationRoutes(app: Express) {
   // ─── Phase A: Job Health ───────────────────────────────────────────────────
@@ -41,7 +42,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
   app.post("/api/founder/job-health/trigger", async (req: Request, res: Response) => {
     try {
       const { jobName } = req.body;
-      if (!jobName) return res.status(400).json({ error: "jobName required" });
+      if (!jobName) return Errors.badRequest(res, "jobName required");
 
       // Log that a manual trigger was requested
       await db.insert(jobHealthLogs).values({
@@ -53,9 +54,9 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       });
 
       res.json({ success: true, message: `Manual trigger logged for ${jobName}` });
-    } catch (err: any) {
-      logger.error("[job-health] Error triggering job", err);
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("[job-health] Error triggering job", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -116,8 +117,8 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       const { notificationDispatcher } = await import("./services/notificationDispatcher");
       const success = notificationDispatcher.markAsRead(req.params.id);
       res.json({ success });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -135,8 +136,8 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         orgId: (req as AuthenticatedRequest).organization?.id,
       });
       res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -167,7 +168,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
     try {
       const { agentCodename, decision, reason, overrideAction } = req.body;
       if (!agentCodename || !overrideAction) {
-        return res.status(400).json({ error: "agentCodename and overrideAction required" });
+        return Errors.badRequest(res, "agentCodename and overrideAction required");
       }
 
       // Log the override as an agent event. agent_events requires
@@ -194,9 +195,9 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       });
 
       res.json({ success: true, event });
-    } catch (err: any) {
-      logger.error("[collaboration] Error recording override", err);
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("[collaboration] Error recording override", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -207,7 +208,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
     try {
       const { fromAgent, toAgent, task, context } = req.body;
       if (!toAgent || !task) {
-        return res.status(400).json({ error: "toAgent and task required" });
+        return Errors.badRequest(res, "toAgent and task required");
       }
 
       // Create delegation message
@@ -243,9 +244,9 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       });
 
       res.json({ success: true, message });
-    } catch (err: any) {
-      logger.error("[collaboration] Error delegating", err);
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("[collaboration] Error delegating", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -256,7 +257,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
     try {
       const { topic, options, participants } = req.body;
       if (!topic || !participants || !Array.isArray(participants)) {
-        return res.status(400).json({ error: "topic and participants required" });
+        return Errors.badRequest(res, "topic and participants required");
       }
 
       // Create consensus event — agent_events requires organizationId + eventSource.
@@ -297,9 +298,9 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       });
 
       res.json({ success: true, consensusId: event.id, event });
-    } catch (err: any) {
-      logger.error("[collaboration] Error starting consensus", err);
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("[collaboration] Error starting consensus", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 }

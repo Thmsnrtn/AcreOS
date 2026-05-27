@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { whiteLabelService } from './services/whiteLabelService';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -13,8 +14,8 @@ router.get('/config', async (req: Request, res: Response) => {
     const org = req.organization;
     const config = await whiteLabelService.getConfig(org.id);
     res.json({ config });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -29,7 +30,7 @@ router.post('/tenants', async (req: Request, res: Response) => {
     const { tenantOrganizationId, ...configData } = req.body;
 
     if (!tenantOrganizationId) {
-      return res.status(400).json({ error: 'tenantOrganizationId is required' });
+      return Errors.badRequest(res, 'tenantOrganizationId is required');
     }
 
     const config = await whiteLabelService.createTenant(
@@ -39,8 +40,8 @@ router.post('/tenants', async (req: Request, res: Response) => {
     );
 
     res.json({ config, success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : 'Bad request');
   }
 });
 
@@ -53,8 +54,8 @@ router.get('/tenants', async (req: Request, res: Response) => {
     const org = req.organization;
     const tenants = await whiteLabelService.listTenants(org.id);
     res.json({ tenants });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -67,8 +68,8 @@ router.patch('/config', async (req: Request, res: Response) => {
     const org = req.organization;
     const updated = await whiteLabelService.updateConfig(org.id, req.body);
     res.json({ config: updated, success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : 'Bad request');
   }
 });
 
@@ -80,8 +81,8 @@ router.post('/tenants/:id/suspend', async (req: Request, res: Response) => {
   try {
     await whiteLabelService.suspendTenant(parseInt(req.params.id));
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : 'Bad request');
   }
 });
 
@@ -94,8 +95,8 @@ router.get('/report', async (req: Request, res: Response) => {
     const org = req.organization;
     const report = await whiteLabelService.getResellerReport(org.id);
     res.json({ report });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -126,8 +127,8 @@ router.get('/analytics', async (req: Request, res: Response) => {
         totalAiCreditsUsed: (report as any)?.totalAiCreditsUsed ?? 0,
       },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -143,8 +144,8 @@ router.get('/revenue-trend', async (req: Request, res: Response) => {
     const report = await whiteLabelService.getResellerReport(org.id).catch(() => null);
     const trend = (report as any)?.revenueTrend ?? [];
     res.json({ trend });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -158,8 +159,8 @@ router.get('/features/:feature', async (req: Request, res: Response) => {
     const feature = req.params.feature as any;
     const enabled = await whiteLabelService.isFeatureEnabled(org.id, feature);
     res.json({ feature, enabled });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

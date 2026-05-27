@@ -193,7 +193,7 @@ voiceRouter.post('/calls', async (req: Request, res: Response) => {
     const { phoneNumber, direction = 'outbound', leadId, propertyId } = req.body;
 
     if (!phoneNumber) {
-      return res.status(400).json({ error: 'phoneNumber is required' });
+      return Errors.badRequest(res, 'phoneNumber is required');
     }
 
     const callId = await voiceAI.initiateCall(
@@ -256,7 +256,7 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
     const callId = parseInt(req.params.id, 10);
 
     if (isNaN(callId)) {
-      return res.status(400).json({ error: 'Invalid call ID' });
+      return Errors.badRequest(res, 'Invalid call ID');
     }
 
     const call = await db.query.voiceCalls.findFirst({
@@ -267,7 +267,7 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
     });
 
     if (!call) {
-      return res.status(404).json({ error: 'Call not found' });
+      return Errors.notFound(res, 'Call');
     }
 
     const transcript = await db.query.callTranscripts.findFirst({
@@ -310,7 +310,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const callId = parseInt(req.params.id, 10);
-    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+    if (isNaN(callId)) return Errors.badRequest(res, 'Invalid call ID');
 
     const { type, notes } = req.body;
     const validTypes = ['interested', 'not-interested', 'callback', 'voicemail'];
@@ -321,7 +321,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
     const call = await db.query.voiceCalls.findFirst({
       where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
     });
-    if (!call) return res.status(404).json({ error: 'Call not found' });
+    if (!call) return Errors.notFound(res, 'Call');
 
     await db.update(voiceCalls)
       .set({ outcome: type, outcomeNotes: notes || null, updatedAt: new Date() })
@@ -351,12 +351,12 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const callId = parseInt(req.params.id, 10);
-    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+    if (isNaN(callId)) return Errors.badRequest(res, 'Invalid call ID');
 
     const call = await db.query.voiceCalls.findFirst({
       where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
     });
-    if (!call) return res.status(404).json({ error: 'Call not found' });
+    if (!call) return Errors.notFound(res, 'Call');
 
     const transcript = await db.query.callTranscripts.findFirst({
       where: eq(callTranscripts.callId, callId),
@@ -400,7 +400,7 @@ voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
     const { q, limit = '20' } = req.query;
 
     if (!q || typeof q !== 'string') {
-      return res.status(400).json({ error: 'q (search term) is required' });
+      return Errors.badRequest(res, 'q (search term) is required');
     }
 
     // Full-text search on transcript text
@@ -455,12 +455,12 @@ voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const callId = parseInt(req.params.id, 10);
-    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+    if (isNaN(callId)) return Errors.badRequest(res, 'Invalid call ID');
 
     const call = await db.query.voiceCalls.findFirst({
       where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
     });
-    if (!call) return res.status(404).json({ error: 'Call not found' });
+    if (!call) return Errors.notFound(res, 'Call');
 
     const transcript = await db.query.callTranscripts.findFirst({
       where: eq(callTranscripts.callId, callId),
