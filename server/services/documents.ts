@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { storage } from "../storage";
 import type { Note, Property, Lead, Organization } from "@shared/schema";
 import { format } from "date-fns";
+import { getStateConfig } from "./stateDocumentConfig";
 
 function formatCurrency(amount: number | string): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -237,20 +238,64 @@ export async function generateWarrantyDeed(
     buyer = await storage.getLead(organizationId, property.buyerId);
   }
 
+  // Carla Mendoza fix (2026-05-27): pull state-specific warranty + granting
+  // clauses instead of the generic full-warranty boilerplate. A general
+  // warranty deed warrants title against ALL claims (including pre-
+  // grantor claims). On a wholesale / double-close where the wholesaler
+  // owned title for 9 minutes via a transactional funder, the wholesaler
+  // cannot meaningfully defend the warranty against pre-acquisition
+  // defects. Pulling the state config also gets us the correct
+  // California "grant deed" language (CA does NOT use warranty deeds —
+  // grant deed is the equivalent with two implied statutory covenants).
+  const stateConfig = property.state ? getStateConfig(property.state) : null;
+  const isCaliforniaGrantDeed =
+    stateConfig?.primaryDeedType === "grant_deed";
+
   const doc = new jsPDF();
   let y = addHeader(doc, org.name);
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(40, 40, 40);
-  doc.text("WARRANTY DEED", 105, y, { align: "center" });
-  y += 15;
+  doc.text(
+    isCaliforniaGrantDeed ? "GRANT DEED" : "WARRANTY DEED",
+    105,
+    y,
+    { align: "center" },
+  );
+  y += 12;
+
+  // Carla Mendoza fix: prominent pre-execution notice about warranty
+  // implications. This is a real-world UPL-adjacent risk: a wholesaler
+  // signs a full warranty deed on raw land they held for 24 hours, the
+  // back-chain has a forgotten 1957 easement, and the grantee comes
+  // back two years later with a title-defect claim against the
+  // wholesaler personally. Special-warranty or quitclaim is often the
+  // right tool for a flip; the operator should make that decision
+  // consciously.
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(180, 70, 30);
+  doc.text("PRE-EXECUTION NOTICE — READ BEFORE SIGNING", 105, y, { align: "center" });
+  y += 5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(80, 60, 30);
+  const noticeText =
+    `${isCaliforniaGrantDeed
+      ? "A California grant deed carries two implied statutory covenants under Cal. Civ. Code § 1113: (1) Grantor has not previously conveyed the estate, and (2) the estate is free from encumbrances made by Grantor. "
+      : "A general warranty deed warrants title against ALL claims, including pre-grantor claims you did not create. "}` +
+    "If you have held this property only briefly (raw-land flip, double-close, or wholesale assignment), consult counsel about whether a special-warranty deed or quitclaim deed is the appropriate instrument. AcreOS generates the template you request; it does not warrant that this is the correct deed type for your transaction. Not legal advice.";
+  const splitNotice = doc.splitTextToSize(noticeText, 170);
+  doc.text(splitNotice, 20, y);
+  y += splitNotice.length * 4 + 6;
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(40, 40, 40);
-  
-  const introText = `This WARRANTY DEED is made on ${format(new Date(), "MMMM d, yyyy")}, by and between the Grantor(s) and Grantee(s) named below, for the property described herein.`;
+
+  const introText = `This ${
+    isCaliforniaGrantDeed ? "GRANT DEED" : "WARRANTY DEED"
+  } is made on ${format(new Date(), "MMMM d, yyyy")}, by and between the Grantor(s) and Grantee(s) named below, for the property described herein.`;
   const splitIntro = doc.splitTextToSize(introText, 170);
   doc.text(splitIntro, 20, y);
   y += splitIntro.length * 5 + 10;
@@ -319,8 +364,23 @@ export async function generateWarrantyDeed(
   
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  const warrantyText = `The Grantor(s) hereby convey(s) and warrant(s) to the Grantee(s), their heirs and assigns forever, the above-described property, together with all and singular the rights, members and appurtenances thereof, to the same being, belonging, or in anywise appertaining, and the reversion and reversions, remainder and remainders, rents, issues and profits thereof; and all the estate, right, title, interest, claim and demand whatsoever of the Grantor(s), either in law or equity, of, in, and to the above-bargained premises, with the hereditaments and appurtenances.`;
-  
+
+  // Carla Mendoza fix: use the state-specific granting/habendum/warranty
+  // clauses when we have them, with the generic full-warranty text as
+  // fallback. This keeps CA emitting a grant-deed-style clause + the
+  // statutory § 1113 covenants instead of a full warranty deed
+  // (which is malpractice-adjacent in CA).
+  const grantingClause = stateConfig?.grantingClause
+    ? `The Grantor(s) ${stateConfig.grantingClause} the Grantee(s)`
+    : "The Grantor(s) hereby convey(s) and warrant(s) to the Grantee(s)";
+  const habendumClause = stateConfig?.haberendumClause
+    ? `${stateConfig.haberendumClause} to the Grantee(s), their heirs and assigns forever.`
+    : "their heirs and assigns forever, together with all and singular the rights, members and appurtenances thereto belonging.";
+  const warrantyClauseText = stateConfig?.warrantyClause
+    ? `Grantor ${stateConfig.warrantyClause}`
+    : "Grantor warrants the title against the lawful claims of all persons whomsoever.";
+
+  const warrantyText = `${grantingClause} the above-described property. ${habendumClause}\n\n${warrantyClauseText}`;
   const splitWarranty = doc.splitTextToSize(warrantyText, 170);
   doc.text(splitWarranty, 20, y);
   y += splitWarranty.length * 5 + 20;
@@ -1057,7 +1117,24 @@ export async function generateLandContract(data: LandContractData): Promise<Buff
   y = checkPageBreak(doc, y, 40);
   y = addSection(doc, "VENDOR OBLIGATIONS", y);
   y += 2;
-  const vendorText = `Vendor agrees to convey marketable title to Vendee upon full payment of the purchase price. Vendor shall maintain clear title free of encumbrances during the term of this contract. Vendor shall provide a warranty deed upon payoff.`;
+  // Carla Mendoza fix (2026-05-27): the prior boilerplate locked Vendor
+  // into delivering a WARRANTY DEED at payoff, which is the wrong default
+  // for a flipper holding the note. Now defers to the state's primary
+  // deed type from STATE_DOCUMENT_CONFIGS — CA gets grant deed, CO/PA
+  // get special-warranty, etc. Vendors who explicitly want full warranty
+  // can edit the template. Also added the "marketable title" qualifier
+  // explicitly limited to encumbrances created by Vendor, which matches
+  // the realistic obligation of a contract-for-deed holder who acquired
+  // recently.
+  const landConfig = data.state ? getStateConfig(data.state) : null;
+  const payoffDeedType = landConfig
+    ? (landConfig.primaryDeedType === "grant_deed" ? "grant deed"
+       : landConfig.primaryDeedType === "special_warranty_deed" ? "special warranty deed"
+       : landConfig.primaryDeedType === "limited_warranty_deed" ? "limited warranty deed"
+       : landConfig.primaryDeedType === "warranty_deed_with_vendor_lien" ? "warranty deed with vendor's lien"
+       : "warranty deed")
+    : "warranty deed";
+  const vendorText = `Vendor agrees to convey marketable title to Vendee upon full payment of the purchase price. Vendor shall maintain title free of encumbrances created by Vendor during the term of this contract. Upon payoff, Vendor shall deliver a ${payoffDeedType}, which is the standard instrument in ${data.state || "this state"}. Vendor makes no warranty as to defects in title arising prior to Vendor's acquisition that are of public record.`;
   const vendorLines = doc.splitTextToSize(vendorText, 170);
   doc.text(vendorLines, 20, y);
   y += vendorLines.length * 5 + 6;
