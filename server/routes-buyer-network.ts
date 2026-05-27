@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -11,13 +12,13 @@ router.get('/buyer-network/demand/:state', async (req: Request, res: Response) =
   try {
     const { state } = req.params;
     if (!state || state.length !== 2) {
-      return res.status(400).json({ error: 'state must be a 2-letter US state code' });
+      return Errors.badRequest(res, 'state must be a 2-letter US state code');
     }
     // Stub: aggregate demand signals per county
     const heatmap: any[] = [];
     res.json({ state: state.toUpperCase(), heatmap, fetchedAt: new Date().toISOString() });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -46,8 +47,8 @@ router.get('/buyer-network/buyers', async (req: Request, res: Response) => {
       offset: offset ? parseInt(offset as string) : 0,
       filters: { state, minBudget, maxBudget, propertyType },
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -55,9 +56,9 @@ router.get('/buyer-network/buyers', async (req: Request, res: Response) => {
 router.get('/buyer-network/buyers/:id', async (req: Request, res: Response) => {
   try {
     // Stub: fetch buyer by id
-    res.status(404).json({ error: 'Buyer not found' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.notFound(res, 'Buyer');
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -80,7 +81,7 @@ router.post('/buyer-network/buyers', async (req: Request, res: Response) => {
     } = req.body;
 
     if (!name || !email) {
-      return res.status(400).json({ error: 'name and email are required' });
+      return Errors.badRequest(res, 'name and email are required');
     }
 
     // Stub: upsert buyer profile
@@ -101,8 +102,8 @@ router.post('/buyer-network/buyers', async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     };
     res.status(201).json({ buyer, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -122,8 +123,8 @@ router.get('/buyer-network/matches/:propertyId', async (req: Request, res: Respo
       minScore: minScore ? parseFloat(minScore as string) : 0,
       fetchedAt: new Date().toISOString(),
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -145,8 +146,8 @@ router.get('/buyer-network/analytics', async (_req: Request, res: Response) => {
       fetchedAt: new Date().toISOString(),
     };
     res.json({ analytics });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -159,7 +160,7 @@ router.post('/buyer-network/alerts', async (req: Request, res: Response) => {
   try {
     const { buyerId, criteria, notificationChannels } = req.body;
     if (!buyerId || !criteria) {
-      return res.status(400).json({ error: 'buyerId and criteria are required' });
+      return Errors.badRequest(res, 'buyerId and criteria are required');
     }
     // Stub: persist alert
     const alert = {
@@ -171,8 +172,8 @@ router.post('/buyer-network/alerts', async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     };
     res.status(201).json({ alert, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -195,8 +196,8 @@ router.get('/buyer-network/heatmap', async (req: Request, res: Response) => {
       },
     };
     res.json(geojson);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 

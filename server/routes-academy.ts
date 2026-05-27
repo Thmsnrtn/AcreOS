@@ -3,6 +3,7 @@ import { education } from './services/education';
 import { CreditService } from './services/credits';
 import { logger } from './utils/logger';
 import type { AuthenticatedRequest } from './types/request';
+import { Errors } from './utils/errors';
 
 const creditService = new CreditService();
 
@@ -25,8 +26,8 @@ router.get('/courses', async (req: Request, res: Response) => {
       status: status as string | undefined,
     });
     res.json({ courses });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -35,8 +36,8 @@ router.get('/courses/:id', async (req: Request, res: Response) => {
   try {
     const course = await education.getCourse(parseInt(req.params.id));
     res.json({ course });
-  } catch (err: any) {
-    res.status(404).json({ error: err.message });
+  } catch {
+    Errors.notFound(res, 'Course');
   }
 });
 
@@ -45,8 +46,8 @@ router.get('/courses/:id/stats', async (req: Request, res: Response) => {
   try {
     const stats = await education.getCourseStats(parseInt(req.params.id));
     res.json({ stats });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -56,8 +57,8 @@ router.post('/courses', async (req: Request, res: Response) => {
     const org = req.organization;
     const courseId = await education.createCourse(org.id, req.body);
     res.json({ courseId });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -66,8 +67,8 @@ router.post('/courses/:id/publish', async (req: Request, res: Response) => {
   try {
     await education.publishCourse(parseInt(req.params.id));
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -77,8 +78,8 @@ router.get('/enrollments', async (req: Request, res: Response) => {
     const user = getUser(req);
     const enrollments = await education.getUserEnrollments(user.id);
     res.json({ enrollments });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -89,8 +90,8 @@ router.post('/enrollments', async (req: Request, res: Response) => {
     const { courseId } = req.body;
     const enrollment = await education.enrollInCourse(user.id, parseInt(courseId));
     res.json({ enrollment });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -106,8 +107,8 @@ router.patch('/enrollments/:courseId/progress', async (req: Request, res: Respon
       { completed, quizScore }
     );
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -118,8 +119,8 @@ router.post('/courses/:id/rate', async (req: Request, res: Response) => {
     const { rating, review } = req.body;
     await education.rateCourse(user.id, parseInt(req.params.id), rating, review);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -129,8 +130,8 @@ router.get('/recommended', async (req: Request, res: Response) => {
     const user = getUser(req);
     const courses = await education.getRecommendedCourses(user.id);
     res.json({ courses });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -185,8 +186,8 @@ ${courseId ? `The student is currently studying course ID: ${courseId}.` : ''}`;
     }
 
     res.json({ reply });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

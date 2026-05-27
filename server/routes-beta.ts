@@ -19,6 +19,7 @@ import { Router } from "express";
 import { isAuthenticated } from "./auth";
 import { betaProgramService } from "./services/betaProgram";
 import { z } from "zod";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -49,8 +50,8 @@ router.post("/waitlist", async (req, res) => {
     const result = await betaProgramService.joinWaitlist({ ...data, referredBy });
     res.json(result);
   } catch (err: any) {
-    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
-    res.status(500).json({ message: err.message });
+    if (err.issues) return Errors.validationFailed(res, err.issues);
+    Errors.internal(res, err);
   }
 });
 
@@ -59,7 +60,7 @@ router.post("/waitlist", async (req, res) => {
 router.get("/waitlist/status", async (req, res) => {
   try {
     const email = req.query.email as string;
-    if (!email) return res.status(400).json({ message: "email is required" });
+    if (!email) return Errors.badRequest(res, "email is required");
 
     const { entries } = await betaProgramService.getWaitlist();
     const entry = entries.find(e => e.email.toLowerCase() === email.toLowerCase());
@@ -72,8 +73,8 @@ router.get("/waitlist/status", async (req, res) => {
       cohort: entry.cohort,
       referralCode: `ACRE-${entry.id.toString().padStart(5, "0")}`,
     });
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -93,8 +94,8 @@ router.post("/feedback", isAuthenticated, async (req, res) => {
     const result = await betaProgramService.submitFeedback({ ...data, email: user.email });
     res.json(result);
   } catch (err: any) {
-    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
-    res.status(500).json({ message: err.message });
+    if (err.issues) return Errors.validationFailed(res, err.issues);
+    Errors.internal(res, err);
   }
 });
 
@@ -104,7 +105,7 @@ function isFounder(req: any, res: any, next: any) {
   const user = req.user;
   const founderEmails = (process.env.FOUNDER_EMAILS || "").split(",").map((e: string) => e.trim().toLowerCase());
   if (!user || !founderEmails.includes(user.email?.toLowerCase())) {
-    return res.status(403).json({ message: "Founder access required" });
+    return Errors.forbidden(res, "Founder access required");
   }
   next();
 }
@@ -116,8 +117,8 @@ router.get("/admin/waitlist", isAuthenticated, isFounder, async (req, res) => {
     const status = req.query.status as string | undefined;
     const result = await betaProgramService.getWaitlist({ page, limit, status });
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -128,22 +129,22 @@ router.get("/admin/cohorts", isAuthenticated, isFounder, async (_req, res) => {
 router.post("/admin/invite", isAuthenticated, isFounder, async (req, res) => {
   try {
     const { email, cohortId } = req.body;
-    if (!email) return res.status(400).json({ message: "email is required" });
+    if (!email) return Errors.badRequest(res, "email is required");
     const result = await betaProgramService.inviteUser(email, cohortId);
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
 router.post("/admin/activate", isAuthenticated, isFounder, async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: "email is required" });
+    if (!email) return Errors.badRequest(res, "email is required");
     const result = await betaProgramService.activateUser(email);
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

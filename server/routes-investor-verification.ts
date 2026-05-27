@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { investorVerificationService } from './services/investorVerification';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -20,11 +21,11 @@ router.get('/verifications/:investorId', async (req: Request, res: Response) => 
       req.params.investorId
     );
     if (!verification) {
-      return res.status(404).json({ error: 'Verification not found' });
+      return Errors.notFound(res, 'Verification');
     }
     res.json({ verification });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -37,8 +38,8 @@ router.post('/verifications', async (req: Request, res: Response) => {
       organizationId: org.id,
     });
     res.status(201).json({ verification, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -50,8 +51,8 @@ router.post('/verifications/:id/documents', async (req: Request, res: Response) 
       req.body
     );
     res.status(201).json({ document, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -60,8 +61,8 @@ router.patch('/verifications/:id/submit', async (req: Request, res: Response) =>
   try {
     const verification = await investorVerificationService.submitForReview(req.params.id);
     res.json({ verification, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -69,11 +70,11 @@ router.patch('/verifications/:id/submit', async (req: Request, res: Response) =>
 router.patch('/verifications/:id/review', async (req: Request, res: Response) => {
   try {
     if (!isAdmin(req)) {
-      return res.status(403).json({ error: 'Admin access required' });
+      return Errors.forbidden(res, 'Admin access required');
     }
     const { decision, notes } = req.body;
     if (!['approved', 'rejected', 'request_more_info'].includes(decision)) {
-      return res.status(400).json({ error: 'Invalid decision. Must be approved, rejected, or request_more_info' });
+      return Errors.badRequest(res, 'Invalid decision. Must be approved, rejected, or request_more_info');
     }
     const verification = await investorVerificationService.reviewVerification(
       req.params.id,
@@ -81,8 +82,8 @@ router.patch('/verifications/:id/review', async (req: Request, res: Response) =>
       notes
     );
     res.json({ verification, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -91,8 +92,8 @@ router.get('/verifications/:id/history', async (req: Request, res: Response) => 
   try {
     const history = await investorVerificationService.getAuditTrail(req.params.id);
     res.json({ history });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -100,7 +101,7 @@ router.get('/verifications/:id/history', async (req: Request, res: Response) => 
 router.get('/admin/verifications', async (req: Request, res: Response) => {
   try {
     if (!isAdmin(req)) {
-      return res.status(403).json({ error: 'Admin access required' });
+      return Errors.forbidden(res, 'Admin access required');
     }
     const { status, limit, offset } = req.query;
     const verifications = await investorVerificationService.listAllVerifications({
@@ -109,8 +110,8 @@ router.get('/admin/verifications', async (req: Request, res: Response) => {
       offset: offset ? parseInt(offset as string) : 0,
     });
     res.json({ verifications });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -122,8 +123,8 @@ router.post('/verifications/:id/accreditation', async (req: Request, res: Respon
       req.body
     );
     res.status(201).json({ accreditation, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
