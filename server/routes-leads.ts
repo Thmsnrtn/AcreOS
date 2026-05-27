@@ -19,6 +19,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { assertUserIsOrgMember } from "./utils/orgScope";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 // Partial update schema for PUT endpoints
@@ -342,6 +343,14 @@ export function registerLeadRoutes(app: Express): void {
       
       const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
 
+      // Lens 48 — assignedTo from body must point at an active member
+      // of the requesting org. Otherwise an attacker can create a lead
+      // "assigned" to a user in another tenant.
+      if ((input as any).assignedTo != null) {
+        const ok = await assertUserIsOrgMember(String((input as any).assignedTo), org.id);
+        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      }
+
       // Phase 5 §5 (team readiness) — auto-assign via lead_assignment_rules
       // when caller did not specify assignedTo. Errors are swallowed inside
       // assignLead() so a misconfigured rule cannot break lead intake.
@@ -518,15 +527,39 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     try {
       const org = req.organization;
       const leadId = Number(req.params.id);
-      
+
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) return Errors.notFound(res, "Lead");
 
+      // Lens 48 — `viewOnlyAssignedLeads` was enforced on GET /api/leads
+      // but NOT on the PUT path. A VA gated to assigned-leads-only could
+      // mutate any lead in the org by guessing the numeric id. Re-assert
+      // here so the gate holds across read AND write.
+      const context = (req as AuthenticatedRequest).permissionContext;
+      const callerId = (req.user as any)?.id ?? null;
+      if (context?.permissions.viewOnlyAssignedLeads) {
+        const assignedTo = (existingLead as any).assignedTo;
+        if (assignedTo == null || String(assignedTo) !== String(callerId)) {
+          return Errors.forbidden(res, "You can only modify leads assigned to you");
+        }
+      }
+
       const validated = updateLeadSchema.parse(req.body);
+
+      // Lens 48 — `assignedTo` from body must point at a member of the
+      // requesting org. Without this check a customer admin could assign
+      // a lead to a user in a different tenant (creating dangling
+      // notifications + reporting confusion).
+      if ((validated as any).assignedTo != null) {
+        const targetUserId = String((validated as any).assignedTo);
+        const ok = await assertUserIsOrgMember(targetUserId, org.id);
+        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      }
+
       const lead = await storage.updateLead(leadId, validated, org.id);
       
       const user = req.user as any;

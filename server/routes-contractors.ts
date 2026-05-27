@@ -32,6 +32,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
 
 const NEC_THRESHOLD_CENTS = 60000;  // $600.00 — IRS 1099-NEC threshold
@@ -225,6 +226,18 @@ export function registerContractorRoutes(app: Express): void {
       const [c] = await db.select({ id: contractors.id }).from(contractors)
         .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)));
       if (!c) return Errors.notFound(res, "Contractor");
+
+      // Lens 48 — body-supplied rehab / rehab-line-item FKs must be in
+      // the same tenant. Without this an attacker can write payments
+      // pointed at another org's rehab, contaminating 1099 reports.
+      if (parsed.data.rehabId) {
+        const ok = await assertEntityBelongsToOrg("rehab", parsed.data.rehabId, orgId);
+        if (!ok) return Errors.notFound(res, "Rehab");
+      }
+      if (parsed.data.rehabLineItemId) {
+        const ok = await assertEntityBelongsToOrg("rehabLineItem", parsed.data.rehabLineItemId, orgId);
+        if (!ok) return Errors.notFound(res, "Rehab line item");
+      }
 
       const taxYear = parsed.data.taxYear ?? new Date(parsed.data.paidAt).getFullYear();
 

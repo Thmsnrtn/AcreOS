@@ -35,6 +35,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { assertEntityBelongsToOrg } from "./utils/orgScope";
 
 function addDaysIso(baseIso: string, days: number): string {
   const d = new Date(baseIso);
@@ -152,6 +153,20 @@ export function registerEarnestMoneyRoutes(app: Express): void {
         const parsed = createSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
         const data = parsed.data;
+
+        // Lens 48 — verify body-supplied FKs belong to the same tenant.
+        // Without this, an attacker writes an EMD hold in their own org
+        // but bound to another org's dealId/propertyId, contaminating
+        // downstream finance reports that join across.
+        if (data.dealId != null) {
+          const ok = await assertEntityBelongsToOrg("deal", data.dealId, orgId);
+          if (!ok) return Errors.notFound(res, "Deal");
+        }
+        if (data.propertyId != null) {
+          const ok = await assertEntityBelongsToOrg("property", data.propertyId, orgId);
+          if (!ok) return Errors.notFound(res, "Property");
+        }
+
         const refundableUntilAt = addDaysIso(data.depositedAt, data.inspectionPeriodDays ?? 7);
 
         const [row] = await db
