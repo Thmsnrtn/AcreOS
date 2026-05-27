@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
-import { Search, FileCheck, AlertTriangle, XCircle, CheckCircle2, Loader2, DollarSign, Calendar } from "lucide-react";
+import { Search, FileCheck, AlertTriangle, XCircle, CheckCircle2, Loader2, DollarSign, Calendar, Info } from "lucide-react";
 
 interface TitleIssue {
   type: "lien" | "encumbrance" | "easement" | "judgment" | "tax_lien";
@@ -47,7 +47,15 @@ function humanizeType(s: string): string {
 }
 
 export default function TitleSearchPage() {
-  useDocumentTitle("Title search");
+  // Mae Vasquez (title ops audit, 2026-05-27): renamed surface from "Title
+  // search" to "Title issues checklist". This page runs a public-records
+  // *preview* (PropStream / ATTOM) for liens, encumbrances, ownership gaps —
+  // it does NOT produce a title commitment from a licensed underwriter
+  // (Fidelity / First American / Stewart / Old Republic). Calling the result
+  // a "title search" leads founders to close on screening data alone, which
+  // bypasses the very thing a title policy underwrites against. Keep the
+  // route /title-search for backward compat; change the surface label.
+  useDocumentTitle("Title issues checklist");
   const { toast } = useToast();
   const [parcelId, setParcelId] = useState("");
   const [address, setAddress] = useState("");
@@ -76,11 +84,25 @@ export default function TitleSearchPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-title-search-title">
-          Title search
+          Title issues checklist
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          Run preliminary title searches to identify liens, encumbrances, and ownership gaps.
+          Pre-screen liens, encumbrances, and ownership gaps from public records before you order a real title commitment.
         </p>
+        <div
+          className="mt-3 flex items-start gap-2 rounded-md border border-acr-warn/30 bg-acr-warn-soft p-3 text-xs"
+          role="note"
+          aria-label="Important: this is not a title commitment"
+        >
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-acr-warn" aria-hidden="true" />
+          <div>
+            <p className="font-medium">This is a public-records pre-screen — not a title commitment.</p>
+            <p className="text-muted-foreground mt-0.5">
+              A real title commitment must come from a licensed underwriter (Fidelity, First American, Stewart, Old Republic, etc.).
+              Closing without one means you are uninsured against undisclosed liens, mineral severances, and chain-of-title defects.
+            </p>
+          </div>
+        </div>
       </div>
 
       <Card>
