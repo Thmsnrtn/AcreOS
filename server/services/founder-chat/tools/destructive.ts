@@ -76,6 +76,10 @@ import {
   resolveIssue,
   unresolveIssue,
 } from "../providers/sentry-ops";
+import {
+  AtlasEntityOrgMismatchError,
+  assertEntityOrgFromCtx,
+} from "../assert-entity-org";
 
 const TXT = (markdown: string) => ({
   artifact: { type: "text" as const, markdown },
@@ -398,7 +402,17 @@ registerTool({
     cents: z.number().int().positive().optional(),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    // Lens 23 defense-in-depth: refuse to refund a charge that doesn't
+    // resolve back to the org Atlas is currently operating on.
+    try {
+      await assertEntityOrgFromCtx("stripe_charge", args.chargeId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing refund — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const refund = await refundCharge(args.chargeId, args.cents, args.reason);
       return {
@@ -432,7 +446,15 @@ registerTool({
     atPeriodEnd: z.boolean().default(true),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("stripe_subscription", args.subId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing cancel — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const sub = await cancelSubscription(args.subId, args.atPeriodEnd, args.reason);
       return {
@@ -467,7 +489,15 @@ registerTool({
     subId: z.string().regex(/^sub_[A-Za-z0-9]+/),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("stripe_subscription", args.subId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing reactivate — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const sub = await reactivateSubscription(args.subId);
       return {
@@ -502,7 +532,15 @@ registerTool({
     cents: z.number().int().positive().max(1_000_000),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("stripe_customer", args.customerId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing credit — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const credit = await grantCredit(args.customerId, args.cents, args.reason);
       return {
@@ -542,7 +580,15 @@ registerTool({
     resumeAtUnix: z.number().int().positive().optional(),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("stripe_subscription", args.subId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing pause — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const sub = await pauseSubscription(args.subId, args.resumeAtUnix, args.reason);
       return {
@@ -579,7 +625,15 @@ registerTool({
     userId: z.string().min(3),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("clerk_user", args.userId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing suspend — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const user = await suspendUser(args.userId, args.reason);
       return {
@@ -616,7 +670,15 @@ registerTool({
     userId: z.string().min(3),
     reason: z.string().min(3).max(500).optional(),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("clerk_user", args.userId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing restore — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const user = await restoreUser(args.userId);
       return {
@@ -654,7 +716,15 @@ registerTool({
     userId: z.string().min(3),
     reason: z.string().min(3).max(500),
   }),
-  async handler(args) {
+  async handler(args, ctx) {
+    try {
+      await assertEntityOrgFromCtx("clerk_user", args.userId, ctx);
+    } catch (err) {
+      if (err instanceof AtlasEntityOrgMismatchError) {
+        return TXT(`Refusing force-password-reset — ${err.message}`);
+      }
+      throw err;
+    }
     try {
       const { revoked } = await forcePasswordReset(args.userId);
       return {
