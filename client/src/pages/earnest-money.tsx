@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Banknote, AlertTriangle, Plus } from "lucide-react";
+import { Banknote, AlertTriangle, Plus, Phone, ShieldAlert } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -135,6 +135,37 @@ export default function EarnestMoneyPage() {
 
   return (
     <PageShell label="Earnest money">
+      {/*
+        Mae Vasquez (title-ops audit, 2026-05-27): wire fraud at closing is the
+        #1 dollar-loss vector in real estate. ALTA Pillar 2 requires
+        out-of-band verification before funds move. The fraud_gate item lives
+        in the closing checklist (closingChecklistGenerator.ts), but this
+        banner surfaces the requirement on the surface where operators
+        actually queue wires.
+      */}
+      <Card
+        className="mb-6 border-acr-neg/40 bg-acr-neg-soft"
+        role="alert"
+        aria-label="Wire fraud prevention reminder"
+      >
+        <div className="p-4 flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-acr-neg flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="flex-1 text-sm">
+            <p className="font-semibold flex items-center gap-2">
+              <Phone className="w-3.5 h-3.5" aria-hidden="true" />
+              Before wiring EMD: verify routing + account by voice
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Call the title company at a phone number you looked up
+              independently (their website — NEVER the email signature on
+              the wire instructions). Confirm bank, routing, and account
+              verbally. Wire fraud at closing has lost AcreOS customers
+              $40K+ on a single deal. AcreOS will not unlock disbursement
+              until this is confirmed in the closing checklist.
+            </p>
+          </div>
+        </div>
+      </Card>
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
