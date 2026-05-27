@@ -1177,80 +1177,7 @@ export class DatabaseStorage implements IStorage {
   // Organizations + trial tokens — moved to server/storage/orgRepo.ts.
   // Methods are merged into DatabaseStorage.prototype below.
 
-  // Team Members
-  async getTeamMembers(orgId: number) {
-    return await db.select().from(teamMembers).where(eq(teamMembers.organizationId, orgId));
-  }
-  
-  async getTeamMember(orgId: number, userId: string) {
-    const [member] = await db.select().from(teamMembers)
-      .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, userId)));
-    return member;
-  }
-
-  // Phase 4 Week 15-16 (Magdalena §1) — used by the lead-import worker to
-  // resolve `assignedTo` CSV values (emails of team members) to team_member IDs.
-  async getTeamMemberByEmail(orgId: number, email: string) {
-    const normalized = email.trim().toLowerCase();
-    const [member] = await db.select().from(teamMembers)
-      .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.email, normalized)));
-    return member;
-  }
-
-  async createTeamMember(member: InsertTeamMember) {
-    const [newMember] = await db.insert(teamMembers).values(member).returning();
-    return newMember;
-  }
-  
-  async updateTeamMember(id: number, updates: Partial<InsertTeamMember>, organizationId?: number) {
-    const conditions = [eq(teamMembers.id, id)];
-    if (organizationId) conditions.push(eq(teamMembers.organizationId, organizationId));
-    const [updated] = await db.update(teamMembers).set(updates).where(and(...conditions)).returning();
-    return updated;
-  }
-
-  // ─── Org Co-Owners (Blanco §1) ──────────────────────────────────────────
-  // Co-ownership is a billing/identity relation distinct from operational
-  // role. Listing/adding/removing co-owners is owner-only at the route
-  // layer; the storage helpers here are role-agnostic.
-  async listOrgCoOwners(orgId: number) {
-    return await db
-      .select()
-      .from(orgCoOwners)
-      .where(eq(orgCoOwners.organizationId, orgId))
-      .orderBy(asc(orgCoOwners.addedAt));
-  }
-
-  async addOrgCoOwner(input: InsertOrgCoOwner) {
-    // Idempotent: the unique index on (org, user) means re-add is a no-op.
-    const [row] = await db
-      .insert(orgCoOwners)
-      .values(input)
-      .onConflictDoNothing()
-      .returning();
-    if (row) return row;
-    const [existing] = await db
-      .select()
-      .from(orgCoOwners)
-      .where(
-        and(
-          eq(orgCoOwners.organizationId, input.organizationId),
-          eq(orgCoOwners.userId, input.userId),
-        ),
-      );
-    return existing;
-  }
-
-  async removeOrgCoOwner(orgId: number, userId: string) {
-    await db
-      .delete(orgCoOwners)
-      .where(
-        and(
-          eq(orgCoOwners.organizationId, orgId),
-          eq(orgCoOwners.userId, userId),
-        ),
-      );
-  }
+  // Team members + org co-owners — moved to server/storage/teamRepo.ts.
 
   // Leads
   async getLeads(orgId: number, filters?: { assignedTo?: number | null }) {
@@ -8657,13 +8584,15 @@ Notary Public</p>
 // TypeScript see the mixed-in methods as if they were declared in the class
 // body.
 import { orgRepo, type OrgRepo } from "./storage/orgRepo";
+import { teamRepo, type TeamRepo } from "./storage/teamRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
   orgRepo,
+  teamRepo,
 );
 
 export const storage = new DatabaseStorage();
