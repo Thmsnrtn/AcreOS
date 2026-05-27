@@ -675,6 +675,11 @@ function BasisAllocationSection({
 }) {
   const { toast } = useToast();
   const [method, setMethod] = useState<"acreage" | "frontage" | "appraisal" | "override">("acreage");
+  // Per-child typed inputs for the three non-acreage methods. Keyed by
+  // child parcel id (string) to match the server contract.
+  const [frontages, setFrontages] = useState<Record<string, string>>({});
+  const [appraisals, setAppraisals] = useState<Record<string, string>>({});
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const allocs = useQuery<{ allocations: AllocationRow[] }>({
     queryKey: ["/api/parcels", parentParcelId, "basis-allocation"],
@@ -685,14 +690,34 @@ function BasisAllocationSection({
     },
   });
 
+  // Override shares must sum to ~1.0; surface a live total for the operator.
+  const overrideSum = useMemo(
+    () => Object.values(overrides).reduce((s, v) => s + (parseFloat(v) || 0), 0),
+    [overrides],
+  );
+
   const allocate = useMutation({
     mutationFn: async () => {
       const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
+      const body: Record<string, unknown> = { method };
+      if (method === "frontage") {
+        const fts: Record<string, number> = {};
+        for (const c of children) fts[String(c.id)] = parseFloat(frontages[String(c.id)] ?? "") || 0;
+        body.frontages = fts;
+      } else if (method === "appraisal") {
+        const aps: Record<string, number> = {};
+        for (const c of children) aps[String(c.id)] = parseFloat(appraisals[String(c.id)] ?? "") || 0;
+        body.appraisals = aps;
+      } else if (method === "override") {
+        const ovs: Record<string, number> = {};
+        for (const c of children) ovs[String(c.id)] = parseFloat(overrides[String(c.id)] ?? "") || 0;
+        body.overrides = ovs;
+      }
       const res = await fetch(`/api/parcels/${parentParcelId}/basis-allocation`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrf },
-        body: JSON.stringify({ method }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -742,20 +767,106 @@ function BasisAllocationSection({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="acreage">Acreage (default)</SelectItem>
-                    <SelectItem value="frontage" disabled>Frontage (typed input)</SelectItem>
-                    <SelectItem value="appraisal" disabled>Appraisal (typed input)</SelectItem>
-                    <SelectItem value="override" disabled>Override (typed shares)</SelectItem>
+                    <SelectItem value="frontage">Frontage (road feet)</SelectItem>
+                    <SelectItem value="appraisal">Appraisal (per-lot value)</SelectItem>
+                    <SelectItem value="override">Override (typed shares)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <Button
                 size="sm"
                 onClick={() => allocate.mutate()}
-                disabled={allocate.isPending}
+                disabled={
+                  allocate.isPending ||
+                  (method === "override" && Math.abs(overrideSum - 1) > 0.001)
+                }
               >
                 {allocs.data?.allocations.length ? "Re-allocate" : "Allocate"} basis
               </Button>
             </div>
+
+            {/* Per-child inputs for non-acreage methods. */}
+            {method === "frontage" && (
+              <div className="rounded-md border border-border/60 p-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Road frontage in feet per lot. CPAs often prefer this for road-front lots.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {children.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2">
+                      <Label className="text-xs w-24 shrink-0">{c.childLotNumber ?? c.apn}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        className="h-8 text-xs"
+                        value={frontages[String(c.id)] ?? ""}
+                        onChange={(e) => setFrontages((s) => ({ ...s, [String(c.id)]: e.target.value }))}
+                        placeholder="ft"
+                        aria-label={`Frontage feet for lot ${c.childLotNumber ?? c.apn}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {method === "appraisal" && (
+              <div className="rounded-md border border-border/60 p-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Appraised value per lot (dollars). Shares are normalized at allocation.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {children.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2">
+                      <Label className="text-xs w-24 shrink-0">{c.childLotNumber ?? c.apn}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="decimal"
+                        className="h-8 text-xs"
+                        value={appraisals[String(c.id)] ?? ""}
+                        onChange={(e) => setAppraisals((s) => ({ ...s, [String(c.id)]: e.target.value }))}
+                        placeholder="$"
+                        aria-label={`Appraisal for lot ${c.childLotNumber ?? c.apn}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {method === "override" && (
+              <div className="rounded-md border border-border/60 p-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Per-lot share as a decimal (e.g. 0.15 = 15%). Total must equal 1.0.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {children.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2">
+                      <Label className="text-xs w-24 shrink-0">{c.childLotNumber ?? c.apn}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.0001"
+                        inputMode="decimal"
+                        className="h-8 text-xs"
+                        value={overrides[String(c.id)] ?? ""}
+                        onChange={(e) => setOverrides((s) => ({ ...s, [String(c.id)]: e.target.value }))}
+                        placeholder="0.0833"
+                        aria-label={`Override share for lot ${c.childLotNumber ?? c.apn}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className={`text-xs mt-2 ${Math.abs(overrideSum - 1) > 0.001 ? "text-acr-warning" : "text-acr-pos"}`}>
+                  Total share: {overrideSum.toFixed(4)} {Math.abs(overrideSum - 1) > 0.001 ? "(must be 1.0000)" : "✓"}
+                </p>
+              </div>
+            )}
 
             {allocs.data && allocs.data.allocations.length > 0 && (
               <div className="overflow-x-auto">
