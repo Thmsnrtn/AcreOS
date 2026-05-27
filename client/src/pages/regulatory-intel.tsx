@@ -220,15 +220,15 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
       </CardHeader>
       <CardContent className="space-y-4">
         <dl className="grid grid-cols-3 gap-3 text-center">
-          <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded-lg p-2">
+          <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 rounded-card p-2">
             <dd className="text-xl font-bold text-acr-neg tabular-nums">{criticalCount}</dd>
             <dt className="text-xs text-muted-foreground">Critical alerts</dt>
           </div>
-          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-card p-2">
             <dd className="text-xl font-bold text-acr-warn tabular-nums">{warningCount}</dd>
             <dt className="text-xs text-muted-foreground">Warnings</dt>
           </div>
-          <div className="bg-acr-accent dark:bg-acr-accent/20 rounded-lg p-2">
+          <div className="bg-acr-accent dark:bg-acr-accent/20 rounded-card p-2">
             <dd className="text-xl font-bold text-acr-accent tabular-nums">{impactedStates.length}</dd>
             <dt className="text-xs text-muted-foreground">States impacted</dt>
           </div>
@@ -410,7 +410,7 @@ export default function RegulatoryIntelPage() {
       {/* Critical Alerts Banner */}
       {criticalAlerts.length > 0 && (
         <div
-          className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft rounded-lg p-4 space-y-1"
+          className="bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft rounded-card p-4 space-y-1"
           role="alert"
         >
           <p className="flex items-center gap-2 text-acr-neg dark:text-acr-neg font-medium text-sm">
@@ -519,7 +519,7 @@ export default function RegulatoryIntelPage() {
                           </div>
                         </div>
 
-                        <div className="bg-muted/40 rounded-lg p-3">
+                        <div className="bg-muted/40 rounded-card p-3">
                           <div className="text-xs font-medium mb-1">Practitioner Notes</div>
                           <p className="text-xs text-muted-foreground leading-relaxed">{stateDetail.practitionerNotes}</p>
                         </div>

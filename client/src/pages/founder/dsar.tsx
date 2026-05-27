@@ -136,7 +136,7 @@ export default function FounderDsarPage() {
                   <p className="text-sm text-muted-foreground">No pending requests.</p>
                 )}
                 {pending.map((r) => (
-                  <div key={r.id} className="rounded-lg border p-4 space-y-3">
+                  <div key={r.id} className="rounded-card border p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="space-y-1">
                         <div className="font-medium">{r.fullName} <span className="text-muted-foreground">&lt;{r.email}&gt;</span></div>

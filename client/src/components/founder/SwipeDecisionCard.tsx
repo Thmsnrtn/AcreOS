@@ -247,7 +247,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <pre className="text-xs bg-muted rounded-lg p-3 overflow-auto max-h-32">
+                <pre className="text-xs bg-muted rounded-card p-3 overflow-auto max-h-32">
                   {JSON.stringify(item.contextBundle, null, 2)}
                 </pre>
               </motion.div>

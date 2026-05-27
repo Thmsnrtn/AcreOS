@@ -38,7 +38,7 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
 
   return (
     <div
-      className={`border rounded-lg p-4 space-y-2 ${config.bg}`}
+      className={`border rounded-card p-4 space-y-2 ${config.bg}`}
       role={alert.severity === "critical" ? "alert" : "status"}
       aria-live={alert.severity === "critical" ? "assertive" : "polite"}
     >

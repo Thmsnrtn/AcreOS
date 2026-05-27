@@ -198,7 +198,7 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
   };
 
   return (
-    <div className="rounded-lg border bg-card shadow-sm overflow-hidden my-1.5">
+    <div className="rounded-card border bg-card shadow-sm overflow-hidden my-1.5">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
         <span className="flex-1 text-xs font-semibold text-foreground truncate">{title}</span>

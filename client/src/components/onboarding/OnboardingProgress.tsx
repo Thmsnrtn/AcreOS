@@ -242,7 +242,7 @@ export function OnboardingProgress() {
                 >
                   <Link href={item.href}>
                     <div
-                      className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer hover-elevate ${
+                      className={`flex items-center gap-3 p-3 rounded-card transition-colors cursor-pointer hover-elevate ${
                         item.isComplete
                           ? "bg-acr-pos/5"
                           : "bg-muted/50"

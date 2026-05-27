@@ -216,7 +216,7 @@ export default function FounderComplianceOpsPage() {
       {/* Cross-tab overdue banner — DSAR SLA breaches are highest-signal */}
       {dsar.data && dsar.data.summary.overdueCount > 0 && (
         <div
-          className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3"
+          className="mb-4 flex items-start gap-2 rounded-card border border-destructive/50 bg-destructive/5 p-3"
           role="alert"
           data-testid="alert-dsar-overdue"
         >

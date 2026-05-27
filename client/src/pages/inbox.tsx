@@ -827,7 +827,7 @@ function SMSConversationDetail({
                 className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
+                  className={`max-w-[80%] p-3 rounded-card ${
                     msg.direction === "outbound"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"

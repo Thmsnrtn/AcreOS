@@ -117,10 +117,10 @@ export function ActivityContent() {
                 return (
                   <div 
                     key={activity.id || index} 
-                    className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex items-start gap-4 p-3 rounded-card hover:bg-muted/50 transition-colors"
                     data-testid={`activity-item-${activity.id}`}
                   >
-                    <div className={`p-2 rounded-lg ${colorClass}`}>
+                    <div className={`p-2 rounded-card ${colorClass}`}>
                       <Icon className="w-4 h-4" />
                     </div>
                     

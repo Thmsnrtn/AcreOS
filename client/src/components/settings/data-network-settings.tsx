@@ -125,7 +125,7 @@ export function DataNetworkSettings() {
         </div>
 
         {/* Toggle */}
-        <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="flex items-center justify-between rounded-card border p-4">
           <div className="space-y-0.5">
             <label
               htmlFor="data-network-toggle"
@@ -148,7 +148,7 @@ export function DataNetworkSettings() {
 
         {/* Contribution stats */}
         {stats && (
-          <div className="flex items-center gap-4 rounded-lg bg-muted/50 p-4">
+          <div className="flex items-center gap-4 rounded-card bg-muted/50 p-4">
             <BarChart3 className="h-5 w-5 text-muted-foreground flex-shrink-0" />
             <div className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{stats.totalContributions.toLocaleString()}</span>

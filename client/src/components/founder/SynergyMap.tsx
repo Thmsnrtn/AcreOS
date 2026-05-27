@@ -26,7 +26,7 @@ function SynergyRow({ synergy }: { synergy: Synergy }) {
   const roleB = AGENT_ROLES[synergy.agentB];
   return (
     <li
-      className="flex items-center gap-3 p-2.5 rounded-lg border list-none"
+      className="flex items-center gap-3 p-2.5 rounded-card border list-none"
       aria-label={`${roleA} + ${roleB}: synergy ${score}%, ${synergy.totalCollaborations} collaborations${synergy.bestAt?.[0] ? `, best at ${synergy.bestAt[0]}` : ""}${synergy.recommendation ? `. ${synergy.recommendation}` : ""}`}
     >
       <div aria-hidden="true" className="flex items-center gap-1 shrink-0">

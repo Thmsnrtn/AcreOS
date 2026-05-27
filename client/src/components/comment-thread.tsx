@@ -213,7 +213,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
 
   // Expanded thread
   return (
-    <section id={threadId} aria-labelledby={headingId} className="border rounded-lg bg-card overflow-hidden">
+    <section id={threadId} aria-labelledby={headingId} className="border rounded-card bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <h3 id={headingId} className="text-xs font-semibold m-0">Comments</h3>

@@ -179,7 +179,7 @@ function AgentCard({
     <Card className="flex flex-col gap-0 p-0 overflow-hidden">
       <CardHeader className="flex flex-row items-start justify-between gap-3 p-4 pb-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2">
+          <div className="rounded-card bg-primary/10 p-2">
             <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
           </div>
           <div>
@@ -277,7 +277,7 @@ function TaskRow({
   const taskLabel = `${task.agentType} ${actionLabel} task`;
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors" role="group" aria-label={taskLabel}>
+    <div className="flex items-start gap-3 rounded-card border p-3 hover:bg-muted/30 transition-colors" role="group" aria-label={taskLabel}>
       <div className="rounded-md bg-primary/10 p-1.5 mt-0.5">
         <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
       </div>
@@ -525,7 +525,7 @@ function AgentConfigPanel({
           </div>
 
           {/* Notify on action */}
-          <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="flex items-center justify-between rounded-card border p-3">
             <div>
               <Label htmlFor={notifyId}>Notify on each action</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -699,7 +699,7 @@ export default function AgentCommandCenter() {
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-acr-accent p-2">
+            <div className="rounded-card bg-acr-accent p-2">
               <Bot className="h-5 w-5 text-acr-accent" aria-hidden="true" />
             </div>
             <div>
@@ -710,7 +710,7 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-acr-warn-soft p-2">
+            <div className="rounded-card bg-acr-warn-soft p-2">
               <Clock className="h-5 w-5 text-acr-warn" aria-hidden="true" />
             </div>
             <div>
@@ -721,7 +721,7 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-acr-pos-soft p-2">
+            <div className="rounded-card bg-acr-pos-soft p-2">
               <Zap className="h-5 w-5 text-acr-pos" aria-hidden="true" />
             </div>
             <div>
@@ -732,7 +732,7 @@ export default function AgentCommandCenter() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-acr-brand-soft p-2">
+            <div className="rounded-card bg-acr-brand-soft p-2">
               <BarChart3 className="h-5 w-5 text-acr-brand" aria-hidden="true" />
             </div>
             <div>
@@ -762,7 +762,7 @@ export default function AgentCommandCenter() {
         <TabsContent value="overview" className="mt-4">
           <div className="space-y-6">
             {/* Autonomy mode banner */}
-            <div className="rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
+            <div className="rounded-card border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
               <div className="flex items-start gap-3">
                 <Shield className="h-5 w-5 text-primary mt-0.5" aria-hidden="true" />
                 <div>
@@ -806,7 +806,7 @@ export default function AgentCommandCenter() {
               </CardHeader>
               <CardContent>
                 <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3 list-none p-0 m-0">
-                  <li className="rounded-lg border border-acr-pos-soft bg-acr-pos-soft p-3">
+                  <li className="rounded-card border border-acr-pos-soft bg-acr-pos-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
                       <CheckCircle2 className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-pos">Auto-execute</span>
@@ -814,7 +814,7 @@ export default function AgentCommandCenter() {
                     <p className="text-[11px] text-acr-pos">Research, data lookups, drafts, calculations.</p>
                     <p className="text-[10px] text-acr-pos mt-1 tabular-nums">Risk score: 0–25</p>
                   </li>
-                  <li className="rounded-lg border border-acr-warn-soft bg-acr-warn-soft p-3">
+                  <li className="rounded-card border border-acr-warn-soft bg-acr-warn-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
                       <AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-warn">Needs approval</span>
@@ -822,7 +822,7 @@ export default function AgentCommandCenter() {
                     <p className="text-[11px] text-acr-warn">Outbound comms, scheduling, data writes.</p>
                     <p className="text-[10px] text-acr-warn mt-1 tabular-nums">Risk score: 26–75</p>
                   </li>
-                  <li className="rounded-lg border border-acr-neg-soft bg-acr-neg-soft p-3">
+                  <li className="rounded-card border border-acr-neg-soft bg-acr-neg-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
                       <XCircle className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-neg">Always escalate</span>
@@ -842,7 +842,7 @@ export default function AgentCommandCenter() {
             {tasksLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => (
-                  <div key={i} className="h-16 rounded-lg bg-muted/30 animate-pulse" />
+                  <div key={i} className="h-16 rounded-card bg-muted/30 animate-pulse" />
                 ))}
               </div>
             ) : pendingTasks.length === 0 ? (

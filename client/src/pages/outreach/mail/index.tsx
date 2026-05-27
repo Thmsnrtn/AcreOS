@@ -54,7 +54,7 @@ export default function OutreachMailPage() {
       <div className="max-w-7xl mx-auto w-full space-y-6 p-4 md:p-6 flex-1">
         <header className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground"
+            className="w-10 h-10 rounded-card bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground"
             aria-hidden="true"
           >
             <Mail className="w-5 h-5" />

@@ -97,7 +97,7 @@ function CapitalStackBar({ equity = 30, mezzanine = 20, seniorDebt = 50 }: { equ
   const sp = ((seniorDebt / total) * 100).toFixed(0);
   return (
     <div className="space-y-2">
-      <div className="flex h-8 rounded-lg overflow-hidden">
+      <div className="flex h-8 rounded-card overflow-hidden">
         <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-pos" style={{ width: `${ep}%` }}>Equity {ep}%</div>
         <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-warn" style={{ width: `${mp}%` }}>Mezz {mp}%</div>
         <div className="flex items-center justify-center text-xs text-white font-semibold bg-acr-accent" style={{ width: `${sp}%` }}>Sr Debt {sp}%</div>
@@ -671,28 +671,28 @@ export default function PortfolioOptimizerPage() {
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-3">
                     {sharpeRatio && (
-                      <div className="rounded-lg border p-3 text-center">
+                      <div className="rounded-card border p-3 text-center">
                         <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
                         <p className="text-xl font-bold text-primary">{sharpeRatio}</p>
                         <p className="text-xs text-muted-foreground">risk-adj return</p>
                       </div>
                     )}
                     {maxDrawdown && (
-                      <div className="rounded-lg border p-3 text-center">
+                      <div className="rounded-card border p-3 text-center">
                         <p className="text-xs text-muted-foreground">Max Drawdown</p>
                         <p className="text-xl font-bold text-acr-neg">-{maxDrawdown}%</p>
                         <p className="text-xs text-muted-foreground">worst scenario</p>
                       </div>
                     )}
                     {calmarRatio && (
-                      <div className="rounded-lg border p-3 text-center">
+                      <div className="rounded-card border p-3 text-center">
                         <p className="text-xs text-muted-foreground">Calmar Ratio</p>
                         <p className="text-xl font-bold">{calmarRatio}</p>
                         <p className="text-xs text-muted-foreground">return/drawdown</p>
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                  <div className="mt-3 p-3 bg-primary/5 rounded-card border border-primary/10">
                     <p className="text-xs font-medium flex items-center gap-1.5 mb-1">
                       <Info className="w-3.5 h-3.5 text-primary" />
                       Interpretation
@@ -914,17 +914,17 @@ export default function PortfolioOptimizerPage() {
               <CardContent className="space-y-6">
                 <CapitalStackBar equity={30} mezzanine={15} seniorDebt={55} />
                 <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="p-4 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20">
+                  <div className="p-4 rounded-card bg-acr-pos-soft dark:bg-acr-pos-soft/20">
                     <p className="text-xs text-muted-foreground">Equity</p>
                     <p className="text-xl font-bold text-acr-pos">30%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Highest risk / return</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20">
+                  <div className="p-4 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/20">
                     <p className="text-xs text-muted-foreground">Mezzanine</p>
                     <p className="text-xl font-bold text-acr-warn">15%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Bridge / mezz debt</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-acr-accent dark:bg-acr-accent/20">
+                  <div className="p-4 rounded-card bg-acr-accent dark:bg-acr-accent/20">
                     <p className="text-xs text-muted-foreground">Senior Debt</p>
                     <p className="text-xl font-bold text-acr-accent">55%</p>
                     <p className="text-xs text-muted-foreground mt-0.5">Lowest risk / first lien</p>
@@ -1112,7 +1112,7 @@ function StressTestTab() {
                   type="button"
                   onClick={() => setSelectedScenario(s)}
                   aria-pressed={selectedScenario.id === s.id}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  className={`w-full text-left p-3 rounded-card border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
                   }`}
                 >
@@ -1149,7 +1149,7 @@ function StressTestTab() {
                   </p>
                 </div>
               </div>
-              <div className="p-3 bg-muted/40 rounded-lg">
+              <div className="p-3 bg-muted/40 rounded-card">
                 <p className="text-sm font-medium">
                   {selectedScenario.priceImpact < 0 ? "Portfolio Loss:" : "Portfolio Gain:"}
                   <span className={`ml-2 ${selectedScenario.priceImpact < 0 ? "text-acr-neg" : "text-acr-pos"}`}>

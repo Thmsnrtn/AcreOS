@@ -527,7 +527,7 @@ function SourcesTab() {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map(i => (
-          <div key={i} className="h-20 bg-muted/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-20 bg-muted/50 rounded-card animate-pulse" />
         ))}
       </div>
     );
@@ -798,7 +798,7 @@ function DealsTab() {
       {/* Deal cards */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3, 4].map(i => <div key={i} className="h-36 bg-muted/50 rounded-lg animate-pulse" />)}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-36 bg-muted/50 rounded-card animate-pulse" />)}
         </div>
       ) : deals.length === 0 ? (
         <Card>

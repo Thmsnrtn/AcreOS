@@ -74,7 +74,7 @@ export function CalendarWidget() {
         role="status"
         aria-busy="true"
         aria-label="Loading calendar"
-        className="border rounded-lg p-4 space-y-3"
+        className="border rounded-card p-4 space-y-3"
       >
         <Skeleton className="h-5 w-32" />
         <div className="grid grid-cols-7 gap-1">
@@ -89,7 +89,7 @@ export function CalendarWidget() {
 
   if (!hasEvents && !calendarStatus?.connected) {
     return (
-      <div className="border rounded-lg p-4 text-center text-sm">
+      <div className="border rounded-card p-4 text-center text-sm">
         <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true" />
         <p className="text-muted-foreground mb-2">No upcoming events</p>
         <Button variant="outline" size="sm" asChild>
@@ -102,7 +102,7 @@ export function CalendarWidget() {
   }
 
   return (
-    <section aria-labelledby="calendar-week-heading" className="border rounded-lg p-4">
+    <section aria-labelledby="calendar-week-heading" className="border rounded-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 id="calendar-week-heading" className="text-sm font-medium flex items-center gap-2 m-0">
           <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />

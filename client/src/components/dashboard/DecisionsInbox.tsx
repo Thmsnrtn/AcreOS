@@ -12,6 +12,7 @@ import {
   naturalUrgency,
   naturalRisk,
 } from "@/lib/trust-language";
+import { AgentReasoningExpandable } from "@/components/dashboard/AgentReasoningExpandable";
 
 interface DecisionsInboxItem {
   id: number;
@@ -66,7 +67,7 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
   const cardTitle = item.recommendedActionLabel?.trim() || naturalItemType(item.itemType);
 
   return (
-    <li className="rounded-lg border bg-card p-4 space-y-3">
+    <li className="rounded-card border bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span aria-hidden="true" className="text-lg">{AGENT_AVATARS[(item as any).ownerAgentCodename || "sophie_csm"]}</span>
@@ -130,6 +131,11 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
           <Clock className="h-3 w-3 mr-1" aria-hidden="true" /> Defer 24h
         </Button>
       </div>
+
+      {/* Lens 46 — trust-loop legibility: the founder can expand to see the
+          agent's reasoning, alternatives weighed, model tiers tried, and
+          the upstream observation that triggered this item. */}
+      <AgentReasoningExpandable decisionId={item.id} />
     </li>
   );
 }
@@ -156,7 +162,7 @@ export function DecisionsInbox() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3 animate-pulse">
-            {[0, 1].map(i => <div key={i} className="h-24 rounded-lg bg-muted" />)}
+            {[0, 1].map(i => <div key={i} className="h-24 rounded-card bg-muted" />)}
           </div>
         </CardContent>
       </Card>

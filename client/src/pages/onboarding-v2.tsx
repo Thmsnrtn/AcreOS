@@ -232,19 +232,19 @@ function InstantDealHunt({
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-acr-bg-sunken/60 rounded-lg p-2 min-w-0">
+                <div className="bg-acr-bg-sunken/60 rounded-card p-2 min-w-0">
                   <div className="text-sm font-semibold text-white truncate tabular-nums">
                     {usd(opp.estimatedOfferPrice, { noCents: true })}
                   </div>
                   <div className="text-xs text-muted-foreground">Offer price</div>
                 </div>
-                <div className="bg-acr-bg-sunken/60 rounded-lg p-2 min-w-0">
+                <div className="bg-acr-bg-sunken/60 rounded-card p-2 min-w-0">
                   <div className="text-sm font-semibold text-white truncate tabular-nums">
                     {usd(opp.estimatedResaleValue, { noCents: true })}
                   </div>
                   <div className="text-xs text-muted-foreground">Resale value</div>
                 </div>
-                <div className="bg-acr-pos-soft/40 rounded-lg p-2">
+                <div className="bg-acr-pos-soft/40 rounded-card p-2">
                   <div className="text-sm font-semibold text-acr-pos tabular-nums">
                     {usd(opp.potentialProfit, { noCents: true })}
                   </div>
@@ -385,7 +385,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-acr-accent/30 border border-acr-accent/30 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-acr-accent/30 border border-acr-accent/30 rounded-card">
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-acr-accent" aria-hidden="true" />
               <span className="text-white text-sm font-medium">{file.name}</span>
@@ -403,7 +403,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           </div>
 
           {preview.length > 0 && !importComplete && (
-            <div className="overflow-x-auto rounded-lg border border-border" role="region" tabIndex={0} aria-label="Portfolio file preview">
+            <div className="overflow-x-auto rounded-card border border-border" role="region" tabIndex={0} aria-label="Portfolio file preview">
               <table className="w-full text-xs text-muted-foreground">
                 <thead>
                   <tr className="bg-acr-bg-sunken/80">
@@ -434,7 +434,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
 
           {importComplete && (
             <div
-              className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
+              className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-card text-acr-pos text-sm flex items-center gap-2"
               role="status"
               aria-live="polite"
             >
@@ -558,7 +558,7 @@ function TargetCountiesStep({
         </button>
       )}
 
-      <div className="p-3 bg-acr-bg-sunken border border-border rounded-lg">
+      <div className="p-3 bg-acr-bg-sunken border border-border rounded-card">
         <p className="text-xs text-muted-foreground mb-1">Pro tip</p>
         <p className="text-xs text-muted-foreground">
           Running deals in 3–5 counties gives you enough deal flow while keeping focus.
@@ -636,7 +636,7 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
               aria-label={`${label}: ${settings[key] ? "on" : "off"}`}
               onClick={() => setSettings((prev) => ({ ...prev, [key]: !prev[key] }))}
               className={cn(
-                "w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3 min-h-11",
+                "w-full text-left p-3 rounded-card border transition-colors flex items-start gap-3 min-h-11",
                 settings[key]
                   ? "border-acr-accent/50 bg-acr-accent/30"
                   : "border-border bg-acr-bg-sunken/50"
@@ -719,7 +719,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
             { icon: Briefcase, role: "Closing coordinators", desc: "Manage contracts and transactions" },
           ].map(({ icon: Icon, role, desc }) => (
             <li key={role} className="flex items-center gap-3 p-2">
-              <div className="w-8 h-8 bg-acr-brand-soft/50 rounded-lg flex items-center justify-center flex-shrink-0" aria-hidden="true">
+              <div className="w-8 h-8 bg-acr-brand-soft/50 rounded-card flex items-center justify-center flex-shrink-0" aria-hidden="true">
                 <Icon className="w-4 h-4 text-acr-brand" />
               </div>
               <div>
@@ -752,7 +752,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
 
       {invitesSent && (
         <div
-          className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
+          className="p-3 bg-acr-pos-soft/30 border border-acr-pos/30 rounded-card text-acr-pos text-sm flex items-center gap-2"
           role="status"
           aria-live="polite"
         >
@@ -862,7 +862,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
             <div
               aria-hidden="true"
               className={cn(
-                "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                "w-9 h-9 rounded-card flex items-center justify-center flex-shrink-0",
                 status === "connected" ? "bg-acr-pos-soft/50" : "bg-acr-bg-sunken"
               )}
             >
@@ -1288,7 +1288,7 @@ export default function OnboardingV2() {
                   className="bg-acr-bg-sunken border-border text-white text-lg py-3"
                 />
               </div>
-              <div className="p-3 bg-acr-bg-sunken border border-border rounded-lg">
+              <div className="p-3 bg-acr-bg-sunken border border-border rounded-card">
                 <div className="text-xs text-muted-foreground mb-2">💡 Not sure which county to pick?</div>
                 <div className="text-xs text-muted-foreground">
                   Expert tip: Start with rural counties in TX, AZ, NM, or CO. Look for counties with
@@ -1371,7 +1371,7 @@ export default function OnboardingV2() {
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-acr-pos-soft/50 flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 rounded-card bg-acr-pos-soft/50 flex items-center justify-center flex-shrink-0">
                           <Icon className="w-5 h-5 text-acr-pos" />
                         </div>
                         <div>
@@ -1460,7 +1460,7 @@ export default function OnboardingV2() {
                       { label: "Workflows", value: "Active", sub: "customized" },
                     ]
                 ).map(({ label, value, sub }) => (
-                  <div key={label} className="bg-acr-bg-sunken border border-border rounded-lg p-3 text-center">
+                  <div key={label} className="bg-acr-bg-sunken border border-border rounded-card p-3 text-center">
                     <div className="text-2xl font-bold text-acr-pos">{value}</div>
                     <div className="text-xs text-white">{label}</div>
                     <div className="text-xs text-muted-foreground">{sub}</div>

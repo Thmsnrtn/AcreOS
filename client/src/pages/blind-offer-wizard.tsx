@@ -337,7 +337,7 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
             const cbId = `seller-${key}`;
             const checked = !!sellerProfile[key];
             return (
-              <label key={key} htmlFor={cbId} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}>
+              <label key={key} htmlFor={cbId} className={`flex items-center gap-2 p-3 rounded-card border cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}>
                 <input
                   id={cbId}
                   type="checkbox"
@@ -591,7 +591,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
             {sortedComps.map((comp, i) => {
               const sourceLabel = comp.source.replace(/_/g, " ");
               return (
-                <li key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${i === 0 ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"}`}>
+                <li key={i} className={`flex items-center gap-3 p-3 rounded-card border ${i === 0 ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"}`}>
                   {i === 0 && <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos text-xs" aria-label="Lowest comp">Lowest</Badge>}
                   <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
                     <span className="font-semibold tabular-nums">{fmt(comp.pricePerAcre)}/acre</span>
@@ -614,7 +614,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
       )}
 
       {comps.length === 0 && (
-        <div className="p-4 rounded-lg border border-dashed border-muted-foreground/30 text-center text-sm text-muted-foreground">
+        <div className="p-4 rounded-card border border-dashed border-muted-foreground/30 text-center text-sm text-muted-foreground">
           No comps entered yet. You can proceed without comps — the system will use USDA land-value benchmarks.
         </div>
       )}
@@ -668,7 +668,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
       {report.warnings.length > 0 && (
         <ul className="space-y-2 list-none p-0 m-0" aria-label="Calculation warnings">
           {report.warnings.map((w: string, i: number) => (
-            <li key={i} className="flex gap-2 p-3 rounded-lg border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 text-sm text-acr-warn dark:text-acr-warn" role="alert">
+            <li key={i} className="flex gap-2 p-3 rounded-card border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 text-sm text-acr-warn dark:text-acr-warn" role="alert">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <span>{w}</span>
             </li>
@@ -730,7 +730,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
       </div>
 
       {/* eBay note */}
-      <div className="p-3 rounded-lg border border-border text-sm text-muted-foreground">
+      <div className="p-3 rounded-card border border-border text-sm text-muted-foreground">
         <span className="font-semibold text-foreground">eBay validation: </span>
         {report.marketContext.ebayValidationNote}
       </div>
@@ -962,7 +962,7 @@ Private Real Estate Investor`;
           </div>
         </CardHeader>
         <CardContent>
-          <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground bg-muted/30 rounded-lg p-4 leading-relaxed" aria-label="Offer letter draft">
+          <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground bg-muted/30 rounded-card p-4 leading-relaxed" aria-label="Offer letter draft">
             {letterText}
           </pre>
         </CardContent>
@@ -976,17 +976,17 @@ Private Real Estate Investor`;
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-3 gap-4 text-center m-0">
-            <div className="p-3 rounded-lg bg-muted/40">
+            <div className="p-3 rounded-card bg-muted/40">
               <dt className="text-xs text-muted-foreground">Response rate</dt>
               <dd className="text-xl font-bold tabular-nums m-0">~4%</dd>
               <p className="text-xs text-muted-foreground">Industry average</p>
             </div>
-            <div className="p-3 rounded-lg bg-muted/40">
+            <div className="p-3 rounded-card bg-muted/40">
               <dt className="text-xs text-muted-foreground">Close rate</dt>
               <dd className="text-xl font-bold tabular-nums m-0">~60%</dd>
               <p className="text-xs text-muted-foreground">3 of 5 responses</p>
             </div>
-            <div className="p-3 rounded-lg bg-muted/40">
+            <div className="p-3 rounded-card bg-muted/40">
               <dt className="text-xs text-muted-foreground">Letters for 1 deal</dt>
               <dd className="text-xl font-bold tabular-nums m-0">~42</dd>
               <p className="text-xs text-muted-foreground">At 4% × 60%</p>
@@ -1086,7 +1086,7 @@ export default function BlindOfferWizardPage() {
                   disabled={!isPast && !isActive}
                   aria-current={isActive ? "step" : undefined}
                   aria-label={`Step ${i + 1} of ${STEPS.length}: ${step.label}${isActive ? " (current)" : isPast ? " (completed)" : " (locked)"}`}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : isPast ? "bg-muted text-foreground cursor-pointer hover:bg-muted/70" : "bg-muted/40 text-muted-foreground cursor-default"}`}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-card text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : isPast ? "bg-muted text-foreground cursor-pointer hover:bg-muted/70" : "bg-muted/40 text-muted-foreground cursor-default"}`}
                 >
                   <Icon className="w-4 h-4" aria-hidden="true" />
                   <span className="hidden md:block">{step.label}</span>

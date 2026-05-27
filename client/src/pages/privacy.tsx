@@ -6,17 +6,29 @@ import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import { SITE } from "@/lib/jsonld-schemas";
+
+// Why these constants live next to the component: same copy is shared
+// between document-title + OG description so social unfurls and SERP
+// snippets match the in-app title without drift.
+const PAGE_TITLE = "Privacy policy";
+const PAGE_DESCRIPTION =
+  "How AcreOS collects, uses, and protects data from land investors and their leads — including encryption, retention, and your rights under applicable privacy laws.";
 
 export default function PrivacyPolicy() {
-  usePageMeta(
-    "Privacy policy",
-    "How AcreOS collects, uses, and protects data from land investors and their leads — including encryption, retention, and your rights under applicable privacy laws."
-  );
+  usePageMeta(PAGE_TITLE, PAGE_DESCRIPTION);
   const lastUpdated = "March 2026";
   const docRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="min-h-screen bg-background">
+      <OpenGraph
+        url={`${SITE.url}/privacy`}
+        title={`${PAGE_TITLE} · AcreOS`}
+        description={PAGE_DESCRIPTION}
+        type="website"
+      />
       <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
         <div className="mb-6">
           <Button asChild variant="ghost" size="sm" data-testid="button-back-to-home">

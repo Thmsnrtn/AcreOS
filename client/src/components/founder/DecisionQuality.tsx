@@ -77,7 +77,7 @@ export function DecisionQuality() {
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
             aria-label={expanded ? "Collapse decision quality details" : "Expand decision quality details"}
-            className="w-full flex items-center justify-between px-6 py-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+            className="w-full flex items-center justify-between px-6 py-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-card"
           >
             <span className="flex items-center gap-2">
               <Target className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -89,15 +89,15 @@ export function DecisionQuality() {
 
         <CardContent>
           <motion.dl variants={staggerItem} className="grid grid-cols-3 gap-4 mb-4 m-0">
-            <div className="text-center p-3 rounded-lg bg-muted/50">
+            <div className="text-center p-3 rounded-card bg-muted/50">
               <dd className="text-2xl font-bold tabular-nums m-0">{data.totalDecisions}</dd>
               <dt className="text-xs text-muted-foreground">Decisions</dt>
             </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
+            <div className="text-center p-3 rounded-card bg-muted/50">
               <dd className="text-2xl font-bold text-acr-pos tabular-nums m-0">{data.approvalRate}%</dd>
               <dt className="text-xs text-muted-foreground">Approval rate</dt>
             </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
+            <div className="text-center p-3 rounded-card bg-muted/50">
               <dd className="text-2xl font-bold text-acr-accent tabular-nums m-0">{data.positiveOutcomeRate}%</dd>
               <dt className="text-xs text-muted-foreground">Positive outcomes</dt>
             </div>

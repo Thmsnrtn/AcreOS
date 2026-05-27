@@ -277,7 +277,7 @@ export default function AuthPage() {
                   window.location.replace("/auth");
                 }
               }}
-              className="inline-flex items-center justify-center min-h-11 px-5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-card bg-primary text-primary-foreground text-sm font-semibold shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
               Sign out and continue
             </button>
@@ -334,7 +334,7 @@ export default function AuthPage() {
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center gap-2.5">
             <div
-              className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm"
+              className="w-10 h-10 rounded-card bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm"
               aria-hidden="true"
             >
               <span className="text-white font-bold text-lg">{brandName.slice(0, 1)}</span>

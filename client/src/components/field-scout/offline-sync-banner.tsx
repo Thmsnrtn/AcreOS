@@ -54,7 +54,7 @@ export function OfflineSyncBanner({
   return (
     <div
       className={cn(
-        "mx-4 mt-3 rounded-lg border p-3 space-y-2",
+        "mx-4 mt-3 rounded-card border p-3 space-y-2",
         !isOnline
           ? "bg-acr-neg-soft/30 border-acr-neg-soft/50"
           : syncState === "error"

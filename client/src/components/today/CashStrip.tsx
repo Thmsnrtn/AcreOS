@@ -49,7 +49,7 @@ export function CashStrip({
       <Card>
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-acr-pos-soft shrink-0">
+            <div className="p-2 rounded-card bg-acr-pos-soft shrink-0">
               <Banknote className="w-4 h-4 text-acr-pos" aria-hidden="true" />
             </div>
             <div className="min-w-0">
@@ -61,7 +61,7 @@ export function CashStrip({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+            <div className="p-2 rounded-card bg-primary/10 shrink-0">
               <DollarSign className="w-4 h-4 text-primary" aria-hidden="true" />
             </div>
             <div className="min-w-0">
@@ -75,7 +75,7 @@ export function CashStrip({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-acr-warn-soft shrink-0">
+            <div className="p-2 rounded-card bg-acr-warn-soft shrink-0">
               <TrendingUp className="w-4 h-4 text-acr-warn" aria-hidden="true" />
             </div>
             <div className="min-w-0">

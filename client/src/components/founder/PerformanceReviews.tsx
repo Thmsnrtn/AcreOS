@@ -82,7 +82,7 @@ function ReviewCard({ review }: { review: Review }) {
             </p>
           </div>
         </div>
-        <div className={`text-2xl font-bold px-3 py-1 rounded-lg border ${gradeStyle}`} aria-label={`Overall grade: ${review.overallGrade}`}>
+        <div className={`text-2xl font-bold px-3 py-1 rounded-card border ${gradeStyle}`} aria-label={`Overall grade: ${review.overallGrade}`}>
           {review.overallGrade}
         </div>
       </div>
@@ -92,15 +92,15 @@ function ReviewCard({ review }: { review: Review }) {
 
       {/* Key Metrics */}
       <dl className="grid grid-cols-4 gap-2 m-0">
-        <div className="text-center p-2 rounded-lg bg-muted/50">
+        <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.totalActions}</dd>
           <dt className="text-[10px] text-muted-foreground">Actions</dt>
         </div>
-        <div className="text-center p-2 rounded-lg bg-muted/50">
+        <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.successRate}%</dd>
           <dt className="text-[10px] text-muted-foreground">Success</dt>
         </div>
-        <div className="text-center p-2 rounded-lg bg-muted/50">
+        <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold flex items-center justify-center gap-0.5 m-0" aria-label={`Trust ${m.trustScoreEnd}, ${m.trustDelta > 0 ? "up" : m.trustDelta < 0 ? "down" : "flat"}`}>
             <span className="tabular-nums">{m.trustScoreEnd}</span>
             {m.trustDelta > 0 ? <ArrowUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> :
@@ -109,7 +109,7 @@ function ReviewCard({ review }: { review: Review }) {
           </dd>
           <dt className="text-[10px] text-muted-foreground">Trust</dt>
         </div>
-        <div className="text-center p-2 rounded-lg bg-muted/50">
+        <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.goalsCompleted}/{m.goalsAssigned}</dd>
           <dt className="text-[10px] text-muted-foreground">Goals</dt>
         </div>

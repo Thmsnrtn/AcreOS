@@ -119,7 +119,7 @@ function ScenarioWarRoom() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-2">{s.hypothesis}</p>
                 {s.consensusSummary && (
-                  <div className="bg-muted/50 p-3 rounded-lg mt-2">
+                  <div className="bg-muted/50 p-3 rounded-card mt-2">
                     <p className="text-sm font-medium mb-1">Consensus:</p>
                     <p className="text-sm">{s.consensusSummary}</p>
                     {s.consensusRecommendation && <p className="text-sm font-medium mt-2 text-primary">{s.consensusRecommendation}</p>}

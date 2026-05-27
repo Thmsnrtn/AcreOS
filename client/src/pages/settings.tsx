@@ -1051,10 +1051,11 @@ export default function Settings() {
                             // Vesper §3 — wire "Downgrade instead" to the
                             // plan picker preselected to a lower tier.
                             // Canonical Tier (starter/pro/scale) maps to
-                            // the modal's TierKey (free/starter/pro).
+                            // the modal's TierKey (free/starter/pro/scale).
                             onDowngrade={(suggested) => {
                               const modalTier: TierKey =
-                                suggested === "pro" ? "pro"
+                                suggested === "scale" ? "scale"
+                                  : suggested === "pro" ? "pro"
                                   : suggested === "starter" ? "starter"
                                   : "starter";
                               setPlanPickerHighlight(modalTier);
@@ -2233,7 +2234,7 @@ function ReferralSettings() {
               { label: "Credits earned", value: stats ? usd(stats.creditsEarned / 100, { noCents: true }) : "$0", icon: Coins, isMoney: true },
               { label: "Available credit", value: stats ? usd(stats.creditBalance / 100, { noCents: true }) : "$0", icon: Wallet, isMoney: true },
             ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded-lg border border-border/60 bg-card p-4 space-y-1 text-center">
+              <div key={label} className="rounded-card border border-border/60 bg-card p-4 space-y-1 text-center">
                 <Icon className="w-4 h-4 text-primary mx-auto" aria-hidden="true" />
                 <dd className="text-2xl font-bold tabular-nums">{statsQuery.isLoading ? "—" : value}</dd>
                 <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -2439,7 +2440,7 @@ function GoalsSettings() {
                 const valueFormat = (n: number) =>
                   isRevenue ? usd(n, { noCents: true }) : n.toLocaleString();
                 return (
-                  <div key={goal.id} className="rounded-lg border p-4 space-y-2">
+                  <div key={goal.id} className="rounded-card border p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{goal.label}</p>
@@ -3042,7 +3043,7 @@ function PrivacyDataSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn/30 dark:border-acr-warn/30"
+              className="flex items-start gap-2 p-3 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn/30 dark:border-acr-warn/30"
               role="alert"
             >
               <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
@@ -3126,7 +3127,7 @@ function PrivacyDataSettings() {
               { right: "Right to object (Art. 21)", desc: "Contact support to object to processing.", status: "contact" as const },
               { right: "Right to restriction (Art. 18)", desc: "Contact support to restrict processing.", status: "contact" as const },
             ].map(({ right, desc, status }) => (
-              <li key={right} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/20">
+              <li key={right} className="flex items-start gap-2 p-3 rounded-card border bg-muted/20">
                 <Badge
                   variant={status === "available" ? "default" : "outline"}
                   className="text-xs shrink-0 mt-0.5"

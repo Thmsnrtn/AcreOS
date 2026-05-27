@@ -75,7 +75,7 @@ export function PaxRelationshipIndicator({ compact, className }: PaxRelationship
   }
 
   return (
-    <div className={cn("rounded-lg border p-3 space-y-2", className)}>
+    <div className={cn("rounded-card border p-3 space-y-2", className)}>
       <div className="flex items-center gap-2">
         <div className={cn("p-1.5 rounded-md", config.bgColor)}>
           <Icon className={cn("h-4 w-4", config.color)} />

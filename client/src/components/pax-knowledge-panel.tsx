@@ -135,7 +135,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
           type="button"
           disabled={files.length >= MAX_KB_FILES}
           className={cn(
-            "mx-4 mt-3 w-auto rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            "mx-4 mt-3 w-auto rounded-card border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
             files.length >= MAX_KB_FILES && "opacity-50 pointer-events-none"
           )}
@@ -179,7 +179,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
             </p>
           )}
           {files.map((file) => (
-            <div key={file.id} className="rounded-lg border p-3 space-y-2">
+            <div key={file.id} className="rounded-card border p-3 space-y-2">
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{file.name}</p>

@@ -599,17 +599,17 @@ export default function OffersPage() {
                     <div className="border-t pt-4 space-y-3">
                       <h4 className="font-medium">Preview calculation</h4>
                       <dl className="grid grid-cols-3 gap-4 text-center">
-                        <div className="p-3 rounded-lg bg-muted/50">
+                        <div className="p-3 rounded-card bg-muted/50">
                           <dd className="text-2xl font-bold tabular-nums" data-testid="text-preview-count">{previewCalculation.count}</dd>
                           <dt className="text-xs text-muted-foreground">Leads selected</dt>
                         </div>
-                        <div className="p-3 rounded-lg bg-muted/50">
+                        <div className="p-3 rounded-card bg-muted/50">
                           <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-total">
                             {usd(previewCalculation.totalValue)}
                           </dd>
                           <dt className="text-xs text-muted-foreground">Total offers</dt>
                         </div>
-                        <div className="p-3 rounded-lg bg-muted/50">
+                        <div className="p-3 rounded-card bg-muted/50">
                           <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-avg">
                             {usd(previewCalculation.avgOffer)}
                           </dd>
@@ -661,7 +661,7 @@ export default function OffersPage() {
                               <li key={lead.id}>
                                 <label
                                   htmlFor={cbId}
-                                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                  className={`flex items-center gap-3 p-3 rounded-card border cursor-pointer transition-colors ${
                                     checked
                                       ? "border-primary bg-primary/5"
                                       : "border-border hover-elevate"

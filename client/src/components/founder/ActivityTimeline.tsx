@@ -73,7 +73,7 @@ export default function ActivityTimeline() {
     return (
       <div role="status" aria-busy="true" aria-label="Loading activity timeline" className="p-4 space-y-3">
         {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 bg-acr-bg-sunken/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-16 bg-acr-bg-sunken/50 rounded-card animate-pulse" />
         ))}
       </div>
     );
@@ -109,7 +109,7 @@ export default function ActivityTimeline() {
                 return (
                   <li
                     key={entry.id}
-                    className="mx-2 rounded-lg bg-acr-bg-sunken/40 border border-border/50 overflow-hidden"
+                    className="mx-2 rounded-card bg-acr-bg-sunken/40 border border-border/50 overflow-hidden"
                   >
                     <button
                       type="button"

@@ -434,7 +434,7 @@ export default function VADashboardPage() {
               {scheduledTasks.length > 0 ? (
                 <ul className="space-y-3 list-none p-0 m-0" aria-label="Recurring scheduled tasks">
                   {scheduledTasks.map((task: any, i: number) => (
-                    <li key={i} className="flex items-center justify-between p-3 border rounded-lg gap-3">
+                    <li key={i} className="flex items-center justify-between p-3 border rounded-card gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{task.title}</p>
                         <p className="text-xs text-muted-foreground">
@@ -569,7 +569,7 @@ export default function VADashboardPage() {
                       const stepMinsId = `wf-step-${i}-mins`;
                       const stepDescId = `wf-step-${i}-desc`;
                       return (
-                        <li key={i} className="p-3 border rounded-lg space-y-2">
+                        <li key={i} className="p-3 border rounded-card space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-muted-foreground tabular-nums">
                               Step {i + 1}

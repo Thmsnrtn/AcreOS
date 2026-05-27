@@ -265,7 +265,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                         return (
                           <div
                             key={connector.id}
-                            className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors"
+                            className="flex items-start gap-3 p-3 rounded-card border bg-card hover:bg-accent/30 transition-colors"
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">

@@ -224,18 +224,18 @@ function GamificationPanel({ completed }: { completed: Set<string> }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <dl className="grid grid-cols-3 gap-3 text-center">
-          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-card p-2">
             <dd className="text-xl font-bold text-acr-warn tabular-nums">{xpPoints.toLocaleString()}</dd>
             <dt className="text-xs text-muted-foreground">XP points</dt>
           </div>
-          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-lg p-2">
+          <div className="bg-acr-warn-soft dark:bg-acr-warn-soft/20 rounded-card p-2">
             <dd className="flex items-center justify-center gap-1">
               <Flame className="w-4 h-4 text-acr-warn" aria-hidden="true" />
               <span className="text-xl font-bold text-acr-warn tabular-nums">{streakDays}</span>
             </dd>
             <dt className="text-xs text-muted-foreground">Day streak</dt>
           </div>
-          <div className="bg-primary/10 rounded-lg p-2">
+          <div className="bg-primary/10 rounded-card p-2">
             <dd className="text-xl font-bold text-primary tabular-nums">{completedCount}/{COURSES.length}</dd>
             <dt className="text-xs text-muted-foreground">Courses done</dt>
           </div>

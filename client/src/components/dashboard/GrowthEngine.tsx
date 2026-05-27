@@ -118,20 +118,20 @@ export function GrowthEngine() {
           <p className="text-xs font-medium text-muted-foreground mb-2">Free → Paid conversion (30d)</p>
           <div className="flex items-stretch gap-2">
             {/* Free pool */}
-            <div className="flex-1 rounded-lg bg-muted/50 border px-2 py-2 text-center" aria-label={`Free accounts: ${freeTier?.count ?? "no data"}`}>
+            <div className="flex-1 rounded-card bg-muted/50 border px-2 py-2 text-center" aria-label={`Free accounts: ${freeTier?.count ?? "no data"}`}>
               <p className="text-lg font-bold tabular-nums">{freeTier?.count ?? "—"}</p>
               <p className="text-[10px] text-muted-foreground">free accounts</p>
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">→</div>
             {/* Conversions */}
-            <div className="flex-1 rounded-lg bg-acr-pos/5 border border-acr-pos/20 px-2 py-2 text-center" aria-label={`Converted: ${expansionSignals.freeToPayConversions30d}`}>
+            <div className="flex-1 rounded-card bg-acr-pos/5 border border-acr-pos/20 px-2 py-2 text-center" aria-label={`Converted: ${expansionSignals.freeToPayConversions30d}`}>
               <p className="text-lg font-bold text-acr-pos tabular-nums">{expansionSignals.freeToPayConversions30d}</p>
               <p className="text-[10px] text-muted-foreground">converted</p>
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">=</div>
             {/* Conversion rate */}
             <div
-              className={`flex-1 rounded-lg border px-2 py-2 text-center ${convRate >= 5 ? "bg-acr-pos/5 border-acr-pos/20" : convRate >= 2 ? "bg-acr-warn/5 border-acr-warn/20" : "bg-muted/50"}`}
+              className={`flex-1 rounded-card border px-2 py-2 text-center ${convRate >= 5 ? "bg-acr-pos/5 border-acr-pos/20" : convRate >= 2 ? "bg-acr-warn/5 border-acr-warn/20" : "bg-muted/50"}`}
               aria-label={`Conversion rate: ${convRate.toFixed(1)}%`}
             >
               <p className={`text-lg font-bold tabular-nums ${convRate >= 5 ? "text-acr-pos" : convRate >= 2 ? "text-acr-warn" : "text-foreground"}`}>
@@ -144,11 +144,11 @@ export function GrowthEngine() {
 
         {/* Expansion signals */}
         <ul aria-label="Expansion signals" className="grid grid-cols-2 gap-2 border-t pt-3 list-none p-0 m-0">
-          <li className="rounded-lg bg-acr-pos/5 border border-acr-pos/10 px-3 py-2 text-center" aria-label={`${expansionSignals.upgrades30d} upgrades`}>
+          <li className="rounded-card bg-acr-pos/5 border border-acr-pos/10 px-3 py-2 text-center" aria-label={`${expansionSignals.upgrades30d} upgrades`}>
             <p className="text-xl font-bold text-acr-pos tabular-nums">{expansionSignals.upgrades30d}</p>
             <p className="text-[10px] text-muted-foreground">upgrades</p>
           </li>
-          <li className="rounded-lg bg-acr-neg/5 border border-acr-neg/10 px-3 py-2 text-center" aria-label={`${expansionSignals.downgrades30d} downgrades`}>
+          <li className="rounded-card bg-acr-neg/5 border border-acr-neg/10 px-3 py-2 text-center" aria-label={`${expansionSignals.downgrades30d} downgrades`}>
             <p className="text-xl font-bold text-acr-neg tabular-nums">{expansionSignals.downgrades30d}</p>
             <p className="text-[10px] text-muted-foreground">downgrades</p>
           </li>

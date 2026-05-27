@@ -661,7 +661,7 @@ function WhiteLabelPanel() {
             </CardHeader>
             <CardContent>
               <div
-                className="rounded-lg border overflow-hidden"
+                className="rounded-card border overflow-hidden"
                 style={{ fontFamily: branding.fontFamily }}
               >
                 {/* Mock navigation bar */}

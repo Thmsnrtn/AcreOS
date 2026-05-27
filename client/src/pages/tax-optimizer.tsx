@@ -447,7 +447,7 @@ export default function TaxOptimizerPage() {
                         </div>
                         <Badge variant="outline">Deal #<span className="tabular-nums">{c.dealId}</span></Badge>
                       </div>
-                      <dl className="grid grid-cols-2 gap-3 mt-3 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/10 rounded-lg">
+                      <dl className="grid grid-cols-2 gap-3 mt-3 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/10 rounded-card">
                         <div>
                           <dt className="text-xs text-acr-warn dark:text-acr-warn font-medium">45-day ID deadline</dt>
                           <dd className="text-sm font-bold tabular-nums">{format(new Date(c.deadline45Day), "MMM d, yyyy")}</dd>

@@ -90,7 +90,7 @@ function ProgressDots({ current, total }: { current: number; total: number }) {
 
 function ObservationBadge({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg border bg-card">
+    <div className="flex items-center gap-2 p-2 rounded-card border bg-card">
       <Icon className="w-4 h-4 text-primary shrink-0" />
       <div className="min-w-0">
         <p className="text-[10px] text-muted-foreground">{label}</p>

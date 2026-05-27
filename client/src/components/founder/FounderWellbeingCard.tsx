@@ -113,7 +113,7 @@ export function FounderWellbeingCard() {
               return (
                 <li
                   key={i}
-                  className={`flex items-start gap-2 p-2.5 rounded-lg border text-xs ${colorClass}`}
+                  className={`flex items-start gap-2 p-2.5 rounded-card border text-xs ${colorClass}`}
                   role={insight.type === "warning" ? "alert" : insight.type === "celebration" || insight.type === "milestone" ? "status" : undefined}
                 >
                   <Icon className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden="true" />

@@ -450,7 +450,7 @@ export default function EddmTab() {
         {/* Side panel — layer toggles + filters */}
         {panelOpen && (
           <aside
-            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-background/95 rounded-lg shadow-lg border p-3 space-y-3"
+            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-background/95 rounded-card shadow-lg border p-3 space-y-3"
             data-testid="eddm-side-panel"
           >
             <div className="flex items-center justify-between">

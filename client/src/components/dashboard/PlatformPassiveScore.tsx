@@ -147,7 +147,7 @@ export function PlatformPassiveScore() {
 
         {/* Credential health pills */}
         {data.credentialHealth && data.credentialHealth.missingCreds.length > 0 && (
-          <div className="rounded-lg border border-acr-warn/20 bg-acr-warn/5 px-3 py-2">
+          <div className="rounded-card border border-acr-warn/20 bg-acr-warn/5 px-3 py-2">
             <p id="missing-creds-heading" className="text-xs font-medium text-acr-warn flex items-center gap-1 mb-1.5">
               <Key className="h-3 w-3" aria-hidden="true" />
               Unconfigured services reducing score:
@@ -236,7 +236,7 @@ export function PlatformPassiveScore() {
 
         {/* Operational health note */}
         {data.operationalHealth && (data.operationalHealth.pendingDecisions > 0 || data.operationalHealth.jobFailures24h > 0) && (
-          <div role="alert" className="rounded-lg border border-acr-neg/20 bg-acr-neg/5 px-3 py-2 space-y-0.5">
+          <div role="alert" className="rounded-card border border-acr-neg/20 bg-acr-neg/5 px-3 py-2 space-y-0.5">
             {data.operationalHealth.pendingDecisions > 0 && (
               <p className="text-xs text-acr-neg flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" aria-hidden="true" />

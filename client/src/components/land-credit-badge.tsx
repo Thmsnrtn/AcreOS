@@ -204,7 +204,7 @@ export function LandCreditBadge({ propertyId, score, grade, size = "md", dimensi
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="flex flex-col items-center gap-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-lg p-2"
+          className="flex flex-col items-center gap-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-card p-2"
           aria-label={`Land Credit Score: ${clampedScore} (${displayGrade})`}
         >
           <ScoreCircle score={clampedScore} grade={displayGrade} sizeClass="w-20 h-20" textClass="text-xl" gradeTextClass="text-xs" />

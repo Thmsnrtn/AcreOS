@@ -85,11 +85,11 @@ export default function FounderKeysPage() {
 
       <div className="p-6 border rounded-xl bg-card space-y-4" data-testid="section-system-api-keys">
         {isLoading ? (
-          <div className="animate-pulse h-20 rounded-lg bg-muted/50" />
+          <div className="animate-pulse h-20 rounded-card bg-muted/50" />
         ) : (
           <div className="space-y-2">
             {allProviders.map((key) => (
-              <div key={key.provider} className="flex items-center gap-3 p-3 border rounded-lg">
+              <div key={key.provider} className="flex items-center gap-3 p-3 border rounded-card">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{key.displayName}</span>

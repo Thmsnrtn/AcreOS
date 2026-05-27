@@ -100,7 +100,7 @@ function DraftCard({ draft }: { draft: Draft }) {
           </div>
         </div>
       ) : (
-        <div className="text-sm whitespace-pre-wrap p-3 rounded-lg bg-muted/50 border max-h-60 overflow-y-auto leading-relaxed">
+        <div className="text-sm whitespace-pre-wrap p-3 rounded-card bg-muted/50 border max-h-60 overflow-y-auto leading-relaxed">
           {draft.content}
         </div>
       )}

@@ -143,7 +143,7 @@ export default function DocumentVersionsPage() {
               <ol className="space-y-2" aria-label="Versions, newest first">
                 {versions.sort((a, b) => b.versionNumber - a.versionNumber).map(v => (
                   <li key={v.versionId}>
-                    <div className={`border rounded-lg p-3 ${v.isCurrent ? "border-primary" : ""}`}>
+                    <div className={`border rounded-card p-3 ${v.isCurrent ? "border-primary" : ""}`}>
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="space-y-0.5 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">

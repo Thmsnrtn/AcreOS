@@ -247,7 +247,7 @@ function BATNACalculator() {
         {(asking > 0 || offer > 0 || comps > 0) && (
           <div className="space-y-3 pt-2 border-t" aria-live="polite">
             {/* Deal Viability */}
-            <div className={`rounded-lg border p-3 ${viabilityColor}`} role="status">
+            <div className={`rounded-card border p-3 ${viabilityColor}`} role="status">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wide">Deal viability</span>
                 <Badge className={`text-xs ${viabilityColor} border`} aria-label={`Deal viability: ${dealViability}`}>{dealViability}</Badge>
@@ -257,14 +257,14 @@ function BATNACalculator() {
             {/* Key outputs */}
             <dl className="grid grid-cols-2 gap-2 m-0">
               {maxAllowable > 0 && (
-                <div className="rounded-lg border p-3 bg-muted/30">
+                <div className="rounded-card border p-3 bg-muted/30">
                   <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Max allowable offer</dt>
                   <dd className="text-xl font-bold tabular-nums text-primary mt-0.5 m-0">{formatDollar(maxAllowable)}</dd>
                   <p className="text-[10px] text-muted-foreground">your BATNA walkaway</p>
                 </div>
               )}
               {negotiationZone !== null && negotiationZone.mid > 0 && (
-                <div className="rounded-lg border p-3 bg-muted/30">
+                <div className="rounded-card border p-3 bg-muted/30">
                   <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</dt>
                   <dd className="text-xl font-bold tabular-nums mt-0.5 m-0">{formatDollar(negotiationZone.mid)}</dd>
                   <p className="text-[10px] text-muted-foreground">split-the-difference</p>
@@ -838,7 +838,7 @@ export default function NegotiationCopilotPage() {
                     />
                   </CardHeader>
                   <CardContent>
-                    <div className="p-4 bg-muted/50 rounded-lg text-sm leading-relaxed" aria-label="AI-generated response draft">
+                    <div className="p-4 bg-muted/50 rounded-card text-sm leading-relaxed" aria-label="AI-generated response draft">
                       {responseResult.response || responseResult}
                     </div>
                     <Button

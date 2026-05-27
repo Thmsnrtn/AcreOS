@@ -94,7 +94,7 @@ export function PaxTasksSettingsTab() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-card" />)}</div>
       ) : tasks.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-10 text-center">

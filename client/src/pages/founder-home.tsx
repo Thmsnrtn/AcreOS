@@ -358,7 +358,7 @@ function NeedsYouSection() {
         skeleton={
           <div className="space-y-3" aria-hidden="true">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-20 w-full rounded-lg" />
+              <Skeleton key={i} className="h-20 w-full rounded-card" />
             ))}
           </div>
         }
@@ -504,7 +504,7 @@ function TodayTilesSection() {
         skeleton={
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-hidden="true">
             {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-28 w-full rounded-lg" />
+              <Skeleton key={i} className="h-28 w-full rounded-card" />
             ))}
           </div>
         }
@@ -692,7 +692,7 @@ function PulseSection() {
         skeleton={
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" aria-hidden="true">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-lg" />
+              <Skeleton key={i} className="h-48 w-full rounded-card" />
             ))}
           </div>
         }
@@ -1003,8 +1003,8 @@ function SystemHealthSection() {
         ready={ready}
         skeleton={
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-hidden="true">
-            <Skeleton className="h-32 w-full rounded-lg" />
-            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-card" />
+            <Skeleton className="h-32 w-full rounded-card" />
           </div>
         }
       >

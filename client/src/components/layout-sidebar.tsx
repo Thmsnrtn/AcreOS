@@ -231,7 +231,7 @@ function PaxNotificationBadge() {
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <button
-              className="relative p-1.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+              className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               aria-label="Pax AI insights"
               data-testid="button-pax-notifications"
             >
@@ -940,7 +940,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-                  className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Search (⌘K)"
                   data-tour="cmd-palette-trigger"
                   data-testid="button-search-trigger"
@@ -958,7 +958,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => useModals.getState().openQuickOffer()}
-                  className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Quick offer (⌘O)"
                   data-tour="quick-offer"
                   data-testid="button-quick-offer-trigger"
@@ -977,7 +977,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Search or jump to anywhere (Cmd K)"
               data-tour="cmd-palette-trigger"
               data-testid="button-search-trigger"
@@ -992,7 +992,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => useModals.getState().openQuickOffer()}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Quick offer (Cmd O)"
               data-tour="quick-offer"
               data-testid="button-quick-offer-trigger"
@@ -1067,7 +1067,7 @@ export function Sidebar() {
               {/* Module row */}
               <div
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[44px]",
+                  "flex items-center gap-2 px-3 py-2 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
                     ? "nav-item-active"
                     : active
@@ -1277,7 +1277,7 @@ export function Sidebar() {
             <button aria-label="Tooltip"
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
             >
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -1288,7 +1288,7 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setIsCollapsed(false)}
-              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Expand sidebar"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1303,14 +1303,14 @@ export function Sidebar() {
             <button
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
             >
               <LogOut className="w-4 h-4" />
               <span className="font-medium text-sm">Sign Out</span>
             </button>
             <button
               onClick={() => setIsCollapsed(true)}
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1362,7 +1362,7 @@ export function Sidebar() {
             onNavClick?.();
             window.dispatchEvent(new CustomEvent("acreos:open-command-palette"));
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
           aria-label="Search or jump to anywhere"
           data-tour="cmd-palette-trigger"
           data-testid="button-search-trigger-mobile"
@@ -1378,7 +1378,7 @@ export function Sidebar() {
             href="/founder"
             onClick={onNavClick}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group mb-2 min-h-[44px]",
+              "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors duration-150 group mb-2 min-h-[44px]",
               location === "/founder" || location === "/founder-home"
                 ? "bg-acr-warn text-white shadow-md"
                 : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
@@ -1406,7 +1406,7 @@ export function Sidebar() {
             <div key={module.id}>
               <div
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[44px]",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
                     ? "nav-item-active"
                     : active
@@ -1574,7 +1574,7 @@ export function Sidebar() {
         <button
           onClick={() => logout()}
           data-testid="button-logout"
-          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
         >
           <LogOut className="w-5 h-5" />
           <span className="font-medium text-sm">Sign Out</span>
@@ -1630,7 +1630,7 @@ function CollapsedModuleItem({
           <Link
             href={module.href}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[44px] relative",
+              "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1667,7 +1667,7 @@ function CollapsedModuleItem({
           <PopoverTrigger asChild>
             <button
               className={cn(
-                "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[44px] relative",
+                "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
                 isActive
                   ? "nav-item-active"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1779,7 +1779,7 @@ function DesktopNavItem({
           <Link
             href={href}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-lg transition-all min-h-[44px]",
+              "flex items-center justify-center w-full p-2.5 rounded-card transition-all min-h-[44px]",
               accentClass
             )}
             onMouseEnter={onMouseEnter}
@@ -1799,7 +1799,7 @@ function DesktopNavItem({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 px-3 py-2 rounded-lg transition-all mb-1 min-h-[44px]",
+        "flex items-center gap-2 px-3 py-2 rounded-card transition-all mb-1 min-h-[44px]",
         accentClass
       )}
       onMouseEnter={onMouseEnter}

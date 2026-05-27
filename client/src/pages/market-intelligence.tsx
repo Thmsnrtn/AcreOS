@@ -220,7 +220,7 @@ export default function MarketIntelligencePage() {
 
       {analysisLoading && (
         <div className="space-y-3" role="status" aria-label="Loading market analysis">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-card animate-pulse" />)}
         </div>
       )}
 
@@ -476,7 +476,7 @@ export default function MarketIntelligencePage() {
                         </li>
                       ))}
                       {overallScore !== null && investmentGrade && (
-                        <li className={`mt-4 rounded-lg border p-3 ${investmentGrade.color}`} aria-label={`Overall investment score ${overallScore} of 100, grade ${investmentGrade.label}`}>
+                        <li className={`mt-4 rounded-card border p-3 ${investmentGrade.color}`} aria-label={`Overall investment score ${overallScore} of 100, grade ${investmentGrade.label}`}>
                           <p className="text-xs font-semibold tabular-nums">Overall investment score: {overallScore}/100</p>
                           <p className="text-xs mt-0.5">{investmentGrade.label}</p>
                         </li>

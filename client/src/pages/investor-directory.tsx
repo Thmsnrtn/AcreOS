@@ -289,7 +289,7 @@ export default function InvestorDirectoryPage() {
               ) : (
                 <ul className="space-y-3 list-none p-0 m-0" aria-label="Verified investor directory">
                   {directory.map(profile => (
-                    <li key={profile.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                    <li key={profile.id} className="flex items-start gap-3 p-3 border rounded-card">
                       <div className="p-2 bg-muted rounded-full flex-shrink-0">
                         <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       </div>
@@ -441,7 +441,7 @@ export default function InvestorDirectoryPage() {
               <div
                 role="region"
                 aria-label="Verification benefits"
-                className="p-3 bg-acr-accent dark:bg-acr-accent/20 rounded-lg text-sm text-acr-accent dark:text-acr-accent"
+                className="p-3 bg-acr-accent dark:bg-acr-accent/20 rounded-card text-sm text-acr-accent dark:text-acr-accent"
               >
                 <p className="font-medium mb-1">Verification enables:</p>
                 <ul className="space-y-0.5 text-xs list-disc pl-4">

@@ -6,17 +6,28 @@ import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
+import { OpenGraph } from "@/components/seo/OpenGraph";
+import { SITE } from "@/lib/jsonld-schemas";
+
+// Shared between document-title + OG description so social unfurls and
+// SERP snippets stay in sync with the in-app title.
+const PAGE_TITLE = "Terms of service";
+const PAGE_DESCRIPTION =
+  "AcreOS Terms of Service — the agreement governing access and use of the AcreOS platform for land investors.";
 
 export default function TermsOfService() {
-  usePageMeta(
-    "Terms of service",
-    "AcreOS Terms of Service — the agreement governing access and use of the AcreOS platform for land investors."
-  );
+  usePageMeta(PAGE_TITLE, PAGE_DESCRIPTION);
   const lastUpdated = "March 2026";
   const docRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="min-h-screen bg-background">
+      <OpenGraph
+        url={`${SITE.url}/terms`}
+        title={`${PAGE_TITLE} · AcreOS`}
+        description={PAGE_DESCRIPTION}
+        type="website"
+      />
       <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
         <div className="mb-6">
           <Button asChild variant="ghost" size="sm" data-testid="button-back-to-home">

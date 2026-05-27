@@ -303,7 +303,7 @@ export default function FounderGrowthCampaignsPage() {
 
         {/* Ad account connection form */}
         {showAdAccountForm && (
-          <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+          <div className="p-4 border rounded-card bg-muted/30 space-y-3">
             <h3 className="font-medium text-sm">Meta ad-account credentials</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -342,7 +342,7 @@ export default function FounderGrowthCampaignsPage() {
         )}
 
         {adAccount && (
-          <div className="flex items-center gap-2 p-2.5 bg-acr-pos/5 border border-acr-pos/20 rounded-lg">
+          <div className="flex items-center gap-2 p-2.5 bg-acr-pos/5 border border-acr-pos/20 rounded-card">
             <CheckCircle2 className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
             <span className="text-sm text-acr-pos font-medium">Meta ad account connected</span>
             <span className="text-sm text-muted-foreground ml-1">{adAccount.adAccountId}</span>
@@ -351,7 +351,7 @@ export default function FounderGrowthCampaignsPage() {
         )}
 
         {!adAccount && (
-          <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+          <div className="p-4 border border-dashed rounded-card text-center text-sm text-muted-foreground">
             Connect your Meta ad account above to enable campaign generation and deployment.
           </div>
         )}
@@ -442,7 +442,7 @@ export default function FounderGrowthCampaignsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-card text-xs text-muted-foreground">
                   <Sparkles className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
                   <span>
                     AI will generate <strong>4 copy variants</strong> (pain point, aspiration, social proof, curiosity hook)
@@ -514,7 +514,7 @@ export default function FounderGrowthCampaignsPage() {
                         key={idx}
                         type="button"
                         onClick={() => setSelectedImageIdx(idx)}
-                        className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${
+                        className={`relative rounded-card overflow-hidden border-2 transition-all aspect-square ${
                           selectedImageIdx === idx ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"
                         }`}
                       >
@@ -530,7 +530,7 @@ export default function FounderGrowthCampaignsPage() {
                       </button>
                     ))}
                     {(bundle.images?.length || 0) === 0 && (
-                      <div className="col-span-3 p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      <div className="col-span-3 p-4 border border-dashed rounded-card text-center text-sm text-muted-foreground">
                         Image generation failed. Campaign will deploy without images.
                       </div>
                     )}
@@ -643,7 +643,7 @@ export default function FounderGrowthCampaignsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-card text-xs text-muted-foreground">
                   <Layers className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
                   <span>
                     Deploying creates <strong>1 campaign</strong> → <strong>1 ad set</strong> → <strong>{bundle.copies?.length || 4} ads</strong>, one per copy variant.
@@ -690,7 +690,7 @@ export default function FounderGrowthCampaignsPage() {
           </div>
 
           {(campaigns || []).length === 0 ? (
-            <div className="text-center py-8 border border-dashed rounded-lg">
+            <div className="text-center py-8 border border-dashed rounded-card">
               <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" aria-hidden="true" />
               <p className="text-sm text-muted-foreground">No campaigns yet.</p>
               <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first one.</p>
@@ -758,7 +758,7 @@ export default function FounderGrowthCampaignsPage() {
               UTM attribution will appear here once users sign up from your campaigns.
             </p>
           ) : (
-            <div className="space-y-0 max-h-52 overflow-y-auto border rounded-lg divide-y">
+            <div className="space-y-0 max-h-52 overflow-y-auto border rounded-card divide-y">
               {(attribution || []).slice(0, 20).map((s) => (
                 <div key={s.organizationId} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/20">
                   <span className="flex-1 font-medium truncate">{s.name}</span>

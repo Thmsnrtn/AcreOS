@@ -55,7 +55,7 @@ export default function DelegationManager() {
           return (
             <li
               key={d.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-warn-soft/10 border border-acr-warn-soft/20"
+              className="flex items-center gap-2 px-3 py-2 rounded-card bg-acr-warn-soft/10 border border-acr-warn-soft/20"
               aria-label={`${name} elevated to level ${d.toLevel}, ${expiryText}, reason: ${d.reason}`}
             >
               <div className="flex-1">

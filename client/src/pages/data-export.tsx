@@ -183,7 +183,7 @@ export default function DataExportPage() {
 
       <Card className="border-dashed">
         <CardContent className="pt-4 pb-4 flex items-center gap-4 flex-wrap">
-          <div className="p-3 rounded-lg bg-muted shrink-0">
+          <div className="p-3 rounded-card bg-muted shrink-0">
             <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-[200px]">
@@ -251,7 +251,7 @@ function ExportOptionCard({
   return (
     <Card>
       <CardContent className="pt-4 pb-4 flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-muted shrink-0">
+        <div className="p-2 rounded-card bg-muted shrink-0">
           <Icon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
         </div>
         <div className="flex-1 min-w-0">

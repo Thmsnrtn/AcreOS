@@ -313,6 +313,10 @@ const LettersArchivePage = React.lazy(() => import("@/pages/letters-archive"));
 const LetterDetailPage = React.lazy(() => import("@/pages/letter-detail"));
 const PricingPage = React.lazy(() => import("@/pages/pricing"));
 const WhyPage = React.lazy(() => import("@/pages/why"));
+// Public comparison landers — capture "[competitor] alternative" search
+// intent. Lazy-loaded so they don't weigh on the landing-page first paint.
+const AcreosVsPropstreamPage = React.lazy(() => import("@/pages/compare/acreos-vs-propstream"));
+const AcreosVsDealmachinePage = React.lazy(() => import("@/pages/compare/acreos-vs-dealmachine"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
@@ -523,6 +527,8 @@ function Router() {
 
       <Route path="/pricing" component={PricingPage} />
       <Route path="/why" component={WhyPage} />
+      <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />
+      <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />

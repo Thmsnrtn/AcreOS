@@ -226,7 +226,7 @@ export function TeamDashboardContent() {
                     {data.leaderboard.map((member) => (
                       <div 
                         key={member.id} 
-                        className="flex items-center justify-between p-4 rounded-lg bg-muted/50"
+                        className="flex items-center justify-between p-4 rounded-card bg-muted/50"
                         data-testid={`leaderboard-member-${member.id}`}
                       >
                         <div className="flex items-center gap-4">

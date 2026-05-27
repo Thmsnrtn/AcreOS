@@ -309,15 +309,15 @@ export default function MarketplaceAnalytics() {
             <CardHeader><CardTitle>My listings performance</CardTitle></CardHeader>
             <CardContent>
               <dl className="grid grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{analytics.myListings || 0}</dd>
                   <dt className="text-sm text-muted-foreground">Total listings</dt>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{usd(analytics.myRevenue || 0, { noCents: true })}</dd>
                   <dt className="text-sm text-muted-foreground">Total revenue</dt>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{analytics.myAvgDaysToClose || 0}d</dd>
                   <dt className="text-sm text-muted-foreground">Avg days to close</dt>
                 </div>
@@ -334,15 +334,15 @@ export default function MarketplaceAnalytics() {
             <CardHeader><CardTitle>My buyer activity</CardTitle></CardHeader>
             <CardContent>
               <dl className="grid grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{analytics.myBids || 0}</dd>
                   <dt className="text-sm text-muted-foreground">Bids placed</dt>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{analytics.myMatches || 0}</dd>
                   <dt className="text-sm text-muted-foreground">Property matches</dt>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-card">
                   <dd className="text-2xl font-bold tabular-nums">{analytics.myWinRate || 0}%</dd>
                   <dt className="text-sm text-muted-foreground">Bid win rate</dt>
                 </div>

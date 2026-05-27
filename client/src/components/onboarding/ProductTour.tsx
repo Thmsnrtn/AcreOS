@@ -219,7 +219,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
       {/* Highlight box around target */}
       {targetRect && (
         <div
-          className="absolute rounded-lg ring-2 ring-acr-pos ring-offset-0 bg-acr-pos/10"
+          className="absolute rounded-card ring-2 ring-acr-pos ring-offset-0 bg-acr-pos/10"
           style={{
             top: targetRect.top - 4,
             left: targetRect.left - 4,

@@ -277,7 +277,7 @@ export function EnvironmentalIntelligenceCard({
                 <Leaf className="h-4 w-4 text-acr-pos" />
                 <h4 className="text-sm font-medium">Carbon Credit Potential</h4>
               </div>
-              <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+              <div className="rounded-card bg-muted/50 p-3 space-y-1">
                 <p className="text-sm font-medium">
                   ~${carbonData.estimatedValuePerYear.toLocaleString()}/year
                 </p>
@@ -325,7 +325,7 @@ export function EnvironmentalIntelligenceCard({
                 <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium">Highest & Best Use</h4>
               </div>
-              <div className="rounded-lg border p-3 space-y-1">
+              <div className="rounded-card border p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium capitalize">
                     {hbuData.recommended.use}

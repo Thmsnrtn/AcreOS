@@ -16,7 +16,7 @@ export default function CustomerHealthPanel() {
   });
 
   if (isLoading) {
-    return <div role="status" aria-busy="true" aria-label="Loading customer health" className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-acr-bg-sunken/50 rounded-lg animate-pulse" />)}</div>;
+    return <div role="status" aria-busy="true" aria-label="Loading customer health" className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-acr-bg-sunken/50 rounded-card animate-pulse" />)}</div>;
   }
 
   const { customers = [], summary = {} } = (data as any) || {};
@@ -60,7 +60,7 @@ export default function CustomerHealthPanel() {
             return (
               <li
                 key={c.orgId}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-bg-sunken/30 border border-border/20"
+                className="flex items-center gap-2 px-3 py-2 rounded-card bg-acr-bg-sunken/30 border border-border/20"
                 aria-label={`${c.orgName}: health ${c.healthScore}, ${c.trend ?? "stable"}, ${c.details.plan}, ${loginText}`}
               >
                 {c.healthScore < 40 && <AlertTriangle className="w-3.5 h-3.5 text-acr-neg flex-shrink-0" aria-hidden="true" />}

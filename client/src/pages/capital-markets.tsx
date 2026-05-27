@@ -87,7 +87,7 @@ function SecuritizationWizard() {
           ))}
         </ol>
 
-        <div className="p-4 bg-muted/30 rounded-lg" role="group" aria-label={WIZARD_STEPS[step].title}>
+        <div className="p-4 bg-muted/30 rounded-card" role="group" aria-label={WIZARD_STEPS[step].title}>
           <p className="text-sm font-medium mb-1">{WIZARD_STEPS[step].title}</p>
           <p className="text-xs text-muted-foreground mb-3">{WIZARD_STEPS[step].description}</p>
 

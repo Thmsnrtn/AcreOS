@@ -898,7 +898,7 @@ function PanelActionForm({ onAdd, onCancel }: PanelActionFormProps) {
   const canAdd = !!type && (!def || def.fields.every((f) => config[f.key]?.trim()));
 
   return (
-    <div className="border border-border rounded-lg p-4 bg-muted/20 space-y-3">
+    <div className="border border-border rounded-card p-4 bg-muted/20 space-y-3">
       <div className="space-y-1">
         <Label className="text-xs">Action type</Label>
         <Select value={type} onValueChange={handleTypeChange}>
@@ -982,7 +982,7 @@ function PanelWorkflowPreview({ workflow }: { workflow: WorkflowConfig }) {
     );
   }
   return (
-    <div className="text-xs text-foreground space-y-1.5 font-mono bg-muted/40 rounded-lg p-3 border border-border">
+    <div className="text-xs text-foreground space-y-1.5 font-mono bg-muted/40 rounded-card p-3 border border-border">
       {workflow.name && (
         <p>
           <span className="text-muted-foreground">Workflow:</span>{" "}

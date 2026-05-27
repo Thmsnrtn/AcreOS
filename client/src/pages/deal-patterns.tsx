@@ -174,7 +174,7 @@ function PerformanceSection() {
           <h3 className="text-sm font-semibold">Top performing patterns</h3>
           <ol className="space-y-2" aria-label="Top performing deal patterns by match count">
             {perf.topPerformingPatterns.slice(0, 5).map((p) => (
-              <li key={p.patternId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-sm gap-3 flex-wrap">
+              <li key={p.patternId} className="flex items-center justify-between p-3 rounded-card border bg-card text-sm gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
                   <span>Pattern #<span className="tabular-nums">{p.patternId}</span></span>
@@ -381,7 +381,7 @@ export default function DealPatternsPage() {
           </h2>
           <ol className="space-y-2" aria-label="Pattern insights">
             {insightsList.map((insight, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm p-3 rounded-lg border bg-card">
+              <li key={i} className="flex items-start gap-2 text-sm p-3 rounded-card border bg-card">
                 <span className="text-muted-foreground tabular-nums">#{i + 1}</span>
                 <p>{insight}</p>
               </li>

@@ -311,7 +311,7 @@ export default function OpsDashboardPage() {
 
         {(expiringOffers.length > 0 || staleLeads.length > 0) && (
           <div
-            className="flex items-center gap-2 text-sm text-acr-warn bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft rounded-lg px-4 py-3"
+            className="flex items-center gap-2 text-sm text-acr-warn bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft rounded-card px-4 py-3"
             role="status"
           >
             <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />

@@ -354,7 +354,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="end">
                           {pricingRecommendation && (
-                            <div className="glass-panel rounded-lg overflow-hidden">
+                            <div className="glass-panel rounded-card overflow-hidden">
                               <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-4 border-b">
                                 <div className="flex items-center gap-2">
                                   <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -384,7 +384,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                                   </div>
                                 </div>
                                 
-                                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                                <div className="bg-muted/50 rounded-card p-3 space-y-2">
                                   <div className="flex justify-between text-sm">
                                     <span className="text-muted-foreground">Price per Acre</span>
                                     <span className="font-mono font-medium">${pricingRecommendation.pricePerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
@@ -460,7 +460,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         </ResponsiveModalHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
-                            <div className="bg-primary/5 dark:bg-primary/10 rounded-lg p-4 border border-primary/20">
+                            <div className="bg-primary/5 dark:bg-primary/10 rounded-card p-4 border border-primary/20">
                               <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{negotiationScript}</pre>
                             </div>
                             <Button
@@ -650,7 +650,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         <CardContent className="p-3 md:p-4">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className="p-2 rounded-lg bg-muted flex-shrink-0">
+                              <div className="p-2 rounded-card bg-muted flex-shrink-0">
                                 <Package className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                               </div>
                               <div className="flex-1 min-w-0">

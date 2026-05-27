@@ -265,7 +265,7 @@ function ScoreDetailsDialog({
         </ResponsiveModalHeader>
 
         <div className="space-y-6">
-          <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-card">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Overall Score</p>
               <p className="text-3xl font-bold" data-testid={`text-score-value-${lead.id}`}>{normalizedScore}</p>
@@ -2011,7 +2011,7 @@ function LeadsPageDesktop() {
 
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
-              <div className="border-2 border-dashed rounded-lg p-8 text-center">
+              <div className="border-2 border-dashed rounded-card p-8 text-center">
                 <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                 <label className="cursor-pointer block min-h-11 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded">
                   <span className="text-sm text-muted-foreground">
@@ -2029,7 +2029,7 @@ function LeadsPageDesktop() {
                 </label>
                 <p className="text-xs text-muted-foreground mt-2">Max file size: 5 MB.</p>
               </div>
-              <div className="bg-muted/50 rounded-lg p-4">
+              <div className="bg-muted/50 rounded-card p-4">
                 <p className="text-sm font-medium mb-2">Expected columns</p>
                 <p className="text-xs text-muted-foreground">
                   firstName, lastName, email, phone, address, city, state, zip, type, status, source, notes
@@ -2045,7 +2045,7 @@ function LeadsPageDesktop() {
                 <span>Found <span className="tabular-nums">{importPreview.totalRows}</span> rows to import.</span>
               </div>
 
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-card overflow-hidden">
                 <div className="bg-muted/50 p-2 text-sm font-medium">
                   Preview (first 5 rows)
                 </div>
@@ -2086,22 +2086,22 @@ function LeadsPageDesktop() {
           {importResult && (
             <div className="space-y-4 py-4">
               <dl className="grid grid-cols-3 gap-4 text-center">
-                <div className="bg-muted/50 rounded-lg p-4">
+                <div className="bg-muted/50 rounded-card p-4">
                   <dd className="text-2xl font-bold tabular-nums">{importResult.totalRows}</dd>
                   <dt className="text-xs text-muted-foreground">Total rows</dt>
                 </div>
-                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg p-4">
+                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-card p-4">
                   <dd className="text-2xl font-bold text-acr-pos dark:text-acr-pos tabular-nums">{importResult.successCount}</dd>
                   <dt className="text-xs text-acr-pos dark:text-acr-pos">Imported</dt>
                 </div>
-                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 rounded-lg p-4">
+                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 rounded-card p-4">
                   <dd className="text-2xl font-bold text-acr-neg dark:text-acr-neg tabular-nums">{importResult.errorCount}</dd>
                   <dt className="text-xs text-acr-neg dark:text-acr-neg">Failed</dt>
                 </div>
               </dl>
 
               {importResult.errors.length > 0 && (
-                <div className="border border-acr-neg-soft dark:border-acr-neg-soft rounded-lg overflow-hidden" role="alert">
+                <div className="border border-acr-neg-soft dark:border-acr-neg-soft rounded-card overflow-hidden" role="alert">
                   <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" aria-hidden="true" />
                     Errors (<span className="tabular-nums">{importResult.errors.length}</span>)

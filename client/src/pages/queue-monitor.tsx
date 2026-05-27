@@ -252,7 +252,7 @@ function JobList({ jobs, type }: { jobs: JobEntry[]; type: string }) {
       {jobs.map((job) => (
         <li
           key={job.id}
-          className="flex items-start justify-between p-3 rounded-lg border bg-muted/30 text-sm gap-3"
+          className="flex items-start justify-between p-3 rounded-card border bg-muted/30 text-sm gap-3"
         >
           <div className="space-y-0.5 min-w-0">
             <div className="font-mono font-medium truncate">{job.name}</div>

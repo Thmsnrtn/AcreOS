@@ -348,7 +348,7 @@ export function GisHealthDashboard() {
               </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-card overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>

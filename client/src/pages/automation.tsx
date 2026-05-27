@@ -329,7 +329,7 @@ export default function AutomationPage() {
           ) : (
             <div className="space-y-3">
               {formData.conditions.map((condition, index) => (
-                <div key={index} className="flex items-center gap-2 p-3 border rounded-lg">
+                <div key={index} className="flex items-center gap-2 p-3 border rounded-card">
                   {index > 0 && (
                     <Select 
                       value={condition.logicalOperator || "and"} 
@@ -396,7 +396,7 @@ export default function AutomationPage() {
           ) : (
             <div className="space-y-3">
               {formData.actions.map((action, index) => (
-                <div key={index} className="p-3 border rounded-lg space-y-3">
+                <div key={index} className="p-3 border rounded-card space-y-3">
                   <div className="flex items-center gap-2">
                     <Select value={action.type} onValueChange={(v) => updateAction(index, { type: v })}>
                       <SelectTrigger className="flex-1">

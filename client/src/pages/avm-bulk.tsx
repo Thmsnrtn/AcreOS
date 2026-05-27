@@ -142,7 +142,7 @@ export default function AvmBulk() {
         <CardContent className="space-y-4">
           <Label
             htmlFor={fileInputId}
-            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors block focus-within:ring-2 focus-within:ring-ring"
+            className="border-2 border-dashed rounded-card p-8 text-center cursor-pointer hover:border-primary transition-colors block focus-within:ring-2 focus-within:ring-ring"
           >
             <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
             <p className="font-medium">{file ? file.name : "Click to upload CSV"}</p>

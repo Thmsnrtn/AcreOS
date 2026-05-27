@@ -83,7 +83,7 @@ export function ProviderSettings() {
             <StatusBadge active={providers.ai.openai} label="OpenAI (Premium)" />
           </div>
 
-          <div className="rounded-lg border p-3 bg-muted/30">
+          <div className="rounded-card border p-3 bg-muted/30">
             <div className="text-sm font-medium mb-2">Automatic routing</div>
             <div className="text-sm text-muted-foreground space-y-1">
               <div className="flex items-center gap-2">
@@ -125,7 +125,7 @@ export function ProviderSettings() {
           </div>
 
           {providers.sms.available.length > 0 && (
-            <div className="rounded-lg border p-3 bg-muted/30">
+            <div className="rounded-card border p-3 bg-muted/30">
               <div className="text-sm font-medium mb-2">Cost per SMS</div>
               {providers.sms.costs.twilio !== undefined && (
                 <CostDisplay label="Twilio" cost={providers.sms.costs.twilio} unit="SMS" />
@@ -169,7 +169,7 @@ export function ProviderSettings() {
           </div>
 
           {providers.mail.available.length > 0 && (
-            <div className="rounded-lg border p-3 bg-muted/30">
+            <div className="rounded-card border p-3 bg-muted/30">
               <div className="text-sm font-medium mb-2">Cost per piece</div>
               {providers.mail.costs.lob && (
                 <>

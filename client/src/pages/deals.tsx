@@ -722,7 +722,7 @@ export default function DealsPage() {
               {isMobile && (
                 <div className="flex items-center justify-between gap-2 mb-4">
                   <div
-                    className="flex items-center gap-1 bg-muted/50 rounded-lg p-1"
+                    className="flex items-center gap-1 bg-muted/50 rounded-card p-1"
                     role="group"
                     aria-label="Pipeline view mode"
                   >

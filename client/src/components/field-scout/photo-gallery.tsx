@@ -112,7 +112,7 @@ export function PhotoGallery({
                   <button
                     key={photo.id}
                     onClick={() => openPhoto(photo)}
-                    className="relative aspect-square rounded-lg overflow-hidden bg-acr-bg-sunken hover:ring-2 hover:ring-acr-pos transition-all group"
+                    className="relative aspect-square rounded-card overflow-hidden bg-acr-bg-sunken hover:ring-2 hover:ring-acr-pos transition-all group"
                   >
                     <img
                       src={photo.thumbnailUrl || photo.url}
@@ -149,7 +149,7 @@ export function PhotoGallery({
                 {/* Add photo button in grid */}
                 <button
                   onClick={onAddPhoto}
-                  className="aspect-square rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 hover:border-acr-accent hover:text-acr-accent transition-colors text-muted-foreground"
+                  className="aspect-square rounded-card border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 hover:border-acr-accent hover:text-acr-accent transition-colors text-muted-foreground"
                 >
                   <Plus className="w-5 h-5" />
                   <span className="text-[9px]">Add</span>

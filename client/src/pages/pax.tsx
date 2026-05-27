@@ -145,7 +145,7 @@ function GreetingBanner() {
 
   return (
     <div
-      className="relative flex items-start gap-3 rounded-lg border border-acr-brand/30 bg-acr-brand-soft p-4 mb-4"
+      className="relative flex items-start gap-3 rounded-card border border-acr-brand/30 bg-acr-brand-soft p-4 mb-4"
       role="region"
       aria-label="First-session greeting from Pax"
     >
@@ -185,13 +185,13 @@ function InsightsTabContent() {
         <div className="space-y-3">
           <Skeleton className="h-5 w-40" />
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            <Skeleton key={i} className="h-20 w-full rounded-card" />
           ))}
         </div>
         <div className="space-y-3">
           <Skeleton className="h-5 w-32" />
           {[1, 2].map((i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            <Skeleton key={i} className="h-14 w-full rounded-card" />
           ))}
         </div>
       </div>
@@ -247,7 +247,7 @@ function InsightsTabContent() {
               return (
                 <li
                   key={obs.id}
-                  className={`rounded-lg border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4`}
+                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4`}
                   role={isCritical ? "alert" : undefined}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -305,7 +305,7 @@ function InsightsTabContent() {
               return (
                 <li
                   key={lead.id}
-                  className="flex items-center justify-between rounded-lg border border-acr-warn/30 bg-acr-warn-soft px-4 py-3"
+                  className="flex items-center justify-between rounded-card border border-acr-warn/30 bg-acr-warn-soft px-4 py-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
@@ -364,7 +364,7 @@ function InsightsTabContent() {
               return (
                 <li
                   key={offer.id}
-                  className="flex items-center justify-between rounded-lg border border-acr-neg/30 bg-acr-neg-soft px-4 py-3"
+                  className="flex items-center justify-between rounded-card border border-acr-neg/30 bg-acr-neg-soft px-4 py-3"
                   role="alert"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -405,7 +405,7 @@ function InsightsTabContent() {
             {motivatedCallers.map((caller) => (
               <li
                 key={caller.id}
-                className="flex items-center justify-between rounded-lg border border-acr-pos/30 bg-acr-pos-soft px-4 py-3"
+                className="flex items-center justify-between rounded-card border border-acr-pos/30 bg-acr-pos-soft px-4 py-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div
@@ -566,7 +566,7 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div role="status" aria-busy="true" aria-label="Loading Pax availability">
-        <Skeleton className="h-64 w-full rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-card" />
         <span className="sr-only">Loading…</span>
       </div>
     );

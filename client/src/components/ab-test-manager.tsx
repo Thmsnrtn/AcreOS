@@ -526,7 +526,7 @@ function AbTestCard({
             <li
               key={variant.id}
               data-testid={`variant-card-${variant.id}`}
-              className={`p-4 rounded-lg border ${isWinner ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' : 'border-border'}`}
+              className={`p-4 rounded-card border ${isWinner ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' : 'border-border'}`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">

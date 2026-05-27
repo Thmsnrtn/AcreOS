@@ -477,7 +477,7 @@ export default function PropertiesPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* List / Map view toggle */}
-              <div className="flex items-center rounded-lg border overflow-hidden" role="group" aria-label="View mode">
+              <div className="flex items-center rounded-card border overflow-hidden" role="group" aria-label="View mode">
                 <button
                   onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
                   className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
@@ -794,7 +794,7 @@ export default function PropertiesPage() {
           
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
-              <div className="border-2 border-dashed rounded-lg p-8 text-center">
+              <div className="border-2 border-dashed rounded-card p-8 text-center">
                 <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                 <label className="cursor-pointer block min-h-11 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded">
                   <span className="text-sm text-muted-foreground">
@@ -812,7 +812,7 @@ export default function PropertiesPage() {
                 </label>
                 <p className="text-xs text-muted-foreground mt-2">Max file size: 5 MB.</p>
               </div>
-              <div className="bg-muted/50 rounded-lg p-4">
+              <div className="bg-muted/50 rounded-card p-4">
                 <p className="text-sm font-medium mb-2">Expected columns:</p>
                 <p className="text-xs text-muted-foreground">
                   apn, county, state, sizeAcres, address, city, zip, subdivision, lotNumber, zoning, terrain, roadAccess, status, assessedValue, marketValue, description, latitude, longitude
@@ -828,7 +828,7 @@ export default function PropertiesPage() {
                 <span>Found {importPreview.totalRows} rows to import</span>
               </div>
               
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-card overflow-hidden">
                 <div className="bg-muted/50 p-2 text-sm font-medium">
                   Preview (first 5 rows)
                 </div>
@@ -869,22 +869,22 @@ export default function PropertiesPage() {
           {importResult && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="bg-muted/50 rounded-lg p-4">
+                <div className="bg-muted/50 rounded-card p-4">
                   <p className="text-2xl font-bold">{importResult.totalRows}</p>
                   <p className="text-xs text-muted-foreground">Total Rows</p>
                 </div>
-                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-lg p-4">
+                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-card p-4">
                   <p className="text-2xl font-bold text-acr-pos dark:text-acr-pos">{importResult.successCount}</p>
                   <p className="text-xs text-acr-pos dark:text-acr-pos">Imported</p>
                 </div>
-                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft rounded-lg p-4">
+                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft rounded-card p-4">
                   <p className="text-2xl font-bold text-acr-neg dark:text-acr-neg">{importResult.errorCount}</p>
                   <p className="text-xs text-acr-neg dark:text-acr-neg">Failed</p>
                 </div>
               </div>
 
               {importResult.errors.length > 0 && (
-                <div className="border border-acr-neg/30 dark:border-acr-neg/30 rounded-lg overflow-hidden">
+                <div className="border border-acr-neg/30 dark:border-acr-neg/30 rounded-card overflow-hidden">
                   <div className="bg-acr-neg-soft dark:bg-acr-neg-soft p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     Errors ({importResult.errors.length})

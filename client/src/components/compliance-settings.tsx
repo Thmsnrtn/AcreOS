@@ -326,26 +326,26 @@ function TcpaCompliancePanel() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 rounded-lg bg-muted/50" data-testid="stat-total-leads">
+              <div className="p-4 rounded-card bg-muted/50" data-testid="stat-total-leads">
                 <p className="text-2xl font-bold tabular-nums">{stats?.total || 0}</p>
                 <p className="text-sm text-muted-foreground">Total leads</p>
               </div>
-              <div className="p-4 rounded-lg bg-green-100 dark:bg-green-900/30" data-testid="stat-with-consent">
+              <div className="p-4 rounded-card bg-green-100 dark:bg-green-900/30" data-testid="stat-with-consent">
                 <p className="text-2xl font-bold text-green-700 dark:text-green-400 tabular-nums">{stats?.withConsent || 0}</p>
                 <p className="text-sm text-green-600 dark:text-green-500">With consent</p>
               </div>
-              <div className="p-4 rounded-lg bg-orange-100 dark:bg-orange-900/30" data-testid="stat-without-consent">
+              <div className="p-4 rounded-card bg-orange-100 dark:bg-orange-900/30" data-testid="stat-without-consent">
                 <p className="text-2xl font-bold text-orange-700 dark:text-orange-400 tabular-nums">{stats?.withoutConsent || 0}</p>
                 <p className="text-sm text-orange-600 dark:text-orange-500">Without consent</p>
               </div>
-              <div className="p-4 rounded-lg bg-red-100 dark:bg-red-900/30" data-testid="stat-opted-out">
+              <div className="p-4 rounded-card bg-red-100 dark:bg-red-900/30" data-testid="stat-opted-out">
                 <p className="text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums">{stats?.optedOut || 0}</p>
                 <p className="text-sm text-red-600 dark:text-red-500">Opted out</p>
               </div>
             </div>
           )}
           
-          <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+          <div className="mt-4 p-4 bg-muted/50 rounded-card">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium" id="consent-rate-label">Consent rate</span>
               <span className="text-sm font-bold tabular-nums">{consentRate}%</span>
@@ -541,7 +541,7 @@ function RetentionPoliciesPanel() {
               {policyItems.map((item) => (
                 <div
                   key={item.key}
-                  className="flex flex-wrap items-center justify-between gap-4 p-4 border rounded-lg"
+                  className="flex flex-wrap items-center justify-between gap-4 p-4 border rounded-card"
                   data-testid={`policy-${item.key}`}
                 >
                   <div className="flex-1 min-w-[200px]">
@@ -635,7 +635,7 @@ function RetentionPoliciesPanel() {
             </Button>
           </div>
 
-          <div role="note" className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-start gap-2">
+          <div role="note" className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-card flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <p className="text-sm text-orange-700 dark:text-orange-300">
               Data purging is permanent and cannot be reversed. Consider exporting data before purging.

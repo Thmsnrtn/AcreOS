@@ -26,6 +26,7 @@ import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
 import { PaxCommandPalette, PaxSlashPicker, type SlashCommand } from "@/components/pax-command-palette";
 import { PaxEntityPicker, type MentionedEntity } from "@/components/pax-entity-picker";
 import { PaxThinkingBlock } from "@/components/pax-thinking-block";
+import { PaxWhyExplainer } from "@/components/pax-why-explainer";
 import { Input } from "@/components/ui/input";
 import { PaxKnowledgePanel } from "@/components/pax-knowledge-panel";
 import { PaxProjectPanel } from "@/components/pax-project-panel";
@@ -1071,7 +1072,7 @@ export function PaxCopilotRail() {
                   onClick={toggle}
                   aria-label={observations.length > 0 ? `Open Pax copilot (${observations.length} unread)` : "Open Pax copilot"}
                   aria-expanded={isOpen}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-primary/10 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-8 h-8 rounded-card flex items-center justify-center hover:bg-primary/10 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="pax-rail-expand"
                 >
                   <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
@@ -1367,6 +1368,9 @@ export function PaxCopilotRail() {
                         Dismiss
                       </button>
                     </div>
+                    {/* Lens 46 — trust-loop legibility: show the reasoning,
+                        inputs, and alternatives behind this observation. */}
+                    <PaxWhyExplainer observationId={obs.id} />
                   </div>
                 ))}
               </div>

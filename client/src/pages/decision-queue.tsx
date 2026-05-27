@@ -546,7 +546,7 @@ export default function DecisionQueuePage() {
 
             {pax.response && (
               <div
-                className={`rounded-lg p-4 text-sm whitespace-pre-wrap ${pax.responseIsError ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft/40" : "bg-muted"}`}
+                className={`rounded-card p-4 text-sm whitespace-pre-wrap ${pax.responseIsError ? "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft dark:border-acr-neg-soft/40" : "bg-muted"}`}
                 role={pax.responseIsError ? "alert" : "status"}
                 aria-live={pax.responseIsError ? "assertive" : "polite"}
               >

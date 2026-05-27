@@ -260,7 +260,7 @@ export default function SovereignV13Page() {
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-lg ${pillar.bgColor}`}>
+                      <div className={`p-1.5 rounded-card ${pillar.bgColor}`}>
                         <pillar.icon className={`h-4 w-4 ${pillar.color}`} aria-hidden="true" />
                       </div>
                       <span className="text-xs font-semibold truncate">{pillar.title}</span>
@@ -407,7 +407,7 @@ export default function SovereignV13Page() {
                   <div className="text-3xl font-bold">{strategyStats?.pendingProposals ?? 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">pending review</p>
                   {strategyStats?.topPerformingStrategy && (
-                    <div className="mt-3 p-2 rounded-lg bg-acr-warn/10 border border-acr-warn/20">
+                    <div className="mt-3 p-2 rounded-card bg-acr-warn/10 border border-acr-warn/20">
                       <p className="text-xs font-medium text-acr-warn">Top strategy</p>
                       <p className="text-xs">{strategyStats.topPerformingStrategy}</p>
                     </div>
@@ -679,7 +679,7 @@ export default function SovereignV13Page() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-lg border bg-acr-accent/5">
+                    <div className="p-4 rounded-card border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
                         <BookOpen className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">Daily briefings</h3>
@@ -689,7 +689,7 @@ export default function SovereignV13Page() {
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg border bg-acr-accent/5">
+                    <div className="p-4 rounded-card border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
                         <FlaskConical className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">What-if simulator</h3>
@@ -699,7 +699,7 @@ export default function SovereignV13Page() {
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-lg border bg-acr-accent/5">
+                    <div className="p-4 rounded-card border bg-acr-accent/5">
                       <div className="flex items-center gap-2 mb-2">
                         <Lightbulb className="h-4 w-4 text-acr-accent" aria-hidden="true" />
                         <h3 className="text-sm font-semibold">Strategic recommendations</h3>

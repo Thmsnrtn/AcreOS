@@ -135,7 +135,7 @@ export default function BorrowerPortal() {
                 <div
                   id="borrower-email-error"
                   role="alert"
-                  className="p-3 rounded-lg bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg text-sm"
+                  className="p-3 rounded-card bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg text-sm"
                 >
                   {error}
                 </div>
@@ -258,7 +258,7 @@ function BorrowerLandingPage() {
         <CardContent className="space-y-6">
           <ul className="grid gap-4 text-left">
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/30 shrink-0">
+              <div className="p-2 rounded-card bg-acr-pos-soft dark:bg-acr-pos-soft/30 shrink-0">
                 <FileText className="w-4 h-4 text-acr-pos" aria-hidden="true" />
               </div>
               <div>
@@ -267,7 +267,7 @@ function BorrowerLandingPage() {
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-acr-accent dark:bg-acr-accent/30 shrink-0">
+              <div className="p-2 rounded-card bg-acr-accent dark:bg-acr-accent/30 shrink-0">
                 <CreditCard className="w-4 h-4 text-acr-accent" aria-hidden="true" />
               </div>
               <div>
@@ -276,7 +276,7 @@ function BorrowerLandingPage() {
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/30 shrink-0">
+              <div className="p-2 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/30 shrink-0">
                 <Download className="w-4 h-4 text-acr-warn" aria-hidden="true" />
               </div>
               <div>
@@ -286,7 +286,7 @@ function BorrowerLandingPage() {
             </li>
           </ul>
 
-          <div className="p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+          <div className="p-4 rounded-card bg-muted/50 text-sm text-muted-foreground">
             To open your portal, use the link in your payment reminder email — or contact your lender.
           </div>
         </CardContent>
@@ -763,7 +763,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <div
             role="status"
             aria-live="polite"
-            className="p-4 rounded-lg bg-acr-accent dark:bg-acr-accent/30 text-acr-accent dark:text-acr-accent flex items-center gap-2"
+            className="p-4 rounded-card bg-acr-accent dark:bg-acr-accent/30 text-acr-accent dark:text-acr-accent flex items-center gap-2"
           >
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             Verifying your payment…
@@ -776,7 +776,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <div
             role={paymentStatusState.type === "success" ? "status" : "alert"}
             aria-live={paymentStatusState.type === "success" ? "polite" : "assertive"}
-            className={`p-4 rounded-lg flex items-center gap-2 ${
+            className={`p-4 rounded-card flex items-center gap-2 ${
               paymentStatusState.type === 'success'
                 ? 'bg-acr-pos-soft dark:bg-acr-pos-soft/30 text-acr-pos dark:text-acr-pos'
                 : 'bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg'
@@ -1203,7 +1203,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                               className={`flex ${isBorrower ? "justify-end" : "justify-start"}`}
                               data-testid={`message-${msg.id}`}
                             >
-                              <div className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                              <div className={`max-w-[80%] rounded-card px-4 py-2 text-sm ${
                                 isBorrower
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-muted text-foreground"
@@ -1371,7 +1371,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                     </dd>
                   </div>
                 )}
-                <div className="flex justify-between py-3 bg-primary/10 rounded-lg px-3 mt-4">
+                <div className="flex justify-between py-3 bg-primary/10 rounded-card px-3 mt-4">
                   <dt className="font-semibold">Total payoff amount</dt>
                   <dd className="font-mono font-bold text-lg text-primary tabular-nums" data-testid="text-payoff-total">
                     ${payoffQuote.totalPayoff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

@@ -107,7 +107,7 @@ export function DecisionScore({ score, maxScore = 100, decision, reasoning, clas
           tabIndex={0}
           role="group"
           aria-label={`${config.label}: score ${score} of ${maxScore} (${pct}%). ${reasoning}`}
-          className={cn("rounded-lg border p-3 space-y-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", config.bg, config.border, className)}
+          className={cn("rounded-card border p-3 space-y-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", config.bg, config.border, className)}
         >
           <div className="flex items-center justify-between">
             <span className={cn("text-sm font-medium", config.color)}>{config.label}</span>

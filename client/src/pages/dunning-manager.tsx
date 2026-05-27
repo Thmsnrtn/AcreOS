@@ -165,7 +165,7 @@ export default function DunningManagerPage() {
                 const config = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.pending;
                 const Icon = config.icon;
                 return (
-                  <li key={c.id} className="flex items-center justify-between p-3 border rounded-lg gap-3 flex-wrap">
+                  <li key={c.id} className="flex items-center justify-between p-3 border rounded-card gap-3 flex-wrap">
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">{c.orgName}</span>

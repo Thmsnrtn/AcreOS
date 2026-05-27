@@ -268,23 +268,23 @@ export default function SellerFinanceCalculator({
 
         {/* Summary metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg p-3 text-center">
+          <div className="bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-card p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Monthly Payment</p>
             <p className="text-lg font-bold text-acr-pos dark:text-acr-pos">
               {fmtFull$(monthlyPayment)}
             </p>
           </div>
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
+          <div className="bg-muted/40 rounded-card p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Financed Amount</p>
             <p className="text-base font-semibold">{fmt$(principal)}</p>
           </div>
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
+          <div className="bg-muted/40 rounded-card p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Total Interest</p>
             <p className="text-base font-semibold text-acr-warn dark:text-acr-warn">
               {fmt$(totalInterest)}
             </p>
           </div>
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
+          <div className="bg-muted/40 rounded-card p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">LTV Ratio</p>
             <p className="text-base font-semibold">
               {ltv}%{" "}

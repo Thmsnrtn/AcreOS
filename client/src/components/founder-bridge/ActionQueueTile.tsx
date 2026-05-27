@@ -62,7 +62,7 @@ export function ActionQueueTile({
         {isLoading ? (
           <ul className="space-y-1.5">
             {[0, 1, 2].map((i) => (
-              <li key={i} className="h-10 animate-pulse rounded-lg bg-muted/20" />
+              <li key={i} className="h-10 animate-pulse rounded-card bg-muted/20" />
             ))}
           </ul>
         ) : visible.length === 0 ? (
@@ -104,7 +104,7 @@ function ActionRow({
         : "bg-muted-foreground/60";
 
   const inner = (
-    <div className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors [@media(pointer:fine)]:hover:bg-white/[0.03]">
+    <div className="flex items-center gap-3 rounded-card px-2 py-2 transition-colors [@media(pointer:fine)]:hover:bg-white/[0.03]">
       <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone)} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground/95">{item.title}</p>

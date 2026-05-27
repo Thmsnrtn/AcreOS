@@ -22,7 +22,7 @@ function BeforeAfterSlider({ before, after, label }: { before: string; after: st
     <div className="space-y-2">
       {label && <p id={`${sliderId}-label`} className="text-xs font-medium text-muted-foreground">{label}</p>}
       <div
-        className="relative overflow-hidden rounded-lg bg-muted"
+        className="relative overflow-hidden rounded-card bg-muted"
         style={{ height: 200 }}
         role="img"
         aria-label="Before-and-after satellite imagery comparison; drag the slider below to reveal more or less of the older snapshot"
@@ -258,7 +258,7 @@ export default function VisionAIPage() {
 
       {selectedPropertyId && summaryLoading && (
         <div className="space-y-3" role="status" aria-label="Loading visual analysis">
-          {[1, 2].map(i => <div key={i} className="h-32 bg-muted/50 rounded-lg animate-pulse" />)}
+          {[1, 2].map(i => <div key={i} className="h-32 bg-muted/50 rounded-card animate-pulse" />)}
         </div>
       )}
 

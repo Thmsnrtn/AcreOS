@@ -543,7 +543,7 @@ export function SupportContent() {
                         }`}
                       >
                         <div
-                          className={`inline-block p-3 rounded-lg ${
+                          className={`inline-block p-3 rounded-card ${
                             msg.role === "user"
                               ? "bg-primary text-primary-foreground"
                               : "bg-muted"

@@ -140,7 +140,7 @@ function CallRow({ call }: { call: VoiceCall }) {
     .join(", ");
 
   return (
-    <li className="border rounded-lg overflow-hidden list-none">
+    <li className="border rounded-card overflow-hidden list-none">
       {/* Row header — click to expand */}
       <button
         type="button"

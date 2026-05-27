@@ -29,7 +29,7 @@ export function EarlyAccessBanner() {
 
   return (
     <>
-      <div className="mx-4 mb-2 rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/15 dark:bg-primary/5 p-3 flex items-center justify-between gap-3">
+      <div className="mx-4 mb-2 rounded-card border border-primary/20 bg-primary/5 dark:border-primary/15 dark:bg-primary/5 p-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm min-w-0">
           <Sparkles className="h-4 w-4 shrink-0 text-primary/70" aria-hidden="true" />
           <span className="text-foreground/80">

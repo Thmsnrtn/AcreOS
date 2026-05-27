@@ -268,7 +268,7 @@ export default function WebhooksPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">{`{
+          <pre className="text-xs bg-muted p-3 rounded-card overflow-x-auto">{`{
   "event": "lead.created",
   "timestamp": "2026-03-09T12:00:00.000Z",
   "organizationId": 1,

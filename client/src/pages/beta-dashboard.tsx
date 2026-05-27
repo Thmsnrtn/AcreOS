@@ -174,7 +174,7 @@ export default function BetaDashboardPage() {
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <div className={`p-2 rounded-lg bg-muted ${color}`}>
+              <div className={`p-2 rounded-card bg-muted ${color}`}>
                 <Icon className="w-4 h-4" />
               </div>
               <div>
@@ -384,7 +384,7 @@ export default function BetaDashboardPage() {
               return (
                 <Card key={fb.id}>
                   <CardContent className="pt-4 flex gap-3">
-                    <div className="p-2 rounded-lg bg-muted shrink-0 h-fit">
+                    <div className="p-2 rounded-card bg-muted shrink-0 h-fit">
                       <Icon className="w-4 h-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">

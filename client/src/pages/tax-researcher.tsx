@@ -239,7 +239,7 @@ export default function TaxResearcherPage() {
           {auctionsLoading ? (
             <div className="space-y-3" role="status" aria-live="polite">
               <span className="sr-only">Loading auctions…</span>
-              {[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted/50 rounded-lg animate-pulse" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted/50 rounded-card animate-pulse" />)}
             </div>
           ) : auctions.length === 0 ? (
             <Card><CardContent className="py-12 text-center">

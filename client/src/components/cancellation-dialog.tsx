@@ -143,7 +143,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
             </DialogHeader>
 
             {contextQuery.data?.usage && (
-              <section aria-labelledby="cancel-usage-heading" className="rounded-lg border bg-muted/50 p-4 text-sm">
+              <section aria-labelledby="cancel-usage-heading" className="rounded-card border bg-muted/50 p-4 text-sm">
                 <p id="cancel-usage-heading" className="font-medium mb-1 m-0">Your usage this month:</p>
                 <ul aria-labelledby="cancel-usage-heading" className="space-y-1 text-muted-foreground list-none p-0 m-0">
                   {Object.entries(contextQuery.data.usage).map(([key, val]: [string, any]) => {
@@ -184,7 +184,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
 
             {suggestion && suggestionDisplayName && monthlySavingsDollars > 0 && (
               <p
-                className="rounded-lg border bg-acr-pos/5 p-3 text-sm text-muted-foreground"
+                className="rounded-card border bg-acr-pos/5 p-3 text-sm text-muted-foreground"
                 aria-live="polite"
                 data-testid="downgrade-savings-pitch"
               >

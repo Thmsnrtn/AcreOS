@@ -190,7 +190,7 @@ function StatCard({
               <p className="text-xs text-muted-foreground">{sub}</p>
             )}
           </div>
-          <div className="p-2 rounded-lg bg-muted">
+          <div className="p-2 rounded-card bg-muted">
             <Icon className="w-4 h-4 text-muted-foreground" />
           </div>
         </div>
@@ -495,7 +495,7 @@ export default function AiObservatory() {
                 {proposals.map((p) => (
                   <div
                     key={p.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30"
+                    className="flex items-start gap-3 p-3 rounded-card border border-border bg-muted/30"
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground leading-snug">

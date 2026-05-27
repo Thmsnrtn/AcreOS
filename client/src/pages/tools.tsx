@@ -32,9 +32,9 @@ export default function ToolsPage() {
 
         <TabsContent value="more">
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-6" aria-label="Available tools">
-            <li className="border rounded-lg p-6 space-y-3">
+            <li className="border rounded-card p-6 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted" aria-hidden="true">
+                <div className="p-2 rounded-card bg-muted" aria-hidden="true">
                   <Calculator className="w-5 h-5" />
                 </div>
                 <div>
@@ -44,9 +44,9 @@ export default function ToolsPage() {
               </div>
               <p className="text-sm text-muted-foreground">Create and view this from the Finance &gt; Notes section when you add a new note.</p>
             </li>
-            <li className="border rounded-lg p-6 space-y-3">
+            <li className="border rounded-card p-6 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted" aria-hidden="true">
+                <div className="p-2 rounded-card bg-muted" aria-hidden="true">
                   <Wrench className="w-5 h-5" />
                 </div>
                 <div>
@@ -69,11 +69,11 @@ export default function ToolsPage() {
               <li key={href}>
                 <Link href={href}>
                   <a
-                    className="block border rounded-lg p-4 space-y-2 hover:bg-muted/50 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-11"
+                    className="block border rounded-card p-4 space-y-2 hover:bg-muted/50 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-11"
                     aria-label={`${title}: ${desc}`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${color}`} aria-hidden="true">
+                      <div className={`p-2 rounded-card ${color}`} aria-hidden="true">
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="flex-1">

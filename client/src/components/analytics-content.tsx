@@ -661,19 +661,19 @@ export function AnalyticsContent() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
+            <div className="text-center p-4 bg-muted/50 rounded-card">
               <div className="text-2xl font-bold">{leads?.totalLeads || 0}</div>
               <p className="text-sm text-muted-foreground">Total Leads</p>
             </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
+            <div className="text-center p-4 bg-muted/50 rounded-card">
               <div className="text-2xl font-bold">{deals?.wonDeals || 0}</div>
               <p className="text-sm text-muted-foreground">Won Deals</p>
             </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
+            <div className="text-center p-4 bg-muted/50 rounded-card">
               <div className="text-2xl font-bold">{formatCurrency(deals?.avgDealValue || 0)}</div>
               <p className="text-sm text-muted-foreground">Avg Deal Value</p>
             </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
+            <div className="text-center p-4 bg-muted/50 rounded-card">
               <div className="text-2xl font-bold">{velocity?.avgTotalDays || 0}</div>
               <p className="text-sm text-muted-foreground">Avg Days to Close</p>
             </div>

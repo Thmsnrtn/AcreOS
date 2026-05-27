@@ -60,7 +60,7 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
 
   return (
     <li
-      className={`flex items-center gap-3 p-3 rounded-lg border list-none ${
+      className={`flex items-center gap-3 p-3 rounded-card border list-none ${
         pattern.isAutopilotActive ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border-acr-pos-soft" :
         pattern.isAutopilotEligible ? "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent" :
         "bg-background"

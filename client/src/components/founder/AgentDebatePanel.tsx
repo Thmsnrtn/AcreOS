@@ -101,7 +101,7 @@ function DebateCard({ debate }: { debate: Debate }) {
 
       {/* Votes */}
       {votes.length > 0 && (
-        <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50" aria-label={`Votes: ${forVotes} for, ${againstVotes} against`}>
+        <div className="flex items-center gap-3 p-2 rounded-card bg-muted/50" aria-label={`Votes: ${forVotes} for, ${againstVotes} against`}>
           <div className="flex items-center gap-1 text-xs">
             <ThumbsUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> <span className="font-medium tabular-nums">{forVotes}</span>
           </div>

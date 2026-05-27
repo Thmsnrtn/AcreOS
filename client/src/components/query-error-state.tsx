@@ -181,7 +181,7 @@ export function QueryErrorState({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="mt-6 p-3 rounded-lg bg-muted/50 text-left"
+            className="mt-6 p-3 rounded-card bg-muted/50 text-left"
             data-testid={`${testId}-debug`}
           >
             <p className="text-xs font-mono text-muted-foreground break-all">

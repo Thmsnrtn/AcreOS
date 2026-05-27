@@ -511,7 +511,7 @@ function SunControlPanel({
 
       {/* Sky gradient preview strip */}
       <div
-        className={`h-12 rounded-lg mb-2.5 bg-gradient-to-b ${gradient} flex items-center justify-center relative overflow-hidden`}
+        className={`h-12 rounded-card mb-2.5 bg-gradient-to-b ${gradient} flex items-center justify-center relative overflow-hidden`}
       >
         {solar.isDaytime && (
           <div

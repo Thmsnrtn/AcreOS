@@ -711,7 +711,7 @@ export default function DocumentsPage() {
             <Card key={doc.id} data-testid={`card-document-${doc.id}`}>
               <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="p-2 rounded-lg bg-muted shrink-0">
+                  <div className="p-2 rounded-card bg-muted shrink-0">
                     <FileText className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -845,7 +845,7 @@ export default function DocumentsPage() {
             >
               <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="p-2 rounded-lg bg-muted shrink-0">
+                  <div className="p-2 rounded-card bg-muted shrink-0">
                     <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1147,7 +1147,7 @@ export default function DocumentsPage() {
           </DialogHeader>
           <ScrollArea className="flex-1">
             <div
-              className="prose dark:prose-invert max-w-none p-4 bg-background rounded-lg"
+              className="prose dark:prose-invert max-w-none p-4 bg-background rounded-card"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(previewTemplate?.content || previewDocument?.content || "")
               }}
@@ -1204,7 +1204,7 @@ export default function DocumentsPage() {
                       <Card key={version.id} data-testid={`card-version-${version.id}`}>
                         <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
                           <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <div className="p-2 rounded-lg bg-muted shrink-0">
+                            <div className="p-2 rounded-card bg-muted shrink-0">
                               <History className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                             </div>
                             <div className="flex-1 min-w-0">

@@ -273,7 +273,7 @@ export default function BetaAnalyticsPage() {
               ) : (
                 <ol className="space-y-4" aria-label="User feedback, newest first">
                   {data.feedback.map((f) => (
-                    <li key={f.id} className="border rounded-lg p-3 space-y-1">
+                    <li key={f.id} className="border rounded-card p-3 space-y-1">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                         <code>{f.page}</code>
                         <span aria-hidden="true">·</span>

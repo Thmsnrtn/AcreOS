@@ -184,7 +184,7 @@ export default function ProactiveMonitorPage() {
           </CardHeader>
           <CardContent>
             <ul className="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="Health check categories">
-              <li className={`p-3 rounded-lg ${lastRun.activityAnomaly.hasAnomaly ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
+              <li className={`p-3 rounded-card ${lastRun.activityAnomaly.hasAnomaly ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
                 <div className="flex items-center gap-2">
                   <TrendingDown
                     className={`h-4 w-4 ${lastRun.activityAnomaly.hasAnomaly ? "text-acr-warn" : "text-acr-pos"}`}
@@ -196,7 +196,7 @@ export default function ProactiveMonitorPage() {
                   {lastRun.activityAnomaly.hasAnomaly ? "Unusual activity drop detected." : "Activity levels normal."}
                 </p>
               </li>
-              <li className={`p-3 rounded-lg ${lastRun.integrityIssues.length > 0 ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
+              <li className={`p-3 rounded-card ${lastRun.integrityIssues.length > 0 ? "bg-acr-warn-soft dark:bg-acr-warn-soft/20" : "bg-acr-pos-soft dark:bg-acr-pos-soft/20"}`}>
                 <div className="flex items-center gap-2">
                   <Database
                     className={`h-4 w-4 ${lastRun.integrityIssues.length > 0 ? "text-acr-warn" : "text-acr-pos"}`}
@@ -210,7 +210,7 @@ export default function ProactiveMonitorPage() {
                     : "No integrity issues."}
                 </p>
               </li>
-              <li className="p-3 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20">
+              <li className="p-3 rounded-card bg-acr-pos-soft dark:bg-acr-pos-soft/20">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                   <span className="text-sm font-medium">Anomalies</span>
@@ -259,7 +259,7 @@ export default function ProactiveMonitorPage() {
                     <CardContent className="pt-4">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="flex items-start gap-3 min-w-0">
-                          <div className={`p-1.5 rounded-lg ${cfg.bg} flex-shrink-0`}>
+                          <div className={`p-1.5 rounded-card ${cfg.bg} flex-shrink-0`}>
                             <Icon className={`h-4 w-4 ${cfg.color}`} aria-label={cfg.label} />
                           </div>
                           <div className="min-w-0">

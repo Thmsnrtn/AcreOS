@@ -31,7 +31,7 @@ export function BridgeHeader({ streamActive, onMenu }: BridgeHeaderProps) {
             type="button"
             onClick={onMenu}
             aria-label="Open menu"
-            className="flex h-10 w-10 -ml-2 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
+            className="flex h-10 w-10 -ml-2 items-center justify-center rounded-card text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
           >
             <span aria-hidden className="text-lg">☰</span>
           </button>

@@ -163,7 +163,7 @@ function StructuredAnalysis({ content }: { content: string }) {
   // If we couldn't parse sections, fall back to plain markdown
   if (sections.length === 0) {
     return (
-      <div className="bg-muted rounded-lg p-4">
+      <div className="bg-muted rounded-card p-4">
         <AnalysisMarkdown content={content} />
       </div>
     );
@@ -172,7 +172,7 @@ function StructuredAnalysis({ content }: { content: string }) {
   return (
     <div className="space-y-3">
       {preamble && (
-        <div className="bg-muted/50 rounded-lg p-3">
+        <div className="bg-muted/50 rounded-card p-3">
           <AnalysisMarkdown content={preamble} />
         </div>
       )}
@@ -467,7 +467,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                 // Hide the verbose system prompt from the user; show a friendly label instead
                 return (
                   <div key={index} className="flex gap-3 justify-end" data-testid={`message-user-${index}`}>
-                    <div className="max-w-[80%] rounded-lg p-3 bg-primary text-primary-foreground">
+                    <div className="max-w-[80%] rounded-card p-3 bg-primary text-primary-foreground">
                       <p className="text-sm flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                         Run Quick Analysis
@@ -523,7 +523,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                     </div>
                   ) : (
                     <div
-                      className={`max-w-[80%] rounded-lg p-3 ${
+                      className={`max-w-[80%] rounded-card p-3 ${
                         message.role === "user"
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted"
@@ -583,7 +583,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0" aria-hidden="true">
                   <Bot className="w-4 h-4 text-primary" aria-hidden="true" />
                 </div>
-                <div className="bg-muted rounded-lg p-3">
+                <div className="bg-muted rounded-card p-3">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                     <span className="text-sm text-muted-foreground">Analyzing…</span>

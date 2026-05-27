@@ -97,7 +97,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
       
       <CollapsibleContent className="mt-3">
         <div 
-          className="p-3 sm:p-4 bg-muted/30 border rounded-lg space-y-4"
+          className="p-3 sm:p-4 bg-muted/30 border rounded-card space-y-4"
           data-testid="section-gis-filters"
         >
           <div className="flex items-center justify-between gap-2">

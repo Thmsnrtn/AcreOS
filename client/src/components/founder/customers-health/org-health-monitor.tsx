@@ -108,7 +108,7 @@ export function OrgHealthMonitor() {
       {waterfallData && (
         <div className="grid grid-cols-5 gap-2">
           {waterfallData.tiers.filter(t => t.tier !== 'free').map((t) => (
-            <div key={t.tier} className="p-3 border rounded-lg text-center">
+            <div key={t.tier} className="p-3 border rounded-card text-center">
               <div className="text-sm font-semibold">{t.label}</div>
               <div className="text-lg font-bold text-primary mt-0.5 tabular-nums">{usd(t.mrr, { noCents: Number.isInteger(t.mrr) })}</div>
               <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
@@ -121,7 +121,7 @@ export function OrgHealthMonitor() {
       )}
 
       {atRiskCount > 0 && (
-        <div className="flex items-center gap-2 p-2.5 bg-acr-neg/5 border border-acr-neg/30 rounded-lg text-sm text-acr-neg">
+        <div className="flex items-center gap-2 p-2.5 bg-acr-neg/5 border border-acr-neg/30 rounded-card text-sm text-acr-neg">
           <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
           {atRiskCount} organization{atRiskCount > 1 ? 's' : ''} at risk — check the unified action queue at /founder for recommended responses
         </div>
@@ -131,7 +131,7 @@ export function OrgHealthMonitor() {
         {displayed.map((org) => {
           const cfg = HEALTH_CONFIG[org.healthStatus] || HEALTH_CONFIG.healthy;
           return (
-            <div key={org.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/20 transition-colors group">
+            <div key={org.id} className="flex items-center gap-3 p-2.5 rounded-card hover:bg-muted/20 transition-colors group">
               <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">

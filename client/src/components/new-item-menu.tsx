@@ -134,7 +134,7 @@ export function NewItemMenu() {
                   type="button"
                   onClick={() => setNewMenuOpen(false)}
                   aria-label="Close create-new menu"
-                  className="p-2 rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="p-2 rounded-card hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="close-new-item-menu"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
@@ -148,13 +148,13 @@ export function NewItemMenu() {
                     type="button"
                     onClick={() => handleSelect(option.href)}
                     className={cn(
-                      "w-full flex items-center gap-3 p-3 rounded-lg text-left",
+                      "w-full flex items-center gap-3 p-3 rounded-card text-left",
                       "hover-elevate active-elevate-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     )}
                     data-testid={option.testId}
                   >
                     <div className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center text-white",
+                      "w-10 h-10 rounded-card flex items-center justify-center text-white",
                       option.color
                     )} aria-hidden="true">
                       <option.icon className="h-5 w-5" />

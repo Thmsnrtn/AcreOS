@@ -120,7 +120,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
       {/* Projected Impact */}
       {impact && (
         <div
-          className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
+          className="flex items-center gap-3 p-2 rounded-card bg-muted/50"
           aria-label={`Projected impact on ${impact.metric}: from ${impact.currentValue} to ${impact.projectedValue} in ${impact.timeframeWeeks} weeks (${impact.confidence} confidence)`}
         >
           <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />

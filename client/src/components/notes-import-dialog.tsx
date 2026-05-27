@@ -317,7 +317,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
               className="hidden"
               onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
             />
-            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
+            <div className="text-xs text-muted-foreground bg-muted/40 rounded-card p-3 space-y-1">
               <p className="font-medium text-foreground">CSV import tips:</p>
               <p>1. Export notes from your current platform as CSV</p>
               <p>2. Upload the downloaded file here</p>
@@ -409,7 +409,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                 <p className="text-sm font-medium text-destructive flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4" /> Rows with errors
                 </p>
-                <div className="rounded-lg border border-destructive/20 divide-y divide-border/50 max-h-40 overflow-y-auto">
+                <div className="rounded-card border border-destructive/20 divide-y divide-border/50 max-h-40 overflow-y-auto">
                   {result.errors.slice(0, 20).map((e) => (
                     <div key={e.row} className="px-3 py-2 text-xs">
                       <span className="font-medium">Row {e.row}:</span>{" "}

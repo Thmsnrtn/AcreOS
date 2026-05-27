@@ -177,7 +177,7 @@ export function SellerIntentPanel({ leads }: Props) {
               return (
                 <li
                   key={lead.id}
-                  className="flex items-center gap-3 rounded-lg border p-2.5 hover:bg-muted/30 transition-colors"
+                  className="flex items-center gap-3 rounded-card border p-2.5 hover:bg-muted/30 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

@@ -174,7 +174,7 @@ export function ProviderSettingsCards({
                 role={testResult.success ? "status" : "alert"}
                 aria-live="polite"
                 className={cn(
-                  "flex items-center gap-2 rounded-lg border p-3 text-sm",
+                  "flex items-center gap-2 rounded-card border p-3 text-sm",
                   testResult.success
                     ? "border-acr-pos/30 bg-acr-pos/10 text-acr-pos dark:text-acr-pos"
                     : "border-destructive/30 bg-destructive/10 text-destructive"
@@ -248,7 +248,7 @@ function ProviderCard({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted" aria-hidden="true">
+            <div className="flex h-10 w-10 items-center justify-center rounded-card bg-muted" aria-hidden="true">
               <Settings className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>

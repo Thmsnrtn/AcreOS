@@ -191,7 +191,7 @@ export default function MultiVerticalPnLPage() {
                 {projectExit.isPending ? "Projecting…" : "Project my W-2 exit"}
               </Button>
               {projection && (
-                <div className="mt-2 p-4 rounded-lg bg-muted/40">
+                <div className="mt-2 p-4 rounded-card bg-muted/40">
                   {projection.achievableMonth ? (
                     <p className="text-base font-semibold">
                       Month {projection.achievableMonth} → AcreOS run-rate covers W-2 income.

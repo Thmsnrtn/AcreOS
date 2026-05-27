@@ -636,7 +636,7 @@ function SophieActivityPreview() {
     : parseFloat(String(supportAnalyticsData?.aiResolutionRate ?? "0")) || 0;
 
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-card border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Bot className="h-4 w-4 text-acr-accent" />
@@ -1998,7 +1998,7 @@ export default function FounderDashboard() {
 
           {/* ── MRR Goal Progress (when goal is set) ─────────────────── */}
           {goalCents > 0 && dashboardData && (
-            <div className="rounded-lg border bg-card px-4 py-3">
+            <div className="rounded-card border bg-card px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Target className="h-4 w-4 text-acr-warn" />
@@ -2260,7 +2260,7 @@ export default function FounderDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* MRR Hero Number */}
-                <div className="rounded-lg bg-acr-pos/5 border border-acr-pos/20 px-4 py-3">
+                <div className="rounded-card bg-acr-pos/5 border border-acr-pos/20 px-4 py-3">
                   <p className="text-xs text-muted-foreground mb-0.5">Monthly Recurring Revenue</p>
                   <p className="text-3xl font-bold text-acr-pos tracking-tight" data-testid="text-mrr">
                     {formatCurrency(dashboardData?.revenue.mrr || 0)}
@@ -2611,15 +2611,15 @@ export default function FounderDashboard() {
                   <>
                     {/* 30-day momentum grid */}
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-lg bg-acr-pos/5 border border-acr-pos/10 px-2 py-2">
+                      <div className="rounded-card bg-acr-pos/5 border border-acr-pos/10 px-2 py-2">
                         <p className="text-lg font-bold text-acr-pos">{subscriptionStats.upgrades30d}</p>
                         <p className="text-[10px] text-muted-foreground leading-tight">upgrades</p>
                       </div>
-                      <div className="rounded-lg bg-acr-neg/5 border border-acr-neg/10 px-2 py-2">
+                      <div className="rounded-card bg-acr-neg/5 border border-acr-neg/10 px-2 py-2">
                         <p className="text-lg font-bold text-acr-neg">{subscriptionStats.cancellations30d}</p>
                         <p className="text-[10px] text-muted-foreground leading-tight">cancels</p>
                       </div>
-                      <div className="rounded-lg bg-acr-accent/5 border border-acr-accent/10 px-2 py-2">
+                      <div className="rounded-card bg-acr-accent/5 border border-acr-accent/10 px-2 py-2">
                         <p className="text-lg font-bold text-acr-accent">{subscriptionStats.signups30d}</p>
                         <p className="text-[10px] text-muted-foreground leading-tight">new signups</p>
                       </div>
@@ -2754,7 +2754,7 @@ export default function FounderDashboard() {
                   {featureRequests.map((request) => (
                     <div
                       key={request.id}
-                      className="flex flex-col gap-3 p-4 rounded-lg border bg-card"
+                      className="flex flex-col gap-3 p-4 rounded-card border bg-card"
                       data-testid={`feature-request-${request.id}`}
                     >
                       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
@@ -2861,19 +2861,19 @@ export default function FounderDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-center p-3 bg-muted/50 rounded-card">
                   <p className="text-2xl font-bold">{supportAnalytics?.totalTickets || 0}</p>
                   <p className="text-xs text-muted-foreground">Total Tickets</p>
                 </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-center p-3 bg-muted/50 rounded-card">
                   <p className="text-2xl font-bold">{supportAnalytics?.openTickets || 0}</p>
                   <p className="text-xs text-muted-foreground">Open</p>
                 </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-center p-3 bg-muted/50 rounded-card">
                   <p className="text-2xl font-bold">{supportAnalytics?.aiResolutionRate || 0}%</p>
                   <p className="text-xs text-muted-foreground">AI Resolution Rate</p>
                 </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-center p-3 bg-muted/50 rounded-card">
                   <p className="text-2xl font-bold">{supportAnalytics?.averageRating ? `${supportAnalytics.averageRating}/5` : '-'}</p>
                   <p className="text-xs text-muted-foreground">Avg Rating</p>
                 </div>
@@ -2923,7 +2923,7 @@ export default function FounderDashboard() {
                   {escalations.map((ticket) => (
                     <div 
                       key={ticket.id} 
-                      className={`flex items-start gap-3 p-4 rounded-lg border ${
+                      className={`flex items-start gap-3 p-4 rounded-card border ${
                         ticket.priority === 'urgent' ? 'bg-acr-neg/5 border-acr-neg/20' :
                         ticket.priority === 'high' ? 'bg-acr-warn/5 border-acr-warn/20' :
                         'bg-muted/50 border-border'
@@ -3056,7 +3056,7 @@ export default function FounderDashboard() {
                   {alerts.map((alert) => (
                     <div 
                       key={alert.id} 
-                      className={`flex items-start gap-3 p-3 rounded-lg border ${
+                      className={`flex items-start gap-3 p-3 rounded-card border ${
                         alert.status === 'resolved' ? 'opacity-50' : ''
                       } ${
                         alert.severity === 'critical' ? 'bg-acr-neg/5 border-acr-neg/20' :
@@ -3191,7 +3191,7 @@ export default function FounderDashboard() {
                   {countyGisEndpoints.map((endpoint) => (
                     <div 
                       key={endpoint.id} 
-                      className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate"
+                      className="grid grid-cols-12 gap-2 items-center p-3 rounded-card border hover-elevate"
                       data-testid={`gis-endpoint-${endpoint.id}`}
                     >
                       <span className="col-span-1 font-medium">{endpoint.state}</span>
@@ -3447,7 +3447,7 @@ export default function FounderDashboard() {
                     }).map((source) => (
                       <div 
                         key={source.id} 
-                        className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate ${!source.isEnabled ? 'opacity-50' : ''}`}
+                        className={`grid grid-cols-12 gap-2 items-center p-3 rounded-card border hover-elevate ${!source.isEnabled ? 'opacity-50' : ''}`}
                         data-testid={`data-source-${source.id}`}
                       >
                         <span className="col-span-3 font-medium truncate" title={source.title}>
@@ -3611,7 +3611,7 @@ export default function FounderDashboard() {
                   {filteredUsers.slice(0, 50).map((org) => (
                     <div 
                       key={org.id} 
-                      className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate"
+                      className="grid grid-cols-12 gap-2 items-center p-3 rounded-card border hover-elevate"
                       data-testid={`user-org-${org.id}`}
                     >
                       <span className="col-span-3 font-medium truncate" title={org.name}>
@@ -3682,35 +3682,35 @@ export default function FounderDashboard() {
             <CardContent>
               {/* Stats cards */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <div className="p-4 border rounded-lg text-center">
+                <div className="p-4 border rounded-card text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <TrendingUp className="w-4 h-4 text-acr-pos" />
                     <span className="text-2xl font-bold text-acr-pos">{subscriptionStats?.upgrades30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Upgrades (30d)</p>
                 </div>
-                <div className="p-4 border rounded-lg text-center">
+                <div className="p-4 border rounded-card text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <TrendingDown className="w-4 h-4 text-acr-warn" />
                     <span className="text-2xl font-bold text-acr-warn">{subscriptionStats?.downgrades30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Downgrades (30d)</p>
                 </div>
-                <div className="p-4 border rounded-lg text-center">
+                <div className="p-4 border rounded-card text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <AlertCircle className="w-4 h-4 text-acr-neg" />
                     <span className="text-2xl font-bold text-acr-neg">{subscriptionStats?.cancellations30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Cancellations (30d)</p>
                 </div>
-                <div className="p-4 border rounded-lg text-center">
+                <div className="p-4 border rounded-card text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <RefreshCw className="w-4 h-4 text-acr-accent" />
                     <span className="text-2xl font-bold text-acr-accent">{subscriptionStats?.reactivations30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Reactivations (30d)</p>
                 </div>
-                <div className="p-4 border rounded-lg text-center">
+                <div className="p-4 border rounded-card text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <UserPlus className="w-4 h-4 text-acr-accent" />
                     <span className="text-2xl font-bold text-acr-accent">{subscriptionStats?.signups30d || 0}</span>
@@ -3727,7 +3727,7 @@ export default function FounderDashboard() {
                     {subscriptionEvents.slice(0, 20).map((event) => (
                       <div 
                         key={event.id} 
-                        className="flex items-center gap-3 p-2 rounded-lg border"
+                        className="flex items-center gap-3 p-2 rounded-card border"
                         data-testid={`subscription-event-${event.id}`}
                       >
                         {getEventTypeIcon(event.eventType)}
@@ -3879,7 +3879,7 @@ export default function FounderDashboard() {
                                 return (
                                   <div 
                                     key={key}
-                                    className={`flex items-center gap-3 p-2 rounded-lg border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}
+                                    className={`flex items-center gap-3 p-2 rounded-card border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}
                                     onClick={() => handleToggleEndpoint(endpoint)}
                                     data-testid={`endpoint-row-${endpoint.state}-${endpoint.county}`}
                                   >
@@ -4078,7 +4078,7 @@ export default function FounderDashboard() {
                     {liveDiscoveredEndpoints.map((endpoint) => (
                       <div 
                         key={endpoint.id} 
-                        className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate"
+                        className="grid grid-cols-12 gap-2 items-center p-3 rounded-card border hover-elevate"
                         data-testid={`live-endpoint-${endpoint.id}`}
                       >
                         <span className="col-span-1 font-medium">{endpoint.state}</span>
@@ -4192,7 +4192,7 @@ export default function FounderDashboard() {
             {expandedTile === 'revenue' && (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Revenue by Tier</h4>
                     <table className="w-full text-sm">
                       <thead>
@@ -4210,7 +4210,7 @@ export default function FounderDashboard() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Revenue Summary</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Total MRR:</span><span className="font-bold text-acr-pos">{formatCurrency(dashboardData?.revenue.mrr || 0)}</span></div>
@@ -4220,7 +4220,7 @@ export default function FounderDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">Revenue Projections (Mock Data)</h4>
                   <table className="w-full text-sm">
                     <thead>
@@ -4243,7 +4243,7 @@ export default function FounderDashboard() {
             {expandedTile === 'health' && (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">System Metrics</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Active Organizations:</span><span className="font-medium">{dashboardData?.systemHealth.activeOrganizations || 0}</span></div>
@@ -4252,7 +4252,7 @@ export default function FounderDashboard() {
                       <div className="flex justify-between"><span>System Uptime:</span><span className="font-medium text-acr-pos">{dashboardData?.systemHealth.uptime || 99.9}%</span></div>
                     </div>
                   </div>
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Users by Tier</h4>
                     <table className="w-full text-sm">
                       <thead>
@@ -4269,7 +4269,7 @@ export default function FounderDashboard() {
                     </table>
                   </div>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">Uptime Logs (Mock Data)</h4>
                   <table className="w-full text-sm">
                     <thead>
@@ -4297,7 +4297,7 @@ export default function FounderDashboard() {
                     const agentNames: Record<string, string> = { leadNurturer: 'Lead Nurturer', campaignOptimizer: 'Campaign Optimizer', financeAgent: 'Finance Agent' };
                     if (!agent || !('lastRun' in agent)) return null;
                     return (
-                      <div key={agentKey} className="p-4 border rounded-lg">
+                      <div key={agentKey} className="p-4 border rounded-card">
                         <h4 className="font-medium mb-2">{agentNames[agentKey]}</h4>
                         <div className="grid grid-cols-4 gap-4 text-sm">
                           <div><span className="text-muted-foreground">Status:</span><br/><Badge variant="outline" className={getAgentStatusColor(agent.status)}>{agent.status}</Badge></div>
@@ -4308,7 +4308,7 @@ export default function FounderDashboard() {
                       </div>
                     );
                   })}
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">API Queue</h4>
                     <div className="flex gap-4">
                       <div><span className="text-muted-foreground">Pending:</span> <span className="font-medium">{dashboardData?.agents.apiQueue.pending || 0}</span></div>
@@ -4316,7 +4316,7 @@ export default function FounderDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">Recent Task History (Mock Data)</h4>
                   <table className="w-full text-sm">
                     <thead>
@@ -4374,7 +4374,7 @@ export default function FounderDashboard() {
                   {alerts?.map((alert) => (
                     <div 
                       key={alert.id} 
-                      className={`flex items-start gap-3 p-3 rounded-lg border ${
+                      className={`flex items-start gap-3 p-3 rounded-card border ${
                         alert.status === 'resolved' ? 'opacity-50' : ''
                       } ${
                         alert.severity === 'critical' ? 'bg-acr-neg/5 border-acr-neg/20' :
@@ -4424,7 +4424,7 @@ export default function FounderDashboard() {
             {expandedTile === 'revenueAtRisk' && (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">At Risk Summary</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Total MRR at Risk:</span><span className="font-bold text-acr-neg">{formatCurrency(dashboardData?.revenueAtRisk.totalMrrAtRisk || 0)}</span></div>
@@ -4432,7 +4432,7 @@ export default function FounderDashboard() {
                       <div className="flex justify-between"><span>Low Credit Balance:</span><span>{dashboardData?.revenueAtRisk.orgsApproachingCreditExhaustion || 0}</span></div>
                     </div>
                   </div>
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Dunning by Stage</h4>
                     <table className="w-full text-sm">
                       <thead>
@@ -4452,7 +4452,7 @@ export default function FounderDashboard() {
                     </table>
                   </div>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">At-Risk Customers (Mock Data)</h4>
                   <table className="w-full text-sm">
                     <thead>
@@ -4475,14 +4475,14 @@ export default function FounderDashboard() {
             {expandedTile === 'userActivity' && (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Activity Summary</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Active Users (7 days):</span><span className="font-medium">{dashboardData?.userActivity.activeUsers || 0}</span></div>
                       <div className="flex justify-between"><span>New Signups (Week):</span><span className="font-medium text-acr-pos">{dashboardData?.userActivity.newSignupsThisWeek || 0}</span></div>
                     </div>
                   </div>
-                  <div className="p-4 border rounded-lg">
+                  <div className="p-4 border rounded-card">
                     <h4 className="font-medium mb-2">Organizations by Tier</h4>
                     <table className="w-full text-sm">
                       <thead>
@@ -4499,7 +4499,7 @@ export default function FounderDashboard() {
                     </table>
                   </div>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">Signup Trends (Mock Data)</h4>
                   <table className="w-full text-sm">
                     <thead>
@@ -4516,7 +4516,7 @@ export default function FounderDashboard() {
                     </tbody>
                   </table>
                 </div>
-                <div className="p-4 border rounded-lg">
+                <div className="p-4 border rounded-card">
                   <h4 className="font-medium mb-2">Activity Heatmap (Mock Data)</h4>
                   <div className="grid grid-cols-7 gap-1">
                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
@@ -4773,7 +4773,7 @@ function AIModelsSection() {
       </div>
 
       {isLoading ? (
-        <div className="animate-pulse h-24 rounded-lg bg-muted/50" />
+        <div className="animate-pulse h-24 rounded-card bg-muted/50" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -4879,11 +4879,11 @@ function FeatureFlagsSection() {
       </div>
 
       {isLoading ? (
-        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+        <div className="animate-pulse h-40 rounded-card bg-muted/50" />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(flags || []).map((flag) => (
-            <div key={flag.key} className="flex items-start gap-3 p-3 border rounded-lg">
+            <div key={flag.key} className="flex items-start gap-3 p-3 border rounded-card">
               <Switch
                 checked={flag.enabled}
                 onCheckedChange={(enabled) => toggleMutation.mutate({ key: flag.key, enabled })}
@@ -4986,14 +4986,14 @@ function PricingSection() {
       </div>
 
       {isLoading ? (
-        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+        <div className="animate-pulse h-40 rounded-card bg-muted/50" />
       ) : (
         <div className="space-y-3">
           {(configs || []).map((cfg) => {
             const isExpired = cfg.promoEndsAt && new Date(cfg.promoEndsAt) < new Date();
             const hasActivePromo = cfg.promoLabel && !isExpired;
             return (
-              <div key={cfg.tier} className="p-4 border rounded-lg space-y-3">
+              <div key={cfg.tier} className="p-4 border rounded-card space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <span className="font-medium">{tierLabels[cfg.tier] || cfg.tier}</span>
@@ -5077,7 +5077,7 @@ function PricingSection() {
                 </div>
 
                 {promoForm?.tier === cfg.tier && (
-                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                  <div className="p-3 bg-muted/50 rounded-card space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <Input placeholder="Label (e.g. Spring Sale)" className="h-8 text-sm"
                         value={promoForm.label} onChange={(e) => setPromoForm((p) => p ? { ...p, label: e.target.value } : null)} />
@@ -5137,7 +5137,7 @@ function TodaysBriefing() {
     <div className="p-5 rounded-xl border bg-gradient-to-br from-primary/5 via-background to-accent/5 border-primary/20">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 flex-1 min-w-0">
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0 mt-0.5">
+          <div className="p-2 rounded-card bg-primary/10 shrink-0 mt-0.5">
             <Sparkles className="w-4 h-4 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
@@ -5161,7 +5161,7 @@ function TodaysBriefing() {
           type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="p-1.5 rounded-card hover:bg-muted/60 text-muted-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title="Refresh briefing"
           aria-label={isFetching ? "Refreshing briefing" : "Refresh briefing"}
         >
@@ -5180,7 +5180,7 @@ function TodaysBriefing() {
             { label: "Escalations", value: data.highlights.escalatedTickets, color: data.highlights.escalatedTickets > 0 ? "text-acr-neg" : "text-muted-foreground", icon: AlertOctagon },
             { label: "Active Ads", value: data.highlights.activeCampaigns, color: "text-primary", icon: Megaphone },
           ].map(({ label, value, color, icon: Icon }) => (
-            <div key={label} className="p-2 rounded-lg bg-background/60 border border-border/50 text-center">
+            <div key={label} className="p-2 rounded-card bg-background/60 border border-border/50 text-center">
               <Icon className={`w-3.5 h-3.5 mx-auto mb-1 ${color}`} />
               <div className={`text-base font-bold leading-none ${color}`}>{value}</div>
               <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
@@ -5424,7 +5424,7 @@ function CompanyBriefingPanel() {
               const color = AGENT_COLORS[report.codename] || "text-muted-foreground";
 
               return (
-                <div key={report.codename} className="flex items-start gap-3 p-2 rounded-lg hover:bg-background/50 transition-colors">
+                <div key={report.codename} className="flex items-start gap-3 p-2 rounded-card hover:bg-background/50 transition-colors">
                   <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0">
                     <span className={`font-semibold text-sm ${color}`}>{report.codename.split("_")[0].charAt(0).toUpperCase() + report.codename.split("_")[0].slice(1)}</span>
@@ -5468,7 +5468,7 @@ function CompanyBriefingPanel() {
               const agentLabel = fromAgent.charAt(0).toUpperCase() + fromAgent.slice(1);
 
               return (
-                <div key={decision.id} className={`p-4 rounded-lg border ${urgencyColors[decision.urgency] || urgencyColors.medium}`}>
+                <div key={decision.id} className={`p-4 rounded-card border ${urgencyColors[decision.urgency] || urgencyColors.medium}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2 flex-1 min-w-0">
                       <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${urgencyDot[decision.urgency] || urgencyDot.medium}`} />
@@ -5780,7 +5780,7 @@ function AgentTeamPanel() {
           </DialogHeader>
 
           {/* Chat History */}
-          <div className="max-h-[400px] overflow-y-auto space-y-3 p-3 bg-muted/30 rounded-lg">
+          <div className="max-h-[400px] overflow-y-auto space-y-3 p-3 bg-muted/30 rounded-card">
             {chatHistory.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 Start a conversation with your AI team.
@@ -5788,7 +5788,7 @@ function AgentTeamPanel() {
             )}
             {chatHistory.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                <div className={`max-w-[85%] rounded-card px-3 py-2 text-sm ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-card border"
@@ -5802,7 +5802,7 @@ function AgentTeamPanel() {
             ))}
             {chatPending && (
               <div className="flex justify-start">
-                <div className="bg-card border rounded-lg px-3 py-2">
+                <div className="bg-card border rounded-card px-3 py-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                 </div>
               </div>

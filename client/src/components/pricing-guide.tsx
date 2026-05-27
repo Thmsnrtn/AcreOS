@@ -117,7 +117,7 @@ export function PricingGuide() {
             {rates?.monthlyAllowances && Object.entries(rates.monthlyAllowances).map(([tier, info]) => (
               <div 
                 key={tier} 
-                className="text-center p-4 rounded-lg bg-muted/50"
+                className="text-center p-4 rounded-card bg-muted/50"
                 data-testid={`card-allowance-${tier}`}
               >
                 <div className="text-sm font-medium capitalize mb-1">{tier}</div>

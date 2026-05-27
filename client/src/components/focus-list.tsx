@@ -358,7 +358,7 @@ export function FocusList() {
           return (
             <div
               key={lead.id}
-              className={`p-3 rounded-lg border bg-card transition-shadow ${
+              className={`p-3 rounded-card border bg-card transition-shadow ${
                 isPending ? "opacity-50" : "hover:shadow-sm"
               }`}
               data-testid={`focus-lead-${lead.id}`}

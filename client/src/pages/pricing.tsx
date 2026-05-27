@@ -11,6 +11,7 @@ import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
+import { TIER_LIMITS } from "@shared/billing/tier-limits";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
@@ -67,15 +68,81 @@ interface Feature {
   scale: string | boolean;
 }
 
+// Lens 3 (Pricing Coherence) — numeric rows read straight from
+// shared/billing/tier-limits.ts. Hardcoded numbers here drift; the source
+// of truth is the same module the server gate (`checkUsageLimit`) reads.
+function fmtCount(value: number | null): string {
+  return value === null ? "Unlimited" : value.toLocaleString("en-US");
+}
+function fmtCountOrCross(value: number | null): string | boolean {
+  if (value === null) return "Unlimited";
+  if (value === 0) return false;
+  return value.toLocaleString("en-US");
+}
+function fmtSeats(tier: "free" | "starter" | "pro" | "scale"): string {
+  const t = TIER_LIMITS[tier];
+  if (t.seatPriceCents === null) return t.includedSeats.toLocaleString("en-US");
+  const perSeat = `$${t.seatPriceCents / 100}/seat`;
+  return `${t.includedSeats} (add more at ${perSeat})`;
+}
+
 const FEATURES: Feature[] = [
-  { name: "Leads", free: "10", starter: "250", pro: "500", scale: "Unlimited" },
-  { name: "Properties", free: "3", starter: "50", pro: "100", scale: "Unlimited" },
-  { name: "Notes", free: "2", starter: "25", pro: "50", scale: "Unlimited" },
-  { name: "AI requests / day", free: "25", starter: "500", pro: "1,000", scale: "Unlimited" },
-  { name: "Campaigns", free: false, starter: "5", pro: "Unlimited", scale: "Unlimited" },
-  { name: "Sequences", free: false, starter: "2", pro: "Unlimited", scale: "Unlimited" },
-  { name: "BYOK data providers", free: false, starter: false, pro: true, scale: true },
-  { name: "Team seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)", scale: "10 (add more at $40/seat)" },
+  {
+    name: "Leads",
+    free: fmtCount(TIER_LIMITS.free.leads),
+    starter: fmtCount(TIER_LIMITS.starter.leads),
+    pro: fmtCount(TIER_LIMITS.pro.leads),
+    scale: fmtCount(TIER_LIMITS.scale.leads),
+  },
+  {
+    name: "Properties",
+    free: fmtCount(TIER_LIMITS.free.properties),
+    starter: fmtCount(TIER_LIMITS.starter.properties),
+    pro: fmtCount(TIER_LIMITS.pro.properties),
+    scale: fmtCount(TIER_LIMITS.scale.properties),
+  },
+  {
+    name: "Notes",
+    free: fmtCount(TIER_LIMITS.free.notes),
+    starter: fmtCount(TIER_LIMITS.starter.notes),
+    pro: fmtCount(TIER_LIMITS.pro.notes),
+    scale: fmtCount(TIER_LIMITS.scale.notes),
+  },
+  {
+    name: "AI requests / day",
+    free: fmtCount(TIER_LIMITS.free.ai_requests),
+    starter: fmtCount(TIER_LIMITS.starter.ai_requests),
+    pro: fmtCount(TIER_LIMITS.pro.ai_requests),
+    scale: fmtCount(TIER_LIMITS.scale.ai_requests),
+  },
+  {
+    name: "Campaigns",
+    free: fmtCountOrCross(TIER_LIMITS.free.campaigns),
+    starter: fmtCountOrCross(TIER_LIMITS.starter.campaigns),
+    pro: fmtCountOrCross(TIER_LIMITS.pro.campaigns),
+    scale: fmtCountOrCross(TIER_LIMITS.scale.campaigns),
+  },
+  {
+    name: "Sequences",
+    free: fmtCountOrCross(TIER_LIMITS.free.sequences),
+    starter: fmtCountOrCross(TIER_LIMITS.starter.sequences),
+    pro: fmtCountOrCross(TIER_LIMITS.pro.sequences),
+    scale: fmtCountOrCross(TIER_LIMITS.scale.sequences),
+  },
+  {
+    name: "BYOK data providers",
+    free: TIER_LIMITS.free.byokSupport,
+    starter: TIER_LIMITS.starter.byokSupport,
+    pro: TIER_LIMITS.pro.byokSupport,
+    scale: TIER_LIMITS.scale.byokSupport,
+  },
+  {
+    name: "Team seats",
+    free: fmtSeats("free"),
+    starter: fmtSeats("starter"),
+    pro: fmtSeats("pro"),
+    scale: fmtSeats("scale"),
+  },
   { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
   { name: "AI deal intelligence", free: true, starter: true, pro: true, scale: true },
   { name: "Document generation", free: true, starter: true, pro: true, scale: true },
@@ -250,7 +317,7 @@ export default function PricingPage() {
           <p className="text-xs text-muted-foreground text-center mb-6 sm:hidden">
             Swipe the table to compare all tiers →
           </p>
-          <div className="border rounded-lg overflow-x-auto relative" role="region" aria-label="Plan feature comparison" tabIndex={0}>
+          <div className="border rounded-card overflow-x-auto relative" role="region" aria-label="Plan feature comparison" tabIndex={0}>
             {/* min-w-[640px] forces the comparison table to keep its
                 natural width on mobile instead of crushing columns;
                 the parent overflow-x-auto gives horizontal scroll. */}

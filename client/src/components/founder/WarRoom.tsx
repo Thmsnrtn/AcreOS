@@ -89,7 +89,7 @@ function MessageBubble({ message }: { message: WarRoomMessageData }) {
   const typeLabel = MESSAGE_TYPE_LABEL[message.messageType] || message.messageType;
 
   return (
-    <li className={`rounded-lg border p-3 list-none ${bgClass}`}>
+    <li className={`rounded-card border p-3 list-none ${bgClass}`}>
       <div className="flex items-center gap-2 mb-1">
         <span aria-hidden="true" className="text-sm">{avatar}</span>
         <span className="text-xs font-semibold">{name}</span>

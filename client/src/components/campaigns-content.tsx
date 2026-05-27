@@ -367,7 +367,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
             return (
               <div
                 key={s.id}
-                className="rounded-lg border bg-muted/30 p-3 space-y-1.5"
+                className="rounded-card border bg-muted/30 p-3 space-y-1.5"
                 data-testid={`suggestion-${s.id}`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
@@ -399,7 +399,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
               </summary>
               <div className="mt-2 space-y-2">
                 {done.map((s) => (
-                  <div key={s.id} className="rounded-lg border border-dashed p-2 opacity-60">
+                  <div key={s.id} className="rounded-card border border-dashed p-2 opacity-60">
                     <div className="flex items-center gap-1.5 mb-1">
                       <CheckCircle className="w-3 h-3 text-acr-pos" aria-hidden="true" />
                       <span className="capitalize">{s.type}</span>
@@ -1153,11 +1153,11 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <div className="bg-muted/50 rounded-card p-3 text-center">
                     <p className="text-2xl font-bold tabular-nums">{mailAttribution.totalSent.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Pieces sent</p>
                   </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <div className="bg-muted/50 rounded-card p-3 text-center">
                     <p className="text-2xl font-bold text-acr-pos tabular-nums">{mailAttribution.attributedResponses.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Responses attributed</p>
                   </div>
@@ -1210,7 +1210,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                 <CardTitle className="text-base">Content</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap">
+                <div className="bg-muted/50 rounded-card p-4 text-sm whitespace-pre-wrap">
                   {campaign.content}
                 </div>
               </CardContent>
@@ -1425,7 +1425,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => handleTemplateSelect(template.id)}
-                className={`text-left p-3 rounded-lg border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                className={`text-left p-3 rounded-card border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   selected ? "border-primary bg-primary/5" : "border-border"
                 }`}
                 data-testid={`template-${template.id}`}
@@ -1456,7 +1456,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
               form.setValue("subject", "");
               form.setValue("content", "");
             }}
-            className={`text-left p-3 rounded-lg border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            className={`text-left p-3 rounded-card border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
               selectedTemplate === "custom" ? "border-primary bg-primary/5" : "border-border"
             }`}
             data-testid="template-custom"

@@ -78,7 +78,7 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
+          className="mt-8 p-4 rounded-card bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />

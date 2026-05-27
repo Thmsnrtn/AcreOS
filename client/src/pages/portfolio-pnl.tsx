@@ -201,7 +201,7 @@ export default function PortfolioPnLPage() {
               <CardContent>
                 <ul className="grid grid-cols-4 gap-2" aria-label="Quarterly revenue and profit">
                   {report.byQuarter.map(q => (
-                    <li key={q.quarter} className="text-center p-3 rounded-lg border bg-muted/30">
+                    <li key={q.quarter} className="text-center p-3 rounded-card border bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Q<span className="tabular-nums">{q.quarter}</span></p>
                       <p className="text-sm font-medium tabular-nums">{usd(q.revenue)}</p>
                       <p className={`text-xs tabular-nums ${q.profit >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>

@@ -479,7 +479,7 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
         {reconciliation && !reconciliation.ok && reconciliation.variances.length > 0 && (
           <>
             <Separator className="my-4" />
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <div className="rounded-card border border-destructive/30 bg-destructive/5 p-3">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
                 <p className="text-sm font-semibold text-destructive">

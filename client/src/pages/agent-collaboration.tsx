@@ -46,7 +46,7 @@ function MessageBubble({ message }: { message: any }) {
 
   return (
     <li className={`flex ${isFounder ? "justify-end" : "justify-start"} list-none`}>
-      <div className={`max-w-[75%] rounded-lg p-3 ${
+      <div className={`max-w-[75%] rounded-card p-3 ${
         isFounder
           ? "bg-primary text-primary-foreground"
           : isDelegation

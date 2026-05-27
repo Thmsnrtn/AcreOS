@@ -136,7 +136,7 @@ export default function FounderReadinessPage() {
             }`}
             onClick={() => setExpanded(e => !e)}
           >
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+            <div className={`w-10 h-10 rounded-card flex items-center justify-center shrink-0 ${
               isLive ? "bg-acr-pos/20" : criticalIncomplete > 0 ? "bg-acr-neg/20" : "bg-acr-warn/20"
             }`}>
               {isLoading ? (
@@ -233,7 +233,7 @@ export default function FounderReadinessPage() {
                       {items.map((item) => {
                         const done = item.status === "complete";
                         return (
-                          <div key={item.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg transition-colors ${done ? "" : "hover:bg-background/60 cursor-pointer"}`}
+                          <div key={item.key} className={`flex items-start gap-2.5 p-2.5 rounded-card transition-colors ${done ? "" : "hover:bg-background/60 cursor-pointer"}`}
                             onClick={() => !done && scrollToSection(item.section)}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                               done ? "bg-acr-pos" : item.status === "blocked" ? "bg-muted" : "bg-background border-2 border-muted-foreground/30"

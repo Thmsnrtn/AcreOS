@@ -321,14 +321,14 @@ export default function FounderCmoPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer">
+            <label className="flex items-center gap-3 p-3 rounded-card border cursor-pointer">
               <Checkbox checked={approveMeta} onCheckedChange={(v) => setApproveMeta(!!v)} />
               <div>
                 <div className="font-medium text-sm">Meta (Facebook + Instagram)</div>
                 <div className="text-xs text-muted-foreground">Uses 1:1 + 9:16 + 16:9</div>
               </div>
             </label>
-            <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer">
+            <label className="flex items-center gap-3 p-3 rounded-card border cursor-pointer">
               <Checkbox checked={approveTiktok} onCheckedChange={(v) => setApproveTiktok(!!v)} />
               <div>
                 <div className="font-medium text-sm">TikTok</div>
@@ -455,7 +455,7 @@ function PendingBundleCard({
           onClick={onToggle}
           className="w-full text-left p-4 flex items-start gap-4 hover:bg-muted/30 transition-colors min-h-[88px]"
         >
-          <div className="shrink-0 w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+          <div className="shrink-0 w-12 h-12 rounded-card bg-primary/10 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
@@ -485,11 +485,11 @@ function PendingBundleCard({
                     controls
                     playsInline
                     preload="metadata"
-                    className="w-full rounded-lg bg-black aspect-[9/16] md:aspect-video lg:aspect-[9/16] max-h-[60vh] object-contain"
+                    className="w-full rounded-card bg-black aspect-[9/16] md:aspect-video lg:aspect-[9/16] max-h-[60vh] object-contain"
                     src={`/api/founder/cmo/asset?key=${encodeURIComponent(headline.storagePath.replace(/^local:/, ""))}`}
                   />
                 ) : (
-                  <div className="aspect-video rounded-lg border bg-muted flex items-center justify-center text-muted-foreground text-sm">
+                  <div className="aspect-video rounded-card border bg-muted flex items-center justify-center text-muted-foreground text-sm">
                     No render available
                   </div>
                 )}

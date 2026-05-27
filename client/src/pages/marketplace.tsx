@@ -452,7 +452,7 @@ function SavedSearchPanel({ filters }: { filters: Record<string, string> }) {
   };
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border border-dashed text-sm">
+    <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-card border border-dashed text-sm">
       <Bell className="w-4 h-4 text-primary shrink-0" />
       <span className="flex-1 text-muted-foreground text-xs">
         {hasFilters ? 'Save this search to get notified of new matching listings' : 'Apply filters to save a custom search'}

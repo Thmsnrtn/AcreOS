@@ -155,7 +155,7 @@ export default function FeatureFlagsPage() {
                 {categoryFlags.map((flag) => (
                   <div
                     key={flag.key}
-                    className="flex items-center justify-between p-3 rounded-lg border"
+                    className="flex items-center justify-between p-3 rounded-card border"
                   >
                     <div className="flex items-center gap-3">
                       <Badge variant={flag.enabled ? "default" : "secondary"} className="text-xs">

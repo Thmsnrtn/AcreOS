@@ -213,7 +213,7 @@ function MilestoneCard({ milestone }: {
   milestone: FreedomSnapshot["milestones"][0];
 }) {
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${milestone.achieved ? "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border bg-muted/30"}`}>
+    <div className={`flex items-center gap-3 p-3 rounded-card border ${milestone.achieved ? "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border bg-muted/30"}`}>
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${milestone.achieved ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30" : "bg-muted text-muted-foreground"}`}
         aria-hidden="true"
@@ -506,7 +506,7 @@ export default function FreedomMeterPage() {
             role="tab"
             aria-selected={activeTab === tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+            className={`px-4 py-2 rounded-card text-sm font-medium whitespace-nowrap transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
           >
             {label}
           </button>
@@ -629,12 +629,12 @@ export default function FreedomMeterPage() {
             </div>
 
             <dl className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-              <div className="p-3 rounded-lg bg-muted/40">
+              <div className="p-3 rounded-card bg-muted/40">
                 <dt className="text-xs text-muted-foreground mb-1">At 1 note/2 months</dt>
                 <dd className="font-bold tabular-nums">{data.projectedFreedomDate || "Already free"}</dd>
                 <p className="text-xs text-muted-foreground">Freedom date</p>
               </div>
-              <div className="p-3 rounded-lg bg-muted/40">
+              <div className="p-3 rounded-card bg-muted/40">
                 <dt className="text-xs text-muted-foreground mb-1">At 1 note/month</dt>
                 <dd className="font-bold tabular-nums">
                   {(() => {
@@ -646,7 +646,7 @@ export default function FreedomMeterPage() {
                 </dd>
                 <p className="text-xs text-muted-foreground">Freedom date (faster)</p>
               </div>
-              <div className="p-3 rounded-lg bg-muted/40">
+              <div className="p-3 rounded-card bg-muted/40">
                 <dt className="text-xs text-muted-foreground mb-1">Notes still needed</dt>
                 <dd className="font-bold tabular-nums">
                   {data.totalMonthlyNoteIncome >= data.totalMonthlyExpenses ? "0" :

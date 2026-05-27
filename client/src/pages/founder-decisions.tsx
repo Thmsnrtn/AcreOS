@@ -121,7 +121,7 @@ function DecisionRowCard({
   const [expanded, setExpanded] = useState(false);
   return (
     <div
-      className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
+      className="border rounded-card p-4 hover:bg-muted/30 transition-colors"
       data-testid={`decision-row-${row.id}`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -403,7 +403,7 @@ export default function FounderDecisionsPage() {
               <button
                 key={key}
                 onClick={() => setActiveBucket(key)}
-                className={`text-left rounded-lg border p-3 transition-all ${
+                className={`text-left rounded-card border p-3 transition-all ${
                   activeBucket === key
                     ? "ring-2 ring-primary shadow-sm bg-card"
                     : "hover:border-primary/40 bg-card"

@@ -115,7 +115,7 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
   }
 
   return (
-    <div className="border rounded-lg">
+    <div className="border rounded-card">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}

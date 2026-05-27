@@ -455,7 +455,7 @@ export default function AcquisitionRadarPage() {
               <div className="space-y-6 pt-2">
                 {/* Explanation */}
                 {selectedOpp.explanation && (
-                  <div className="p-4 bg-muted/50 rounded-lg">
+                  <div className="p-4 bg-muted/50 rounded-card">
                     <p className="text-sm">{selectedOpp.explanation}</p>
                   </div>
                 )}

@@ -25,7 +25,7 @@ export function AIReasoning({ feature, decision, reasoning, confidence, inputs, 
   const confidenceColor = confidence >= 80 ? "text-acr-pos" : confidence >= 60 ? "text-acr-warn" : "text-acr-neg";
 
   return (
-    <div className={cn("border rounded-lg overflow-hidden", className)}>
+    <div className={cn("border rounded-card overflow-hidden", className)}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"

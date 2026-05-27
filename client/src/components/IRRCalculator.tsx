@@ -315,28 +315,28 @@ export function IRRCalculator({
           aria-label="IRR calculator results"
           className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0"
         >
-          <div className="p-4 rounded-lg bg-muted/40 text-center">
+          <div className="p-4 rounded-card bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">IRR</dt>
             <dd className={`text-3xl font-bold tabular-nums m-0 ${irrColor}`} aria-label={`IRR: ${irrText}`}>
               {irrText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Internal rate of return</p>
           </div>
-          <div className="p-4 rounded-lg bg-muted/40 text-center">
+          <div className="p-4 rounded-card bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">NPV</dt>
             <dd className={`text-3xl font-bold tabular-nums m-0 ${results.npv >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`} aria-label={`NPV: ${npvText}`}>
               {npvText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">@ <span className="tabular-nums">{inputs.discountRate}</span>% discount</p>
           </div>
-          <div className="p-4 rounded-lg bg-muted/40 text-center">
+          <div className="p-4 rounded-card bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">Equity multiple</dt>
             <dd className="text-3xl font-bold tabular-nums text-acr-accent m-0" aria-label={`Equity multiple: ${emText}`}>
               {emText}
             </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Total return on equity</p>
           </div>
-          <div className="p-4 rounded-lg bg-muted/40 text-center">
+          <div className="p-4 rounded-card bg-muted/40 text-center">
             <dt className="text-xs text-muted-foreground mb-1">Cash-on-cash</dt>
             <dd className="text-3xl font-bold tabular-nums text-acr-brand m-0" aria-label={`Cash-on-cash return: ${cocText}`}>
               {cocText}

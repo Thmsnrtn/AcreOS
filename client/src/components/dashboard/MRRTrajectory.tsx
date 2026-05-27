@@ -39,7 +39,7 @@ function parseMonthLabel(month: string): string {
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border bg-card px-3 py-2 shadow-lg text-xs">
+    <div className="rounded-card border bg-card px-3 py-2 shadow-lg text-xs">
       <p className="font-semibold mb-1">{label}</p>
       {payload.map((p: any) =>
         p.value != null ? (
@@ -72,7 +72,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div role="status" aria-busy="true" aria-label="Loading revenue trajectory" className="h-44 bg-muted rounded-lg animate-pulse" />
+          <div role="status" aria-busy="true" aria-label="Loading revenue trajectory" className="h-44 bg-muted rounded-card animate-pulse" />
         </CardContent>
       </Card>
     );

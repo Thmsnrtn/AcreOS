@@ -875,7 +875,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 </div>
               ) : (
                 <>
-                  <div className="bg-muted/50 rounded-lg p-3">
+                  <div className="bg-muted/50 rounded-card p-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Monthly payment</span>
                       <span className="font-bold font-mono tabular-nums text-acr-pos">
@@ -1020,19 +1020,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
             <TabsContent value="schedule" className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                <div className="bg-muted/50 rounded-card p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total interest</p>
                   <p className="font-bold font-mono tabular-nums text-acr-warn" data-testid="text-total-interest">
                     {usd(schedule.reduce((sum, s) => sum + (s.interest || 0), 0))}
                   </p>
                 </div>
-                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                <div className="bg-muted/50 rounded-card p-3 text-center">
                   <p className="text-xs text-muted-foreground">Payoff date</p>
                   <p className="font-bold tabular-nums" data-testid="text-payoff-date">
                     {schedule.length > 0 ? format(new Date(schedule[schedule.length - 1].dueDate), 'MMM yyyy') : '—'}
                   </p>
                 </div>
-                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                <div className="bg-muted/50 rounded-card p-3 text-center">
                   <p className="text-xs text-muted-foreground">Remaining</p>
                   <p className="font-bold" data-testid="text-remaining-payments">
                     <span className="tabular-nums">{schedule.filter(s => s.status !== 'paid').length}</span> payments
@@ -1476,7 +1476,7 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             {clientSecret ? (
               <div className="space-y-3">
                 <div
-                  className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-lg p-4 border border-acr-pos/30 dark:border-acr-pos/30"
+                  className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-card p-4 border border-acr-pos/30 dark:border-acr-pos/30"
                   role="status"
                   aria-live="polite"
                 >
@@ -1503,7 +1503,7 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
                 </div>
               </div>
             ) : (
-              <div className="bg-muted/50 rounded-lg p-4">
+              <div className="bg-muted/50 rounded-card p-4">
                 <p className="text-sm text-muted-foreground">
                   This will create a Stripe payment intent that can be used to process the payment via Stripe.js or the Stripe dashboard.
                 </p>
@@ -1643,7 +1643,7 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
               </Select>
             </div>
 
-            <dl className="bg-muted/50 rounded-lg p-4 space-y-2">
+            <dl className="bg-muted/50 rounded-card p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Principal</dt>
                 <dd className="font-mono tabular-nums">{usd(principalAmount)}</dd>
@@ -1933,7 +1933,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
 
         {suggestedPayment > 0 && (
           <div
-            className="bg-muted/50 rounded-lg p-4"
+            className="bg-muted/50 rounded-card p-4"
             role="status"
             aria-live="polite"
           >

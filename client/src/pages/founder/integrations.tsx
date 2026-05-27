@@ -243,7 +243,7 @@ function IntegrationCard({
   const flyCommand = `fly secrets set ${integration.flySecretName}="YOUR_KEY_HERE"`;
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-card border p-4 space-y-3">
       {/* Title row */}
       <div className="flex items-center justify-between gap-2">
         <h3 className="font-semibold text-sm">{integration.displayName}</h3>

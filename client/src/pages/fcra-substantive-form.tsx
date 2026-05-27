@@ -167,7 +167,7 @@ export default function FcraSubstantiveFormPage() {
                 {PURPOSES.map((p) => (
                   <label
                     key={p.key}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex items-start gap-3 p-3 rounded-card border cursor-pointer transition-colors ${
                       permissiblePurpose === p.key
                         ? "border-primary bg-primary/5"
                         : "border-border hover:bg-muted/30"
@@ -302,7 +302,7 @@ export default function FcraSubstantiveFormPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer ${
+              <label className={`flex items-start gap-3 p-4 rounded-card border cursor-pointer ${
                 ackAdverseAction ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
               }`}>
                 <Checkbox
@@ -322,7 +322,7 @@ export default function FcraSubstantiveFormPage() {
                 </div>
               </label>
 
-              <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer ${
+              <label className={`flex items-start gap-3 p-4 rounded-card border cursor-pointer ${
                 ackRetention ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
               }`}>
                 <Checkbox

@@ -295,7 +295,7 @@ export default function NightCapPage() {
         {isLoading ? <CardSkeleton /> : (
           <GlassCard className="border-acr-warn/20 bg-acr-warn/5">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-acr-warn/20 shrink-0">
+              <div className="p-2 rounded-card bg-acr-warn/20 shrink-0">
                 <Lightbulb className="w-4 h-4 text-acr-warn" aria-hidden="true" />
               </div>
               <div className="flex-1">

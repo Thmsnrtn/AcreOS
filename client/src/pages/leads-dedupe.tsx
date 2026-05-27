@@ -145,8 +145,8 @@ export default function LeadsDedupePage() {
 
         {isLoading ? (
           <div className="space-y-4" aria-busy="true" aria-label="Scanning for duplicate leads">
-            <Skeleton className="h-40 w-full rounded-lg" />
-            <Skeleton className="h-40 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-card" />
+            <Skeleton className="h-40 w-full rounded-card" />
           </div>
         ) : error ? (
           <QueryErrorState

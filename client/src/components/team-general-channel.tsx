@@ -143,7 +143,7 @@ export function TeamGeneralChannel({ open, onClose }: TeamGeneralChannelProps) {
                       <div className="text-xs text-muted-foreground mb-0.5">
                         {msg.senderId} &middot; {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
-                      <div className="text-sm bg-muted rounded-lg px-3 py-2 whitespace-pre-wrap">
+                      <div className="text-sm bg-muted rounded-card px-3 py-2 whitespace-pre-wrap">
                         {msg.body}
                       </div>
                     </motion.div>

@@ -129,7 +129,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
           <ul aria-labelledby={`skill-requests-${plan.id}`} className="space-y-1.5 list-none p-0 m-0">
             {skills.map((s, i) => (
               s.status === "requested" && (
-                <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft">
+                <li key={i} className="flex items-center gap-2 p-2 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft">
                   <div className="flex-1 text-xs">
                     <p className="font-medium m-0">{s.skill}</p>
                     <p className="text-muted-foreground m-0">{s.reason}</p>

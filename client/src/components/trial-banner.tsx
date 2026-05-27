@@ -24,7 +24,7 @@ export function TrialBanner() {
     return (
       <aside
         aria-label="Free trial available"
-        className="mx-4 mb-2 rounded-lg border border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/50 p-3 flex items-center justify-between"
+        className="mx-4 mb-2 rounded-card border border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/50 p-3 flex items-center justify-between"
       >
         <div className="flex items-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-acr-accent dark:text-acr-accent" aria-hidden="true" />
@@ -49,7 +49,7 @@ export function TrialBanner() {
     return (
       <aside
         aria-label={`Free trial — ${trial.daysRemaining} day${trial.daysRemaining !== 1 ? "s" : ""} remaining`}
-        className={`mx-4 mb-2 rounded-lg border p-3 flex items-center justify-between ${
+        className={`mx-4 mb-2 rounded-card border p-3 flex items-center justify-between ${
           urgent
             ? "border-acr-warn bg-acr-warn-soft dark:border-acr-warn dark:bg-acr-warn-soft/50"
             : "border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/50"

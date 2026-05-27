@@ -373,7 +373,7 @@ export default function ComposeTab() {
                       role="radio"
                       aria-checked={selected}
                       onClick={() => setPieceType(opt.value)}
-                      className={`text-left p-4 rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors ${
+                      className={`text-left p-4 rounded-card border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors ${
                         selected
                           ? "border-primary bg-primary/5"
                           : "border-border hover:bg-muted/40"

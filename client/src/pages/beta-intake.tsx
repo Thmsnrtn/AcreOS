@@ -132,7 +132,7 @@ export default function BetaIntakePage() {
                 <div className="text-sm text-muted-foreground mt-1">Your position in the waitlist</div>
               </div>
 
-              <div className="border rounded-lg p-4 space-y-2">
+              <div className="border rounded-card p-4 space-y-2">
                 <div className="text-sm font-medium flex items-center gap-2">
                   <Share2 className="w-4 h-4 text-primary" aria-hidden="true" /> Your referral code
                 </div>
@@ -365,7 +365,7 @@ export default function BetaIntakePage() {
             </form>
 
             {statusResult && (
-              <div className="rounded-lg border p-3 text-sm space-y-1" role="status" aria-live="polite">
+              <div className="rounded-card border p-3 text-sm space-y-1" role="status" aria-live="polite">
                 {statusResult.found ? (
                   <>
                     <div className="flex items-center gap-2 flex-wrap">

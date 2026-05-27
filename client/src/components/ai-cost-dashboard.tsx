@@ -105,7 +105,7 @@ export function AICostDashboard() {
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-4 rounded-lg bg-muted/50">
+          <div className="p-4 rounded-card bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
               <Zap className="w-4 h-4" />
               Total AI Calls
@@ -116,7 +116,7 @@ export function AICostDashboard() {
             <div className="text-xs text-muted-foreground">This month</div>
           </div>
 
-          <div className="p-4 rounded-lg bg-muted/50">
+          <div className="p-4 rounded-card bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
               <DollarSign className="w-4 h-4" />
               Actual Cost
@@ -127,7 +127,7 @@ export function AICostDashboard() {
             <div className="text-xs text-muted-foreground">What you paid</div>
           </div>
 
-          <div className="p-4 rounded-lg bg-muted/50">
+          <div className="p-4 rounded-card bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
               <TrendingDown className="w-4 h-4" />
               GPT-4o Cost
@@ -138,7 +138,7 @@ export function AICostDashboard() {
             <div className="text-xs text-muted-foreground">Without smart routing</div>
           </div>
 
-          <div className="p-4 rounded-lg bg-acr-pos/10 border border-acr-pos/20">
+          <div className="p-4 rounded-card bg-acr-pos/10 border border-acr-pos/20">
             <div className="flex items-center gap-2 text-acr-pos dark:text-acr-pos text-sm mb-1">
               <PiggyBank className="w-4 h-4" />
               Total Savings
@@ -199,7 +199,7 @@ export function AICostDashboard() {
                 {data.byProvider.map((provider) => (
                   <div
                     key={provider.provider}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30"
+                    className="flex items-center justify-between p-3 rounded-card bg-muted/30"
                     data-testid={`provider-${provider.provider}`}
                   >
                     <div className="flex items-center gap-3">

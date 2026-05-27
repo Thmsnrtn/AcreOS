@@ -382,7 +382,7 @@ function ChatView({
                   )}
                   <div
                     className={cn(
-                      "rounded-lg px-3 py-2 max-w-[75%]",
+                      "rounded-card px-3 py-2 max-w-[75%]",
                       isOwn
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted"
@@ -612,7 +612,7 @@ export function ConversationTray() {
       )}
 
       {isOpen && (
-        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden safe-area-bottom">
+        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
           <div className="absolute top-2 right-2 z-10">
             <Button
               type="button"

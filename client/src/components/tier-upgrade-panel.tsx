@@ -7,19 +7,25 @@ import { Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usd } from "@/lib/format";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
+import { TIER_LIMITS, isTierVisible } from "@shared/billing/tier-limits";
 
-export type TierKey = "free" | "starter" | "pro";
+// Lens 3 (Pricing Coherence): the in-app upgrade modal now shows the same
+// tier set as /pricing — including Scale, which `pricing_scale_tier_enabled`
+// has had `true` for some time. Previously this modal stopped at Pro and
+// surfaced "Scale … coming soon" copy that contradicted the public page.
+export type TierKey = "free" | "starter" | "pro" | "scale";
 
 interface TierFeature {
   name: string;
   free: string | boolean;
   starter: string | boolean;
   pro: string | boolean;
+  scale: string | boolean;
 }
 
 // Tier keys match the canonical TIER_PRICES_CENTS from
 // shared/billing/tier-pricing.ts. Never hardcode tier prices.
-const LAUNCH_TIERS = [
+const ALL_LAUNCH_TIERS = [
   {
     id: "free" as const,
     name: "Free",
@@ -47,18 +53,97 @@ const LAUNCH_TIERS = [
     cta: "Start free trial",
     highlighted: true,
   },
+  {
+    id: "scale" as const,
+    name: "Scale",
+    price: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.scale.priceYearlyCents / 100,
+    description: "For growing teams",
+    cta: "Start free trial",
+    highlighted: false,
+  },
 ];
 
+// Filter by pricing feature flag so this modal hides Enterprise (off) and
+// shows Scale (on). Free is always visible.
+const LAUNCH_TIERS = ALL_LAUNCH_TIERS.filter((t) => t.id === "free" || isTierVisible(t.id));
+
+// Lens 3 — feature rows read from shared/billing/tier-limits.ts. Hardcoded
+// numbers here used to disagree with /pricing (e.g. Free leads = 25 in this
+// modal vs 50 on the pricing page).
+function fmtCount(value: number | null): string {
+  return value === null ? "Unlimited" : value.toLocaleString("en-US");
+}
+function fmtCountOrCross(value: number | null): string | boolean {
+  if (value === null) return "Unlimited";
+  if (value === 0) return false;
+  return value.toLocaleString("en-US");
+}
+
 const FEATURES: TierFeature[] = [
-  { name: "Leads", free: "25", starter: "250", pro: "500" },
-  { name: "Properties", free: "5", starter: "50", pro: "100" },
-  { name: "Notes", free: "3", starter: "25", pro: "50" },
-  { name: "AI requests", free: "50", starter: "500", pro: "1,000" },
-  { name: "Campaigns", free: false, starter: "5", pro: "Unlimited" },
-  { name: "Sequences", free: false, starter: "2", pro: "Unlimited" },
-  { name: "BYOK data providers", free: false, starter: false, pro: true },
-  { name: "Team seats", free: "1", starter: "1", pro: "2" },
-  { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true },
+  {
+    name: "Leads",
+    free: fmtCount(TIER_LIMITS.free.leads),
+    starter: fmtCount(TIER_LIMITS.starter.leads),
+    pro: fmtCount(TIER_LIMITS.pro.leads),
+    scale: fmtCount(TIER_LIMITS.scale.leads),
+  },
+  {
+    name: "Properties",
+    free: fmtCount(TIER_LIMITS.free.properties),
+    starter: fmtCount(TIER_LIMITS.starter.properties),
+    pro: fmtCount(TIER_LIMITS.pro.properties),
+    scale: fmtCount(TIER_LIMITS.scale.properties),
+  },
+  {
+    name: "Notes",
+    free: fmtCount(TIER_LIMITS.free.notes),
+    starter: fmtCount(TIER_LIMITS.starter.notes),
+    pro: fmtCount(TIER_LIMITS.pro.notes),
+    scale: fmtCount(TIER_LIMITS.scale.notes),
+  },
+  {
+    name: "AI requests",
+    free: fmtCount(TIER_LIMITS.free.ai_requests),
+    starter: fmtCount(TIER_LIMITS.starter.ai_requests),
+    pro: fmtCount(TIER_LIMITS.pro.ai_requests),
+    scale: fmtCount(TIER_LIMITS.scale.ai_requests),
+  },
+  {
+    name: "Campaigns",
+    free: fmtCountOrCross(TIER_LIMITS.free.campaigns),
+    starter: fmtCountOrCross(TIER_LIMITS.starter.campaigns),
+    pro: fmtCountOrCross(TIER_LIMITS.pro.campaigns),
+    scale: fmtCountOrCross(TIER_LIMITS.scale.campaigns),
+  },
+  {
+    name: "Sequences",
+    free: fmtCountOrCross(TIER_LIMITS.free.sequences),
+    starter: fmtCountOrCross(TIER_LIMITS.starter.sequences),
+    pro: fmtCountOrCross(TIER_LIMITS.pro.sequences),
+    scale: fmtCountOrCross(TIER_LIMITS.scale.sequences),
+  },
+  {
+    name: "BYOK data providers",
+    free: TIER_LIMITS.free.byokSupport,
+    starter: TIER_LIMITS.starter.byokSupport,
+    pro: TIER_LIMITS.pro.byokSupport,
+    scale: TIER_LIMITS.scale.byokSupport,
+  },
+  {
+    name: "Team seats",
+    free: String(TIER_LIMITS.free.includedSeats),
+    starter: String(TIER_LIMITS.starter.includedSeats),
+    pro: String(TIER_LIMITS.pro.includedSeats),
+    scale: String(TIER_LIMITS.scale.includedSeats),
+  },
+  {
+    name: "Data sources (6 free + 3 premium)",
+    free: true,
+    starter: true,
+    pro: true,
+    scale: true,
+  },
 ];
 
 function FeatureCell({ value }: { value: string | boolean }) {
@@ -110,8 +195,8 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
         </span>
       </div>
 
-      {/* Tier cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Tier cards — sized for up to 4 tiers (Free / Starter / Pro / Scale). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
         {LAUNCH_TIERS.map((tier) => {
           const isCurrentTier = activeTier === tier.id;
           const isRecommended = highlightedTier === tier.id;
@@ -168,7 +253,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
       </div>
 
       {/* Feature comparison table */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-card overflow-hidden">
         <table className="w-full text-sm" aria-label="Plan feature comparison">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -182,18 +267,22 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
             {FEATURES.map((feat, i) => (
               <tr key={feat.name} className={i % 2 === 0 ? "bg-muted/20" : ""}>
                 <td className="p-3 font-medium">{feat.name}</td>
-                <td className="p-3 text-center"><FeatureCell value={feat.free} /></td>
-                <td className="p-3 text-center"><FeatureCell value={feat.starter} /></td>
-                <td className="p-3 text-center"><FeatureCell value={feat.pro} /></td>
+                {LAUNCH_TIERS.map((t) => (
+                  <td key={t.id} className="p-3 text-center">
+                    <FeatureCell value={feat[t.id]} />
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Scale/Enterprise teaser */}
+      {/* Lens 3 (Pricing Coherence): Scale ships in this modal — its row is
+          rendered above. Enterprise stays gated behind a feature flag and
+          surfaces only via /pricing's contact link. */}
       <p className="text-center text-sm text-muted-foreground">
-        Need more? <span className="font-medium">Scale and Enterprise plans</span> coming soon for high-volume operators.
+        Need custom enterprise pricing? <span className="font-medium">Contact us</span> for volume discounts.
       </p>
     </div>
   );
@@ -218,7 +307,7 @@ export function PlanComparisonModal({ open, onClose, currentTier, highlightedTie
         <DialogHeader>
           <DialogTitle>{highlightedTier ? "Switch to a lighter plan" : "Compare plans"}</DialogTitle>
           <DialogDescription className="sr-only">
-            Compare Free, Starter, and Pro plan features and pricing.
+            Compare Free, Starter, Pro, and Scale plan features and pricing.
           </DialogDescription>
         </DialogHeader>
         <TierUpgradePanel currentTier={currentTier} highlightedTier={highlightedTier} />

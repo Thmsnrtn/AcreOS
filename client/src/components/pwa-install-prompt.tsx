@@ -71,7 +71,7 @@ export function PWAInstallPrompt() {
         <Card className="border-primary/20 shadow-lg">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
+              <div className="p-2 rounded-card bg-primary/10">
                 <Download className="h-5 w-5 text-primary" aria-hidden="true" />
               </div>
               <div className="flex-1 min-w-0">
@@ -105,7 +105,7 @@ export function PWAInstallPrompt() {
       <Card className="border-primary/20 shadow-lg">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
+            <div className="p-2 rounded-card bg-primary/10">
               <Download className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
             <div className="flex-1 min-w-0">

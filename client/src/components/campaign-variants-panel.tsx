@@ -293,7 +293,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
       )}
 
       {!hasVariants && (
-        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-card">
           <TestTube className="w-10 h-10 mx-auto mb-2 opacity-40" aria-hidden="true" />
           <p className="text-sm font-medium mb-1">No variants yet</p>
           <p className="text-xs">Add a Variant B to start A/B testing this campaign.</p>

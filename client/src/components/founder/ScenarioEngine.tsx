@@ -109,7 +109,7 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
             return (
               <li
                 key={key}
-                className={`p-2.5 rounded-lg ${style.bg}`}
+                className={`p-2.5 rounded-card ${style.bg}`}
                 aria-label={`${style.label}: ${outcome.description}, ${probabilityPct}% likely`}
               >
                 <p className={`text-[10px] font-medium ${style.color} flex items-center gap-1 m-0`}>
@@ -133,7 +133,7 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
 
       {/* Recommendation */}
       {scenario.recommendation && (
-        <section aria-labelledby={`recommendation-${scenario.id}`} className="p-2.5 rounded-lg bg-muted/50 border">
+        <section aria-labelledby={`recommendation-${scenario.id}`} className="p-2.5 rounded-card bg-muted/50 border">
           <p id={`recommendation-${scenario.id}`} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommendation</p>
           <p className="text-sm m-0">{scenario.recommendation}</p>
         </section>

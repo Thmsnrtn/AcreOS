@@ -274,7 +274,7 @@ export default function DealUnderwriting() {
                           return (
                             <li
                               key={strategy}
-                              className={`p-3 rounded-lg border ${isRecommended ? "border-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft" : "border-border"}`}
+                              className={`p-3 rounded-card border ${isRecommended ? "border-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft" : "border-border"}`}
                             >
                               <div className="flex items-center justify-between mb-1 gap-2">
                                 <span className="font-medium text-sm">{label}</span>

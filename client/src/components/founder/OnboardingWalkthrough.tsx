@@ -138,7 +138,7 @@ export default function OnboardingWalkthrough() {
             className="p-6"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-acr-accent/10">
+              <div className="p-2 rounded-card bg-acr-accent/10">
                 <StepIcon className="w-6 h-6 text-acr-accent" />
               </div>
               <h2 className="text-lg font-semibold text-muted-foreground">{currentStep.title}</h2>
@@ -181,11 +181,11 @@ export default function OnboardingWalkthrough() {
 
             {currentStep.content === "priorities" && (
               <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-bg-sunken/60 border border-border/40">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-card bg-acr-bg-sunken/60 border border-border/40">
                   <span className="text-sm text-muted-foreground">Keep customers happy</span>
                   <span className="ml-auto text-xs text-acr-warn">★★★★★</span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-acr-bg-sunken/60 border border-border/40">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-card bg-acr-bg-sunken/60 border border-border/40">
                   <span className="text-sm text-muted-foreground">Grow revenue</span>
                   <span className="ml-auto text-xs text-acr-warn">★★★</span>
                 </div>
@@ -198,7 +198,7 @@ export default function OnboardingWalkthrough() {
             {currentStep.content === "control" && (
               <div className="space-y-3 mb-4">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-acr-pos/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-card bg-acr-pos/10 flex items-center justify-center">
                     <span className="text-acr-pos text-xs">↩</span>
                   </div>
                   <div>
@@ -207,7 +207,7 @@ export default function OnboardingWalkthrough() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-acr-accent/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-card bg-acr-accent/10 flex items-center justify-center">
                     <span className="text-acr-accent text-xs">🌙</span>
                   </div>
                   <div>
@@ -216,7 +216,7 @@ export default function OnboardingWalkthrough() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="w-8 h-8 rounded-lg bg-acr-brand/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-card bg-acr-brand/10 flex items-center justify-center">
                     <span className="text-acr-brand text-xs">📈</span>
                   </div>
                   <div>
@@ -252,7 +252,7 @@ export default function OnboardingWalkthrough() {
           <button
             type="button"
             onClick={isLast ? handleComplete : () => setStep(s => s + 1)}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-acr-accent hover:bg-acr-accent text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="flex items-center gap-1 px-4 py-2 rounded-card bg-acr-accent hover:bg-acr-accent text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {isLast ? "Get started" : "Next"}
             {!isLast && <ChevronRight className="w-4 h-4" aria-hidden="true" />}

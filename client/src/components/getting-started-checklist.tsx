@@ -193,7 +193,7 @@ export function GettingStartedChecklist() {
                 >
                   <Link href={item.href}>
                     <div
-                      className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer hover-elevate ${
+                      className={`flex items-center gap-3 p-3 rounded-card transition-colors cursor-pointer hover-elevate ${
                         item.isComplete
                           ? "bg-muted/30"
                           : "bg-muted/50"
@@ -207,7 +207,7 @@ export function GettingStartedChecklist() {
                           data-testid={`checkbox-${item.id}`}
                         />
                         <div
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          className={`w-9 h-9 rounded-card flex items-center justify-center flex-shrink-0 ${
                             item.isComplete
                               ? "bg-acr-pos/10 text-acr-pos"
                               : "bg-primary/10 text-primary"

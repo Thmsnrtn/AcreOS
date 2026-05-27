@@ -145,7 +145,7 @@ export default function SyndicationPage() {
                             onClick={() => setSelectedPropertyId(p.id)}
                             aria-pressed={isSelected}
                             aria-label={`Select ${label} for syndication`}
-                            className={`w-full text-left p-3 rounded-lg border transition-colors min-h-9 ${
+                            className={`w-full text-left p-3 rounded-card border transition-colors min-h-9 ${
                               isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
                             }`}
                           >
@@ -229,7 +229,7 @@ export default function SyndicationPage() {
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <div className="p-2 bg-muted rounded-lg">
+                  <div className="p-2 bg-muted rounded-card">
                     <Home className="h-5 w-5" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
@@ -254,7 +254,7 @@ export default function SyndicationPage() {
                   {results.map((r, i) => (
                     <li
                       key={i}
-                      className={`flex items-start gap-3 p-3 rounded-lg ${r.success ? "bg-acr-pos-soft dark:bg-acr-pos-soft/10" : "bg-acr-neg-soft dark:bg-acr-neg-soft/10"}`}
+                      className={`flex items-start gap-3 p-3 rounded-card ${r.success ? "bg-acr-pos-soft dark:bg-acr-pos-soft/10" : "bg-acr-neg-soft dark:bg-acr-neg-soft/10"}`}
                       role={r.success ? undefined : "alert"}
                     >
                       {r.success ? (

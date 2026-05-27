@@ -291,7 +291,7 @@ function ProposalRow({
   const catColor = CATEGORY_COLOR[proposal.category] ?? "bg-muted text-muted-foreground";
 
   return (
-    <div className={`border border-border rounded-lg ${compact ? "p-3" : "p-4"}`}>
+    <div className={`border border-border rounded-card ${compact ? "p-3" : "p-4"}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">

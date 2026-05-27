@@ -155,17 +155,17 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
           </p>
           
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50">
+            <div className="flex flex-col items-center text-center p-4 rounded-card bg-muted/50">
               <Target className="w-8 h-8 text-primary mb-2" />
               <span className="font-medium">Find Deals</span>
               <span className="text-sm text-muted-foreground">Lead management & marketing campaigns</span>
             </div>
-            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50">
+            <div className="flex flex-col items-center text-center p-4 rounded-card bg-muted/50">
               <TrendingUp className="w-8 h-8 text-primary mb-2" />
               <span className="font-medium">Close Deals</span>
               <span className="text-sm text-muted-foreground">Deal pipeline & property tracking</span>
             </div>
-            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50">
+            <div className="flex flex-col items-center text-center p-4 rounded-card bg-muted/50">
               <Sparkles className="w-8 h-8 text-primary mb-2" />
               <span className="font-medium">Automate</span>
               <span className="text-sm text-muted-foreground">AI agents & smart workflows</span>
@@ -190,7 +190,7 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Platform Credentials */}
-            <div className="p-4 rounded-lg border bg-card">
+            <div className="p-4 rounded-card border bg-card">
               <div className="flex items-center gap-2 mb-3">
                 <Building2 className="w-5 h-5 text-primary" />
                 <span className="font-semibold">Platform Credentials</span>
@@ -221,7 +221,7 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
             </div>
 
             {/* Custom Credentials */}
-            <div className="p-4 rounded-lg border bg-card">
+            <div className="p-4 rounded-card border bg-card">
               <div className="flex items-center gap-2 mb-3">
                 <Key className="w-5 h-5 text-primary" />
                 <span className="font-semibold">Custom Credentials</span>
@@ -252,7 +252,7 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
             </div>
           </div>
 
-          <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+          <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-card">
             <strong>Tip:</strong> You can configure custom credentials in Settings → Communication Integrations. 
             Start with platform credentials to get up and running quickly, then switch to custom credentials 
             as your business grows and branding becomes more important.

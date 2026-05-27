@@ -178,7 +178,7 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-acr-accent dark:bg-acr-accent/20" aria-hidden="true">
+              <div className="p-2 rounded-card bg-acr-accent dark:bg-acr-accent/20" aria-hidden="true">
                 <Target className="h-5 w-5 text-acr-accent" />
               </div>
               <div>
@@ -191,7 +191,7 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/20" aria-hidden="true">
+              <div className="p-2 rounded-card bg-acr-pos-soft dark:bg-acr-pos-soft/20" aria-hidden="true">
                 <Trophy className="h-5 w-5 text-acr-pos" />
               </div>
               <div>
@@ -204,7 +204,7 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20" aria-hidden="true">
+              <div className="p-2 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/20" aria-hidden="true">
                 <DollarSign className="h-5 w-5 text-acr-warn" />
               </div>
               <div>
@@ -258,7 +258,7 @@ export default function GoalsPage() {
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`p-2 rounded-lg ${cfg.bg}`} aria-hidden="true">
+                        <div className={`p-2 rounded-card ${cfg.bg}`} aria-hidden="true">
                           <Icon className={`h-4 w-4 ${cfg.color}`} />
                         </div>
                         <div>

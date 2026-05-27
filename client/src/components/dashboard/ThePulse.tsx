@@ -45,7 +45,7 @@ export function ThePulse({ decisionsInboxCount }: ThePulseProps) {
         <CardContent className="p-0">
           <div className="flex gap-3 animate-pulse">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-20 flex-1 rounded-lg bg-muted" />
+              <div key={i} className="h-20 flex-1 rounded-card bg-muted" />
             ))}
           </div>
         </CardContent>
@@ -61,7 +61,7 @@ export function ThePulse({ decisionsInboxCount }: ThePulseProps) {
       </div>
 
       {allClear && (
-        <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-lg border border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/30 px-4 py-3">
+        <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-card border border-acr-pos-soft bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/30 px-4 py-3">
           <CheckCircle2 className="h-5 w-5 text-acr-pos dark:text-acr-pos shrink-0" aria-hidden="true" />
           <p className="text-sm font-medium text-acr-pos dark:text-acr-pos">
             All systems nominal. 0 decisions pending. Platform is running passively.

@@ -340,7 +340,7 @@ function TeamTabContent() {
             <div className="p-3 space-y-2" data-testid="list-va-agents">
               {vaAgentsLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                  <Skeleton key={i} className="h-20 w-full rounded-card" />
                 ))
               ) : (
                 vaAgents.map((agent) => {
@@ -350,7 +350,7 @@ function TeamTabContent() {
                     <div
                       key={agent.id}
                       onClick={() => setSelectedAgentId(agent.id)}
-                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                      className={`p-3 rounded-card cursor-pointer transition-colors ${
                         isSelected
                           ? "bg-primary/10 ring-1 ring-primary"
                           : "hover-elevate"
@@ -358,7 +358,7 @@ function TeamTabContent() {
                       data-testid={`card-va-agent-${agent.type}`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                        <div className={`p-2 rounded-card ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                           <IconComponent className="w-4 h-4" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -455,7 +455,7 @@ function TeamTabContent() {
             <div className="p-4 space-y-3" data-testid="list-va-actions">
               {vaActionsLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 w-full rounded-lg" />
+                  <Skeleton key={i} className="h-24 w-full rounded-card" />
                 ))
               ) : filteredActions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -469,7 +469,7 @@ function TeamTabContent() {
                     <Card key={action.id} className="overflow-visible" data-testid={`card-va-action-${action.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-start gap-3">
-                          <div className="p-2 rounded-lg bg-muted">
+                          <div className="p-2 rounded-card bg-muted">
                             <IconComponent className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -532,7 +532,7 @@ function TeamTabContent() {
                   {(() => {
                     const IconComponent = getAgentIcon(selectedAgent.type);
                     return (
-                      <div className="p-3 rounded-lg bg-primary text-primary-foreground">
+                      <div className="p-3 rounded-card bg-primary text-primary-foreground">
                         <IconComponent className="w-5 h-5" />
                       </div>
                     );
@@ -684,7 +684,7 @@ function TeamTabContent() {
                         {agentActions.slice(0, 5).map((action) => (
                           <div
                             key={action.id}
-                            className="p-3 rounded-lg bg-muted/50"
+                            className="p-3 rounded-card bg-muted/50"
                             data-testid={`card-va-agent-action-${action.id}`}
                           >
                             <div className="flex items-center gap-2 mb-1">
@@ -865,7 +865,7 @@ function AgentsTabContent() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : agent.status === "error" ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
+                        <div className={`p-2 rounded-card ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : agent.status === "error" ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
                           <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : agent.status === "error" ? "text-red-600 dark:text-red-400" : ""}`} />
                         </div>
                         <div>
@@ -904,7 +904,7 @@ function AgentsTabContent() {
                     </div>
 
                     {selectedAgent === agent.id && (
-                      <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground border">
+                      <div className="p-3 bg-muted/50 rounded-card text-xs text-muted-foreground border">
                         {getAgentActivitySummary(agent)}
                       </div>
                     )}
@@ -1074,11 +1074,11 @@ function TasksTabContent() {
                           {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                           {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                         </div>
-                        <div className="bg-muted/50 rounded-lg p-4 mb-3 border">
+                        <div className="bg-muted/50 rounded-card p-4 mb-3 border">
                           <p className="text-sm font-medium">{String(task.input ?? '')}</p>
                         </div>
                         {task.output != null && task.output !== '' ? (
-                          <div className="bg-green-50/50 dark:bg-green-900/10 rounded-lg p-4 border border-green-100 dark:border-green-900/50">
+                          <div className="bg-green-50/50 dark:bg-green-900/10 rounded-card p-4 border border-green-100 dark:border-green-900/50">
                             <p className="text-sm whitespace-pre-wrap leading-relaxed">
                               {String(task.output)}
                             </p>
@@ -1410,7 +1410,7 @@ function AIOperationsTabContent() {
                     <Card key={service.id} className="hover-elevate" data-testid={`card-service-${service.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded-lg ${getPhaseColor(service.phase)}`}>
+                          <div className={`p-2 rounded-card ${getPhaseColor(service.phase)}`}>
                             <IconComponent className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1469,7 +1469,7 @@ function AIOperationsTabContent() {
                   {alerts.slice(0, 5).map((alert) => (
                     <div
                       key={alert.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border bg-card"
+                      className="flex items-start gap-3 p-3 rounded-card border bg-card"
                       data-testid={`alert-item-${alert.id}`}
                     >
                       <AlertCircle className={`w-4 h-4 mt-0.5 ${
@@ -1939,7 +1939,7 @@ export default function CommandCenterPage() {
                           <div
                             key={conv.id}
                             onClick={() => handleSelectConversation(conv.id)}
-                            className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer group transition-colors ${
+                            className={`flex items-center gap-2 p-3 rounded-card cursor-pointer group transition-colors ${
                               currentConversationId === conv.id
                                 ? "bg-primary/10 text-primary"
                                 : "hover-elevate"
@@ -2055,7 +2055,7 @@ export default function CommandCenterPage() {
                             data-testid={`message-${msg.id}`}
                           >
                             <div
-                              className={`max-w-[80%] rounded-lg p-4 ${
+                              className={`max-w-[80%] rounded-card p-4 ${
                                 msg.role === "user"
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-card border"
@@ -2118,7 +2118,7 @@ export default function CommandCenterPage() {
 
                         {isStreaming && (
                           <div className="flex justify-start" data-testid="message-streaming">
-                            <div className="max-w-[80%] rounded-lg p-4 bg-card border">
+                            <div className="max-w-[80%] rounded-card p-4 bg-card border">
                               {activeSkill && (
                                 <div className="flex items-center gap-2 mb-3 text-xs">
                                   <Badge variant="secondary" className="text-xs">
@@ -2177,7 +2177,7 @@ export default function CommandCenterPage() {
                     />
                     
                     {attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
+                      <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-card">
                         {attachments.map((att) => (
                           <div
                             key={att.id}

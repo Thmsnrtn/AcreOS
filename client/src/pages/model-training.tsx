@@ -403,7 +403,7 @@ export default function ModelTrainingPage() {
               ) : (
                 <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2" aria-label="States with training data">
                   {stateData.map(({ state, count }) => (
-                    <li key={state} className="flex items-center justify-between p-2 bg-muted/40 rounded-lg">
+                    <li key={state} className="flex items-center justify-between p-2 bg-muted/40 rounded-card">
                       <span className="text-sm font-medium">{state}</span>
                       <Badge variant="secondary" className="text-xs tabular-nums">{count}</Badge>
                     </li>

@@ -241,7 +241,7 @@ export default function AgentDetailPage() {
                 return (
                   <li
                     key={level}
-                    className={`p-3 rounded-lg border ${color} ${!active ? "opacity-40" : ""}`}
+                    className={`p-3 rounded-card border ${color} ${!active ? "opacity-40" : ""}`}
                     aria-label={`${label}, ${active ? "active at current trust" : `requires ${req}% trust`}`}
                   >
                     <div className="text-xs font-semibold mb-1">{label}</div>
@@ -295,7 +295,7 @@ export default function AgentDetailPage() {
           </CardHeader>
           <CardContent>
             <div
-              className="max-h-[300px] overflow-y-auto space-y-2 mb-3 p-3 bg-muted/30 rounded-lg"
+              className="max-h-[300px] overflow-y-auto space-y-2 mb-3 p-3 bg-muted/30 rounded-card"
               role="log"
               aria-live="polite"
               aria-label={`Chat with ${codename}`}
@@ -303,7 +303,7 @@ export default function AgentDetailPage() {
               {chatHistory.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Ask a question grounded in live data.</p>}
               {chatHistory.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border"}`}>
+                  <div className={`max-w-[80%] rounded-card px-3 py-2 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border"}`}>
                     <span className="sr-only">{msg.role === "user" ? "You: " : `${codename}: `}</span>
                     {msg.content}
                   </div>

@@ -150,7 +150,7 @@ export default function JobHealth() {
             {uniqueJobs.length > 0 ? (
               <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="Latest run per job">
                 {uniqueJobs.map((job: any) => (
-                  <li key={job.jobName} className="flex items-center justify-between p-3 border rounded-lg gap-3">
+                  <li key={job.jobName} className="flex items-center justify-between p-3 border rounded-card gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <StatusIcon status={job.status} />
                       <div className="min-w-0">

@@ -160,7 +160,7 @@ export function AbsenceMode() {
               <p id="return-briefing-heading" className="text-xs font-medium flex items-center gap-1">
                 <FileText className="h-3 w-3" aria-hidden="true" /> Return briefing
               </p>
-              <div className="text-sm whitespace-pre-wrap p-3 rounded-lg bg-muted/50 border">
+              <div className="text-sm whitespace-pre-wrap p-3 rounded-card bg-muted/50 border">
                 {data.returnBriefing}
               </div>
             </section>
@@ -215,7 +215,7 @@ export function AbsenceMode() {
             <p id="last-return-briefing-heading" className="text-xs font-medium flex items-center gap-1">
               <FileText className="h-3 w-3" aria-hidden="true" /> Last return briefing
             </p>
-            <div className="text-xs whitespace-pre-wrap p-3 rounded-lg bg-muted/50 border max-h-40 overflow-y-auto">
+            <div className="text-xs whitespace-pre-wrap p-3 rounded-card bg-muted/50 border max-h-40 overflow-y-auto">
               {data.returnBriefing}
             </div>
           </section>

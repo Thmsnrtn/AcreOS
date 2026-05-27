@@ -78,7 +78,7 @@ function ReorderList({
             return (
               <div
                 key={id}
-                className="flex items-center gap-2 px-2 py-2 rounded-lg bg-muted/40 group"
+                className="flex items-center gap-2 px-2 py-2 rounded-card bg-muted/40 group"
                 data-testid={`nav-customizer-item-${id}`}
               >
                 <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0" />
@@ -129,7 +129,7 @@ function ReorderList({
               <div
                 key={item.id}
                 className={cn(
-                  "flex items-center gap-2 px-2 py-2 rounded-lg",
+                  "flex items-center gap-2 px-2 py-2 rounded-card",
                   atMax ? "opacity-40" : "opacity-70 hover:opacity-100 transition-opacity"
                 )}
                 data-testid={`nav-customizer-item-${item.id}`}

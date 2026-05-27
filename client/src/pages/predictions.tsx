@@ -474,7 +474,7 @@ export default function PredictionsPage() {
               ) : (
                 <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="Opportunity windows">
                   {windows.map((w, i) => (
-                    <li key={i} className="border rounded-lg p-3 space-y-2">
+                    <li key={i} className="border rounded-card p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <WindowBadge type={w.type} />
                         <span className="text-xs text-muted-foreground tabular-nums">

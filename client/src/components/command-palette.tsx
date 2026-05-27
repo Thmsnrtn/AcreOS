@@ -54,6 +54,7 @@ import {
   VALID_SCOPES,
 } from "@shared/cmdkMatcher";
 import { PALETTE_VERBS, type PaletteVerb } from "@/lib/cmdkVerbs";
+import { ALL_NAV_ITEMS, type MasterNavItem } from "@/lib/nav-items";
 import { readRecents, recordRecency } from "@/lib/cmdkRecency";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -81,7 +82,6 @@ import {
   Mail,
   Sparkles,
   Clock,
-  Target,
   Shield,
   BarChart2,
   Store,
@@ -170,20 +170,43 @@ const dealStages = [
   { value: 'closed', label: 'Closed' },
 ];
 
-const pages = [
-  { name: "Dashboard", icon: LayoutDashboard, path: "/" },
-  { name: "Leads", icon: Users, path: "/leads" },
-  { name: "Properties", icon: Building2, path: "/properties" },
-  { name: "Deals", icon: Handshake, path: "/deals" },
-  { name: "Finance", icon: DollarSign, path: "/finance" },
-  { name: "Marketing", icon: Megaphone, path: "/campaigns" },
-  { name: "Acquisition Radar", icon: Target, path: "/radar" },
-  { name: "Land Credit Score", icon: Shield, path: "/land-credit" },
-  { name: "Portfolio Optimizer", icon: BarChart2, path: "/portfolio-optimizer" },
+// IA consolidation (Lens 4 Fix 2): the page-destination list is now
+// derived from ALL_NAV_ITEMS (client/src/lib/nav-items.ts), the same
+// canonical registry that drives the sidebar/mobile-drawer/customizer.
+// One source of truth — no more drift between the palette and the rest
+// of the nav surfaces. Each MasterNavItem already carries label + icon
+// + href + description, so the palette's "Pages" group is a pure map.
+//
+// Extras beyond ALL_NAV_ITEMS — these are deep destinations the palette
+// historically exposed that don't appear in the customer sidebar but
+// are still navigable verbs (parcel maps, valuations, etc.). Kept as a
+// supplementary list so removing them from nav-items.ts doesn't strand
+// muscle-memory.
+//
+// REMOVED 2026-05-27 per Lens 4:
+//   - "Acquisition Radar" (/radar)         → redirect to /deals/discover
+//   - "Deal Hunter" (/deal-hunter)         → redirect to /deals/discover
+//   - "Negotiation Copilot" (/negotiation) → behind FlaggedRoute, not in
+//     customer nav; keep only as a verb if/when a verb registry adds it
+//   - "Cash Flow Forecaster" (/cash-flow)  → reachable via /money sidebar
+//   - "Finance"                            → ambiguous; /money is the canonical
+//                                            customer surface, /finance is the
+//                                            notes-and-loans hub already in nav
+const palettePageIcon: Record<string, React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>> = {
+  // Override a couple of icons for visual continuity with the prior
+  // hand-curated palette (e.g. dashboard icon for the today hub).
+  today: LayoutDashboard,
+};
+function navItemToPage(item: MasterNavItem) {
+  const Icon = palettePageIcon[item.id] ?? item.icon;
+  return { name: item.label, icon: Icon as typeof Users, path: item.href };
+}
+// Surfaces beyond ALL_NAV_ITEMS that the palette has historically exposed.
+// Each one has a real <Route> in App.tsx; keeping them here means typing
+// "AVM" or "Vision AI" still resolves even though they're not in the
+// 7-item customer sidebar.
+const PALETTE_EXTRAS: Array<{ name: string; icon: typeof Users; path: string }> = [
   { name: "Valuation Model (AVM)", icon: TrendingUp, path: "/avm" },
-  { name: "Negotiation Copilot", icon: Brain, path: "/negotiation" },
-  { name: "Cash Flow Forecaster", icon: Activity, path: "/cash-flow" },
-  { name: "Deal Hunter", icon: Search, path: "/deal-hunter" },
   { name: "Vision AI", icon: Eye, path: "/vision-ai" },
   { name: "Capital Markets", icon: DollarSign, path: "/capital-markets" },
   { name: "Market Intelligence", icon: Globe, path: "/market-intelligence" },
@@ -192,8 +215,34 @@ const pages = [
   { name: "Document Intelligence", icon: FileSearch, path: "/document-intelligence" },
   { name: "Property Map", icon: Map, path: "/maps" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
-  { name: "AI Hub", icon: Bot, path: "/ai" },
-  { name: "Settings", icon: Settings, path: "/settings" },
+  { name: "Land Credit Score", icon: Shield, path: "/land-credit" },
+  { name: "Portfolio Optimizer", icon: BarChart2, path: "/portfolio-optimizer" },
+];
+// Deduplicate by path: ALL_NAV_ITEMS contains multiple ids pointing at
+// the same href (e.g. `ai-hub` and `ai-hub-chat` both → /ai).
+const seenPaths = new Set<string>();
+const pages = [
+  ...ALL_NAV_ITEMS.map(navItemToPage),
+  ...PALETTE_EXTRAS,
+].filter((p) => {
+  if (seenPaths.has(p.path)) return false;
+  seenPaths.add(p.path);
+  return true;
+});
+
+// Founder-only "Pages" — surfaced when isFounder is true. Mirrors the
+// Founder scope chip's destinations.
+const FOUNDER_PAGES: Array<{ name: string; icon: typeof Users; path: string }> = [
+  { name: "Founder — Bridge", icon: LayoutDashboard, path: "/founder/bridge" },
+  { name: "Founder — Steering", icon: TrendingUp, path: "/founder/steering" },
+  { name: "Founder — Studio", icon: Settings, path: "/founder/studio" },
+  { name: "Founder — Inspector", icon: Search, path: "/founder/inspector/audit" },
+  { name: "Founder — Decisions", icon: Shield, path: "/founder/decisions" },
+  { name: "Founder — Monthly letter", icon: FileText, path: "/founder/letter" },
+  { name: "Founder — Strategy", icon: Brain, path: "/founder/strategy" },
+  { name: "Founder — CMO", icon: Megaphone, path: "/founder/cmo" },
+  { name: "Founder — Customer health", icon: Activity, path: "/founder/customers/health" },
+  { name: "Founder — Recovery console", icon: ShieldCheck, path: "/founder/recovery-console" },
 ];
 
 // Phase 4 Week 19-20 (cmdk-v2 / Anya §3): the prior 6-action

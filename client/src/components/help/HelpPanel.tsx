@@ -432,7 +432,7 @@ function TroubleshootingWizard() {
               >
                 <CardContent className="p-3">
                   <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-muted text-primary">
+                    <div className="p-2 rounded-card bg-muted text-primary">
                       <IconComponent className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -858,7 +858,7 @@ export function HelpPanel() {
                 Back
               </Button>
 
-              <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg mb-4">
+              <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-card mb-4">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
                   <p className="font-medium text-sm">Chat with Pax</p>
@@ -991,7 +991,7 @@ export function HelpPanel() {
                       className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                        className={`max-w-[85%] rounded-card px-3 py-2 text-sm ${
                           msg.role === "user"
                             ? "bg-primary text-primary-foreground"
                             : msg.role === "system"
@@ -1016,7 +1016,7 @@ export function HelpPanel() {
                   ))}
                   {sendMessageMutation.isPending && (
                     <div className="flex justify-start">
-                      <div className="bg-card border rounded-lg px-3 py-2 text-sm">
+                      <div className="bg-card border rounded-card px-3 py-2 text-sm">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Pax is thinking...

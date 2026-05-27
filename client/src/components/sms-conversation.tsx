@@ -93,7 +93,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
 
   if (!leadPhone) {
     return (
-      <div className="p-6 text-center text-muted-foreground text-sm border rounded-lg">
+      <div className="p-6 text-center text-muted-foreground text-sm border rounded-card">
         <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
         <p>Add a phone number to this lead to start texting.</p>
       </div>
@@ -119,7 +119,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
   const isDncBlocked = doNotContact || tcpaConsent === false;
 
   return (
-    <div className="border rounded-lg flex flex-col h-[500px]">
+    <div className="border rounded-card flex flex-col h-[500px]">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">

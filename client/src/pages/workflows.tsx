@@ -382,7 +382,7 @@ export default function WorkflowsPage() {
                   >
                     <CardContent className="p-4 flex flex-col gap-3 h-full">
                       <div className="flex items-start gap-2">
-                        <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                        <div className="p-2 rounded-card bg-primary/10 text-primary shrink-0">
                           {TEMPLATE_CATEGORY_ICONS[template.category]}
                         </div>
                         <div>

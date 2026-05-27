@@ -170,7 +170,7 @@ export default function NotesPipelinePage() {
                     <button
                       key={a.id}
                       onClick={() => navigate(`/notes/pipeline/${a.id}`)}
-                      className="text-left bg-card hover:bg-accent/50 border border-border rounded-lg p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className="text-left bg-card hover:bg-accent/50 border border-border rounded-card p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       data-testid={`acquisition-row-${a.id}`}
                     >
                       <div className="flex items-start justify-between gap-2">

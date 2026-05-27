@@ -214,7 +214,7 @@ export default function GlossaryPage() {
           ))}
         </div>
 
-        <aside className="mt-16 rounded-lg border bg-card p-6 space-y-3">
+        <aside className="mt-16 rounded-card border bg-card p-6 space-y-3">
           <h2 className="text-lg font-semibold">
             Want to see these in context?
           </h2>

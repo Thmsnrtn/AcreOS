@@ -50,7 +50,7 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
 
   return (
     <li
-      className="border rounded-lg p-3 space-y-2 list-none"
+      className="border rounded-card p-3 space-y-2 list-none"
       aria-label={`Pattern ${patternLabel}: ${successRate}% success across ${pattern.sampleSize} observations`}
     >
       <div className="flex items-center justify-between">
@@ -117,7 +117,7 @@ function CorrelationCard({ correlation }: { correlation: Correlation }) {
 
   return (
     <li
-      className="flex items-center gap-2 p-2 rounded-lg border text-xs list-none"
+      className="flex items-center gap-2 p-2 rounded-card border text-xs list-none"
       aria-label={`${correlation.signalA} ${sigATail} + ${correlation.signalB} ${sigBTail}: predicts ${outcome}, ${strength}% strength across ${correlation.observationCount} observations`}
     >
       <div className="flex-1">

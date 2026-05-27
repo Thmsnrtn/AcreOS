@@ -283,7 +283,7 @@ export default function PrivacySettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft"
+              className="flex items-start gap-2 p-3 rounded-card bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft"
               role="alert"
             >
               <AlertTriangle
@@ -475,7 +475,7 @@ export default function PrivacySettingsPage() {
             ].map(({ right, desc, status }) => (
               <li
                 key={right}
-                className="flex items-start gap-2 p-3 rounded-lg border bg-muted/20"
+                className="flex items-start gap-2 p-3 rounded-card border bg-muted/20"
               >
                 <Badge
                   variant={status === "available" ? "default" : "outline"}

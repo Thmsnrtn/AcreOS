@@ -204,7 +204,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
         {step === 'upload' && (
           <div className="space-y-4 py-4">
             <div
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              className={`border-2 border-dashed rounded-card p-8 text-center transition-colors ${
                 isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
               }`}
               onDrop={handleDrop}
@@ -230,7 +230,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               <p className="text-xs text-muted-foreground mt-2">Max <span className="tabular-nums">500</span> rows per import.</p>
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-4">
+            <div className="bg-muted/50 rounded-card p-4">
               <p className="text-sm font-medium mb-2">Expected columns</p>
               <ul className="flex flex-wrap gap-2" aria-label="Expected CSV columns">
                 {TAX_DELINQUENT_COLUMNS.map(col => (
@@ -317,7 +317,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               </Badge>
             </div>
 
-            <div className="border rounded-lg overflow-x-auto" role="region" tabIndex={0} aria-label="Mapped CSV preview">
+            <div className="border rounded-card overflow-x-auto" role="region" tabIndex={0} aria-label="Mapped CSV preview">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -378,7 +378,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               </p>
             </div>
 
-            <dl className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+            <dl className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-card">
               <div className="text-center">
                 <dd className="text-2xl font-bold text-acr-pos tabular-nums" data-testid="text-import-success-count">
                   {importResult.successCount}
@@ -394,7 +394,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
             </dl>
 
             {importResult.errors && importResult.errors.length > 0 && (
-              <div className="border rounded-lg p-4 max-h-[150px] overflow-y-auto" role="alert">
+              <div className="border rounded-card p-4 max-h-[150px] overflow-y-auto" role="alert">
                 <p className="text-xs font-medium mb-2">Errors</p>
                 {importResult.errors.slice(0, 10).map((err, idx) => (
                   <p key={idx} className="text-xs text-destructive">

@@ -216,7 +216,7 @@ export function LiveDemoMode({
         >
           <div 
             className={cn(
-              "absolute inset-0 rounded-lg",
+              "absolute inset-0 rounded-card",
               "border-2 border-primary",
               "bg-primary/10",
               "animate-pulse"
@@ -224,7 +224,7 @@ export function LiveDemoMode({
           />
           <div 
             className={cn(
-              "absolute inset-[-2px] rounded-lg",
+              "absolute inset-[-2px] rounded-card",
               "ring-4 ring-primary/30",
               "animate-pulse"
             )}
@@ -271,7 +271,7 @@ export function LiveDemoMode({
         <div
           role="status"
           aria-live="polite"
-          className="bg-muted/50 rounded-lg p-3 mb-3 min-h-[40px]"
+          className="bg-muted/50 rounded-card p-3 mb-3 min-h-[40px]"
         >
           <p className="text-sm text-foreground">
             {narration || "Preparing to execute…"}

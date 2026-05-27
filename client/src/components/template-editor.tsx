@@ -575,7 +575,7 @@ Sincerely,
                       {customFields.map((field, index) => (
                         <div 
                           key={field.id} 
-                          className="flex items-start gap-3 p-3 border rounded-lg"
+                          className="flex items-start gap-3 p-3 border rounded-card"
                           data-testid={`custom-field-${index}`}
                         >
                           <div className="pt-2">
@@ -672,7 +672,7 @@ Sincerely,
                       <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                     </div>
                   ) : previewContent ? (
-                    <ScrollArea className="h-[400px] border rounded-lg p-4">
+                    <ScrollArea className="h-[400px] border rounded-card p-4">
                       <div 
                         className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap"
                         data-testid="preview-content"

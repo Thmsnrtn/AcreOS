@@ -247,7 +247,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               <button
                 type="button"
                 className={cn(
-                  "w-full rounded-lg border-2 border-dashed p-3 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "w-full rounded-card border-2 border-dashed p-3 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
                 )}
                 onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}

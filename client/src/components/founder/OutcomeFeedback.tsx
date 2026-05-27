@@ -36,21 +36,21 @@ export default function OutcomeFeedback() {
       </div>
 
       <ul aria-label="Outcome breakdown" className="grid grid-cols-3 gap-2 text-center list-none p-0 m-0">
-        <li className="p-2 rounded-lg bg-acr-pos-soft/20 border border-acr-pos-soft/30" aria-label={`${verified.length} verified good`}>
+        <li className="p-2 rounded-card bg-acr-pos-soft/20 border border-acr-pos-soft/30" aria-label={`${verified.length} verified good`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
           </div>
           <p className="text-lg font-semibold text-acr-pos tabular-nums m-0">{verified.length}</p>
           <p className="text-[10px] text-muted-foreground m-0">Verified good</p>
         </li>
-        <li className="p-2 rounded-lg bg-acr-warn-soft/20 border border-acr-warn-soft/30" aria-label={`${pending.length} awaiting check`}>
+        <li className="p-2 rounded-card bg-acr-warn-soft/20 border border-acr-warn-soft/30" aria-label={`${pending.length} awaiting check`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
           </div>
           <p className="text-lg font-semibold text-acr-warn tabular-nums m-0">{pending.length}</p>
           <p className="text-[10px] text-muted-foreground m-0">Awaiting check</p>
         </li>
-        <li className="p-2 rounded-lg bg-acr-neg-soft/20 border border-acr-neg-soft/30" aria-label={`${failed.length} didn't help`}>
+        <li className="p-2 rounded-card bg-acr-neg-soft/20 border border-acr-neg-soft/30" aria-label={`${failed.length} didn't help`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
             <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
           </div>

@@ -245,7 +245,7 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
                 return (
                   <li
                     key={response.id}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/50"
+                    className="flex items-start gap-3 p-3 rounded-card bg-muted/50"
                     data-testid={`response-item-${response.id}`}
                   >
                     <div className="p-2 rounded-full bg-background" aria-hidden="true">

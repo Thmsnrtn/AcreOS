@@ -277,7 +277,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
               <AccordionItem
                 key={cat.id}
                 value={cat.id}
-                className="border border-border rounded-lg overflow-hidden"
+                className="border border-border rounded-card overflow-hidden"
               >
                 <AccordionTrigger className="px-3 py-2 hover:bg-acr-bg-sunken/50 text-sm [&[data-state=open]>svg]:rotate-180">
                   <div className="flex items-center gap-2 flex-1 text-left">

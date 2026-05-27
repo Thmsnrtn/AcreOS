@@ -353,7 +353,7 @@ export default function LandCreditPage() {
                       const dim = DIMENSION_LABELS[key];
                       const trendIcon = score >= 65 ? "improving" : score >= 45 ? "neutral" : "declining";
                       return (
-                        <li key={key} className="p-3 border rounded-lg">
+                        <li key={key} className="p-3 border rounded-card">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium capitalize">{dim}</span>
                             <div className="flex items-center gap-2">

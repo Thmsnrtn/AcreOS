@@ -210,7 +210,7 @@ export default function VoiceAnalyticsPage() {
         </div>
         {activeCalls.length > 0 && (
           <div
-            className="flex items-center gap-2 px-4 py-2 bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-lg"
+            className="flex items-center gap-2 px-4 py-2 bg-acr-pos-soft dark:bg-acr-pos-soft/30 rounded-card"
             role="status"
             aria-label={`${activeCalls.length} active call${activeCalls.length === 1 ? '' : 's'} right now`}
           >
@@ -452,7 +452,7 @@ export default function VoiceAnalyticsPage() {
           {searchResults.length > 0 ? (
             <ul className="space-y-3 list-none p-0 m-0" aria-label={`${searchResults.length} transcript matches for "${searchQuery}"`}>
               {searchResults.map((result, i) => (
-                <li key={i} className="p-3 border rounded-lg bg-muted/30">
+                <li key={i} className="p-3 border rounded-card bg-muted/30">
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant="outline">Call #{result.callId}</Badge>
                     <span className="text-xs text-muted-foreground">

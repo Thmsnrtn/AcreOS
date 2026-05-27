@@ -107,7 +107,7 @@ export default function CompliancePage() {
     return (
       <div className="p-6" role="status" aria-live="polite">
         <span className="sr-only">Loading compliance dashboard…</span>
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />)}</div>
+        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-card animate-pulse" />)}</div>
       </div>
     );
   }
@@ -354,7 +354,7 @@ function ComplianceCalendar() {
               return (
                 <li
                   key={i}
-                  className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft dark:bg-acr-warn-soft/10" : "border-border"}`}
+                  className={`flex items-start gap-3 p-3 rounded-card border ${isUrgent ? "border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft dark:bg-acr-warn-soft/10" : "border-border"}`}
                   role={isUrgent ? "alert" : undefined}
                 >
                   <div className="text-center min-w-[48px]">

@@ -499,7 +499,7 @@ export default function AdminSupportPage() {
 
           {escalatedCases && escalatedCases.some(c => c.slaStatus === "breached") && (
             <div
-              className="flex items-center gap-3 p-4 rounded-lg border border-acr-neg/30 bg-acr-neg/10 text-acr-neg dark:text-acr-neg"
+              className="flex items-center gap-3 p-4 rounded-card border border-acr-neg/30 bg-acr-neg/10 text-acr-neg dark:text-acr-neg"
               data-testid="alert-sla-breach"
               role="alert"
             >
@@ -736,7 +736,7 @@ export default function AdminSupportPage() {
                                 }`}
                               >
                                 <div
-                                  className={`inline-block rounded-lg p-3 text-sm ${
+                                  className={`inline-block rounded-card p-3 text-sm ${
                                     msg.role === "user"
                                       ? "bg-primary text-primary-foreground"
                                       : "bg-muted"

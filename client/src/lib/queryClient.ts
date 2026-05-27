@@ -24,6 +24,31 @@ interface ApiErrorBody {
   message: string;
   details?: unknown;
   statusCode: number;
+  /**
+   * Optional KB deep-link populated by `Errors.*` helpers when the route
+   * handler sets `docsSlug`. Surfaced in the failure toast as "Learn why".
+   */
+  docsUrl?: string;
+}
+
+/**
+ * Custom error subclass that preserves the parsed server response so
+ * downstream toast/error handlers can render the KB deep-link, structured
+ * details, etc. The parent (Error) message is kept as
+ * `"<status>: <message>"` for backwards compatibility with every
+ * `error.message.includes("403")`-style check in the codebase.
+ */
+export class ApiError extends Error {
+  status: number;
+  body: ApiErrorBody | null;
+  docsUrl?: string;
+  constructor(status: number, message: string, body: ApiErrorBody | null) {
+    super(`${status}: ${message}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+    this.docsUrl = body?.docsUrl;
+  }
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -50,10 +75,13 @@ async function throwIfResNotOk(res: Response) {
             action: React.createElement(
               ToastAction as any,
               {
-                altText: "Upgrade plan",
-                onClick: () => { window.location.href = (body as any).upgradeUrl || "/settings#billing"; },
+                altText: body.docsUrl ? "Learn why" : "Upgrade plan",
+                onClick: () => {
+                  window.location.href =
+                    body.docsUrl || (body as any).upgradeUrl || "/settings#billing";
+                },
               },
-              "Upgrade"
+              body.docsUrl ? "Learn why" : "Upgrade"
             ) as any,
           });
         }
@@ -64,7 +92,7 @@ async function throwIfResNotOk(res: Response) {
 
     // Use the parsed message if available, otherwise fall back to raw text
     const errorMessage = parsed?.message ?? text;
-    throw new Error(`${res.status}: ${errorMessage}`);
+    throw new ApiError(res.status, errorMessage, parsed);
   }
 }
 
@@ -88,6 +116,7 @@ function handleQueryError(error: unknown): void {
 
   const title = getErrorTitle(err);
   const description = getErrorMessage(err);
+  const docsUrl = (err as ApiError).docsUrl;
 
   toast({
     title,
@@ -96,13 +125,17 @@ function handleQueryError(error: unknown): void {
     action: React.createElement(
       ToastAction as any,
       {
-        altText: "Copy details",
+        altText: docsUrl ? "Learn why" : "Copy details",
         onClick: () => {
+          if (docsUrl) {
+            window.location.href = docsUrl;
+            return;
+          }
           const details = `${title}: ${String((error as Error)?.message || error)}`;
           navigator.clipboard?.writeText(details).catch(() => {});
         },
       },
-      "Copy details"
+      docsUrl ? "Learn why" : "Copy details"
     ) as any,
   });
 
@@ -123,6 +156,7 @@ function handleMutationError(error: unknown): void {
 
   const title = getErrorTitle(err);
   const description = getErrorMessage(err);
+  const docsUrl = (err as ApiError).docsUrl;
 
   toast({
     title,
@@ -131,16 +165,20 @@ function handleMutationError(error: unknown): void {
     action: React.createElement(
       ToastAction as any,
       {
-        altText: "Copy details",
+        altText: docsUrl ? "Learn why" : "Copy details",
         onClick: () => {
+          if (docsUrl) {
+            window.location.href = docsUrl;
+            return;
+          }
           const details = `${title}: ${String((error as Error)?.message || error)}`;
           navigator.clipboard?.writeText(details).catch(() => {});
         },
       },
-      "Copy details"
+      docsUrl ? "Learn why" : "Copy details"
     ) as any,
   });
-  
+
   clientLogger.error("[Mutation Error]", err);
 }
 

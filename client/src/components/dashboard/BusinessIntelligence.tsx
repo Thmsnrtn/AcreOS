@@ -63,7 +63,7 @@ export function BusinessIntelligence() {
         <h3 id="bi-heading" className="text-base font-semibold">Business intelligence</h3>
         <div role="status" aria-busy="true" aria-label="Loading business intelligence" className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-pulse">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 rounded-lg bg-muted" />
+            <div key={i} className="h-24 rounded-card bg-muted" />
           ))}
         </div>
       </section>

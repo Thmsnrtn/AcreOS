@@ -79,7 +79,7 @@ function StepPill({ step }: { step: WorkflowStep }) {
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${style.bg} transition-all`}
+      className={`flex items-center gap-2 px-3 py-2 rounded-card border ${style.bg} transition-all`}
       aria-label={`${role}: ${action}, status ${step.status}${durationText ? `, ${durationText}` : ""}`}
     >
       <span aria-hidden="true" className="text-base">{avatar}</span>
@@ -196,7 +196,7 @@ export function WorkflowMonitor() {
           <p id="available-pipelines-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Available pipelines</p>
           <ul aria-labelledby="available-pipelines-heading" className="space-y-2 list-none p-0 m-0">
             {workflowList.map(w => (
-              <li key={w.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">
+              <li key={w.id} className="flex items-center justify-between py-2 px-3 rounded-card border">
                 <div>
                   <p className="text-sm font-medium m-0">{w.name}</p>
                   <p className="text-xs text-muted-foreground m-0">

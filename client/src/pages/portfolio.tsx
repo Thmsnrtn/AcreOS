@@ -455,13 +455,13 @@ export default function PortfolioPage() {
                         return (
                           <li
                             key={alert.id}
-                            className={`p-4 rounded-lg border ${severityStyle.bg} ${severityStyle.border}`}
+                            className={`p-4 rounded-card border ${severityStyle.bg} ${severityStyle.border}`}
                             data-testid={`alert-item-${alert.id}`}
                             role={alert.severity === "critical" ? "alert" : undefined}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-start gap-3">
-                                <div className={`p-2 rounded-lg ${severityStyle.bg}`}>
+                                <div className={`p-2 rounded-card ${severityStyle.bg}`}>
                                   <AlertIcon className={`w-4 h-4 ${severityStyle.text}`} aria-hidden="true" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -534,7 +534,7 @@ export default function PortfolioPage() {
                 ) : (
                   <>
                     <dl className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 m-0">
-                      <div className="p-4 rounded-lg bg-muted/50">
+                      <div className="p-4 rounded-card bg-muted/50">
                         <div className="flex items-center gap-2 mb-2">
                           <Gavel className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <dt className="text-sm text-muted-foreground">Total rules</dt>
@@ -543,7 +543,7 @@ export default function PortfolioPage() {
                           {complianceRules?.length || 0}
                         </dd>
                       </div>
-                      <div className="p-4 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft">
+                      <div className="p-4 rounded-card bg-acr-pos-soft dark:bg-acr-pos-soft">
                         <div className="flex items-center gap-2 mb-2">
                           <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                           <dt className="text-sm text-muted-foreground">Active rules</dt>
@@ -552,7 +552,7 @@ export default function PortfolioPage() {
                           {complianceRules?.filter(r => r.isActive).length || 0}
                         </dd>
                       </div>
-                      <div className="p-4 rounded-lg bg-acr-brand-soft">
+                      <div className="p-4 rounded-card bg-acr-brand-soft">
                         <div className="flex items-center gap-2 mb-2">
                           <Leaf className="w-4 h-4 text-acr-brand" aria-hidden="true" />
                           <dt className="text-sm text-muted-foreground">Rule types</dt>
@@ -658,13 +658,13 @@ export default function PortfolioPage() {
                 ) : (
                   <div className="space-y-4">
                     <dl className="grid grid-cols-2 gap-4 m-0">
-                      <div className="p-4 rounded-lg bg-muted/50">
+                      <div className="p-4 rounded-card bg-muted/50">
                         <dt className="text-sm text-muted-foreground">Delinquency rate</dt>
                         <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-delinquency-rate">
                           {formatPercent(delinquency?.delinquencyRate || 0)}
                         </dd>
                       </div>
-                      <div className="p-4 rounded-lg bg-muted/50">
+                      <div className="p-4 rounded-card bg-muted/50">
                         <dt className="text-sm text-muted-foreground">At-risk amount</dt>
                         <dd className="text-2xl font-bold tabular-nums text-acr-neg m-0" data-testid="text-at-risk-amount">
                           {formatCurrency(delinquency?.atRiskAmount || 0)}

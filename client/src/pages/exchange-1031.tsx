@@ -66,7 +66,7 @@ function BootMortgagePanel({ salePriceCents, replacementPriceCents }: { salePric
   const taxOwed = bootAmount * taxRate;
   const fullyDeferred = salePriceCents <= replacementPriceCents;
   return (
-    <div className="bg-muted/40 rounded-lg p-3 space-y-2 text-xs">
+    <div className="bg-muted/40 rounded-card p-3 space-y-2 text-xs">
       <p className="font-medium text-sm">Boot / mortgage relief estimate</p>
       <dl className="grid grid-cols-2 gap-2">
         <div>
