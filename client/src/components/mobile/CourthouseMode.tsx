@@ -24,7 +24,7 @@
  * lookup is offline-available. Out of scope for v1 scaffold.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -85,7 +85,13 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   );
 
   // Track online state so the user knows when actions are queued vs sent.
-  useMemo(() => {
+  // Lens 6 (Marcus, 2026-05-27): this was `useMemo`, which doesn't run
+  // for side effects and never attached the listeners — so the offline
+  // banner was frozen at the value `navigator.onLine` happened to have
+  // at mount time. The whole point of CourthouseMode is to be useful
+  // when the cell signal drops mid-auction; without a real listener,
+  // we couldn't tell the user their bid log was queued vs. sent.
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const on = () => setOnline(true);
     const off = () => setOnline(false);
