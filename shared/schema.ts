@@ -1255,6 +1255,50 @@ export const notes = pgTable("notes", {
   // Entity ownership tracking
   owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
 
+  // ── ATR (Ability-to-Repay) safe-harbor attestation ─────────────────────
+  // Reg-Z §1026.43(c): for every consumer-purpose closed-end credit secured
+  // by a dwelling, the creditor must make a reasonable, good-faith
+  // determination at consummation that the borrower has the ability to
+  // repay. ATR documentation must be retained for 3 years (§1026.25(c)(3)).
+  // QM (Qualified Mortgage) status provides a presumption of compliance;
+  // non-QM exposes the lender (and any assignee) to a borrower defense
+  // under §1026.43(e)(5) for the life of the loan.
+  atrDetermination: jsonb("atr_determination").$type<{
+    // The eight statutory factors (§1026.43(c)(2)). Operators capture
+    // current values + sources; AcreOS does not opine on sufficiency.
+    currentOrReasonablyExpectedIncomeCents: number;
+    currentEmploymentStatus: string;
+    monthlyMortgagePaymentCents: number;
+    monthlyPaymentSimultaneousLoansCents: number;
+    monthlyPaymentMortgageRelatedObligationsCents: number; // taxes, insurance, HOA, MI
+    currentDebtObligationsAlimonyChildSupportCents: number;
+    monthlyDtiOrResidualIncomeCents: number; // DTI-as-fraction OR residual-income basis
+    creditHistorySummary: string; // free-text; FICO, tradeline summary, bankruptcy notes
+    // Verification evidence — at least one document per factor where
+    // §1026.43(c)(3) requires third-party records (income, employment).
+    verificationDocuments: Array<{
+      factor: string;
+      documentType: string; // 'w2' | 'tax_return' | 'bank_statement' | 'pay_stub' | 'voe' | 'other'
+      receivedDate: string; // ISO date
+      storedAt?: string; // S3 / blob reference
+    }>;
+    // Qualified Mortgage classification (§1026.43(e)). When true, the
+    // QM safe-harbor / rebuttable presumption applies and the lender is
+    // protected against an ATR claim absent rebuttal proof.
+    qmClassification: "general_qm" | "small_creditor_qm" | "seasoned_qm" | "non_qm" | null;
+    // Attestation block — operator must affirm the determination was
+    // made in good faith and is supported by the documents above.
+    attestedBy: string;
+    attestedByUserId: number;
+    attestedAt: string; // ISO timestamp
+    attestationText: string; // exact text the operator affirmed
+  } | null>(),
+  // Quick-filter index: true once a non-null ATR determination has been
+  // captured. Servicing/audit surfaces use this to flag any note that
+  // entered the book without one.
+  atrDeterminationCompleted: boolean("atr_determination_completed").default(false),
+  atrDeterminationCompletedAt: timestamp("atr_determination_completed_at"),
+
   // Optimistic locking — incremented on every balance-changing write
   version: integer("version").notNull().default(1),
 
