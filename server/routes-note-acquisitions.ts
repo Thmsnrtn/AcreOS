@@ -64,7 +64,7 @@ const createSchema = z.object({
   stage: stageEnum.optional(),
   internalNotes: z.string().max(10_000).optional(),
   // Rachel (LP-fund persona): tag the funding source so per-LP P&L can
-  // roll up. Free-form until the Pool entity ships — see migration 0081.
+  // roll up. Free-form until the Pool entity ships — see migration 0084.
   fundingPoolId: z.string().max(120).optional(),
 });
 const patchSchema = createSchema.partial();
