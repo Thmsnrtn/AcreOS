@@ -228,6 +228,7 @@ import { registerCommunicationRoutes } from "./routes-communications";
 import { registerVAEngineRoutes } from "./routes-va-engine";
 import { registerMiscRoutes } from "./routes-misc";
 import { registerSupportTicketRoutes } from "./routes-support-tickets";
+import { registerKnowledgeBaseRoutes } from "./routes-kb";
 import { registerMicroFeatureRoutes } from "./routes-micro-features";
 import { registerClosingRoutes } from "./routes-closing";
 import { registerPlatformFeatureRoutes } from "./routes-platform-features";
@@ -2151,6 +2152,9 @@ export async function registerRoutes(
   await registerVAEngineRoutes(app);
   await registerMiscRoutes(app);
   registerSupportTicketRoutes(app);
+  // Public KB browse — Lens 25 #3. Powers /help#kb and /help/article/:slug,
+  // plus the "Learn why" deep links from server/utils/errors.ts (docsSlug).
+  registerKnowledgeBaseRoutes(app);
   registerMicroFeatureRoutes(app);
   registerClosingRoutes(app);
   registerPlatformFeatureRoutes(app);
