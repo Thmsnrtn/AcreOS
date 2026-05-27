@@ -86,7 +86,21 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
   };
 }
 
-// Middleware to validate borrower session from cookie or header
+// Middleware to validate borrower session from cookie or header.
+//
+// SEC (Lens 23): the session row carries an `organizationId` snapshot from
+// when it was minted. Before this defense was added, every downstream
+// handler loaded `notes.id = session.noteId` and trusted whatever org the
+// note happened to be in at request time. If a note was ever moved across
+// orgs (admin tool, manual SQL, future feature), the active borrower
+// session would silently follow the note into the new org and start
+// writing payments and messages there.
+//
+// We re-assert `note.organization_id === session.organization_id` here,
+// once, so every downstream route gets the defense for free without
+// having to remember the AND clause. If the org doesn't match, the
+// session is destroyed and the borrower must re-authenticate against
+// the new org.
 async function validateBorrowerSession(req: Request, res: Response, next: NextFunction) {
   try {
     const sessionToken = req.cookies?.borrower_session || req.headers['x-borrower-session'] as string;
@@ -103,6 +117,31 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
       res.clearCookie('borrower_session');
       return res.status(401).json({ message: "Session expired" });
     }
+
+    // SEC: re-assert org pin. session.organizationId is set at create-time
+    // (post-migration 0081). Compare against the note's current organization;
+    // if a note crossed orgs in the meantime, the session is no longer
+    // trustworthy for the new tenant and must be re-issued.
+    if (session.organizationId != null) {
+      const [linkedNote] = await db
+        .select({ id: notes.id, organizationId: notes.organizationId })
+        .from(notes)
+        .where(eq(notes.id, session.noteId));
+      if (!linkedNote || linkedNote.organizationId !== session.organizationId) {
+        logger.warn("Borrower session org mismatch — note crossed orgs or was deleted", {
+          metadata: {
+            sessionId: session.id,
+            sessionOrgId: session.organizationId,
+            noteId: session.noteId,
+            currentNoteOrgId: linkedNote?.organizationId ?? null,
+          },
+        });
+        await storage.deleteBorrowerSession(sessionToken);
+        res.clearCookie('borrower_session');
+        return res.status(401).json({ message: "Session no longer valid" });
+      }
+    }
+
     await storage.updateBorrowerSessionAccess(sessionToken);
     (req as any).borrowerSession = session;
     next();
@@ -153,6 +192,9 @@ export function registerBorrowerRoutes(app: Express): void {
       
       await storage.createBorrowerSession({
         noteId: note.id,
+        // SEC (Lens 23): pin org at session-mint time so every read can
+        // re-assert note.organizationId === session.organizationId.
+        organizationId: note.organizationId,
         sessionToken,
         email: email.toLowerCase(),
         ipAddress: req.ip || req.socket.remoteAddress || null,

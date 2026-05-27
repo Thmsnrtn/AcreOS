@@ -6498,6 +6498,12 @@ export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
 export const borrowerSessions = pgTable("borrower_sessions", {
   id: serial("id").primaryKey(),
   noteId: integer("note_id").references(() => notes.id).notNull(),
+  // SEC (Lens 23): pin the originating organization at session-create so
+  // every read can re-assert note.organizationId === session.organizationId.
+  // Without this, a note that ever migrates across orgs would silently
+  // carry an active borrower session into the new org. Backfilled from
+  // notes.organization_id by migration 0081.
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   sessionToken: text("session_token").notNull().unique(),
   email: text("email").notNull(),
   ipAddress: text("ip_address"),
@@ -18579,6 +18585,14 @@ export const noteAcquisitions = pgTable(
     stage: text("stage").$type<NoteAcquisitionStage>().notNull().default("sourcing"),
     // Free text — the user's running notes (offer rationale, seller comments).
     internalNotes: text("internal_notes"),
+    // Rachel (LP-fund persona): "Every note I acquire is funded by one of
+    // three LP pools, plus my own bridge capital. Without a funding-source
+    // tag on each acquisition the per-LP P&L roll-up is a spreadsheet job
+    // forever." Free-form string by design — the broader Pool entity is
+    // deferred (see Lens 16 / fund-pool follow-ups). When the Pool entity
+    // ships, this column will be migrated to a foreign key; until then
+    // it carries the user's chosen label ("Fund I", "Bridge", "JV-Henderson").
+    fundingPoolId: text("funding_pool_id"),
     // Set on promotion; links the pipeline row to the funded acquired_note.
     promotedToNoteId: varchar("promoted_to_note_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
