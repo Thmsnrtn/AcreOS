@@ -125,7 +125,15 @@ async function callHaiku(input: CascadeInput) {
     action: String(parsed.action ?? "defer"),
     confidence: Math.max(0, Math.min(100, Number(parsed.confidence) || 0)),
     reasoning: String(parsed.reasoning ?? "no reasoning"),
-    raw: parsed,
+    // Lens 46 — preserve the model's stated alternatives onto the raw shape
+    // so callers persisting into agent_action_log can read them without
+    // re-parsing the response.
+    raw: {
+      ...parsed,
+      alternativesConsidered: Array.isArray((parsed as any).alternativesConsidered)
+        ? (parsed as any).alternativesConsidered
+        : null,
+    },
   };
 }
 
@@ -144,7 +152,15 @@ async function callSonnet(input: CascadeInput) {
     action: String(parsed.action ?? "defer"),
     confidence: Math.max(0, Math.min(100, Number(parsed.confidence) || 0)),
     reasoning: String(parsed.reasoning ?? "no reasoning"),
-    raw: parsed,
+    // Lens 46 — preserve the model's stated alternatives onto the raw shape
+    // so callers persisting into agent_action_log can read them without
+    // re-parsing the response.
+    raw: {
+      ...parsed,
+      alternativesConsidered: Array.isArray((parsed as any).alternativesConsidered)
+        ? (parsed as any).alternativesConsidered
+        : null,
+    },
   };
 }
 
@@ -159,6 +175,14 @@ async function callOpus(input: CascadeInput) {
     action: String(parsed.action ?? "defer"),
     confidence: Math.max(0, Math.min(100, Number(parsed.confidence) || 0)),
     reasoning: String(parsed.reasoning ?? "no reasoning"),
-    raw: parsed,
+    // Lens 46 — preserve the model's stated alternatives onto the raw shape
+    // so callers persisting into agent_action_log can read them without
+    // re-parsing the response.
+    raw: {
+      ...parsed,
+      alternativesConsidered: Array.isArray((parsed as any).alternativesConsidered)
+        ? (parsed as any).alternativesConsidered
+        : null,
+    },
   };
 }

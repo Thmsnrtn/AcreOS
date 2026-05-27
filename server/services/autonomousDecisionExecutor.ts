@@ -166,15 +166,22 @@ async function routeExecutorDecision(
   // Return an AIResponse-shaped object so existing callers can JSON-parse
   // the content as before. The downstream parser strips fences + extracts
   // {action, confidence, reasoning} — feed it our cascade's raw JSON.
+  // Lens 46: also expose tiersTried + tierUsed + raw model JSON so the
+  // caller can persist them into agent_action_log for trust-loop legibility.
   return {
     content: JSON.stringify({
       action: decision.action,
       confidence: decision.confidence,
       reasoning: `[tier:${decision.tierUsed}] ${decision.reasoning}`,
+      // Surfaced for trust-loop legibility; ignored by the existing parser.
+      alternativesConsidered:
+        (decision.raw as any)?.alternativesConsidered ?? null,
     }),
     // Best-effort additional metadata; downstream code only reads .content.
     model: `cascade:${decision.tierUsed}`,
     raw: decision,
+    tiersTried: decision.tiersTried,
+    tierUsed: decision.tierUsed,
   };
 }
 import { getCrossWingContext } from "./companyMind";
@@ -222,6 +229,17 @@ interface ExecutionDecision {
   draftResponse?: string;  // for support escalations
   retentionMessage?: string; // for churn interventions
   executionNotes?: string; // what the system actually did
+  // Lens 46 — alternatives the model weighed before choosing this action.
+  // Captured into agent_action_log so the founder can retroactively endorse
+  // or reject the reasoning, not just the outcome.
+  alternativesConsidered?: Array<{
+    action: string;
+    rejectedBecause: string;
+    confidence?: number;
+  }>;
+  // Cascade trail — which model tiers were tried before answering.
+  tiersTried?: Array<"haiku" | "sonnet" | "opus">;
+  modelUsed?: string;
 }
 
 interface ExecutionResult {
@@ -261,8 +279,13 @@ DECISION FORMAT (respond in JSON only):
   "reasoning": "1-3 sentences explaining your decision",
   "draftResponse": "full message to send to customer (for support_escalation only)",
   "retentionMessage": "personalized retention email body (for churn_risk_intervention only)",
-  "executionNotes": "what should be logged as the action taken"
+  "executionNotes": "what should be logged as the action taken",
+  "alternativesConsidered": [
+    { "action": "the other option you weighed", "rejectedBecause": "why you didn't pick it", "confidence": 0-100 }
+  ]
 }
+
+Always populate alternativesConsidered with 1-3 plausible alternative actions you weighed. The founder reviews these to spot blind spots — listing only the action you chose makes it impossible to retroactively endorse your reasoning.
 
 CONFIDENCE CALIBRATION:
 - 90-100: Certain. Standard case with clear resolution path.
@@ -954,6 +977,12 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       draftResponse: parsed.draftResponse,
       retentionMessage: parsed.retentionMessage,
       executionNotes: parsed.executionNotes,
+      // Lens 46 — capture the legibility fields for the audit/explain endpoint.
+      alternativesConsidered: Array.isArray(parsed.alternativesConsidered)
+        ? parsed.alternativesConsidered
+        : undefined,
+      tiersTried: (aiResponse as any).tiersTried,
+      modelUsed: aiResponse.model,
     };
   } catch (err: any) {
     // Budget exhausted for today — defer the item to the start of
@@ -1127,11 +1156,42 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     result.executedAction = execResult.detail;
 
     if (execResult.success) {
+      // Lens 46 — record the resolving action in agent_action_log with the
+      // full trust-loop legibility shape so /audit-log/explain can rebuild
+      // the decision trail later. Best-effort; never block the user-facing
+      // resolution path on the audit write.
+      let actionLogId: number | undefined;
+      try {
+        const { agentActionLog } = await import("@shared/schema");
+        const [logged] = await db
+          .insert(agentActionLog)
+          .values({
+            agentCodename: ownerAgent ?? "autonomous_executor",
+            actionType: "decision",
+            actionName: item.itemType,
+            input: { itemId: item.id, contextBundle: item.contextBundle ?? null },
+            output: { detail: execResult.detail, executedAction: result.executedAction },
+            reasoning: aiDecision.reasoning,
+            confidence: aiDecision.confidence,
+            outcome: "success",
+            relatedDecisionId: item.id,
+            alternativesConsidered: aiDecision.alternativesConsidered ?? null,
+            tiersTried: aiDecision.tiersTried ?? null,
+            modelUsed: aiDecision.modelUsed ?? null,
+            correlationId: `inbox-${item.id}`,
+          })
+          .returning({ id: agentActionLog.id });
+        actionLogId = logged?.id;
+      } catch (err) {
+        logger.warn("[autonomous-executor] action_log insert failed (non-blocking)", err as Error);
+      }
+
       await db.update(decisionsInboxItems)
         .set({
           status: "approved",
           resolvedAt: new Date(),
           resolvedBy: "autonomous_executor",
+          resolvedByActionLogId: actionLogId ?? null,
           founderOverrideAction: `[AUTO] ${aiDecision.reasoning.slice(0, 200)}`,
           contextBundle: {
             ...(item.contextBundle as Record<string, any> ?? {}),

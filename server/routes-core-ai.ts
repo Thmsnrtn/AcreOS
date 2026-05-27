@@ -340,6 +340,32 @@ export function registerCoreAIRoutes(app: Express): void {
   });
 
   /**
+   * GET /api/pax/observations/:id/explain
+   *
+   * Lens 46 — customer-facing trust loop. Returns the reasoning, inputs,
+   * alternatives Pax considered, and the model that produced the call.
+   * Customers see *what Pax did for them* AND why — not just the outcome.
+   * Scoped to the requester's org so customers can't read other orgs' rows.
+   */
+  api.get("/api/pax/observations/:id/explain", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const observationId = parseInt(req.params.id);
+      if (isNaN(observationId)) {
+        return Errors.badRequest(res, "Invalid observation ID");
+      }
+      const org = req.organization;
+      if (!org) return Errors.unauthorized(res);
+      const { explainPaxObservation } = await import("./services/decisionExplanation");
+      const explanation = await explainPaxObservation(observationId, org.id);
+      if (!explanation) return Errors.notFound(res, "Observation");
+      res.json(explanation);
+    } catch (err: any) {
+      logger.error("Explain observation error", err);
+      Errors.internal(res, err);
+    }
+  });
+
+  /**
    * POST /api/pax/observations/:id/dismiss
    * Dismisses an observation so it no longer appears.
    */

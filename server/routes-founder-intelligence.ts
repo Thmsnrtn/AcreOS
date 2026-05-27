@@ -3748,4 +3748,69 @@ router.delete("/reminders/:id", requireFounder, async (req: Request, res: Respon
   }
 });
 
+// ─── Lens 46 — Decision Explanation ──────────────────────────────────────────
+// GET /api/founder/intelligence/audit-log/explain/:id
+//
+// Returns a single derived record joining agent_action_log → agent_llm_traces
+// → decisions_inbox_items → pax_observations so Tom can answer "why did the
+// agent do this?" without three SQL queries. The shape is stable: callers
+// can render the response directly. Missing joins return null fields rather
+// than throwing — degraded legibility beats a 500.
+router.get(
+  "/audit-log/explain/:id",
+  requireFounder,
+  async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return Errors.badRequest(res, "Invalid action log id");
+      }
+      const { explainAction } = await import("./services/decisionExplanation");
+      const explanation = await explainAction(id);
+      if (!explanation) {
+        return Errors.notFound(res, "Action log entry");
+      }
+      res.json(explanation);
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  },
+);
+
+// GET /api/founder/intelligence/audit-log/explain-by-decision/:decisionId
+//
+// Convenience: Tom is reading the decisions inbox card, not the action_log
+// id. Resolve via decisions_inbox_items.resolvedByActionLogId so the
+// front-end doesn't have to round-trip an id lookup.
+router.get(
+  "/audit-log/explain-by-decision/:decisionId",
+  requireFounder,
+  async (req: Request, res: Response) => {
+    try {
+      const decisionId = Number(req.params.decisionId);
+      if (!Number.isFinite(decisionId) || decisionId <= 0) {
+        return Errors.badRequest(res, "Invalid decision id");
+      }
+      const [row] = await db
+        .select({
+          resolvedByActionLogId: decisionsInboxItems.resolvedByActionLogId,
+        })
+        .from(decisionsInboxItems)
+        .where(eq(decisionsInboxItems.id, decisionId))
+        .limit(1);
+      if (!row?.resolvedByActionLogId) {
+        return res.json({
+          explanation: null,
+          message: "No agent action has resolved this decision yet.",
+        });
+      }
+      const { explainAction } = await import("./services/decisionExplanation");
+      const explanation = await explainAction(row.resolvedByActionLogId);
+      res.json({ explanation });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  },
+);
+
 export default router;
