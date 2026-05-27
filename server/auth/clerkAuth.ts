@@ -12,6 +12,120 @@ const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY,
 });
 
+// ─── Revoked-session cache (Lens 23 finding #5) ───────────────────────────────
+//
+// The manual JWT-fallback path below verifies the __session JWT signature
+// against CLERK_JWT_KEY and the `exp` claim. Critically, this does NOT honor
+// Clerk session revocation — when a user clicks "Sign out everywhere" or an
+// admin terminates a session in Clerk, the JWT remains cryptographically
+// valid until its native expiry (typically 60s for short-lived templates,
+// but up to days for the multi-session JWT depending on Clerk config).
+//
+// During that window, anyone holding the cookie value (XSS, stolen device,
+// compromised browser sync) could keep using the app even after the user
+// thinks they've signed out. clerkMiddleware (the happy path) calls Clerk
+// and would catch this; our fallback bypassed it.
+//
+// Fix: maintain a small revoked-sid (session id) cache that is refreshed on
+// a short interval by polling Clerk's `sessions.getSessionList({ status:
+// 'revoked' })`. When the fallback path verifies a JWT, it now ALSO checks
+// the `sid` claim against this set. If the sid is known-revoked, reject.
+//
+// Fail-open vs fail-closed: cache misses (e.g., Clerk API down, refresh
+// failed) fall back to fail-closed for the manual path only — if we can't
+// confirm a session isn't revoked, we send the user back through Clerk's
+// own middleware on the next request, which will refuse if Clerk says so.
+// The happy path through clerkMiddleware is unaffected.
+
+interface RevokedSidCache {
+  sids: Set<string>;
+  lastRefreshAt: number;
+  refreshing: Promise<void> | null;
+}
+
+const REVOKED_SID_REFRESH_MS = 60 * 1000; // 1 minute — Clerk recommends ≤ 60s for revocation propagation
+const REVOKED_SID_CACHE_FRESH_MS = 5 * 60 * 1000; // accept cache up to 5 min stale before failing closed
+
+const revokedSidCache: RevokedSidCache = {
+  sids: new Set(),
+  lastRefreshAt: 0,
+  refreshing: null,
+};
+
+async function refreshRevokedSids(): Promise<void> {
+  if (revokedSidCache.refreshing) return revokedSidCache.refreshing;
+  revokedSidCache.refreshing = (async () => {
+    try {
+      // Clerk's session list API supports filtering by status. We pull the
+      // most-recently-revoked page (up to 100); long-tail revocations age
+      // out of the cookie's `exp` window naturally and don't need tracking.
+      const revoked = await clerkClient.sessions.getSessionList({
+        status: "revoked",
+        limit: 100,
+      });
+      const next = new Set<string>();
+      const rows: any[] = Array.isArray(revoked) ? revoked : (revoked as any)?.data ?? [];
+      for (const s of rows) {
+        if (s?.id) next.add(s.id);
+      }
+      revokedSidCache.sids = next;
+      revokedSidCache.lastRefreshAt = Date.now();
+    } catch (err: any) {
+      logger.warn("[clerkAuth] revoked-sid cache refresh failed: " + err?.message);
+      // Don't clobber the cache — keep whatever we last had and let the
+      // freshness gate downstream decide whether to fail closed.
+    } finally {
+      revokedSidCache.refreshing = null;
+    }
+  })();
+  return revokedSidCache.refreshing;
+}
+
+/**
+ * Returns:
+ *   - 'ok'       → sid is known-good (not in revoked set, cache is fresh)
+ *   - 'revoked'  → sid is in the revoked set
+ *   - 'unknown'  → cache is too stale to trust; caller should fail closed
+ */
+async function checkRevokedSid(
+  sid: string | undefined,
+): Promise<"ok" | "revoked" | "unknown"> {
+  if (!sid) return "unknown"; // No sid in JWT → can't validate → fail closed
+  const now = Date.now();
+  // Trigger a background refresh if the cache is stale, but don't await
+  // it on the hot path; cached lookups are O(1).
+  if (now - revokedSidCache.lastRefreshAt > REVOKED_SID_REFRESH_MS) {
+    void refreshRevokedSids();
+  }
+  if (revokedSidCache.sids.has(sid)) return "revoked";
+  // If we've never successfully refreshed, await one refresh before
+  // declaring "ok" — otherwise an attacker who got their session revoked
+  // before our first poll would slip through.
+  if (revokedSidCache.lastRefreshAt === 0) {
+    await refreshRevokedSids();
+    if (revokedSidCache.sids.has(sid)) return "revoked";
+    // Refresh may have failed (Clerk down) — lastRefreshAt is still 0.
+    if (revokedSidCache.lastRefreshAt === 0) return "unknown";
+  }
+  // Cache is too stale → can't be confident; tell caller to fail closed.
+  if (now - revokedSidCache.lastRefreshAt > REVOKED_SID_CACHE_FRESH_MS) {
+    return "unknown";
+  }
+  return "ok";
+}
+
+// Test-only override — tests can stub the revoked-sid cache directly
+// instead of hitting Clerk.
+export function __setRevokedSidsForTests(sids: string[] | null): void {
+  if (sids === null) {
+    revokedSidCache.sids = new Set();
+    revokedSidCache.lastRefreshAt = 0;
+    return;
+  }
+  revokedSidCache.sids = new Set(sids);
+  revokedSidCache.lastRefreshAt = Date.now();
+}
+
 /**
  * Syncs the Clerk user into our users table on first access.
  * Attaches `req.user` with the DB user record so downstream handlers
@@ -66,6 +180,25 @@ async function hydrateUser(req: any, res: any, next: any) {
         // SEC-005: reduced from 5 min — 30s is sufficient for normal clock skew
         const GRACE_PERIOD_MS = 30 * 1000;
         if (isValid && payload.sub && payload.exp * 1000 > Date.now() - GRACE_PERIOD_MS) {
+          // Lens 23 #5: JWT signature + expiry are necessary but not sufficient.
+          // A revoked session keeps its valid JWT until exp. Cross-check the
+          // `sid` claim against our revoked-sid cache; fail closed on unknown.
+          const sidCheck = await checkRevokedSid(payload.sid as string | undefined);
+          if (sidCheck === "revoked") {
+            logger.warn("[hydrateUser] rejecting JWT for revoked session", {
+              metadata: { sid: payload.sid, sub: payload.sub },
+            });
+            continue; // try next candidate cookie (in case multiple sessions stacked)
+          }
+          if (sidCheck === "unknown") {
+            // Cache is too stale to trust — fail closed on this fallback path.
+            // The next request will hit clerkMiddleware which talks to Clerk
+            // directly and gets an authoritative answer.
+            logger.warn("[hydrateUser] revoked-sid cache stale, failing JWT fallback closed", {
+              metadata: { sid: payload.sid, sub: payload.sub },
+            });
+            continue;
+          }
           userId = payload.sub;
         }
         } catch {
