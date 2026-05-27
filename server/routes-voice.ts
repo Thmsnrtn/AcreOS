@@ -5,6 +5,7 @@ import { eq, and, desc, like, or } from 'drizzle-orm';
 import { voiceAI } from './services/voiceAI';
 import { logger } from "./utils/logger";
 import { verifyTwilioSignature } from './middleware/twilioSignature';
+import { withIdempotency } from './services/webhook-idempotency';
 
 const voiceRouter = Router();
 
@@ -102,55 +103,74 @@ voiceRouter.post('/webhook/twilio/recording-complete', verifyTwilioSignature, as
       return;
     }
 
-    // Look up the voiceCall by callSid (Twilio CallSid)
-    const voiceCall = await db.query.voiceCalls.findFirst({
-      where: eq(voiceCalls.callSid, CallSid),
-    });
+    // Lens 23: Twilio retries on 5xx and on operator-initiated replay. Without
+    // dedup, every retry re-ran voiceAI.completeCall (paid AI work),
+    // extractMotivationSignals (paid AI work), and could insert duplicate
+    // agentEvents rows. Twilio signs the canonical URL + body params so a
+    // captured signed payload remains valid indefinitely — an attacker who
+    // sniffed one webhook could replay it forever to spam AI billing and
+    // agent-event noise. Dedup on RecordingSid (or CallSid as fallback).
+    const dedup = await withIdempotency(
+      'twilio',
+      RecordingSid || `call:${CallSid}`,
+      'voice.recording.complete',
+      async () => {
+        // Look up the voiceCall by callSid (Twilio CallSid)
+        const voiceCall = await db.query.voiceCalls.findFirst({
+          where: eq(voiceCalls.callSid, CallSid),
+        });
 
-    if (!voiceCall) {
-      logger.warn('[twilio/recording-complete] No voiceCall found for CallSid', { metadata: { detail: CallSid } });
-      res.status(200).type('text/xml').send('<Response/>');
-      return;
-    }
+        if (!voiceCall) {
+          logger.warn('[twilio/recording-complete] No voiceCall found for CallSid', { metadata: { detail: CallSid } });
+          return;
+        }
 
-    const callId = voiceCall.id;
-    const duration = RecordingDuration ? parseInt(RecordingDuration, 10) : 0;
-    const recordingUrl = RecordingUrl ? `${RecordingUrl}.mp3` : undefined;
+        const callId = voiceCall.id;
+        const duration = RecordingDuration ? parseInt(RecordingDuration, 10) : 0;
+        const recordingUrl = RecordingUrl ? `${RecordingUrl}.mp3` : undefined;
 
-    // Complete the call with post-call AI analysis
-    await voiceAI.completeCall(callId, duration, recordingUrl);
+        // Complete the call with post-call AI analysis
+        await voiceAI.completeCall(callId, duration, recordingUrl);
 
-    // Extract motivation signals from the transcript
-    const motivationResult = await extractMotivationSignals(callId);
+        // Extract motivation signals from the transcript
+        const motivationResult = await extractMotivationSignals(callId);
 
-    // Persist motivationScore to voiceCalls
-    if (motivationResult.confidence > 0) {
-      await db.update(voiceCalls)
-        .set({ motivationScore: motivationResult.confidence.toString() })
-        .where(eq(voiceCalls.id, callId));
-    }
+        // Persist motivationScore to voiceCalls
+        if (motivationResult.confidence > 0) {
+          await db.update(voiceCalls)
+            .set({ motivationScore: motivationResult.confidence.toString() })
+            .where(eq(voiceCalls.id, callId));
+        }
 
-    // If motivated with confidence > 0.7, create a decision queue agent event
-    if (motivationResult.isMotivated && motivationResult.confidence > 0.7) {
-      await db.insert(agentEvents).values({
-        organizationId: voiceCall.organizationId,
-        eventType: 'motivated_caller_detected',
-        eventSource: 'voice_pipeline',
-        payload: {
-          callId,
-          callSid: CallSid,
-          recordingSid: RecordingSid,
-          motivationSignals: motivationResult.signals,
-          confidence: motivationResult.confidence,
-          leadId: voiceCall.leadId,
-          contactId: voiceCall.contactId,
-          action: 'create_offer_decision',
-        },
-        relatedEntityType: 'voice_call',
-        relatedEntityId: callId,
+        // If motivated with confidence > 0.7, create a decision queue agent event
+        if (motivationResult.isMotivated && motivationResult.confidence > 0.7) {
+          await db.insert(agentEvents).values({
+            organizationId: voiceCall.organizationId,
+            eventType: 'motivated_caller_detected',
+            eventSource: 'voice_pipeline',
+            payload: {
+              callId,
+              callSid: CallSid,
+              recordingSid: RecordingSid,
+              motivationSignals: motivationResult.signals,
+              confidence: motivationResult.confidence,
+              leadId: voiceCall.leadId,
+              contactId: voiceCall.contactId,
+              action: 'create_offer_decision',
+            },
+            relatedEntityType: 'voice_call',
+            relatedEntityId: callId,
+          });
+
+          logger.info(`[twilio/recording-complete] Motivated caller detected for callId=${callId}, confidence=${motivationResult.confidence}, signals=${motivationResult.signals.join(', ')}`);
+        }
+      },
+    );
+
+    if (dedup.duplicate) {
+      logger.debug('[twilio/recording-complete] duplicate webhook ignored', {
+        metadata: { detail: { RecordingSid, CallSid } },
       });
-
-      logger.info(`[twilio/recording-complete] Motivated caller detected for callId=${callId}, confidence=${motivationResult.confidence}, signals=${motivationResult.signals.join(', ')}`);
     }
 
     // Twilio expects 200 with TwiML or empty body
