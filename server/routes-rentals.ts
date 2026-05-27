@@ -37,6 +37,7 @@ import {
   LEASE_ADDENDUM_KINDS,
   properties,
 } from "@shared/schema";
+import { computeNoticeWindow } from "@shared/regulatory/leaseNoticeRules";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -764,6 +765,219 @@ export function registerRentalRoutes(app: Express): void {
       });
 
       return res.status(201).json({ lease: renewed });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ============================================================================
+  // Mobile Landlord (Imelda Lens 21) — Today / Portfolio aggregates
+  // ============================================================================
+
+  // Leases ending within N days, with state-aware non-renewal notice window.
+  // Mounted at /api/rentals/leases/expiring (not /api/leases/expiring) so it
+  // doesn't collide with /api/leases/:id when :id starts with "expiring".
+  app.get("/api/rentals/leases/expiring", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const within = Math.max(1, Math.min(365, parseInt(String(req.query.within ?? req.query.expiring_within ?? "60"), 10) || 60));
+      const today = new Date();
+      const horizon = new Date(); horizon.setDate(horizon.getDate() + within);
+      const todayStr = today.toISOString().slice(0, 10);
+      const horizonStr = horizon.toISOString().slice(0, 10);
+
+      const rows = await db.execute(sql`
+        SELECT id, property_id, unit_label, state, end_date, monthly_rent_cents,
+               (end_date - CURRENT_DATE) AS days_to_expiry
+        FROM rental_leases
+        WHERE organization_id = ${orgId}
+          AND status = 'active'
+          AND end_date IS NOT NULL
+          AND end_date >= ${todayStr}::date
+          AND end_date <= ${horizonStr}::date
+        ORDER BY end_date ASC
+      `);
+
+      const leases = ((rows as any).rows ?? []).map((r: any) => {
+        const endIso: string | null = r.end_date ? String(r.end_date).slice(0, 10) : null;
+        const window = computeNoticeWindow(endIso, r.state ?? null, today);
+        return {
+          id: r.id,
+          propertyId: Number(r.property_id),
+          unitLabel: r.unit_label ?? null,
+          state: r.state ?? null,
+          endDate: endIso,
+          monthlyRentCents: Number(r.monthly_rent_cents) || 0,
+          daysToExpiry: Number(r.days_to_expiry) || 0,
+          noticeDays: window.noticeDays,
+          noticeWindowOpensAt: window.noticeWindowOpensAt,
+          noticeWindowOpen: window.noticeWindowOpen,
+        };
+      });
+
+      return res.json({ leases, count: leases.length, withinDays: within });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Section 8 HAP recerts due — annual recert anchored on lease start_date.
+  // Imelda §2.10: "the housing authority pays me a HAP portion directly via
+  // ACH; recerts happen annually and a missed recert can pause HAP."
+  app.get("/api/rentals/section-8/recerts-due", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const within = Math.max(1, Math.min(365, parseInt(String(req.query.within ?? "60"), 10) || 60));
+      const horizon = new Date(); horizon.setDate(horizon.getDate() + within);
+      const horizonStr = horizon.toISOString().slice(0, 10);
+
+      // Annual recert anchor = the next future anniversary of start_date.
+      // We compute it in SQL by adding N years until the result is in the
+      // future relative to today.
+      const rows = await db.execute(sql`
+        WITH rl AS (
+          SELECT
+            id, property_id, unit_label, start_date,
+            hap_portion_cents, monthly_rent_cents,
+            (
+              start_date
+              + (
+                  GREATEST(
+                    1,
+                    CEIL(EXTRACT(EPOCH FROM (CURRENT_DATE - start_date)) / 31557600.0)::int
+                  )
+                ) * INTERVAL '1 year'
+            )::date AS next_recert_date
+          FROM rental_leases
+          WHERE organization_id = ${orgId}
+            AND status = 'active'
+            AND is_section_8 = TRUE
+            AND COALESCE(hap_portion_cents, 0) > 0
+        )
+        SELECT
+          id, property_id, unit_label,
+          hap_portion_cents, monthly_rent_cents,
+          next_recert_date,
+          (next_recert_date - CURRENT_DATE) AS days_until_recert
+        FROM rl
+        WHERE next_recert_date <= ${horizonStr}::date
+          AND next_recert_date >= CURRENT_DATE
+        ORDER BY next_recert_date ASC
+      `);
+
+      const leases = ((rows as any).rows ?? []).map((r: any) => ({
+        id: r.id,
+        propertyId: Number(r.property_id),
+        unitLabel: r.unit_label ?? null,
+        hapPortionCents: Number(r.hap_portion_cents) || 0,
+        monthlyRentCents: Number(r.monthly_rent_cents) || 0,
+        nextRecertDate: r.next_recert_date ? String(r.next_recert_date).slice(0, 10) : null,
+        daysUntilRecert: Number(r.days_until_recert) || 0,
+      }));
+
+      return res.json({ leases, count: leases.length, withinDays: within });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Occupancy snapshot — distinct property+unit pairs with an active lease
+  // over distinct property+unit pairs ever on record. SFR-only orgs see
+  // "active leases / property count"; multi-unit counts unit_label slots.
+  app.get("/api/rent-roll/occupancy", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+
+      const totalRow = await db.execute(sql`
+        SELECT COUNT(DISTINCT (property_id, COALESCE(unit_label, '')))::int AS total
+        FROM rental_leases
+        WHERE organization_id = ${orgId}
+      `);
+      const activeRow = await db.execute(sql`
+        SELECT COUNT(DISTINCT (property_id, COALESCE(unit_label, '')))::int AS active
+        FROM rental_leases
+        WHERE organization_id = ${orgId}
+          AND status = 'active'
+      `);
+      const propsRow = await db.execute(sql`
+        SELECT COUNT(*)::int AS c FROM properties
+        WHERE organization_id = ${orgId}
+      `);
+
+      const totalUnits = Number(((totalRow as any).rows?.[0]?.total) ?? 0);
+      const activeUnits = Number(((activeRow as any).rows?.[0]?.active) ?? 0);
+      const propertyCount = Number(((propsRow as any).rows?.[0]?.c) ?? 0);
+
+      return res.json({
+        activeUnits,
+        totalUnits,
+        propertyCount,
+        occupancyPct: totalUnits > 0 ? Math.round((activeUnits / totalUnits) * 100) : null,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Portfolio-wide landlord stats for the mobile Portfolio tab. One round-
+  // trip: MTD rent, YTD expenses (maintenance invoices only — Portfolio P&L
+  // has the richer answer but requires a deals/properties join), active
+  // tickets, Section 8 share. Depreciation YTD is intentionally null — the
+  // UI links to /depreciation-calculator for the authoritative number.
+  app.get("/api/portfolio/landlord-stats", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
+
+      const mtdRow = await db.execute(sql`
+        SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total
+        FROM rent_payments
+        WHERE organization_id = ${orgId}
+          AND received_at >= ${monthStart}::date
+      `);
+      const mtdRentCollectedCents = Number(((mtdRow as any).rows?.[0]?.total) ?? 0);
+
+      const ytdMaintRow = await db.execute(sql`
+        SELECT COALESCE(SUM(invoice_cents), 0)::bigint AS total
+        FROM maintenance_tickets
+        WHERE organization_id = ${orgId}
+          AND status = 'completed'
+          AND completed_at >= ${yearStart}::date
+      `);
+      const ytdExpensesCents = Number(((ytdMaintRow as any).rows?.[0]?.total) ?? 0);
+
+      const activeTicketsRow = await db.execute(sql`
+        SELECT COUNT(*)::int AS c FROM maintenance_tickets
+        WHERE organization_id = ${orgId}
+          AND status NOT IN ('completed', 'cancelled')
+      `);
+      const activeMaintenanceCount = Number(((activeTicketsRow as any).rows?.[0]?.c) ?? 0);
+
+      const section8Row = await db.execute(sql`
+        SELECT
+          COUNT(*)::int AS total,
+          SUM(CASE WHEN is_section_8 = TRUE THEN 1 ELSE 0 END)::int AS s8
+        FROM rental_leases
+        WHERE organization_id = ${orgId}
+          AND status = 'active'
+      `);
+      const s8Total = Number(((section8Row as any).rows?.[0]?.total) ?? 0);
+      const s8Count = Number(((section8Row as any).rows?.[0]?.s8) ?? 0);
+      const section8SharePct = s8Total > 0 ? Math.round((s8Count / s8Total) * 100) : 0;
+
+      return res.json({
+        mtdRentCollectedCents,
+        ytdExpensesCents,
+        ytdDepreciationCents: null,
+        activeMaintenanceCount,
+        section8: {
+          activeLeases: s8Count,
+          totalActiveLeases: s8Total,
+          sharePct: section8SharePct,
+        },
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
