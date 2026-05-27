@@ -11,6 +11,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { matchmaking } from "./services/matchmaking";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -26,8 +27,8 @@ router.post("/run", async (req: Request, res: Response) => {
       buyerId: buyerId ? parseInt(buyerId) : undefined,
     });
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -38,8 +39,8 @@ router.get("/top-matches", async (req: Request, res: Response) => {
 
     const result = await matchmaking.getTopMatches(org.id, limit);
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -47,12 +48,12 @@ router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const matches = await matchmaking.getMatchesForProperty(propertyId, org.id);
     res.json({ matches });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -60,12 +61,12 @@ router.post("/:id/notify", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const result = await matchmaking.notifyBuyer(id, org.id);
     res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -73,12 +74,12 @@ router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     await matchmaking.dismissMatch(id, org.id);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 

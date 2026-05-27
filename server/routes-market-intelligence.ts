@@ -12,7 +12,7 @@ const router = Router();
 router.get('/analyze', cacheResponse(600), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
-    if (!county || !state) return res.status(400).json({ error: 'county and state required' });
+    if (!county || !state) return Errors.badRequest(res, 'county and state required');
     const result = await marketIntelligence.analyzeMarket(county as string, state as string);
     res.json({ analysis: result });
   } catch (err: any) {
@@ -25,7 +25,7 @@ router.get('/analyze', cacheResponse(600), async (req: Request, res: Response) =
 router.get('/health', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
-    if (!county || !state) return res.status(400).json({ error: 'county and state required' });
+    if (!county || !state) return Errors.badRequest(res, 'county and state required');
     const health = await marketIntelligence.getMarketHealth(county as string, state as string);
     res.json({ health });
   } catch (err: any) {
@@ -38,7 +38,7 @@ router.get('/health', cacheResponse(300), async (req: Request, res: Response) =>
 router.get('/trends', cacheResponse(600), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
-    if (!county || !state) return res.status(400).json({ error: 'county and state required' });
+    if (!county || !state) return Errors.badRequest(res, 'county and state required');
     const trends = await marketIntelligence.predictPriceTrends(county as string, state as string);
     res.json({ trends });
   } catch (err: any) {
@@ -62,7 +62,7 @@ router.post('/compare', async (req: Request, res: Response) => {
 router.get('/growth-indicators', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
-    if (!county || !state) return res.status(400).json({ error: 'county and state required' });
+    if (!county || !state) return Errors.badRequest(res, 'county and state required');
     const indicators = await marketIntelligence.getGrowthIndicators(county as string, state as string);
     res.json({ indicators });
   } catch (err: any) {
@@ -91,7 +91,7 @@ router.get('/monthly-report', async (req: Request, res: Response) => {
     res.send(pdf);
   } catch (err) {
     logger.error('monthly report generation failed', err instanceof Error ? err : undefined);
-    res.status(500).json({ error: 'report generation failed' });
+    Errors.internal(res, err);
   }
 });
 
@@ -100,7 +100,7 @@ router.get('/county-report', async (req: Request, res: Response) => {
   try {
     const { state, county } = req.query;
     if (!state || !county) {
-      return res.status(400).json({ error: 'state and county query params required' });
+      return Errors.badRequest(res, 'state and county query params required');
     }
     const pdf = await generateCountyReport(state as string, county as string);
     res.setHeader('Content-Type', 'application/pdf');
@@ -108,7 +108,7 @@ router.get('/county-report', async (req: Request, res: Response) => {
     res.send(pdf);
   } catch (err) {
     logger.error('county report generation failed', err instanceof Error ? err : undefined);
-    res.status(500).json({ error: 'report generation failed' });
+    Errors.internal(res, err);
   }
 });
 
@@ -132,8 +132,8 @@ router.get('/public/data', async (_req: Request, res: Response) => {
       states: stateData,
       cta: 'Get detailed reports and AI deal finding. Start Free →',
     });
-  } catch {
-    res.status(500).json({ error: 'failed to fetch market data' });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

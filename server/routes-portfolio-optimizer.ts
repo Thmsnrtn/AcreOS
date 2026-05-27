@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { portfolioOptimizer } from './services/portfolioOptimizer';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -17,8 +18,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
       yearsForward
     );
     res.json({ analysis });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -32,7 +33,7 @@ router.post('/simulate', async (req: Request, res: Response) => {
     const { yearsForward = 5, numSimulations = 10000 } = req.body;
     const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
     if (holdings.length === 0) {
-      return res.status(400).json({ error: 'No owned properties found in portfolio' });
+      return Errors.badRequest(res, 'No owned properties found in portfolio');
     }
     const monteCarlo = await portfolioOptimizer.runMonteCarloSimulation(
       org.id.toString(),
@@ -41,8 +42,8 @@ router.post('/simulate', async (req: Request, res: Response) => {
       numSimulations
     );
     res.json({ monteCarlo });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -55,8 +56,8 @@ router.get('/simulations', async (req: Request, res: Response) => {
       parseInt(limit as string)
     );
     res.json({ simulations });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -76,8 +77,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
       holdings
     );
     res.json({ metrics, holdings });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -93,8 +94,8 @@ router.get('/diversification', async (req: Request, res: Response) => {
       holdings
     );
     res.json({ diversification });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -109,8 +110,8 @@ router.get('/recommendations', async (req: Request, res: Response) => {
       org.id.toString()
     );
     res.json({ recommendations });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -124,8 +125,8 @@ router.patch('/recommendations/:id', async (req: Request, res: Response) => {
       status
     );
     res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 

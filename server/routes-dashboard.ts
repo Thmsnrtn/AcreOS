@@ -9,6 +9,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { cacheResponse } from "./middleware/responseCache";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 const serverStartTime = Date.now();
 
@@ -108,9 +109,9 @@ export function registerDashboardRoutes(app: Express): void {
         revenue,
         pipeline,
       });
-    } catch (err: any) {
-      logger.error("Dashboard sparklines error", { error: err.message });
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("Dashboard sparklines error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -409,9 +410,9 @@ export function registerDashboardRoutes(app: Express): void {
         actions,
         generatedAt: now.toISOString(),
       });
-    } catch (error: any) {
-      logger.error("Dashboard intelligence error", { error: error.message });
-      res.status(500).json({ message: "Failed to generate dashboard intelligence" });
+    } catch (error) {
+      logger.error("Dashboard intelligence error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
@@ -448,8 +449,8 @@ export function registerDashboardRoutes(app: Express): void {
       await runPortfolioHealthJob(org.id);
       const alerts = await getActiveAlerts(org.id);
       res.json(alerts);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -459,8 +460,8 @@ export function registerDashboardRoutes(app: Express): void {
       const alertId = parseInt(req.params.id);
       await dismissAlert(org.id, alertId);
       res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -524,12 +525,12 @@ export function registerDashboardRoutes(app: Express): void {
     try {
       const org = req.organization;
       const parsed = insertGoalSchema.safeParse({ ...req.body, organizationId: org.id });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid goal data", errors: parsed.error.flatten() });
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
       const [goal] = await db.insert(goals).values(parsed.data).returning();
       res.status(201).json(goal);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -540,8 +541,8 @@ export function registerDashboardRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       await db.delete(goals).where(and(eq(goals.id, id), eq(goals.organizationId, org.id)));
       res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -703,9 +704,9 @@ export function registerDashboardRoutes(app: Express): void {
           lastCampaignDaysAgo: Math.min(lastCampaignDaysAgo, 999),
         },
       });
-    } catch (err: any) {
-      logger.error("Today priorities error", { error: err.message });
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      logger.error("Today priorities error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
