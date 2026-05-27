@@ -66,7 +66,7 @@ export default function CustomerHealthPanel() {
                 {c.healthScore < 40 && <AlertTriangle className="w-3.5 h-3.5 text-acr-neg flex-shrink-0" aria-hidden="true" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-muted-foreground truncate">{c.orgName}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-micro text-muted-foreground">
                     {c.details.plan} · <span className="tabular-nums">{loginText}</span>
                   </p>
                 </div>

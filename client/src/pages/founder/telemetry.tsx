@@ -155,7 +155,7 @@ export default function FounderTelemetryPage() {
                         const hot = r.errorRate >= 0.05 || r.count5xx > 0 || r.p95Ms > 2000;
                         return (
                           <tr key={r.route} className={`border-b border-border/40 ${hot ? "bg-acr-warn-soft/20" : ""}`}>
-                            <td className="px-3 py-1.5 font-mono text-[11px]">
+                            <td className="px-3 py-1.5 font-mono text-caption">
                               {hot && <AlertTriangle className="w-3 h-3 inline mr-1 text-acr-warning" aria-hidden="true" />}
                               {r.route}
                             </td>
@@ -164,7 +164,7 @@ export default function FounderTelemetryPage() {
                             <td className="px-3 py-1.5 text-right text-acr-warning">{r.count4xx.toLocaleString()}</td>
                             <td className={`px-3 py-1.5 text-right ${r.count5xx > 0 ? "text-acr-neg font-semibold" : ""}`}>{r.count5xx.toLocaleString()}</td>
                             <td className="px-3 py-1.5 text-right">
-                              <Badge variant={r.errorRate >= 0.05 ? "destructive" : r.errorRate > 0 ? "outline" : "secondary"} className="text-[10px]">
+                              <Badge variant={r.errorRate >= 0.05 ? "destructive" : r.errorRate > 0 ? "outline" : "secondary"} className="text-micro">
                                 {(r.errorRate * 100).toFixed(1)}%
                               </Badge>
                             </td>

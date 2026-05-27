@@ -192,7 +192,7 @@ function FunnelBar({ stage, count, maxCount }: { stage: string; count: number; m
           style={{ width: `${pct}%` }}
         >
           {pct >= 20 && (
-            <span className="text-[10px] font-semibold text-primary-foreground">{pct}%</span>
+            <span className="text-micro font-semibold text-primary-foreground">{pct}%</span>
           )}
         </div>
       </div>
@@ -214,7 +214,7 @@ function LeaseExpirationTimeline({ data }: { data: { month: string; count: numbe
             }`}
             style={{ height: `${Math.max((d.count / max) * 48, 4)}px` }}
           />
-          <span className="text-[10px] text-muted-foreground">{d.month}</span>
+          <span className="text-micro text-muted-foreground">{d.month}</span>
         </div>
       ))}
     </div>

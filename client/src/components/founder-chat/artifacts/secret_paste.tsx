@@ -127,7 +127,7 @@ export function SecretPasteArtifact({
             </p>
             <Badge
               variant="secondary"
-              className="font-mono text-[10px] bg-background/60 text-muted-foreground border-transparent"
+              className="font-mono text-micro bg-background/60 text-muted-foreground border-transparent"
             >
               {keyName}
             </Badge>
@@ -160,7 +160,7 @@ export function SecretPasteArtifact({
               aria-live="polite"
             >
               Rotated — fingerprint{" "}
-              <code className="font-mono text-[11px]">
+              <code className="font-mono text-caption">
                 {resolved.fingerprintShort}
               </code>
               .

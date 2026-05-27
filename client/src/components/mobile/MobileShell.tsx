@@ -290,7 +290,7 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
                 </div>
                 <span
                   className={cn(
-                    "text-[11px] font-medium truncate",
+                    "text-caption font-medium truncate",
                     isActive && "text-primary",
                   )}
                 >

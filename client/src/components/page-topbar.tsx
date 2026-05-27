@@ -159,7 +159,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           >
             <Command className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Search</span>
-            <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-mono">
+            <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-muted text-micro font-mono">
               ⌘K
             </kbd>
           </Button>

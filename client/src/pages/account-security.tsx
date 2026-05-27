@@ -210,7 +210,7 @@ export default function AccountSecurityPage() {
                   <tr key={s.sessionId} className="border-b border-border/40">
                     <td className="px-3 py-2 text-xs max-w-[20rem] truncate">
                       {s.userAgent ?? "—"}
-                      {s.isCurrent && <Badge variant="default" className="ml-2 text-[10px]">this session</Badge>}
+                      {s.isCurrent && <Badge variant="default" className="ml-2 text-micro">this session</Badge>}
                     </td>
                     <td className="px-3 py-2 text-xs font-mono">{s.ip ?? "—"}</td>
                     <td className="px-3 py-2 text-xs">{fmtTime(s.lastActiveAt)}</td>

@@ -334,7 +334,7 @@ function ElevationProfileOverlay({
         <div className="flex items-center gap-1.5">
           <Mountain className="h-3.5 w-3.5 text-acr-warn" />
           <span className="text-xs font-semibold">Elevation Profile</span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-micro text-muted-foreground">
             ({formatDistance(totalDistance, units)})
           </span>
         </div>
@@ -375,7 +375,7 @@ function ElevationProfileOverlay({
         />
       </svg>
 
-      <div className="grid grid-cols-4 gap-1 text-[10px]">
+      <div className="grid grid-cols-4 gap-1 text-micro">
         <div className="text-center">
           <div className="text-muted-foreground">Min</div>
           <div className="font-semibold">{toDisplay(minElev)}</div>
@@ -559,7 +559,7 @@ function SunControlPanel({
         </div>
       </div>
 
-      <div className="flex justify-between text-[10px] text-muted-foreground mb-2.5">
+      <div className="flex justify-between text-micro text-muted-foreground mb-2.5">
         <span>
           ☀ Rise: <strong>{formatSolarTime(solar.sunrise)}</strong>
         </span>
@@ -2412,19 +2412,19 @@ export function PropertyMap({
                         <span className="text-xs text-muted-foreground">Recency:</span>
                         <div className="flex items-center gap-1">
                           <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.recent }} />
-                          <span className="text-[10px]">0-6mo</span>
+                          <span className="text-micro">0-6mo</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.moderate }} />
-                          <span className="text-[10px]">6-12mo</span>
+                          <span className="text-micro">6-12mo</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.older }} />
-                          <span className="text-[10px]">12-24mo</span>
+                          <span className="text-micro">12-24mo</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.old }} />
-                          <span className="text-[10px]">24mo+</span>
+                          <span className="text-micro">24mo+</span>
                         </div>
                       </div>
                       <ScrollArea className="h-[180px]">
@@ -2542,7 +2542,7 @@ export function PropertyMap({
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: color }}
                                   />
-                                  <span className="text-[10px] text-muted-foreground capitalize">{status.replace(/_/g, " ")}</span>
+                                  <span className="text-micro text-muted-foreground capitalize">{status.replace(/_/g, " ")}</span>
                                 </div>
                               ))}
                             </div>
@@ -2733,8 +2733,8 @@ export function PropertyMap({
                                       {isDynamicLayerEnabled(layer.id) && (
                                         <div className="pl-6 space-y-1">
                                           <div className="flex items-center justify-between">
-                                            <span className="text-[10px] text-muted-foreground">Opacity</span>
-                                            <span className="text-[10px] text-muted-foreground" data-testid={`text-dynamic-layer-opacity-${layer.id}`}>
+                                            <span className="text-micro text-muted-foreground">Opacity</span>
+                                            <span className="text-micro text-muted-foreground" data-testid={`text-dynamic-layer-opacity-${layer.id}`}>
                                               {Math.round(getDynamicLayerOpacity(layer.id) * 100)}%
                                             </span>
                                           </div>
@@ -2755,7 +2755,7 @@ export function PropertyMap({
                                     </div>
                                   ))}
                                   {layers.length > 10 && (
-                                    <div className="text-[10px] text-muted-foreground pl-6">
+                                    <div className="text-micro text-muted-foreground pl-6">
                                       +{layers.length - 10} more layers
                                     </div>
                                   )}

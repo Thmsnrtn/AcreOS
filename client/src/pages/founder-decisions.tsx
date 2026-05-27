@@ -132,18 +132,18 @@ function DecisionRowCard({
         >
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-medium text-sm">{humanizeItemType(row.itemType)}</span>
-            <Badge className={`text-[10px] uppercase ${riskBadgeClass(row.riskLevel)}`} variant="outline">
+            <Badge className={`text-micro uppercase ${riskBadgeClass(row.riskLevel)}`} variant="outline">
               {row.riskLevel}
             </Badge>
             {row.ownerAgentCodename && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-micro">
                 {row.ownerAgentCodename}
               </Badge>
             )}
             {typeof row.outcomeScore === "number" && (
               <Badge
                 variant="outline"
-                className={`text-[10px] ${
+                className={`text-micro ${
                   row.outcomeScore >= 1
                     ? "bg-acr-pos-soft text-acr-pos"
                     : row.outcomeScore <= -1
@@ -177,7 +177,7 @@ function DecisionRowCard({
             </div>
           )}
           {typeof row.sophieConfidenceScore === "number" && (
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+            <div className="text-micro text-muted-foreground mt-0.5">
               {row.sophieConfidenceScore}% conf
             </div>
           )}
@@ -254,7 +254,7 @@ function DecisionRowCard({
       )}
       {!expanded && (
         <div className="flex justify-end mt-1">
-          <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+          <span className="text-micro text-muted-foreground inline-flex items-center gap-0.5">
             <ChevronRight className="w-3 h-3" /> Click to expand
           </span>
         </div>

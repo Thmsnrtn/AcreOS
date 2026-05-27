@@ -97,7 +97,7 @@ export function NotePayoffCalculator({ noteId }: { noteId: string }) {
                 />
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-3">
+            <p className="text-caption text-muted-foreground mt-3">
               Accrual from {data.accrualStart}. Per-diem reflects current
               balance; recompute if you accept a partial payment between
               now and close.

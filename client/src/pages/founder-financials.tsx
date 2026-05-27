@@ -186,7 +186,7 @@ export default function FounderFinancialsPage() {
           <div className="text-lg font-semibold mt-1">
             {totals.isLoading ? <Skeleton className="h-5 w-20" /> : fmtUsd(totals.data?.recognizedCents ?? 0)}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
+          <div className="text-micro text-muted-foreground mt-0.5">
             {totals.data?.distinctOrgCount ?? 0} orgs · {totals.data?.rowCount ?? 0} rows
           </div>
         </Card>
@@ -195,7 +195,7 @@ export default function FounderFinancialsPage() {
           <div className="text-lg font-semibold mt-1">
             {totals.isLoading ? <Skeleton className="h-5 w-20" /> : fmtUsd(totals.data?.deferredCents ?? 0)}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">Annual subs unrecognized</div>
+          <div className="text-micro text-muted-foreground mt-0.5">Annual subs unrecognized</div>
         </Card>
         <Card className="p-3">
           <div className="text-xs text-muted-foreground flex items-center gap-1">
@@ -210,7 +210,7 @@ export default function FounderFinancialsPage() {
               `${nrr.data.nrrPct.toFixed(1)}%`
             )}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
+          <div className="text-micro text-muted-foreground mt-0.5">
             cohort {nrr.data?.cohortSize ?? 0} · {nrr.data?.periodFrom ?? "—"} → {nrr.data?.periodTo ?? "—"}
           </div>
         </Card>
@@ -226,7 +226,7 @@ export default function FounderFinancialsPage() {
               `${concentration.top1Pct.toFixed(1)}%`
             )}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">Diligence flag at &gt;20%</div>
+          <div className="text-micro text-muted-foreground mt-0.5">Diligence flag at &gt;20%</div>
         </Card>
       </div>
 

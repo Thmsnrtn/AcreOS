@@ -282,7 +282,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                 <AccordionTrigger className="px-3 py-2 hover:bg-acr-bg-sunken/50 text-sm [&[data-state=open]>svg]:rotate-180">
                   <div className="flex items-center gap-2 flex-1 text-left">
                     <span className="font-medium">{cat.label}</span>
-                    <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
+                    <Badge variant="secondary" className="text-micro bg-acr-bg-sunken text-muted-foreground">
                       {progress.checked}/{progress.total}
                     </Badge>
                   </div>

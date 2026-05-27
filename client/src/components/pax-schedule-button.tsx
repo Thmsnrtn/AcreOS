@@ -121,7 +121,7 @@ export function PaxScheduleButton({ currentPrompt, disabled }: PaxScheduleButton
 
             <div>
               <p className="text-xs text-muted-foreground mb-1 block">Prompt preview</p>
-              <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground line-clamp-3">
+              <div className="rounded-md border bg-muted/30 p-2 text-caption text-muted-foreground line-clamp-3">
                 {currentPrompt}
               </div>
             </div>

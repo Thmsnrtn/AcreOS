@@ -100,7 +100,7 @@ export default function FounderChatPage() {
                 {headerTitle}
               </h1>
               {isStreaming && (
-                <p className="text-[10px] text-acr-brand" aria-live="polite">
+                <p className="text-micro text-acr-brand" aria-live="polite">
                   streaming…
                 </p>
               )}
@@ -128,7 +128,7 @@ export default function FounderChatPage() {
             aria-label={`Switch mode. Currently ${personaMode === "founder" ? "Founder" : "Customer"} mode.`}
             data-testid="chat-header-persona-chip"
             style={{ minHeight: TOUCH_TARGET_PT }}
-            className="md:hidden self-start inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 text-[11px] font-medium text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="md:hidden self-start inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 text-caption font-medium text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="text-muted-foreground">Mode:</span>
             <span>{personaMode === "founder" ? "Founder" : "Customer"}</span>

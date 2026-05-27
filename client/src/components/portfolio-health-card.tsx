@@ -75,7 +75,7 @@ function DimensionBar({ dimension }: { dimension: HealthDimension }) {
 
   return (
     <div className="space-y-0.5">
-      <div className="flex justify-between text-[10px]">
+      <div className="flex justify-between text-micro">
         <span className="text-muted-foreground">{dimension.label}</span>
         <span className="font-medium">{dimension.score}</span>
       </div>
@@ -127,7 +127,7 @@ export function PortfolioHealthCard() {
 
           {/* Top 2 action items */}
           {data.topActions.slice(0, 2).map((action, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[10px] text-muted-foreground">
+            <div key={i} className="flex items-start gap-1.5 text-micro text-muted-foreground">
               <AlertTriangle className="w-3 h-3 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
               <span className="truncate">{action}</span>
             </div>

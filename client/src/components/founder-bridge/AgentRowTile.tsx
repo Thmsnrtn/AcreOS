@@ -37,7 +37,7 @@ export function AgentRowTile({ agents, lastSyncAt, isLoading, onDiscuss }: Agent
     <BridgeTile label="Agent system status" onDiscuss={onDiscuss} testId="bridge-tile-agents">
       <div className="flex flex-col gap-3 p-4 md:p-5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+          <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
             Agents
           </span>
           <div className="flex items-center gap-1.5">
@@ -96,7 +96,7 @@ function LastSync({ at }: { at?: string | Date | null }) {
     const id = setInterval(() => force((n) => n + 1), 1_000);
     return () => clearInterval(id);
   }, []);
-  if (!at) return <span className="font-mono text-[10px] text-muted-foreground/60">—</span>;
+  if (!at) return <span className="font-mono text-micro text-muted-foreground/60">—</span>;
   const stamp = typeof at === "string" ? new Date(at) : at;
   const ageSec = Math.max(0, Math.round((Date.now() - stamp.getTime()) / 1000));
   const label = ageSec < 60
@@ -105,7 +105,7 @@ function LastSync({ at }: { at?: string | Date | null }) {
       ? `${Math.round(ageSec / 60)}m`
       : `${Math.round(ageSec / 3_600)}h`;
   return (
-    <span className="font-mono text-[10px] text-muted-foreground/80" aria-label={`Last sync ${label} ago`}>
+    <span className="font-mono text-micro text-muted-foreground/80" aria-label={`Last sync ${label} ago`}>
       sync · {label}
     </span>
   );

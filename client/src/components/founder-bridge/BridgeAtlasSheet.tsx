@@ -167,7 +167,7 @@ export function BridgeAtlasSheet({
               {isStreaming ? <LiveDot label="Atlas streaming" /> : null}
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+              <p className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
                 Atlas
               </p>
               <p className="line-clamp-2 text-sm text-foreground/90">

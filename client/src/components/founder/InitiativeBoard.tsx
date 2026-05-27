@@ -109,7 +109,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
           <ul aria-labelledby={`evidence-${initiative.id}`} className="space-y-1 list-none p-0 m-0">
             {evidence.map((e, i) => (
               <li key={i} className="flex items-start gap-2 text-xs">
-                <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 capitalize">{e.type}</Badge>
+                <Badge variant="outline" className="text-micro h-4 px-1 shrink-0 capitalize">{e.type}</Badge>
                 <span>{e.description}{e.value ? `: ${e.value}` : ""}</span>
               </li>
             ))}
@@ -260,7 +260,7 @@ export function InitiativeBoard() {
               aria-checked={filter === "proposed"}
               size="sm"
               variant={filter === "proposed" ? "default" : "ghost"}
-              className="h-6 text-[10px]"
+              className="h-6 text-micro"
               onClick={() => setFilter("proposed")}
             >
               Pending
@@ -271,7 +271,7 @@ export function InitiativeBoard() {
               aria-checked={filter === "all"}
               size="sm"
               variant={filter === "all" ? "default" : "ghost"}
-              className="h-6 text-[10px]"
+              className="h-6 text-micro"
               onClick={() => setFilter("all")}
             >
               All

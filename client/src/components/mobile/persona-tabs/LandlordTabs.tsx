@@ -246,7 +246,7 @@ export function LandlordToday() {
     <div className="space-y-5">
       {/* Overnight rent */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <Banknote className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
           Overnight rent
         </h2>
@@ -263,7 +263,7 @@ export function LandlordToday() {
               <div className="text-3xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                 {fmtMoney(overnightTotalCents)}
               </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-caption text-muted-foreground mt-0.5">
                 {overnightCount} payment{overnightCount === 1 ? "" : "s"} since midnight
                 {hapOvernight > 0 ? ` · ${fmtMoney(hapOvernight)} HAP` : ""}
               </div>
@@ -275,7 +275,7 @@ export function LandlordToday() {
 
       {/* Tickets past SLA */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <Wrench className="h-3.5 w-3.5 text-amber-500" aria-hidden />
           Tickets aging
         </h2>
@@ -320,7 +320,7 @@ export function LandlordToday() {
                       )}>
                         {t._sla.pastSla ? overLabel : `${Math.round(t._sla.agedHours)}h`}
                       </div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <div className="text-micro uppercase tracking-wide text-muted-foreground">
                         SLA {t._sla.slaHours}h
                       </div>
                     </div>
@@ -334,7 +334,7 @@ export function LandlordToday() {
 
       {/* Leases expiring */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <CalendarClock className="h-3.5 w-3.5 text-amber-500" aria-hidden />
           Leases expiring &lt; 60d
         </h2>
@@ -380,7 +380,7 @@ export function LandlordToday() {
                       )}>
                         {l.daysToExpiry}d
                       </div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <div className="text-micro uppercase tracking-wide text-muted-foreground">
                         to expiry
                       </div>
                     </div>
@@ -394,7 +394,7 @@ export function LandlordToday() {
 
       {/* HAP recerts */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <ShieldCheck className="h-3.5 w-3.5 text-sky-500" aria-hidden />
           HAP recerts &lt; 60d
         </h2>
@@ -437,7 +437,7 @@ export function LandlordToday() {
                       )}>
                         {l.daysUntilRecert}d
                       </div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <div className="text-micro uppercase tracking-wide text-muted-foreground">
                         to recert
                       </div>
                     </div>
@@ -669,7 +669,7 @@ function StatTile({
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className={cn(
@@ -678,7 +678,7 @@ function StatTile({
       )}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-caption text-muted-foreground mt-0.5">{sub}</div>}
     </Card>
   );
 }

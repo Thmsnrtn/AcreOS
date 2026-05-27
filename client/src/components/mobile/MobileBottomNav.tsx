@@ -56,7 +56,7 @@ export function MobileBottomNav() {
                   <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
                 </div>
                 <span className={cn(
-                  "text-[11px] font-medium truncate",
+                  "text-caption font-medium truncate",
                   isActive && "text-primary"
                 )}>
                   {item.label}
@@ -86,7 +86,7 @@ export function MobileBottomNav() {
               <MoreHorizontal className={cn("w-6 h-6", isDrawerOpen && "text-primary")} aria-hidden="true" />
             </div>
             <span className={cn(
-              "text-[11px] font-medium truncate",
+              "text-caption font-medium truncate",
               isDrawerOpen && "text-primary"
             )}>
               More

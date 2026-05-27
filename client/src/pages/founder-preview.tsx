@@ -193,19 +193,19 @@ function PendingPreviewRow({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-micro">
               {row.agentCodename}
             </Badge>
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-micro">
               {row.itemType}
             </Badge>
             {row.confidence != null && (
-              <span className="text-[10px] text-muted-foreground tabular-nums">
+              <span className="text-micro text-muted-foreground tabular-nums">
                 {row.confidence}% confidence
               </span>
             )}
             {row.estimatedImpactCents != null && (
-              <span className="text-[10px] text-muted-foreground tabular-nums">
+              <span className="text-micro text-muted-foreground tabular-nums">
                 {usd(row.estimatedImpactCents / 100)} impact
               </span>
             )}
@@ -259,11 +259,11 @@ function RecentPreviewRow({ row }: { row: PreviewRow }) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-0.5">
-          <code className="text-[10px] font-mono text-muted-foreground">{row.agentCodename}</code>
-          <span className="text-[10px] text-muted-foreground" aria-hidden="true">·</span>
-          <span className="text-[10px] text-muted-foreground">{statusMeta.label}</span>
-          <span className="text-[10px] text-muted-foreground" aria-hidden="true">·</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <code className="text-micro font-mono text-muted-foreground">{row.agentCodename}</code>
+          <span className="text-micro text-muted-foreground" aria-hidden="true">·</span>
+          <span className="text-micro text-muted-foreground">{statusMeta.label}</span>
+          <span className="text-micro text-muted-foreground" aria-hidden="true">·</span>
+          <span className="text-micro text-muted-foreground tabular-nums">
             {relative(row.plannedAt)}
           </span>
         </div>

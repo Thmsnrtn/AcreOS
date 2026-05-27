@@ -78,7 +78,7 @@ export function TriggerCardArtifact({
               {trigger.title}
             </h4>
             {trigger.kind && (
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-micro">
                 {trigger.kind}
               </Badge>
             )}
@@ -86,7 +86,7 @@ export function TriggerCardArtifact({
               <Badge
                 variant="secondary"
                 className={
-                  "text-[10px] tabular-nums " +
+                  "text-micro tabular-nums " +
                   (delta >= 0
                     ? "bg-acr-pos-soft text-acr-pos border-transparent"
                     : "bg-acr-neg-soft text-acr-neg border-transparent")

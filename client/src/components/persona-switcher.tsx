@@ -82,7 +82,7 @@ export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
         </motion.button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64" data-testid="persona-switcher-menu">
-        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <DropdownMenuLabel className="text-caption uppercase tracking-wider text-muted-foreground">
           Switch mode
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -105,10 +105,10 @@ export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
                     <Check className="h-3.5 w-3.5 text-acr-brand" aria-hidden="true" />
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground">{MODE_DESC[m]}</div>
+                <div className="text-caption text-muted-foreground">{MODE_DESC[m]}</div>
               </div>
               {m === "customer" && (
-                <kbd className="ml-2 mt-0.5 hidden shrink-0 items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] sm:inline-flex">
+                <kbd className="ml-2 mt-0.5 hidden shrink-0 items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-micro sm:inline-flex">
                   ⌘;
                 </kbd>
               )}

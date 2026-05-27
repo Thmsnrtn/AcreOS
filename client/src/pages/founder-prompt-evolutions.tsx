@@ -253,7 +253,7 @@ function EvolutionCard({
             {currentPrompt ? (
               <PromptDiffViewer current={currentPrompt} proposed={proposal.proposedPrompt} />
             ) : (
-              <pre className="bg-muted/50 p-3 rounded text-[11px] whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">
+              <pre className="bg-muted/50 p-3 rounded text-caption whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">
                 {proposal.proposedPrompt}
               </pre>
             )}

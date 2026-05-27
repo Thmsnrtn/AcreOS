@@ -72,7 +72,7 @@ export function ConversionFunnel({
                   }}
                   data-testid={`funnel-stage-${stage.key}`}
                 >
-                  <span className="text-white text-[10px] font-bold truncate px-1 tabular-nums">
+                  <span className="text-white text-micro font-bold truncate px-1 tabular-nums">
                     {stage.count > 0 ? fmtCount(stage.count) : ""}
                   </span>
                   {idx < stages.length - 1 && (
@@ -103,8 +103,8 @@ export function ConversionFunnel({
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: stage.color }}
               />
-              <span className="text-[10px] text-muted-foreground">{stage.label}</span>
-              <span className="text-[10px] font-semibold tabular-nums">{fmtCount(stage.count)}</span>
+              <span className="text-micro text-muted-foreground">{stage.label}</span>
+              <span className="text-micro font-semibold tabular-nums">{fmtCount(stage.count)}</span>
             </li>
           ))}
         </ul>

@@ -160,7 +160,7 @@ export default function OnboardingWalkthrough() {
                       {agent.emoji}
                     </div>
                     <p className="text-xs text-muted-foreground font-medium">{agent.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{agent.role}</p>
+                    <p className="text-micro text-muted-foreground">{agent.role}</p>
                   </div>
                 ))}
               </div>

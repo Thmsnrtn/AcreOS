@@ -136,11 +136,11 @@ function MemoryCard({
     <div className="flex items-start gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 group hover:bg-muted/20 transition-colors">
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", meta.badgeClass)}>
+          <Badge variant="outline" className={cn("text-micro px-1.5 py-0", meta.badgeClass)}>
             {meta.label}
           </Badge>
           {memory.key && (
-            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]">
+            <span className="text-micro font-mono text-muted-foreground truncate max-w-[140px]">
               {memory.key}
             </span>
           )}
@@ -149,7 +149,7 @@ function MemoryCard({
         {isTruncatable && (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-0.5 text-micro text-muted-foreground hover:text-foreground transition-colors"
           >
             {expanded ? (
               <>
@@ -162,7 +162,7 @@ function MemoryCard({
             )}
           </button>
         )}
-        <p className="text-[10px] text-muted-foreground/60">
+        <p className="text-micro text-muted-foreground/60">
           {relative(memory.createdAt)}
         </p>
       </div>
@@ -293,11 +293,11 @@ export function PaxMemoryPanel({ isOpen, open, onClose, orgId }: PaxMemoryPanelP
                   <div className="flex items-center gap-1.5">
                     <Badge
                       variant="outline"
-                      className={cn("text-[10px] px-1.5 py-0", meta.badgeClass)}
+                      className={cn("text-micro px-1.5 py-0", meta.badgeClass)}
                     >
                       {meta.label}
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-micro text-muted-foreground">
                       {items.length}
                     </span>
                   </div>
@@ -320,7 +320,7 @@ export function PaxMemoryPanel({ isOpen, open, onClose, orgId }: PaxMemoryPanelP
         {/* Footer */}
         {memories.length > 0 && (
           <div className="flex-shrink-0 px-4 py-2 border-t border-border">
-            <p className="text-[10px] text-muted-foreground/60">
+            <p className="text-micro text-muted-foreground/60">
               {memories.length} entr{memories.length === 1 ? "y" : "ies"} ·
               Pax learns from your feedback and conversations
             </p>

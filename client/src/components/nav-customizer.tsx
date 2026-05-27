@@ -119,7 +119,7 @@ function ReorderList({
       {/* Disabled items — flat list to add */}
       {disabledItems.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 pt-1">
+          <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 pt-1">
             Available to add
           </p>
           {disabledItems.map((item) => {

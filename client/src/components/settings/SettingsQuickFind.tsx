@@ -141,7 +141,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
           aria-expanded={open && results.length > 0}
           className="w-full h-10 pl-9 pr-16 rounded-card border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
-        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden sm:inline-flex items-center gap-0.5">
+        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-micro text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden sm:inline-flex items-center gap-0.5">
           <Command className="w-2.5 h-2.5" aria-hidden="true" />K
         </kbd>
       </div>

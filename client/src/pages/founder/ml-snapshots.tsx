@@ -135,7 +135,7 @@ function SummaryCard({ count }: { count: SnapshotCount }) {
         </div>
         <p className="text-xs text-muted-foreground">
           <span className="font-medium">Wired from: </span>
-          <code className="text-[11px]">{WIRING_INFO[t]}</code>
+          <code className="text-caption">{WIRING_INFO[t]}</code>
         </p>
       </CardContent>
     </Card>
@@ -216,12 +216,12 @@ function RecentSection() {
               {s.subjectType} #{s.subjectId}
             </span>
             {s.organizationId !== null && (
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-micro">
                 org #{s.organizationId}
               </Badge>
             )}
             {s.outcomeAt && (
-              <Badge variant="default" className="text-[10px]">
+              <Badge variant="default" className="text-micro">
                 paired
               </Badge>
             )}

@@ -122,10 +122,10 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
             <BookOpen className="w-4 h-4 text-primary" />
             Pax Knowledge Base
           </SheetTitle>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Files Pax always has in context. Great for investment criteria, templates, and checklists.
           </p>
-          <p className="text-[11px] text-muted-foreground/70 font-medium">
+          <p className="text-caption text-muted-foreground/70 font-medium">
             {files.length} of {MAX_KB_FILES} files used
           </p>
         </SheetHeader>
@@ -153,8 +153,8 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
           <p className="text-xs text-muted-foreground">
             {uploading ? "Uploading…" : "Drop files or click to upload"}
           </p>
-          <p className="text-[10px] text-muted-foreground/60 mt-0.5">PDF, DOCX, CSV, TXT · max 10 MB</p>
-          <p className="text-[10px] text-acr-warn/80 mt-1">Only upload templates and criteria, not personal data.</p>
+          <p className="text-micro text-muted-foreground/60 mt-0.5">PDF, DOCX, CSV, TXT · max 10 MB</p>
+          <p className="text-micro text-acr-warn/80 mt-1">Only upload templates and criteria, not personal data.</p>
         </button>
         <input
           ref={fileInputRef}
@@ -183,7 +183,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{file.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{fmtBytes(file.sizeBytes)}</p>
+                  <p className="text-micro text-muted-foreground">{fmtBytes(file.sizeBytes)}</p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <Switch
@@ -202,7 +202,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
               <Textarea
                 defaultValue={file.description ?? ""}
                 placeholder="Add a description…"
-                className="text-[11px] min-h-[40px] resize-none"
+                className="text-caption min-h-[40px] resize-none"
                 rows={1}
                 onBlur={(e) => {
                   if (e.target.value !== (file.description ?? "")) {

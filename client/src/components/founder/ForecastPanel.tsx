@@ -54,9 +54,9 @@ export default function ForecastPanel() {
           <div className="grid grid-cols-3 gap-2">
             {mrr.projections.slice(0, 3).map((p: any) => (
               <div key={p.month} className="p-2 rounded-card bg-acr-bg-sunken/40 border border-border/30 text-center">
-                <p className="text-[10px] text-muted-foreground">{p.month}</p>
+                <p className="text-micro text-muted-foreground">{p.month}</p>
                 <p className="text-sm font-medium text-muted-foreground tabular-nums">{usd(p.projected, { noCents: true })}</p>
-                <p className="text-[10px] text-muted-foreground tabular-nums">{usd(p.low, { noCents: true })}–{usd(p.high, { noCents: true })}</p>
+                <p className="text-micro text-muted-foreground tabular-nums">{usd(p.low, { noCents: true })}–{usd(p.high, { noCents: true })}</p>
               </div>
             ))}
           </div>
@@ -75,7 +75,7 @@ export default function ForecastPanel() {
                 {m.estimatedDate || "—"}
               </span>
               {m.confidence && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                <span className={`text-micro px-1.5 py-0.5 rounded ${
                   m.confidence === "high" ? "bg-acr-pos-soft/30 text-acr-pos" :
                   m.confidence === "medium" ? "bg-acr-warn-soft/30 text-acr-warn" :
                   "bg-acr-neg-soft/30 text-acr-neg"

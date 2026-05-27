@@ -199,9 +199,9 @@ export default function LeasesPage() {
                     <td className="px-3 py-2">{l.endDate ?? "month-to-month"}</td>
                     <td className="px-3 py-2 text-right">{fmtUsd(l.monthlyRentCents)}</td>
                     <td className="px-3 py-2 text-xs space-x-1">
-                      {l.isSection8 && <Badge variant="default" className="text-[10px]">Sec 8</Badge>}
-                      {l.versionNumber > 1 && <Badge variant="outline" className="text-[10px]">v{l.versionNumber}</Badge>}
-                      <Badge variant="outline" className="text-[10px]">{l.state}</Badge>
+                      {l.isSection8 && <Badge variant="default" className="text-micro">Sec 8</Badge>}
+                      {l.versionNumber > 1 && <Badge variant="outline" className="text-micro">v{l.versionNumber}</Badge>}
+                      <Badge variant="outline" className="text-micro">{l.state}</Badge>
                     </td>
                   </tr>
                 ))}

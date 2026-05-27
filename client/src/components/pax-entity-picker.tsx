@@ -58,7 +58,7 @@ export function PaxEntityPicker({ query, onSelect, onClose }: EntityPickerProps)
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-border rounded-card shadow-lg z-50 overflow-hidden">
       <div className="px-3 py-1.5 border-b">
-        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Mention an entity</p>
+        <p className="text-micro text-muted-foreground font-medium uppercase tracking-wide">Mention an entity</p>
       </div>
       {results.map((entity, i) => {
         const Icon = TYPE_ICONS[entity.type];
@@ -73,7 +73,7 @@ export function PaxEntityPicker({ query, onSelect, onClose }: EntityPickerProps)
             <Icon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground" />
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{entity.name}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{entity.preview}</p>
+              <p className="text-micro text-muted-foreground truncate">{entity.preview}</p>
             </div>
             <span className="text-[9px] text-muted-foreground/60 capitalize flex-shrink-0 mt-0.5">{entity.type}</span>
           </button>

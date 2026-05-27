@@ -169,7 +169,7 @@ function TrendCard({ series, upIsGood }: { series: TrendSeries; upIsGood: boolea
           <CardTitle className="text-sm">{series.label}</CardTitle>
           <Badge
             variant="secondary"
-            className={`text-[10px] ${directionMeta.color}`}
+            className={`text-micro ${directionMeta.color}`}
             aria-label={`Trend: ${directionMeta.label}`}
           >
             <directionMeta.Icon className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -177,7 +177,7 @@ function TrendCard({ series, upIsGood }: { series: TrendSeries; upIsGood: boolea
           </Badge>
         </div>
         {series.latest != null && (
-          <p className="text-[11px] text-muted-foreground tabular-nums">
+          <p className="text-caption text-muted-foreground tabular-nums">
             Latest: {latestText}
           </p>
         )}

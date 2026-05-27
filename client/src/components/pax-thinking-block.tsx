@@ -24,7 +24,7 @@ export function PaxThinkingBlock({ content, isStreaming }: PaxThinkingBlockProps
             isStreaming ? "text-primary animate-pulse" : "text-muted-foreground/60"
           )}
         />
-        <span className="text-[10px] text-muted-foreground/70 italic font-medium">
+        <span className="text-micro text-muted-foreground/70 italic font-medium">
           {isStreaming ? "Pax is reasoning…" : "How Pax reasoned"}
         </span>
         {!isStreaming && (
@@ -35,7 +35,7 @@ export function PaxThinkingBlock({ content, isStreaming }: PaxThinkingBlockProps
       </button>
 
       {!expanded && !isStreaming && preview && (
-        <p className="text-[10px] text-muted-foreground/50 italic truncate mt-0.5">
+        <p className="text-micro text-muted-foreground/50 italic truncate mt-0.5">
           {preview}…
         </p>
       )}

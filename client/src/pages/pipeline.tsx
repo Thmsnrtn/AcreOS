@@ -156,7 +156,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
             <Flame className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{hotDeals} hot</p>
-              <p className="text-[10px] text-muted-foreground">accepted / in escrow</p>
+              <p className="text-micro text-muted-foreground">accepted / in escrow</p>
             </div>
           </div>
         )}
@@ -165,7 +165,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
             <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{stalledDeals} stalled</p>
-              <p className="text-[10px] text-muted-foreground">14+ days idle</p>
+              <p className="text-micro text-muted-foreground">14+ days idle</p>
             </div>
           </div>
         )}
@@ -176,7 +176,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
               <p className="text-xs font-semibold tabular-nums">
                 {dollarsCompact(totalPipelineValue * 100)}
               </p>
-              <p className="text-[10px] text-muted-foreground">in pipeline</p>
+              <p className="text-micro text-muted-foreground">in pipeline</p>
             </div>
           </div>
         )}
@@ -185,7 +185,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
             <TrendingUp className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">Score {avgScore}</p>
-              <p className="text-[10px] text-muted-foreground">avg lead quality</p>
+              <p className="text-micro text-muted-foreground">avg lead quality</p>
             </div>
           </div>
         )}
@@ -196,7 +196,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
               <p className="text-xs font-semibold tabular-nums">
                 {dollarsCompact(closedValue * 100)}
               </p>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-micro text-muted-foreground">
                 <span className="tabular-nums">{closedDeals.length}</span> closed
               </p>
             </div>
@@ -288,14 +288,14 @@ export default function PipelinePage() {
             <GitBranch className="h-4 w-4" aria-hidden="true" />
             <span>Board</span>
             {activeDealsCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5 tabular-nums">{activeDealsCount}</Badge>
+              <Badge variant="secondary" className="text-micro px-1.5 py-0 ml-0.5 tabular-nums">{activeDealsCount}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="leads" className="flex items-center gap-2 min-w-max" data-testid="tab-leads">
             <Users className="h-4 w-4" aria-hidden="true" />
             <span>{leadsLabel}</span>
             {activeLeads > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5 tabular-nums">{activeLeads}</Badge>
+              <Badge variant="secondary" className="text-micro px-1.5 py-0 ml-0.5 tabular-nums">{activeLeads}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="properties" className="flex items-center gap-2 min-w-max" data-testid="tab-properties">

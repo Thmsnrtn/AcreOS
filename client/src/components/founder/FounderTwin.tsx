@@ -69,8 +69,8 @@ function DraftCard({ draft }: { draft: Draft }) {
         <div>
           <p className="text-sm font-semibold m-0">{draft.title}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <Badge variant="outline" className="text-[10px] h-4">{typeLabel}</Badge>
-            <time dateTime={draft.createdAt} className="text-[10px] text-muted-foreground tabular-nums">{new Date(draft.createdAt).toLocaleString()}</time>
+            <Badge variant="outline" className="text-micro h-4">{typeLabel}</Badge>
+            <time dateTime={draft.createdAt} className="text-micro text-muted-foreground tabular-nums">{new Date(draft.createdAt).toLocaleString()}</time>
           </div>
         </div>
         <Badge

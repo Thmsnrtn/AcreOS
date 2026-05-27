@@ -227,16 +227,16 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
         <ul aria-label="Chart legend" className="flex items-center gap-4 justify-end mt-1 list-none p-0 m-0">
           <li className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-accent" />
-            <span className="text-[10px] text-muted-foreground">Actual</span>
+            <span className="text-micro text-muted-foreground">Actual</span>
           </li>
           <li className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-brand opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
-            <span className="text-[10px] text-muted-foreground">Forecast</span>
+            <span className="text-micro text-muted-foreground">Forecast</span>
           </li>
           {goalCents && goalCents > 0 && (
             <li className="flex items-center gap-1.5">
               <span aria-hidden="true" className="h-0.5 w-4 bg-acr-warn" style={{ borderTop: "2px dashed #f59e0b" }} />
-              <span className="text-[10px] text-muted-foreground">Goal</span>
+              <span className="text-micro text-muted-foreground">Goal</span>
             </li>
           )}
         </ul>

@@ -114,7 +114,7 @@ export function LcsBenchmarkPopover({ propertyId, children }: LcsBenchmarkPopove
                   : " — at median"}
             </p>
 
-            <p className="text-[10px] text-muted-foreground">{data.benchmarks.source}</p>
+            <p className="text-micro text-muted-foreground">{data.benchmarks.source}</p>
           </>
         ) : (
           <p className="text-xs text-muted-foreground">Benchmark data unavailable for this property.</p>

@@ -186,7 +186,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
                       /{tool.alias}
                     </span>
                     {tool.argsHint && (
-                      <span className="font-mono text-[10px] text-muted-foreground">
+                      <span className="font-mono text-micro text-muted-foreground">
                         {tool.argsHint}
                       </span>
                     )}
@@ -196,7 +196,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
                     {tool.destructive && (
                       <Badge
                         variant="secondary"
-                        className="ml-auto text-[10px] bg-acr-warn-soft text-acr-warn border-transparent"
+                        className="ml-auto text-micro bg-acr-warn-soft text-acr-warn border-transparent"
                       >
                         destructive
                       </Badge>
@@ -274,11 +274,11 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
       </form>
       <p
         id="atlas-composer-hint"
-        className="hidden sm:block px-3 pb-2 text-[10px] text-muted-foreground"
+        className="hidden sm:block px-3 pb-2 text-micro text-muted-foreground"
       >
-        Press <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">⌘</kbd>
-        <kbd className="ml-0.5 px-1 py-0.5 rounded bg-muted font-mono text-[10px]">Enter</kbd> to send · type{" "}
-        <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">/</kbd> for commands
+        Press <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-micro">⌘</kbd>
+        <kbd className="ml-0.5 px-1 py-0.5 rounded bg-muted font-mono text-micro">Enter</kbd> to send · type{" "}
+        <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-micro">/</kbd> for commands
       </p>
     </div>
   );

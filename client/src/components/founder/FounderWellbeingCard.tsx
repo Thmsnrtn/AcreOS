@@ -85,7 +85,7 @@ export function FounderWellbeingCard() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2"><Heart className="h-4 w-4" aria-hidden="true" /> Founder wellbeing</CardTitle>
-          <Button type="button" size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => assessMutation.mutate()} disabled={assessMutation.isPending} aria-busy={assessMutation.isPending} aria-label="Refresh wellbeing assessment">
+          <Button type="button" size="sm" variant="ghost" className="h-6 text-micro" onClick={() => assessMutation.mutate()} disabled={assessMutation.isPending} aria-busy={assessMutation.isPending} aria-label="Refresh wellbeing assessment">
             <RefreshCw className={`h-2.5 w-2.5 mr-1 ${assessMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" /> Refresh
           </Button>
         </div>

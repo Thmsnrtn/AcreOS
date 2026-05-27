@@ -130,7 +130,7 @@ export default function AgentDetailPage() {
                   agent's tone so it reads as part of the identity, not as
                   a separate badge. */}
               <span
-                className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-[11px] font-semibold flex items-center justify-center ${letterClass}`}
+                className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-caption font-semibold flex items-center justify-center ${letterClass}`}
                 aria-label={`${identity.friendlyName} letter mark`}
               >
                 {identity.letter}
@@ -248,7 +248,7 @@ export default function AgentDetailPage() {
                     <div className="text-xs text-muted-foreground">
                       {actions.length > 0 ? actions.join(", ") : "None configured"}
                     </div>
-                    {active && <Badge variant="outline" className="mt-1 text-[10px]">Active</Badge>}
+                    {active && <Badge variant="outline" className="mt-1 text-micro">Active</Badge>}
                   </li>
                 );
               })}
@@ -278,7 +278,7 @@ export default function AgentDetailPage() {
                           {action.createdAt && ` · ${relative(action.createdAt)}`}
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] shrink-0">{action.actionType}</Badge>
+                      <Badge variant="outline" className="text-micro shrink-0">{action.actionType}</Badge>
                     </li>
                   );
                 })}

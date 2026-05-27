@@ -72,7 +72,7 @@ export function PersonaSheet({ open, onOpenChange }: PersonaSheetProps) {
                       <Check className="h-3.5 w-3.5 text-acr-brand" aria-hidden="true" />
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">{MODE_DESC[m]}</div>
+                  <div className="text-caption text-muted-foreground">{MODE_DESC[m]}</div>
                 </div>
               </button>
             );

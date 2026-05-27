@@ -85,11 +85,11 @@ function StepPill({ step }: { step: WorkflowStep }) {
       <span aria-hidden="true" className="text-base">{avatar}</span>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium truncate m-0">{role}</p>
-        <p className="text-[10px] text-muted-foreground truncate m-0">{action}</p>
+        <p className="text-micro text-muted-foreground truncate m-0">{action}</p>
       </div>
       <Icon className={`h-3.5 w-3.5 ${style.color} ${step.status === "running" ? "animate-spin" : ""}`} aria-hidden="true" />
       {step.durationMs && (
-        <span className="text-[10px] text-muted-foreground tabular-nums">{durationText}</span>
+        <span className="text-micro text-muted-foreground tabular-nums">{durationText}</span>
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { type TargetCounty, insertTargetCountySchema } from "@shared/schema";
 import { z } from "zod";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -83,20 +84,18 @@ function useCreateTargetCounty() {
 }
 
 function useUpdateTargetCounty() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & Partial<CountyFormValues>) => {
+  // Optimistic update — county settings reflect instantly in the list,
+  // rolling back via the shared `useOptimisticUpdate` snapshot on
+  // server rejection. The destructive toast in the factory's onError
+  // covers the previous hand-rolled rejection message.
+  return useOptimisticUpdate<{ id: number } & Partial<CountyFormValues>>({
+    mutationFn: async ({ id, ...data }) => {
       const res = await apiRequest("PUT", `/api/target-counties/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/target-counties"] });
-      toast({ title: "County updated", description: "Target county updated successfully." });
-    },
-    onError: () => {
-      toast({ title: "Couldn't update county", description: `Network error. ${reassurance}`, variant: "destructive" });
-    },
+    listKeys: [["/api/target-counties"]],
+    getId: ({ id }) => id,
+    successToast: { title: "County updated", description: "Target county updated successfully." },
   });
 }
 

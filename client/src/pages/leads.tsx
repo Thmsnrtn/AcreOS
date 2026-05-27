@@ -1273,10 +1273,10 @@ function LeadsPageDesktop() {
                   {tierD > 0 && <div className="bg-muted-foreground/30 transition-all" style={{ width: `${(tierD/total)*100}%` }} title={`D tier: ${tierD}`} />}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {tierA > 0 && <span className="text-[10px] text-acr-pos dark:text-acr-pos">A tier <strong className="tabular-nums">{tierA}</strong></span>}
-                  {tierB > 0 && <span className="text-[10px] text-acr-accent dark:text-acr-accent">B tier <strong className="tabular-nums">{tierB}</strong></span>}
-                  {tierC > 0 && <span className="text-[10px] text-acr-warn dark:text-acr-warn">C tier <strong className="tabular-nums">{tierC}</strong></span>}
-                  {tierD > 0 && <span className="text-[10px] text-muted-foreground">D tier <strong className="tabular-nums">{tierD}</strong></span>}
+                  {tierA > 0 && <span className="text-micro text-acr-pos dark:text-acr-pos">A tier <strong className="tabular-nums">{tierA}</strong></span>}
+                  {tierB > 0 && <span className="text-micro text-acr-accent dark:text-acr-accent">B tier <strong className="tabular-nums">{tierB}</strong></span>}
+                  {tierC > 0 && <span className="text-micro text-acr-warn dark:text-acr-warn">C tier <strong className="tabular-nums">{tierC}</strong></span>}
+                  {tierD > 0 && <span className="text-micro text-muted-foreground">D tier <strong className="tabular-nums">{tierD}</strong></span>}
                 </div>
               </div>
             );

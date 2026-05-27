@@ -83,19 +83,19 @@ export function CountyIntelligenceCard({ state, county, compact = false }: Count
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <p className="text-[10px] text-muted-foreground">Median $/acre</p>
+                  <p className="text-micro text-muted-foreground">Median $/acre</p>
                   <p className="text-sm font-semibold">
                     ${data.networkData.medianPricePerAcre?.toLocaleString() || "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-muted-foreground">Avg days to close</p>
+                  <p className="text-micro text-muted-foreground">Avg days to close</p>
                   <p className="text-sm font-semibold">
                     {data.networkData.avgDaysToClose || "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-muted-foreground">Top strategy</p>
+                  <p className="text-micro text-muted-foreground">Top strategy</p>
                   <p className="text-sm font-semibold capitalize">
                     {data.networkData.topStrategy?.replace(/_/g, " ") || "—"}
                   </p>

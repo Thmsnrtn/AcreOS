@@ -19,7 +19,7 @@ function inlineFormat(text: string): React.ReactNode {
       return (
         <code
           key={idx}
-          className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono"
+          className="bg-muted px-1 py-0.5 rounded text-caption font-mono"
         >
           {part.slice(1, -1)}
         </code>

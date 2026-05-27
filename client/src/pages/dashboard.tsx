@@ -588,7 +588,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground tabular-nums">{stage.value}</span>
                           {idx > 0 && funnelStages[idx - 1].value > 0 && (
-                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                            <span className="text-micro text-muted-foreground tabular-nums">
                               ({Math.round((stage.value / funnelStages[idx - 1].value) * 100)}% conv)
                             </span>
                           )}
@@ -610,7 +610,7 @@ export default function Dashboard() {
                           }}
                         >
                           {stage.pct >= 15 && (
-                            <span className="text-white text-[10px] font-semibold tabular-nums" aria-hidden="true">{stage.pct}%</span>
+                            <span className="text-white text-micro font-semibold tabular-nums" aria-hidden="true">{stage.pct}%</span>
                           )}
                         </div>
                       </div>

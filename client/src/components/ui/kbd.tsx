@@ -20,7 +20,7 @@ export const Kbd = React.forwardRef<HTMLElement, KbdProps>(
       className={cn(
         "inline-flex items-center font-mono border rounded bg-muted text-muted-foreground",
         size === "sm"
-          ? "px-[6px] py-0.5 text-[10px] min-w-[18px]"
+          ? "px-[6px] py-0.5 text-micro min-w-[18px]"
           : "px-2 py-1 text-xs min-w-[24px] shadow-sm",
         "justify-center",
         className,

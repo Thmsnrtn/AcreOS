@@ -41,7 +41,7 @@ function DebateCard({ debate }: { debate: Debate }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold m-0">{debate.proposition}</p>
-          <p className="text-[10px] text-muted-foreground m-0">{debate.category} &middot; <time dateTime={debate.createdAt} className="tabular-nums">{new Date(debate.createdAt).toLocaleString()}</time></p>
+          <p className="text-micro text-muted-foreground m-0">{debate.category} &middot; <time dateTime={debate.createdAt} className="tabular-nums">{new Date(debate.createdAt).toLocaleString()}</time></p>
         </div>
         <Badge
           variant="outline"
@@ -60,7 +60,7 @@ function DebateCard({ debate }: { debate: Debate }) {
       {args.filter(a => a.round === 1).length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           <section aria-labelledby={`for-heading-${debate.id}`}>
-            <p id={`for-heading-${debate.id}`} className="text-[10px] font-medium text-acr-pos mb-1">For</p>
+            <p id={`for-heading-${debate.id}`} className="text-micro font-medium text-acr-pos mb-1">For</p>
             <ul aria-labelledby={`for-heading-${debate.id}`} className="list-none p-0 m-0">
               {args.filter(a => a.position === "for" && a.round === 1).map((a, i) => (
                 <li key={i} className="text-xs p-2 rounded bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft mb-1">
@@ -71,7 +71,7 @@ function DebateCard({ debate }: { debate: Debate }) {
             </ul>
           </section>
           <section aria-labelledby={`against-heading-${debate.id}`}>
-            <p id={`against-heading-${debate.id}`} className="text-[10px] font-medium text-acr-neg mb-1">Against</p>
+            <p id={`against-heading-${debate.id}`} className="text-micro font-medium text-acr-neg mb-1">Against</p>
             <ul aria-labelledby={`against-heading-${debate.id}`} className="list-none p-0 m-0">
               {args.filter(a => a.position === "against" && a.round === 1).map((a, i) => (
                 <li key={i} className="text-xs p-2 rounded bg-acr-neg-soft dark:bg-acr-neg-soft/20 border border-acr-neg-soft mb-1">
@@ -87,7 +87,7 @@ function DebateCard({ debate }: { debate: Debate }) {
       {/* Round 2 Rebuttals */}
       {args.filter(a => a.round === 2).length > 0 && (
         <section aria-labelledby={`rebuttals-heading-${debate.id}`} className="space-y-1">
-          <p id={`rebuttals-heading-${debate.id}`} className="text-[10px] font-medium text-muted-foreground">Rebuttals</p>
+          <p id={`rebuttals-heading-${debate.id}`} className="text-micro font-medium text-muted-foreground">Rebuttals</p>
           <ul aria-labelledby={`rebuttals-heading-${debate.id}`} className="space-y-1 list-none p-0 m-0">
             {args.filter(a => a.round === 2).map((a, i) => (
               <li key={i} className={`text-xs p-2 rounded border ${a.position === "for" ? "border-acr-pos-soft" : "border-acr-neg-soft"}`}>
@@ -111,7 +111,7 @@ function DebateCard({ debate }: { debate: Debate }) {
           <ul aria-label="Vote details" className="flex-1 flex flex-wrap gap-1 list-none p-0 m-0">
             {votes.map((v, i) => (
               <li key={i}>
-                <Badge variant="outline" className={`text-[10px] h-4 ${v.vote === "for" ? "text-acr-pos" : v.vote === "against" ? "text-acr-neg" : "text-muted-foreground"}`} aria-label={`${AGENT_ROLES[v.agentCodename]}: ${v.vote}`}>
+                <Badge variant="outline" className={`text-micro h-4 ${v.vote === "for" ? "text-acr-pos" : v.vote === "against" ? "text-acr-neg" : "text-muted-foreground"}`} aria-label={`${AGENT_ROLES[v.agentCodename]}: ${v.vote}`}>
                   <span aria-hidden="true">{AGENT_AVATARS[v.agentCodename]}</span> {v.vote}
                 </Badge>
               </li>
@@ -141,7 +141,7 @@ function DebateCard({ debate }: { debate: Debate }) {
 
       {debate.ceoDecision && (
         <div className="text-xs border-t pt-2">
-          <span className="font-medium">CEO decision:</span> <Badge variant="outline" className="text-[10px] capitalize">{debate.ceoDecision}</Badge>
+          <span className="font-medium">CEO decision:</span> <Badge variant="outline" className="text-micro capitalize">{debate.ceoDecision}</Badge>
           {debate.ceoReasoning && <p className="text-muted-foreground mt-0.5 italic">{debate.ceoReasoning}</p>}
         </div>
       )}

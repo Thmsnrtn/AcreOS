@@ -293,7 +293,7 @@ function InsightsTabContent() {
           <h2 id="stale-leads-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
             Stale leads
-            <Badge variant="outline" className="text-[10px] tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
+            <Badge variant="outline" className="text-micro tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Leads with no recent contact">
             {staleLeads.map((lead) => {
@@ -347,7 +347,7 @@ function InsightsTabContent() {
           <h2 id="expiring-offers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
             Expiring offers
-            <Badge variant="destructive" className="text-[10px] tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
+            <Badge variant="destructive" className="text-micro tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Offers nearing expiration">
             {expiringOffers.map((offer) => {
@@ -399,7 +399,7 @@ function InsightsTabContent() {
           <h2 id="motivated-callers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
             <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
             Motivated callers
-            <Badge variant="outline" className="text-[10px] text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
+            <Badge variant="outline" className="text-micro text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Recently active leads who want to hear from you">
             {motivatedCallers.map((caller) => (

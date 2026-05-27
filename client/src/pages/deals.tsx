@@ -642,7 +642,7 @@ export default function DealsPage() {
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1" aria-hidden="true">
                 {stageDistribution.filter(s => s.count > 0).map((stage) => (
-                  <span key={stage.value} className="text-[10px] text-muted-foreground">
+                  <span key={stage.value} className="text-micro text-muted-foreground">
                     {stage.label} <strong>{stage.count}</strong>
                   </span>
                 ))}

@@ -183,7 +183,7 @@ export default function AccessibilitySettingsPage() {
                   aria-label="Speaking rate"
                   data-testid="slider-read-aloud-rate"
                 />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
+                <div className="flex justify-between text-micro text-muted-foreground">
                   <span>Slower</span>
                   <span>Default</span>
                   <span>Faster</span>

@@ -44,7 +44,7 @@ export function TelemetryTile({
       )}
     >
       <div className="flex flex-1 flex-col justify-between gap-3 p-4 md:p-5">
-        <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+        <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
           {label}
         </span>
         <div className="flex items-end justify-between gap-3">

@@ -754,7 +754,7 @@ export default function FieldScout() {
             </div>
             <div>
               <div className="font-bold text-sm">Field Scout</div>
-              <div className="text-[10px] text-muted-foreground font-mono">
+              <div className="text-micro text-muted-foreground font-mono">
                 {gpsDMSDisplay ?? gpsDisplay}
               </div>
               {gpsAccuracyInfo && (
@@ -1038,7 +1038,7 @@ export default function FieldScout() {
                 {checklistResults && (
                   <Badge
                     className={cn(
-                      "text-[10px]",
+                      "text-micro",
                       checklistResults.overallScore >= 80
                         ? "bg-acr-pos-soft/50 text-acr-pos"
                         : checklistResults.overallScore >= 50
@@ -1393,7 +1393,7 @@ export default function FieldScout() {
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-xs text-muted-foreground uppercase tracking-wide">Past Scout Visits</h2>
-            <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
+            <Badge variant="secondary" className="text-micro bg-acr-bg-sunken text-muted-foreground">
               {pastVisits.length} visit{pastVisits.length !== 1 ? "s" : ""}
             </Badge>
           </div>

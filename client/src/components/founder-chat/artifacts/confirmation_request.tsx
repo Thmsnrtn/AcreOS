@@ -102,7 +102,7 @@ export function ConfirmationRequestArtifact({
             </p>
             <Badge
               variant="secondary"
-              className="font-mono text-[10px] bg-background/60 text-muted-foreground border-transparent"
+              className="font-mono text-micro bg-background/60 text-muted-foreground border-transparent"
             >
               {toolCall.name}
             </Badge>

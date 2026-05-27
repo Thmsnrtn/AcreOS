@@ -231,15 +231,15 @@ function JourneyRowDisplay({ journey }: { journey: JourneyRow }) {
           <status.icon className={`h-4 w-4 ${status.color} shrink-0`} aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground">Org #<span className="tabular-nums">{journey.organizationId}</span></p>
-            <p className="text-[11px] text-muted-foreground tabular-nums">
+            <p className="text-caption text-muted-foreground tabular-nums">
               Started {relative(journey.startedAt)} · {stepLabel}
             </p>
           </div>
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-micro">
             {status.label}
           </Badge>
           {journey.founderFlag === "escalate" && (
-            <Badge variant="destructive" className="text-[10px]">
+            <Badge variant="destructive" className="text-micro">
               Call requested
             </Badge>
           )}

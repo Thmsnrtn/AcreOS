@@ -297,11 +297,11 @@ function PropertyIntelligencePanel({
       <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-10">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge variant="outline" className="text-[10px] capitalize">
+            <Badge variant="outline" className="text-micro capitalize">
               {property.status?.replace(/_/g, " ") || "Prospect"}
             </Badge>
             {intel.opportunityScore !== undefined && (
-              <Badge className="text-[10px] bg-primary/10 text-primary border-primary/20">
+              <Badge className="text-micro bg-primary/10 text-primary border-primary/20">
                 <Sparkles className="w-2.5 h-2.5 mr-0.5" />
                 {intel.opportunityScore} opp
               </Badge>
@@ -358,7 +358,7 @@ function PropertyIntelligencePanel({
                         style={{ width: `${intel.valueConfidence}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-muted-foreground">{intel.valueConfidence}% conf</span>
+                    <span className="text-micro text-muted-foreground">{intel.valueConfidence}% conf</span>
                   </div>
                 )}
               </div>
@@ -379,7 +379,7 @@ function PropertyIntelligencePanel({
 
         {/* Intelligence Score Rings */}
         <div className="p-3 border-b">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Property Intelligence</p>
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Property Intelligence</p>
           <div className="flex items-center justify-around">
             <ScoreRing
               score={intel.opportunityScore ?? 0}
@@ -410,10 +410,10 @@ function PropertyIntelligencePanel({
         {intel.estimatedValue && (
           <div className="p-3 border-b">
             <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">
                 6-Month Value Trend
               </p>
-              <div className={cn("flex items-center gap-0.5 text-[10px] font-semibold",
+              <div className={cn("flex items-center gap-0.5 text-micro font-semibold",
                 intel.marketTrend === "up" ? "text-acr-pos" :
                 intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground"
               )}>
@@ -448,7 +448,7 @@ function PropertyIntelligencePanel({
                     <RechartsTooltip
                       content={({ active, payload, label }) =>
                         active && payload?.length ? (
-                          <div className="bg-background border rounded px-2 py-1 text-[10px] shadow">
+                          <div className="bg-background border rounded px-2 py-1 text-micro shadow">
                             <div className="font-semibold">{label}</div>
                             <div className="tabular-nums">{usd(Number(payload[0].value), { noCents: true })}</div>
                           </div>
@@ -473,7 +473,7 @@ function PropertyIntelligencePanel({
 
         {/* Environmental Risk Radar */}
         <div className="p-3 border-b">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Environmental Risk Radar
           </p>
           {(() => {
@@ -515,7 +515,7 @@ function PropertyIntelligencePanel({
 
         {/* Terrain & Physical Attributes */}
         <div className="p-3 border-b">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Terrain & Physical</p>
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Terrain & Physical</p>
           <div className="space-y-0">
             {intel.slopeGrade !== undefined && (
               <IntelligenceRow
@@ -526,7 +526,7 @@ function PropertyIntelligencePanel({
                   <span className={getRiskColor(intel.slopeRisk ?? "low")}>
                     {intel.slopeGrade.toFixed(1)}°
                     {intel.slopeRisk && (
-                      <span className="ml-1 text-[10px] opacity-70">({intel.slopeRisk})</span>
+                      <span className="ml-1 text-micro opacity-70">({intel.slopeRisk})</span>
                     )}
                   </span>
                 }
@@ -540,7 +540,7 @@ function PropertyIntelligencePanel({
                 value={
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="cursor-help font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                      <span className="cursor-help font-mono text-micro bg-muted px-1.5 py-0.5 rounded">
                         {getSlopeAspectLabel(((lat * 13.7 + lng * 7.3) % 360 + 360) % 360).icon}{" "}
                         {getSlopeAspectLabel(((lat * 13.7 + lng * 7.3) % 360 + 360) % 360).label}
                       </span>
@@ -571,7 +571,7 @@ function PropertyIntelligencePanel({
               icon={Droplets}
               iconClass="text-acr-accent"
               value={
-                <span className={cn("font-mono text-[10px] px-1.5 py-0.5 rounded",
+                <span className={cn("font-mono text-micro px-1.5 py-0.5 rounded",
                   intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos" :
                   intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn" :
                   "bg-acr-neg-soft text-acr-neg"
@@ -601,7 +601,7 @@ function PropertyIntelligencePanel({
 
         {/* Utilities & Access */}
         <div className="p-3 border-b">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Utilities & Access</p>
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Utilities & Access</p>
           <div className="grid grid-cols-3 gap-1.5">
             {[
               { label: "Road", icon: Navigation, ok: intel.roadAccess },
@@ -618,7 +618,7 @@ function PropertyIntelligencePanel({
                 )}
               >
                 <Icon className={cn("w-4 h-4", ok ? "text-acr-pos" : "text-muted-foreground")} />
-                <span className="text-[10px] font-medium">{label}</span>
+                <span className="text-micro font-medium">{label}</span>
                 <span className={cn("text-[9px]", ok ? "text-acr-pos" : "text-muted-foreground")}>
                   {ok ? "Available" : "None"}
                 </span>
@@ -630,7 +630,7 @@ function PropertyIntelligencePanel({
         {/* Zoning & Regulatory */}
         {(intel.zoningCode || intel.annualTaxes || intel.lastAssessedValue) && (
           <div className="p-3 border-b">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Zoning & Financials</p>
+            <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Zoning & Financials</p>
             <div className="space-y-0">
               {intel.zoningCode && (
                 <IntelligenceRow
@@ -639,7 +639,7 @@ function PropertyIntelligencePanel({
                   value={
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Badge variant="outline" className="text-[10px] font-mono cursor-help">
+                        <Badge variant="outline" className="text-micro font-mono cursor-help">
                           {intel.zoningCode}
                         </Badge>
                       </TooltipTrigger>
@@ -673,13 +673,13 @@ function PropertyIntelligencePanel({
         {/* Nearby Comps */}
         {compsData?.comps?.length > 0 && (
           <div className="p-3 border-b">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Recent Comps</p>
+            <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Recent Comps</p>
             <div className="space-y-1.5">
               {compsData.comps.slice(0, 3).map((comp: any, i: number) => (
                 <div key={i} className="flex items-center justify-between bg-muted/40 rounded px-2 py-1.5">
                   <div className="min-w-0">
                     <p className="text-xs font-medium truncate">{comp.county ?? comp.address ?? "Nearby parcel"}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-micro text-muted-foreground">
                       {comp.sizeAcres ? `${parseFloat(String(comp.sizeAcres)).toFixed(1)} ac` : ""}
                       {comp.saleDate ? ` · ${new Date(comp.saleDate).getFullYear()}` : ""}
                     </p>
@@ -691,7 +691,7 @@ function PropertyIntelligencePanel({
                       </p>
                     ) : null}
                     {comp.pricePerAcre ? (
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-micro text-muted-foreground">
                         ${parseFloat(String(comp.pricePerAcre)).toFixed(0)}/ac
                       </p>
                     ) : null}
@@ -704,7 +704,7 @@ function PropertyIntelligencePanel({
 
         {/* Quick Actions */}
         <div className="p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Quick Actions</p>
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-1">Quick Actions</p>
           <div className="grid grid-cols-2 gap-1.5">
             <Button asChild size="sm" className="h-8 text-xs">
               <Link href={`/blind-offer-wizard?propertyId=${property.id}`}>
@@ -892,7 +892,7 @@ export default function MapsPage() {
             <h1 className="text-base font-semibold truncate">
               {mapMode === "deals" ? "Portfolio map" : "Property intelligence map"}
             </h1>
-            <Badge variant="secondary" className="text-[10px] shrink-0 tabular-nums" aria-label={`${filteredProperties.length} of ${propertiesWithCoords} property pins shown`}>
+            <Badge variant="secondary" className="text-micro shrink-0 tabular-nums" aria-label={`${filteredProperties.length} of ${propertiesWithCoords} property pins shown`}>
               {filteredProperties.length}/{propertiesWithCoords}
             </Badge>
             {mapMode === "deals" && (
@@ -917,12 +917,12 @@ export default function MapsPage() {
               />
             )}
             {showBuyerDemandHeatmap && (
-              <Badge className="text-[10px] shrink-0 bg-acr-accent text-acr-accent hidden md:flex">
+              <Badge className="text-micro shrink-0 bg-acr-accent text-acr-accent hidden md:flex">
                 <Users className="w-2.5 h-2.5 mr-1" /> Demand
               </Badge>
             )}
             {showPredictionHeatmap && (
-              <Badge className="text-[10px] shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
+              <Badge className="text-micro shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
                 <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction
               </Badge>
             )}
@@ -1147,7 +1147,7 @@ export default function MapsPage() {
                       <Users className="w-3.5 h-3.5 text-acr-accent" aria-hidden="true" />
                       <div>
                         <Label htmlFor="layer-buyer-demand" className="text-xs cursor-pointer">Buyer-demand heatmap</Label>
-                        <p className="text-[10px] text-muted-foreground">Inquiry density by area.</p>
+                        <p className="text-micro text-muted-foreground">Inquiry density by area.</p>
                       </div>
                     </div>
                     <Switch id="layer-buyer-demand" checked={showBuyerDemandHeatmap} onCheckedChange={setShowBuyerDemandHeatmap} />
@@ -1157,7 +1157,7 @@ export default function MapsPage() {
                       <TrendingUp className="w-3.5 h-3.5 text-acr-brand" aria-hidden="true" />
                       <div>
                         <Label htmlFor="layer-ml-prediction" className="text-xs cursor-pointer">ML price prediction</Label>
-                        <p className="text-[10px] text-muted-foreground">Green = above avg, red = below.</p>
+                        <p className="text-micro text-muted-foreground">Green = above avg, red = below.</p>
                       </div>
                     </div>
                     <Switch id="layer-ml-prediction" checked={showPredictionHeatmap} onCheckedChange={setShowPredictionHeatmap} />

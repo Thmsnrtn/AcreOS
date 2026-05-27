@@ -106,7 +106,7 @@ export function GrowthEngine() {
                     />
                   </div>
                   <span className="text-xs font-semibold w-6 text-right tabular-nums">{count}</span>
-                  <span className="text-[10px] text-muted-foreground w-7 text-right tabular-nums">{percentage}%</span>
+                  <span className="text-micro text-muted-foreground w-7 text-right tabular-nums">{percentage}%</span>
                 </li>
               );
             })}
@@ -120,13 +120,13 @@ export function GrowthEngine() {
             {/* Free pool */}
             <div className="flex-1 rounded-card bg-muted/50 border px-2 py-2 text-center" aria-label={`Free accounts: ${freeTier?.count ?? "no data"}`}>
               <p className="text-lg font-bold tabular-nums">{freeTier?.count ?? "—"}</p>
-              <p className="text-[10px] text-muted-foreground">free accounts</p>
+              <p className="text-micro text-muted-foreground">free accounts</p>
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">→</div>
             {/* Conversions */}
             <div className="flex-1 rounded-card bg-acr-pos/5 border border-acr-pos/20 px-2 py-2 text-center" aria-label={`Converted: ${expansionSignals.freeToPayConversions30d}`}>
               <p className="text-lg font-bold text-acr-pos tabular-nums">{expansionSignals.freeToPayConversions30d}</p>
-              <p className="text-[10px] text-muted-foreground">converted</p>
+              <p className="text-micro text-muted-foreground">converted</p>
             </div>
             <div aria-hidden="true" className="flex items-center text-muted-foreground text-xs">=</div>
             {/* Conversion rate */}
@@ -137,7 +137,7 @@ export function GrowthEngine() {
               <p className={`text-lg font-bold tabular-nums ${convRate >= 5 ? "text-acr-pos" : convRate >= 2 ? "text-acr-warn" : "text-foreground"}`}>
                 {convRate.toFixed(1)}%
               </p>
-              <p className="text-[10px] text-muted-foreground">conv. rate</p>
+              <p className="text-micro text-muted-foreground">conv. rate</p>
             </div>
           </div>
         </div>
@@ -146,11 +146,11 @@ export function GrowthEngine() {
         <ul aria-label="Expansion signals" className="grid grid-cols-2 gap-2 border-t pt-3 list-none p-0 m-0">
           <li className="rounded-card bg-acr-pos/5 border border-acr-pos/10 px-3 py-2 text-center" aria-label={`${expansionSignals.upgrades30d} upgrades`}>
             <p className="text-xl font-bold text-acr-pos tabular-nums">{expansionSignals.upgrades30d}</p>
-            <p className="text-[10px] text-muted-foreground">upgrades</p>
+            <p className="text-micro text-muted-foreground">upgrades</p>
           </li>
           <li className="rounded-card bg-acr-neg/5 border border-acr-neg/10 px-3 py-2 text-center" aria-label={`${expansionSignals.downgrades30d} downgrades`}>
             <p className="text-xl font-bold text-acr-neg tabular-nums">{expansionSignals.downgrades30d}</p>
-            <p className="text-[10px] text-muted-foreground">downgrades</p>
+            <p className="text-micro text-muted-foreground">downgrades</p>
           </li>
         </ul>
 

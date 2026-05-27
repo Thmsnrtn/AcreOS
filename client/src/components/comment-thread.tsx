@@ -65,7 +65,7 @@ function CommentBubble({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium">{comment.userId}</span>
-          <time dateTime={comment.createdAt} className="text-[10px] text-muted-foreground tabular-nums">{time}</time>
+          <time dateTime={comment.createdAt} className="text-micro text-muted-foreground tabular-nums">{time}</time>
           {isOwn && onDelete && (
             <button
               type="button"

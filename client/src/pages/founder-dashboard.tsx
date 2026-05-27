@@ -572,7 +572,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
-            <kbd className="hidden sm:inline-block ml-1 rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">R</kbd>
+            <kbd className="hidden sm:inline-block ml-1 rounded bg-muted px-1 py-0.5 text-micro font-mono text-muted-foreground">R</kbd>
           </Button>
           <Button
             size="sm"
@@ -686,7 +686,7 @@ function SophieActivityPreview() {
             <div key={t.id} className="flex items-center gap-2 text-xs py-0.5">
               <CheckCircle2 className="h-3 w-3 text-acr-pos shrink-0" />
               <span className="text-foreground truncate flex-1">{t.subject ?? `Ticket #${t.id}`}</span>
-              <span className="text-muted-foreground shrink-0 text-[11px]">
+              <span className="text-muted-foreground shrink-0 text-caption">
                 {t.resolvedAt ? relative(t.resolvedAt) : ""}
               </span>
             </div>
@@ -5662,7 +5662,7 @@ function AgentTeamPanel() {
                       <div className="text-xs text-muted-foreground">{agent.title}</div>
                     </div>
                   </div>
-                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${wing.className}`}>
+                  <Badge variant="outline" className={`text-micro px-1.5 py-0 ${wing.className}`}>
                     {wing.label}
                   </Badge>
                 </div>
@@ -5671,7 +5671,7 @@ function AgentTeamPanel() {
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-muted-foreground">Trust</span>
-                    <span className={`font-medium ${trustBadgeColor(trustPct)} px-1.5 py-0.5 rounded-full text-[10px]`}>{trustLabel(trustPct)}</span>
+                    <span className={`font-medium ${trustBadgeColor(trustPct)} px-1.5 py-0.5 rounded-full text-micro`}>{trustLabel(trustPct)}</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div

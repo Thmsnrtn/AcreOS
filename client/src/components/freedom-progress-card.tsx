@@ -55,7 +55,7 @@ function ProgressRing({ percentage }: { percentage: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold">{percentage}%</span>
-        <span className="text-[10px] text-muted-foreground">Financial Freedom</span>
+        <span className="text-micro text-muted-foreground">Financial Freedom</span>
       </div>
     </div>
   );

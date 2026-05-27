@@ -335,7 +335,7 @@ function ListingRow({ listing, dayOfMode }: { listing: Listing; dayOfMode: boole
 function KV({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`font-mono ${highlight ? "font-semibold text-primary" : ""}`}>{value}</div>
     </div>
   );

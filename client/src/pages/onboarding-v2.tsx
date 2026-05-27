@@ -874,7 +874,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
                 <Badge
                   aria-label={`${name}: ${status === "connected" ? "connected" : "not configured"}`}
                   className={cn(
-                    "text-[10px] px-1.5",
+                    "text-micro px-1.5",
                     status === "connected"
                       ? "bg-acr-pos-soft/60 text-acr-pos border-acr-pos/30"
                       : "bg-acr-bg-sunken text-muted-foreground border-border"

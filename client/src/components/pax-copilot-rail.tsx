@@ -47,7 +47,7 @@ function PaxMarkdown({ content }: { content: string }) {
     // Handle inline code, bold, italic with simple regex splits
     const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_)/g);
     return parts.map((part, idx) => {
-      if (part.startsWith("`") && part.endsWith("`")) return <code key={idx} className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
+      if (part.startsWith("`") && part.endsWith("`")) return <code key={idx} className="bg-muted px-1 py-0.5 rounded text-caption font-mono">{part.slice(1, -1)}</code>;
       if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) return <strong key={idx}>{part.slice(2, -2)}</strong>;
       if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) return <em key={idx}>{part.slice(1, -1)}</em>;
       return part;
@@ -1115,7 +1115,7 @@ export function PaxCopilotRail() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-caption text-muted-foreground">
                   <PageIcon className="w-3 h-3" />
                   <span>{pageMeta.label}</span>
                 </div>
@@ -1174,7 +1174,7 @@ export function PaxCopilotRail() {
                           localStorage.setItem("pax_model_override", v);
                         }}
                       >
-                        <SelectTrigger className="h-6 w-auto text-[10px] border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-0">
+                        <SelectTrigger className="h-6 w-auto text-micro border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-0">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent align="end" className="text-xs min-w-[110px]">
@@ -1245,7 +1245,7 @@ export function PaxCopilotRail() {
               {showConvSwitcher && (
                 <div className="absolute top-full right-0 left-0 z-50 bg-background border border-border rounded-b-lg shadow-lg">
                   <div className="px-3 py-2 border-b space-y-1.5">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
+                    <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
                     <Input
                       placeholder="Search…"
                       value={convSearch}
@@ -1280,7 +1280,7 @@ export function PaxCopilotRail() {
                           <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
                           <div className="flex-1 min-w-0">
                             <p className="truncate font-medium text-foreground">{conv.title}</p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-micro text-muted-foreground">
                               {new Date(conv.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             </p>
                           </div>
@@ -1295,7 +1295,7 @@ export function PaxCopilotRail() {
                     <button
                       type="button"
                       onClick={handleNewChat}
-                      className="text-[11px] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      className="text-caption text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     >
                       + New conversation
                     </button>
@@ -1308,7 +1308,7 @@ export function PaxCopilotRail() {
             {showResultsBanner && pendingResults.length > 0 && (
               <div className="flex-shrink-0 px-3 py-2 flex items-center gap-2 bg-primary/5 border-b">
                 <Clock className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                <p className="text-[11px] text-foreground flex-1 min-w-0">
+                <p className="text-caption text-foreground flex-1 min-w-0">
                   Pax ran <span className="font-semibold">{pendingResults.length} task{pendingResults.length > 1 ? "s" : ""}</span> while you were away.
                   {pendingResults[0].lastRunConversationId && (
                     <button
@@ -1336,7 +1336,7 @@ export function PaxCopilotRail() {
               <div className="flex-shrink-0 border-b px-3 py-2 space-y-1.5 max-h-[180px] overflow-y-auto">
                 <div className="flex items-center gap-1.5 mb-1">
                   <Bell className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Pax noticed</span>
+                  <span className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Pax noticed</span>
                 </div>
                 {observations.slice(0, 4).map((obs) => (
                   <div key={obs.id} className="rounded-md border bg-muted/30 p-2 text-xs group">
@@ -1353,7 +1353,7 @@ export function PaxCopilotRail() {
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <button
                         type="button"
-                        className="text-primary hover:underline text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="text-primary hover:underline text-micro focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                         onClick={() => sendMessage(`Tell me more about this: "${obs.title}" — ${obs.description}`)}
                         aria-label={`Discuss observation: ${obs.title}`}
                       >
@@ -1361,7 +1361,7 @@ export function PaxCopilotRail() {
                       </button>
                       <button
                         type="button"
-                        className="text-muted-foreground hover:text-foreground text-[10px] ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="text-muted-foreground hover:text-foreground text-micro ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                         onClick={() => dismissMutation.mutate(obs.id)}
                         aria-label={`Dismiss observation: ${obs.title}`}
                       >
@@ -1379,7 +1379,7 @@ export function PaxCopilotRail() {
             {/* Quick Actions (show when no messages and not loading) */}
             {messages.length === 0 && !isLoadingHistory && (
               <div className="flex-shrink-0 px-3 py-2 border-b">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Quick actions</p>
+                <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Quick actions</p>
                 <div className="flex flex-col gap-1">
                   {pageMeta.quickActions.map((qa) => (
                     <button
@@ -1391,7 +1391,7 @@ export function PaxCopilotRail() {
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-muted-foreground/50 mt-2">
+                <p className="text-micro text-muted-foreground/50 mt-2">
                   Tip: Type <Kbd size="sm">/</Kbd> for commands · <Kbd size="sm">@</Kbd> to mention an entity · <Kbd size="sm">⌘K</Kbd> for palette
                 </p>
               </div>
@@ -1401,11 +1401,11 @@ export function PaxCopilotRail() {
             {restoredFromDate && messages.length > 0 && !isLoadingHistory && (
               <div className="flex-shrink-0 px-3 py-1.5 flex items-center gap-1.5 bg-muted/30 border-b">
                 <Clock className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-caption text-muted-foreground">
                   Resumed from {new Date(restoredFromDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 </span>
                 <button
-                  className="text-[11px] text-primary hover:underline ml-auto flex-shrink-0"
+                  className="text-caption text-primary hover:underline ml-auto flex-shrink-0"
                   onClick={handleNewChat}
                 >
                   Start fresh
@@ -1418,7 +1418,7 @@ export function PaxCopilotRail() {
               <div className="flex-shrink-0 border-b px-3 py-2 space-y-1.5 max-h-[200px] overflow-y-auto">
                 <div className="flex items-center gap-1.5 mb-1">
                   <Sparkles className="w-3 h-3 text-primary" />
-                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">From Pax</span>
+                  <span className="text-caption font-medium text-muted-foreground uppercase tracking-wide">From Pax</span>
                 </div>
                 {nudges
                   .filter((n: any) => !dismissedNudgeIds.includes(n.id))
@@ -1432,7 +1432,7 @@ export function PaxCopilotRail() {
                       <div className="flex items-center gap-2 mt-1.5">
                         {nudge.actionPrompt && (
                           <button
-                            className="text-primary hover:underline text-[10px] font-medium"
+                            className="text-primary hover:underline text-micro font-medium"
                             onClick={() => {
                               handleDismissNudge(nudge.id);
                               sendMessage(nudge.actionPrompt);
@@ -1442,7 +1442,7 @@ export function PaxCopilotRail() {
                           </button>
                         )}
                         <button
-                          className="text-muted-foreground hover:text-foreground text-[10px] ml-auto"
+                          className="text-muted-foreground hover:text-foreground text-micro ml-auto"
                           onClick={() => handleDismissNudge(nudge.id)}
                         >
                           Dismiss
@@ -1473,7 +1473,7 @@ export function PaxCopilotRail() {
                     <p className="text-xs text-muted-foreground">
                       Pax is your AI co-pilot. Ask anything about your business or use the quick actions above.
                     </p>
-                    <p className="text-[10px] text-muted-foreground/60 mt-2">⌘J to toggle · Enter to send</p>
+                    <p className="text-micro text-muted-foreground/60 mt-2">⌘J to toggle · Enter to send</p>
                   </div>
                 )}
 
@@ -1492,7 +1492,7 @@ export function PaxCopilotRail() {
                               {msg.mentionChips.map((e) => (
                                 <div
                                   key={`${e.type}-${e.id}`}
-                                  className="inline-flex items-center gap-1 text-[10px] bg-primary/20 text-primary rounded px-1.5 py-0.5"
+                                  className="inline-flex items-center gap-1 text-micro bg-primary/20 text-primary rounded px-1.5 py-0.5"
                                 >
                                   @{e.name}
                                 </div>
@@ -1505,7 +1505,7 @@ export function PaxCopilotRail() {
                               {msg.attachments.map((a) => (
                                 <div
                                   key={a.name}
-                                  className="inline-flex items-center gap-1 text-[10px] bg-primary/20 text-primary rounded px-1.5 py-0.5"
+                                  className="inline-flex items-center gap-1 text-micro bg-primary/20 text-primary rounded px-1.5 py-0.5"
                                 >
                                   <Paperclip className="w-2.5 h-2.5" />
                                   {a.name}
@@ -1553,7 +1553,7 @@ export function PaxCopilotRail() {
                                 <span className="font-medium text-acr-warn dark:text-acr-warn">Action requires your approval</span>
                               </div>
                               <p className="text-acr-warn dark:text-acr-warn leading-snug">
-                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-[11px]">{msg.approvalRequired.toolName}</span>
+                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-caption">{msg.approvalRequired.toolName}</span>
                                 {" "}{formatApprovalArgs(msg.approvalRequired.toolName, msg.approvalRequired.args)}
                               </p>
                               <div className="flex gap-2">
@@ -1631,7 +1631,7 @@ export function PaxCopilotRail() {
                   {mentionedEntities.map((e) => (
                     <div
                       key={`${e.type}-${e.id}`}
-                      className="flex items-center gap-1 text-[11px] bg-primary/10 text-primary rounded px-2 py-0.5 border border-primary/20"
+                      className="flex items-center gap-1 text-caption bg-primary/10 text-primary rounded px-2 py-0.5 border border-primary/20"
                     >
                       @{e.name}
                       <button aria-label={`Remove mention of ${e.name}`}
@@ -1654,7 +1654,7 @@ export function PaxCopilotRail() {
                     return (
                       <div
                         key={i}
-                        className="flex items-center gap-1 text-[11px] bg-muted rounded px-2 py-0.5 border"
+                        className="flex items-center gap-1 text-caption bg-muted rounded px-2 py-0.5 border"
                       >
                         {isImage && previewUrl ? (
                           <img
@@ -1773,7 +1773,7 @@ export function PaxCopilotRail() {
                   )}
                 </div>
               </div>
-              <p className="text-[10px] text-muted-foreground/50 text-center">
+              <p className="text-micro text-muted-foreground/50 text-center">
                 Pax can take real actions · Always review before sharing sensitive info
               </p>
             </div>

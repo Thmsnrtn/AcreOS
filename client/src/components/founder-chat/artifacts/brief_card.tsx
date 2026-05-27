@@ -129,7 +129,7 @@ function BriefSectionCard({ section, defaultOpen = false, onActionClick }: Brief
         style={{ minHeight: TOUCH_TARGET_PT }}
       >
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
             {section.title}
           </div>
           {section.headline ? (

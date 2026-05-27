@@ -288,7 +288,7 @@ export default function SellerFinanceCalculator({
             <p className="text-xs text-muted-foreground mb-0.5">LTV Ratio</p>
             <p className="text-base font-semibold">
               {ltv}%{" "}
-              <Badge variant="outline" className="text-[10px] ml-0.5">
+              <Badge variant="outline" className="text-micro ml-0.5">
                 {Number(ltv) <= 70 ? "Conservative" : Number(ltv) <= 85 ? "Standard" : "High"}
               </Badge>
             </p>
@@ -347,7 +347,7 @@ export default function SellerFinanceCalculator({
                       with counsel before originating.
                     </p>
                   )}
-                  <p className="text-[10px] text-muted-foreground italic pt-1">
+                  <p className="text-micro text-muted-foreground italic pt-1">
                     Informational only — not legal advice. Confirm specific
                     disclosure language and timing with licensed counsel.
                   </p>

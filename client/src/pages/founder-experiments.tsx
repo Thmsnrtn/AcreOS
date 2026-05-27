@@ -239,19 +239,19 @@ function ExperimentCard({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <Badge className={`text-[10px] capitalize ${STATUS_COLOR[experiment.status]}`}>{experiment.status}</Badge>
-              <Badge variant="outline" className="text-[10px]">{experiment.category}</Badge>
+              <Badge className={`text-micro capitalize ${STATUS_COLOR[experiment.status]}`}>{experiment.status}</Badge>
+              <Badge variant="outline" className="text-micro">{experiment.category}</Badge>
               {experiment.itemType && (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-micro">
                   {experiment.itemType}
                 </Badge>
               )}
               {experiment.winningVariant && (
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="secondary" className="text-micro">
                   Winner: {experiment.winningVariant}
                 </Badge>
               )}
-              <span className="text-[10px] text-muted-foreground tabular-nums">
+              <span className="text-micro text-muted-foreground tabular-nums">
                 {relative(experiment.createdAt)}
               </span>
             </div>
@@ -300,15 +300,15 @@ function ExperimentCard({
                   <div>
                     <p className="text-sm font-medium">
                       {v.label}{" "}
-                      <span className="text-[11px] text-muted-foreground font-mono">({v.key})</span>
-                      {isLeader && <span className="text-[10px] text-acr-pos ml-2" aria-label="Leading variant">leader</span>}
+                      <span className="text-caption text-muted-foreground font-mono">({v.key})</span>
+                      {isLeader && <span className="text-micro text-acr-pos ml-2" aria-label="Leading variant">leader</span>}
                     </p>
-                    <p className="text-[11px] text-muted-foreground tabular-nums">
+                    <p className="text-caption text-muted-foreground tabular-nums">
                       Weight: {v.weight}%
                     </p>
                   </div>
                   {stat && (
-                    <dl className="text-right text-[11px] text-muted-foreground">
+                    <dl className="text-right text-caption text-muted-foreground">
                       <div className="tabular-nums">n = {stat.n}, graded = {stat.outcomesRecorded}</div>
                       {stat.meanOutcome != null && <div className="tabular-nums">mean {stat.meanOutcome}</div>}
                       {stat.positiveRate != null && <div className="tabular-nums">+ rate {stat.positiveRate}%</div>}

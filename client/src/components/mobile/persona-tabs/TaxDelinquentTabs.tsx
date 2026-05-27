@@ -106,7 +106,7 @@ export function TaxDelinquentToday() {
     <div className="space-y-5">
       {/* Section: urgent redemptions */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1">
           Redemption clock — urgent
         </h2>
         {urgentCerts.length === 0 ? (
@@ -152,7 +152,7 @@ export function TaxDelinquentToday() {
                       >
                         {c.daysRemaining ?? "—"}d
                       </div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <div className="text-micro uppercase tracking-wide text-muted-foreground">
                         to deadline
                       </div>
                     </div>
@@ -172,7 +172,7 @@ export function TaxDelinquentToday() {
       {/* Section: quiet-title cases needing attention */}
       {overdueCases.length > 0 && (
         <section>
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
             Quiet-title cases overdue
           </h2>
@@ -335,11 +335,11 @@ function StatTile({
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className="text-2xl font-semibold tabular-nums mt-1">{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-caption text-muted-foreground mt-0.5">{sub}</div>}
     </Card>
   );
 }

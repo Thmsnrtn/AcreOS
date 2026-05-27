@@ -214,7 +214,7 @@ function VersionRow({
                 {v.changeDescription}
               </p>
               {(v.deployedAt || v.rolledBackAt) && (
-                <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                <p className="text-caption text-muted-foreground mt-0.5 tabular-nums">
                   {v.deployedAt && `Deployed ${shortDateTime(v.deployedAt)}`}
                   {v.deployedAt && v.rolledBackAt && " · "}
                   {v.rolledBackAt && `Rolled back ${shortDateTime(v.rolledBackAt)}`}

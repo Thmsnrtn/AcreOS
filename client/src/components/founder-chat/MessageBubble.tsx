@@ -44,7 +44,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <li
                 key={idx}
                 className={cn(
-                  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono tabular-nums",
+                  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-micro font-mono tabular-nums",
                   call.status === "running" && "bg-muted/60 text-muted-foreground",
                   call.status === "complete" && "bg-acr-pos-soft text-acr-pos",
                   call.status === "failed" && "bg-acr-neg-soft text-acr-neg",

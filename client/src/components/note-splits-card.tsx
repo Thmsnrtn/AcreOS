@@ -126,7 +126,7 @@ export function NoteSplitsCard({ noteId, currentBalanceCents }: {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-mono font-medium">{fmtPct(s.percentageBps)}</div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-micro text-muted-foreground">
                       ≈ {fmtUsdRound((currentBalanceCents * s.percentageBps) / 10_000)} of balance
                     </div>
                   </div>

@@ -4,6 +4,7 @@ import { TasksEmptyState } from "@/components/empty-states";
 import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -157,24 +158,33 @@ export default function TasksPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<TaskFormValues> }) => {
-      const response = await apiRequest("PUT", `/api/tasks/${id}`, data);
-      return response.json();
+  const updateMutation = useOptimisticUpdate<{ id: number; data: Partial<TaskFormValues> }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        const response = await apiRequest("PUT", `/api/tasks/${id}`, data);
+        return response.json();
+      },
+      listKeys: [["/api/tasks"], ["/api/tasks/my"]],
+      detailKey: ({ id }) => ["/api/tasks", id],
+      getId: ({ id }) => id,
+      // Variables shape is `{ id, data }` but the cached row is flat —
+      // pull the patch out of `data`. Without this the factory would
+      // splat `data` as a sub-key and produce `row.data = {...}` which
+      // is meaningless.
+      buildPatch: ({ data }) => data as Record<string, unknown>,
+      extraInvalidateKeys: [
+        ["/api/tasks/dashboard-summary"],
+        ["/api/dashboard/today-priorities"],
+      ],
+      successToast: { title: "Task updated", description: "Your task has been updated successfully." },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-      setIsEditOpen(false);
-      setSelectedTask(null);
-      toast({ title: "Task updated", description: "Your task has been updated successfully." });
+    {
+      onSuccess: () => {
+        setIsEditOpen(false);
+        setSelectedTask(null);
+      },
     },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't save task", description: `${error.message}. ${reassurance}`, variant: "destructive" });
-    },
-  });
+  );
 
   const completeMutation = useMutation({
     mutationFn: async (id: number) => {

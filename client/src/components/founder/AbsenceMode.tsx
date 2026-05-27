@@ -141,13 +141,13 @@ export function AbsenceMode() {
               <ul aria-labelledby="batched-items-heading" className="space-y-1 list-none p-0 m-0">
                 {batchedItems.slice(0, 3).map((item, i) => (
                   <li key={i} className="text-xs p-1.5 rounded bg-muted/50 flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] h-4 px-1">{item.priority}</Badge>
+                    <Badge variant="outline" className="text-micro h-4 px-1">{item.priority}</Badge>
                     <span className="truncate">{item.summary}</span>
                   </li>
                 ))}
               </ul>
               {batchedItems.length > 3 && (
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-micro text-muted-foreground">
                   +<span className="tabular-nums">{batchedItems.length - 3}</span> more items
                 </p>
               )}

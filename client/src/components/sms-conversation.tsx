@@ -176,7 +176,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{msg.content}</p>
-                      <p className={`text-[10px] mt-0.5 ${
+                      <p className={`text-micro mt-0.5 ${
                         msg.direction === "outbound" ? "text-primary-foreground/60" : "text-muted-foreground"
                       }`}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

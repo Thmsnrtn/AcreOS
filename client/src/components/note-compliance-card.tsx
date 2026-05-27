@@ -313,7 +313,7 @@ function Row({ label, value, sub, tone, mono }: { label: string; value: string; 
       <dt className="text-muted-foreground">{label}</dt>
       <dd className={`text-right ${mono ? "font-mono" : ""} ${tone ?? ""}`}>
         {value}
-        {sub && <span className={`block text-[10px] ${tone ?? "text-muted-foreground"}`}>{sub}</span>}
+        {sub && <span className={`block text-micro ${tone ?? "text-muted-foreground"}`}>{sub}</span>}
       </dd>
     </div>
   );

@@ -291,7 +291,7 @@ export default function FounderLetterPage() {
                           data-testid={`archive-${row.monthKey}`}
                         >
                           <div className="font-medium text-foreground tabular-nums">{row.monthKey}</div>
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-caption text-muted-foreground">
                             <span className="capitalize">{row.status}</span>
                             {row.deliveredAt ? <> · read <span className="tabular-nums">{format(new Date(row.deliveredAt), "MMM d")}</span></> : ""}
                           </div>

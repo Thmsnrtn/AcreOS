@@ -181,7 +181,7 @@ export function PaxCommandPalette({ open, onClose, onSelect }: PaletteProps) {
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="p-0 max-w-sm overflow-hidden">
         <Command>
-          <div className="border-b px-3 py-2 text-[11px] text-muted-foreground font-medium uppercase tracking-wide">
+          <div className="border-b px-3 py-2 text-caption text-muted-foreground font-medium uppercase tracking-wide">
             Pax Commands — select to insert
           </div>
           <CommandList>
@@ -204,7 +204,7 @@ export function PaxCommandPalette({ open, onClose, onSelect }: PaletteProps) {
                           <Badge key={t} variant="secondary" className="text-[9px] px-1 py-0 h-4">{t}</Badge>
                         ))}
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{cmd.description}</p>
+                      <p className="text-caption text-muted-foreground">{cmd.description}</p>
                     </div>
                   </CommandItem>
                 );

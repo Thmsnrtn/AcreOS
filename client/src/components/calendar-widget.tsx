@@ -112,7 +112,7 @@ export function CalendarWidget() {
           {Object.entries(EVENT_COLORS).map(([type, colors]) => (
             <li key={type} className="flex items-center gap-1">
               <span aria-hidden="true" className={`h-2 w-2 rounded-full ${colors.dot}`} />
-              <span className="text-[10px] text-muted-foreground capitalize">{type.replace(/_/g, " ")}</span>
+              <span className="text-micro text-muted-foreground capitalize">{type.replace(/_/g, " ")}</span>
             </li>
           ))}
         </ul>
@@ -150,7 +150,7 @@ export function CalendarWidget() {
                     return (
                       <li
                         key={event.id}
-                        className={`${colors.bg} ${colors.text} rounded px-1 py-0.5 text-[10px] truncate`}
+                        className={`${colors.bg} ${colors.text} rounded px-1 py-0.5 text-micro truncate`}
                         aria-label={eventLabel}
                       >
                         {event.title}
@@ -158,7 +158,7 @@ export function CalendarWidget() {
                     );
                   })}
                   {dayEvents.length > 3 && (
-                    <li className="text-[10px] text-muted-foreground text-center" aria-label={`${dayEvents.length - 3} more events`}>
+                    <li className="text-micro text-muted-foreground text-center" aria-label={`${dayEvents.length - 3} more events`}>
                       +<span className="tabular-nums">{dayEvents.length - 3}</span> more
                     </li>
                   )}

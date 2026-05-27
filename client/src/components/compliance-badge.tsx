@@ -90,14 +90,14 @@ export function ComplianceBadge({ entityType, entityId, checks: propChecks, stat
                 {checkIcon(check.status)}
                 <div>
                   <p className="text-xs font-medium">{check.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{check.detail}</p>
+                  <p className="text-micro text-muted-foreground">{check.detail}</p>
                 </div>
               </div>
             ))}
           </div>
         )}
         {status === "non_compliant" && (
-          <p className="text-[10px] text-acr-neg dark:text-acr-neg mt-2">
+          <p className="text-micro text-acr-neg dark:text-acr-neg mt-2">
             This {entityType} cannot be created until compliance issues are resolved.
           </p>
         )}

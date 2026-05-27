@@ -474,7 +474,7 @@ function BudgetBanner({ data }: { data: BudgetResponse }) {
         <div className="text-xs text-muted-foreground">
           / ${data.ceilingUsd}
         </div>
-        <Badge variant={tone} className="ml-auto text-[10px]">
+        <Badge variant={tone} className="ml-auto text-micro">
           {data.crossedCeiling ? "ceiling" : data.crossedAlert ? "alert" : "ok"}
         </Badge>
       </div>

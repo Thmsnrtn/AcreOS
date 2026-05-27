@@ -41,16 +41,16 @@ export function BridgeHeader({ streamActive, onMenu }: BridgeHeaderProps) {
         <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Founder</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground sm:inline">
+        <span className="hidden font-mono text-caption tabular-nums text-muted-foreground sm:inline">
           {clock}
         </span>
         {streamActive && (
-          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 text-micro uppercase tracking-[0.1em] text-muted-foreground">
             <LiveDot label="Atlas stream active" />
             Live
           </span>
         )}
-        <kbd className="hidden h-6 items-center gap-0.5 rounded border border-white/[0.08] px-1.5 font-mono text-[10px] text-muted-foreground md:inline-flex">
+        <kbd className="hidden h-6 items-center gap-0.5 rounded border border-white/[0.08] px-1.5 font-mono text-micro text-muted-foreground md:inline-flex">
           ⌘;
         </kbd>
       </div>

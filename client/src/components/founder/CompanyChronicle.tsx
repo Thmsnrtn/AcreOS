@@ -43,9 +43,9 @@ function ChronicleCard({ entry }: { entry: ChronicleEntry }) {
       >
         <div>
           <p className="text-sm font-semibold m-0">{entry.periodLabel}</p>
-          <Badge variant="outline" className="text-[10px] h-4 capitalize">{entry.periodType}</Badge>
+          <Badge variant="outline" className="text-micro h-4 capitalize">{entry.periodType}</Badge>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-micro text-muted-foreground">
           {m.agentActions && <span><span className="tabular-nums">{m.agentActions}</span> actions</span>}
           {m.warRooms > 0 && <span><span className="tabular-nums">{m.warRooms}</span> war rooms</span>}
           {m.topAgent && <span aria-label={`Top agent: ${m.topAgent}, ${m.topAgentGrade}`}><span aria-hidden="true">{AGENT_AVATARS[m.topAgent]}</span> {m.topAgentGrade}</span>}
@@ -60,7 +60,7 @@ function ChronicleCard({ entry }: { entry: ChronicleEntry }) {
         <>
           {highlights.length > 0 && (
             <section aria-labelledby={`${entryId}-highlights`} className="space-y-1">
-              <p id={`${entryId}-highlights`} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Highlights</p>
+              <p id={`${entryId}-highlights`} className="text-micro font-medium text-muted-foreground uppercase tracking-wider">Highlights</p>
               <ul aria-labelledby={`${entryId}-highlights`} className="list-none p-0 m-0 space-y-1">
                 {highlights.map((h, i) => {
                   const Icon = HIGHLIGHT_ICONS[h.type] || Star;
@@ -81,7 +81,7 @@ function ChronicleCard({ entry }: { entry: ChronicleEntry }) {
 
           {learnings.length > 0 && (
             <section aria-labelledby={`${entryId}-learnings`} className="space-y-1">
-              <p id={`${entryId}-learnings`} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Key learnings</p>
+              <p id={`${entryId}-learnings`} className="text-micro font-medium text-muted-foreground uppercase tracking-wider">Key learnings</p>
               <ul aria-labelledby={`${entryId}-learnings`} className="list-none p-0 m-0 space-y-1">
                 {learnings.map((l, i) => (
                   <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
@@ -124,10 +124,10 @@ export function CompanyChronicle() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2"><BookText className="h-4 w-4" aria-hidden="true" /> Company chronicle</CardTitle>
           <div className="flex gap-1">
-            <Button type="button" size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => generateMutation.mutate("week")} disabled={generateMutation.isPending} aria-busy={generateMutation.isPending} aria-label="Generate weekly chronicle">
+            <Button type="button" size="sm" variant="outline" className="h-6 text-micro" onClick={() => generateMutation.mutate("week")} disabled={generateMutation.isPending} aria-busy={generateMutation.isPending} aria-label="Generate weekly chronicle">
               <Calendar className="h-2.5 w-2.5 mr-0.5" aria-hidden="true" /> Week
             </Button>
-            <Button type="button" size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => generateMutation.mutate("month")} disabled={generateMutation.isPending} aria-busy={generateMutation.isPending} aria-label="Generate monthly chronicle">Month</Button>
+            <Button type="button" size="sm" variant="outline" className="h-6 text-micro" onClick={() => generateMutation.mutate("month")} disabled={generateMutation.isPending} aria-busy={generateMutation.isPending} aria-label="Generate monthly chronicle">Month</Button>
           </div>
         </div>
       </CardHeader>

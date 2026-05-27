@@ -41,21 +41,21 @@ export default function OutcomeFeedback() {
             <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
           </div>
           <p className="text-lg font-semibold text-acr-pos tabular-nums m-0">{verified.length}</p>
-          <p className="text-[10px] text-muted-foreground m-0">Verified good</p>
+          <p className="text-micro text-muted-foreground m-0">Verified good</p>
         </li>
         <li className="p-2 rounded-card bg-acr-warn-soft/20 border border-acr-warn-soft/30" aria-label={`${pending.length} awaiting check`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
           </div>
           <p className="text-lg font-semibold text-acr-warn tabular-nums m-0">{pending.length}</p>
-          <p className="text-[10px] text-muted-foreground m-0">Awaiting check</p>
+          <p className="text-micro text-muted-foreground m-0">Awaiting check</p>
         </li>
         <li className="p-2 rounded-card bg-acr-neg-soft/20 border border-acr-neg-soft/30" aria-label={`${failed.length} didn't help`}>
           <div className="flex items-center justify-center gap-1 mb-0.5">
             <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
           </div>
           <p className="text-lg font-semibold text-acr-neg tabular-nums m-0">{failed.length}</p>
-          <p className="text-[10px] text-muted-foreground m-0">Didn't help</p>
+          <p className="text-micro text-muted-foreground m-0">Didn't help</p>
         </li>
       </ul>
 

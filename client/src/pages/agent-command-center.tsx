@@ -218,21 +218,21 @@ function AgentCard({
         <dl className="grid grid-cols-3 gap-2 text-center m-0">
           <div className="rounded-md bg-muted/50 p-2">
             <dd className="text-lg font-bold tabular-nums m-0">{agent.metrics.lastDayActions}</dd>
-            <dt className="text-[10px] text-muted-foreground">Today</dt>
+            <dt className="text-micro text-muted-foreground">Today</dt>
           </div>
           <div className="rounded-md bg-muted/50 p-2">
             <dd className="text-lg font-bold tabular-nums m-0">{agent.pendingApprovalCount}</dd>
-            <dt className="text-[10px] text-muted-foreground">Pending</dt>
+            <dt className="text-micro text-muted-foreground">Pending</dt>
           </div>
           <div className="rounded-md bg-muted/50 p-2">
             <dd className="text-lg font-bold tabular-nums m-0">{successRate}%</dd>
-            <dt className="text-[10px] text-muted-foreground">Success</dt>
+            <dt className="text-micro text-muted-foreground">Success</dt>
           </div>
         </dl>
 
         {/* Success rate bar */}
         <div className="space-y-1">
-          <div className="flex justify-between text-[10px] text-muted-foreground">
+          <div className="flex justify-between text-micro text-muted-foreground">
             <span>Success rate</span>
             <span className="tabular-nums">{agent.metrics.successfulActions}/{agent.metrics.totalActions} actions</span>
           </div>
@@ -249,7 +249,7 @@ function AgentCard({
 
         {/* Last active */}
         {agent.lastActiveAt && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-micro text-muted-foreground">
             Last active <time dateTime={new Date(agent.lastActiveAt).toISOString()}>{relative(agent.lastActiveAt)}</time>
           </p>
         )}
@@ -287,13 +287,13 @@ function TaskRow({
           <code className="text-xs bg-muted rounded px-1 py-0.5">{actionLabel}</code>
           <Badge
             variant="outline"
-            className={`text-[10px] px-1.5 py-0 ${STATUS_COLORS[task.status] || ""}`}
+            className={`text-micro px-1.5 py-0 ${STATUS_COLORS[task.status] || ""}`}
             aria-label={`Status: ${task.status}`}
           >
             {task.status}
           </Badge>
           {task.requiresReview && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-acr-warn-soft text-acr-warn border-acr-warn-soft" aria-label="Needs your approval">
+            <Badge variant="outline" className="text-micro px-1.5 py-0 bg-acr-warn-soft text-acr-warn border-acr-warn-soft" aria-label="Needs your approval">
               needs approval
             </Badge>
           )}
@@ -306,7 +306,7 @@ function TaskRow({
               .join(", ")}
           </p>
         )}
-        <p className="text-[10px] text-muted-foreground mt-0.5">
+        <p className="text-micro text-muted-foreground mt-0.5">
           <time dateTime={new Date(task.createdAt).toISOString()}>{relative(task.createdAt)}</time>
           {task.executionTimeMs ? <span className="tabular-nums"> · {task.executionTimeMs}ms</span> : null}
         </p>
@@ -750,7 +750,7 @@ export default function AgentCommandCenter() {
           <TabsTrigger value="approvals" className="relative">
             Approvals
             {totalPendingApprovals > 0 && (
-              <span className="ml-1.5 rounded-full bg-acr-neg text-white text-[10px] px-1.5 py-0.5">
+              <span className="ml-1.5 rounded-full bg-acr-neg text-white text-micro px-1.5 py-0.5">
                 {totalPendingApprovals}
               </span>
             )}
@@ -811,24 +811,24 @@ export default function AgentCommandCenter() {
                       <CheckCircle2 className="h-4 w-4 text-acr-pos" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-pos">Auto-execute</span>
                     </div>
-                    <p className="text-[11px] text-acr-pos">Research, data lookups, drafts, calculations.</p>
-                    <p className="text-[10px] text-acr-pos mt-1 tabular-nums">Risk score: 0–25</p>
+                    <p className="text-caption text-acr-pos">Research, data lookups, drafts, calculations.</p>
+                    <p className="text-micro text-acr-pos mt-1 tabular-nums">Risk score: 0–25</p>
                   </li>
                   <li className="rounded-card border border-acr-warn-soft bg-acr-warn-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
                       <AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-warn">Needs approval</span>
                     </div>
-                    <p className="text-[11px] text-acr-warn">Outbound comms, scheduling, data writes.</p>
-                    <p className="text-[10px] text-acr-warn mt-1 tabular-nums">Risk score: 26–75</p>
+                    <p className="text-caption text-acr-warn">Outbound comms, scheduling, data writes.</p>
+                    <p className="text-micro text-acr-warn mt-1 tabular-nums">Risk score: 26–75</p>
                   </li>
                   <li className="rounded-card border border-acr-neg-soft bg-acr-neg-soft p-3">
                     <div className="flex items-center gap-2 mb-1.5">
                       <XCircle className="h-4 w-4 text-acr-neg" aria-hidden="true" />
                       <span className="text-xs font-semibold text-acr-neg">Always escalate</span>
                     </div>
-                    <p className="text-[11px] text-acr-neg">Offers, contracts, financial commitments.</p>
-                    <p className="text-[10px] text-acr-neg mt-1 tabular-nums">Risk score: 76–100</p>
+                    <p className="text-caption text-acr-neg">Offers, contracts, financial commitments.</p>
+                    <p className="text-micro text-acr-neg mt-1 tabular-nums">Risk score: 76–100</p>
                   </li>
                 </ul>
               </CardContent>

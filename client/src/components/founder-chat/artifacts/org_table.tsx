@@ -108,7 +108,7 @@ export function OrgTableArtifact({ rows, sortBy }: OrgTableProps) {
                     <td className="px-4 py-2 font-medium">{row.orgName}</td>
                     <td className="px-4 py-2">
                       {row.tier ? (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-micro">
                           {row.tier}
                         </Badge>
                       ) : (

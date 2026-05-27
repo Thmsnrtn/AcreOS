@@ -47,7 +47,7 @@ export function TcpaComplianceBanner({
   return (
     <div
       className={
-        "flex items-start gap-2 rounded-md border border-muted bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground " +
+        "flex items-start gap-2 rounded-md border border-muted bg-muted/40 px-3 py-2 text-caption text-muted-foreground " +
         (className ?? "")
       }
     >

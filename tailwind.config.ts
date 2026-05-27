@@ -147,6 +147,13 @@ export default {
         serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
       },
+      fontSize: {
+        // Caption / micro scale extensions per design-system §1.2.
+        // Replace the prior `text-[11px]` / `text-[10px]` ad-hocs so
+        // line-height stays coherent across the system.
+        caption: ["11px", "14px"],
+        micro:   ["10px", "12px"],
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

@@ -249,7 +249,7 @@ export function DataConfidenceBadge({
         {/* Footer with timestamps */}
         {lastFetchedIso && (
           <div className="border-t border-border/50 px-4 py-2">
-            <p className="text-[11px] text-muted-foreground m-0">
+            <p className="text-caption text-muted-foreground m-0">
               Last fetched:{" "}
               <time dateTime={lastFetchedIso} className="tabular-nums">{formatTimestamp(lastFetchedIso)}</time>
             </p>

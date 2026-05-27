@@ -71,7 +71,7 @@ export function DecisionCardArtifact({
             {item.ownerAgentCodename && (
               <Badge
                 variant="secondary"
-                className="text-[10px] bg-acr-brand-soft text-acr-brand border-transparent"
+                className="text-micro bg-acr-brand-soft text-acr-brand border-transparent"
               >
                 {item.ownerAgentCodename}
               </Badge>

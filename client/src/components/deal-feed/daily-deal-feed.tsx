@@ -345,7 +345,7 @@ function DealCard({
               >
                 {scores.landCredit}
               </div>
-              <span className="text-[10px] text-muted-foreground mt-0.5">
+              <span className="text-micro text-muted-foreground mt-0.5">
                 {scores.landCreditGrade}
               </span>
             </div>
@@ -370,23 +370,23 @@ function DealCard({
                 <Badge
                   key={s}
                   variant="secondary"
-                  className={`text-[10px] ${motivationColors[s] || "bg-muted"}`}
+                  className={`text-micro ${motivationColors[s] || "bg-muted"}`}
                 >
                   {s}
                 </Badge>
               ))}
               {signals.environmental.slice(0, 2).map((s) => (
-                <Badge key={s} variant="secondary" className="text-[10px] bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
+                <Badge key={s} variant="secondary" className="text-micro bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
                   {s}
                 </Badge>
               ))}
               {legal?.multipleOwners && (
-                <Badge variant="secondary" className="text-[10px] bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
+                <Badge variant="secondary" className="text-micro bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
                   Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
                 </Badge>
               )}
               {legal?.taxDelinquent && legal?.redemptionMonths != null && (
-                <Badge variant="secondary" className="text-[10px] bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
+                <Badge variant="secondary" className="text-micro bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
                   Tax lien — {legal.redemptionMonths} mo redemption
                 </Badge>
               )}

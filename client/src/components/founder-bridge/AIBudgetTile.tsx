@@ -65,10 +65,10 @@ export function AIBudgetTile({
     <BridgeTile label="AI Budget" onDiscuss={onDiscuss} testId="bridge-tile-ai-budget">
       <div className="flex flex-col gap-3 p-4 md:p-5">
         <div className="flex items-baseline justify-between">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+          <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
             AI Budget · today
           </span>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          <span className="font-mono text-caption tabular-nums text-muted-foreground">
             {isLoading ? "—" : `${dollars(totalSpentCents)} / ${dollars(totalCapCents)}`}
           </span>
         </div>
@@ -93,7 +93,7 @@ export function AIBudgetTile({
               return (
                 <div
                   key={row.category}
-                  className="flex items-center justify-between text-[11px] tabular-nums"
+                  className="flex items-center justify-between text-caption tabular-nums"
                   data-testid={`ai-budget-row-${row.category}`}
                 >
                   <div className="flex items-center gap-2">

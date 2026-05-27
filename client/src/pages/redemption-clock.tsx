@@ -286,20 +286,20 @@ export default function RedemptionClockPage() {
                     >
                       {c.daysRemaining < 0 ? `${Math.abs(c.daysRemaining)}d` : `${c.daysRemaining}d`}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       {c.daysRemaining < 0 ? "overdue" : "to deadline"}
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Deadline
                     </div>
                     <div className="font-medium tabular-nums">{fmtDate(c.redemptionDeadline)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Rate
                     </div>
                     <div className={`font-mono tabular-nums ${c.preliminary ? "text-amber-600 dark:text-amber-400" : ""}`}>
@@ -307,13 +307,13 @@ export default function RedemptionClockPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Principal
                     </div>
                     <div className="font-mono tabular-nums">{fmtUsd(c.purchaseAmountCents)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Interest
                     </div>
                     <div className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
@@ -322,7 +322,7 @@ export default function RedemptionClockPage() {
                   </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-border/40 flex items-baseline justify-between">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Total redemption
                   </div>
                   <div className="font-mono text-base font-semibold tabular-nums">
@@ -333,7 +333,7 @@ export default function RedemptionClockPage() {
             );
           })}
           {anyPreliminary && (
-            <div className="px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="px-3 py-2 text-caption text-muted-foreground">
               * Rate uses preliminary state-rule data. Verify with the county clerk before quoting a redeemer.
             </div>
           )}
@@ -393,7 +393,7 @@ export default function RedemptionClockPage() {
             </table>
           </div>
           {anyPreliminary && (
-            <div className="px-4 py-2 text-[11px] text-muted-foreground border-t border-border/40 bg-muted/20">
+            <div className="px-4 py-2 text-caption text-muted-foreground border-t border-border/40 bg-muted/20">
               * Rate uses preliminary state-rule data. Verify with the county clerk before quoting a redeemer.
             </div>
           )}

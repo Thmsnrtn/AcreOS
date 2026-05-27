@@ -97,7 +97,7 @@ export function StatCard({
                 <Tooltip
                   content={({ active, payload }) =>
                     active && payload?.length ? (
-                      <div className="bg-background border rounded px-1.5 py-0.5 text-[10px] shadow">
+                      <div className="bg-background border rounded px-1.5 py-0.5 text-micro shadow">
                         {payload[0].value}
                       </div>
                     ) : null

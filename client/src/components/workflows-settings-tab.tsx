@@ -151,10 +151,10 @@ export function WorkflowsSettingsTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{wf.name}</span>
                       {!wf.isActive && (
-                        <Badge variant="secondary" className="text-[10px] h-4">Paused</Badge>
+                        <Badge variant="secondary" className="text-micro h-4">Paused</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+                    <div className="flex items-center gap-1 text-caption text-muted-foreground mt-0.5">
                       <span>{TRIGGER_LABELS[wf.trigger?.event] ?? wf.trigger?.event}</span>
                       <ChevronRight className="w-3 h-3" />
                       <span>{wf.actions?.length ?? 0} action{(wf.actions?.length ?? 0) !== 1 ? "s" : ""}</span>

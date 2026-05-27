@@ -77,7 +77,7 @@ function ReviewCard({ review }: { review: Review }) {
           <span aria-hidden="true" className="text-lg">{avatar}</span>
           <div>
             <p id={`${reviewId}-heading`} className="text-sm font-semibold m-0">{role}</p>
-            <p className="text-[10px] text-muted-foreground m-0">
+            <p className="text-micro text-muted-foreground m-0">
               <time dateTime={review.periodStart} className="tabular-nums">{new Date(review.periodStart).toLocaleDateString()}</time> — <time dateTime={review.periodEnd} className="tabular-nums">{new Date(review.periodEnd).toLocaleDateString()}</time>
             </p>
           </div>
@@ -94,11 +94,11 @@ function ReviewCard({ review }: { review: Review }) {
       <dl className="grid grid-cols-4 gap-2 m-0">
         <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.totalActions}</dd>
-          <dt className="text-[10px] text-muted-foreground">Actions</dt>
+          <dt className="text-micro text-muted-foreground">Actions</dt>
         </div>
         <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.successRate}%</dd>
-          <dt className="text-[10px] text-muted-foreground">Success</dt>
+          <dt className="text-micro text-muted-foreground">Success</dt>
         </div>
         <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold flex items-center justify-center gap-0.5 m-0" aria-label={`Trust ${m.trustScoreEnd}, ${m.trustDelta > 0 ? "up" : m.trustDelta < 0 ? "down" : "flat"}`}>
@@ -107,11 +107,11 @@ function ReviewCard({ review }: { review: Review }) {
              m.trustDelta < 0 ? <ArrowDown className="h-3 w-3 text-acr-neg" aria-hidden="true" /> :
              <Minus className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
           </dd>
-          <dt className="text-[10px] text-muted-foreground">Trust</dt>
+          <dt className="text-micro text-muted-foreground">Trust</dt>
         </div>
         <div className="text-center p-2 rounded-card bg-muted/50">
           <dd className="text-lg font-bold tabular-nums m-0">{m.goalsCompleted}/{m.goalsAssigned}</dd>
-          <dt className="text-[10px] text-muted-foreground">Goals</dt>
+          <dt className="text-micro text-muted-foreground">Goals</dt>
         </div>
       </dl>
 

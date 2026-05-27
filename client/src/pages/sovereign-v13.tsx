@@ -265,7 +265,7 @@ export default function SovereignV13Page() {
                       </div>
                       <span className="text-xs font-semibold truncate">{pillar.title}</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground mb-2">{pillar.subtitle}</p>
+                    <p className="text-micro text-muted-foreground mb-2">{pillar.subtitle}</p>
                     {pillar.stats.length > 0 && (
                       <dl className="space-y-1 m-0">
                         {pillar.stats.map((s) => (
@@ -317,7 +317,7 @@ export default function SovereignV13Page() {
                     {(memoryStats?.topCategories ?? []).slice(0, 3).map((cat: any) => (
                       <div key={cat.category} className="flex justify-between text-xs">
                         <span>{cat.category}</span>
-                        <Badge variant="secondary" className="text-[10px]">{cat.count}</Badge>
+                        <Badge variant="secondary" className="text-micro">{cat.count}</Badge>
                       </div>
                     ))}
                   </div>
@@ -566,7 +566,7 @@ export default function SovereignV13Page() {
                     {anomalies.slice(0, 5).map((a: any) => (
                       <div key={a.anomalyId} className="flex items-center justify-between p-2 rounded border">
                         <div className="flex items-center gap-2">
-                          <Badge variant={a.severity === "critical" ? "destructive" : "default"} className="text-[10px]">
+                          <Badge variant={a.severity === "critical" ? "destructive" : "default"} className="text-micro">
                             {a.severity}
                           </Badge>
                           <span className="text-xs font-medium">{a.agentCodename}</span>

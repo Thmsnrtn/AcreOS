@@ -138,7 +138,7 @@ export function StatusBadge({
 
   const sizeClasses =
     size === "sm"
-      ? "h-[18px] px-1.5 text-[11px] gap-1"
+      ? "h-[18px] px-1.5 text-caption gap-1"
       : "h-[22px] px-2 text-xs gap-1.5";
 
   return (

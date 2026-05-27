@@ -256,7 +256,7 @@ export function TeamInviteCard() {
                       Invited {shortDate(inv.createdAt)} · Expires {shortDate(inv.expiresAt)}
                     </p>
                   </div>
-                  <Badge variant="outline" className="uppercase text-[10px]">
+                  <Badge variant="outline" className="uppercase text-micro">
                     {inv.role}
                   </Badge>
                   {inv.link && (

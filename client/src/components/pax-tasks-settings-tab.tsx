@@ -101,7 +101,7 @@ export function PaxTasksSettingsTab() {
             <Clock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No scheduled tasks yet</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Use the <span className="font-mono text-[11px] bg-muted px-1 rounded">⏱</span> button in the Pax chat input to schedule a prompt.
+              Use the <span className="font-mono text-caption bg-muted px-1 rounded">⏱</span> button in the Pax chat input to schedule a prompt.
             </p>
           </CardContent>
         </Card>
@@ -118,18 +118,18 @@ export function PaxTasksSettingsTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{task.name}</span>
                       {!task.isActive && (
-                        <Badge variant="secondary" className="text-[10px] h-4">Paused</Badge>
+                        <Badge variant="secondary" className="text-micro h-4">Paused</Badge>
                       )}
                       {task.lastRunStatus && (
                         <Badge
                           variant={task.lastRunStatus === "success" ? "outline" : "destructive"}
-                          className="text-[10px] h-4"
+                          className="text-micro h-4"
                         >
                           {task.lastRunStatus === "success" ? "OK" : "Error"}
                         </Badge>
                       )}
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                    <div className="text-caption text-muted-foreground mt-0.5">
                       {SCHEDULE_LABELS[task.schedule] ?? task.schedule}
                       {task.lastRunAt && (
                         <span className="ml-2 text-muted-foreground/60">
@@ -138,7 +138,7 @@ export function PaxTasksSettingsTab() {
                       )}
                     </div>
                     {task.lastRunSummary && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1 italic">"{task.lastRunSummary}"</p>
+                      <p className="text-caption text-muted-foreground mt-0.5 line-clamp-1 italic">"{task.lastRunSummary}"</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -201,23 +201,23 @@ export function PaxTasksSettingsTab() {
                       {new Date(run.runAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </span>
                     <span className={cn(
-                      "ml-auto text-[10px] font-medium",
+                      "ml-auto text-micro font-medium",
                       run.status === "success" ? "text-acr-pos" : "text-destructive"
                     )}>
                       {run.status}
                     </span>
                     {run.durationMs && (
-                      <span className="text-[10px] text-muted-foreground">{(run.durationMs / 1000).toFixed(1)}s</span>
+                      <span className="text-micro text-muted-foreground">{(run.durationMs / 1000).toFixed(1)}s</span>
                     )}
                   </div>
                   {run.summary && (
-                    <p className="text-[11px] text-muted-foreground line-clamp-2 pl-5">{run.summary}</p>
+                    <p className="text-caption text-muted-foreground line-clamp-2 pl-5">{run.summary}</p>
                   )}
                   {/* "View conversation" was a dead link — pax deep-link
                       by conversationId isn't wired yet. Surface the id
                       as a passive label until /pax supports it. */}
                   {run.conversationId && (
-                    <div className="text-[10px] text-muted-foreground flex items-center gap-0.5 pl-5">
+                    <div className="text-micro text-muted-foreground flex items-center gap-0.5 pl-5">
                       <ExternalLink className="w-2.5 h-2.5" aria-hidden="true" />
                       Conversation #{run.conversationId}
                     </div>

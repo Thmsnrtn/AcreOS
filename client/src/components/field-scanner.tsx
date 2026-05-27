@@ -93,7 +93,7 @@ function ObservationBadge({ icon: Icon, label, value }: { icon: any; label: stri
     <div className="flex items-center gap-2 p-2 rounded-card border bg-card">
       <Icon className="w-4 h-4 text-primary shrink-0" />
       <div className="min-w-0">
-        <p className="text-[10px] text-muted-foreground">{label}</p>
+        <p className="text-micro text-muted-foreground">{label}</p>
         <p className="text-xs font-medium truncate">{value}</p>
       </div>
     </div>
@@ -306,7 +306,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
             {capturedPhotos.map((photo, i) => (
               <div key={i} className="relative aspect-square rounded-md overflow-hidden">
                 <img src={photo} alt={DIRECTIONS[i]} className="w-full h-full object-cover" />
-                <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-micro text-center py-0.5">
                   {DIRECTIONS[i]}
                 </div>
               </div>
@@ -334,7 +334,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
               {result.photos.map((photo, i) => (
                 <div key={i} className="relative aspect-square rounded-md overflow-hidden">
                   <img src={photo} alt={DIRECTIONS[i]} className="w-full h-full object-cover" />
-                  <Badge className="absolute top-1 left-1 text-[10px]" variant="secondary">
+                  <Badge className="absolute top-1 left-1 text-micro" variant="secondary">
                     {DIRECTIONS[i]}
                   </Badge>
                 </div>

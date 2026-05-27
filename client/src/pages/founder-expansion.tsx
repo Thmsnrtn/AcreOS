@@ -208,18 +208,18 @@ function CandidateRow({
       <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[10px] font-semibold text-foreground tabular-nums" aria-label={`Score ${candidate.score} of 100`}>
+            <span className="text-micro font-semibold text-foreground tabular-nums" aria-label={`Score ${candidate.score} of 100`}>
               Score {candidate.score}/100
             </span>
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-micro">
               {candidate.currentTier} → {candidate.proposedTier}
             </Badge>
             {lift > 0 && (
-              <Badge variant="secondary" className="text-[10px] tabular-nums" aria-label={`Estimated lift ${dollars(lift, { showSign: true })} per month`}>
+              <Badge variant="secondary" className="text-micro tabular-nums" aria-label={`Estimated lift ${dollars(lift, { showSign: true })} per month`}>
                 {dollars(lift, { showSign: true })}/mo
               </Badge>
             )}
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-micro text-muted-foreground tabular-nums">
               {relative(candidate.createdAt)}
             </span>
           </div>
@@ -280,12 +280,12 @@ function HistoryRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
           <span
-            className={`text-[10px] px-1.5 py-0.5 rounded capitalize ${STATUS_COLOR[candidate.status]}`}
+            className={`text-micro px-1.5 py-0.5 rounded capitalize ${STATUS_COLOR[candidate.status]}`}
             aria-label={`Status: ${candidate.status}`}
           >
             {candidate.status}
           </span>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-caption text-muted-foreground">
             {orgLabel} · score <span className="tabular-nums">{candidate.score}</span>
           </span>
         </div>

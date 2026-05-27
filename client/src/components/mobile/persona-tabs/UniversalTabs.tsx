@@ -298,7 +298,7 @@ export function UniversalToday() {
                   </div>
                   <span
                     className={cn(
-                      "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold",
+                      "text-micro uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold",
                       j.status === "failing"
                         ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
                         : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
@@ -338,11 +338,11 @@ export function UniversalToday() {
                         {s.rationale}
                       </div>
                     )}
-                    <div className="text-[11px] text-primary mt-1.5 font-medium">
+                    <div className="text-caption text-primary mt-1.5 font-medium">
                       {s.actionLabel} →
                     </div>
                   </div>
-                  <div className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                  <div className="shrink-0 text-micro tabular-nums text-muted-foreground">
                     {Math.round(s.confidence * 100)}%
                   </div>
                 </div>
@@ -384,7 +384,7 @@ export function UniversalToday() {
                     <div className="text-lg font-semibold tabular-nums">
                       {l.score ?? 0}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       score
                     </div>
                   </div>
@@ -450,7 +450,7 @@ export function UniversalToday() {
                         {a.entityType}
                       </div>
                     </div>
-                    <div className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                    <div className="text-caption text-muted-foreground tabular-nums shrink-0">
                       {fmtRelativeTime(a.createdAt)}
                     </div>
                   </button>
@@ -694,7 +694,7 @@ function StatTile({
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-micro uppercase tracking-wide text-muted-foreground">
         {icon}
         <span>{label}</span>
       </div>
@@ -711,7 +711,7 @@ function StatTile({
         )
       )}
       {sub && (
-        <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>
+        <div className="text-caption text-muted-foreground mt-0.5">{sub}</div>
       )}
     </Card>
   );
@@ -725,7 +725,7 @@ function SectionHead({
   icon?: React.ReactNode;
 }) {
   return (
-    <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+    <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
       {icon}
       {children}
     </h2>

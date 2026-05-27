@@ -73,7 +73,7 @@ export function FocusCard() {
             type="button"
             size="sm"
             variant="ghost"
-            className="h-6 text-[10px] shrink-0"
+            className="h-6 text-micro shrink-0"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
             aria-busy={refreshMutation.isPending}

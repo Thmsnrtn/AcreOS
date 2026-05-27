@@ -206,7 +206,7 @@ function SectionCard({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-micro gap-1 text-muted-foreground hover:text-foreground"
           data-testid={`discuss-section-${iconKey}`}
           onClick={() =>
             discussWithAtlas({

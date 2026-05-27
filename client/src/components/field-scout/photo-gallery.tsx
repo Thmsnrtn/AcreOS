@@ -218,18 +218,18 @@ export function PhotoGallery({
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
                     <div className="space-y-1">
                       {selectedPhoto.latitude && selectedPhoto.longitude && (
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-1 text-micro text-muted-foreground">
                           <MapPin className="w-3 h-3 text-acr-pos" />
                           {selectedPhoto.latitude.toFixed(6)}, {selectedPhoto.longitude.toFixed(6)}
                         </div>
                       )}
                       {selectedPhoto.bearing !== undefined && (
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-1 text-micro text-muted-foreground">
                           <Compass className="w-3 h-3 text-acr-accent" />
                           {selectedPhoto.bearing.toFixed(1)} heading
                         </div>
                       )}
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-1 text-micro text-muted-foreground">
                         <Clock className="w-3 h-3 text-acr-warn" />
                         {format(new Date(selectedPhoto.timestamp), "MMM d, yyyy h:mm a")}
                       </div>

@@ -24,7 +24,7 @@ export function UnknownArtifactType({ type, payload }: UnknownArtifactTypeProps)
         <div className="flex items-center gap-2 text-xs">
           <HelpCircle className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
           <span className="font-medium">Unknown artifact type</span>
-          <Badge variant="secondary" className="font-mono text-[10px]">
+          <Badge variant="secondary" className="font-mono text-micro">
             {type}
           </Badge>
         </div>

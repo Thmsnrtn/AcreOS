@@ -359,7 +359,7 @@ function SavedRepliesPanel({
                   <p className="text-sm font-medium truncate">{r.name}</p>
                   <p className="text-xs text-muted-foreground line-clamp-2">{r.body}</p>
                   {r.organizationId && (
-                    <span className="text-[10px] text-muted-foreground italic">org-scoped</span>
+                    <span className="text-micro text-muted-foreground italic">org-scoped</span>
                   )}
                 </button>
               </li>

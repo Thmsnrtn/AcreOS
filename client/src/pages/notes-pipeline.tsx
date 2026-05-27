@@ -206,7 +206,7 @@ export default function NotesPipelinePage() {
 function KV({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="font-mono">{value}</div>
     </div>
   );

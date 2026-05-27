@@ -258,16 +258,16 @@ function BATNACalculator() {
             <dl className="grid grid-cols-2 gap-2 m-0">
               {maxAllowable > 0 && (
                 <div className="rounded-card border p-3 bg-muted/30">
-                  <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Max allowable offer</dt>
+                  <dt className="text-micro text-muted-foreground uppercase tracking-wide">Max allowable offer</dt>
                   <dd className="text-xl font-bold tabular-nums text-primary mt-0.5 m-0">{formatDollar(maxAllowable)}</dd>
-                  <p className="text-[10px] text-muted-foreground">your BATNA walkaway</p>
+                  <p className="text-micro text-muted-foreground">your BATNA walkaway</p>
                 </div>
               )}
               {negotiationZone !== null && negotiationZone.mid > 0 && (
                 <div className="rounded-card border p-3 bg-muted/30">
-                  <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</dt>
+                  <dt className="text-micro text-muted-foreground uppercase tracking-wide">Midpoint</dt>
                   <dd className="text-xl font-bold tabular-nums mt-0.5 m-0">{formatDollar(negotiationZone.mid)}</dd>
-                  <p className="text-[10px] text-muted-foreground">split-the-difference</p>
+                  <p className="text-micro text-muted-foreground">split-the-difference</p>
                 </div>
               )}
             </dl>
@@ -294,7 +294,7 @@ function BATNACalculator() {
                     style={{ width: `${Math.min(sellerFlexibility, 100)}%` }}
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-micro text-muted-foreground mt-1">
                   {sellerFlexibility > 30 ? "Wide gap — room to negotiate aggressively." :
                    sellerFlexibility > 15 ? "Moderate gap — fair negotiation zone." :
                    "Narrow gap — close to agreement."}
@@ -405,15 +405,15 @@ function PsychologicalPressureGauge({
           <dl className="grid grid-cols-3 gap-2 mt-3 w-full text-center m-0">
             <div>
               <dd className="text-lg font-bold tabular-nums text-acr-warn m-0">{urgencySignals}</dd>
-              <dt className="text-[10px] text-muted-foreground">Urgency signals</dt>
+              <dt className="text-micro text-muted-foreground">Urgency signals</dt>
             </div>
             <div>
               <dd className="text-lg font-bold tabular-nums text-acr-pos m-0">{motivationSignals}</dd>
-              <dt className="text-[10px] text-muted-foreground">Motivation cues</dt>
+              <dt className="text-micro text-muted-foreground">Motivation cues</dt>
             </div>
             <div>
               <dd className="text-lg font-bold tabular-nums text-muted-foreground m-0">{hesitationSignals}</dd>
-              <dt className="text-[10px] text-muted-foreground">Hesitation signs</dt>
+              <dt className="text-micro text-muted-foreground">Hesitation signs</dt>
             </div>
           </dl>
         </div>

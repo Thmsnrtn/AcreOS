@@ -97,7 +97,7 @@ export function OfflineSyncBanner({
           )}
 
           {queueCount > 0 && (
-            <Badge variant="secondary" className="text-[10px] bg-acr-bg-sunken text-muted-foreground">
+            <Badge variant="secondary" className="text-micro bg-acr-bg-sunken text-muted-foreground">
               {queueCount} queued
             </Badge>
           )}
@@ -105,7 +105,7 @@ export function OfflineSyncBanner({
 
         <div className="flex items-center gap-2">
           {lastSyncedAt && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <span className="text-micro text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {relative(lastSyncedAt)}
             </span>
@@ -116,7 +116,7 @@ export function OfflineSyncBanner({
               variant="ghost"
               size="sm"
               onClick={onRetry}
-              className="h-6 px-2 text-[10px] text-acr-warn hover:text-acr-warn"
+              className="h-6 px-2 text-micro text-acr-warn hover:text-acr-warn"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
               Retry
@@ -126,7 +126,7 @@ export function OfflineSyncBanner({
               variant="ghost"
               size="sm"
               onClick={onSyncNow}
-              className="h-6 px-2 text-[10px] text-acr-pos hover:text-acr-pos"
+              className="h-6 px-2 text-micro text-acr-pos hover:text-acr-pos"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
               Sync Now
@@ -142,12 +142,12 @@ export function OfflineSyncBanner({
 
       {/* Error detail */}
       {syncState === "error" && syncError && (
-        <p className="text-[10px] text-acr-warn/70">{syncError}</p>
+        <p className="text-micro text-acr-warn/70">{syncError}</p>
       )}
 
       {/* Offline details */}
       {!isOnline && queueCount > 0 && (
-        <p className="text-[10px] text-acr-neg/70">
+        <p className="text-micro text-acr-neg/70">
           {queueCount} action{queueCount !== 1 ? "s" : ""} will sync automatically when you reconnect.
         </p>
       )}

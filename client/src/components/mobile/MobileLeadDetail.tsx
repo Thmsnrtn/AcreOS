@@ -94,7 +94,7 @@ function StatusPill({ status }: { status?: string | null }) {
         ? "bg-primary/15 text-primary"
         : "bg-muted text-foreground";
   return (
-    <Badge variant="secondary" className={`uppercase tracking-wide text-[10px] ${tone}`}>
+    <Badge variant="secondary" className={`uppercase tracking-wide text-micro ${tone}`}>
       {s.replace(/_/g, " ")}
     </Badge>
   );
@@ -323,7 +323,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
             {updateLead.isPending ? "Saving…" : "Mark contacted now"}
           </Button>
           {lead.lastContactedAt && (
-            <div className="text-[11px] text-muted-foreground text-center mt-1.5">
+            <div className="text-caption text-muted-foreground text-center mt-1.5">
               Last contacted{" "}
               {new Date(lead.lastContactedAt as any).toLocaleString()}
             </div>
@@ -332,7 +332,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
 
         {/* Notes */}
         <section>
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1">
             Notes
           </h2>
           <Card className="p-3 space-y-3">

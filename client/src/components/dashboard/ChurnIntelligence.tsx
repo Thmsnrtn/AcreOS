@@ -104,30 +104,30 @@ export function ChurnIntelligence() {
             <dd className={`text-2xl font-bold tabular-nums m-0 ${churnMetrics.status === "healthy" ? "text-acr-pos" : churnMetrics.status === "watch" ? "text-acr-warn" : "text-acr-neg"}`}>
               {churnRate.toFixed(1)}%
             </dd>
-            <dt className="text-[11px] text-muted-foreground">Your churn</dt>
+            <dt className="text-caption text-muted-foreground">Your churn</dt>
           </div>
           <div>
             <dd className="text-2xl font-bold text-muted-foreground tabular-nums m-0">{churnMetrics.industryBenchmark}%</dd>
-            <dt className="text-[11px] text-muted-foreground">Industry avg</dt>
+            <dt className="text-caption text-muted-foreground">Industry avg</dt>
           </div>
           <div>
             <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
               {vsIndustry > 0 ? "+" : ""}{vsIndustry.toFixed(1)}%
             </dd>
-            <dt className="text-[11px] text-muted-foreground">vs benchmark</dt>
+            <dt className="text-caption text-muted-foreground">vs benchmark</dt>
           </div>
         </dl>
 
         {/* Visual benchmark comparison bar */}
         <div className="space-y-1.5" aria-hidden="true">
-          <div className="flex justify-between text-[10px] text-muted-foreground">
+          <div className="flex justify-between text-micro text-muted-foreground">
             <span>0%</span>
             <span>5%</span>
             <span>10%+</span>
           </div>
           {/* Your rate */}
           <div className="space-y-0.5">
-            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+            <div className="flex justify-between text-micro text-muted-foreground mb-0.5">
               <span>Your rate</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -139,7 +139,7 @@ export function ChurnIntelligence() {
           </div>
           {/* Industry */}
           <div className="space-y-0.5">
-            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+            <div className="flex justify-between text-micro text-muted-foreground mb-0.5">
               <span>Industry avg</span>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -177,14 +177,14 @@ export function ChurnIntelligence() {
                       }`} />
                       <span className="text-sm truncate">{org.name}</span>
                       {org.tier && (
-                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 shrink-0 capitalize">
+                        <Badge variant="outline" className="text-micro py-0 px-1.5 h-4 shrink-0 capitalize">
                           {org.tier}
                         </Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-2">
                       <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                      <span className="text-caption text-muted-foreground tabular-nums">
                         {idleText}
                       </span>
                     </div>

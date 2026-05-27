@@ -117,7 +117,7 @@ export function FounderMobileBottomNav() {
                 >
                   <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
                 </div>
-                <span className={cn("text-[11px] font-medium truncate", isActive && "text-primary")}>
+                <span className={cn("text-caption font-medium truncate", isActive && "text-primary")}>
                   {item.label}
                 </span>
               </Link>

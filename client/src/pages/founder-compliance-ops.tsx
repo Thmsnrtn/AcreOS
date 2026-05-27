@@ -290,7 +290,7 @@ export default function FounderComplianceOpsPage() {
                           return (
                             <tr key={r.id} className="border-b border-border/40">
                               <td className="p-2 text-xs">{r.requestType}</td>
-                              <td className="p-2 text-xs">{r.requesterEmail}{r.isSelfTest && <Badge variant="outline" className="ml-1 text-[10px]">test</Badge>}</td>
+                              <td className="p-2 text-xs">{r.requesterEmail}{r.isSelfTest && <Badge variant="outline" className="ml-1 text-micro">test</Badge>}</td>
                               <td className="p-2 text-xs">{fmtTime(r.receivedAt)}</td>
                               <td className="p-2 text-xs">{fmtTime(r.slaDeadlineAt)}</td>
                               <td className="p-2">

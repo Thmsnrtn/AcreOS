@@ -53,11 +53,11 @@ export function CashStrip({
               <Banknote className="w-4 h-4 text-acr-pos" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cash position</p>
+              <p className="text-caption text-muted-foreground uppercase tracking-wide">Cash position</p>
               <p className="text-lg font-semibold tabular-nums">
                 {cashOnHand > 0 ? usd(cashOnHand, { noCents: true }) : "—"}
               </p>
-              <p className="text-[11px] text-muted-foreground">90d projected receipts</p>
+              <p className="text-caption text-muted-foreground">90d projected receipts</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -65,11 +65,11 @@ export function CashStrip({
               <DollarSign className="w-4 h-4 text-primary" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Open deals</p>
+              <p className="text-caption text-muted-foreground uppercase tracking-wide">Open deals</p>
               <p className="text-lg font-semibold tabular-nums">
                 {openDealsValue > 0 ? dollarsCompact(openDealsValue * 100) : "—"}
               </p>
-              <p className="text-[11px] text-muted-foreground tabular-nums">
+              <p className="text-caption text-muted-foreground tabular-nums">
                 {openDealsCount} active
               </p>
             </div>
@@ -79,14 +79,14 @@ export function CashStrip({
               <TrendingUp className="w-4 h-4 text-acr-warn" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pending payments</p>
+              <p className="text-caption text-muted-foreground uppercase tracking-wide">Pending payments</p>
               <p className="text-lg font-semibold tabular-nums">
                 {pendingPayments30 > 0 ? usd(pendingPayments30, { noCents: true }) : "—"}
               </p>
-              <p className="text-[11px] text-muted-foreground tabular-nums inline-flex items-center gap-1">
+              <p className="text-caption text-muted-foreground tabular-nums inline-flex items-center gap-1">
                 next 30 days
                 {lateCount > 0 && (
-                  <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg text-[10px] py-0 px-1.5 tabular-nums">
+                  <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg text-micro py-0 px-1.5 tabular-nums">
                     {lateCount} late
                   </Badge>
                 )}

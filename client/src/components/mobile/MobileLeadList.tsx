@@ -60,7 +60,7 @@ function StatusPill({ status }: { status?: string | null }) {
         : "bg-muted text-foreground";
   return (
     <span
-      className={`uppercase tracking-wide text-[10px] font-semibold px-1.5 py-0.5 rounded ${tone}`}
+      className={`uppercase tracking-wide text-micro font-semibold px-1.5 py-0.5 rounded ${tone}`}
     >
       {s.replace(/_/g, " ")}
     </span>
@@ -253,7 +253,7 @@ export function MobileLeadList() {
                     {d != null && (
                       <div
                         className={cn(
-                          "text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded",
+                          "text-micro mt-1 inline-block px-1.5 py-0.5 rounded",
                           d >= 21
                             ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
                             : d >= 7

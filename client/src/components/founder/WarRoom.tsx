@@ -93,8 +93,8 @@ function MessageBubble({ message }: { message: WarRoomMessageData }) {
       <div className="flex items-center gap-2 mb-1">
         <span aria-hidden="true" className="text-sm">{avatar}</span>
         <span className="text-xs font-semibold">{name}</span>
-        <Badge variant="outline" className="text-[10px] h-4 px-1.5">{typeLabel}</Badge>
-        <time dateTime={message.createdAt} className="text-[10px] text-muted-foreground ml-auto tabular-nums">
+        <Badge variant="outline" className="text-micro h-4 px-1.5">{typeLabel}</Badge>
+        <time dateTime={message.createdAt} className="text-micro text-muted-foreground ml-auto tabular-nums">
           {new Date(message.createdAt).toLocaleTimeString()}
         </time>
       </div>
@@ -141,7 +141,7 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
             <span className="text-sm font-semibold">{room.title}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px]" aria-label={`${room.participants?.length || 0} agents participating`}>
+            <Badge variant="outline" className="text-micro" aria-label={`${room.participants?.length || 0} agents participating`}>
               <Users2 className="h-2.5 w-2.5 mr-1" aria-hidden="true" />
               <span className="tabular-nums">{room.participants?.length || 0}</span> agents
             </Badge>
@@ -150,7 +150,7 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-6 text-[10px]"
+                className="h-6 text-micro"
                 onClick={() => resolveRoom.mutate("Resolved by CEO")}
                 disabled={resolveRoom.isPending}
                 aria-busy={resolveRoom.isPending}

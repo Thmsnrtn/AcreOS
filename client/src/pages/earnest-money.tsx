@@ -267,7 +267,7 @@ export default function EarnestMoneyPage() {
                       <td className="px-3 py-2.5 text-xs">
                         {fmtDate(h.refundableUntilAt)}
                         {days !== null && (
-                          <span className={`ml-1.5 text-[10px] ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : "text-muted-foreground"}`}>
+                          <span className={`ml-1.5 text-micro ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : "text-muted-foreground"}`}>
                             ({days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`})
                           </span>
                         )}

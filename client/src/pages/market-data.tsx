@@ -121,7 +121,7 @@ export default function MarketDataPage() {
                       <ul className="flex flex-wrap gap-1" aria-label={`Top appreciating counties in ${state.state}`}>
                         {state.topCounties.map((county) => (
                           <li key={county}>
-                            <Badge variant="secondary" className="text-[10px]">
+                            <Badge variant="secondary" className="text-micro">
                               <MapPin className="w-2.5 h-2.5 mr-0.5" aria-hidden="true" />
                               {county}
                             </Badge>

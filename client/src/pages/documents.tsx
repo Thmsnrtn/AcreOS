@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { DocumentTemplate, GeneratedDocument, Deal, Property, DocumentPackage } from "@shared/schema";
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";

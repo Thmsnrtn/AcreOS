@@ -254,7 +254,7 @@ export default function MyLetterPage() {
                   {archive.data?.letters.map((row) => (
                     <li key={row.monthKey} className="p-2 rounded text-xs">
                       <div className="font-medium text-foreground tabular-nums">{row.monthKey}</div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-caption text-muted-foreground">
                         <span className="capitalize">{row.status}</span>
                         {row.openedAt ? <> · opened <span className="tabular-nums">{format(new Date(row.openedAt), "MMM d")}</span></> : ""}
                       </div>

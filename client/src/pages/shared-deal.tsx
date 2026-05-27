@@ -247,7 +247,7 @@ export default function SharedDealPage() {
         </Card>
       )}
 
-      <p className="text-[10px] text-muted-foreground text-center">
+      <p className="text-micro text-muted-foreground text-center">
         This link expires <span className="tabular-nums">{new Date(data.expiresAt).toLocaleDateString()}</span>. Powered by AcreOS.
       </p>
     </div>

@@ -64,7 +64,7 @@ export default function DelegationManager() {
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Clock className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-micro text-muted-foreground">
                     <span className="tabular-nums">{expiryText}</span> · {d.reason}
                   </p>
                 </div>

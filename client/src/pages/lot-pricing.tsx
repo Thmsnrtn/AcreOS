@@ -379,7 +379,7 @@ export default function LotPricingPage() {
                     </td>
                     <td className="px-2 py-2 text-xs">
                       {g.matchedRules.map((m, i) => (
-                        <Badge key={i} variant="outline" className="mr-1 text-[10px]">{m.attribute} {(m.premiumPct * 100).toFixed(0)}%</Badge>
+                        <Badge key={i} variant="outline" className="mr-1 text-micro">{m.attribute} {(m.premiumPct * 100).toFixed(0)}%</Badge>
                       ))}
                     </td>
                     <td className="px-2 py-2 text-right font-semibold">{fmtUsdCents(g.askingPriceCents)}</td>

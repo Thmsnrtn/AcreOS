@@ -194,7 +194,7 @@ export function SubdividerToday() {
     <div className="space-y-5">
       {/* Stalled permit gates — Brigid's #1 daily pain */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <AlertTriangle className="h-3.5 w-3.5 text-rose-500" aria-hidden />
           Stalled permit gates
         </h2>
@@ -241,7 +241,7 @@ export function SubdividerToday() {
                       >
                         +{d}d
                       </div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <div className="text-micro uppercase tracking-wide text-muted-foreground">
                         overdue
                       </div>
                     </div>
@@ -257,7 +257,7 @@ export function SubdividerToday() {
           the gate that most often eats months */}
       {percStalled.length > 0 && (
         <section>
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-amber-500" aria-hidden />
             Perc tests waiting on TDEC
           </h2>
@@ -435,7 +435,7 @@ export function SubdividerPortfolio() {
                 <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden />
                 {d!.recoveredPct ?? 0}%
               </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-caption text-muted-foreground mt-0.5">
                 {fmtUsdCents(d!.totalSoldProceedsCents ?? 0)} of {fmtUsdCents(d!.totalParentBasisCents)} recovered
               </div>
             </Card>
@@ -483,7 +483,7 @@ function StatTile({
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div
@@ -495,7 +495,7 @@ function StatTile({
       >
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-caption text-muted-foreground mt-0.5">{sub}</div>}
     </Card>
   );
 }

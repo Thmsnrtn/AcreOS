@@ -93,7 +93,7 @@ function PropertyColumn({ id }: { id: number }) {
           <div className="text-xs text-muted-foreground truncate">
             {[prop.city, prop.county + " County", prop.state, prop.zip].filter(Boolean).join(" · ")}
           </div>
-          <Badge variant="outline" className="mt-2 text-[10px] uppercase">
+          <Badge variant="outline" className="mt-2 text-micro uppercase">
             {prop.status}
           </Badge>
         </div>
@@ -109,7 +109,7 @@ function PropertyColumn({ id }: { id: number }) {
         <CompareRow label="List price" value={money(prop.listPrice)} />
         {prop.legalDescription && (
           <div className="space-y-1 pt-2 border-t border-border">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Legal</div>
+            <div className="text-micro uppercase tracking-wide text-muted-foreground">Legal</div>
             <div className="text-xs text-foreground/80 whitespace-pre-wrap line-clamp-3">
               {prop.legalDescription}
             </div>

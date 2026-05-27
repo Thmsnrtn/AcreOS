@@ -180,7 +180,7 @@ function SettingRowEditor({
             <code className="text-xs font-mono text-foreground bg-muted px-1.5 py-0.5 rounded">
               {row.key}
             </code>
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-micro">
               {sourceLabel}
             </Badge>
           </div>

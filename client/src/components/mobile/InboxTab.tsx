@@ -157,7 +157,7 @@ function InboxCard({ conversation: c, onAction, onOpen }: InboxCardProps) {
                 <p className="font-medium text-foreground truncate">
                   {c.leadName ?? `Lead #${c.leadId}`}
                 </p>
-                <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
+                <span className="text-caption tabular-nums text-muted-foreground shrink-0">
                   {c.lastMessageAt ? relative(c.lastMessageAt) : "—"}
                 </span>
               </div>
@@ -306,7 +306,7 @@ export function InboxTab() {
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-1">
+      <p className="text-caption uppercase tracking-wide text-muted-foreground px-1">
         Swipe right · Contacted &nbsp;·&nbsp; Swipe left · Snooze
       </p>
       <AnimatePresence initial={false}>

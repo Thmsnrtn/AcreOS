@@ -117,7 +117,7 @@ export function LegalIntelligenceCard({
               Multiple Owners Detected
               <Badge
                 variant="outline"
-                className="ml-2 text-[10px] border-acr-warn text-acr-warn dark:text-acr-warn"
+                className="ml-2 text-micro border-acr-warn text-acr-warn dark:text-acr-warn"
               >
                 {data.partition.ownerCount} owners
               </Badge>
@@ -140,7 +140,7 @@ export function LegalIntelligenceCard({
               {data.taxLien.redemptionMonths > 0 && (
                 <Badge
                   variant="outline"
-                  className="ml-2 text-[10px] border-acr-warn text-acr-warn dark:text-acr-warn"
+                  className="ml-2 text-micro border-acr-warn text-acr-warn dark:text-acr-warn"
                 >
                   {data.taxLien.redemptionMonths} mo redemption
                 </Badge>

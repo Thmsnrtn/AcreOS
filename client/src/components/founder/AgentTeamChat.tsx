@@ -277,7 +277,7 @@ export function AgentTeamChat() {
               >
                 <span aria-hidden="true" className="text-lg mt-1 shrink-0">{AGENT_AVATARS[agent]}</span>
                 <div className={`max-w-[80%] border rounded-2xl rounded-bl-md px-4 py-2.5 ${bubbleClass}`}>
-                  <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                  <p className="text-micro font-medium text-muted-foreground mb-1">
                     {AGENT_ROLES[agent]}
                   </p>
                   <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>

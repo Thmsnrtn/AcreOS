@@ -127,7 +127,7 @@ export function NoteInvestorToday() {
   return (
     <div className="space-y-5">
       <section>
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+        <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
           Payments — last 24h
         </h2>
@@ -170,7 +170,7 @@ export function NoteInvestorToday() {
 
       {delinquent.length > 0 && (
         <section>
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
             Delinquencies
           </h2>
@@ -364,7 +364,7 @@ function StatTile({
         interactive && "cursor-pointer active:bg-muted/50",
       )}
     >
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-micro uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div
@@ -376,7 +376,7 @@ function StatTile({
       >
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-caption text-muted-foreground mt-0.5">{sub}</div>}
     </Card>
   );
 }

@@ -258,7 +258,7 @@ function ProviderCard({
                   <Badge
                     key={cat}
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0"
+                    className="text-micro px-1.5 py-0"
                   >
                     {cat}
                   </Badge>
@@ -332,7 +332,7 @@ function ProviderCard({
             <div className="space-y-2 pt-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Health</span>
-                <Badge variant={config.badgeVariant} className="text-[11px]">
+                <Badge variant={config.badgeVariant} className="text-caption">
                   {config.label}
                 </Badge>
               </div>

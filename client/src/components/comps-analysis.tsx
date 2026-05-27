@@ -228,7 +228,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
               Refresh
             </Button>
-            <span className="text-[10px] text-muted-foreground" data-testid="text-cost-comps">$0.10 per query</span>
+            <span className="text-micro text-muted-foreground" data-testid="text-cost-comps">$0.10 per query</span>
           </div>
         </div>
         {data?.message && (

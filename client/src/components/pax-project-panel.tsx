@@ -147,7 +147,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
             <FolderOpen className="w-4 h-4 text-primary" />
             Pax Projects
           </SheetTitle>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Scoped workspaces with files and notes. Active project context is always included in Pax's responses.
           </p>
         </SheetHeader>
@@ -156,8 +156,8 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
           {/* Project list */}
           <div className="px-4 pt-3 pb-2 border-b">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Projects</p>
-              <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={() => setCreating(true)}>
+              <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Projects</p>
+              <Button size="sm" variant="ghost" className="h-6 text-caption px-2" onClick={() => setCreating(true)}>
                 <Plus className="w-3 h-3 mr-1" /> New
               </Button>
             </div>
@@ -222,14 +222,14 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                   {activeProjectId === currentProject.id ? (
                     <button
                       onClick={() => { onSelectProject(null); }}
-                      className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      className="text-micro text-muted-foreground hover:text-foreground flex items-center gap-1"
                     >
                       <X className="w-3 h-3" /> Deactivate
                     </button>
                   ) : (
                     <button
                       onClick={() => { onSelectProject(currentProject.id); }}
-                      className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                      className="text-micro text-primary hover:underline flex items-center gap-1"
                     >
                       <CheckCircle2 className="w-3 h-3" /> Set as active
                     </button>
@@ -265,7 +265,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                 ) : (
                   <Paperclip className="w-4 h-4 text-muted-foreground mx-auto mb-1" aria-hidden="true" />
                 )}
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   {uploadingFor === currentProject.id ? "Uploading…" : "Add files to this project"}
                 </p>
               </button>
@@ -285,12 +285,12 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               {/* Project files list */}
               {projectFiles.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Files</p>
+                  <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Files</p>
                   {projectFiles.map((f) => (
                     <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 rounded border text-xs">
                       <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                       <span className="flex-1 truncate">{f.fileName}</span>
-                      <span className="text-muted-foreground text-[10px]">{fmtBytes(f.sizeBytes)}</span>
+                      <span className="text-muted-foreground text-micro">{fmtBytes(f.sizeBytes)}</span>
                       <button aria-label={`Remove ${f.fileName}`}
                         onClick={() => deleteFileMutation.mutate({ projectId: currentProject.id, fileId: f.id })}
                         className="text-muted-foreground hover:text-destructive"

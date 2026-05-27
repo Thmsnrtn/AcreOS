@@ -53,7 +53,7 @@ export function BucketChartArtifact({ data }: BucketChartProps) {
       className="border-border/60 shadow-none"
     >
       <CardContent className="p-5 sm:p-6">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+        <p className="text-caption uppercase tracking-wider text-muted-foreground font-medium">
           Total across buckets
         </p>
         <p

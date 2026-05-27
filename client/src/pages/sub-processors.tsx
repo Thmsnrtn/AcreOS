@@ -175,7 +175,7 @@ export default function SubProcessorsPage() {
                     <td className="px-4 py-3 font-medium">
                       {sp.vendor}
                       {sp.optional && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <span className="ml-2 text-micro uppercase tracking-wide text-muted-foreground">
                           opt-in
                         </span>
                       )}

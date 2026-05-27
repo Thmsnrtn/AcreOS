@@ -292,7 +292,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           </div>
 
           {/* Swipe hint */}
-          <p aria-hidden="true" className="text-[10px] text-muted-foreground/50 text-center select-none">
+          <p aria-hidden="true" className="text-micro text-muted-foreground/50 text-center select-none">
             Swipe right to approve · left to reject
           </p>
         </div>

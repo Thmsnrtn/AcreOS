@@ -173,7 +173,7 @@ export function RequestSignaturesDialog({
                       className="h-8"
                     />
                   </div>
-                  <pre className="text-[10px] bg-muted/40 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-all">
+                  <pre className="text-micro bg-muted/40 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-all">
                     {link.url}
                   </pre>
                 </li>

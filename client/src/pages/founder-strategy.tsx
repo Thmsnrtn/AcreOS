@@ -295,22 +295,22 @@ function ProposalRow({
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-micro">
               {proposal.proposedBy}
             </Badge>
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded capitalize ${catColor}`}
+              className={`text-micro px-1.5 py-0.5 rounded capitalize ${catColor}`}
               aria-label={`Category: ${proposal.category}`}
             >
               {proposal.category}
             </span>
-            <span className="text-[10px] text-muted-foreground tabular-nums">{proposal.confidence}% confidence</span>
+            <span className="text-micro text-muted-foreground tabular-nums">{proposal.confidence}% confidence</span>
             {proposal.estimatedImpactCents != null && (
-              <span className="text-[10px] text-muted-foreground tabular-nums" aria-label={`Estimated impact ${usd(proposal.estimatedImpactCents / 100)}`}>
+              <span className="text-micro text-muted-foreground tabular-nums" aria-label={`Estimated impact ${usd(proposal.estimatedImpactCents / 100)}`}>
                 {usd(proposal.estimatedImpactCents / 100)} impact
               </span>
             )}
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-micro text-muted-foreground tabular-nums">
               {relative(proposal.createdAt)}
             </span>
           </div>

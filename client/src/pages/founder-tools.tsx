@@ -198,26 +198,26 @@ function ToolProposalCard({
       <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <Badge variant="secondary" className="text-[10px]">{row.proposedBy}</Badge>
-            <Badge variant="outline" className="text-[10px]">{CATEGORY_LABEL[row.category]}</Badge>
+            <Badge variant="secondary" className="text-micro">{row.proposedBy}</Badge>
+            <Badge variant="outline" className="text-micro">{CATEGORY_LABEL[row.category]}</Badge>
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded ${COMPLEXITY_COLOR[row.estimatedComplexity]}`}
+              className={`text-micro px-1.5 py-0.5 rounded ${COMPLEXITY_COLOR[row.estimatedComplexity]}`}
               aria-label={`Estimated complexity: ${row.estimatedComplexity}`}
             >
               {row.estimatedComplexity}
             </span>
             {row.estimatedImpactCents != null && (
-              <span className="text-[10px] text-muted-foreground tabular-nums" aria-label={`Estimated impact ${usd(row.estimatedImpactCents / 100)}`}>
+              <span className="text-micro text-muted-foreground tabular-nums" aria-label={`Estimated impact ${usd(row.estimatedImpactCents / 100)}`}>
                 {usd(row.estimatedImpactCents / 100)} impact
               </span>
             )}
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-micro text-muted-foreground tabular-nums">
               {relative(row.createdAt)}
             </span>
           </div>
           <h3 className="text-sm font-semibold text-foreground mb-1">{row.title}</h3>
           <p className="text-xs text-foreground/80 mb-2 leading-relaxed">{row.description}</p>
-          <dl className="space-y-1 text-[11px] text-muted-foreground">
+          <dl className="space-y-1 text-caption text-muted-foreground">
             <div>
               <dt className="font-medium text-foreground/80 inline">Gap: </dt>
               <dd className="inline">{row.capabilityGap}</dd>

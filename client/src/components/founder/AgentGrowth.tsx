@@ -62,7 +62,7 @@ function GoalProgress({ goal }: { goal: ImprovementPlan["goals"][0] }) {
         {achieved && <CheckCircle2 className="h-3 w-3 text-acr-pos" aria-hidden="true" />}
       </div>
       <Progress value={achieved ? 100 : progress} className="h-1.5" />
-      <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+      <div className="flex justify-between text-micro text-muted-foreground tabular-nums">
         <span>Baseline: {goal.baselineValue}</span>
         <span>Current: {current}</span>
         <span>Target: {goal.targetValue}</span>
@@ -99,7 +99,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
           <span aria-hidden="true" className="text-lg">{avatar}</span>
           <div>
             <p className="text-sm font-semibold m-0">{role}</p>
-            <p className="text-[10px] text-muted-foreground m-0">
+            <p className="text-micro text-muted-foreground m-0">
               <span className="tabular-nums">{achievedCount}/{goals.length}</span> goals achieved
             </p>
           </div>
@@ -138,7 +138,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-[10px] text-acr-pos"
+                    className="h-6 text-micro text-acr-pos"
                     onClick={() => approveSkillMutation.mutate({ planId: plan.id, skillIndex: i })}
                     disabled={approveSkillMutation.isPending}
                     aria-busy={approveSkillMutation.isPending}
@@ -150,7 +150,7 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-[10px] text-acr-neg"
+                    className="h-6 text-micro text-acr-neg"
                     onClick={() => denySkillMutation.mutate({ planId: plan.id, skillIndex: i })}
                     disabled={denySkillMutation.isPending}
                     aria-busy={denySkillMutation.isPending}

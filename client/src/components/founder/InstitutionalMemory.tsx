@@ -56,7 +56,7 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">{patternLabel}</div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground tabular-nums">{pattern.sampleSize} observations</span>
+          <span className="text-micro text-muted-foreground tabular-nums">{pattern.sampleSize} observations</span>
           <Badge variant="outline" className={
             (successRate >= 70 ? "bg-acr-pos-soft text-acr-pos " :
              successRate >= 40 ? "bg-acr-warn-soft text-acr-warn " :
@@ -87,7 +87,7 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
         <ul aria-label="Context conditions" className="flex flex-wrap gap-1 list-none p-0 m-0">
           {Object.entries(conditions).map(([k, v]) => (
             <li key={k}>
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+              <Badge variant="outline" className="text-micro h-4 px-1.5">
                 {k}: {v}
               </Badge>
             </li>
@@ -95,7 +95,7 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
         </ul>
       )}
 
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-micro text-muted-foreground">
         <span>Agents:</span>
         <ul aria-label="Contributing agents" className="flex items-center gap-1 list-none p-0 m-0">
           {agents.map(a => (
@@ -122,10 +122,10 @@ function CorrelationCard({ correlation }: { correlation: Correlation }) {
     >
       <div className="flex-1">
         <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className="text-[10px] h-4 px-1">{correlation.signalA.split(":")[0]}</Badge>
+          <Badge variant="outline" className="text-micro h-4 px-1">{correlation.signalA.split(":")[0]}</Badge>
           <span className="text-muted-foreground">{sigATail}</span>
           <span className="text-muted-foreground">+</span>
-          <Badge variant="outline" className="text-[10px] h-4 px-1">{correlation.signalB.split(":")[0]}</Badge>
+          <Badge variant="outline" className="text-micro h-4 px-1">{correlation.signalB.split(":")[0]}</Badge>
           <span className="text-muted-foreground">{sigBTail}</span>
         </div>
         <p className="mt-0.5 text-muted-foreground m-0">
@@ -134,7 +134,7 @@ function CorrelationCard({ correlation }: { correlation: Correlation }) {
       </div>
       <div className="text-right shrink-0">
         <p className="font-medium tabular-nums m-0">{strength}%</p>
-        <p className="text-[10px] text-muted-foreground tabular-nums m-0">{correlation.observationCount} obs</p>
+        <p className="text-micro text-muted-foreground tabular-nums m-0">{correlation.observationCount} obs</p>
       </div>
     </li>
   );

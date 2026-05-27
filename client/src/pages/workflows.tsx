@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { PageShell } from "@/components/page-shell";
 import { WorkflowBuilder } from "@/components/workflow-builder";
 import { Card, CardContent } from "@/components/ui/card";
@@ -103,21 +104,27 @@ export default function WorkflowsPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: { name: string; description: string; trigger: WorkflowTrigger; actions: WorkflowAction[] } }) => {
-      const response = await apiRequest("PUT", `/api/workflows/${id}`, data);
-      return response.json();
+  const updateMutation = useOptimisticUpdate<{
+    id: number;
+    data: { name: string; description: string; trigger: WorkflowTrigger; actions: WorkflowAction[] };
+  }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        const response = await apiRequest("PUT", `/api/workflows/${id}`, data);
+        return response.json();
+      },
+      listKeys: [["/api/workflows"]],
+      getId: ({ id }) => id,
+      buildPatch: ({ data }) => data as Record<string, unknown>,
+      successToast: { title: "Workflow updated", description: "Changes have been saved." },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
-      setIsBuilderOpen(false);
-      setSelectedWorkflow(null);
-      toast({ title: "Workflow updated", description: "Changes have been saved." });
+    {
+      onSuccess: () => {
+        setIsBuilderOpen(false);
+        setSelectedWorkflow(null);
+      },
     },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't save workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
-    },
-  });
+  );
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {

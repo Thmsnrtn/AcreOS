@@ -92,7 +92,7 @@ export function DealJourney({ status, dense = false, className }: DealJourneyPro
                 {!dense && (
                   <span
                     className={cn(
-                      "text-[10px] mt-1 whitespace-nowrap",
+                      "text-micro mt-1 whitespace-nowrap",
                       current
                         ? "font-semibold text-foreground"
                         : done
@@ -120,7 +120,7 @@ export function DealJourney({ status, dense = false, className }: DealJourneyPro
         })}
       </div>
       {cancelled && !dense && (
-        <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium text-center mt-1" aria-hidden="true">
+        <p className="text-caption text-rose-600 dark:text-rose-400 font-medium text-center mt-1" aria-hidden="true">
           Cancelled
         </p>
       )}

@@ -176,9 +176,9 @@ export default function TenantsPage() {
                     <td className="px-3 py-2"><Badge variant={statusTone(t.status)} className="text-xs">{t.status}</Badge></td>
                     <td className="px-3 py-2 text-right">{t.screeningCreditScore ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground space-x-1">
-                      {!t.smsConsent && <Badge variant="outline" className="text-[10px]">no SMS</Badge>}
-                      {t.adverseActionNoticeSentAt && <Badge variant="destructive" className="text-[10px]"><AlertTriangle className="w-3 h-3 mr-1" />adverse-action sent</Badge>}
-                      {t.screeningCriteriaMet === false && <Badge variant="destructive" className="text-[10px]">criteria not met</Badge>}
+                      {!t.smsConsent && <Badge variant="outline" className="text-micro">no SMS</Badge>}
+                      {t.adverseActionNoticeSentAt && <Badge variant="destructive" className="text-micro"><AlertTriangle className="w-3 h-3 mr-1" />adverse-action sent</Badge>}
+                      {t.screeningCriteriaMet === false && <Badge variant="destructive" className="text-micro">criteria not met</Badge>}
                     </td>
                   </tr>
                 ))}

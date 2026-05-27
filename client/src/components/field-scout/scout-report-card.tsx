@@ -87,7 +87,7 @@ export function ScoutReportCard({
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-muted to-transparent" />
-          <div className="absolute bottom-2 left-3 text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+          <div className="absolute bottom-2 left-3 text-micro text-muted-foreground font-mono flex items-center gap-1">
             <MapPin className="w-3 h-3 text-acr-pos" />
             {visit.latitude!.toFixed(5)}, {visit.longitude!.toFixed(5)}
           </div>
@@ -99,16 +99,16 @@ export function ScoutReportCard({
         <div>
           <div className="font-medium text-sm">{visit.propertyAddress || "Unknown Address"}</div>
           <div className="flex items-center gap-3 mt-1">
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <span className="text-micro text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {format(new Date(visit.startedAt), "MMM d, yyyy")}
             </span>
             {visit.durationMinutes !== undefined && (
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-micro text-muted-foreground">
                 {formatDuration(visit.durationMinutes)}
               </span>
             )}
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-micro text-muted-foreground">
               {relative(visit.startedAt)}
             </span>
           </div>
@@ -118,7 +118,7 @@ export function ScoutReportCard({
         <div className="flex items-center gap-2 flex-wrap">
           <Badge
             variant="secondary"
-            className="text-[10px] bg-acr-bg-sunken text-muted-foreground flex items-center gap-1"
+            className="text-micro bg-acr-bg-sunken text-muted-foreground flex items-center gap-1"
           >
             <Camera className="w-3 h-3" />
             {visit.photoCount} photo{visit.photoCount !== 1 ? "s" : ""}
@@ -127,7 +127,7 @@ export function ScoutReportCard({
           {visit.checklistScore !== undefined && (
             <Badge
               className={cn(
-                "text-[10px] flex items-center gap-1",
+                "text-micro flex items-center gap-1",
                 visit.checklistScore >= 80
                   ? "bg-acr-pos-soft/50 text-acr-pos"
                   : visit.checklistScore >= 50
@@ -143,7 +143,7 @@ export function ScoutReportCard({
           {visit.dealId && (
             <Badge
               variant="outline"
-              className="text-[10px] border-acr-accent text-acr-accent flex items-center gap-1"
+              className="text-micro border-acr-accent text-acr-accent flex items-center gap-1"
             >
               <Link2 className="w-3 h-3" />
               Linked
@@ -153,7 +153,7 @@ export function ScoutReportCard({
           {!visit.synced && (
             <Badge
               variant="outline"
-              className="text-[10px] border-acr-warn-soft text-acr-warn"
+              className="text-micro border-acr-warn-soft text-acr-warn"
             >
               Pending sync
             </Badge>

@@ -89,7 +89,7 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
                   <span className="text-muted-foreground ml-1">({persp})</span>
                   <p className="text-muted-foreground mt-0.5 m-0">{a.analysis}</p>
                 </div>
-                <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 capitalize">{a.confidence}</Badge>
+                <Badge variant="outline" className="text-micro h-4 px-1 shrink-0 capitalize">{a.confidence}</Badge>
               </li>
             );
           })}
@@ -112,16 +112,16 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
                 className={`p-2.5 rounded-card ${style.bg}`}
                 aria-label={`${style.label}: ${outcome.description}, ${probabilityPct}% likely`}
               >
-                <p className={`text-[10px] font-medium ${style.color} flex items-center gap-1 m-0`}>
+                <p className={`text-micro font-medium ${style.color} flex items-center gap-1 m-0`}>
                   <Icon className="h-2.5 w-2.5" aria-hidden="true" />
                   {style.label}
                 </p>
                 <p className="text-xs mt-1 m-0">{outcome.description}</p>
-                <p className="text-[10px] text-muted-foreground mt-1 m-0">
+                <p className="text-micro text-muted-foreground mt-1 m-0">
                   <span className="tabular-nums">{probabilityPct}%</span> likely
                 </p>
                 {Object.entries(outcome.metrics || {}).slice(0, 2).map(([k, v]) => (
-                  <p key={k} className="text-[10px] text-muted-foreground m-0">
+                  <p key={k} className="text-micro text-muted-foreground m-0">
                     {k.replace(/_/g, " ")}: <span className="tabular-nums">{typeof v === "number" ? (v > 0 ? "+" : "") + v.toLocaleString() : v}</span>
                   </p>
                 ))}
@@ -134,7 +134,7 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
       {/* Recommendation */}
       {scenario.recommendation && (
         <section aria-labelledby={`recommendation-${scenario.id}`} className="p-2.5 rounded-card bg-muted/50 border">
-          <p id={`recommendation-${scenario.id}`} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommendation</p>
+          <p id={`recommendation-${scenario.id}`} className="text-micro font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommendation</p>
           <p className="text-sm m-0">{scenario.recommendation}</p>
         </section>
       )}

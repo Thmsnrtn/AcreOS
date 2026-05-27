@@ -360,7 +360,7 @@ export default function AuthPage() {
         {/* One-liner reassurance at the highest-anxiety moment — first
             credential entry. The /security page goes deeper (encryption
             at rest, SOC 2 in flight, audit trail per access). */}
-        <p className="text-[11px] text-muted-foreground text-center max-w-sm">
+        <p className="text-caption text-muted-foreground text-center max-w-sm">
           Encrypted in transit and at rest. Auth is handled by Clerk; we
           never see your password.{" "}
           <Link

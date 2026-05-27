@@ -128,7 +128,7 @@ export default function ActivityTimeline() {
                           identity registry. */}
                       <div
                         aria-hidden="true"
-                        className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-semibold ${agentDotClass}`}
+                        className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-micro font-semibold ${agentDotClass}`}
                       >
                         {identity.letter}
                       </div>

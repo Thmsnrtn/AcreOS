@@ -166,13 +166,13 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
           ) : (
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
           )}
-          <Badge variant="secondary" className="text-[10px] font-mono">
+          <Badge variant="secondary" className="text-micro font-mono">
             {trace.agentCodename}
           </Badge>
           <span className="text-sm font-medium text-foreground">{trace.purpose}</span>
-          <Badge variant="outline" className="text-[10px]">{trace.model}</Badge>
+          <Badge variant="outline" className="text-micro">{trace.model}</Badge>
           {trace.error ? (
-            <Badge variant="outline" className="text-[10px] border-acr-neg/30 text-acr-neg">
+            <Badge variant="outline" className="text-micro border-acr-neg/30 text-acr-neg">
               Error
             </Badge>
           ) : null}
@@ -207,26 +207,26 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
                 )}
                 {detail.systemPrompt && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">System prompt</p>
+                    <p className="text-micro uppercase tracking-wide text-muted-foreground mb-1">System prompt</p>
                     <pre className="rounded-md border bg-muted/30 text-[11px] font-mono leading-5 px-3 py-2 max-h-[240px] overflow-auto whitespace-pre-wrap">
                       {detail.systemPrompt}
                     </pre>
                   </div>
                 )}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">User prompt</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground mb-1">User prompt</p>
                   <pre className="rounded-md border bg-muted/30 text-[11px] font-mono leading-5 px-3 py-2 max-h-[240px] overflow-auto whitespace-pre-wrap">
                     {detail.userPrompt}
                   </pre>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Response</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground mb-1">Response</p>
                   <pre className="rounded-md border bg-muted/30 text-[11px] font-mono leading-5 px-3 py-2 max-h-[360px] overflow-auto whitespace-pre-wrap">
                     {detail.response}
                   </pre>
                 </div>
                 {(detail.inputTokens != null || detail.outputTokens != null) && (
-                  <dl className="flex gap-4 text-[11px] text-muted-foreground">
+                  <dl className="flex gap-4 text-caption text-muted-foreground">
                     {detail.inputTokens != null && (
                       <div className="flex gap-1">
                         <dt>In:</dt>

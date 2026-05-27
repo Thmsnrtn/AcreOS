@@ -85,7 +85,7 @@ export function BridgeAtlasPane({
             aria-expanded={threadsOpen}
             aria-label="Toggle thread list"
             className={cn(
-              "inline-flex h-7 items-center gap-1 rounded-full border border-white/[0.06] px-2 text-[11px] text-muted-foreground",
+              "inline-flex h-7 items-center gap-1 rounded-full border border-white/[0.06] px-2 text-caption text-muted-foreground",
               "transition-colors [@media(pointer:fine)]:hover:bg-white/[0.04] [@media(pointer:fine)]:hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFB547]/60",
             )}

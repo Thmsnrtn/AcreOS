@@ -121,7 +121,7 @@ function ArtifactTable({ data }: { data: any }) {
 
   return (
     <div className="text-xs">
-      <p className="text-[10px] text-muted-foreground mb-1">{rows.length} row{rows.length !== 1 ? "s" : ""}</p>
+      <p className="text-micro text-muted-foreground mb-1">{rows.length} row{rows.length !== 1 ? "s" : ""}</p>
       <div className="overflow-x-auto rounded border">
         <Table>
           <TableHeader>
@@ -129,7 +129,7 @@ function ArtifactTable({ data }: { data: any }) {
               {headers.map((h) => (
                 <TableHead
                   key={h}
-                  className="text-[10px] py-1 px-2 cursor-pointer select-none hover:text-foreground whitespace-nowrap"
+                  className="text-micro py-1 px-2 cursor-pointer select-none hover:text-foreground whitespace-nowrap"
                   onClick={() => toggleSort(h)}
                 >
                   {humanizeKey(h)}
@@ -142,7 +142,7 @@ function ArtifactTable({ data }: { data: any }) {
             {visible.map((row, i) => (
               <TableRow key={i}>
                 {headers.map((h) => (
-                  <TableCell key={h} className="py-1 px-2 text-[11px] whitespace-nowrap">
+                  <TableCell key={h} className="py-1 px-2 text-caption whitespace-nowrap">
                     {formatValue(h, row[h])}
                   </TableCell>
                 ))}
@@ -153,7 +153,7 @@ function ArtifactTable({ data }: { data: any }) {
       </div>
       {rows.length > 10 && (
         <button
-          className="text-[10px] text-primary hover:underline mt-1"
+          className="text-micro text-primary hover:underline mt-1"
           onClick={() => setShowAll((v) => !v)}
         >
           {showAll ? "Show less" : `Show all ${rows.length} rows`}
@@ -239,7 +239,7 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 text-[10px] px-2 gap-1 text-muted-foreground"
+            className="h-6 text-micro px-2 gap-1 text-muted-foreground"
             onClick={handlePrint}
           >
             <Download className="w-2.5 h-2.5" />

@@ -852,7 +852,7 @@ function PanelStepIndicator({ current }: { current: PanelStep }) {
         <span key={label} className="flex items-center gap-1">
           <span
             className={cn(
-              "inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-semibold border",
+              "inline-flex items-center justify-center w-5 h-5 rounded-full text-micro font-semibold border",
               i < current
                 ? "bg-primary text-primary-foreground border-primary"
                 : i === current
@@ -1136,7 +1136,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                 <SelectContent>
                   {Array.from(new Set(PANEL_TRIGGERS.map((t) => t.group))).map((group) => (
                     <span key={group}>
-                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <div className="px-2 py-1 text-micro font-semibold text-muted-foreground uppercase tracking-wider">
                         {group}
                       </div>
                       {PANEL_TRIGGERS.filter((t) => t.group === group).map((t) => (
@@ -1177,7 +1177,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                       : "";
                     return (
                       <div key={action.id} className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2.5">
-                        <span className="text-[10px] font-semibold text-muted-foreground mt-0.5 w-4 text-right shrink-0">
+                        <span className="text-micro font-semibold text-muted-foreground mt-0.5 w-4 text-right shrink-0">
                           {idx + 1}.
                         </span>
                         <div className="flex-1 min-w-0">

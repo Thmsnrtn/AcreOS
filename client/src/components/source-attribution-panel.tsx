@@ -126,7 +126,7 @@ export function SourceAttributionPanel({
               {staleCount > 0 && (
                 <Badge
                   variant="destructive"
-                  className="ml-1 px-1.5 py-0 text-[10px]"
+                  className="ml-1 px-1.5 py-0 text-micro"
                 >
                   {staleCount} stale
                 </Badge>
@@ -208,11 +208,11 @@ export function SourceAttributionPanel({
                       <div className="flex flex-col items-end gap-0.5">
                         <Badge
                           variant="secondary"
-                          className="text-[10px] px-1.5 py-0"
+                          className="text-micro px-1.5 py-0"
                         >
                           {field.source}
                         </Badge>
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1 text-micro text-muted-foreground">
                           <Clock className="h-2.5 w-2.5" />
                           {getRelativeTime(field.fetchedAt)}
                         </span>
@@ -241,7 +241,7 @@ export function SourceAttributionPanel({
               })}
             </motion.div>
 
-            <p className="mt-2 text-[10px] text-muted-foreground">
+            <p className="mt-2 text-micro text-muted-foreground">
               Showing {fields.length} tracked field{fields.length !== 1 && "s"}{" "}
               for property #{propertyId}
             </p>

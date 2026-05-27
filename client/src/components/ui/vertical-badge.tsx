@@ -70,7 +70,7 @@ export function VerticalBadge({
   const label = overrideLabel ?? INVESTOR_LABELS[investorType];
   return (
     <div className={cn("inline-flex items-center gap-1", className)}>
-      <Badge variant="outline" className="text-[11px] font-normal">
+      <Badge variant="outline" className="text-caption font-normal">
         {label}
       </Badge>
       {refreshable && (

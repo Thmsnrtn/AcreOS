@@ -766,7 +766,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Download className="w-5 h-5" aria-hidden="true" />
                   )}
                 </Button>
-                <span className="text-[10px] text-muted-foreground tabular-nums" data-testid="text-cost-pdf">$0.05</span>
+                <span className="text-micro text-muted-foreground tabular-nums" data-testid="text-cost-pdf">$0.05</span>
               </div>
               <Button
                 size="icon"

@@ -78,17 +78,17 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function StatusBadge({ status }: { status?: string }) {
   if (!status || status === "disconnected") {
-    return <Badge variant="outline" className="text-[10px] h-4">Not connected</Badge>;
+    return <Badge variant="outline" className="text-micro h-4">Not connected</Badge>;
   }
   if (status === "connected") {
     return (
-      <Badge variant="default" className="text-[10px] h-4 bg-acr-pos hover:bg-acr-pos">
+      <Badge variant="default" className="text-micro h-4 bg-acr-pos hover:bg-acr-pos">
         <CheckCircle2 className="w-2.5 h-2.5 mr-1" /> Connected
       </Badge>
     );
   }
   return (
-    <Badge variant="destructive" className="text-[10px] h-4">
+    <Badge variant="destructive" className="text-micro h-4">
       <AlertCircle className="w-2.5 h-2.5 mr-1" /> Error
     </Badge>
   );
@@ -150,7 +150,7 @@ function ConnectDialog({
                 spellCheck={f.secret ? false : undefined}
               />
               {f.helpText && (
-                <p className="text-[11px] text-muted-foreground">{f.helpText}</p>
+                <p className="text-caption text-muted-foreground">{f.helpText}</p>
               )}
             </div>
           ))}
@@ -256,7 +256,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                 if (!group?.length) return null;
                 return (
                   <div key={cat}>
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                    <p className="text-caption font-semibold text-muted-foreground uppercase tracking-widest mb-2">
                       {label}
                     </p>
                     <div className="space-y-2">
@@ -271,7 +271,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="text-sm font-medium">{connector.name}</span>
                                 {connector.isPremium && (
-                                  <Badge variant="secondary" className="text-[10px] h-4">Premium</Badge>
+                                  <Badge variant="secondary" className="text-micro h-4">Premium</Badge>
                                 )}
                                 <StatusBadge status={connector.instance?.status} />
                               </div>
@@ -279,7 +279,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                                 {connector.description}
                               </p>
                               {isConnected && connector.instance?.lastTestedAt && (
-                                <p className="text-[10px] text-muted-foreground mt-1">
+                                <p className="text-micro text-muted-foreground mt-1">
                                   Last tested {new Date(connector.instance.lastTestedAt).toLocaleDateString()}
                                 </p>
                               )}

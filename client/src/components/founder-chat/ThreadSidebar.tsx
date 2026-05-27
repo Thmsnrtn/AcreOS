@@ -195,7 +195,7 @@ function ThreadRow({
             {label}
           </p>
           {relative && (
-            <p className="text-[10px] text-muted-foreground truncate">{relative}</p>
+            <p className="text-micro text-muted-foreground truncate">{relative}</p>
           )}
         </div>
       </button>

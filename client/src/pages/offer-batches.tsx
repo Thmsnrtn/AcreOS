@@ -115,7 +115,7 @@ export default function OfferBatchesPage() {
                           </div>
                           <p className="text-sm font-medium text-foreground mt-1.5 truncate">{b.name}</p>
                           {cfg && (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-caption text-muted-foreground">
                               {cfg.targetMargin != null && (
                                 <>Target <span className="tabular-nums">{Math.round(cfg.targetMargin * 100)}%</span> of ARV · </>
                               )}
@@ -165,7 +165,7 @@ function Metric({
         {Icon ? <Icon className="h-3 w-3" aria-hidden="true" /> : null}
         {value}
       </dd>
-      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-micro uppercase tracking-wide text-muted-foreground">{label}</dt>
       {compact && null}
     </div>
   );

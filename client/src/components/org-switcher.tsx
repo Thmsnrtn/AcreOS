@@ -149,7 +149,7 @@ export function OrgSwitcher({ compact = false }: { compact?: boolean }) {
                     <Building2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{o.name}</div>
-                      <div className="text-[11px] text-muted-foreground capitalize">
+                      <div className="text-caption text-muted-foreground capitalize">
                         {o.role}
                         {o.isOwner ? " · owner" : ""}
                       </div>

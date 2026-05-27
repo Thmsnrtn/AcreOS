@@ -36,7 +36,7 @@ export function AIReasoning({ feature, decision, reasoning, confidence, inputs, 
         <span className="text-xs text-muted-foreground flex-1">
           Why this {feature.replace(/_/g, " ")}?
         </span>
-        <Badge variant="outline" className={cn("text-[10px]", confidenceColor)}>
+        <Badge variant="outline" className={cn("text-micro", confidenceColor)}>
           {confidence}% confident
         </Badge>
         <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", expanded && "rotate-180")} />
@@ -58,7 +58,7 @@ export function AIReasoning({ feature, decision, reasoning, confidence, inputs, 
 
             {inputs && Object.keys(inputs).length > 0 && (
               <div className="space-y-1">
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Inputs</p>
+                <p className="text-micro font-medium text-muted-foreground uppercase tracking-wider">Inputs</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                   {Object.entries(inputs).slice(0, 8).map(([key, value]) => (
                     <div key={key} className="text-xs flex justify-between">
@@ -70,7 +70,7 @@ export function AIReasoning({ feature, decision, reasoning, confidence, inputs, 
               </div>
             )}
 
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-micro text-muted-foreground">
               AcreOS AI is advisory — always verify with independent analysis.
             </p>
           </motion.div>

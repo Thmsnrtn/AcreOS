@@ -71,7 +71,7 @@ export function MrrSparklineArtifact({ series, label }: MrrSparklineProps) {
       className="border-border/60 shadow-none"
     >
       <CardContent className="p-5 sm:p-6">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+        <p className="text-caption uppercase tracking-wider text-muted-foreground font-medium">
           {label ?? "MRR"}
         </p>
         <div className="mt-1 flex items-baseline gap-3 flex-wrap">
@@ -124,7 +124,7 @@ export function MrrSparklineArtifact({ series, label }: MrrSparklineProps) {
                 strokeLinejoin="round"
               />
             </svg>
-            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground tabular-nums">
+            <div className="mt-1 flex justify-between text-micro text-muted-foreground tabular-nums">
               <span>{firstDate ? fmtDate(firstDate) : ""}</span>
               <span>{lastDate ? fmtDate(lastDate) : ""}</span>
             </div>

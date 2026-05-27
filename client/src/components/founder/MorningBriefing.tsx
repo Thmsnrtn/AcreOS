@@ -225,7 +225,7 @@ export function MorningBriefing() {
       {/* Generated timestamp */}
       <motion.div variants={staggerItem} className="flex items-center justify-center gap-1.5 py-1">
         <Clock className="h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
-        <span className="text-[10px] text-muted-foreground/40">
+        <span className="text-micro text-muted-foreground/40">
           Last updated <time dateTime={data.generatedAt} className="tabular-nums">{new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
         </span>
       </motion.div>

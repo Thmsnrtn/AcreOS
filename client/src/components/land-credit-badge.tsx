@@ -61,7 +61,7 @@ function DimensionBreakdown({ dimensions, score, grade }: { dimensions: Record<s
         const dimScore = value ?? 50;
         return (
           <div key={key} className="space-y-0.5">
-            <div className="flex justify-between text-[11px]">
+            <div className="flex justify-between text-caption">
               <span className="text-muted-foreground">{dimensionLabels[key] || key}</span>
               <span className="font-medium tabular-nums">{dimScore}</span>
             </div>
@@ -74,7 +74,7 @@ function DimensionBreakdown({ dimensions, score, grade }: { dimensions: Record<s
           </div>
         );
       })}
-      <p className="text-[10px] text-muted-foreground pt-1">
+      <p className="text-micro text-muted-foreground pt-1">
         The Land Credit Score rates this parcel across 6 dimensions. Higher scores indicate better investment quality.
       </p>
     </div>
@@ -134,7 +134,7 @@ export function LandCreditBadge({ propertyId, score, grade, size = "md", dimensi
   if (resolvedScore === undefined) {
     if (isLoading && size === "sm") {
       return (
-        <span className="inline-flex items-center justify-center rounded-full w-5 h-5 text-[10px] font-bold border bg-muted text-muted-foreground animate-pulse">
+        <span className="inline-flex items-center justify-center rounded-full w-5 h-5 text-micro font-bold border bg-muted text-muted-foreground animate-pulse">
           ?
         </span>
       );

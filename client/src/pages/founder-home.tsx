@@ -407,7 +407,7 @@ function NeedsYouRow({ item }: { item: TodoItem }) {
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={tone} label={toneLabel} size="sm" />
             {item.badge && (
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span className="text-caption uppercase tracking-wide text-muted-foreground">
                 {item.badge}
               </span>
             )}

@@ -52,10 +52,10 @@ export function ActionQueueTile({
     <BridgeTile label="Action queue" onDiscuss={onDiscuss} testId="bridge-tile-action-queue">
       <div className="flex flex-col gap-2 p-4 md:p-5">
         <div className="flex items-center justify-between pb-1">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+          <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
             Action queue
           </span>
-          <span className="font-mono text-[11px] text-muted-foreground/80 tabular-nums">
+          <span className="font-mono text-caption text-muted-foreground/80 tabular-nums">
             {isLoading ? "—" : items.length}
           </span>
         </div>
@@ -109,7 +109,7 @@ function ActionRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground/95">{item.title}</p>
         {item.meta && (
-          <p className="truncate text-[11px] text-muted-foreground tabular-nums">{item.meta}</p>
+          <p className="truncate text-caption text-muted-foreground tabular-nums">{item.meta}</p>
         )}
       </div>
       {item.discussPrefill && onDiscussItem && (

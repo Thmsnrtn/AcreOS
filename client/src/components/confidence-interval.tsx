@@ -69,7 +69,7 @@ export function ConfidenceInterval({
           <p className="text-xs text-muted-foreground m-0">{confidenceLabel}</p>
         </TooltipContent>
       </Tooltip>
-      <div aria-hidden="true" className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+      <div aria-hidden="true" className="flex justify-between text-micro text-muted-foreground tabular-nums">
         <span>{fmt(lower, 0)}</span>
         <span>{fmt(upper, 0)}</span>
       </div>

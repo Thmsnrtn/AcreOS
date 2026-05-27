@@ -136,7 +136,7 @@ export function MessageList({
               <p className="text-sm font-medium">Atlas is ready.</p>
               <p className="text-xs mt-1 max-w-xs">
                 Ask anything about the platform — costs, decisions, orgs, agents.
-                Or type <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">/</kbd>{" "}
+                Or type <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-micro">/</kbd>{" "}
                 for commands.
               </p>
             </div>
@@ -187,7 +187,7 @@ export function MessageList({
                         <li
                           key={i}
                           className={cn(
-                            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono tabular-nums",
+                            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-micro font-mono tabular-nums",
                             tc.status === "running" && "bg-muted/60 text-muted-foreground",
                             tc.status === "complete" && "bg-acr-pos-soft text-acr-pos",
                             tc.status === "failed" && "bg-acr-neg-soft text-acr-neg",

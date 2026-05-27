@@ -122,7 +122,7 @@ export default function MultiVerticalPnLPage() {
                 <Calendar className="w-3 h-3" /> Monthly run-rate
               </div>
               <div className="text-lg font-semibold mt-1">{fmtUsdCents(pnl.data.monthlyNetRunRateCents)}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">last 30 days</div>
+              <div className="text-micro text-muted-foreground mt-0.5">last 30 days</div>
             </Card>
           </div>
 

@@ -71,16 +71,16 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate m-0">{pattern.description}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] text-muted-foreground tabular-nums">{pattern.totalDecisions} decisions</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">{approveRate}% approved</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">{confidence}% confidence</span>
+          <span className="text-micro text-muted-foreground tabular-nums">{pattern.totalDecisions} decisions</span>
+          <span className="text-micro text-muted-foreground tabular-nums">{approveRate}% approved</span>
+          <span className="text-micro text-muted-foreground tabular-nums">{confidence}% confidence</span>
         </div>
       </div>
 
       {pattern.isAutopilotEligible && (
         <div className="flex items-center gap-2">
           {!pattern.isAutopilotActive && (
-            <Badge variant="outline" className="text-[10px] bg-acr-accent text-acr-accent">
+            <Badge variant="outline" className="text-micro bg-acr-accent text-acr-accent">
               Ready
             </Badge>
           )}
@@ -96,7 +96,7 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
       {!pattern.isAutopilotEligible && (
         <div className="w-16">
           <Progress value={Math.min(100, (pattern.totalDecisions / 15) * 100)} className="h-1.5" aria-label={`Learning progress: ${pattern.totalDecisions} of 15 decisions`} />
-          <div className="text-[10px] text-muted-foreground text-center mt-0.5 tabular-nums">
+          <div className="text-micro text-muted-foreground text-center mt-0.5 tabular-nums">
             {pattern.totalDecisions}/15
           </div>
         </div>
@@ -192,7 +192,7 @@ export function DecisionAutopilot() {
               {learning.slice(0, 5).map(p => <PatternRow key={p.id} pattern={p} />)}
             </ul>
             {learning.length > 5 && (
-              <p className="text-[10px] text-muted-foreground text-center">
+              <p className="text-micro text-muted-foreground text-center">
                 +<span className="tabular-nums">{learning.length - 5}</span> more patterns being learned
               </p>
             )}

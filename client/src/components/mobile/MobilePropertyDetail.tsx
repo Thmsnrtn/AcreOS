@@ -96,7 +96,7 @@ function StatusPill({ status }: { status?: string | null }) {
     : s === "under_contract" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
     : "bg-muted text-foreground";
   return (
-    <Badge variant="secondary" className={`uppercase tracking-wide text-[10px] ${tone}`}>
+    <Badge variant="secondary" className={`uppercase tracking-wide text-micro ${tone}`}>
       {s.replace(/_/g, " ")}
     </Badge>
   );
@@ -287,7 +287,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
 
         {/* Financial */}
         <Card className="p-3">
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1">
             Financial
           </h2>
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -296,7 +296,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
             <Stat label="List" value={fmtMoney(data.listPrice)} />
           </div>
           {data.purchasePrice && (
-            <div className="text-[11px] text-muted-foreground mt-2 text-center">
+            <div className="text-caption text-muted-foreground mt-2 text-center">
               Purchased at {fmtMoney(data.purchasePrice)}
             </div>
           )}
@@ -305,17 +305,17 @@ export function MobilePropertyDetail({ propertyId }: Props) {
         {/* Land status */}
         {(data.utilities || data.roadAccess || data.terrain) && (
           <Card className="p-3">
-            <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1">
+            <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1">
               Land status
             </h2>
             <div className="flex flex-wrap gap-1.5">
               {data.roadAccess && (
-                <Badge variant="outline" className="text-[11px]">
+                <Badge variant="outline" className="text-caption">
                   {data.roadAccess} access
                 </Badge>
               )}
               {data.terrain && (
-                <Badge variant="outline" className="text-[11px]">
+                <Badge variant="outline" className="text-caption">
                   {data.terrain}
                 </Badge>
               )}
@@ -324,7 +324,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
                   ["electric", "water", "sewer", "gas"] as const
                 ).map((u) =>
                   data.utilities?.[u] ? (
-                    <Badge key={u} variant="secondary" className="text-[11px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                    <Badge key={u} variant="secondary" className="text-caption bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
                       <CheckCircle2 className="h-3 w-3 mr-0.5" />
                       {u}
                     </Badge>
@@ -336,7 +336,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
 
         {/* Status changer */}
         <Card className="p-3">
-          <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 px-1">
+          <h2 className="text-caption uppercase tracking-wide text-muted-foreground mb-2 px-1">
             Pipeline status
           </h2>
           <Select

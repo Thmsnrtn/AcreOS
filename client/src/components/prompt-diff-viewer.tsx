@@ -51,7 +51,7 @@ function Stats({ ops }: { ops: Op[] }) {
   const added = ops.filter((o) => o.kind === "add").length;
   const removed = ops.filter((o) => o.kind === "del").length;
   return (
-    <div className="flex items-center gap-3 text-[11px] font-mono">
+    <div className="flex items-center gap-3 text-caption font-mono">
       <span className="text-acr-pos dark:text-acr-pos">+{added}</span>
       <span className="text-acr-neg dark:text-acr-neg">−{removed}</span>
       <span className="text-muted-foreground">lines</span>
@@ -130,7 +130,7 @@ export function PromptDiffViewer({
 function SplitColumn({ ops, side, label }: { ops: Op[]; side: "left" | "right"; label: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+      <p className="text-micro uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
       <pre className="rounded-md border bg-muted/30 text-[11px] font-mono leading-5 max-h-[480px] overflow-auto">
         {ops.map((op, idx) => {
           const show =

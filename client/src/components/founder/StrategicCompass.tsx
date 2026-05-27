@@ -89,7 +89,7 @@ export function StrategicCompass() {
               const stars = Math.min(Math.ceil(p.weight / 2), 5);
               return (
                 <li key={i}>
-                  <Badge variant="outline" className="text-[10px]" aria-label={`Priority ${p.rank}: ${p.priority}, weight ${stars} of 5`}>
+                  <Badge variant="outline" className="text-micro" aria-label={`Priority ${p.rank}: ${p.priority}, weight ${stars} of 5`}>
                     <span className="tabular-nums">#{p.rank}</span> {p.priority}
                     <span aria-hidden="true" className="ml-1 opacity-50">{"★".repeat(stars)}</span>
                   </Badge>
@@ -101,7 +101,7 @@ export function StrategicCompass() {
 
         {/* Mode Switcher */}
         <div role="radiogroup" aria-label="Strategic mode" className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground mr-1" id="mode-switcher-label">Switch:</span>
+          <span className="text-micro text-muted-foreground mr-1" id="mode-switcher-label">Switch:</span>
           {Object.entries(MODE_CONFIG).map(([mode, config]) => {
             const Icon = config.icon;
             return (
@@ -112,7 +112,7 @@ export function StrategicCompass() {
                 aria-checked={mode === currentMode}
                 size="sm"
                 variant={mode === currentMode ? "default" : "ghost"}
-                className="h-6 text-[10px] px-2"
+                className="h-6 text-micro px-2"
                 onClick={() => switchMode.mutate(mode)}
                 disabled={switchMode.isPending}
                 aria-busy={switchMode.isPending}
