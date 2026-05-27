@@ -69,15 +69,26 @@ export const EASINGS = {
 // ─── Springs ──────────────────────────────────────────────────────────────
 // Stiffness/damping pairs tuned for specific feels. Use these instead of
 // hand-rolling spring configs in component code.
+// Apple-HIG-aligned stiffness/damping pairs. The Apple "snappy" spring
+// targets a response of ~0.3s with near-critical damping (ratio ≈ 0.85);
+// stiffness 320 / damping 30 lands closer to that than the previous
+// underdamped 500/30 pair. If you change these, change the prose
+// in `client/src/lib/motion.ts` re-exports as well.
 export const SPRINGS = {
   /** Snappy — for button taps, card hover, drag-end snap. */
-  snappy: { type: "spring", stiffness: 500, damping: 30 } as Transition,
+  snappy: { type: "spring", stiffness: 320, damping: 30 } as Transition,
   /** Smooth — for modal/sheet entry, layout shifts. */
   smooth: { type: "spring", stiffness: 300, damping: 25 } as Transition,
   /** Gentle — for accordion panels, smooth scroll, soft reveals. */
   gentle: { type: "spring", stiffness: 200, damping: 22 } as Transition,
   /** Bouncy — for celebration moments (deal closed, milestone hit). */
   bouncy: { type: "spring", stiffness: 400, damping: 12 } as Transition,
+  /** Interactive — Apple-HIG button/control press response. Legacy alias
+   *  for the chat surfaces that consumed `SPRING_INTERACTIVE`. */
+  interactive: { type: "spring", stiffness: 220, damping: 26 } as Transition,
+  /** Soft — chat composer / artifact reveal cadence. Legacy alias for
+   *  `SPRING_SOFT` from the chat motion vocabulary. */
+  soft: { type: "spring", stiffness: 140, damping: 22 } as Transition,
 } as const;
 
 // ─── Scales ───────────────────────────────────────────────────────────────
