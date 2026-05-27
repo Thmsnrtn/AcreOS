@@ -22,7 +22,7 @@ export function BridgeHeader({ streamActive, onMenu }: BridgeHeaderProps) {
 
   return (
     <header
-      className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 md:px-6"
+      className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-acr-line px-4 md:px-6"
       data-testid="bridge-header"
     >
       <div className="flex items-center gap-3">

@@ -64,7 +64,7 @@ function AgentPill({ agent }: { agent: AgentHealth }) {
     <div
       className={cn(
         "flex h-9 items-center gap-2 rounded-full border px-3 text-xs tabular-nums",
-        "border-white/[0.06] bg-white/[0.02]",
+        "border-acr-line bg-white/[0.02]",
         isDown && "border-amber-400/40",
       )}
       data-testid={`bridge-agent-pill-${agent.codename.toLowerCase()}`}

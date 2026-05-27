@@ -9,16 +9,27 @@
 /**
  * The one accent. Warm amber, identical to the brief_card rail so the
  * Bridge feels continuous with the morning brief artifact.
+ *
+ * The literal is the fallback only — runtime resolves through the
+ * `--acr-bridge-accent` CSS variable defined in `client/src/index.css`,
+ * so per-theme overrides land here without touching component code.
+ * Prefer the Tailwind utility `bg-acr-bridge-accent` / `text-acr-bridge-accent`
+ * over inline style usage of this constant.
  */
-export const BRIDGE_ACCENT = "#FFB547";
+export const BRIDGE_ACCENT = "var(--acr-bridge-accent, #FFB547)";
 
 /**
- * Hairline border colors. Borders + a single inner highlight at the
- * top edge provide depth; never drop shadows.
+ * Hairline border colors. Tokenized as `--acr-line` so they pick up the
+ * active theme's hairline value (BEDROCK light vs dark, etc.) instead
+ * of holding a literal rgba.
+ *
+ * Most call sites should reach for the `border-acr-line` utility
+ * directly; these constants exist for the handful of places that need
+ * the value as a JS string (inline style objects, canvas/SVG).
  */
-export const TILE_BORDER = "rgba(255,255,255,0.06)";
-export const TILE_BORDER_HOVER = "rgba(255,255,255,0.10)";
-export const TILE_TOP_HIGHLIGHT = "rgba(255,255,255,0.04)";
+export const TILE_BORDER = "var(--acr-line)";
+export const TILE_BORDER_HOVER = "var(--acr-line, rgba(255,255,255,0.10))";
+export const TILE_TOP_HIGHLIGHT = "var(--acr-line-soft)";
 
 /**
  * Corner radii. 20pt desktop matches iOS 16+ widget radius; 16pt mobile

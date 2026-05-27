@@ -140,6 +140,10 @@ export default {
           "chart-b": "var(--acr-chart-b)",
           "chart-c": "var(--acr-chart-c)",
           "chart-d": "var(--acr-chart-d)",
+          // Bridge surface — single amber accent for live / active / now.
+          // Defined as a CSS var in index.css so it can theoretically
+          // theme without touching component code.
+          "bridge-accent": "var(--acr-bridge-accent)",
         },
       },
       fontFamily: {

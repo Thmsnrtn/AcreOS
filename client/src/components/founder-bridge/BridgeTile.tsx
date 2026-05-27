@@ -39,7 +39,7 @@ export const BridgeTile = forwardRef<HTMLDivElement, BridgeTileProps>(function B
       className={cn(
         "relative isolate flex flex-col rounded-2xl",
         // Hairline border + transparent fill so the page bg shows through.
-        "border border-white/[0.06] bg-white/[0.015]",
+        "border border-acr-line bg-white/[0.015]",
         // Top inner highlight — a 1px gradient hairline that fakes depth
         // without a drop shadow.
         "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px",

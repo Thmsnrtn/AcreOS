@@ -73,7 +73,7 @@ export function BridgeAtlasPane({
       data-testid="bridge-atlas-pane-inner"
     >
       {/* Pane header — compact, single row */}
-      <header className="flex flex-col border-b border-white/[0.06]">
+      <header className="flex flex-col border-b border-acr-line">
         <div className="flex h-12 items-center justify-between gap-2 px-4 md:px-5">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground/95">{headerTitle}</span>
@@ -85,7 +85,7 @@ export function BridgeAtlasPane({
             aria-expanded={threadsOpen}
             aria-label="Toggle thread list"
             className={cn(
-              "inline-flex h-7 items-center gap-1 rounded-full border border-white/[0.06] px-2 text-caption text-muted-foreground",
+              "inline-flex h-7 items-center gap-1 rounded-full border border-acr-line px-2 text-caption text-muted-foreground",
               "transition-colors [@media(pointer:fine)]:hover:bg-white/[0.04] [@media(pointer:fine)]:hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFB547]/60",
             )}
@@ -130,7 +130,7 @@ export function BridgeAtlasPane({
                           aria-hidden
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            active ? "bg-[#FFB547]" : "bg-muted-foreground/40",
+                            active ? "bg-acr-bridge-accent" : "bg-muted-foreground/40",
                           )}
                         />
                         <span className="flex-1 truncate">{t.isDefault ? "Daily check-in" : t.title}</span>

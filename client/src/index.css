@@ -76,6 +76,11 @@
   --shadow-2: 0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.08), 0 8px 24px -4px rgba(0,0,0,0.06);
   --shadow-3: 0 0 0 0.5px rgba(0,0,0,0.08), 0 8px 40px rgba(0,0,0,0.12), 0 16px 48px -8px rgba(0,0,0,0.10);
   --shadow-4: 0 0 0 0.5px rgba(0,0,0,0.10), 0 16px 64px rgba(0,0,0,0.16), 0 24px 72px -12px rgba(0,0,0,0.14);
+
+  /* Bridge — the single amber accent that signals "live / active / now"
+     on the founder Bridge surface. Mode-only so a per-theme block can
+     theoretically override it later without code change. */
+  --acr-bridge-accent: #FFB547;
 }
 .dark {
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
@@ -89,6 +94,10 @@
   --shadow-2: 0 0 0 0.5px rgba(255,255,255,0.04), 0 4px 16px rgba(0,0,0,0.36), 0 8px 24px -4px rgba(0,0,0,0.28);
   --shadow-3: 0 0 0 0.5px rgba(255,255,255,0.05), 0 8px 40px rgba(0,0,0,0.50), 0 16px 48px -8px rgba(0,0,0,0.42);
   --shadow-4: 0 0 0 0.5px rgba(255,255,255,0.06), 0 16px 64px rgba(0,0,0,0.64), 0 24px 72px -12px rgba(0,0,0,0.56);
+
+  /* Bridge accent — held constant across light/dark by default; tinted
+     per-theme later if/when the Bridge theming work lands. */
+  --acr-bridge-accent: #FFB547;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
