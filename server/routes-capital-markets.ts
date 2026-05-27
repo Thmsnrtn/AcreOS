@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { capitalMarkets } from './services/capitalMarkets';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -10,8 +11,8 @@ router.get('/securities', async (req: Request, res: Response) => {
     const org = req.organization;
     const securities = await capitalMarkets.listSecurities(org.id);
     res.json({ securities });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -22,8 +23,8 @@ router.post('/pool-notes', async (req: Request, res: Response) => {
     const { noteIds } = req.body;
     const pool = await capitalMarkets.poolNotes(org.id, noteIds.map(Number));
     res.json({ pool });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -34,8 +35,8 @@ router.post('/securitize', async (req: Request, res: Response) => {
     const { noteIds, offeringDetails } = req.body;
     const security = await capitalMarkets.createSecuritization(org.id, noteIds.map(Number), offeringDetails);
     res.json({ security });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -46,8 +47,8 @@ router.post('/securities/:id/invest', async (req: Request, res: Response) => {
     const { amount } = req.body;
     const result = await capitalMarkets.investInSecurity(parseInt(req.params.id), org.id, amount);
     res.json({ result });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -57,8 +58,8 @@ router.get('/lenders', async (req: Request, res: Response) => {
     const org = req.organization;
     const lenders = await capitalMarkets.getLenderNetwork(org.id);
     res.json({ lenders });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -69,8 +70,8 @@ router.post('/lenders', async (req: Request, res: Response) => {
     const { organizationId: _omit, ...lenderData } = req.body;
     const lender = await capitalMarkets.addLender(org.id, lenderData);
     res.json({ lender });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -81,8 +82,8 @@ router.post('/match-lenders', async (req: Request, res: Response) => {
     const { propertyId, loanAmount, ltv } = req.body;
     const matches = await capitalMarkets.matchLenders(org.id, propertyId, loanAmount, ltv);
     res.json({ matches });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -92,8 +93,8 @@ router.get('/raises', async (req: Request, res: Response) => {
     const org = req.organization;
     const raises = await capitalMarkets.getCapitalRaises(org.id);
     res.json({ raises });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -104,8 +105,8 @@ router.post('/raises', async (req: Request, res: Response) => {
     const { organizationId: _omit, ...raiseData } = req.body;
     const raise = await capitalMarkets.createCapitalRaise(org.id, raiseData);
     res.json({ raise });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -115,8 +116,8 @@ router.get('/efficiency', async (req: Request, res: Response) => {
     const org = req.organization;
     const metrics = await capitalMarkets.calculateCapitalEfficiency(org.id);
     res.json({ metrics });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

@@ -22,6 +22,7 @@ import {
   getAgentCommissionSummaries,
   generateCommissionStatement,
 } from "./services/commissionService";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -32,8 +33,8 @@ router.get("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res:
     const org = req.organization;
     const config = await getCommissionConfig(org.id);
     res.json({ config });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -43,8 +44,8 @@ router.put("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res:
     const org = req.organization;
     const config = await saveCommissionConfig(org.id, req.body);
     res.json({ config });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -58,8 +59,8 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
     if (req.query.status) filters.status = req.query.status;
     const records = await getCommissionRecords(org.id, filters);
     res.json({ records });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -69,12 +70,12 @@ router.post("/deal", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
     const org = req.organization;
     const { dealId, agentId, dealAmount } = req.body;
     if (!dealId || !agentId || !dealAmount) {
-      return res.status(400).json({ error: "dealId, agentId, and dealAmount are required" });
+      return Errors.badRequest(res, "dealId, agentId, and dealAmount are required");
     }
     const record = await recordDealCommission(org.id, dealId, agentId, dealAmount);
     res.status(201).json({ record });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -83,13 +84,13 @@ router.post("/:id/payment", isAuthenticated, getOrCreateOrg, async (req: Request
   try {
     const org = req.organization;
     const commissionId = parseInt(req.params.id);
-    if (isNaN(commissionId)) return res.status(400).json({ error: "Invalid commission ID" });
+    if (isNaN(commissionId)) return Errors.badRequest(res, "Invalid commission ID");
     const { amount, method, notes } = req.body;
-    if (!amount) return res.status(400).json({ error: "amount is required" });
+    if (!amount) return Errors.badRequest(res, "amount is required");
     const record = await recordCommissionPayment(org.id, commissionId, amount, method, notes);
     res.json({ record });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -99,8 +100,8 @@ router.get("/agents", isAuthenticated, getOrCreateOrg, async (req: Request, res:
     const org = req.organization;
     const summaries = await getAgentCommissionSummaries(org.id);
     res.json({ summaries });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -113,8 +114,8 @@ router.get("/statement/:agentId", isAuthenticated, getOrCreateOrg, async (req: R
     const to = req.query.to ? new Date(req.query.to as string) : undefined;
     const statement = await generateCommissionStatement(org.id, agentId, from, to);
     res.json({ statement });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

@@ -23,7 +23,7 @@ router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { targetMargin } = req.body;
     const recommendation = await priceOptimizerService.recommendAcquisitionPrice(
@@ -32,8 +32,8 @@ router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
       targetMargin
     );
     res.json({ recommendation });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -42,7 +42,7 @@ router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { quickSale } = req.body;
     const recommendation = await priceOptimizerService.recommendDispositionPrice(
@@ -51,8 +51,8 @@ router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
       quickSale
     );
     res.json({ recommendation });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -61,11 +61,11 @@ router.post("/:propertyId/counter", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { currentOffer, sellerAsk } = req.body;
     if (!currentOffer || !sellerAsk) {
-      return res.status(400).json({ error: "currentOffer and sellerAsk are required" });
+      return Errors.badRequest(res, "currentOffer and sellerAsk are required");
     }
 
     const recommendation = await priceOptimizerService.recommendCounterOffer(
@@ -75,8 +75,8 @@ router.post("/:propertyId/counter", async (req: Request, res: Response) => {
       Number(sellerAsk)
     );
     res.json({ recommendation });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -85,7 +85,7 @@ router.get("/:propertyId", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const recommendations = await priceOptimizerService.getPropertyRecommendations(org.id, propertyId);
     res.json({ recommendations });
@@ -98,11 +98,11 @@ router.get("/:propertyId", async (req: Request, res: Response) => {
 router.post("/outcome/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid recommendation id" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid recommendation id");
 
     const { actualPrice, accepted } = req.body;
     if (actualPrice === undefined || accepted === undefined) {
-      return res.status(400).json({ error: "actualPrice and accepted are required" });
+      return Errors.badRequest(res, "actualPrice and accepted are required");
     }
 
     await priceOptimizerService.recordPriceOutcome(id, Number(actualPrice), Boolean(accepted));
