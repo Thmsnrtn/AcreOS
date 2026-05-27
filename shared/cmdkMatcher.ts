@@ -326,13 +326,18 @@ export function looksLikeQuestion(query: string): boolean {
 
 // ── scope-chip parser ────────────────────────────────────────────────────
 
-export type Scope = "leads" | "deals" | "properties" | "inbox" | "settings";
+// IA consolidation (Lens 4 Fix 3): "founder" scope added when the
+// ⌘⇧K founder palette merged into ⌘K. Consumers that render scope
+// chips MUST filter "founder" through `isFounder` from useAuth() so
+// non-founder users never see the chip or its results.
+export type Scope = "leads" | "deals" | "properties" | "inbox" | "settings" | "founder";
 export const VALID_SCOPES: readonly Scope[] = [
   "leads",
   "deals",
   "properties",
   "inbox",
   "settings",
+  "founder",
 ];
 
 /**

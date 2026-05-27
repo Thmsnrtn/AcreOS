@@ -39,7 +39,10 @@ import { DealModalsHost } from "@/components/modals";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { EarlyAccessBanner } from "@/components/early-access-banner";
 const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
-import { FounderCommandPaletteProvider } from "@/components/founder-command-palette";
+// IA consolidation (Lens 4 Fix 3): the founder-only ⌘⇧K palette was
+// folded into the main ⌘K palette as a `:founder` scope chip + merged
+// inspector/intel/persona-toggle groups. The standalone
+// founder-command-palette.tsx file was deleted in the same change.
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
@@ -118,6 +121,11 @@ const SettingsPage = React.lazy(() => import("@/pages/settings"));
 const TasksPage = React.lazy(() => import("@/pages/tasks"));
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics"));
 const HelpPage = React.lazy(() => import("@/pages/help"));
+// Lens 25 #3 — public KB browse surface. Wired into /help as a tab
+// (#kb fragment) and as a dedicated /help/article/:slug detail route
+// so the Errors.* docsSlug deep links resolve cleanly.
+const KnowledgeBasePage = React.lazy(() => import("@/pages/help/kb"));
+const KnowledgeBaseArticlePage = React.lazy(() => import("@/pages/help/kb-article"));
 // /support stub deleted 2026-05-11 — was a 15-line redirect-to-/help#support
 // component. App.tsx now handles the redirect directly (see /support route).
 
@@ -1586,8 +1594,9 @@ function AppContent() {
           <CommandPalette />
         </Suspense>
       )}
-      {/* Founder-specific ⌘⇧K palette — searches decisions, agents, letters, proposals */}
-      <FounderCommandPaletteProvider>{null}</FounderCommandPaletteProvider>
+      {/* IA consolidation (Lens 4 Fix 3): ⌘⇧K founder palette was
+          merged into the main ⌘K palette above. The provider mount
+          point is intentionally removed. */}
       {user && (
         <Suspense fallback={null}>
           <NewItemMenu />

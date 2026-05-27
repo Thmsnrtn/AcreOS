@@ -41,6 +41,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { usePersonaMode } from "@/hooks/use-persona-mode";
 import { telemetry } from "@/lib/telemetry";
 import { queryClient, apiRequest, prefetchRoute, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -111,6 +112,9 @@ import {
   Tag,
   ClipboardList,
   Filter,
+  Lightbulb,
+  ListChecks,
+  User,
 } from "lucide-react";
 
 // Map verb iconKey strings → lucide components. Centralised so the
@@ -329,6 +333,41 @@ export function CommandPalette() {
     },
   });
 
+  // ── Founder intelligence search (IA consolidation Lens 4 Fix 3) ──────
+  // Folded in from the ex-FounderCommandPalette (⌘⇧K). Hits the
+  // founder-only /api/founder/intelligence/search endpoint to surface
+  // decisions, agents, customer orgs, monthly letters, and strategic
+  // proposals. Gated by isFounder — non-founder users never get the
+  // query enabled, and the founder-only UI groups below are also
+  // hidden behind the same flag.
+  type FounderDecisionHit = { id: number; label: string; itemType: string; status: string; agent: string | null };
+  type FounderAgentHit = { codename: string; title: string; wing: string; trustScore: number };
+  type FounderOrgHit = { id: number; name: string; slug: string; subscriptionTier: string; subscriptionStatus: string };
+  type FounderLetterHit = { monthKey: string; status: string };
+  type FounderProposalHit = { id: number; title: string; category: string; status: string; proposedBy: string; monthKey: string | null };
+  type FounderSearchResponse = {
+    groups: Array<
+      | { key: "decisions"; label: string; items: FounderDecisionHit[] }
+      | { key: "agents"; label: string; items: FounderAgentHit[] }
+      | { key: "organizations"; label: string; items: FounderOrgHit[] }
+      | { key: "letters"; label: string; items: FounderLetterHit[] }
+      | { key: "proposals"; label: string; items: FounderProposalHit[] }
+    >;
+  };
+  const { data: founderSearchData } = useQuery<FounderSearchResponse>({
+    queryKey: ["/api/founder/intelligence/search", search],
+    enabled: open && isFounder && search.trim().length >= 2,
+    staleTime: 5_000,
+    queryFn: async () => {
+      const r = await fetch(
+        `/api/founder/intelligence/search?q=${encodeURIComponent(search.trim())}`,
+        { credentials: "include" },
+      );
+      if (!r.ok) return { groups: [] };
+      return r.json();
+    },
+  });
+
   // ── ⌘K v2 derived state ──────────────────────────────────────────────
   // useDeferredValue lets React drop intermediate renders while the user
   // is still typing, keeping keystroke latency well under the 100ms
@@ -377,7 +416,21 @@ export function CommandPalette() {
   // Page matcher — re-ranks the static `pages` list with the same
   // scoring logic so acronyms ("tdc" → Tax Delinquent Counties) and
   // 1-edit substring matches ("leaf" → Leaflet) work for navigation.
+  //
+  // When activeScope is "founder" we narrow to FOUNDER_PAGES so the
+  // chip filters cleanly to founder-only destinations.
   const matchedPages = useMemo(() => {
+    if (activeScope === "founder") {
+      if (!isFounder) return [];
+      const items = FOUNDER_PAGES.map((p) => ({
+        id: `page:${p.path}`,
+        title: p.name,
+        kind: "page" as const,
+        page: p,
+      }));
+      if (!matcherQuery.trim()) return rankItems("", items, { recents, keepAll: true }).slice(0, 10);
+      return rankItems(matcherQuery, items, { recents }).slice(0, 8);
+    }
     if (activeScope && activeScope !== "settings") return []; // pages list is the cross-cutting nav surface
     const items = pages.map((p) => ({
       id: `page:${p.path}`,
@@ -387,7 +440,33 @@ export function CommandPalette() {
     }));
     if (!matcherQuery.trim()) return [];
     return rankItems(matcherQuery, items, { recents }).slice(0, 6);
-  }, [matcherQuery, activeScope, recents]);
+  }, [matcherQuery, activeScope, recents, isFounder]);
+
+  // ── Founder inspector shortcuts (IA consolidation Lens 4 Fix 3) ──────
+  // "lob" → provider page, "org #12" → org cost tab, "#12345" → cost
+  // event provenance. Pattern-matched against the raw query (not the
+  // remainder), so the founder doesn't need the :founder chip to
+  // resolve a provider/org/ledger reference quickly.
+  const founderInspectorHits = useMemo(() => {
+    if (!isFounder) return null;
+    const trimmed = matcherQuery.trim().toLowerCase();
+    if (!trimmed) return null;
+    const SUPPORTED_PROVIDERS = [
+      "lob", "postgrid", "twilio", "telnyx", "sendgrid", "ses",
+      "openrouter", "anthropic", "openai", "elevenlabs",
+      "stripe", "sentry", "fly", "neon",
+    ];
+    return {
+      provider: SUPPORTED_PROVIDERS.find((p) => p === trimmed) ?? null,
+      orgId: /^org[ #]+(\d+)$/.exec(trimmed)?.[1] ?? null,
+      ledgerId: /^#?(\d{4,})$/.exec(trimmed)?.[1] ?? null,
+    };
+  }, [matcherQuery, isFounder]);
+
+  // Persona toggle (folded in from ex-FounderCommandPalette). Cmd+; is
+  // still the global shortcut wired in App.tsx; this CommandItem is
+  // discoverable from the palette so first-time founders find it.
+  const { mode: personaMode, setMode: setPersonaMode } = usePersonaMode();
 
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
@@ -671,7 +750,7 @@ export function CommandPalette() {
                 >
                   <span className="font-medium text-muted-foreground">Scope:</span>
                   <span
-                    className="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                    className="px-2 py-0.5 rounded-full text-caption font-medium"
                     style={{ background: "var(--acr-bg-sunken)", color: "var(--acr-fg)" }}
                   >
                     :{activeScope}
@@ -719,13 +798,17 @@ export function CommandPalette() {
                   {/* Scope chip discoverability — shown only when the
                       palette is empty so it doesn't crowd the results. */}
                   <span className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[10px] uppercase tracking-wider opacity-70">Scope:</span>
-                    {VALID_SCOPES.map((s) => (
+                    <span className="text-micro uppercase tracking-wider opacity-70">Scope:</span>
+                    {/* IA consolidation (Lens 4 Fix 3): the "founder"
+                        scope is the merged ⌘⇧K palette folded in here;
+                        gate it on isFounder so non-founder users never
+                        see the chip. */}
+                    {VALID_SCOPES.filter((s) => s !== "founder" || isFounder).map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => { const v = `:${s} `; setInputValue(v); setSearch(v); setQuery(v); }}
-                        className="font-mono text-[10px] px-1 rounded bg-muted hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        className="font-mono text-micro px-1 rounded bg-muted hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         data-testid={`command-palette-scope-suggest-${s}`}
                       >
                         :{s}
@@ -944,19 +1027,206 @@ export function CommandPalette() {
                       </>
                     )}
 
+                    {/* Persona toggle (folded in from ex-FounderCommandPalette).
+                        Always shown for founders since it's the #1 nav
+                        pain — Cmd+; is the keyboard shortcut, but the
+                        palette item makes it discoverable. */}
+                    {isFounder && (
+                      <CommandGroup heading="Switch mode">
+                        <CommandItem
+                          onSelect={() => {
+                            const next = personaMode === "founder" ? "customer" : "founder";
+                            setOpen(false);
+                            setInputValue("");
+                            setSearch("");
+                            setPersonaMode(next);
+                          }}
+                          data-testid="palette-persona-toggle"
+                          className="cursor-pointer"
+                        >
+                          <User className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <div className="flex flex-col min-w-0">
+                            <span>{personaMode === "founder" ? "Switch to customer mode" : "Switch to founder mode"}</span>
+                            <span className="text-caption text-muted-foreground">
+                              {personaMode === "founder" ? "/today" : "/founder/bridge"}
+                            </span>
+                          </div>
+                          <CommandShortcut>{"⌘;"}</CommandShortcut>
+                        </CommandItem>
+                      </CommandGroup>
+                    )}
+
+                    {/* Inspector shortcuts (folded in from ex-FounderCommandPalette).
+                        "lob" → provider page, "org #12" → org cost tab,
+                        "#12345" → cost-event provenance. */}
+                    {isFounder && founderInspectorHits && (founderInspectorHits.provider || founderInspectorHits.orgId || founderInspectorHits.ledgerId) && (
+                      <>
+                        <CommandGroup heading="Inspector shortcuts">
+                          {founderInspectorHits.provider && (
+                            <CommandItem
+                              onSelect={() => handleSelect(`/founder/inspector/provider/${founderInspectorHits.provider}`)}
+                              data-testid={`palette-provider-${founderInspectorHits.provider}`}
+                              className="cursor-pointer"
+                            >
+                              <ListChecks className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="flex flex-col min-w-0">
+                                <span>Provider audit: {founderInspectorHits.provider}</span>
+                                <span className="text-caption text-muted-foreground">/founder/inspector/provider/{founderInspectorHits.provider}</span>
+                              </div>
+                            </CommandItem>
+                          )}
+                          {founderInspectorHits.orgId && (
+                            <CommandItem
+                              onSelect={() => handleSelect(`/founder/inspector/org/${founderInspectorHits.orgId}`)}
+                              data-testid={`palette-org-${founderInspectorHits.orgId}`}
+                              className="cursor-pointer"
+                            >
+                              <Building2 className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="flex flex-col min-w-0">
+                                <span>Org #{founderInspectorHits.orgId} — Cost tab</span>
+                                <span className="text-caption text-muted-foreground">/founder/inspector/org/{founderInspectorHits.orgId}</span>
+                              </div>
+                            </CommandItem>
+                          )}
+                          {founderInspectorHits.ledgerId && (
+                            <CommandItem
+                              onSelect={() => handleSelect(`/founder/inspector/cost-event/${founderInspectorHits.ledgerId}`)}
+                              data-testid={`palette-cost-event-${founderInspectorHits.ledgerId}`}
+                              className="cursor-pointer"
+                            >
+                              <ListChecks className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="flex flex-col min-w-0">
+                                <span>Cost event #{founderInspectorHits.ledgerId}</span>
+                                <span className="text-caption text-muted-foreground">/founder/inspector/cost-event/{founderInspectorHits.ledgerId}</span>
+                              </div>
+                            </CommandItem>
+                          )}
+                        </CommandGroup>
+                        <CommandSeparator />
+                      </>
+                    )}
+
+                    {/* Founder intelligence search (folded in from
+                        ex-FounderCommandPalette). Decisions / agents /
+                        organizations / monthly letters / strategic
+                        proposals — gated by isFounder. */}
+                    {isFounder && founderSearchData?.groups?.map((g) => {
+                      if (g.key === "decisions") {
+                        return (
+                          <CommandGroup key={`founder-${g.key}`} heading={g.label}>
+                            {g.items.map((d) => (
+                              <CommandItem
+                                key={`fd-${d.id}`}
+                                onSelect={() => handleSelect(`/founder/decisions?id=${d.id}`)}
+                                data-testid={`palette-decision-${d.id}`}
+                                className="cursor-pointer"
+                              >
+                                <ListChecks className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="truncate">{d.label}</span>
+                                  <span className="text-caption text-muted-foreground">{d.agent ?? "agent"} · {d.itemType} · {d.status}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        );
+                      }
+                      if (g.key === "agents") {
+                        return (
+                          <CommandGroup key={`founder-${g.key}`} heading={g.label}>
+                            {g.items.map((a) => (
+                              <CommandItem
+                                key={`fa-${a.codename}`}
+                                onSelect={() => handleSelect(`/founder/agents/${a.codename}`)}
+                                data-testid={`palette-agent-${a.codename}`}
+                                className="cursor-pointer"
+                              >
+                                <Brain className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span>{a.title} <span className="text-caption text-muted-foreground font-mono">({a.codename})</span></span>
+                                  <span className="text-caption text-muted-foreground">{a.wing} wing · trust {a.trustScore}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        );
+                      }
+                      if (g.key === "organizations") {
+                        return (
+                          <CommandGroup key={`founder-${g.key}`} heading={g.label}>
+                            {g.items.map((o) => (
+                              <CommandItem
+                                key={`fo-${o.id}`}
+                                onSelect={() => handleSelect(`/founder/inspector/org/${o.id}`)}
+                                data-testid={`palette-org-${o.id}`}
+                                className="cursor-pointer"
+                              >
+                                <Building2 className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="truncate">{o.name}</span>
+                                  <span className="text-caption text-muted-foreground">{o.slug} · {o.subscriptionTier} / {o.subscriptionStatus}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        );
+                      }
+                      if (g.key === "letters") {
+                        return (
+                          <CommandGroup key={`founder-${g.key}`} heading={g.label}>
+                            {g.items.map((l) => (
+                              <CommandItem
+                                key={`fl-${l.monthKey}`}
+                                onSelect={() => handleSelect(`/founder/letter`)}
+                                data-testid={`palette-letter-${l.monthKey}`}
+                                className="cursor-pointer"
+                              >
+                                <FileText className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span>{l.monthKey}</span>
+                                  <span className="text-caption text-muted-foreground">{l.status}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        );
+                      }
+                      if (g.key === "proposals") {
+                        return (
+                          <CommandGroup key={`founder-${g.key}`} heading={g.label}>
+                            {g.items.map((p) => (
+                              <CommandItem
+                                key={`fp-${p.id}`}
+                                onSelect={() => handleSelect(`/founder/letter`)}
+                                data-testid={`palette-proposal-${p.id}`}
+                                className="cursor-pointer"
+                              >
+                                <Lightbulb className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="truncate">{p.title}</span>
+                                  <span className="text-caption text-muted-foreground">{p.proposedBy} · {p.category} · {p.status}{p.monthKey ? ` · ${p.monthKey}` : ""}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        );
+                      }
+                      return null;
+                    })}
+
                     {isFounder && (
                       <>
                         <CommandGroup heading="Founder / admin">
                           <CommandItem
-                            onSelect={() => handleSelect("/founder")}
+                            onSelect={() => handleSelect("/founder/bridge")}
                             data-testid="command-item-founder-dashboard"
                             className="cursor-pointer"
                           >
                             <Sparkles className="mr-2 h-4 w-4 text-acr-warn" aria-hidden="true" />
-                            <span>Open founder dashboard</span>
+                            <span>Open founder home</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/analytics")}
+                            onSelect={() => handleSelect("/founder/telemetry")}
                             data-testid="command-item-system-health"
                             className="cursor-pointer"
                           >
@@ -964,7 +1234,7 @@ export function CommandPalette() {
                             <span>View system health</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/finance")}
+                            onSelect={() => handleSelect("/founder/ai-costs")}
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >
@@ -1189,7 +1459,7 @@ export function CommandPalette() {
                 /* Footer hints per acreos/command-palette.jsx:128 .cp-foot \u2014
                    3-item flat density on bg-sunken with hairline top border. */
                 <div
-                  className="flex items-center gap-4 px-4 py-2.5 border-t text-[11px] font-medium text-muted-foreground"
+                  className="flex items-center gap-4 px-4 py-2.5 border-t text-caption font-medium text-muted-foreground"
                   style={{ background: "var(--acr-bg-sunken)", borderColor: "var(--acr-line)" }}
                 >
                   <span className="inline-flex items-center gap-1"><Kbd size="sm">{"\u2191"}</Kbd><Kbd size="sm">{"\u2193"}</Kbd> navigate</span>
