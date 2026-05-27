@@ -349,6 +349,25 @@ export async function handleIncomingSMS(
           metadata: { leadId: lead.id, messageSid },
         });
       }
+      // Append-only consent-event row in lead_consent_events. This is the
+      // table sized for trial-grade discovery; activityLog above is the
+      // operational mirror.
+      try {
+        const { recordConsentRevoked } = await import("./consentEvents");
+        await recordConsentRevoked({
+          organizationId,
+          leadId: lead.id,
+          channels: ["sms", "email", "phone", "direct_mail"],
+          source: "inbound_stop",
+          inboundMessageText: body,
+          inboundMessageSid: messageSid,
+          inboundFromPhone: fromPhone,
+          recordedBy: "twilio_webhook",
+          metadata: { toPhone, keyword: normalizedBody, receivedAt: now.toISOString() },
+        });
+      } catch {
+        /* best-effort — activity_log above already captured the event */
+      }
       try {
         const { handleDomainEvent } = await import("./paxNudges");
         await handleDomainEvent({

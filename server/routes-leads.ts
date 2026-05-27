@@ -373,6 +373,47 @@ export function registerLeadRoutes(app: Express): void {
         userAgent: req.headers["user-agent"],
       });
 
+      // ── TCPA / CAN-SPAM evidence chain ─────────────────────────────────
+      // If the lead was created with tcpaConsent=true, capture the
+      // disclosure that was shown + the checkbox state + the IP/UA. Without
+      // this row we have nothing to put in front of a jury when plaintiff
+      // demands "prove they consented." The legal-language source-of-truth
+      // for `consentText` lives in client/src/lib/consentDisclosure.ts;
+      // route handlers pass it through verbatim from req.body.
+      const inputAny = input as any;
+      if (inputAny.tcpaConsent === true) {
+        try {
+          const { recordConsentGranted } = await import("./services/consentEvents");
+          const sourceRaw = (inputAny.consentSource ?? "website") as string;
+          const allowedSources = new Set([
+            "website",
+            "phone_ivr",
+            "written",
+            "sms_double_optin",
+            "imported",
+            "admin_manual",
+          ]);
+          await recordConsentGranted({
+            organizationId: org.id,
+            leadId: lead.id,
+            channels: ["sms", "email", "phone", "direct_mail"],
+            source: (allowedSources.has(sourceRaw) ? sourceRaw : "admin_manual") as any,
+            consentText: (req.body.consentText ?? req.body.consent_text ?? null) as string | null,
+            checkboxChecked:
+              typeof req.body.consentCheckboxChecked === "boolean"
+                ? req.body.consentCheckboxChecked
+                : true, // default: tcpaConsent=true implies checkbox was checked
+            ipAddress: req.ip || (req.socket?.remoteAddress ?? null),
+            userAgent: (req.headers["user-agent"] as string) || null,
+            pageUrl: (req.body.pageUrl ?? req.headers.referer ?? null) as string | null,
+            recordedBy: userId ? String(userId) : "api",
+            metadata: { route: "POST /api/leads" },
+          });
+        } catch {
+          /* non-fatal — leads.tcpaConsent already set, audit row missing */
+        }
+      }
+
       // Phase 3 Week 14 — Activation telemetry. Idempotent FIRST-occurrence.
       try {
         const { recordActivationEventAsync } = await import("./services/activation");
@@ -628,9 +669,12 @@ export function registerLeadRoutes(app: Express): void {
       if (!result) {
         return Errors.badRequest(res, "Enrichment failed - coordinates required");
       }
-      
+
       logger.info("Manual lead enrichment completed", { leadId, organizationId: org.id });
-      
+      // Lenore §1 — first_lead_enriched is fired inside enrichLead()
+      // itself so every enrichment path (manual, auto-on-create, bulk)
+      // captures it. No fire here.
+
       res.json({
         success: true,
         message: "Lead enriched successfully",

@@ -265,10 +265,17 @@ export async function processOptKeyword(
   const matched = allLeads.find(l => (l.phone || '').replace(/\D/g, '').slice(-10) === cleanPhone);
   if (!matched) return { action };
 
+  const now = new Date();
   if (action === 'opt_out') {
     await db
       .update(leads)
-      .set({ doNotContact: true, tcpaConsent: false, updatedAt: new Date() })
+      .set({
+        doNotContact: true,
+        tcpaConsent: false,
+        optOutDate: now,
+        optOutReason: `SMS STOP keyword: "${messageBody.trim()}" (${messageSid})`,
+        updatedAt: now,
+      })
       .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
 
     await db.insert(activityLog).values({
@@ -276,13 +283,26 @@ export async function processOptKeyword(
       entityType: 'lead',
       entityId: matched.id,
       action: 'tcpa_opt_out',
-      metadata: { messageSid, phone, keyword: messageBody.trim(), channel: 'sms' },
+      metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms', revokedChannels: ['sms','email','phone','direct_mail'] },
     });
+    try {
+      const { recordConsentRevoked } = await import('./consentEvents');
+      await recordConsentRevoked({
+        organizationId,
+        leadId: matched.id,
+        channels: ['sms', 'email', 'phone', 'direct_mail'],
+        source: 'inbound_stop',
+        inboundMessageText: messageBody,
+        inboundMessageSid: messageSid,
+        inboundFromPhone: phone,
+        recordedBy: 'tcpa_opt_keyword',
+      });
+    } catch { /* best-effort */ }
     logger.info(`[TCPA] Lead ${matched.id} opted OUT via STOP keyword "${messageBody.trim()}"`);
   } else {
     await db
       .update(leads)
-      .set({ doNotContact: false, tcpaConsent: true, updatedAt: new Date() })
+      .set({ doNotContact: false, tcpaConsent: true, consentDate: now, consentSource: 'sms_double_optin', updatedAt: now })
       .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
 
     await db.insert(activityLog).values({
@@ -290,8 +310,21 @@ export async function processOptKeyword(
       entityType: 'lead',
       entityId: matched.id,
       action: 'tcpa_opt_in',
-      metadata: { messageSid, phone, keyword: messageBody.trim(), channel: 'sms' },
+      metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms' },
     });
+    try {
+      const { recordConsentGranted } = await import('./consentEvents');
+      await recordConsentGranted({
+        organizationId,
+        leadId: matched.id,
+        channels: ['sms', 'email', 'phone', 'direct_mail'],
+        source: 'sms_double_optin',
+        consentText: `Inbound consent keyword: "${messageBody.trim()}" (SID ${messageSid})`,
+        checkboxChecked: null,
+        recordedBy: 'tcpa_opt_keyword',
+        metadata: { fromPhone: phone, inboundText: messageBody },
+      });
+    } catch { /* best-effort */ }
     logger.info(`[TCPA] Lead ${matched.id} opted IN via "${messageBody.trim()}"`);
   }
 

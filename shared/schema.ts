@@ -1022,6 +1022,15 @@ export const properties = pgTable("properties", {
   capRate: numeric("cap_rate"),
   noi: numeric("noi"),
 
+  // Glenn Okonkwo audit: federal lead-paint disclosure trigger.
+  // 24 CFR §35.92 / 40 CFR §745.107 — every pre-1978 residential lease
+  // MUST include the EPA lead-paint pamphlet acknowledgment. EPA fines
+  // can reach $16K+ per violation; the platform must never let a
+  // pre-1978 lease execute without the addendum attached.
+  // Derived from yearBuilt: yearBuilt < 1978 → true; >= 1978 → false;
+  // null when yearBuilt is unknown (don't claim a duty without evidence).
+  requiresLeadPaintDisclosure: boolean("requires_lead_paint_disclosure"),
+
   // Entity ownership tracking
   owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
 
@@ -1876,6 +1885,67 @@ export const activityLog = pgTable("activity_log", {
   
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ============================================
+// TCPA / CAN-SPAM — EVIDENCE-GRADE CONSENT EVENTS
+// ============================================
+// "Prior express written consent" under 47 CFR § 64.1200(f)(9) requires:
+//   (i)  the consumer's signature (electronic signature is fine)
+//   (ii) clear and conspicuous disclosure that the consumer agrees to
+//        receive autodialed/prerecorded calls/texts from a specific
+//        identified seller
+//   (iii) the disclosure must NOT be a condition of purchase
+//
+// To produce that record at trial we need the EXACT consent language
+// shown, the checkbox state, the IP/UA fingerprint, and the timestamp.
+// This is the table the plaintiff's expert will subpoena first.
+export const leadConsentEvents = pgTable("lead_consent_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  leadId: integer("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
+
+  // What happened — granted or revoked, and on what channel(s)
+  eventType: text("event_type").notNull(), // 'granted' | 'revoked' | 'updated' | 'imported'
+  channels: jsonb("channels").$type<string[]>().notNull(), // ['sms','email','phone','direct_mail']
+
+  // How consent was captured — must map to TCPA's enumerated sources
+  source: text("source").notNull(), // 'website' | 'phone_ivr' | 'written' | 'sms_double_optin' | 'imported' | 'inbound_stop'
+
+  // The disclosure language SHOWN to the consumer at capture time. NEVER
+  // edit or null this row — it is the exhibit.
+  consentText: text("consent_text"),
+  checkboxChecked: boolean("checkbox_checked"),
+
+  // Web/IVR fingerprint at the moment of consent
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  pageUrl: text("page_url"),
+
+  // For revocation: the verbatim inbound message + carrier identifier
+  inboundMessageText: text("inbound_message_text"),
+  inboundMessageSid: text("inbound_message_sid"),
+  inboundFromPhone: text("inbound_from_phone"),
+
+  // For 'imported' rows: the file/batch identifier the legacy consent
+  // record came from — required for chain-of-custody arguments.
+  importBatchId: text("import_batch_id"),
+
+  // The agent that wrote this row (human user id, or 'pax', 'twilio_webhook', etc.)
+  recordedBy: text("recorded_by"),
+
+  // Free-form for future fields, never null in production rows.
+  metadata: jsonb("metadata"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("lead_consent_events_lead_idx").on(table.leadId),
+  index("lead_consent_events_org_idx").on(table.organizationId),
+  index("lead_consent_events_type_idx").on(table.eventType),
+  index("lead_consent_events_created_at_idx").on(table.createdAt),
+]);
+
+export type LeadConsentEvent = typeof leadConsentEvents.$inferSelect;
+export type NewLeadConsentEvent = typeof leadConsentEvents.$inferInsert;
 
 // ============================================
 // USAGE & BILLING
@@ -19960,12 +20030,16 @@ export const rehabLineItems = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    rehabId: varchar("rehab_id").notNull(),  // FK to rehabs (uuid). Soft FK.
+    // Hard FK — migrations/0081_devon_ff_fk_alignment.sql installs the
+    // matching ON DELETE CASCADE constraint on any drifted env (prod already
+    // has it via scripts/migrate.mjs §808). Soft-FK orphan-row hazard for
+    // the 1099-NEC roll-up — see Devon's Lens 20 notes.
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
 
     sequence: integer("sequence").notNull().default(0),
     category: text("category").$type<RehabLineCategory>().notNull(),
     scope: text("scope").notNull(),                 // "Kitchen — mid-grade gut"
-    contractorId: varchar("contractor_id"),         // FK to contractors. Soft.
+    contractorId: varchar("contractor_id"),         // FK to contractors. Soft (intentional — line item survives a contractor swap).
 
     budgetCents: bigint("budget_cents", { mode: "number" }).notNull().default(0),
     committedCents: bigint("committed_cents", { mode: "number" }).notNull().default(0),
@@ -20007,6 +20081,7 @@ export const contractors = pgTable(
       line1?: string; line2?: string; city?: string; state?: string; zip?: string;
     }>(),
     licenseNumber: text("license_number"),
+    licenseExpiresAt: date("license_expires_at"),
     insuranceExpiresAt: date("insurance_expires_at"),
     trades: jsonb("trades").$type<string[]>().default([]),  // ["framing","drywall"]
 
@@ -20062,9 +20137,16 @@ export const contractorPayments = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    contractorId: varchar("contractor_id").notNull(),
-    rehabId: varchar("rehab_id"),               // optional — payment may be for non-rehab work
-    rehabLineItemId: varchar("rehab_line_item_id"),  // optional
+    // RESTRICT-equivalent via CASCADE in prod (a contractor delete cascades
+    // their payment history). The 1099-NEC YTD roll-up depends on having
+    // every payment row visible — see migrations/0081_devon_ff_fk_alignment.sql.
+    contractorId: varchar("contractor_id").references((): any => contractors.id, { onDelete: "cascade" }).notNull(),
+    // SET NULL — a payment may be for non-rehab work, and a payment row
+    // outlives the rehab it originally referenced. Without SET NULL, prior
+    // rehab deletes would block, or worse, orphan rows that still summed
+    // into the 1099-NEC total.
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
+    rehabLineItemId: varchar("rehab_line_item_id"),  // optional, intentionally soft
 
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
     paidAt: date("paid_at").notNull(),
@@ -20108,7 +20190,9 @@ export const constructionDraws = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    rehabId: varchar("rehab_id").notNull(),
+    // Hard FK — draws cascade with the rehab. Migrations/0081 installs it
+    // on drifted envs.
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
 
     sequence: integer("sequence").notNull(),
     label: text("label").notNull(),               // "Draw 1 (25%)"
@@ -20147,8 +20231,11 @@ export const bidEstimates = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    rehabId: varchar("rehab_id").notNull(),
-    contractorId: varchar("contractor_id").notNull(),
+    // Hard FKs — bids cascade with the rehab and the contractor. Without
+    // these, a deleted contractor's bid would linger and skew the side-by-
+    // side comparison.
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    contractorId: varchar("contractor_id").references((): any => contractors.id, { onDelete: "cascade" }).notNull(),
 
     totalCents: bigint("total_cents", { mode: "number" }).notNull(),
     submittedAt: date("submitted_at"),
@@ -20189,7 +20276,9 @@ export const arvCalculations = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
-    rehabId: varchar("rehab_id"),
+    // SET NULL — an ARV survives the rehab being deleted (operator may
+    // want to keep the comp record around for historical pricing).
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
 
     // Comps used — array of { mlsId/address, soldPrice, soldDate, sqft,
     // distanceMiles, conditionRating, adjustments: {key: cents}, finalAdjusted: cents }
@@ -20496,6 +20585,11 @@ export const rentalLeases = pgTable(
     state: text("state").notNull(),  // for late-fee rule lookup
     notes: text("notes"),
 
+    // Glenn Okonkwo audit: hard-gated when properties.requiresLeadPaintDisclosure
+    // is true. The lease cannot transition to 'pending_signature' / 'active'
+    // without a confirmed lead_paint addendum (federal 24 CFR §35.92).
+    leadPaintDisclosureAttachedAt: timestamp("lead_paint_disclosure_attached_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -20786,6 +20880,11 @@ export const moveInspections = pgTable(
       photoCount?: number;
     }>>().notNull().default([]),
     photos: jsonb("photos").$type<Array<{ url: string; caption?: string; area?: string; timestamp?: string }>>().notNull().default([]),
+    // Glenn Okonkwo audit: photo count is hard-gated at lease execution.
+    // Without timestamped photos, security-deposit deduction defenses are
+    // weak — the tenant's attorney argues "you can't prove what condition
+    // the unit was in." A move-in inspection MUST have ≥ 1 photo to count.
+    photoCount: integer("photo_count").notNull().default(0),
 
     tenantSignedAt: timestamp("tenant_signed_at", { withTimezone: true }),
     landlordSignedAt: timestamp("landlord_signed_at", { withTimezone: true }),
