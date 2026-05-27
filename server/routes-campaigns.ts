@@ -681,10 +681,43 @@ export function registerCampaignRoutes(app: Express): void {
       const leadsData = await Promise.all(
         leadIds.map(id => storage.getLead(org.id, id))
       );
-      const validLeads = leadsData.filter(l => l && l.address && l.city && l.state && l.zip);
+      const validLeadsRaw = leadsData.filter(l => l && l.address && l.city && l.state && l.zip);
+
+      if (validLeadsRaw.length === 0) {
+        return Errors.badRequest(res, "No valid recipients with complete addresses");
+      }
+
+      // Lens 36 / Tom Hsiao — Pre-mail dedupe scanner. Block sends to:
+      //   - your own owned parcels
+      //   - leads mailed in the last 90 days
+      //   - returned-to-sender addresses
+      //   - DNC / opted-out / missing-address leads
+      // The scanner runs unconditionally before any postage is paid.
+      const { runPreMailDedupe } = await import("./services/preMailDedupe");
+      const dedupe = await runPreMailDedupe({
+        organizationId: org.id,
+        leadIds: validLeadsRaw.map(l => l!.id),
+        recentMailWindowDays: 90,
+      });
+      const acceptedIds = new Set(dedupe.acceptedLeads.map(l => l.id));
+      const validLeads = validLeadsRaw.filter(l => acceptedIds.has(l!.id));
 
       if (validLeads.length === 0) {
-        return Errors.badRequest(res, "No valid recipients with complete addresses");
+        return res.status(409).json({
+          error: "All recipients were filtered by the pre-mail dedupe scanner",
+          dedupe: {
+            input: dedupe.totals.input,
+            accepted: 0,
+            skipped: dedupe.totals.skipped,
+            breakdown: {
+              ownedParcel: dedupe.skipped.ownedParcel.length,
+              recentlyMailed: dedupe.skipped.recentlyMailed.length,
+              returnedMail: dedupe.skipped.returnedMail.length,
+              doNotContact: dedupe.skipped.doNotContact.length,
+              missingAddress: dedupe.skipped.missingAddress.length,
+            },
+          },
+        });
       }
 
       // Only deduct credits if NOT using org Lob credentials (BYOK)
@@ -899,15 +932,135 @@ export function registerCampaignRoutes(app: Express): void {
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
         refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
-        message: isTestMode 
+        message: isTestMode
           ? `${successCount} test mail pieces queued (no actual mail sent)${failCount > 0 ? `, ${failCount} failed` : ''}`
           : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
         warning: identityWarning,
         details: sendResults,
+        // Lens 36 / Tom Hsiao — surface what the pre-mail dedupe scanner did
+        dedupe: {
+          input: dedupe.totals.input,
+          accepted: dedupe.totals.accepted,
+          skipped: dedupe.totals.skipped,
+          breakdown: {
+            ownedParcel: dedupe.skipped.ownedParcel.length,
+            recentlyMailed: dedupe.skipped.recentlyMailed.length,
+            returnedMail: dedupe.skipped.returnedMail.length,
+            doNotContact: dedupe.skipped.doNotContact.length,
+            missingAddress: dedupe.skipped.missingAddress.length,
+          },
+        },
       });
     } catch (error: any) {
       logger.error("Direct mail send error", error instanceof Error ? error : undefined);
       Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to send direct mail"));
+    }
+  });
+
+  // Lens 36 / Tom Hsiao — Pre-mail dedupe + credit-burn preview.
+  // The UI calls this BEFORE showing the send modal so the investor sees
+  // "you have X letters of credit, this campaign needs Y, you'll fall short
+  // on letter Z" + which leads will be auto-skipped (owned parcels, recent
+  // mail, returned mail, DNC) before any postage is paid.
+  api.post("/api/campaigns/:id/pre-send-check", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const campaignId = parseInt(req.params.id);
+      const { leadIds, pieceType } = req.body as { leadIds: number[]; pieceType?: string };
+
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return Errors.badRequest(res, "leadIds array is required");
+      }
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return Errors.notFound(res, "Campaign");
+
+      const { runPreMailDedupe } = await import("./services/preMailDedupe");
+      const dedupe = await runPreMailDedupe({
+        organizationId: org.id,
+        leadIds,
+        recentMailWindowDays: 90,
+      });
+
+      // Credit-burn forecast against the accepted set
+      const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      const piece = (pieceType || "letter_1_page") as keyof typeof DIRECT_MAIL_COSTS;
+      const costPerPiece = DIRECT_MAIL_COSTS[piece] || 75;
+
+      const usingOrgLobCredentials = await (
+        await import("./services/directMail")
+      ).directMailService.hasOrgLobCredentials(org.id);
+
+      let balance = 0;
+      let lettersOfRunway: number | null = null;
+      let willFallShort = false;
+      let shortfallAtIndex: number | null = null;
+      let shortfallLead: { id: number; name: string } | null = null;
+
+      if (!usingOrgLobCredentials) {
+        balance = await creditService.getBalance(org.id);
+        lettersOfRunway = Math.floor(balance / costPerPiece);
+        const totalCost = costPerPiece * dedupe.acceptedLeads.length;
+        willFallShort = balance < totalCost;
+        if (willFallShort) {
+          shortfallAtIndex = lettersOfRunway;
+          const shortLead = dedupe.acceptedLeads[lettersOfRunway];
+          if (shortLead) {
+            shortfallLead = {
+              id: shortLead.id,
+              name: `${shortLead.firstName || ""} ${shortLead.lastName || ""}`.trim() || "(unnamed)",
+            };
+          }
+        }
+      }
+
+      res.json({
+        campaignId,
+        pieceType: piece,
+        costPerPiece: costPerPiece / 100,
+        dedupe: {
+          input: dedupe.totals.input,
+          accepted: dedupe.totals.accepted,
+          skipped: dedupe.totals.skipped,
+          breakdown: {
+            ownedParcel: dedupe.skipped.ownedParcel.length,
+            recentlyMailed: dedupe.skipped.recentlyMailed.length,
+            returnedMail: dedupe.skipped.returnedMail.length,
+            doNotContact: dedupe.skipped.doNotContact.length,
+            missingAddress: dedupe.skipped.missingAddress.length,
+          },
+          examples: {
+            ownedParcel: dedupe.skipped.ownedParcel.slice(0, 3).map(l => ({
+              id: l.id,
+              name: `${l.firstName || ""} ${l.lastName || ""}`.trim(),
+              address: l.address,
+            })),
+            recentlyMailed: dedupe.skipped.recentlyMailed.slice(0, 3).map(l => ({
+              id: l.id,
+              name: `${l.firstName || ""} ${l.lastName || ""}`.trim(),
+            })),
+            returnedMail: dedupe.skipped.returnedMail.slice(0, 3).map(l => ({
+              id: l.id,
+              name: `${l.firstName || ""} ${l.lastName || ""}`.trim(),
+              address: l.address,
+            })),
+          },
+        },
+        creditBurn: {
+          usingOrgLobCredentials,
+          balanceCents: balance,
+          balanceDollars: balance / 100,
+          requiredCents: costPerPiece * dedupe.acceptedLeads.length,
+          requiredDollars: (costPerPiece * dedupe.acceptedLeads.length) / 100,
+          lettersOfRunway,
+          willFallShort,
+          shortfallAtIndex,
+          shortfallLead,
+        },
+      });
+    } catch (error: any) {
+      logger.error("Pre-send check error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Pre-send check failed"));
     }
   });
 
@@ -1720,6 +1873,21 @@ export function registerCampaignRoutes(app: Express): void {
         ...(campaign as any).sentCount !== undefined ? { sentCount: ((campaign as any).sentCount || 0) + results.sent } : {},
       } as any);
 
+      // Lenore §1 — value-event telemetry. First mailer sent via email
+      // channel (distinct from first_letter_sent which is postcard).
+      // Only counts if at least one recipient succeeded. Idempotent.
+      if (results.sent > 0) {
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId: (req as any).user?.id ?? null,
+            eventName: "first_mailer_sent",
+            eventValue: { campaignId, channel: "email", recipients: results.sent },
+          });
+        } catch { /* non-fatal */ }
+      }
+
       res.json({
         success: true,
         sent: results.sent,
@@ -1937,6 +2105,22 @@ export function registerCampaignRoutes(app: Express): void {
       await storage.updateCampaign(org.id, campaignId, {
         status: "sent",
       } as any);
+
+      // Lenore §1 — value-event telemetry. First mailer sent via SMS
+      // channel. Same canonical event as email; the (orgId, eventName)
+      // uniqueness in activation_events prevents double-fire across
+      // channels — whichever fires first wins.
+      if (results.sent > 0) {
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId: (req as any).user?.id ?? null,
+            eventName: "first_mailer_sent",
+            eventValue: { campaignId, channel: "sms", recipients: results.sent },
+          });
+        } catch { /* non-fatal */ }
+      }
 
       res.json({
         success: true,
