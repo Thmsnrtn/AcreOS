@@ -1686,7 +1686,7 @@ export function registerOrganizationRoutes(app: Express): void {
           windowSeconds: 24 * 60 * 60,
           retryAfterSeconds: rl.retryAfterSeconds,
           message: "Too many invites created for this organization in the last 24 hours",
-        });
+        }, { docsSlug: "limit-invites-per-day" });
       }
 
       const { organizationInvitations } = await import("@shared/schema");
@@ -1833,7 +1833,7 @@ export function registerOrganizationRoutes(app: Express): void {
             windowSeconds: 60 * 60,
             retryAfterSeconds: rl.retryAfterSeconds,
             message: "Too many invitation accept attempts. Try again later.",
-          });
+          }, { docsSlug: "limit-invite-accept-attempts" });
         }
       }
 
@@ -1887,7 +1887,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.badRequest(res, "Invitation has expired");
       }
       if (userEmail && invite.email.toLowerCase() !== userEmail) {
-        return Errors.forbidden(res, "Invitation email does not match the signed-in account");
+        return Errors.forbidden(res, "Invitation email does not match the signed-in account", { docsSlug: "invite-email-mismatch" });
       }
 
       // Attach user as team member (idempotent: skip if already present).

@@ -9,6 +9,8 @@ import { clientLogger } from "@/lib/clientLogger";
 // the three places this fires (fetchJsonArray, apiRequest 401 retry,
 // query 401 retry). See client/src/lib/clerk-touch.ts.
 import { touchClerkSession as refreshSessionCookie } from "@/lib/clerk-touch";
+import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
+import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
 
 // Per-request timeout (ms). Short enough that a stalled endpoint
 // surfaces as a retry-able error rather than a perpetual spinner; long
@@ -51,6 +53,93 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Lens 3 (Pricing Coherence) — translate a 429 limit-exceeded body into a
+ * tier-specific upsell. Server posts `tier`, `current`, `limit`, and
+ * `resourceType` (per server/utils/errors.ts → Errors.limitExceeded(...)).
+ * We pick the NEXT paid tier above the user's current one and render
+ * "Starter unlocks 250 leads (you're at 10) for $20/mo". Falls back to the
+ * pre-existing generic copy when the body doesn't include enough detail.
+ */
+interface LimitExceededDetails {
+  current?: number;
+  limit?: number;
+  tier?: SubscriptionTier | string;
+  resourceType?: keyof typeof TIER_LIMITS["free"] | string;
+}
+
+const TIER_ORDER: readonly SubscriptionTier[] = ["free", "starter", "pro", "scale", "enterprise"];
+
+function nextPaidTier(current: string | undefined): SubscriptionTier | null {
+  const cur = (current ?? "free").toLowerCase();
+  const idx = TIER_ORDER.indexOf(cur as SubscriptionTier);
+  // Pick the next visible tier above the current one — Scale is live,
+  // Enterprise is not.
+  for (let i = Math.max(0, idx) + 1; i < TIER_ORDER.length; i++) {
+    const t = TIER_ORDER[i];
+    if (t === "enterprise") continue;
+    return t;
+  }
+  return null;
+}
+
+function resourceLabel(resourceType: string | undefined): string {
+  if (!resourceType) return "this resource";
+  if (resourceType === "ai_requests") return "AI requests";
+  if (resourceType in TIER_LIMITS.free) return resourceType;
+  return resourceType.replace(/_/g, " ");
+}
+
+function formatUpgradeUpsell(body: {
+  message?: string;
+  details?: LimitExceededDetails;
+  docsUrl?: string;
+  upgradeUrl?: string;
+}): { title: string; description: string; cta: string; upgradeUrl: string } {
+  const details = body.details ?? {};
+  const target = nextPaidTier(details.tier);
+  const resource = resourceLabel(details.resourceType);
+
+  // If we don't have a target tier or a resource type, fall back to the
+  // generic message.
+  if (!target || !details.resourceType) {
+    return {
+      title: "Usage limit reached",
+      description: body.message || "You've reached the plan limit.",
+      cta: body.docsUrl ? "Learn why" : "Upgrade",
+      upgradeUrl: body.docsUrl || body.upgradeUrl || "/settings#billing",
+    };
+  }
+
+  const targetLimits = TIER_LIMITS[target];
+  const targetValue = (targetLimits as Record<string, unknown>)[details.resourceType];
+  // Targets price comes from tier-pricing.ts so the toast and Stripe stay
+  // aligned. enterprise is excluded by nextPaidTier(), so target is always
+  // a paid Tier key in TIER_PRICES_CENTS.
+  const pricing = TIER_PRICES_CENTS[target as Tier];
+  const monthlyDollars = pricing ? `$${pricing.priceMonthlyCents / 100}/mo` : "more";
+
+  const targetLabel = typeof targetValue === "number"
+    ? targetValue.toLocaleString("en-US")
+    : targetValue === null
+      ? "unlimited"
+      : String(targetValue);
+
+  const tierName = target.charAt(0).toUpperCase() + target.slice(1);
+  const currentClause = typeof details.current === "number"
+    ? ` (you're at ${details.current.toLocaleString("en-US")})`
+    : "";
+
+  return {
+    title: `${resource[0].toUpperCase()}${resource.slice(1)} limit reached`,
+    description: `${tierName} unlocks ${targetLabel} ${resource}${currentClause} for ${monthlyDollars}.`,
+    cta: `Upgrade to ${tierName}`,
+    // Deep-link the settings billing panel to the target tier so the
+    // upgrade modal preselects it.
+    upgradeUrl: body.docsUrl || body.upgradeUrl || `/settings#billing?tier=${target}`,
+  };
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -63,25 +152,31 @@ async function throwIfResNotOk(res: Response) {
       // Not JSON — fall through to raw error
     }
 
-    // Handle 429 usage limit responses with an upgrade prompt
+    // Handle 429 usage limit responses with an upgrade prompt.
+    //
+    // Lens 3 (Pricing Coherence): the toast now reads `tier`, `current`,
+    // `limit`, and `resourceType` from the response body and renders a
+    // tier-specific upsell — "Starter unlocks 250 leads (you're at 10) for
+    // $20/mo" — with a deep link to /settings#billing?tier=<next>. Falls
+    // back to the generic copy when the body doesn't include details.
     if (res.status === 429) {
       try {
         const body = parsed ?? JSON.parse(text);
         if (body.error === "limit_exceeded" || body.error === "LIMIT_EXCEEDED") {
+          const upsell = formatUpgradeUpsell(body);
           toast({
-            title: "Usage limit reached",
-            description: body.message || `You've reached the plan limit.`,
+            title: upsell.title,
+            description: upsell.description,
             variant: "destructive",
             action: React.createElement(
               ToastAction as any,
               {
-                altText: body.docsUrl ? "Learn why" : "Upgrade plan",
+                altText: upsell.cta,
                 onClick: () => {
-                  window.location.href =
-                    body.docsUrl || (body as any).upgradeUrl || "/settings#billing";
+                  window.location.href = upsell.upgradeUrl;
                 },
               },
-              body.docsUrl ? "Learn why" : "Upgrade"
+              upsell.cta,
             ) as any,
           });
         }

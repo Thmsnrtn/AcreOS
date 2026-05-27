@@ -821,7 +821,7 @@ export function registerDealRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.");
+        return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.", { docsSlug: "limit-ai-requests" });
       }
 
       // Credit check for deal AI chat

@@ -33,6 +33,7 @@ import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "./utils/sanitizePrompt"
 import { validatePaxResponse } from "./utils/validatePaxResponse";
 import { validateCompliance } from "./services/complianceValidator";
 import { recordAttemptIfDetected } from "./utils/injectionRateLimiter";
+import { poolDebit, refundPoolDebit } from "./services/creditPool";
 
 const router = Router();
 
@@ -148,25 +149,54 @@ ${sanitizePrompt(rawUserPayload, { maxLength: 6000, source: "pax.draft-reply" })
         reason: "ai_injection_rate_limit",
         message: "Too many suspicious AI inputs from this user in the last hour.",
         recentCount: limit.recentCount,
-      });
+      }, { docsSlug: "ai-injection-rate-limit" });
     }
 
+    // Lens 3 (Pricing Coherence) — debit one ai_turn from the pool before
+    // the model call. The compliance post-validator (Opus) is bundled into
+    // the same turn for billing purposes; the empirical 90th-percentile
+    // cost (Sonnet + Opus passes) fits inside the 1.5-cent ai_turn_avg.
+    const aiDebitKey = `ai:draft-reply:${orgId}:${messageId}:${Date.now()}`;
+    const aiDebit = await poolDebit({
+      organizationId: orgId,
+      action: "ai_turn_avg",
+      units: 1,
+      externalEventId: aiDebitKey,
+      notes: `Pax draft for inbox message ${messageId}`,
+      isFounder: req.isFounder,
+    });
+
     // Pax inbox draft replies are customer-facing — pin to critical tier.
-    const response = await routeSimpleTask(SYSTEM_PROMPT, userPrompt, { taskTier: "critical" });
-    const validated = validatePaxResponse(response.content.trim(), {
-      source: "pax.draft-reply",
-      organizationId: orgId,
-    });
-    // Phase 4 W21-22 — compliance post-validator. Inbox replies routinely
-    // brush against real-estate-offer wording, so we route the candidate
-    // through Opus extended-thinking before surfacing it.
-    const compliance = await validateCompliance({
-      candidate: validated.response,
-      domain: "real_estate_offer",
-      surface: "pax.draft-reply",
-      organizationId: orgId,
-      userPrompt: message.bodyText ?? undefined,
-    });
+    let response;
+    let compliance;
+    let validated;
+    try {
+      response = await routeSimpleTask(SYSTEM_PROMPT, userPrompt, { taskTier: "critical" });
+      validated = validatePaxResponse(response.content.trim(), {
+        source: "pax.draft-reply",
+        organizationId: orgId,
+      });
+      // Phase 4 W21-22 — compliance post-validator. Inbox replies routinely
+      // brush against real-estate-offer wording, so we route the candidate
+      // through Opus extended-thinking before surfacing it.
+      compliance = await validateCompliance({
+        candidate: validated.response,
+        domain: "real_estate_offer",
+        surface: "pax.draft-reply",
+        organizationId: orgId,
+        userPrompt: message.bodyText ?? undefined,
+      });
+    } catch (err) {
+      if (aiDebit.debitedCents > 0) {
+        await refundPoolDebit({
+          organizationId: orgId,
+          originalEventId: aiDebitKey,
+          amountCents: aiDebit.debitedCents,
+          reason: "Pax draft generation failed",
+        });
+      }
+      throw err;
+    }
     const draft = compliance.response;
 
     logger.info("Pax draft generated", {
@@ -185,6 +215,11 @@ ${sanitizePrompt(rawUserPayload, { maxLength: 6000, source: "pax.draft-reply" })
       compliance: {
         verdict: compliance.verdict,
         disclosurePrepended: !!compliance.prependedDisclosure,
+      },
+      creditPool: {
+        debitedCents: aiDebit.debitedCents,
+        remaining: aiDebit.remaining,
+        poolMonthly: aiDebit.poolMonthly,
       },
     });
   } catch (error) {

@@ -867,7 +867,7 @@ export function registerBillingRoutes(app: Express): void {
         .limit(1);
 
       if (recentRefunds.length > 0) {
-        return Errors.limitExceeded(res, "A refund was already processed for this account within the last 30 days. Please contact support for further assistance.");
+        return Errors.limitExceeded(res, "A refund was already processed for this account within the last 30 days. Please contact support for further assistance.", { docsSlug: "refund-already-issued" });
       }
 
       // Find recent charges from Stripe (last 30 days)

@@ -1802,7 +1802,7 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" });
+          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" }, { docsSlug: "limit-email-credits" });
         }
       }
 
@@ -2002,7 +2002,7 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "sms_send" });
+          return Errors.limitExceeded(res, { needed: totalCost, action: "sms_send" }, { docsSlug: "limit-sms-credits" });
         }
       }
 

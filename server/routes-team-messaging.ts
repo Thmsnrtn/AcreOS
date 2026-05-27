@@ -38,7 +38,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     const hasAccess = await checkTeamMessagingAccess(org.id);
 
     if (!hasAccess) {
-      return Errors.forbidden(res, "Team messaging requires a plan with 2 or more seats. Upgrade to Starter or higher to access this feature.");
+      return Errors.forbidden(res, "Team messaging requires a plan with 2 or more seats. Upgrade to Starter or higher to access this feature.", { docsSlug: "feature-requires-team-plan" });
     }
     next();
   };
