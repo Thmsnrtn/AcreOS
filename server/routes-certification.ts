@@ -11,6 +11,7 @@
 import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { certificationService } from "./services/certification";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -24,12 +25,12 @@ router.post("/check/:userId/:courseId", isAuthenticated, async (req: Request, re
     const userId = parseInt(req.params.userId);
     const courseId = parseInt(req.params.courseId);
     if (isNaN(userId) || isNaN(courseId)) {
-      return res.status(400).json({ error: "Invalid userId or courseId" });
+      return Errors.badRequest(res, "Invalid userId or courseId");
     }
     const result = await certificationService.checkAndAward(userId, courseId);
     res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -39,12 +40,12 @@ router.get("/certificate/:userId/:courseId", isAuthenticated, async (req: Reques
     const userId = parseInt(req.params.userId);
     const courseId = parseInt(req.params.courseId);
     if (isNaN(userId) || isNaN(courseId)) {
-      return res.status(400).json({ error: "Invalid userId or courseId" });
+      return Errors.badRequest(res, "Invalid userId or courseId");
     }
     const certificate = await certificationService.issueCertificate(userId, courseId);
     res.json({ certificate });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -52,11 +53,11 @@ router.get("/certificate/:userId/:courseId", isAuthenticated, async (req: Reques
 router.get("/achievements/:userId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.userId);
-    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user ID" });
+    if (isNaN(userId)) return Errors.badRequest(res, "Invalid user ID");
     const achievements = await certificationService.checkAchievements(userId);
     res.json({ achievements });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -64,11 +65,11 @@ router.get("/achievements/:userId", isAuthenticated, async (req: Request, res: R
 router.get("/stats/:userId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.userId);
-    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user ID" });
+    if (isNaN(userId)) return Errors.badRequest(res, "Invalid user ID");
     const stats = await certificationService.getLearningStats(userId);
     res.json({ stats });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -81,8 +82,8 @@ router.get("/my", isAuthenticated, async (req: Request, res: Response) => {
       certificationService.getLearningStats(user.id),
     ]);
     res.json({ achievements, stats });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

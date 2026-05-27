@@ -12,6 +12,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { dealPatternCloningService } from "./services/dealPatternCloning";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -21,11 +22,11 @@ router.post("/extract/:dealId", isAuthenticated, getOrCreateOrg, async (req: Req
   try {
     const org = req.organization;
     const dealId = parseInt(req.params.dealId);
-    if (isNaN(dealId)) return res.status(400).json({ error: "Invalid deal ID" });
+    if (isNaN(dealId)) return Errors.badRequest(res, "Invalid deal ID");
     const pattern = await dealPatternCloningService.recordPatternFromClosedDeal(org.id, dealId);
     res.status(201).json({ pattern });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -34,15 +35,15 @@ router.post("/find-similar", isAuthenticated, getOrCreateOrg, async (req: Reques
   try {
     const org = req.organization;
     const { propertyId, limit } = req.body;
-    if (!propertyId) return res.status(400).json({ error: "propertyId is required" });
+    if (!propertyId) return Errors.badRequest(res, "propertyId is required");
     const matches = await dealPatternCloningService.findSimilarPatterns(
       org.id,
       propertyId,
       limit ?? 10
     );
     res.json({ matches });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -52,8 +53,8 @@ router.get("/performance", isAuthenticated, getOrCreateOrg, async (req: Request,
     const org = req.organization;
     const performance = await dealPatternCloningService.getPatternPerformance(org.id);
     res.json({ performance });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -61,12 +62,12 @@ router.get("/performance", isAuthenticated, getOrCreateOrg, async (req: Request,
 router.post("/insights/:matchId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const matchId = parseInt(req.params.matchId);
-    if (isNaN(matchId)) return res.status(400).json({ error: "Invalid match ID" });
+    if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     // Get the match and derive insights
     const insights = await dealPatternCloningService.deriveInsights({ matchId } as any);
     res.json({ insights });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -74,12 +75,12 @@ router.post("/insights/:matchId", isAuthenticated, getOrCreateOrg, async (req: R
 router.patch("/match/:matchId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const matchId = parseInt(req.params.matchId);
-    if (isNaN(matchId)) return res.status(400).json({ error: "Invalid match ID" });
+    if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     const { outcome, helpedClose } = req.body;
     await dealPatternCloningService.updateMatchOutcome(matchId, { outcome, helpedClose });
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 

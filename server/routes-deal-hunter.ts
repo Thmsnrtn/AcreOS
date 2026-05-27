@@ -4,6 +4,7 @@ import { dealHunterService } from './services/dealHunter';
 import { db } from './db';
 import { dealSources } from '../shared/schema';
 import { eq } from 'drizzle-orm';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -16,8 +17,8 @@ router.get('/sources', async (req: Request, res: Response) => {
   try {
     const sources = await db.select().from(dealSources).limit(1000);
     res.json({ sources });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -25,8 +26,8 @@ router.post('/sources', async (req: Request, res: Response) => {
   try {
     const source = await dealHunterService.registerSource(req.body);
     res.json({ source, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -34,8 +35,8 @@ router.post('/sources/:id/scrape', async (req: Request, res: Response) => {
   try {
     const result = await dealHunterService.scrapeSource(parseInt(req.params.id));
     res.json({ result, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -47,8 +48,8 @@ router.patch('/sources/:id/toggle', async (req: Request, res: Response) => {
       .where(eq(dealSources.id, parseInt(req.params.id)))
       .returning();
     res.json({ source });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -68,8 +69,8 @@ router.get('/deals', async (req: Request, res: Response) => {
       offset: offset ? parseInt(offset as string) : 0,
     });
     res.json({ deals });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -78,8 +79,8 @@ router.post('/deals/:id/convert-lead', async (req: Request, res: Response) => {
     const org = req.organization;
     const lead = await dealHunterService.convertToLead(org.id, parseInt(req.params.id));
     res.json({ lead, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -88,8 +89,8 @@ router.post('/deals/:id/convert-property', async (req: Request, res: Response) =
     const org = req.organization;
     const property = await dealHunterService.convertToProperty(org.id, parseInt(req.params.id));
     res.json({ property, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -101,8 +102,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
   try {
     const stats = await dealHunterService.getStats();
     res.json({ stats });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -115,8 +116,8 @@ router.post('/scrape-all', async (_req: Request, res: Response) => {
     // Fire and forget
     dealHunterService.scrapeAllActiveSources().catch(err => logger.error("Scrape all sources failed", err));
     res.json({ success: true, message: 'Scraping all active sources in the background' });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
