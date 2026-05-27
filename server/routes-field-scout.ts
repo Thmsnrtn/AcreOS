@@ -3,6 +3,7 @@ import { storage, db } from './storage';
 import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 hash + resize variants.
 import { processUploadedImage } from "./services/imagePipeline";
@@ -34,14 +35,14 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
     const { lat, lng } = req.query;
 
     if (!lat || !lng) {
-      return res.status(400).json({ error: 'lat and lng query parameters are required' });
+      return Errors.badRequest(res, 'lat and lng query parameters are required');
     }
 
     const latitude = parseFloat(lat as string);
     const longitude = parseFloat(lng as string);
 
     if (isNaN(latitude) || isNaN(longitude)) {
-      return res.status(400).json({ error: 'lat and lng must be valid numbers' });
+      return Errors.badRequest(res, 'lat and lng must be valid numbers');
     }
 
     // In production this would call a GIS/parcel API service.
@@ -77,7 +78,7 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
     res.json(parcel);
   } catch (err: any) {
     logger.error('[field-scout] parcel-lookup error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
@@ -89,7 +90,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
   try {
     const file = (req as any).file;
     if (!file) {
-      return res.status(400).json({ error: 'No audio file provided. Upload as multipart field "audio".' });
+      return Errors.badRequest(res, 'No audio file provided. Upload as multipart field "audio".');
     }
 
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -139,7 +140,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
     });
   } catch (err: any) {
     logger.error('[field-scout] transcribe error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
@@ -153,18 +154,18 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
     const leadId = parseInt(req.params.id);
 
     if (isNaN(leadId)) {
-      return res.status(400).json({ error: 'Invalid lead ID' });
+      return Errors.badRequest(res, 'Invalid lead ID');
     }
 
     // Verify lead belongs to org
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) {
-      return res.status(404).json({ error: 'Lead not found' });
+      return Errors.notFound(res, 'Lead');
     }
 
     const files = (req as any).files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No photo files provided. Upload as multipart field "photos".' });
+      return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
     }
 
     // Parse optional metadata from body (JSON array matching files by index)
@@ -242,7 +243,7 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
     res.json({ photos: results, deduped: dedupedHashes });
   } catch (err: any) {
     logger.error('[field-scout] photo upload error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
@@ -254,13 +255,13 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
   try {
     const user = getUser(req);
     if (!user) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return Errors.unauthorized(res);
     }
 
     const { leadId, propertyId, latitude, longitude, duration, notes, photos, checklistResults } = req.body;
 
     if (!leadId || latitude == null || longitude == null) {
-      return res.status(400).json({ error: 'leadId, latitude, and longitude are required' });
+      return Errors.badRequest(res, 'leadId, latitude, and longitude are required');
     }
 
     const visit = await storage.createFieldScoutVisit({
@@ -302,7 +303,7 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
     res.status(201).json(visit);
   } catch (err: any) {
     logger.error('[field-scout] create visit error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
@@ -314,7 +315,7 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
   try {
     const user = getUser(req);
     if (!user) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return Errors.unauthorized(res);
     }
 
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -358,7 +359,7 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
     });
   } catch (err: any) {
     logger.error('[field-scout] list visits error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
@@ -370,17 +371,17 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
   try {
     const user = getUser(req);
     if (!user) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return Errors.unauthorized(res);
     }
 
     const { visitIds, format } = req.body;
 
     if (!Array.isArray(visitIds) || visitIds.length === 0) {
-      return res.status(400).json({ error: 'visitIds must be a non-empty array' });
+      return Errors.badRequest(res, 'visitIds must be a non-empty array');
     }
 
     if (!format || !['pdf', 'csv'].includes(format)) {
-      return res.status(400).json({ error: 'format must be "pdf" or "csv"' });
+      return Errors.badRequest(res, 'format must be "pdf" or "csv"');
     }
 
     // Fetch all visits
@@ -394,7 +395,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
     }
 
     if (visits.length === 0) {
-      return res.status(404).json({ error: 'No visits found for the provided IDs' });
+      return Errors.notFound(res, 'Visits');
     }
 
     if (format === 'csv') {
@@ -505,7 +506,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
     res.send(pdfBuffer);
   } catch (err: any) {
     logger.error('[field-scout] report generation error', err);
-    res.status(500).json({ error: err.message });
+    return Errors.internal(res, err);
   }
 });
 
