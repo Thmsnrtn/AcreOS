@@ -66,12 +66,22 @@ interface Props {
   initialRate?: number;
   initialTermYears?: number;
   readOnly?: boolean;
+  /**
+   * When the operator is amortizing over a longer term than the
+   * actual loan term (creating a balloon at maturity), pass the
+   * scheduled balloon term in months. Triggers the §1026.18(s) /
+   * (g) balloon-payment disclosure block. If undefined, the
+   * calculator assumes a fully-amortizing note.
+   */
+  balloonAfterMonths?: number;
   onValuesChange?: (values: {
     purchasePrice: number;
     downPayment: number;
     interestRate: number;
     termMonths: number;
     monthlyPayment: number;
+    balloonPaymentAmount?: number;
+    balloonAfterMonths?: number;
   }) => void;
 }
 
@@ -81,6 +91,7 @@ export default function SellerFinanceCalculator({
   initialRate = 8,
   initialTermYears = 10,
   readOnly = false,
+  balloonAfterMonths,
   onValuesChange,
 }: Props) {
   const [purchasePrice, setPurchasePrice] = useState(initialPurchasePrice);
@@ -102,6 +113,37 @@ export default function SellerFinanceCalculator({
   const totalInterest = totalPaid - principal;
   const ltv = purchasePrice > 0 ? ((principal / purchasePrice) * 100).toFixed(1) : "0.0";
 
+  // ── Balloon detection ────────────────────────────────────────────────
+  // Two paths produce a balloon: (a) the operator explicitly set
+  // balloonAfterMonths shorter than the amortization term, OR (b) the
+  // last row of the amortization schedule still has a nonzero balance
+  // (floating-point edge cases) — we ignore the latter when the
+  // computed final balance is within $1 of zero (fully-amortizing).
+  const hasExplicitBalloon =
+    balloonAfterMonths !== undefined && balloonAfterMonths < termMonths;
+  const finalBalance = schedule[schedule.length - 1]?.balance ?? 0;
+  const impliedBalloon = !hasExplicitBalloon && finalBalance > 1.0;
+  const hasBalloon = hasExplicitBalloon || impliedBalloon;
+
+  const balloonMonth = hasExplicitBalloon ? balloonAfterMonths! : termMonths;
+  const balloonRow = hasExplicitBalloon
+    ? schedule[Math.min(balloonMonth - 1, schedule.length - 1)]
+    : schedule[schedule.length - 1];
+  // Balloon payment = remaining balance at the balloon month + that
+  // month's scheduled P&I. For an implied balloon (under-amortized
+  // schedule), the final balance IS the balloon.
+  const balloonPaymentAmount = hasBalloon
+    ? hasExplicitBalloon
+      ? (balloonRow?.balance ?? 0) + (balloonRow?.payment ?? 0)
+      : finalBalance
+    : 0;
+  const balloonYearsFromOrigination = hasBalloon ? balloonMonth / 12 : 0;
+  // Reg-Z's seller-finance natural-person exemption (12 CFR 1026.36(a)(4)(ii))
+  // disqualifies any balloon under 60 months. HOEPA high-cost mortgages
+  // (1026.32) prohibit balloons except for narrow bridge-loan carve-outs.
+  // We flag the under-5-year case so the operator sees it before close.
+  const balloonUnderFiveYears = hasBalloon && balloonMonth < 60;
+
   // Notify parent on value change
   const handleChange = (field: string, val: number) => {
     const next = {
@@ -119,6 +161,8 @@ export default function SellerFinanceCalculator({
       interestRate: next.interestRate,
       termMonths: next.termMonths,
       monthlyPayment: next.monthlyPayment,
+      balloonPaymentAmount: hasBalloon ? balloonPaymentAmount : undefined,
+      balloonAfterMonths: hasBalloon ? balloonMonth : undefined,
     });
   };
 
@@ -250,6 +294,68 @@ export default function SellerFinanceCalculator({
             </p>
           </div>
         </div>
+
+        {/* ── Balloon-payment disclosure (Reg-Z §1026.18(s)/(g)) ───────── */}
+        {hasBalloon && (
+          <>
+            <Separator />
+            <div
+              role="alert"
+              aria-label="Balloon payment disclosure"
+              data-testid="balloon-disclosure"
+              className={
+                balloonUnderFiveYears
+                  ? "rounded-md border-2 border-acr-warn bg-acr-warn-soft/40 p-3 space-y-2"
+                  : "rounded-md border border-acr-warn bg-acr-warn-soft/30 p-3 space-y-2"
+              }
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-acr-warn font-bold text-base leading-tight" aria-hidden>
+                  !
+                </span>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-foreground">
+                    This loan does NOT fully amortize — a balloon payment is due
+                    in month {balloonMonth} ({balloonYearsFromOrigination.toFixed(1)} years).
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Scheduled monthly payments of {fmtFull$(monthlyPayment)} will
+                    NOT pay this loan off. At month {balloonMonth} the borrower
+                    owes a single lump-sum balloon payment of approximately{" "}
+                    <span className="font-semibold text-foreground">
+                      {fmtFull$(balloonPaymentAmount)}
+                    </span>{" "}
+                    — equal to the remaining principal balance plus that month's
+                    scheduled interest.
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <span className="font-semibold">Required disclosures:</span>{" "}
+                    Reg-Z §1026.18(s) requires the balloon-payment amount,
+                    payment number, and a "this is a balloon payment" statement
+                    on the federal Truth-in-Lending Disclosure. The borrower
+                    must receive this disclosure at application AND at closing.
+                  </p>
+                  {balloonUnderFiveYears && (
+                    <p className="text-xs leading-relaxed text-acr-warn-foreground bg-acr-warn-soft/70 dark:bg-acr-warn-soft/40 rounded px-2 py-1.5 mt-1">
+                      <span className="font-semibold">
+                        Balloon under 5 years —{" "}
+                      </span>
+                      A balloon payment due in fewer than 60 months
+                      disqualifies the federal seller-finance natural-person
+                      exemption (12 CFR 1026.36(a)(4)(ii)) AND is prohibited on
+                      HOEPA high-cost mortgages (12 CFR 1026.32(d)(1)). Confirm
+                      with counsel before originating.
+                    </p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground italic pt-1">
+                    Informational only — not legal advice. Confirm specific
+                    disclosure language and timing with licensed counsel.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Amortization schedule preview */}
         {schedule.length > 0 && (
