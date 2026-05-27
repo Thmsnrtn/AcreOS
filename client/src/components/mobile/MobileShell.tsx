@@ -17,7 +17,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { Calendar, Inbox, ListChecks, BarChart3, Plus, Sparkles, Search, MapIcon } from "lucide-react";
+import { Calendar, Inbox, ListChecks, BarChart3, Plus, Sparkles, Search, MapIcon, Navigation } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -84,6 +84,20 @@ function fabLabel(persona: Persona | undefined): string {
       // wholesaler all share the "quick add lead" entry point in v1.
       return "Quick add lead";
   }
+}
+
+/**
+ * Personas that get the Drive Mode entry point. Drive Mode is the mobile
+ * driving-for-dollars surface — useful for investors who actively prospect
+ * sellers from the curb. Note/landlord/subdivider personas don't drive for
+ * leads as a primary motion, so we hide the entry for them.
+ */
+function showDriveModeFor(persona: Persona | undefined): boolean {
+  return (
+    persona === "land_investor" ||
+    persona === "wholesaler" ||
+    persona === "tax_delinquent"
+  );
 }
 
 interface PlaceholderProps {
@@ -200,6 +214,17 @@ export function MobileShell({ persona, renderTab }: MobileShellProps) {
           >
             <MapIcon className="h-5 w-5" aria-hidden />
           </button>
+          {showDriveModeFor(persona) ? (
+            <button
+              type="button"
+              onClick={() => setLocation("/drive")}
+              aria-label="Open Drive Mode"
+              data-testid="mobile-shell-drive"
+              className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Navigation className="h-5 w-5" aria-hidden />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
