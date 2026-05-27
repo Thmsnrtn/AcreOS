@@ -1,0 +1,82 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "search": "Search",
+    "filter": "Filter",
+    "clearFilters": "Clear filters",
+    "viewAll": "View all",
+    "viewArchived": "View archived",
+    "tryAgain": "Try again",
+    "somethingWentWrong": "Something went wrong",
+    "noResults": "No matches",
+    "noResultsHint": "Try adjusting your search terms or filters.",
+    "comingSoon": "Coming soon",
+    "learnMore": "Learn more",
+    "addNew": "Add new",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signUp": "Sign up",
+    "startFreeTrial": "Start free trial",
+    "forgotPassword": "Forgot password?",
+    "createAccount": "Create account",
+    "alreadyHaveAccount": "Already have an account?"
+  },
+  "nav": {
+    "today": "Today",
+    "leads": "Leads",
+    "properties": "Properties",
+    "deals": "Deals",
+    "pipeline": "Pipeline",
+    "money": "Money",
+    "inbox": "Inbox",
+    "campaigns": "Campaigns",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "tasks": "Tasks",
+    "pax": "Pax"
+  },
+  "emptyState": {
+    "leads": {
+      "title": "Welcome — let's bring in your first leads",
+      "description": "Import a CSV, paste records, or sync from a list provider. AcreOS scores every lead the moment it lands."
+    },
+    "properties": {
+      "title": "Your inventory starts here",
+      "description": "Add the parcels you're tracking — prospects, owned land, and active listings all live together."
+    },
+    "deals": {
+      "title": "Ready to track your first deal",
+      "description": "Deals connect leads, parcels, and finances. Move them through your pipeline as you negotiate."
+    },
+    "campaigns": {
+      "title": "Reach motivated sellers",
+      "description": "Send your first letter, email, or SMS campaign. AcreOS handles the addresses, mail merge, and tracking."
+    },
+    "inbox": {
+      "title": "Your inbox is ready",
+      "description": "Connect a mailbox or phone number and replies show up here, threaded against the right lead."
+    }
+  },
+  "landing": {
+    "hero": {
+      "eyebrow": "Built for property investors",
+      "ctaPrimary": "Start free trial",
+      "ctaSecondary": "See how it works",
+      "ctaSub": "14 days free. No credit card required."
+    }
+  }
+}
