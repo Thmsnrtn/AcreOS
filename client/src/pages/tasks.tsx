@@ -186,28 +186,20 @@ export default function TasksPage() {
     },
   );
 
-  const completeMutation = useMutation({
-    mutationFn: async (id: number) => {
+  // Optimistic task-complete — the row should strike through instantly
+  // and disappear from "My tasks" / "Today" filters. Rollback restores
+  // the prior status on server reject; for recurring tasks we still
+  // need invalidations to surface the freshly-created next task.
+  const completeMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
       const response = await apiRequest("POST", `/api/tasks/${id}/complete`);
       return response.json();
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-      if (data.nextTask) {
-        toast({
-          title: "Task completed",
-          description: "A new recurring task has been created.",
-        });
-      } else {
-        toast({ title: "Task completed", description: "Great job!" });
-      }
-    },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't complete task", description: `${error.message}. The task is still pending — try again.`, variant: "destructive" });
-    },
+    listKeys: [["/api/tasks"], ["/api/tasks/my"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "completed", completedAt: new Date().toISOString() }),
+    extraInvalidateKeys: [["/api/tasks/dashboard-summary"], ["/api/dashboard/today-priorities"]],
+    successToast: { title: "Task completed", description: "Great job!" },
   });
 
   const deleteMutation = useMutation({
@@ -606,7 +598,7 @@ export default function TasksPage() {
                           variant="ghost"
                           size="icon"
                           className={isCompleted ? "text-acr-pos" : "text-muted-foreground"}
-                          onClick={() => !isCompleted && completeMutation.mutate(task.id)}
+                          onClick={() => !isCompleted && completeMutation.mutate({ id: task.id })}
                           disabled={isCompleted || completeMutation.isPending}
                           aria-pressed={isCompleted}
                           aria-label={isCompleted ? `Completed: ${task.title}` : `Mark complete: ${task.title}`}
