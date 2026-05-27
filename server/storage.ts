@@ -4678,9 +4678,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Audit Log (20.1)
+  // Kareem §1: every insert is chained via SHA-256 (see
+  // server/utils/auditLogChain.ts). The chain function still returns the
+  // canonical row shape, so callers see no API change.
   async createAuditLogEntry(entry: InsertAuditLog): Promise<AuditLogEntry> {
-    const [created] = await db.insert(auditLog).values(entry).returning();
-    return created;
+    const { chainAndInsertAuditLog } = await import("./utils/auditLogChain");
+    return await chainAndInsertAuditLog(entry);
   }
 
   async getAuditLogs(orgId: number, filters?: { 

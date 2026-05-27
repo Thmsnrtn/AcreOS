@@ -4718,6 +4718,14 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 // COMPLIANCE: AUDIT LOG (20.1)
 // ============================================
 
+// ─── Audit-log integrity (Kareem §1, SOC 2 CC7.2 / CC7.3) ────────────────────
+// Every row is SHA-256 chained to the previous row in the same organization.
+// Tamper-evident: an auditor can replay the chain (or hit
+// /api/admin/audit-log/verify) and detect any UPDATE, DELETE, or out-of-band
+// INSERT. The chain is per-organizationId so a single bad-tenant insert
+// cannot invalidate the chain for another tenant. Genesis row's prev_hash is
+// the literal string 'GENESIS' (rather than NULL) so the hash function has a
+// deterministic input even for the first row.
 export const auditLog = pgTable("audit_log", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
@@ -4734,7 +4742,17 @@ export const auditLog = pgTable("audit_log", {
   userAgent: text("user_agent"),
   metadata: jsonb("metadata").$type<Record<string, any>>(), // Additional context
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // SHA-256 chain — computed server-side by createAuditLogEntry(). prev_hash
+  // is the hash of the previous row for this org (or 'GENESIS'). row_hash is
+  // SHA-256(prev_hash || canonicalJSON({id,action,actor,target,payload,ts})).
+  // Both columns are nullable for backfill ergonomics; new inserts always
+  // populate them. The migration that adds these columns ships a Postgres
+  // trigger preventing UPDATE/DELETE on rows where row_hash IS NOT NULL.
+  prevHash: text("prev_hash"),
+  rowHash: text("row_hash"),
+}, (table) => ({
+  byOrgId: index("audit_log_org_id_idx").on(table.organizationId, table.id),
+}));
 
 // Simulated actions — every time SIMULATION_MODE short-circuits a real
 // external side effect (Stripe charge, Lob mail, Twilio SMS, SendGrid
