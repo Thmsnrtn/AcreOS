@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 
 interface GrowthCampaignItem {
   id: number;
@@ -213,11 +214,14 @@ export default function FounderGrowthCampaignsPage() {
     onError: (err: any) => toast({ title: "Couldn't deploy campaign", description: `${err?.message || "Try again"} — no campaign was created in Meta.`, variant: "destructive" }),
   });
 
-  const toggleCampaignMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+  // Optimistic pause/resume — Switch flips instantly in the row.
+  const toggleCampaignMutation = useOptimisticUpdate<{ id: number; status: string }>({
+    mutationFn: async ({ id, status }) =>
       apiRequest("PUT", `/api/founder/growth/campaigns/${id}/status`, { status }),
-    onSuccess: () => { refetchCampaigns(); toast({ title: "Campaign updated" }); },
-    onError: () => toast({ title: "Couldn't update campaign", description: "The campaign's existing status is unchanged.", variant: "destructive" }),
+    listKeys: [["/api/founder/growth/campaigns"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ status }) => ({ status }),
+    successToast: { title: "Campaign updated" },
   });
 
   const syncStatsMutation = useMutation({
