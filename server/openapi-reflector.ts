@@ -117,6 +117,51 @@ function inferTag(path: string): string {
 }
 
 /**
+ * Route prefixes that MUST NOT appear in the public OpenAPI spec.
+ *
+ * SEC (Lens 23 / Yuki audit): the /api/docs endpoint is deliberately
+ * unauthenticated so external integrators can read the public surface
+ * before signing up. The reflector, left unchecked, walks the entire
+ * Express router and emits a path entry for every internal/admin/
+ * founder/debug route too. That's an enumeration goldmine — an
+ * attacker hitting /api/docs/openapi.json before a single auth attempt
+ * gets a free map of every privileged endpoint, their HTTP verbs, and
+ * their path parameter names.
+ *
+ * Anything under these prefixes is stripped from the reflected output.
+ * Hand-curated entries in openapi-spec.ts are still merged in for
+ * documented public paths. Adding a new private prefix here is a
+ * cheap defensive move that does NOT block any legitimate caller —
+ * they don't need to read the doc to call the endpoint.
+ */
+const PRIVATE_PATH_PREFIXES: readonly string[] = [
+  "/api/admin/",
+  "/api/founder/",
+  "/api/atlas/",        // Atlas chat surface — founder-only
+  "/api/internal/",
+  "/api/_internal/",
+  "/api/dev/",          // dev-only debug surfaces
+  "/api/debug/",
+  "/api/ops/",
+  "/api/test/",
+  "/api/__",            // any double-underscore reserved path
+  "/api/webhooks/",     // webhook receivers — secret-signed, not for callers
+  "/api/sse/",          // server-sent events transport, not REST-shaped
+  "/api/borrower/",     // borrower-portal session surface; uses its own auth
+  "/api/portal/",
+  "/api/sign/",         // public e-sign HMAC-tokened, not a documented API
+];
+
+function isPrivatePath(path: string): boolean {
+  for (const prefix of PRIVATE_PATH_PREFIXES) {
+    if (path === prefix.replace(/\/$/, "") || path.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Build an OpenAPI 3.0 `paths` object from the introspected routes.
  * Each operation is given:
  *   - an `operationId` derived from `method + path`
@@ -124,6 +169,10 @@ function inferTag(path: string): string {
  *   - path-parameter descriptors for every `:name` in the Express path
  *   - a generic `200` response with no schema (the hand spec fills in
  *     rich schemas where it overrides).
+ *
+ * Paths matching PRIVATE_PATH_PREFIXES are deliberately excluded so the
+ * public, unauthenticated /api/docs surface doesn't enumerate the
+ * internal/admin/founder routes.
  */
 export function buildPathsFromRoutes(
   routes: ExtractedRoute[]
@@ -131,6 +180,7 @@ export function buildPathsFromRoutes(
   const paths: Record<string, any> = {};
   for (const { method, path } of routes) {
     if (!path.startsWith("/api/")) continue;
+    if (isPrivatePath(path)) continue;
     const specPath = expressPathToOpenApi(path);
     const params = extractPathParams(path).map((name) => ({
       name,
