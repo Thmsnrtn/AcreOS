@@ -3,6 +3,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,22 +129,25 @@ export default function AutomationPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof formData> }) => {
-      const response = await apiRequest("PUT", `/api/automation-rules/${id}`, data);
-      return response.json();
+  const updateMutation = useOptimisticUpdate<{ id: number; data: Partial<typeof formData> }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        const response = await apiRequest("PUT", `/api/automation-rules/${id}`, data);
+        return response.json();
+      },
+      listKeys: [["/api/automation-rules"]],
+      getId: ({ id }) => id,
+      buildPatch: ({ data }) => data as Record<string, unknown>,
+      successToast: { title: "Rule updated", description: "Automation rule has been updated." },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/automation-rules"] });
-      setIsEditOpen(false);
-      setSelectedRule(null);
-      resetForm();
-      toast({ title: "Rule updated", description: "Automation rule has been updated." });
+    {
+      onSuccess: () => {
+        setIsEditOpen(false);
+        setSelectedRule(null);
+        resetForm();
+      },
     },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't save rule", description: `${error.message}. ${reassurance}`, variant: "destructive" });
-    },
-  });
+  );
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {

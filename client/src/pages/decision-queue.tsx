@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -144,48 +145,38 @@ export default function DecisionQueuePage() {
   const deals: Deal[] = unwrapList<Deal>(dealsRaw);
   const leads: Lead[] = unwrapList<Lead>(leadsRaw);
 
-  const updateLead = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Lead> }) =>
-      fetch(`/api/leads/${id}`, {
+  const updateLead = useOptimisticUpdate<{ id: number; data: Partial<Lead> }>({
+    mutationFn: async ({ id, data }) => {
+      const r = await fetch(`/api/leads/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).then(r => {
-        if (!r.ok) throw new Error("Failed to update lead");
-        return r.json();
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({ title: "Lead updated." });
+      });
+      if (!r.ok) throw new Error("Failed to update lead");
+      return r.json();
     },
-    onError: () =>
-      toast({
-        title: "Couldn't update lead",
-        description: "The lead is unchanged. Try again in a moment.",
-        variant: "destructive",
-      }),
+    listKeys: [["/api/leads"]],
+    detailKey: ({ id }) => ["/api/leads", id],
+    getId: ({ id }) => id,
+    buildPatch: ({ data }) => data as Record<string, unknown>,
+    successToast: { title: "Lead updated." },
   });
 
-  const updateDeal = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Deal> }) =>
-      fetch(`/api/deals/${id}`, {
+  const updateDeal = useOptimisticUpdate<{ id: number; data: Partial<Deal> }>({
+    mutationFn: async ({ id, data }) => {
+      const r = await fetch(`/api/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).then(r => {
-        if (!r.ok) throw new Error("Failed to update deal");
-        return r.json();
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/deals"] });
-      toast({ title: "Deal updated." });
+      });
+      if (!r.ok) throw new Error("Failed to update deal");
+      return r.json();
     },
-    onError: () =>
-      toast({
-        title: "Couldn't update deal",
-        description: "The deal stage is unchanged. Try again in a moment.",
-        variant: "destructive",
-      }),
+    listKeys: [["/api/deals"]],
+    detailKey: ({ id }) => ["/api/deals", id],
+    getId: ({ id }) => id,
+    buildPatch: ({ data }) => data as Record<string, unknown>,
+    successToast: { title: "Deal updated." },
   });
 
   const now = new Date();

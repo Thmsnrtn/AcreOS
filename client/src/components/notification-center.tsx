@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -83,15 +84,18 @@ export function NotificationCenter() {
     refetchInterval: 30000,
   });
 
-  const markReadMutation = useMutation({
-    mutationFn: async (id: number) => {
+  // Optimistic — the notification dropdown should reflect `isRead: true`
+  // instantly when the user taps a row, even on cellular. Factory snapshots
+  // the cached lists and rolls back on server reject.
+  const markReadMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
       const response = await apiRequest("PUT", `/api/notifications/${id}/read`);
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] });
-    },
+    listKeys: [["/api/notifications"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isRead: true }),
+    extraInvalidateKeys: [["/api/notifications/count"]],
   });
 
   const markAllReadMutation = useMutation({
@@ -109,7 +113,7 @@ export function NotificationCenter() {
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.isRead) {
-      markReadMutation.mutate(notification.id);
+      markReadMutation.mutate({ id: notification.id });
     }
     setIsOpen(false);
   };

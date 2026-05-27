@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { ChecklistTemplate, DealChecklist, DealChecklistItem } from "@shared/schema";
 
 interface DealChecklistWithStatus extends DealChecklist {
@@ -59,15 +60,22 @@ export function useStageGate(dealId: number | null) {
   });
 }
 
+/**
+ * Optimistic deal-stage update. Drag-and-drop on the pipeline board
+ * snaps the card to its new column without waiting for the server.
+ * Patches every cached `/api/deals` list (flat + paginated envelope)
+ * via the factory.
+ */
 export function useUpdateDealStage(dealId: number) {
-  return useMutation({
-    mutationFn: async ({ stage, force }: { stage: string; force?: boolean }) => {
+  return useOptimisticUpdate<{ stage: string; force?: boolean }>({
+    mutationFn: async ({ stage, force }) => {
       const res = await apiRequest("PATCH", `/api/deals/${dealId}/stage`, { stage, force });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/deals", dealId] });
-    },
+    listKeys: [["/api/deals"]],
+    detailKey: () => ["/api/deals", dealId],
+    getId: () => dealId,
+    buildPatch: ({ stage }) => ({ stage }),
+    extraInvalidateKeys: [["/api/deals", dealId, "stage-gate"]],
   });
 }

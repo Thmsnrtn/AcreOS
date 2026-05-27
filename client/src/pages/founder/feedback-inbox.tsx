@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { apiRequest } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
 import {
@@ -112,37 +113,38 @@ export default function FounderFeedbackInboxPage() {
 
   const { data, isLoading, error } = useQuery<ListResponse>({ queryKey });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: Status }) => {
-      const res = await apiRequest("PATCH", `/api/founder/feedback/${id}`, {
-        status,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || "Update failed");
-      }
-      return res.json();
+  const updateMutation = useOptimisticUpdate<{ id: number; status: Status }>(
+    {
+      mutationFn: async ({ id, status }) => {
+        const res = await apiRequest("PATCH", `/api/founder/feedback/${id}`, {
+          status,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || "Update failed");
+        }
+        return res.json();
+      },
+      // Both the global feedback prefix and the filtered queryKey above
+      // hold the feedback row — patch both so the active list updates
+      // instantly. The optimistic factory's onSettled invalidates both.
+      listKeys: [["/api/founder/feedback"], queryKey],
+      getId: ({ id }) => id,
+      buildPatch: ({ status }) => ({ status }),
     },
-    onSuccess: (_row, vars) => {
-      qc.invalidateQueries({ queryKey: ["/api/founder/feedback"] });
-      qc.invalidateQueries({ queryKey });
-      toast({
-        title:
-          vars.status === "archived"
-            ? "Archived"
-            : vars.status === "replied"
-              ? "Marked replied"
-              : "Marked read",
-      });
+    {
+      onSuccess: (_row, vars) => {
+        toast({
+          title:
+            vars.status === "archived"
+              ? "Archived"
+              : vars.status === "replied"
+                ? "Marked replied"
+                : "Marked read",
+        });
+      },
     },
-    onError: (err: Error) => {
-      toast({
-        title: "Couldn't update",
-        description: err.message,
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
   const submissions = data?.submissions ?? [];
 

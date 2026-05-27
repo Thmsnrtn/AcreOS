@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { DocumentTemplate } from "@shared/schema";
 
 import { Button } from "@/components/ui/button";
@@ -205,20 +206,25 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (data: TemplateFormValues & { variables: any[] }) => {
-      if (!template?.id) throw new Error("Template ID is required");
-      return apiRequest("PATCH", `/api/document-templates/${template.id}`, data);
+  const updateMutation = useOptimisticUpdate<TemplateFormValues & { variables: any[] }>(
+    {
+      mutationFn: async (data) => {
+        if (!template?.id) throw new Error("Template ID is required");
+        return apiRequest("PATCH", `/api/document-templates/${template.id}`, data);
+      },
+      listKeys: [["/api/document-templates"]],
+      getId: () => template?.id ?? 0,
+      // Variables don't have `id` (it's pulled from the closure), so spread
+      // the form values directly as the optimistic patch.
+      buildPatch: (data) => data as unknown as Record<string, unknown>,
+      successToast: { title: "Template updated successfully" },
     },
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
-      toast({ title: "Template updated successfully" });
-      onSave?.(response as unknown as DocumentTemplate);
+    {
+      onSuccess: (response) => {
+        onSave?.(response as unknown as DocumentTemplate);
+      },
     },
-    onError: (error: any) => {
-      toast({ title: "Couldn't update template", description: `${error.message} — the existing template is unchanged.`, variant: "destructive" });
-    },
-  });
+  );
 
   const previewMutation = useMutation({
     mutationFn: async (templateId: number) => {

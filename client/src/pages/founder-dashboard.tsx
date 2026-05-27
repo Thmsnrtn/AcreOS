@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -1260,19 +1261,19 @@ export default function FounderDashboard() {
     }
   };
 
-  const updateFeatureRequestMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: Partial<{ status: string; priority: string; founderNotes: string }> }) => {
+  const updateFeatureRequestMutation = useOptimisticUpdate<{
+    id: number;
+    updates: Partial<{ status: string; priority: string; founderNotes: string }>;
+  }>({
+    mutationFn: async ({ id, updates }) => {
       const res = await apiRequest("PATCH", `/api/founder/feature-requests/${id}`, updates);
       if (!res.ok) throw new Error("Failed to update feature request");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/founder/feature-requests'] });
-      toast({ title: "Feature request updated" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
-    },
+    listKeys: [["/api/founder/feature-requests"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ updates }) => updates as Record<string, unknown>,
+    successToast: { title: "Feature request updated" },
   });
 
   const handleStatusChange = (id: number, status: string) => {
@@ -1408,20 +1409,17 @@ export default function FounderDashboard() {
     enabled: activeTab === "growth",
   });
 
-  const toggleDataSourceMutation = useMutation({
-    mutationFn: async ({ id, isEnabled }: { id: number; isEnabled: boolean }) => {
+  const toggleDataSourceMutation = useOptimisticUpdate<{ id: number; isEnabled: boolean }>({
+    mutationFn: async ({ id, isEnabled }) => {
       const res = await apiRequest("PATCH", `/api/data-sources/${id}`, { isEnabled });
       if (!res.ok) throw new Error("Failed to toggle data source");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/data-sources'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/data-sources/stats'] });
-      toast({ title: "Data source updated" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
-    },
+    listKeys: [["/api/data-sources"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ isEnabled }) => ({ isEnabled }),
+    extraInvalidateKeys: [["/api/data-sources/stats"]],
+    successToast: { title: "Data source updated" },
   });
 
   const seedGisEndpointsMutation = useMutation({

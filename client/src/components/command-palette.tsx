@@ -38,6 +38,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -478,61 +479,62 @@ export function CommandPalette() {
     },
   });
 
-  // Mutation for updating lead status
-  const updateLeadMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await apiRequest("PUT", `/api/leads/${id}`, { status });
-      if (!res.ok) throw new Error("Failed to update lead");
-      return res.json();
+  // Mutation for updating lead status — optimistic so the palette
+  // close + toast fire instantly, with a rollback on server reject.
+  const updateLeadMutation = useOptimisticUpdate<{ id: number; status: string }>(
+    {
+      mutationFn: async ({ id, status }) => {
+        const res = await apiRequest("PUT", `/api/leads/${id}`, { status });
+        if (!res.ok) throw new Error("Failed to update lead");
+        return res.json();
+      },
+      listKeys: [["/api/leads"]],
+      detailKey: ({ id }) => ["/api/leads", id],
+      getId: ({ id }) => id,
+      buildPatch: ({ status }) => ({ status }),
+      extraInvalidateKeys: [["/api/recent-items"]],
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recent-items"] });
-      const statusLabel = leadStatuses.find(s => s.value === variables.status)?.label || variables.status;
-      toast({
-        title: "Lead updated",
-        description: `Status changed to ${statusLabel}`,
-      });
-      telemetry.actionCompleted('command_palette_lead_status_update', { newStatus: variables.status });
-      setSelectedLeadId(null);
-      setOpen(false);
+    {
+      onSuccess: (_, variables) => {
+        const statusLabel = leadStatuses.find(s => s.value === variables.status)?.label || variables.status;
+        toast({
+          title: "Lead updated",
+          description: `Status changed to ${statusLabel}`,
+        });
+        telemetry.actionCompleted('command_palette_lead_status_update', { newStatus: variables.status });
+        setSelectedLeadId(null);
+        setOpen(false);
+      },
     },
-    onError: () => {
-      toast({
-        title: "Couldn't update lead status",
-        description: "The lead's existing status is unchanged.",
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
-  // Mutation for updating deal stage
-  const updateDealMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await apiRequest("PUT", `/api/deals/${id}`, { status });
-      if (!res.ok) throw new Error("Failed to update deal");
-      return res.json();
+  // Mutation for updating deal stage — optimistic with rollback.
+  const updateDealMutation = useOptimisticUpdate<{ id: number; status: string }>(
+    {
+      mutationFn: async ({ id, status }) => {
+        const res = await apiRequest("PUT", `/api/deals/${id}`, { status });
+        if (!res.ok) throw new Error("Failed to update deal");
+        return res.json();
+      },
+      listKeys: [["/api/deals"]],
+      detailKey: ({ id }) => ["/api/deals", id],
+      getId: ({ id }) => id,
+      buildPatch: ({ status }) => ({ status }),
+      extraInvalidateKeys: [["/api/recent-items"]],
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recent-items"] });
-      const stageLabel = dealStages.find(s => s.value === variables.status)?.label || variables.status;
-      toast({
-        title: "Deal updated",
-        description: `Stage changed to ${stageLabel}`,
-      });
-      telemetry.actionCompleted('command_palette_deal_stage_update', { newStage: variables.status });
-      setSelectedDealId(null);
-      setOpen(false);
+    {
+      onSuccess: (_, variables) => {
+        const stageLabel = dealStages.find(s => s.value === variables.status)?.label || variables.status;
+        toast({
+          title: "Deal updated",
+          description: `Stage changed to ${stageLabel}`,
+        });
+        telemetry.actionCompleted('command_palette_deal_stage_update', { newStage: variables.status });
+        setSelectedDealId(null);
+        setOpen(false);
+      },
     },
-    onError: () => {
-      toast({
-        title: "Couldn't update deal stage",
-        description: "The deal's existing stage is unchanged.",
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {

@@ -243,25 +243,28 @@ export default function DocumentsPage() {
     },
   });
 
-  const updateTemplateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: TemplateFormValues }) => {
-      const variables = extractVariables(data.content);
-      return apiRequest("PATCH", `/api/document-templates/${id}`, {
-        ...data,
-        variables,
-      });
+  const updateTemplateMutation = useOptimisticUpdate<{ id: number; data: TemplateFormValues }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        const variables = extractVariables(data.content);
+        return apiRequest("PATCH", `/api/document-templates/${id}`, {
+          ...data,
+          variables,
+        });
+      },
+      listKeys: [["/api/document-templates"]],
+      getId: ({ id }) => id,
+      buildPatch: ({ data }) => ({ ...data, variables: extractVariables(data.content) }),
+      successToast: { title: "Template updated successfully" },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
-      setIsEditTemplateOpen(false);
-      setEditingTemplate(null);
-      editTemplateForm.reset();
-      toast({ title: "Template updated successfully" });
+    {
+      onSuccess: () => {
+        setIsEditTemplateOpen(false);
+        setEditingTemplate(null);
+        editTemplateForm.reset();
+      },
     },
-    onError: (error: any) => {
-      toast({ title: "Couldn't update template", description: `${error.message} — the existing template is unchanged.`, variant: "destructive" });
-    },
-  });
+  );
 
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -312,17 +315,14 @@ export default function DocumentsPage() {
     },
   });
 
-  const updatePackageMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+  const updatePackageMutation = useOptimisticUpdate<{ id: number; data: any }>({
+    mutationFn: async ({ id, data }) => {
       return apiRequest("PUT", `/api/document-packages/${id}`, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
-      toast({ title: "Package updated successfully" });
-    },
-    onError: (error: any) => {
-      toast({ title: "Couldn't update package", description: `${error.message} — the existing package is unchanged.`, variant: "destructive" });
-    },
+    listKeys: [["/api/document-packages"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ data }) => data as Record<string, unknown>,
+    successToast: { title: "Package updated successfully" },
   });
 
   const deletePackageMutation = useMutation({

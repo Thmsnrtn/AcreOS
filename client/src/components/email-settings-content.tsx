@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -297,35 +298,31 @@ export function EmailSettingsContent() {
     },
   });
 
-  const updateRoutingMutation = useMutation({
-    mutationFn: async ({ id, replyRoutingMode, replyToEmail }: { 
-      id: number; 
-      replyRoutingMode: "in_app" | "forward" | "both";
-      replyToEmail?: string;
-    }) => {
-      const res = await apiRequest("PATCH", `/api/email-identities/${id}`, {
-        replyRoutingMode,
-        replyToEmail,
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update routing");
-      }
-      return res.json();
+  const updateRoutingMutation = useOptimisticUpdate<{
+    id: number;
+    replyRoutingMode: "in_app" | "forward" | "both";
+    replyToEmail?: string;
+  }>(
+    {
+      mutationFn: async ({ id, replyRoutingMode, replyToEmail }) => {
+        const res = await apiRequest("PATCH", `/api/email-identities/${id}`, {
+          replyRoutingMode,
+          replyToEmail,
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Failed to update routing");
+        }
+        return res.json();
+      },
+      listKeys: [["/api/email-identities"]],
+      getId: ({ id }) => id,
+      successToast: { title: "Routing settings updated" },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/email-identities"] });
-      setEditingRoutingId(null);
-      toast({ title: "Routing settings updated" });
+    {
+      onSuccess: () => setEditingRoutingId(null),
     },
-    onError: (err: Error) => {
-      toast({
-        title: "Couldn't update routing",
-        description: `${err.message} — the previous routing settings are unchanged.`,
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
   const copyToClipboard = async (text: string) => {
     try {

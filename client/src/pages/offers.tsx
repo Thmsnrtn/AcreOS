@@ -3,6 +3,7 @@ import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -171,24 +172,23 @@ export default function OffersPage() {
     },
   });
 
-  const updateTemplateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<OfferTemplate> }) => {
-      return apiRequest('PUT', `/api/offer-templates/${id}`, data);
+  const updateTemplateMutation = useOptimisticUpdate<{ id: number; data: Partial<OfferTemplate> }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        return apiRequest('PUT', `/api/offer-templates/${id}`, data);
+      },
+      listKeys: [["/api/offer-templates"]],
+      getId: ({ id }) => id,
+      buildPatch: ({ data }) => data as Record<string, unknown>,
+      successToast: { title: "Template updated.", description: "Your template has been updated." },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/offer-templates'] });
-      setIsTemplateDialogOpen(false);
-      setEditingTemplate(null);
-      toast({ title: "Template updated.", description: "Your template has been updated." });
+    {
+      onSuccess: () => {
+        setIsTemplateDialogOpen(false);
+        setEditingTemplate(null);
+      },
     },
-    onError: (error: any) => {
-      toast({
-        title: "Couldn't update template",
-        description: `${error.message} — the template is unchanged.`,
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: number) => {

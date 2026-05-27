@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -193,28 +194,25 @@ export function MailSettingsContent() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: MailIdentityFormValues }) => {
-      const res = await apiRequest("PATCH", `/api/mail-identities/${id}`, data);
-      if (!res.ok) {
-        const responseData = await res.json();
-        throw new Error(responseData.message || "Failed to update mail identity");
-      }
-      return res.json();
+  const updateMutation = useOptimisticUpdate<{ id: number; data: MailIdentityFormValues }>(
+    {
+      mutationFn: async ({ id, data }) => {
+        const res = await apiRequest("PATCH", `/api/mail-identities/${id}`, data);
+        if (!res.ok) {
+          const responseData = await res.json();
+          throw new Error(responseData.message || "Failed to update mail identity");
+        }
+        return res.json();
+      },
+      listKeys: [["/api/mail-identities"]],
+      getId: ({ id }) => id,
+      buildPatch: ({ data }) => data as Record<string, unknown>,
+      successToast: { title: "Return address updated" },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mail-identities"] });
-      closeFormDialog();
-      toast({ title: "Return address updated" });
+    {
+      onSuccess: () => closeFormDialog(),
     },
-    onError: (err: Error) => {
-      toast({
-        title: "Couldn't update return address",
-        description: `${err.message} — the existing address is unchanged.`,
-        variant: "destructive",
-      });
-    },
-  });
+  );
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {

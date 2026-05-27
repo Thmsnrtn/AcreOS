@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 // provides the sidebar + collapsed-margin chrome.
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useAgentTasks, useCreateAgentTask } from "@/hooks/use-agent-tasks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -228,18 +229,15 @@ function TeamTabContent() {
     staleTime: 60000,
   });
 
-  const updateAgentMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<VAAgent> }) => {
+  const updateAgentMutation = useOptimisticUpdate<{ id: string; updates: Partial<VAAgent> }>({
+    mutationFn: async ({ id, updates }) => {
       const res = await apiRequest("PATCH", `/api/va/agents/${id}`, updates);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/va/agents"] });
-      toast({ title: "Agent updated", description: "Settings saved successfully" });
-    },
-    onError: () => {
-      toast({ title: "Couldn't save agent settings", description: "The agent's existing settings are unchanged. Try again.", variant: "destructive" });
-    },
+    listKeys: [["/api/va/agents"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ updates }) => updates as Record<string, unknown>,
+    successToast: { title: "Agent updated", description: "Settings saved successfully" },
   });
 
   const approveActionMutation = useMutation({
