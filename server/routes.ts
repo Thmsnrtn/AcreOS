@@ -159,6 +159,7 @@ import { registerSubscriptionRoutes } from "./routes-subscription";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
+import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
 import { registerQuietTitleRoutes } from "./routes-quiet-title";
@@ -1699,13 +1700,13 @@ export async function registerRoutes(
     registerFounderV8Routes(app);
     const { registerFounderV10Routes } = await import("./routes-founder-conscious-organization");
     registerFounderV10Routes(app);
-    const { registerFounderV11Routes } = await import("./routes-founder-v11");
+    const { registerFounderV11Routes } = await import("./routes-founder-anticipatory-enterprise");
     registerFounderV11Routes(app);
-    const { registerFounderV12Routes } = await import("./routes-founder-v12");
+    const { registerFounderV12Routes } = await import("./routes-founder-real-runtime");
     registerFounderV12Routes(app);
-    const { registerFounderV13Routes } = await import("./routes-founder-v13");
+    const { registerFounderV13Routes } = await import("./routes-founder-sentient-enterprise");
     registerFounderV13Routes(app);
-    const { registerFounderV14Routes } = await import("./routes-founder-v14");
+    const { registerFounderV14Routes } = await import("./routes-founder-self-running-company");
     registerFounderV14Routes(app);
     // CMO ad engine — native ad generation, founder approval, broadcast.
     const { registerCmoRoutes } = await import("./routes-cmo");
@@ -2013,6 +2014,8 @@ export async function registerRoutes(
   registerNoteRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
+  // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
+  registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
   registerTaxCertificateRoutes(app);
   // Tax-Delinquent vertical TD-3 — per-state rules database.
