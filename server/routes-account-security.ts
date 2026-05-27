@@ -23,7 +23,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId, getOrganizationId } from "./types/request";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 let clerkClient: any = null;
@@ -131,7 +131,7 @@ export function registerAccountSecurityRoutes(app: Express): void {
         if (!localUser?.clerkUserId) return Errors.notFound(res, "User");
 
         const clerk = await getClerk();
-        if (!clerk) return res.status(501).json({ message: "Clerk SDK not available" });
+        if (!clerk) return sendError(res, 501, "NOT_IMPLEMENTED", "Clerk SDK not available");
 
         // Verify the session belongs to THIS user before revoking.
         let sessionUserId: string | null = null;
@@ -174,7 +174,7 @@ export function registerAccountSecurityRoutes(app: Express): void {
         if (!localUser?.clerkUserId) return Errors.notFound(res, "User");
 
         const clerk = await getClerk();
-        if (!clerk) return res.status(501).json({ message: "Clerk SDK not available" });
+        if (!clerk) return sendError(res, 501, "NOT_IMPLEMENTED", "Clerk SDK not available");
 
         let revoked = 0;
         let skipped = 0;

@@ -257,17 +257,53 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const { to, message } = req.body;
-      
+
       if (!to || !message) {
         return res.status(400).json({ message: "Phone number and message are required" });
       }
 
+      // ── TCPA gate ────────────────────────────────────────────────────
+      // Even ad-hoc sends from a logged-in operator MUST go through the
+      // consent + quiet-hours check. The recipient's prior STOP doesn't
+      // care that the founder personally typed this. Try to match the
+      // destination phone to a known lead; if found, gate on its
+      // consent + zone. If unknown, gate on area-code quiet-hours only
+      // (no consent record to consult, but we still won't text at 2 AM).
+      const { canSendViaChannel, isWithinQuietHours, isWithinQuietHoursForLead } =
+        await import("./services/tcpaCompliance");
+      const { leads } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const { db } = await import("./db");
+      const cleanTo = String(to).replace(/\D/g, "").slice(-10);
+      const orgLeads = await db
+        .select()
+        .from(leads)
+        .where(eq(leads.organizationId, org.id));
+      const matched = orgLeads.find(
+        (l) => (l.phone || "").replace(/\D/g, "").slice(-10) === cleanTo
+      );
+      if (matched) {
+        const consent = canSendViaChannel(matched, "sms");
+        if (!consent.allowed) {
+          return res.status(403).json({ message: `TCPA blocked: ${consent.reason}` });
+        }
+        const qh = isWithinQuietHoursForLead(matched as any, to);
+        if (qh.blocked) {
+          return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+        }
+      } else {
+        const qh = isWithinQuietHours(to);
+        if (qh.blocked) {
+          return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+        }
+      }
+
       const result = await smsServiceModule.sendOrgSMS(org.id, to, message);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: result.error });
       }
-      
+
       res.json(result);
     } catch (error: any) {
       logger.error("Send SMS error", error);
@@ -281,17 +317,34 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const user = req.user;
       const leadId = parseInt(req.params.leadId);
       const { message } = req.body;
-      
+
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
       }
 
+      // ── TCPA gate ────────────────────────────────────────────────────
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      const { canSendViaChannel, isWithinQuietHoursForLead } = await import(
+        "./services/tcpaCompliance"
+      );
+      const consent = canSendViaChannel(lead, "sms");
+      if (!consent.allowed) {
+        return res.status(403).json({ message: `TCPA blocked: ${consent.reason}` });
+      }
+      const qh = isWithinQuietHoursForLead(lead as any);
+      if (qh.blocked) {
+        return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+      }
+
       const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: result.error });
       }
-      
+
       res.json(result);
     } catch (error: any) {
       logger.error("Send SMS to lead error", error);
@@ -817,6 +870,60 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ report, taxYear });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to generate tax report" });
+    }
+  });
+
+  // GET /api/tax-optimizer/dealer-classification — dealer vs. investor
+  // status assessment per §1221(a)(1). Audit-defense oriented.
+  // Optional query: hoursLast12, exclusiveRealEstate (true|false)
+  api.get("/api/tax-optimizer/dealer-classification", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const hoursLast12 = req.query.hoursLast12
+        ? parseInt(String(req.query.hoursLast12), 10)
+        : null;
+      const exclusiveRealEstate =
+        req.query.exclusiveRealEstate === "true"
+          ? true
+          : req.query.exclusiveRealEstate === "false"
+          ? false
+          : null;
+      const { classifyDealerVsInvestor } = await import("./services/dealerInvestorClassifier");
+      const result = await classifyDealerVsInvestor({
+        orgId: org.id,
+        selfReportedHoursLast12: Number.isFinite(hoursLast12 as number) ? hoursLast12 : null,
+        exclusiveRealEstate,
+      });
+      res.json(result);
+    } catch (err: any) {
+      logger.error("Dealer classification error", err);
+      res.status(500).json({ message: err.message || "Failed to classify" });
+    }
+  });
+
+  // POST /api/tax-optimizer/re-professional — §469(c)(7) test.
+  // Body: { realEstateHoursThisYear, totalWorkHoursThisYear, hasMaterialParticipationLog }
+  api.post("/api/tax-optimizer/re-professional", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const realEstateHoursThisYear = Number(req.body?.realEstateHoursThisYear ?? 0);
+      const totalWorkHoursThisYear = Number(req.body?.totalWorkHoursThisYear ?? 0);
+      const hasMaterialParticipationLog = Boolean(req.body?.hasMaterialParticipationLog);
+      if (!Number.isFinite(realEstateHoursThisYear) || realEstateHoursThisYear < 0) {
+        return res.status(400).json({ message: "realEstateHoursThisYear must be a non-negative number" });
+      }
+      if (!Number.isFinite(totalWorkHoursThisYear) || totalWorkHoursThisYear < 0) {
+        return res.status(400).json({ message: "totalWorkHoursThisYear must be a non-negative number" });
+      }
+      const { evaluateRealEstateProfessional } = await import("./services/dealerInvestorClassifier");
+      const result = evaluateRealEstateProfessional({
+        realEstateHoursThisYear,
+        totalWorkHoursThisYear,
+        hasMaterialParticipationLog,
+      });
+      res.json(result);
+    } catch (err: any) {
+      logger.error("RE-professional test error", err);
+      res.status(500).json({ message: err.message || "Failed to evaluate" });
     }
   });
 

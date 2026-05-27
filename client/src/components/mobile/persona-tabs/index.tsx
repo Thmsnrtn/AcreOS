@@ -8,11 +8,14 @@
  * The Inbox tab is universal (same for all personas) and lives in
  * `../InboxTab.tsx`; only Today / Pipeline / Portfolio dispatch here.
  *
- * Three priority personas have real content today (per the 12-agent
- * audit's leapfrog rankings):
+ * Personas with real content today (per audit/leapfrog rankings):
  *   - tax_delinquent
  *   - note_investor (+ note_originator + note_servicer fallback)
  *   - wholesaler
+ *   - landlord
+ *   - subdivider — Brigid (Lens 19 #1: subdividers run their day from
+ *     stalled permit gates, perc-test queue, and lots-in-market; the
+ *     Universal tabs are useless to them)
  *
  * Others render the placeholder until their content lands.
  */
@@ -41,6 +44,20 @@ const WholesalerToday = lazy(() =>
 );
 const WholesalerPortfolio = lazy(() =>
   import("./WholesalerTabs").then((m) => ({ default: m.WholesalerPortfolio })),
+);
+
+const LandlordToday = lazy(() =>
+  import("./LandlordTabs").then((m) => ({ default: m.LandlordToday })),
+);
+const LandlordPortfolio = lazy(() =>
+  import("./LandlordTabs").then((m) => ({ default: m.LandlordPortfolio })),
+);
+
+const SubdividerToday = lazy(() =>
+  import("./SubdividerTabs").then((m) => ({ default: m.SubdividerToday })),
+);
+const SubdividerPortfolio = lazy(() =>
+  import("./SubdividerTabs").then((m) => ({ default: m.SubdividerPortfolio })),
 );
 
 const InboxTab = lazy(() =>
@@ -81,6 +98,7 @@ export function renderPersonaTab(tab: TabId, persona: Persona | undefined): Reac
       return wrap(<NoteInvestorToday />);
     }
     if (persona === "wholesaler") return wrap(<WholesalerToday />);
+    if (persona === "landlord") return wrap(<LandlordToday />);
     return wrap(<UniversalToday />);
   }
 
@@ -90,6 +108,7 @@ export function renderPersonaTab(tab: TabId, persona: Persona | undefined): Reac
       return wrap(<NoteInvestorPortfolio />);
     }
     if (persona === "wholesaler") return wrap(<WholesalerPortfolio />);
+    if (persona === "landlord") return wrap(<LandlordPortfolio />);
     return wrap(<UniversalPortfolio />);
   }
 

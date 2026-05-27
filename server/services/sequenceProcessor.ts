@@ -1,7 +1,11 @@
 import { storage, db } from "../storage";
 import type { SequenceEnrollment, SequenceStep, CampaignSequence, Lead } from "@shared/schema";
 import { campaignDeliveryEvents } from "@shared/schema";
-import { checkTcpaConsentFromLead, canSendViaChannel } from "./tcpaCompliance";
+import {
+  checkTcpaConsentFromLead,
+  canSendViaChannel,
+  isWithinQuietHoursForLead,
+} from "./tcpaCompliance";
 import crypto from "crypto";
 import { logger } from '../utils/logger';
 
@@ -324,13 +328,68 @@ export class SequenceProcessorService {
       return;
     }
 
+    // ── TCPA gate #1: consent + DNC + STOP history ──────────────────────
     const channelCheck = canSendViaChannel(lead, 'sms');
     if (!channelCheck.allowed) {
       logger.warn("[sequence-processor] SMS blocked for lead", { metadata: { leadId: lead.id, reason: channelCheck.reason } });
       return;
     }
 
-    logger.info("[sequence-processor] SMS sent", { metadata: { phone: lead.phone, contentPreview: content.substring(0, 50) } });
+    // ── TCPA gate #2: quiet hours in recipient's local time ─────────────
+    // Lifecycle sequences fire on a schedule the founder didn't manually
+    // pick — a 9:00 AM batch in the org's TZ might be 6:00 AM for a
+    // Pacific lead. Block now and let the next scheduler tick retry.
+    const quiet = isWithinQuietHoursForLead(lead as any);
+    if (quiet.blocked) {
+      logger.info("[sequence-processor] SMS deferred — quiet hours", {
+        metadata: { leadId: lead.id, zone: quiet.zone, reason: quiet.reason },
+      });
+      return;
+    }
+
+    // ── TCPA gate #3: autonomy guardrails (daily rate cap + DNC double-
+    // check at send-site). For sequenced sends this is "supervised"
+    // autonomy — guardrails enforce per-org daily limits.
+    try {
+      const { checkSendRateLimit, recordAutonomousSend, checkTcpaBeforeSend } =
+        await import("./autonomyGuardrails");
+      const tcpaGuard = await checkTcpaBeforeSend(lead.id);
+      if (!tcpaGuard.allowed) {
+        logger.warn("[sequence-processor] SMS blocked by guardrail", {
+          metadata: { leadId: lead.id, reason: tcpaGuard.reason },
+        });
+        return;
+      }
+      const orgId = (lead as any).organizationId as number | undefined;
+      if (orgId) {
+        const rate = await checkSendRateLimit(orgId, "sms");
+        if (!rate.allowed) {
+          logger.warn("[sequence-processor] SMS deferred — rate limit", {
+            metadata: { leadId: lead.id, reason: rate.reason },
+          });
+          return;
+        }
+        // Actually send via org-aware SMS path (handles BYOK + ledger).
+        const { sendOrgSMS } = await import("./smsService");
+        const result = await sendOrgSMS(orgId, lead.phone, content);
+        if (!result.success) {
+          logger.warn("[sequence-processor] SMS send failed", {
+            metadata: { leadId: lead.id, error: result.error },
+          });
+          return;
+        }
+        await recordAutonomousSend(orgId, "sms", lead.id, content);
+        logger.info("[sequence-processor] SMS sent", {
+          metadata: { phone: lead.phone, contentPreview: content.substring(0, 50), messageId: result.messageId },
+        });
+      } else {
+        logger.warn("[sequence-processor] Lead has no organizationId — cannot send", {
+          metadata: { leadId: lead.id },
+        });
+      }
+    } catch (err: any) {
+      logger.error("[sequence-processor] SMS send pipeline error", err, { metadata: { leadId: lead.id } });
+    }
   }
 
   async sendDirectMail(lead: Lead, subject: string, content: string) {

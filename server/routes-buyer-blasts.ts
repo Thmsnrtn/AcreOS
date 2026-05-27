@@ -30,6 +30,7 @@ import {
   properties,
   BUYER_BLAST_RECIPIENT_STATUSES,
 } from "@shared/schema";
+import { inArray } from "drizzle-orm";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -100,23 +101,80 @@ export function registerBuyerBlastRoutes(app: Express): void {
           return ft === financingType;
         });
 
+        // ── Trey 2026-05-27: cadence guardrails ────────────────────────────
+        // If a buyer received >2 blasts in the last 7 days, suppress them
+        // from this one. Trey's framing: "Buyers go inactive when over-
+        // blasted. Two blasts in a week is the ceiling — past that, you're
+        // training them to filter your emails into trash."
+        const MAX_BLASTS_PER_7_DAYS = 2;
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const buyerIds = eligible.map((m) => m.buyerId);
+        const recentCounts = buyerIds.length === 0
+          ? []
+          : await db
+              .select({
+                buyerProfileId: buyerBlastRecipients.buyerProfileId,
+                cnt: sql<number>`count(*)::int`,
+              })
+              .from(buyerBlastRecipients)
+              .where(and(
+                eq(buyerBlastRecipients.organizationId, orgId),
+                inArray(buyerBlastRecipients.buyerProfileId, buyerIds),
+                sql`${buyerBlastRecipients.sentAt} >= ${sevenDaysAgo.toISOString()}`,
+                inArray(buyerBlastRecipients.status, [
+                  "sent",
+                  "delivered",
+                  "opened",
+                  "replied_interested",
+                  "replied_not_interested",
+                ]),
+              ))
+              .groupBy(buyerBlastRecipients.buyerProfileId);
+        const cadenceMap = new Map<number, number>(
+          recentCounts.map((r) => [r.buyerProfileId, Number(r.cnt) || 0]),
+        );
+        const suppressed = eligible.filter(
+          (m) => (cadenceMap.get(m.buyerId) ?? 0) >= MAX_BLASTS_PER_7_DAYS,
+        );
+        const sendable = eligible.filter(
+          (m) => (cadenceMap.get(m.buyerId) ?? 0) < MAX_BLASTS_PER_7_DAYS,
+        );
+
         if (dryRun) {
           // Preview: return who would be reached without creating the
           // blast or sending. UI uses this to confirm before proceeding.
+          // Trey 2026-05-27: also report suppressed (over-blasted) buyers
+          // so the operator sees the cadence-guardrail effect before send.
           return res.json({
             dryRun: true,
-            recipientCount: eligible.length,
-            recipients: eligible.map((m) => ({
+            recipientCount: sendable.length,
+            suppressedCount: suppressed.length,
+            suppressionReason: suppressed.length > 0
+              ? `${suppressed.length} buyer${suppressed.length === 1 ? "" : "s"} received ≥${MAX_BLASTS_PER_7_DAYS} blasts in the last 7 days and were suppressed to avoid blast fatigue.`
+              : null,
+            recipients: sendable.map((m) => ({
               buyerProfileId: m.buyerId,
               name: m.buyerName,
               email: m.buyerEmail,
               matchScore: m.matchScore,
               financingType: (m.financialInfo as any)?.financingType ?? null,
             })),
+            suppressed: suppressed.map((m) => ({
+              buyerProfileId: m.buyerId,
+              name: m.buyerName,
+              email: m.buyerEmail,
+              recentBlastCount: cadenceMap.get(m.buyerId) ?? 0,
+            })),
           });
         }
 
-        if (eligible.length === 0) {
+        if (sendable.length === 0) {
+          if (eligible.length > 0 && suppressed.length === eligible.length) {
+            return Errors.badRequest(
+              res,
+              `All ${eligible.length} matched buyers were suppressed: each received ≥${MAX_BLASTS_PER_7_DAYS} blasts in the last 7 days. Wait for the cadence window to roll off, broaden the filter, or grow the buyer list.`,
+            );
+          }
           return Errors.badRequest(res, "No eligible buyers matched the filters. Adjust minMatchScore or financingType.");
         }
 
@@ -132,14 +190,14 @@ export function registerBuyerBlastRoutes(app: Express): void {
             bodySnapshot: body,
             channel: "email",
             status: "queued",
-            recipientCount: eligible.length,
+            recipientCount: sendable.length,
             sentByUserId: userId,
           })
           .returning();
         if (!blast) return Errors.internal(res, new Error("Insert blast row returned nothing"));
 
         // Insert recipient rows.
-        const recipientRows = eligible.map((m) => ({
+        const recipientRows = sendable.map((m) => ({
           organizationId: orgId,
           blastId: blast.id,
           buyerProfileId: m.buyerId,
@@ -155,7 +213,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
         let sentCount = 0;
         let failedCount = 0;
         await Promise.all(
-          eligible.map(async (m) => {
+          sendable.map(async (m) => {
             try {
               const result = await sendEmail({
                 to: m.buyerEmail!,
@@ -198,12 +256,23 @@ export function registerBuyerBlastRoutes(app: Express): void {
           .where(eq(buyerBlasts.id, blast.id));
 
         logger.info("buyerBlast.completed", {
-          metadata: { orgId, blastId: blast.id, propertyId, sentCount, failedCount },
+          metadata: {
+            orgId,
+            blastId: blast.id,
+            propertyId,
+            sentCount,
+            failedCount,
+            suppressedCount: suppressed.length,
+          },
         });
 
         return res.status(201).json({
           blast: { ...blast, sentCount, failedCount, status: "sent" },
-          recipientCount: eligible.length,
+          recipientCount: sendable.length,
+          suppressedCount: suppressed.length,
+          suppressionReason: suppressed.length > 0
+            ? `${suppressed.length} buyer${suppressed.length === 1 ? "" : "s"} suppressed by cadence guardrail (>${MAX_BLASTS_PER_7_DAYS - 1} blasts in 7 days).`
+            : null,
         });
       } catch (err) {
         logger.error("buyerBlast.create failed", err instanceof Error ? err : undefined);

@@ -312,7 +312,13 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const [body, setBody] = useState("");
   const [minScore, setMinScore] = useState("70");
   const [financingType, setFinancingType] = useState<"cash" | "any">("cash");
-  const [preview, setPreview] = useState<{ count: number; recipients: any[] } | null>(null);
+  const [preview, setPreview] = useState<{
+    count: number;
+    recipients: any[];
+    suppressedCount?: number;
+    suppressionReason?: string | null;
+    suppressed?: any[];
+  } | null>(null);
 
   const reset = () => {
     setPropertyId(""); setSubject(""); setBody(""); setMinScore("70");
@@ -340,7 +346,13 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       }
       return res.json();
     },
-    onSuccess: (d) => setPreview({ count: d.recipientCount, recipients: d.recipients }),
+    onSuccess: (d) => setPreview({
+      count: d.recipientCount,
+      recipients: d.recipients,
+      suppressedCount: d.suppressedCount,
+      suppressionReason: d.suppressionReason,
+      suppressed: d.suppressed,
+    }),
     onError: (err: any) => toast({ title: "Preview failed", description: err.message, variant: "destructive" }),
   });
 
@@ -416,15 +428,28 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </div>
 
           {preview && (
-            <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-xs">
-              <div className="font-semibold mb-1">{preview.count} eligible recipient{preview.count === 1 ? "" : "s"}.</div>
-              {preview.recipients.slice(0, 5).map((r: any) => (
-                <div key={r.buyerProfileId} className="flex justify-between">
-                  <span>{r.name}</span>
-                  <span className="text-muted-foreground">{r.email} · {r.matchScore}</span>
+            <div className="space-y-2">
+              <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-xs">
+                <div className="font-semibold mb-1">{preview.count} eligible recipient{preview.count === 1 ? "" : "s"}.</div>
+                {preview.recipients.slice(0, 5).map((r: any) => (
+                  <div key={r.buyerProfileId} className="flex justify-between">
+                    <span>{r.name}</span>
+                    <span className="text-muted-foreground">{r.email} · {r.matchScore}</span>
+                  </div>
+                ))}
+                {preview.count > 5 && <div className="text-muted-foreground italic mt-1">…and {preview.count - 5} more</div>}
+              </div>
+              {(preview.suppressedCount ?? 0) > 0 && (
+                <div className="p-3 rounded-md bg-acr-warning/10 border border-acr-warning/30 text-xs">
+                  <div className="font-semibold mb-1 text-acr-warning">
+                    {preview.suppressedCount} suppressed by cadence guardrail
+                  </div>
+                  <div className="text-muted-foreground">
+                    {preview.suppressionReason ??
+                      "Buyers with >2 blasts in the last 7 days are skipped to avoid blast fatigue."}
+                  </div>
                 </div>
-              ))}
-              {preview.count > 5 && <div className="text-muted-foreground italic mt-1">…and {preview.count - 5} more</div>}
+              )}
             </div>
           )}
         </div>
