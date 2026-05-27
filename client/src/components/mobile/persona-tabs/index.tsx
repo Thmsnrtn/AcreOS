@@ -89,9 +89,9 @@ export function renderPersonaTab(tab: TabId, persona: Persona | undefined): Reac
   if (tab === "inbox") return wrap(<InboxTab />);
 
   // Persona-specific Today / Portfolio + Universal fallback for personas
-  // without dedicated content (Land Flipper, Fix & Flip, Subdivider,
-  // Buy-and-Hold Landlord). Pipeline always uses the Universal stage view
-  // today; persona-specific Pipeline is the next iteration.
+  // without dedicated content (Land Flipper, Fix & Flip). Pipeline always
+  // uses the Universal stage view today; persona-specific Pipeline is the
+  // next iteration.
   if (tab === "today") {
     if (persona === "tax_delinquent") return wrap(<TaxDelinquentToday />);
     if (persona === "note_investor" || persona === "note_originator" || persona === "note_servicer") {
@@ -99,6 +99,7 @@ export function renderPersonaTab(tab: TabId, persona: Persona | undefined): Reac
     }
     if (persona === "wholesaler") return wrap(<WholesalerToday />);
     if (persona === "landlord") return wrap(<LandlordToday />);
+    if (persona === "subdivider") return wrap(<SubdividerToday />);
     return wrap(<UniversalToday />);
   }
 
@@ -109,6 +110,7 @@ export function renderPersonaTab(tab: TabId, persona: Persona | undefined): Reac
     }
     if (persona === "wholesaler") return wrap(<WholesalerPortfolio />);
     if (persona === "landlord") return wrap(<LandlordPortfolio />);
+    if (persona === "subdivider") return wrap(<SubdividerPortfolio />);
     return wrap(<UniversalPortfolio />);
   }
 
