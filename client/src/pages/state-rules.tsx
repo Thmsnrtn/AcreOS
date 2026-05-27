@@ -81,6 +81,60 @@ export default function StateRulesPage() {
   return <StateRulesIndex />;
 }
 
+/**
+ * Sticky, non-dismissable preliminary banner.
+ *
+ * Carla Mendoza (RE attorney lens, 2026-05-27): same rationale as the
+ * wholesaler-state-rules page. State tax-sale rules are paralegal-
+ * authored; the banner stays visible while the operator scrolls through
+ * redemption math, statutory citations, and notice templates so a
+ * screenshot from this surface always carries the "not legal advice"
+ * caveat + the rule-data age.
+ */
+function StickyPreliminaryBanner({
+  rulesUpdatedAt,
+  reviewedCount,
+  totalStates,
+}: {
+  rulesUpdatedAt: string | null;
+  reviewedCount: number;
+  totalStates: number;
+}) {
+  const stamp = rulesUpdatedAt
+    ? new Date(rulesUpdatedAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "before launch";
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      className="sticky top-0 z-40 -mx-4 md:-mx-6 mb-4 px-4 md:px-6 py-2.5 border-b border-acr-warning/40 bg-acr-warning/10 backdrop-blur supports-[backdrop-filter]:bg-acr-warning/10"
+    >
+      <div className="flex items-start gap-2 max-w-5xl mx-auto">
+        <ShieldAlert
+          className="w-4 h-4 text-acr-warning shrink-0 mt-0.5"
+          aria-hidden="true"
+        />
+        <p className="text-xs leading-snug text-acr-warning">
+          <strong>Not legal advice.</strong> Tax-sale + redemption rules
+          shown here are a paralegal-quality reference, not a legal
+          opinion.
+          {totalStates > 0 && (
+            <> {reviewedCount}/{totalStates} states are attorney-reviewed; the rest are preliminary.</>
+          )}{" "}
+          Confirm citations against the state code directly before
+          relying on this in front of a county clerk or judge. Rule data
+          last updated{" "}
+          <time dateTime={rulesUpdatedAt ?? ""}>{stamp}</time>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function StateRulesIndex() {
   useDocumentTitle("State rules — AcreOS");
 
@@ -95,6 +149,11 @@ function StateRulesIndex() {
 
   return (
     <PageShell label="State rules">
+      <StickyPreliminaryBanner
+        rulesUpdatedAt={data?.rules?.[0]?.updatedAt ?? null}
+        reviewedCount={data?.reviewedCount ?? 0}
+        totalStates={data?.totalStates ?? 0}
+      />
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">State rules</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -226,6 +285,11 @@ function StateRuleDetail({ state }: { state: string }) {
 
   return (
     <PageShell>
+      <StickyPreliminaryBanner
+        rulesUpdatedAt={r.updatedAt}
+        reviewedCount={reviewed ? 1 : 0}
+        totalStates={1}
+      />
       <Link href="/state-rules">
         <Button variant="ghost" size="sm" className="mb-3 -ml-2">
           <ArrowLeft className="w-4 h-4 mr-1.5" aria-hidden="true" /> Back to states
