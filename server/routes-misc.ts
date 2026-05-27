@@ -14,6 +14,7 @@ import { Errors } from "./utils/errors";
 import { verifyTwilioSignature } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { withIdempotency } from "./services/webhook-idempotency";
+import { poolDebit, refundPoolDebit } from "./services/creditPool";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -297,13 +298,47 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         }
       }
 
+      // Lens 3 (Pricing Coherence) — debit the pool BEFORE we call Twilio so
+      // the gauge in the client doesn't show free SMS. Idempotency key is
+      // route + org + dest + minute-bucket so an accidental double-click
+      // doesn't double-bill (the Idempotency-Key middleware above already
+      // collapses replays, but we belt-and-brace here because pool draws
+      // are ledger inserts).
+      const smsDebitKey = `sms:send:${org.id}:${cleanTo}:${Math.floor(Date.now() / 60000)}`;
+      const smsDebit = await poolDebit({
+        organizationId: org.id,
+        action: "sms_outbound",
+        units: 1,
+        externalEventId: smsDebitKey,
+        notes: `SMS to ${cleanTo}`,
+        isFounder: req.isFounder,
+      });
+
       const result = await smsServiceModule.sendOrgSMS(org.id, to, message);
 
       if (!result.success) {
+        // Refund the pool draw — the message never went out.
+        if (smsDebit.debitedCents > 0) {
+          await refundPoolDebit({
+            organizationId: org.id,
+            originalEventId: smsDebitKey,
+            amountCents: smsDebit.debitedCents,
+            reason: `SMS send failed: ${result.error}`,
+          });
+        }
         return res.status(400).json({ message: result.error });
       }
 
-      res.json(result);
+      // Surface the pool deduction so the client can update the gauge
+      // optimistically without a separate /credits/summary round-trip.
+      res.json({
+        ...result,
+        creditPool: {
+          debitedCents: smsDebit.debitedCents,
+          remaining: smsDebit.remaining,
+          poolMonthly: smsDebit.poolMonthly,
+        },
+      });
     } catch (error: any) {
       logger.error("Send SMS error", error);
       res.status(400).json({ message: error.message || "Failed to send SMS" });

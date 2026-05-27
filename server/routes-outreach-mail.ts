@@ -36,7 +36,8 @@ import {
   type MailShipmentRow,
 } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
-import { creditExamples } from "@shared/billing/credit-weights";
+import { creditExamples, type CreditAction } from "@shared/billing/credit-weights";
+import { poolDebit, refundPoolDebit } from "./services/creditPool";
 import {
   mailRouter,
   type MailPiece,
@@ -54,6 +55,21 @@ const SPEEDS = ["next_day", "standard", "batch_3d", "batch_weekly", "eddm_geo"] 
 // Recent-mail dedupe window (matches the composer warning copy).
 const DEDUPE_LOOKBACK_DAYS = 30;
 const DEDUPE_THRESHOLD = 0.2; // >20% — pure UX threshold for the warn modal.
+
+// Lens 3 — provider × piece-type → credit-weight bucket. Falls back to the
+// cheapest weight in each family so an unrecognised provider never over-bills.
+function mailPoolActionFor(provider: string, pieceType: string): CreditAction {
+  const isLetter = pieceType.startsWith("letter");
+  if (isLetter) {
+    if (provider === "lob") return "letter_lob";
+    return "letter_presort";
+  }
+  // Postcards / handwritten
+  if (provider === "lob") return "postcard_lob";
+  if (provider === "postgrid") return "postcard_postgrid";
+  if (provider === "eddm") return "postcard_eddm";
+  return "postcard_eddm";
+}
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -341,52 +357,94 @@ export function registerOutreachMailRoutes(app: Express): void {
 
         const leavesAt = new Date(Date.now() + HOLD_WINDOW_MINUTES * 60 * 1000);
 
-        // Transaction: insert shipment header + per-piece rows.
-        const shipmentId = await db.transaction(async (tx) => {
-          const [row] = await tx
-            .insert(mailShipments)
-            .values({
-              organizationId: org.id,
-              createdByUserId: userId,
-              status: "queued",
-              pieceType,
-              speed,
-              provider: quote.provider,
-              pieceCount: quote.pieceCount,
-              perPieceCents: quote.perPieceCents,
-              totalCents: quote.totalCents,
-              savedVsLobCents: quote.savedVsLobCents,
-              deliveryEtaDays: quote.deliveryEtaDays,
-              label: label ?? null,
-              templateId: templateId ?? null,
-              copySnapshot: copy ?? null,
-              audienceFilter,
-              leavesAt,
-            })
-            .returning({ id: mailShipments.id });
-
-          await tx.insert(mailShipmentPieces).values(
-            recipients.map((r) => ({
-              shipmentId: row.id,
-              organizationId: org.id,
-              leadId: r.leadId,
-              recipientName: `${r.firstName} ${r.lastName}`.trim(),
-              addressLine1: r.addressLine1,
-              city: r.city,
-              state: r.state,
-              zip: r.zip,
-              status: "pending" as const,
-            })),
-          );
-
-          return row.id;
+        // Lens 3 (Pricing Coherence) — debit the customer's credit pool for
+        // the piece count BEFORE we persist the shipment. The /credits/summary
+        // gauge already aggregates these rows (feature='postcard'); without
+        // this debit the gauge stayed at zero forever even as mail went out.
+        //
+        // We map the provider-specific weight to the closest credit-weight
+        // bucket (lob → postcard_lob, postgrid → postcard_postgrid, eddm →
+        // postcard_eddm; letters fall back to letter_presort). Per-piece
+        // weight × count, rounded up.
+        const poolAction: CreditAction = mailPoolActionFor(quote.provider, pieceType);
+        const mailDebitKey = `mail:queue:${org.id}:${Date.now()}:${recipients.length}`;
+        const mailDebit = await poolDebit({
+          organizationId: org.id,
+          action: poolAction,
+          units: quote.pieceCount,
+          externalEventId: mailDebitKey,
+          notes: `Mail queue: ${pieceType} via ${quote.provider} (${quote.pieceCount} pieces)`,
+          isFounder: req.isFounder,
         });
+
+        // Transaction: insert shipment header + per-piece rows.
+        let shipmentId: number;
+        try {
+          shipmentId = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .insert(mailShipments)
+              .values({
+                organizationId: org.id,
+                createdByUserId: userId,
+                status: "queued",
+                pieceType,
+                speed,
+                provider: quote.provider,
+                pieceCount: quote.pieceCount,
+                perPieceCents: quote.perPieceCents,
+                totalCents: quote.totalCents,
+                savedVsLobCents: quote.savedVsLobCents,
+                deliveryEtaDays: quote.deliveryEtaDays,
+                label: label ?? null,
+                templateId: templateId ?? null,
+                copySnapshot: copy ?? null,
+                audienceFilter,
+                leavesAt,
+              })
+              .returning({ id: mailShipments.id });
+
+            await tx.insert(mailShipmentPieces).values(
+              recipients.map((r) => ({
+                shipmentId: row.id,
+                organizationId: org.id,
+                leadId: r.leadId,
+                recipientName: `${r.firstName} ${r.lastName}`.trim(),
+                addressLine1: r.addressLine1,
+                city: r.city,
+                state: r.state,
+                zip: r.zip,
+                status: "pending" as const,
+              })),
+            );
+
+            return row.id;
+          });
+        } catch (txErr) {
+          // Persist failure: refund the pool draw before re-throwing.
+          if (mailDebit.debitedCents > 0) {
+            await refundPoolDebit({
+              organizationId: org.id,
+              originalEventId: mailDebitKey,
+              amountCents: mailDebit.debitedCents,
+              reason: "Mail shipment persist failed",
+            });
+          }
+          throw txErr;
+        }
 
         res.status(201).json({
           shipmentId,
           leavesAt: leavesAt.toISOString(),
           holdWindowMinutes: HOLD_WINDOW_MINUTES,
           quote,
+          creditPool: {
+            debitedCents: mailDebit.debitedCents,
+            remaining: mailDebit.remaining,
+            poolMonthly: mailDebit.poolMonthly,
+            // Pair the debit with the shipmentId so cancellations within the
+            // 30-min hold window can refund this exact debit.
+            shipmentDebitKey: mailDebitKey,
+          },
         });
       } catch (err) {
         Errors.internal(res, err);
@@ -430,6 +488,31 @@ export function registerOutreachMailRoutes(app: Express): void {
           })
           .where(eq(mailShipments.id, idParam))
           .returning();
+
+        // Lens 3 — refund the pool draw posted at queue time. The client can
+        // pass the original `shipmentDebitKey` to ensure idempotency; if not
+        // provided, we synthesize the canonical key for callers who only have
+        // the shipmentId. Either way `refundPoolDebit` is no-op on conflict.
+        const debitKey = typeof req.body?.shipmentDebitKey === "string"
+          ? req.body.shipmentDebitKey
+          : null;
+        if (debitKey) {
+          // We don't know the exact debited amount from the canceled shipment,
+          // so we recompute from the per-piece weight × pieceCount. Same math
+          // as queue time, so the refund matches.
+          const action = mailPoolActionFor(existing.provider, existing.pieceType);
+          const { creditCost } = await import("@shared/billing/credit-weights");
+          const weight = await creditCost(action);
+          const refundCents = Math.max(0, Math.ceil(weight * existing.pieceCount));
+          if (refundCents > 0) {
+            await refundPoolDebit({
+              organizationId: orgId,
+              originalEventId: debitKey,
+              amountCents: refundCents,
+              reason: `Mail shipment ${idParam} cancelled within hold window`,
+            });
+          }
+        }
 
         res.json({ shipmentId: updated.id, status: updated.status, cancelledAt: updated.cancelledAt });
       } catch (err) {

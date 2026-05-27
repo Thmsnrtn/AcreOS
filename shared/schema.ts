@@ -2051,6 +2051,18 @@ export const creditTransactions = pgTable("credit_transactions", {
   uniqueIndex("credit_txn_allowance_month_org_uniq").on(table.organizationId, table.allowanceMonth),
 ]);
 
+// Lens 3 (Pricing Coherence) — cache of the per-org current-month pool
+// balance for fast hard-wall checks. Source of truth is `financial_ledger`
+// (category='opex_spent', feature in TRACKED_CATEGORIES); this table is a
+// best-effort cache so rate gates don't aggregate the ledger every call.
+export const orgCredits = pgTable("org_credits", {
+  organizationId: integer("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  balanceCents: integer("balance_cents").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Usage Rates - configurable pricing per action type
 export const usageRates = pgTable("usage_rates", {
   id: serial("id").primaryKey(),
