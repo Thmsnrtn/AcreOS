@@ -56,7 +56,14 @@ const emptyComp = (): CompInput => ({
   address: "", soldPriceDollars: "", soldDate: "", sqft: "", distanceMiles: "", conditionRating: "3",
 });
 
-export function ArvCalculator({ propertyId }: { propertyId: number }) {
+/**
+ * Mounted on /parcels/:id (pre-rehab pricing) and on /rehabs/:id (the
+ * active project tied to a property). When the rehab variant mounts, pass
+ * rehabId — the POST body forwards it so arv_calculations.rehab_id is
+ * populated on write. NOT NULL on rehab_id is deferred to a separate
+ * migration once the backfill of pre-rehab ARV rows lands.
+ */
+export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; rehabId?: string }) {
   const { toast } = useToast();
   const [subjectSqft, setSubjectSqft] = useState("");
   const [subjectCondition, setSubjectCondition] = useState("4");
@@ -93,6 +100,10 @@ export function ArvCalculator({ propertyId }: { propertyId: number }) {
           subjectSqft: subjectSqft ? parseInt(subjectSqft, 10) : undefined,
           subjectConditionRating: parseInt(subjectCondition, 10),
           methodology,
+          // Populated only when mounted from rehab-detail. The POST handler
+          // (server/routes-arv.ts) already accepts an optional rehabId and
+          // persists it to arv_calculations.rehab_id.
+          rehabId,
         }),
       });
       if (!res.ok) {

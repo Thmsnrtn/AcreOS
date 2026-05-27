@@ -28,6 +28,8 @@ import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { BidsSection } from "@/components/rehabs/bids-section";
 import { DrawsSection } from "@/components/rehabs/draws-section";
+import { ArvCalculator } from "@/components/parcels/arv-calculator";
+import { RehabPhotoGallery } from "@/components/rehabs/rehab-photo-gallery";
 
 const CATEGORIES = [
   "demolition", "framing", "roof", "siding", "windows",
@@ -44,6 +46,7 @@ const STATUSES = [
 
 interface Rehab {
   id: string;
+  propertyId: number;
   name: string;
   status: string;
   startedAt: string | null;
@@ -330,6 +333,24 @@ export default function RehabDetailPage() {
 
       {/* Bids comparison */}
       <BidsSection rehabId={id} />
+
+      {/* ARV calculator — same component as parcel-detail, but with rehabId
+          populated on save so arv_calculations.rehab_id back-links to this
+          project. Devon §2.9: "An AVM is not an ARV." */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">ARV (after-repair value)</CardTitle>
+          <CardDescription>
+            Post-rehab value from your own comps. Saved against this rehab.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ArvCalculator propertyId={rehab.propertyId} rehabId={id} />
+        </CardContent>
+      </Card>
+
+      {/* Photo evidence — before/during/after, defect, lender_draw, tax */}
+      <RehabPhotoGallery rehabId={id} />
 
       {/* Line items */}
       <Card>
