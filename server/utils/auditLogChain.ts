@@ -159,6 +159,14 @@ export interface ChainVerificationResult {
   scanned: number;
   /** Number of rows that predate the chain (row_hash IS NULL). */
   preChainSkipped: number;
+  /**
+   * Number of documented purge gaps the verifier walked across. Each gap
+   * is a `prev_hash_mismatch` that was reconciled against a row in
+   * `audit_log_purges` whose `last_purged_row_hash` matched. Surfaced as
+   * SOC 2 evidence — auditors expect these to be non-zero when retention
+   * cron has been running.
+   */
+  documentedPurgesAcknowledged: number;
   ok: boolean;
   /** First row (if any) where verification failed. */
   failure: null | {
@@ -181,10 +189,15 @@ export interface ChainVerificationResult {
  * reported incident.
  */
 export async function verifyAuditLogChain(organizationId: number): Promise<ChainVerificationResult> {
+  // Lazy import to avoid cyclic init — auditLogPurge imports back into here
+  // via chainAndInsertAuditLog.
+  const { findPurgeForGap } = await import("./auditLogPurge");
+
   const BATCH = 1000;
   let lastId = 0;
   let scanned = 0;
   let preChainSkipped = 0;
+  let documentedPurgesAcknowledged = 0;
   let prevRowHash: string | null = null; // tracks the previous chained row's row_hash
 
   while (true) {
@@ -210,6 +223,7 @@ export async function verifyAuditLogChain(organizationId: number): Promise<Chain
             organizationId,
             scanned,
             preChainSkipped,
+            documentedPurgesAcknowledged,
             ok: false,
             failure: {
               auditLogId: row.id,
@@ -223,16 +237,50 @@ export async function verifyAuditLogChain(organizationId: number): Promise<Chain
 
       const expectedPrev = prevRowHash ?? GENESIS_PREV_HASH;
       if ((row.prevHash ?? null) !== expectedPrev) {
+        // Lens 13: documented purge tolerance. A `prev_hash_mismatch` is
+        // expected at the first surviving row after a purge — that row
+        // originally chained off a row that has since been deleted. If
+        // `audit_log_purges` has a sealed entry whose `last_purged_row_hash`
+        // matches this row's prev_hash, the gap is documented and the chain
+        // continues from this row onwards.
+        const actualPrev = row.prevHash ?? null;
+        if (actualPrev != null) {
+          const purge = await findPurgeForGap(organizationId, actualPrev);
+          if (purge != null) {
+            documentedPurgesAcknowledged++;
+            // The row's own row_hash must still verify correctly against the
+            // (now-missing) predecessor whose row_hash equals actualPrev.
+            const recomputed = computeRowHash(actualPrev, row);
+            if (recomputed !== row.rowHash) {
+              return {
+                organizationId,
+                scanned,
+                preChainSkipped,
+                documentedPurgesAcknowledged,
+                ok: false,
+                failure: {
+                  auditLogId: row.id,
+                  reason: "row_hash_mismatch",
+                  expectedRowHash: recomputed,
+                  actualRowHash: row.rowHash,
+                },
+              };
+            }
+            prevRowHash = row.rowHash;
+            continue;
+          }
+        }
         return {
           organizationId,
           scanned,
           preChainSkipped,
+          documentedPurgesAcknowledged,
           ok: false,
           failure: {
             auditLogId: row.id,
             reason: "prev_hash_mismatch",
             expectedPrevHash: expectedPrev,
-            actualPrevHash: row.prevHash ?? null,
+            actualPrevHash: actualPrev,
           },
         };
       }
@@ -243,6 +291,7 @@ export async function verifyAuditLogChain(organizationId: number): Promise<Chain
           organizationId,
           scanned,
           preChainSkipped,
+          documentedPurgesAcknowledged,
           ok: false,
           failure: {
             auditLogId: row.id,
@@ -260,5 +309,5 @@ export async function verifyAuditLogChain(organizationId: number): Promise<Chain
     if (rows.length < BATCH) break;
   }
 
-  return { organizationId, scanned, preChainSkipped, ok: true, failure: null };
+  return { organizationId, scanned, preChainSkipped, documentedPurgesAcknowledged, ok: true, failure: null };
 }

@@ -4959,6 +4959,33 @@ export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
+// Lens 13 / Kareem §1: audit-log purge sealing ledger. Every purgeOldAuditLogs
+// call writes one row here (cumulative-hash record) + one sealing row into
+// audit_log itself, then deletes the underlying rows. The chain verifier
+// consults this table to tell documented purges from tampering.
+export const auditLogPurges = pgTable("audit_log_purges", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  purgedBefore: timestamp("purged_before").notNull(),
+  purgeStartedAt: timestamp("purge_started_at").defaultNow().notNull(),
+  purgeCompletedAt: timestamp("purge_completed_at"),
+  purgedCount: integer("purged_count").default(0).notNull(),
+  // row_hash of the most recent purged row, or null if none were chained.
+  lastPurgedRowHash: text("last_purged_row_hash"),
+  // SHA-256(row_hash[0] || '\n' || row_hash[1] || '\n' || …) in id order.
+  sealingHash: text("sealing_hash"),
+  // The audit_log row this purge wrote to document the discontinuity.
+  sealingAuditLogId: integer("sealing_audit_log_id"),
+  actorUserId: text("actor_user_id"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+}, (table) => ({
+  byOrgStartedAt: index("audit_log_purges_org_idx").on(table.organizationId, table.purgeStartedAt),
+  bySealing: index("audit_log_purges_sealing_idx").on(table.sealingAuditLogId),
+}));
+
+export type AuditLogPurge = typeof auditLogPurges.$inferSelect;
+export type InsertAuditLogPurge = typeof auditLogPurges.$inferInsert;
+
 // ─── Coriander §1: Recovery-console audit events ────────────────────────────
 // Platform-wide append-only event log for high-risk admin recovery actions
 // (2FA reset, session revoke, autopay freeze, ownership transfer, password-

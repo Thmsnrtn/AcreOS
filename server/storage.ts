@@ -4787,13 +4787,16 @@ export class DatabaseStorage implements IStorage {
 
   async purgeOldAuditLogs(orgId: number, beforeDate: Date): Promise<number> {
     if (await orgHasActiveHold(orgId)) return 0;
-    const result = await db.delete(auditLog)
-      .where(and(
-        eq(auditLog.organizationId, orgId),
-        lte(auditLog.createdAt, beforeDate)
-      ))
-      .returning({ id: auditLog.id });
-    return result.length;
+    // Lens 13 / Kareem §1: naïve DELETE breaks the SHA-256 hash chain. Use
+    // the seal-and-purge flow which writes a tamper-evident sealing row +
+    // ledger entry before removing the underlying rows. The chain verifier
+    // tolerates the documented gap by consulting `audit_log_purges`.
+    const { sealAndPurgeAuditLogs } = await import("./utils/auditLogPurge");
+    const result = await sealAndPurgeAuditLogs({
+      organizationId: orgId,
+      beforeDate,
+    });
+    return result.purgedCount;
   }
 
   async purgeOldCommunications(orgId: number, beforeDate: Date): Promise<number> {

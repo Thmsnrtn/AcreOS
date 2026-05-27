@@ -98,6 +98,7 @@ export function registerAdminAuditLogRoutes(app: Express): void {
           ok: boolean;
           scanned: number;
           preChainSkipped: number;
+          documentedPurgesAcknowledged: number;
           failureReason?: string | null;
         }> = [];
         let firstFailureOrgId: number | null = null;
@@ -110,6 +111,7 @@ export function registerAdminAuditLogRoutes(app: Express): void {
             ok: result.ok,
             scanned: result.scanned,
             preChainSkipped: result.preChainSkipped,
+            documentedPurgesAcknowledged: result.documentedPurgesAcknowledged,
             failureReason: result.failure?.reason ?? null,
           });
           if (!result.ok && firstFailureOrgId == null) firstFailureOrgId = orgId;
