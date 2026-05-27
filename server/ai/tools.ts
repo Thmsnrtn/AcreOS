@@ -6,7 +6,11 @@ import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOff
 import { emailService } from "../services/emailService";
 import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
-import { checkTcpaConsentFromLead } from "../services/tcpaCompliance";
+import {
+  checkTcpaConsentFromLead,
+  isWithinQuietHours,
+  isWithinQuietHoursForLead,
+} from "../services/tcpaCompliance";
 import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
 import { logger } from "../utils/logger";
@@ -1607,8 +1611,18 @@ export async function executeTool(
           if (!lead.phone) return { success: false, error: "Lead does not have a phone number" };
           toPhone = lead.phone;
           leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact };
+          // Lead-aware quiet hours (uses lead.timezone when present).
+          const qh = isWithinQuietHoursForLead(lead as any);
+          if (qh.blocked) {
+            return { success: false, error: `TCPA quiet hours: ${qh.reason}` };
+          }
         } else if (args.phone_number) {
           toPhone = args.phone_number;
+          // Phone-only path — area-code quiet-hours fallback.
+          const qh = isWithinQuietHours(args.phone_number);
+          if (qh.blocked) {
+            return { success: false, error: `TCPA quiet hours: ${qh.reason}` };
+          }
         } else {
           return { success: false, error: "Either lead_id or phone_number is required" };
         }
