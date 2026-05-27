@@ -28,10 +28,12 @@ import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 // ~5,000 LOC from the entry chunk per the 2026-05-01 perf audit.
 const KeyboardShortcutsModal = React.lazy(() => import("@/components/keyboard-shortcuts").then(m => ({ default: m.KeyboardShortcutsModal })));
 const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m => ({ default: m.NewItemMenu })));
-// Canonical onboarding surface per CLAUDE.md / MEMORY.md. The legacy
-// `@/components/onboarding-wizard` (no slash) is kept on disk for possible
-// founder A/B testing but must NOT be imported in customer-facing code.
-const OnboardingWizard = React.lazy(() => import("@/components/onboarding/OnboardingWizard").then(m => ({ default: m.OnboardingWizard })));
+// Onboarding consolidation (Lens 5, 2026-05-27): the dialog-based
+// `OnboardingWizard` is no longer mounted. `/onboarding-v2` is the
+// canonical first-run surface — TodayPage is gated behind
+// `OnboardingGate` (defined below), which redirects orgs with
+// `onboardingCompleted !== true` to `/onboarding-v2`. The dialog
+// component file remains on disk pending eventual deletion.
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
@@ -517,6 +519,33 @@ function HomeRoute() {
   return user ? <Redirect to="/today" /> : <LandingPage />;
 }
 
+// Onboarding consolidation (Lens 5, 2026-05-27). Fresh signups land on
+// `/today` from the auth page; this gate intercepts them and routes
+// to `/onboarding-v2` until the org's `onboardingCompleted` flag flips.
+// The fetch is unauthenticated-tolerant (returns null on 401) so the
+// gate never strands a user with a render error. Whilst the org
+// status is loading we render PageLoader rather than the page itself
+// to avoid a flash of `/today` before the redirect resolves.
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const { data: organization, isLoading } = useQuery<{ onboardingCompleted?: boolean } | null>({
+    queryKey: ["/api/organization"],
+    queryFn: async () => {
+      const res = await fetch("/api/organization", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (isLoading) return <PageLoader />;
+  // If we couldn't fetch the org (e.g. 401 during refresh) fall through
+  // to the protected page — its own auth guard will handle the redirect.
+  if (organization && organization.onboardingCompleted !== true) {
+    return <Redirect to="/onboarding-v2" />;
+  }
+  return <>{children}</>;
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 function Router() {
   const [pathname] = useLocation();
@@ -571,7 +600,15 @@ function Router() {
       {/* Home: landing page (unauth) or today hub (auth) */}
       <Route path="/" component={HomeRoute} />
       <Route path="/today">
-        {() => <ProtectedRoute component={TodayPage} />}
+        {() => (
+          <ProtectedRoute
+            component={() => (
+              <OnboardingGate>
+                <TodayPage />
+              </OnboardingGate>
+            )}
+          />
+        )}
       </Route>
       {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/dashboard">
@@ -1625,11 +1662,6 @@ function AppContent() {
       {user && location.startsWith("/founder") && location !== "/founder" && (
         <Suspense fallback={null}>
           <AtlasDockHost />
-        </Suspense>
-      )}
-      {user && (
-        <Suspense fallback={null}>
-          <OnboardingWizard />
         </Suspense>
       )}
       {user && <BetaActivationDetector />}

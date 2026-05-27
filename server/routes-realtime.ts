@@ -6,6 +6,7 @@ import { wsServer } from './websocket';
 import { CreditService } from './services/credits';
 import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
+import { Errors } from './utils/errors';
 const creditService = new CreditService();
 
 const router = Router();
@@ -31,7 +32,7 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'message is required' });
+      return Errors.badRequest(res, 'message is required');
     }
 
     // Credit check — block if org can't afford the AI call
@@ -93,8 +94,8 @@ Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel
       actionPath: parsed.actionPath || null,
       actionLabel: parsed.actionLabel || null,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -113,8 +114,8 @@ router.get('/alerts', async (req: Request, res: Response) => {
     const alerts = realtimeAlertsService.getAlerts(org.id, limit);
     const unreadCount = realtimeAlertsService.getUnreadCount(org.id);
     res.json({ alerts, unreadCount });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -127,12 +128,12 @@ router.post('/alerts/mark-read', async (req: Request, res: Response) => {
     const org = req.organization;
     const { alertIds } = req.body;
     if (!Array.isArray(alertIds)) {
-      return res.status(400).json({ error: 'alertIds must be an array' });
+      return Errors.badRequest(res, 'alertIds must be an array');
     }
     realtimeAlertsService.markRead(org.id, alertIds);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : 'Bad request');
   }
 });
 
@@ -145,8 +146,8 @@ router.get('/alerts/count', async (req: Request, res: Response) => {
     const org = req.organization;
     const count = realtimeAlertsService.getUnreadCount(org.id);
     res.json({ count });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -158,8 +159,8 @@ router.get('/stats', async (req: Request, res: Response) => {
   try {
     const stats = realtimeAlertsService.getStats();
     res.json({ stats });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -176,8 +177,8 @@ router.get('/certifications/stats', async (req: Request, res: Response) => {
     const user = getUser(req);
     const stats = await certificationService.getLearningStats(user.id);
     res.json({ stats });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -192,7 +193,7 @@ router.post('/certifications/check', async (req: Request, res: Response) => {
     const { courseId } = req.body;
 
     if (!courseId) {
-      return res.status(400).json({ error: 'courseId is required' });
+      return Errors.badRequest(res, 'courseId is required');
     }
 
     const result = await certificationService.checkAndAward(user.id, parseInt(courseId));
@@ -216,8 +217,8 @@ router.post('/certifications/check', async (req: Request, res: Response) => {
       newAchievements: result.newAchievements,
       awarded: result.certificate !== null || result.newAchievements.length > 0,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -229,7 +230,7 @@ router.get('/certifications/verify/:code', (req: Request, res: Response) => {
   try {
     const cert = certificationService.verifyCertificate(req.params.code);
     if (!cert) {
-      return res.status(404).json({ valid: false, error: 'Certificate not found' });
+      return Errors.notFound(res, 'Certificate');
     }
     res.json({
       valid: true,
@@ -241,8 +242,8 @@ router.get('/certifications/verify/:code', (req: Request, res: Response) => {
         score: cert.score,
       },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

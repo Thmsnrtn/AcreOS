@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Button } from "@/components/ui/button";
@@ -990,6 +990,16 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
 // Main onboarding wizard
 // ---------------------------------------------------------------------------
 
+// Driven by /api/onboarding/checklist-status — replaces the hardcoded
+// `Leads added: true` truthiness lie in the previous Step 4 markup.
+interface OnboardingChecklistStatus {
+  hasLead: boolean;
+  hasImport: boolean;
+  hasCampaign: boolean;
+  hasDeal: boolean;
+  hasNotePayment: boolean;
+}
+
 export default function OnboardingV2() {
   useDocumentTitle("Welcome to AcreOS");
   const [, navigate] = useLocation();
@@ -998,6 +1008,23 @@ export default function OnboardingV2() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Pull real checklist truthiness for the "All Set!" panel — replaces the
+  // hardcoded `done: true` lie that claimed every signup had imported leads.
+  // Only enabled on the final step to avoid noisy polling earlier in the
+  // flow. Cached for 30s so retries don't hammer the endpoint.
+  const isCompleteStep = selectedPath
+    ? STEPS_BY_PATH[selectedPath][currentStepIndex]?.id === "complete"
+    : false;
+  const { data: checklistStatus } = useQuery<OnboardingChecklistStatus>({
+    queryKey: ["/api/onboarding/checklist-status"],
+    queryFn: async () => {
+      const resp = await apiRequest("GET", "/api/onboarding/checklist-status");
+      return resp.json();
+    },
+    enabled: isCompleteStep,
+    staleTime: 30_000,
+  });
 
   const steps = selectedPath ? STEPS_BY_PATH[selectedPath] : STEPS_BY_PATH.beginner;
   const currentStep = steps[currentStepIndex];
@@ -1020,7 +1047,14 @@ export default function OnboardingV2() {
       const resp = await apiRequest("POST", "/api/onboarding/complete", { formData, path: selectedPath });
       return resp.json();
     },
-    onSuccess: () => navigate("/dashboard"),
+    onSuccess: () => {
+      // Invalidate so the OnboardingGate around /today sees the
+      // updated onboardingCompleted flag immediately and lets the
+      // user through instead of bouncing back to /onboarding-v2.
+      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+      navigate("/today");
+    },
     onError: (error) => {
       const title = getErrorTitle(error);
       const description = getErrorMessage(error);
@@ -1210,7 +1244,8 @@ export default function OnboardingV2() {
         </div>
         {currentStepIndex > 0 && (
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => completeMutation.mutate()}
+            disabled={completeMutation.isPending}
             className="text-xs text-muted-foreground hover:text-muted-foreground"
           >
             Skip setup →
@@ -1440,30 +1475,40 @@ export default function OnboardingV2() {
                 </p>
               </div>
 
-              {/* Preview stats */}
+              {/* Real completion checklist — driven by
+                  /api/onboarding/checklist-status. Each tile reflects what
+                  actually exists in the DB for this org (leads imported,
+                  campaigns created, deals tracked) rather than form-state
+                  truthiness. Replaces the hardcoded `Leads added: true`
+                  lie that claimed every signup had imported leads. */}
               <div className="grid grid-cols-3 gap-3">
-                {(selectedPath === "beginner"
-                  ? [
-                      { label: "Target Counties", value: "1", sub: "configured" },
-                      { label: "Deals Found", value: "3+", sub: "overnight" },
-                      { label: "Deal Machine", value: "Active", sub: "tonight" },
-                    ]
-                  : selectedPath === "active"
-                  ? [
-                      { label: "Counties", value: String(formData.targetCounties?.length || 1), sub: "tracked" },
-                      { label: "Automation", value: "On", sub: "nightly scans" },
-                      { label: "Portfolio", value: formData.dataImported ? "Imported" : "Ready", sub: "synced" },
-                    ]
-                  : [
-                      { label: "Team", value: formData.teamInvited ? "Invited" : "Ready", sub: "onboarded" },
-                      { label: "Integrations", value: "Set", sub: "configured" },
-                      { label: "Workflows", value: "Active", sub: "customized" },
-                    ]
-                ).map(({ label, value, sub }) => (
-                  <div key={label} className="bg-acr-bg-sunken border border-border rounded-card p-3 text-center">
-                    <div className="text-2xl font-bold text-acr-pos">{value}</div>
+                {[
+                  { label: "Leads added", done: !!checklistStatus?.hasLead },
+                  { label: "List imported", done: !!checklistStatus?.hasImport },
+                  { label: "Campaign sent", done: !!checklistStatus?.hasCampaign },
+                ].map(({ label, done }) => (
+                  <div
+                    key={label}
+                    className={cn(
+                      "rounded-card p-3 text-center border",
+                      done
+                        ? "bg-acr-pos-soft/30 border-acr-pos/40"
+                        : "bg-acr-bg-sunken border-border"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "text-2xl font-bold",
+                        done ? "text-acr-pos" : "text-muted-foreground"
+                      )}
+                      aria-label={done ? "Complete" : "Not yet"}
+                    >
+                      {done ? <CheckCircle className="w-7 h-7 mx-auto" aria-hidden="true" /> : "—"}
+                    </div>
                     <div className="text-xs text-white">{label}</div>
-                    <div className="text-xs text-muted-foreground">{sub}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {done ? "complete" : "not yet"}
+                    </div>
                   </div>
                 ))}
               </div>

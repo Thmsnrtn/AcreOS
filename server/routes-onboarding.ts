@@ -16,6 +16,7 @@ import { logger } from "./utils/logger";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -98,8 +99,8 @@ router.post("/complete", async (req: Request, res: Response) => {
 
     await onboardingService.completeOnboarding(org.id);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -109,8 +110,8 @@ router.get("/status", async (req: Request, res: Response) => {
     const org = req.organization;
     const status = await onboardingService.getOnboardingStatus(org.id);
     res.json(status);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -120,8 +121,8 @@ router.post("/skip", async (req: Request, res: Response) => {
     const org = req.organization;
     await onboardingService.skipOnboarding(user.id, org.id);
     res.json({ skipped: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -131,8 +132,8 @@ router.get("/checklist", async (req: Request, res: Response) => {
     const org = req.organization;
     const checklist = await onboardingService.getChecklist(user.id, org.id);
     res.json({ checklist });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -142,8 +143,8 @@ router.post("/checklist/:item", async (req: Request, res: Response) => {
     const org = req.organization;
     const updated = await onboardingService.completeChecklistItem(user.id, org.id, req.params.item);
     res.json({ checklist: updated });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -156,7 +157,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     const org = req.organization;
     const orgId = org?.id;
     if (!orgId) {
-      return res.status(401).json({ error: "Organization required" });
+      return Errors.unauthorized(res);
     }
 
     const { db } = await import("./storage");
@@ -187,8 +188,8 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       hasDeal: dealResult,
       hasNotePayment: notePaymentResult,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -200,7 +201,7 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
     if (!county || !state) {
-      return res.status(400).json({ error: "county and state are required" });
+      return Errors.badRequest(res, "county and state are required");
     }
 
     const { computeSellerMotivationScore } = await import("./services/sellerMotivationEngine");
@@ -304,8 +305,8 @@ router.post("/step-entered", async (req: Request, res: Response) => {
       });
     } catch { /* non-fatal */ }
     res.json({ recorded: true, step });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -330,8 +331,8 @@ router.post("/path-selected", async (req: Request, res: Response) => {
       eventValue: { path },
     });
     res.json({ recorded: true, path });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -376,8 +377,8 @@ router.patch("/progress", async (req: Request, res: Response) => {
     }
 
     res.json({ saved: true, step });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
