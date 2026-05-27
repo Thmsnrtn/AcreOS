@@ -3,6 +3,12 @@ import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// W5-1 schema-split: tables now living in shared/schema/*.ts but referenced
+// by relations blocks above their re-export line need direct import here.
+// The re-exports at the bottom of this file are still the public API; these
+// imports just resolve the forward-reference for the relations() calls.
+import { chartOfAccounts, accountLedgerEntries } from "./schema/accounting-ops";
+
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
  *
