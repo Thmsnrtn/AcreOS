@@ -7,7 +7,7 @@ import { Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usd } from "@/lib/format";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
-import { TIER_LIMITS, isTierVisible } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, isTierVisible, nextPaidTier } from "@shared/billing/tier-limits";
 
 // Lens 3 (Pricing Coherence): the in-app upgrade modal now shows the same
 // tier set as /pricing — including Scale, which `pricing_scale_tier_enabled`
@@ -168,6 +168,14 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
   const { user } = useAuth();
   const activeTier = currentTier || "free";
 
+  // Lens 3 (Pricing Coherence): when the caller doesn't override
+  // `highlightedTier`, auto-recommend the next paid tier above the user's
+  // current one so the upgrade modal points somewhere actionable instead
+  // of marketing the same "Most popular" badge to every visitor.
+  const recommended: TierKey | null =
+    highlightedTier ??
+    (nextPaidTier(activeTier) as TierKey | null);
+
   return (
     <div className="space-y-8">
       {/* Billing toggle */}
@@ -199,8 +207,11 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
         {LAUNCH_TIERS.map((tier) => {
           const isCurrentTier = activeTier === tier.id;
-          const isRecommended = highlightedTier === tier.id;
-          const showHighlight = isRecommended || (tier.highlighted && !highlightedTier);
+          const isRecommended = recommended === tier.id;
+          // When a recommended tier exists, the "Most popular" badge defers
+          // to the user-specific recommendation so a Pro customer doesn't
+          // get nudged sideways into Pro again.
+          const showHighlight = isRecommended || (tier.highlighted && !recommended);
           const monthlyEquiv = annual ? Math.round(tier.yearlyPrice / 12) : tier.price;
 
           return (
@@ -215,7 +226,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }:
                     <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" /> Recommended for you
                   </Badge>
                 </div>
-              ) : tier.highlighted && !highlightedTier && (
+              ) : tier.highlighted && !recommended && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <Badge className="bg-primary text-primary-foreground">
                     <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" /> Most popular

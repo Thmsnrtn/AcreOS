@@ -3,7 +3,8 @@
  *
  * Tests the factory middleware that enforces usage limits per resource type.
  * - Allowed scenario: next() is called
- * - Denied scenario: 429 returned with correct body
+ * - Denied scenario: 429 returned with the LIMIT_EXCEEDED envelope and the
+ *   tier-diff `details` payload (Lens 3 — Pricing Coherence)
  * - Founder bypass: always allowed regardless of usage
  */
 
@@ -13,20 +14,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockCheckUsageLimit = vi.fn();
 
-vi.mock("../../server/services/usageLimits", () => ({
-  checkUsageLimit: (...args: any[]) => mockCheckUsageLimit(...args),
-}));
+vi.mock("../../server/services/usageLimits", async () => {
+  const actual = await vi.importActual<any>("../../server/services/usageLimits");
+  return {
+    ...actual,
+    checkUsageLimit: (...args: any[]) => mockCheckUsageLimit(...args),
+  };
+});
 
 // ── Import after mocks ──────────────────────────────────────────────────────
 
 import { usageLimitGate } from "../../server/middleware/usageLimitGate";
+import { TIER_LIMITS } from "@shared/billing/tier-limits";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
 // ── Test Helpers ────────────────────────────────────────────────────────────
 
-function makeMockReq(organizationId?: number) {
+function makeMockReq(organizationId?: number, isFounder = false) {
   return {
     organizationId,
     user: organizationId ? { organizationId } : undefined,
+    isFounder,
   } as any;
 }
 
@@ -73,7 +81,7 @@ describe("usageLimitGate", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("returns 429 with correct body when limit is exceeded", async () => {
+  it("returns 429 with the Lens-3 tier-diff payload when limit is exceeded", async () => {
     mockCheckUsageLimit.mockResolvedValue({
       allowed: false,
       current: 50,
@@ -91,13 +99,17 @@ describe("usageLimitGate", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
-    expect(res.body).toEqual({
-      error: "limit_exceeded",
+    expect(res.body.error).toBe("LIMIT_EXCEEDED");
+    expect(res.body.message).toBe("Usage limit exceeded");
+    expect(res.body.details).toEqual({
       resourceType: "leads",
-      current: 50,
-      limit: 50,
-      tier: "free",
-      upgradeUrl: "/settings#billing",
+      currentTier: "free",
+      currentCount: 50,
+      currentLimit: 50,
+      nextTier: "starter",
+      nextTierLimit: TIER_LIMITS.starter.leads,
+      nextTierMonthlyPriceCents: TIER_PRICES_CENTS.starter.priceMonthlyCents,
+      upgradeUrl: "/settings#billing?tier=starter",
     });
   });
 
@@ -111,7 +123,7 @@ describe("usageLimitGate", () => {
     });
 
     const middleware = usageLimitGate("leads");
-    const req = makeMockReq(1);
+    const req = makeMockReq(1, true);
     const res = makeMockRes();
     const next = vi.fn();
 
@@ -131,7 +143,7 @@ describe("usageLimitGate", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
-    expect(res.body).toEqual({ error: "organization_required" });
+    expect(res.body.error).toBe("UNAUTHORIZED");
   });
 
   it("fails open when checkUsageLimit throws", async () => {
@@ -150,10 +162,10 @@ describe("usageLimitGate", () => {
   it("works with different resource types", async () => {
     mockCheckUsageLimit.mockResolvedValue({
       allowed: false,
-      current: 100,
-      limit: 100,
+      current: 25,
+      limit: 25,
       resourceType: "ai_requests",
-      tier: "starter",
+      tier: "free",
     });
 
     const middleware = usageLimitGate("ai_requests");
@@ -165,7 +177,31 @@ describe("usageLimitGate", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
-    expect(res.body.resourceType).toBe("ai_requests");
-    expect(mockCheckUsageLimit).toHaveBeenCalledWith(1, "ai_requests");
+    expect(res.body.details.resourceType).toBe("ai_requests");
+    expect(res.body.details.nextTier).toBe("starter");
+    expect(res.body.details.nextTierLimit).toBe(TIER_LIMITS.starter.ai_requests);
+    expect(mockCheckUsageLimit).toHaveBeenCalledWith(1, "ai_requests", { isFounder: false });
+  });
+
+  it("returns nextTier=null when already on top self-serve tier (scale)", async () => {
+    mockCheckUsageLimit.mockResolvedValue({
+      allowed: false,
+      current: 9999,
+      limit: 9999,
+      resourceType: "leads",
+      tier: "scale",
+    });
+
+    const middleware = usageLimitGate("leads");
+    const req = makeMockReq(1);
+    const res = makeMockRes();
+    const next = vi.fn();
+
+    await middleware(req, res, next);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.body.details.nextTier).toBeNull();
+    expect(res.body.details.nextTierMonthlyPriceCents).toBeNull();
+    expect(res.body.details.upgradeUrl).toBe("/settings#billing");
   });
 });

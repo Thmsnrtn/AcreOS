@@ -155,3 +155,35 @@ export function isTierVisible(tier: SubscriptionTier): boolean {
 export function getVisibleTiers(): SubscriptionTier[] {
   return (Object.keys(TIER_LIMITS) as SubscriptionTier[]).filter(isTierVisible);
 }
+
+/**
+ * Canonical upgrade ladder. Shared by the server 429 gate, the client 429
+ * toast, the 75% usage banner, and the in-app upgrade modal so the
+ * "recommended next tier" math is computed in exactly one place.
+ *
+ * Enterprise is skipped — it's negotiated, not self-serve.
+ */
+export const TIER_UPGRADE_LADDER: readonly SubscriptionTier[] = [
+  "free",
+  "starter",
+  "pro",
+  "scale",
+];
+
+/**
+ * Returns the next visible paid tier above `current` that the user can
+ * self-serve upgrade to, or `null` if they're already on the top
+ * self-serve tier. Founders (synthetic `enterprise` tier) get `null`
+ * because they can't be "upgraded" by the gate.
+ */
+export function nextPaidTier(current: string | null | undefined): SubscriptionTier | null {
+  const cur = (current ?? "free").toLowerCase() as SubscriptionTier;
+  const idx = TIER_UPGRADE_LADDER.indexOf(cur);
+  // Unknown tier → start from free. Founders / enterprise → no upgrade.
+  if (cur === "enterprise") return null;
+  for (let i = Math.max(0, idx) + 1; i < TIER_UPGRADE_LADDER.length; i++) {
+    const t = TIER_UPGRADE_LADDER[i];
+    if (isTierVisible(t)) return t;
+  }
+  return null;
+}

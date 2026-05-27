@@ -17,34 +17,80 @@
  * provides a cleaner pattern for future use — do NOT remove the inline checks.
  */
 
-import type { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
 import { checkUsageLimit, type ResourceType } from "../services/usageLimits";
+import {
+  TIER_LIMITS,
+  nextPaidTier,
+  type SubscriptionTier,
+} from "@shared/billing/tier-limits";
+import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
+import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
+import type { AuthenticatedRequest } from "../types/request";
+
+/**
+ * Shape of the `details` payload attached to every 429 `LIMIT_EXCEEDED`
+ * response. Mirrored on the client so the upgrade toast / banner / modal
+ * can render a real diff message ("Pro unlocks 500 leads vs. your 50 cap
+ * at $49/mo") instead of generic "You've reached the plan limit" copy.
+ *
+ * The full `Tier` price object is intentionally NOT inlined — only the
+ * monthly price cents — so we don't accidentally leak Stripe price IDs
+ * through the public error envelope.
+ */
+export interface LimitExceededDetails {
+  resourceType: ResourceType;
+  currentTier: SubscriptionTier;
+  currentCount: number;
+  currentLimit: number | null;
+  nextTier: SubscriptionTier | null;
+  nextTierLimit: number | null;
+  nextTierMonthlyPriceCents: number | null;
+  upgradeUrl: string;
+}
 
 /**
  * Returns Express middleware that checks the organization's usage limit
- * for the given resource type. Returns 429 if the limit is exceeded.
+ * for the given resource type. Returns 429 if the limit is exceeded with
+ * the rich upsell payload described in {@link LimitExceededDetails}.
  */
 export function usageLimitGate(resourceType: ResourceType) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const organizationId = req.organizationId ?? req.user?.organizationId;
 
       if (!organizationId) {
-        return res.status(401).json({ error: "organization_required" });
+        return Errors.unauthorized(res);
       }
 
-      const result = await checkUsageLimit(organizationId, resourceType);
+      const result = await checkUsageLimit(organizationId, resourceType, {
+        isFounder: req.isFounder,
+      });
 
       if (!result.allowed) {
-        return res.status(429).json({
-          error: "limit_exceeded",
+        const target = nextPaidTier(result.tier);
+        const nextLimits = target ? TIER_LIMITS[target] : null;
+        const nextPricing =
+          target && target !== "free" && target !== "enterprise"
+            ? TIER_PRICES_CENTS[target as Tier]
+            : null;
+        const upgradeUrl = target
+          ? `/settings#billing?tier=${target}`
+          : "/settings#billing";
+
+        const details: LimitExceededDetails = {
           resourceType: result.resourceType,
-          current: result.current,
-          limit: result.limit,
-          tier: result.tier,
-          upgradeUrl: "/settings#billing",
-        });
+          currentTier: result.tier,
+          currentCount: result.current,
+          currentLimit: result.limit,
+          nextTier: target,
+          nextTierLimit: nextLimits ? (nextLimits[resourceType] ?? null) : null,
+          nextTierMonthlyPriceCents: nextPricing?.priceMonthlyCents ?? null,
+          upgradeUrl,
+        };
+
+        return Errors.limitExceeded(res, details);
       }
 
       next();
