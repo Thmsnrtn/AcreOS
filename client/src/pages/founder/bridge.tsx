@@ -14,7 +14,7 @@
  *
  * Apple-design contract:
  *   - Hairline borders, no drop shadows.
- *   - Single amber accent (`#FFB547`) for live indicators + primary CTAs.
+ *   - Single amber accent (`--acr-bridge-accent`, default #FFB547) for live indicators + primary CTAs.
  *   - Fraunces for hero numerics; tabular-mono for telemetry; Inter for chat.
  *   - 20pt tile radius (16pt mobile); 24pt internal padding (16pt mobile).
  *   - Reduced motion: all transitions collapse to opacity.
