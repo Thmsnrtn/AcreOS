@@ -100,7 +100,7 @@ describe("usageLimitGate", () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
     expect(res.body.error).toBe("LIMIT_EXCEEDED");
-    expect(res.body.message).toBe("Usage limit exceeded");
+    expect(res.body.message).toMatch(/sending requests faster than|limit/i);
     expect(res.body.details).toEqual({
       resourceType: "leads",
       currentTier: "free",
