@@ -176,6 +176,7 @@ import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
+import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
 import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
 import { registerBidEstimateRoutes } from "./routes-bid-estimates";
@@ -1757,7 +1758,7 @@ export async function registerRoutes(
   app.get('/api/founder/executive-dashboard', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.isFounder) {
-        return Errors.forbidden(res, "Executive dashboard is restricted to founders");
+        return Errors.forbidden(res, "Executive dashboard is restricted to founders", { docsSlug: "feature-founder-only" });
       }
 
       logger.info("[ExecutiveDashboard] Fetching metrics");
@@ -2053,6 +2054,9 @@ export async function registerRoutes(
   registerBidEstimateRoutes(app);
   // Fix-and-flip vertical FF-6 — construction draws + holding-cost meter.
   registerConstructionDrawRoutes(app);
+  // Fix-and-flip vertical FF-7 — rehab photo evidence (before/during/after,
+  // defect, lender_draw, tax basis).
+  registerRehabPhotoRoutes(app);
   // Buy-and-hold vertical BH-2 — tenant + lease CRUD.
   registerRentalRoutes(app);
   // Buy-and-hold vertical BH-3 — rent ledger + state late-fee engine.
