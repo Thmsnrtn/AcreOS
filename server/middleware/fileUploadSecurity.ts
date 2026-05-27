@@ -84,10 +84,22 @@ export function createUploadMiddleware(options: UploadOptions = {}) {
         .basename(file.originalname)
         .replace(/[^a-zA-Z0-9._-]/g, "_");
 
-      // Block known dangerous extensions regardless of MIME type claimed by client
+      // Block known dangerous extensions regardless of MIME type claimed by client.
+      // Macro-enabled Office formats (.docm, .xlsm, .pptm, .ppam, .docb, .xlam,
+      // .xltm, .potm, .ppsm) embed VBA — when a victim opens a downloaded copy
+      // and "Enables Content," macros run with full local user privilege.
+      // These are functionally executables wearing a document MIME, so they
+      // get the same treatment as .exe / .sh. (Lens 23 finding — the original
+      // blocklist covered scripts + binaries but missed the Office macro line.)
       const dangerousExtensions = [
         ".exe", ".sh", ".bat", ".cmd", ".ps1", ".php", ".py",
         ".rb", ".pl", ".js", ".ts", ".jar", ".com", ".vbs",
+        // Macro-enabled Microsoft Office formats — all run VBA on "Enable Content"
+        ".docm", ".xlsm", ".pptm", ".ppam", ".docb", ".xlam",
+        ".xltm", ".potm", ".ppsm",
+        // Windows scripting hosts + shortcuts that can spawn arbitrary commands
+        ".lnk", ".scr", ".hta", ".cpl", ".msi", ".msp", ".reg",
+        ".wsf", ".wsh",
       ];
       const ext = path.extname(file.originalname).toLowerCase();
       if (dangerousExtensions.includes(ext)) {
