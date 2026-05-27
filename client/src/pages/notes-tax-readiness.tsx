@@ -324,16 +324,37 @@ interface InvestorStatementPreview {
   }>;
 }
 
+interface InvestorReconciliationVariance {
+  noteId: string;
+  noteNumber: string;
+  payerName: string;
+  notePaymentsInterestCents: number;
+  totalLpBps: number;
+  expectedLpInterestCents: number;
+  actualLpInterestCents: number;
+  varianceCents: number;
+  reason: string;
+}
+
+interface InvestorReconciliation {
+  ok: boolean;
+  toleranceCents: number;
+  variances: InvestorReconciliationVariance[];
+  checkedNotes: number;
+}
+
 interface InvestorBatchResponse {
   taxYear: number;
   statements: InvestorStatementPreview[];
   totalInvestorInterestCents: number;
   pdfs?: Array<{ investorName: string; pdfBase64: string; totalCents: number }>;
+  reconciliation?: InvestorReconciliation | null;
 }
 
 function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
   const { toast } = useToast();
   const [pdfs, setPdfs] = useState<InvestorBatchResponse["pdfs"]>([]);
+  const [reconciliation, setReconciliation] = useState<InvestorReconciliation | null>(null);
 
   const previewQuery = useQuery<InvestorBatchResponse>({
     queryKey: ["/api/accounting/investor-income", taxYear],
@@ -357,13 +378,30 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
         credentials: "include",
         headers: { "x-csrf-token": decodeURIComponent(csrfToken) },
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Generate failed" }));
-        throw new Error(err.message || "Generate failed");
+      const json = await res.json().catch(() => ({}));
+      // 422 = Rachel's reconciliation gate refused. Surface the variance,
+      // but treat this as a structured non-error response so the UI can
+      // render the per-note variance table.
+      if (res.status === 422 && json?.error === "reconciliation_failed") {
+        return { ...json, __refused: true } as InvestorBatchResponse & { __refused: true; message?: string };
       }
-      return res.json() as Promise<InvestorBatchResponse>;
+      if (!res.ok) {
+        throw new Error(json?.message || "Generate failed");
+      }
+      return json as InvestorBatchResponse;
     },
     onSuccess: (data) => {
+      const refused = (data as any).__refused === true;
+      setReconciliation(data.reconciliation ?? null);
+      if (refused) {
+        setPdfs([]);
+        toast({
+          title: "Statements refused — reconciliation failed",
+          description: `${data.reconciliation?.variances.length ?? 0} note(s) don't tie to ledger. PDFs not generated.`,
+          variant: "destructive",
+        });
+        return;
+      }
       setPdfs(data.pdfs ?? []);
       toast({ title: "Statements generated", description: `${data.statements.length} per-investor PDFs ready.` });
     },
@@ -434,6 +472,80 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
             </tbody>
           </table>
         </div>
+
+        {/* Rachel's reconciliation gate — when variances are present we
+            refused to render PDFs. Surface per-note divergence so the
+            operator can fix splits or post missing payments before retry. */}
+        {reconciliation && !reconciliation.ok && reconciliation.variances.length > 0 && (
+          <>
+            <Separator className="my-4" />
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
+                <p className="text-sm font-semibold text-destructive">
+                  Reconciliation failed — statements not generated
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Per-LP shares don't tie to the underlying payment ledger on{" "}
+                {reconciliation.variances.length} of {reconciliation.checkedNotes} note
+                {reconciliation.checkedNotes === 1 ? "" : "s"}. Tolerance is{" "}
+                {reconciliation.toleranceCents}¢ per note (rounding headroom). Fix the
+                split rows or post the missing payment, then retry.
+              </p>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="px-1 py-1 text-left font-medium">Note</th>
+                      <th className="px-1 py-1 text-left font-medium">Borrower</th>
+                      <th className="px-1 py-1 text-right font-medium">Note interest</th>
+                      <th className="px-1 py-1 text-right font-medium">LP bps</th>
+                      <th className="px-1 py-1 text-right font-medium">Expected</th>
+                      <th className="px-1 py-1 text-right font-medium">Actual</th>
+                      <th className="px-1 py-1 text-right font-medium">Δ</th>
+                      <th className="px-1 py-1 text-left font-medium">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reconciliation.variances.slice(0, 20).map((v) => (
+                      <tr key={v.noteId} className="border-t border-border/40">
+                        <td className="px-1 py-1 font-mono">{v.noteNumber}</td>
+                        <td className="px-1 py-1 truncate max-w-[10rem]" title={v.payerName}>
+                          {v.payerName}
+                        </td>
+                        <td className="px-1 py-1 text-right font-mono">
+                          {fmtUsd(v.notePaymentsInterestCents)}
+                        </td>
+                        <td className="px-1 py-1 text-right font-mono">{v.totalLpBps}</td>
+                        <td className="px-1 py-1 text-right font-mono">
+                          {fmtUsd(v.expectedLpInterestCents)}
+                        </td>
+                        <td className="px-1 py-1 text-right font-mono">
+                          {fmtUsd(v.actualLpInterestCents)}
+                        </td>
+                        <td
+                          className={`px-1 py-1 text-right font-mono ${v.varianceCents !== 0 ? "text-destructive" : ""}`}
+                        >
+                          {v.varianceCents > 0 ? "+" : ""}
+                          {fmtUsd(v.varianceCents)}
+                        </td>
+                        <td className="px-1 py-1 text-muted-foreground">{v.reason}</td>
+                      </tr>
+                    ))}
+                    {reconciliation.variances.length > 20 && (
+                      <tr>
+                        <td colSpan={8} className="px-1 py-1 text-muted-foreground italic">
+                          …and {reconciliation.variances.length - 20} more
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
 
         {pdfs && pdfs.length > 0 && (
           <>

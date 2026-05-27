@@ -374,7 +374,19 @@ router.post("/investor-statements", async (req: AuthenticatedRequest, res: Respo
       taxYear,
       statements: result.statements.length,
       totalCents: result.totalInvestorInterestCents,
+      reconciliationOk: result.reconciliation?.ok ?? null,
+      variances: result.reconciliation?.variances.length ?? 0,
     });
+    // Rachel: when the reconciliation gate refuses, return 422 so the UI
+    // surfaces the variance and the operator can't accidentally ship a
+    // misstatement. PDFs are intentionally empty on the failure path.
+    if (result.reconciliation && !result.reconciliation.ok) {
+      return res.status(422).json({
+        error: "reconciliation_failed",
+        message: `Per-LP sums don't reconcile on ${result.reconciliation.variances.length} note(s). Fix splits or post missing payments, then retry.`,
+        ...result,
+      });
+    }
     res.json(result);
   } catch (err) {
     Errors.internal(res, err);

@@ -50,7 +50,42 @@ export interface InvestorStatementBatchResult {
   statements: InvestorStatement[];
   totalInvestorInterestCents: number;
   pdfs: Array<{ investorName: string; pdfBase64: string; totalCents: number }>;
+  // Set when reconciliation passes; null otherwise. Callers should
+  // only ship statements when this is present and `variances` is empty.
+  reconciliation?: InvestorStatementReconciliation | null;
 }
+
+// ── Reconciliation gate (Rachel) ──────────────────────────────────────────
+// Rachel: "Statements that don't reconcile to the underlying ledger are
+// statements I have to chase down in February. Refuse to email anything
+// when the per-LP sum diverges from what was actually paid to me. Rare
+// functionality; harden it." See `reconcileInvestorStatements` below.
+// ──────────────────────────────────────────────────────────────────────────
+export interface ReconciliationVariance {
+  noteId: string;
+  noteNumber: string;
+  payerName: string;
+  notePaymentsInterestCents: number;   // SUM(notePayments.interestCents) in period
+  totalLpBps: number;                  // SUM(role='lp' percentageBps) on the note
+  expectedLpInterestCents: number;     // payments × totalLpBps / 10000
+  actualLpInterestCents: number;       // SUM(per-LP shares we computed)
+  varianceCents: number;               // actual - expected (signed)
+  reason: string;
+}
+
+export interface InvestorStatementReconciliation {
+  ok: boolean;
+  toleranceCents: number;
+  variances: ReconciliationVariance[];
+  checkedNotes: number;
+}
+
+// Tolerance for per-note variance after the bps→cents rounding round-trip.
+// Per-LP shares are `Math.round(noteInterest * bps / 10000)` so each note
+// can drift by up to N-1 cents where N is the number of LPs on that note.
+// We allow 5¢ per note as a practical headroom — anything beyond that is
+// a real divergence (e.g. an unposted reversal, a stale split row).
+const RECONCILIATION_TOLERANCE_CENTS_PER_NOTE = 5;
 
 /**
  * Compute per-investor splits for an org / year. Returns one row per
@@ -248,6 +283,134 @@ export function renderInvestorStatementPdf(
   return { pdfBase64, bytes };
 }
 
+/**
+ * Per-note reconciliation: for each note that has LP slices in `statements`,
+ * the sum of per-LP interest cents should equal (notePaymentsInterest ×
+ * totalLpBps / 10000), within a small rounding tolerance. If anything
+ * drifts beyond that, we refuse to emit PDFs.
+ *
+ * Rachel: "If the LP statement doesn't tie to what was actually applied to
+ * that note, I'm shipping a misstatement. Bigger funds get sued for that."
+ */
+export async function reconcileInvestorStatements(
+  orgId: number,
+  taxYear: number,
+  statements: InvestorStatement[],
+): Promise<InvestorStatementReconciliation> {
+  const yearStart = `${taxYear}-01-01`;
+  const yearEnd = `${taxYear}-12-31`;
+
+  // Build expected-vs-actual map per note from the in-memory statements.
+  // Actual: sum of investorShareCents across all LPs for the note.
+  // Expected: notePaymentsInterestCents × totalLpBps / 10000.
+  const actualByNote = new Map<string, { actual: number; payerName: string; noteNumber: string }>();
+  for (const stmt of statements) {
+    for (const line of stmt.perNote) {
+      const cur = actualByNote.get(line.noteId) ?? {
+        actual: 0,
+        payerName: line.payerName,
+        noteNumber: line.noteNumber,
+      };
+      cur.actual += line.investorShareCents;
+      actualByNote.set(line.noteId, cur);
+    }
+  }
+
+  if (actualByNote.size === 0) {
+    return { ok: true, toleranceCents: 0, variances: [], checkedNotes: 0 };
+  }
+
+  // Pull authoritative per-note interest sums + total LP bps from the DB,
+  // for ONLY the notes that have LP slices. We avoid trusting the join in
+  // aggregateInvestorIncomeForYear() — the reconciler reads each side
+  // independently so it can catch bugs in that aggregation, not validate
+  // itself against itself.
+  const noteIds = Array.from(actualByNote.keys());
+  const sums = await db
+    .select({
+      noteId: acquiredNotes.id,
+      noteNumber: acquiredNotes.noteNumber,
+      payerName: acquiredNotes.payerName,
+      interestSumCents: sql<number>`COALESCE(SUM(${notePayments.interestCents}), 0)::bigint`,
+    })
+    .from(acquiredNotes)
+    .leftJoin(
+      notePayments,
+      and(
+        eq(notePayments.noteId, acquiredNotes.id),
+        sql`${notePayments.paymentDate} >= ${yearStart}`,
+        sql`${notePayments.paymentDate} <= ${yearEnd}`,
+      ),
+    )
+    .where(
+      and(
+        eq(acquiredNotes.organizationId, orgId),
+        sql`${acquiredNotes.id} = ANY(${sql.raw(`ARRAY[${noteIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(",")}]`)}::varchar[])`,
+      ),
+    )
+    .groupBy(acquiredNotes.id, acquiredNotes.noteNumber, acquiredNotes.payerName);
+
+  const lpBpsRows = await db
+    .select({
+      noteId: noteOwnershipSplits.noteId,
+      totalLpBps: sql<number>`COALESCE(SUM(${noteOwnershipSplits.percentageBps}), 0)::int`,
+    })
+    .from(noteOwnershipSplits)
+    .where(
+      and(
+        eq(noteOwnershipSplits.organizationId, orgId),
+        eq(noteOwnershipSplits.role, "lp"),
+        sql`${noteOwnershipSplits.noteId} = ANY(${sql.raw(`ARRAY[${noteIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(",")}]`)}::varchar[])`,
+      ),
+    )
+    .groupBy(noteOwnershipSplits.noteId);
+
+  const lpBpsByNote = new Map<string, number>();
+  for (const r of lpBpsRows) lpBpsByNote.set(r.noteId, Number(r.totalLpBps));
+
+  const variances: ReconciliationVariance[] = [];
+  let totalChecked = 0;
+
+  for (const row of sums) {
+    const actualEntry = actualByNote.get(row.noteId);
+    if (!actualEntry) continue;
+    totalChecked++;
+    const notePaymentsInterestCents = Number(row.interestSumCents);
+    const totalLpBps = lpBpsByNote.get(row.noteId) ?? 0;
+    const expectedLpInterestCents = Math.round((notePaymentsInterestCents * totalLpBps) / 10_000);
+    const varianceCents = actualEntry.actual - expectedLpInterestCents;
+    if (Math.abs(varianceCents) > RECONCILIATION_TOLERANCE_CENTS_PER_NOTE) {
+      let reason = "Per-LP sum diverges from note's applied interest";
+      if (totalLpBps === 0) {
+        // We have a statement for an LP on this note but the splits table
+        // shows zero LP bps — the split row was deleted between
+        // aggregation and reconciliation, or the role flipped to 'org'.
+        reason = "Note has per-LP statement rows but no role='lp' splits";
+      } else if (notePaymentsInterestCents === 0 && actualEntry.actual !== 0) {
+        reason = "Statement attributes interest to LPs but note has no payments in period";
+      }
+      variances.push({
+        noteId: row.noteId,
+        noteNumber: row.noteNumber,
+        payerName: row.payerName,
+        notePaymentsInterestCents,
+        totalLpBps,
+        expectedLpInterestCents,
+        actualLpInterestCents: actualEntry.actual,
+        varianceCents,
+        reason,
+      });
+    }
+  }
+
+  return {
+    ok: variances.length === 0,
+    toleranceCents: RECONCILIATION_TOLERANCE_CENTS_PER_NOTE,
+    variances,
+    checkedNotes: totalChecked,
+  };
+}
+
 export async function generateInvestorStatementBatch(
   orgId: number,
   orgName: string,
@@ -255,6 +418,35 @@ export async function generateInvestorStatementBatch(
 ): Promise<InvestorStatementBatchResult> {
   const statements = await aggregateInvestorIncomeForYear(orgId, taxYear);
   const totalInvestorInterestCents = statements.reduce((s, x) => s + x.totalInterestCents, 0);
+
+  // ── Reconciliation gate ───────────────────────────────────────────────
+  // Rachel: refuse to render PDFs when the per-LP sum doesn't reconcile to
+  // the underlying ledger. Surface the variance so the operator can fix
+  // the split rows (or post the missing payment) before sending anything.
+  const reconciliation = await reconcileInvestorStatements(orgId, taxYear, statements);
+  if (!reconciliation.ok) {
+    logger.error(
+      "investorStatement.batch.reconciliation_failed",
+      new Error(`Statement batch refused: ${reconciliation.variances.length} note(s) failed reconciliation`),
+      {
+        metadata: {
+          orgId,
+          taxYear,
+          variances: reconciliation.variances.length,
+          checkedNotes: reconciliation.checkedNotes,
+          firstVariance: reconciliation.variances[0],
+        },
+      },
+    );
+    return {
+      taxYear,
+      statements,
+      totalInvestorInterestCents,
+      pdfs: [], // intentionally empty — caller MUST NOT email these.
+      reconciliation,
+    };
+  }
+
   const pdfs = statements.map((stmt) => {
     const { pdfBase64 } = renderInvestorStatementPdf(taxYear, orgName, stmt);
     return {
@@ -264,7 +456,7 @@ export async function generateInvestorStatementBatch(
     };
   });
   logger.info("investorStatement.batch.completed", {
-    metadata: { orgId, taxYear, statements: statements.length, total: totalInvestorInterestCents },
+    metadata: { orgId, taxYear, statements: statements.length, total: totalInvestorInterestCents, reconciledNotes: reconciliation.checkedNotes },
   });
-  return { taxYear, statements, totalInvestorInterestCents, pdfs };
+  return { taxYear, statements, totalInvestorInterestCents, pdfs, reconciliation };
 }
