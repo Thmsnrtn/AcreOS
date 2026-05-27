@@ -63,25 +63,47 @@ export function registerWholesalerRuleRoutes(app: Express): void {
           .where(eq(wholesalerStateRules.state, state))
           .limit(1);
         if (!row) {
-          // Default to "unrestricted" with a preliminary flag for unseeded
-          // states — better than 404, because the customer is asking "is
-          // it OK to wholesale here." The UI surfaces the "no entry yet"
-          // caveat.
+          // Carla Mendoza fix (2026-05-27): for the 37 unseeded states the
+          // prior default was "unrestricted + consult_counsel" — that is a
+          // *permissive* fallback, which in a UPL-sensitive product is
+          // exactly the wrong direction. A wholesaler in OK / IL / SC who
+          // sees "unrestricted" on the dashboard and proceeds is sitting
+          // on a license-revocation, refund, and (in OK) a
+          // class-A-misdemeanor charge. Flipped to an EXPLICIT-BLOCK
+          // default: status=pending_legislation (so the UI treats it
+          // identically to a restricted state for the compliance gate),
+          // licenseRequired=true (so the doc-generator refuses to emit an
+          // assignment template), recommendation=double_close_only, and a
+          // summary that names the gap and the user-action to request a
+          // citation review. The "preliminary" flag stays true so the
+          // sticky banner can render.
           return res.json({
             rule: {
               state,
-              status: "unrestricted",
-              licenseRequired: false,
-              advertisingRestricted: false,
-              recommendation: "consult_counsel",
+              status: "pending_legislation",
+              licenseRequired: true,
+              advertisingRestricted: true,
+              recommendation: "double_close_only",
               citation: null,
-              summary: "No entry on file for this state. Default permissive but verify with counsel before relying on the assignment template.",
-              detail: null,
+              summary:
+                `No rule entry on file for ${state}. AcreOS BLOCKS assignment-template generation for unseeded states until counsel has reviewed the state's broker-licensing + assignment-disclosure regime. Use the double-close path or request a statute review from support.`,
+              detail:
+                "Unseeded states are treated as license-required by default. " +
+                "Reason: in the post–Dodd-Frank wave, the states that most " +
+                "aggressively prosecute UPL by wholesalers (OK 59 O.S. § " +
+                "858-301; IL 225 ILCS 454/1-10; SC § 40-57-30; PA § 35.201) " +
+                "are exactly the states most likely to be missing from a " +
+                "partial seed. A permissive default biases failure toward " +
+                "the customer. Request review at support@acreos.com with " +
+                "the statute citation you want us to load.",
               attorneyReviewedAt: null,
               attorneyReviewedBy: null,
               updatedAt: null,
             },
             preliminary: true,
+            unseeded: true,
+            requestCitationUrl:
+              `mailto:support@acreos.com?subject=Statute%20citation%20request%3A%20${state}%20wholesaler%20rules&body=I%27m%20wholesaling%20in%20${state}.%20Please%20review%20the%20broker-license%20%2B%20assignment-disclosure%20regime%20and%20seed%20the%20wholesaler_state_rules%20entry.%0A%0AStatute%20citation%20(if%20I%20have%20one)%3A%20`,
           });
         }
         return res.json({ rule: row, preliminary: !row.attorneyReviewedAt });
@@ -131,12 +153,21 @@ export async function checkAssignmentCompliance(
     .limit(1);
 
   if (!rule) {
+    // Carla Mendoza fix (2026-05-27): the previous default was "warn but
+    // allow." That silently shipped assignment templates in the 37
+    // unseeded states, including OK / IL / SC / PA where assigning a
+    // contract for a fee without a broker license is a prosecutable
+    // offense. We now BLOCK unseeded states by default and force the
+    // operator through the double-close path or a counsel review. This
+    // matches the policy on the customer-facing state-detail endpoint
+    // above. To unblock a state, seed wholesaler_state_rules with an
+    // explicit row (paralegal-reviewed at minimum).
     return {
-      blocked: false,
-      warn: true,
-      recommendation: "consult_counsel",
+      blocked: true,
+      warn: false,
+      recommendation: "double_close_only",
       citation: null,
-      summary: `No rule entry on file for ${stateUp}. Default permissive but verify with counsel.`,
+      summary: `No rule entry on file for ${stateUp}. AcreOS blocks assignment-template generation in unseeded states; use the double-close flow or request a statute review.`,
       attorneyReviewed: false,
     };
   }
