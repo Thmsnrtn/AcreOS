@@ -138,7 +138,7 @@ export interface AttomComparable {
   longitude?: number;
 }
 
-async function fetchAttomComparables(
+export async function fetchAttomComparables(
   state: string,
   county: string,
   acreageMin: number,

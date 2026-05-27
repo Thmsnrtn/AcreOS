@@ -126,6 +126,66 @@ router.get("/land-value-trend/:state/:county", async (req: Request, res: Respons
 });
 
 // ---------------------------------------------------------------------------
+// Auto-pull comps for the blind-offer wizard (Tom Hsiao / Lens 36)
+//
+// GET /api/data-intel/county-comps?state=TX&county=Brewster&acres=20
+//
+// Pulls recent land sales comps from ATTOM for the given county and ±50%
+// acreage band. Returns a small set the wizard can preload at Step 2 so
+// the investor isn't forced to keep PropStream open just to enter comps
+// manually. Falls back gracefully when ATTOM is not configured — the
+// wizard's "paste manually" path stays the working escape hatch.
+// ---------------------------------------------------------------------------
+
+router.get("/county-comps", async (req: Request, res: Response) => {
+  try {
+    const state = String(req.query.state || "").trim();
+    const county = String(req.query.county || "").trim();
+    const acres = parseFloat(String(req.query.acres || "0"));
+    const monthsBack = Math.min(36, parseInt(String(req.query.monthsBack || "18"), 10) || 18);
+
+    if (!state || !county) {
+      return Errors.badRequest(res, "state and county are required");
+    }
+
+    const acreageMin = acres > 0 ? Math.max(0.25, acres * 0.5) : 0.25;
+    const acreageMax = acres > 0 ? acres * 1.5 : 200;
+
+    const { fetchAttomComparables } = await import("./jobs/countyAssessorIngest");
+    const comps = await fetchAttomComparables(state, county, acreageMin, acreageMax, monthsBack);
+
+    // Strip down to the wizard's Comp shape. Cap at 25 so the UI stays
+    // browseable on mobile. Sort by price-per-acre asc so the "lowest
+    // comp" anchor surfaces at the top — same convention the wizard uses.
+    const trimmed = comps
+      .filter(c => c.pricePerAcre > 0)
+      .sort((a, b) => a.pricePerAcre - b.pricePerAcre)
+      .slice(0, 25)
+      .map(c => ({
+        pricePerAcre: Math.round(c.pricePerAcre),
+        acres: Number(c.acreage.toFixed(2)),
+        totalPrice: Math.round(c.salePrice),
+        source: "attom_recent_sales",
+        notes: c.saleDate ? `Sold ${c.saleDate}${c.address ? ` — ${c.address}` : ""}` : (c.address || undefined),
+      }));
+
+    res.json({
+      state: state.toUpperCase(),
+      county,
+      acreageBand: { min: acreageMin, max: acreageMax },
+      monthsBack,
+      compCount: trimmed.length,
+      comps: trimmed,
+      source: process.env.ATTOM_API_KEY ? "attom" : "unavailable",
+      fallback: process.env.ATTOM_API_KEY ? null : "ATTOM_API_KEY not configured — paste comps manually",
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Blind Offer Calculator
 // ---------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
@@ -16,7 +16,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   ChevronRight, ChevronLeft, MapPin, BarChart2, Calculator, FileText,
   DollarSign, TrendingUp, AlertTriangle, CheckCircle, Star,
-  Loader2, Download, Copy, Send,
+  Loader2, Download, Copy, Send, RefreshCw, Sparkles,
 } from "lucide-react";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -391,11 +391,53 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
   );
 }
 
-function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
+function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: any) {
   const [newComp, setNewComp] = useState({ pricePerAcre: "", acres: "", source: "county_records", notes: "" });
+  const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "loaded" | "empty" | "error">("idle");
+  const [autoLoadMeta, setAutoLoadMeta] = useState<{ count: number; source: string; fallback: string | null } | null>(null);
+  const autoLoadAttempted = useRef(false);
   const ppaId = useId();
   const acreageId = useId();
   const sourceId = useId();
+
+  // Tom Hsiao / Lens 36 fix — auto-pull comps for this county on mount so
+  // the user doesn't have to keep PropStream open just to fill Step 2.
+  // If the auto-pull fails or finds nothing, we leave the manual form
+  // exposed and surface a calm "paste manually" fallback (no error pop).
+  async function autoLoadComps(force = false) {
+    if (!force && autoLoadAttempted.current) return;
+    autoLoadAttempted.current = true;
+    setAutoLoadState("loading");
+    try {
+      const params = new URLSearchParams({ state, county, acres: String(acres || 0) });
+      const resp = await fetch(`/api/data-intel/county-comps?${params.toString()}`, { credentials: "include" });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const data = await resp.json();
+      const pulled = Array.isArray(data?.comps) ? data.comps : [];
+      setAutoLoadMeta({ count: pulled.length, source: data?.source || "unknown", fallback: data?.fallback ?? null });
+      if (pulled.length === 0) {
+        setAutoLoadState("empty");
+        return;
+      }
+      // Don't blow away comps the user has already added by hand.
+      setComps((prev: Comp[]) => {
+        const seen = new Set(prev.map((c: Comp) => `${c.pricePerAcre}-${c.acres}-${c.source}`));
+        const additions = pulled.filter((c: Comp) => !seen.has(`${c.pricePerAcre}-${c.acres}-${c.source}`));
+        return [...prev, ...additions];
+      });
+      setAutoLoadState("loaded");
+    } catch (err) {
+      setAutoLoadState("error");
+    }
+  }
+
+  useEffect(() => {
+    if (state && county && comps.length === 0) {
+      autoLoadComps();
+    }
+    // intentionally not re-running on every comps change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, county]);
 
   function addComp() {
     const ppa = parseFloat(newComp.pricePerAcre);
@@ -423,6 +465,67 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
       <div>
         <h2 className="text-xl font-bold mb-1">Step 2: Comparable sales research</h2>
         <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land-value benchmarks automatically.</p>
+      </div>
+
+      {/* Tom Hsiao / Lens 36 — Auto-pull status banner */}
+      <div className="rounded-xl border p-4 flex items-start gap-3" role="status" aria-live="polite">
+        {autoLoadState === "loading" && (
+          <>
+            <Loader2 className="w-4 h-4 mt-0.5 animate-spin text-primary flex-shrink-0" aria-hidden="true" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold">Pulling recent sales from {county} County, {state}…</p>
+              <p className="text-muted-foreground">±50% acreage of your target. Last 18 months.</p>
+            </div>
+          </>
+        )}
+        {autoLoadState === "loaded" && autoLoadMeta && (
+          <>
+            <Sparkles className="w-4 h-4 mt-0.5 text-acr-pos flex-shrink-0" aria-hidden="true" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold text-acr-pos">Loaded {autoLoadMeta.count} comps from {county} County</p>
+              <p className="text-muted-foreground">Source: ATTOM Data recent sales (last 18 months, ±50% acreage). Add or remove any below.</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Refresh comps from county">
+              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Refresh
+            </Button>
+          </>
+        )}
+        {autoLoadState === "empty" && (
+          <>
+            <AlertTriangle className="w-4 h-4 mt-0.5 text-acr-warn flex-shrink-0" aria-hidden="true" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold text-acr-warn">No recent comps auto-pulled for {county} County</p>
+              <p className="text-muted-foreground">{autoLoadMeta?.fallback || "Add comps manually below — assessor records, LandWatch, or eBay sold listings."}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+            </Button>
+          </>
+        )}
+        {autoLoadState === "error" && (
+          <>
+            <AlertTriangle className="w-4 h-4 mt-0.5 text-acr-warn flex-shrink-0" aria-hidden="true" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold text-acr-warn">Comps couldn't load — paste manually</p>
+              <p className="text-muted-foreground">Network or ATTOM hiccup. The manual form below works as the fallback.</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+            </Button>
+          </>
+        )}
+        {autoLoadState === "idle" && (
+          <>
+            <BarChart2 className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
+            <div className="text-sm flex-1">
+              <p className="font-semibold">Pull comps automatically</p>
+              <p className="text-muted-foreground">Recent land sales for {county || "this county"}, {state || "your state"} — ATTOM Data.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => autoLoadComps(true)} disabled={!state || !county}>
+              <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" /> Auto-load
+            </Button>
+          </>
+        )}
       </div>
 
       <div className="rounded-xl border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 p-4">
@@ -1017,7 +1120,7 @@ export default function BlindOfferWizardPage() {
         )}
         {currentStep === "comps" && (
           <StepComps
-            state={state} county={county}
+            state={state} county={county} acres={acres}
             comps={comps} setComps={setComps}
             onNext={() => goToStep("calculate")}
             onBack={() => setCurrentStep("county")}
