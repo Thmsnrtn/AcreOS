@@ -272,8 +272,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { canSendViaChannel, isWithinQuietHours, isWithinQuietHoursForLead } =
         await import("./services/tcpaCompliance");
       const { leads } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
-      const { db } = await import("./db");
+      const { eq } = await import("drizzle-orm");
       const cleanTo = String(to).replace(/\D/g, "").slice(-10);
       const orgLeads = await db
         .select()
