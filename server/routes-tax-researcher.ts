@@ -147,7 +147,12 @@ router.post('/surface-to-radar', async (req: Request, res: Response) => {
 import { z } from "zod";
 import { and, asc, desc as descOrder, eq } from "drizzle-orm";
 import { db as drizzleDb } from "./db";
-import { taxSaleListings, auctionBidLog, AUCTION_BID_ACTIONS } from "@shared/schema";
+import {
+  taxSaleListings,
+  auctionBidLog,
+  AUCTION_BID_ACTIONS,
+  TAX_LISTING_ACQUISITION_SOURCES,
+} from "@shared/schema";
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
@@ -165,6 +170,7 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
       walkAwayAboveCents: z.number().int().nonnegative().nullable().optional(),
       walkAwayCondition: z.string().max(500).nullable().optional(),
       partnerSplit: partnerSplitSchema.nullable().optional(),
+      acquisitionSource: z.enum(TAX_LISTING_ACQUISITION_SOURCES).optional(),
       status: z.string().max(40).optional(),
       notes: z.string().max(4_000).optional(),
     }).safeParse(req.body);
@@ -349,14 +355,23 @@ router.get('/county-summary', async (req: Request, res: Response) => {
   }
 });
 
-// GET /tax-researcher/auction-worksheet — flat list optionally filtered by auctionId
+// GET /tax-researcher/auction-worksheet — flat list optionally filtered by
+// auctionId and acquisitionSource (Marcus / Lens 17: OTC + private are
+// higher-margin paths; surfacing the filter chip is the first step toward
+// sorting/scoring by source).
 router.get('/auction-worksheet', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const auctionIdQ = req.query.auctionId ? parseInt(req.query.auctionId as string, 10) : undefined;
+    const sourceQ = typeof req.query.acquisitionSource === "string"
+      ? req.query.acquisitionSource
+      : undefined;
     const conds = [eq(taxSaleListings.organizationId, org.id)];
     if (auctionIdQ && !Number.isNaN(auctionIdQ)) {
       conds.push(eq(taxSaleListings.auctionId, auctionIdQ));
+    }
+    if (sourceQ && (TAX_LISTING_ACQUISITION_SOURCES as readonly string[]).includes(sourceQ)) {
+      conds.push(eq(taxSaleListings.acquisitionSource, sourceQ as any));
     }
     const rows = await drizzleDb
       .select()

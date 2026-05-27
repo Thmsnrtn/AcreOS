@@ -342,6 +342,11 @@ const STATEMENTS = [
   'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "walk_away_condition" text',
   // partner_split is jsonb storing array of { investorName, splitBps }
   'ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "partner_split" jsonb',
+  // Marcus / Lens 17 — first-class OTC + private surface. Defaults to
+  // 'auction' so existing rows stay correctly tagged; new inserts can
+  // override. Values: auction | otc | pre_sale_list | private.
+  `ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "acquisition_source" text DEFAULT 'auction'`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_source_idx" ON "tax_sale_listings" ("organization_id", "acquisition_source")`,
   `CREATE TABLE IF NOT EXISTS "auction_bid_log" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,

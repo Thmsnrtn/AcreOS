@@ -46,6 +46,8 @@ import { queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { CourthouseMode } from "@/components/mobile/CourthouseMode";
 
+type AcquisitionSource = "auction" | "otc" | "pre_sale_list" | "private";
+
 interface Listing {
   id: number;
   apn: string;
@@ -62,8 +64,26 @@ interface Listing {
   walkAwayAboveCents: number | null;
   walkAwayCondition: string | null;
   partnerSplit: Array<{ investorName: string; splitBps: number }> | null;
+  acquisitionSource: AcquisitionSource | null;
   notes: string | null;
 }
+
+// Marcus / Lens 17 ordering: highest-margin first. The filter chips render
+// in this order so OTC + private inventory leads the eye.
+const ACQUISITION_SOURCE_OPTIONS: Array<{ value: AcquisitionSource | "all"; label: string }> = [
+  { value: "all", label: "All sources" },
+  { value: "private", label: "Private" },
+  { value: "otc", label: "OTC" },
+  { value: "pre_sale_list", label: "Pre-sale list" },
+  { value: "auction", label: "Auction" },
+];
+
+const SOURCE_LABEL: Record<AcquisitionSource, string> = {
+  auction: "Auction",
+  otc: "OTC",
+  pre_sale_list: "Pre-sale list",
+  private: "Private",
+};
 
 interface BidLogEntry {
   id: string;
@@ -114,11 +134,17 @@ export default function AuctionWorksheetPage() {
   const { isMobile } = useIsMobile();
   const courthouseMode = isMobile && dayOfMode;
 
+  // Marcus / Lens 17 — acquisition-source filter. Defaults to "all" because
+  // most users have only auction inventory; the filter shows up when OTC /
+  // private rows exist.
+  const [sourceFilter, setSourceFilter] = useState<AcquisitionSource | "all">("all");
+
   const { data, isLoading } = useQuery<{ listings: Listing[] }>({
-    queryKey: ["/api/tax-researcher/auction-worksheet", auctionId],
+    queryKey: ["/api/tax-researcher/auction-worksheet", auctionId, sourceFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (auctionId) params.set("auctionId", auctionId);
+      if (sourceFilter !== "all") params.set("acquisitionSource", sourceFilter);
       const res = await fetch(`/api/tax-researcher/auction-worksheet?${params}`, {
         credentials: "include",
       });
@@ -144,6 +170,30 @@ export default function AuctionWorksheetPage() {
           </p>
         </div>
       </div>
+
+      {/* Source filter chips — high-margin sources lead. Hidden in
+          courthouse mode (the operator is mid-auction; no time to retoggle). */}
+      {!courthouseMode && (
+        <div
+          role="group"
+          aria-label="Filter by acquisition source"
+          className="flex flex-wrap gap-2 mb-4"
+        >
+          {ACQUISITION_SOURCE_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              type="button"
+              variant={sourceFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="h-8 text-xs"
+              aria-pressed={sourceFilter === opt.value}
+              onClick={() => setSourceFilter(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <Card><div className="p-5 space-y-3">
@@ -203,6 +253,20 @@ function ListingRow({ listing, dayOfMode }: { listing: Listing; dayOfMode: boole
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono text-sm font-medium truncate">{listing.apn}</span>
                 <span className="text-xs text-muted-foreground">{listing.county}, {listing.state}</span>
+                {listing.acquisitionSource && listing.acquisitionSource !== "auction" && (
+                  <span
+                    className={`inline-block rounded-md px-2 py-0.5 text-xs ${
+                      listing.acquisitionSource === "private"
+                        ? "bg-acr-pos/10 text-acr-pos"
+                        : listing.acquisitionSource === "otc"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                    title="Acquisition source"
+                  >
+                    {SOURCE_LABEL[listing.acquisitionSource]}
+                  </span>
+                )}
                 {listing.status !== "available" && listing.status !== "watching" && (
                   <span className={`inline-block rounded-md px-2 py-0.5 text-xs ${
                     listing.status === "won" ? "bg-acr-pos/10 text-acr-pos" :

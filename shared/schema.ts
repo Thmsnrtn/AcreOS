@@ -8878,12 +8878,31 @@ export const taxSaleAuctions = pgTable("tax_sale_auctions", {
 });
 
 // Tax Sale Listings - store individual tax sale opportunities
+// How the listing entered our pipeline. Marcus (Lens 17, 2026-05-27):
+// "Auction is the obvious source, but my best ROI comes from OTC inventory
+// — the certs that didn't sell at auction and the county is sitting on at
+// the floor rate. And private off-market is rare but the highest margin
+// (a county clerk friend mentions an estate sale). Pre-sale list is the
+// 30-days-before-auction publication — useful to bidders but already
+// crowded." OTC + private are higher-margin than auction. Filter and
+// sort on this to surface the high-margin acquisition paths first.
+export const TAX_LISTING_ACQUISITION_SOURCES = [
+  "auction",       // standard county auction (the bulk of inventory)
+  "otc",           // over-the-counter; struck-off / county-held inventory
+  "pre_sale_list", // 30-day published delinquent list pre-auction
+  "private",       // off-market / private sale / direct-from-owner
+] as const;
+export type TaxListingAcquisitionSource = typeof TAX_LISTING_ACQUISITION_SOURCES[number];
+
 export const taxSaleListings = pgTable("tax_sale_listings", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id),
   auctionId: integer("auction_id").references(() => taxSaleAuctions.id),
   propertyId: integer("property_id").references(() => properties.id),
-  
+
+  // Marcus / Lens 17 — first-class acquisition-source tagging.
+  acquisitionSource: text("acquisition_source").$type<TaxListingAcquisitionSource>().default("auction"),
+
   apn: text("apn").notNull(),
   county: text("county").notNull(),
   state: text("state").notNull(),
