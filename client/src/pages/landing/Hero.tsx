@@ -23,7 +23,6 @@
 
 import { Link } from "wouter";
 import { LANDING_COPY } from "./copy";
-import { RotatingVertical } from "./RotatingVertical";
 
 export function Hero() {
   const c = LANDING_COPY.hero;
@@ -72,11 +71,10 @@ export function Hero() {
             {c.title[0]}
           </span>
           <span className="lp-hero-line" style={{ animationDelay: "0.18s" }}>
-            {c.titleForPrefix}
-            <RotatingVertical />
-            {c.titleSuffix}
+            {c.title[1]}
           </span>
         </h1>
+        <p className="lp-hero-wedge">{c.wedge}</p>
         <p className="lp-hero-sub">{c.sub}</p>
         <div className="lp-hero-cta">
           <Link href="/auth?mode=register" className="lp-btn lp-btn-primary lp-btn-lg lp-btn-arrow">

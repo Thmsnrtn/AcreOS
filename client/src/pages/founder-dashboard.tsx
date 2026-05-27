@@ -1301,40 +1301,32 @@ export default function FounderDashboard() {
     }
   };
 
-  const acknowledgeMutation = useMutation({
-    mutationFn: async (alertId: number) => {
-      const res = await apiRequest("PUT", `/api/admin/alerts/${alertId}/acknowledge`, {});
+  // Optimistically flip alert status — the row should grey out instantly
+  // and bounce back if the server rejects. Backed by useOptimisticUpdate.
+  const acknowledgeMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PUT", `/api/admin/alerts/${id}/acknowledge`, {});
       if (!res.ok) throw new Error("Failed to acknowledge alert");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
-      toast({ title: "Alert acknowledged" });
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({ title, description, variant: "destructive" });
-    },
+    listKeys: [["/api/admin/alerts"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "acknowledged" }),
+    extraInvalidateKeys: [["/api/admin/dashboard"]],
+    successToast: { title: "Alert acknowledged" },
   });
 
-  const resolveMutation = useMutation({
-    mutationFn: async (alertId: number) => {
-      const res = await apiRequest("PUT", `/api/admin/alerts/${alertId}/resolve`, {});
+  const resolveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PUT", `/api/admin/alerts/${id}/resolve`, {});
       if (!res.ok) throw new Error("Failed to resolve alert");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
-      toast({ title: "Alert resolved" });
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({ title, description, variant: "destructive" });
-    },
+    listKeys: [["/api/admin/alerts"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "resolved" }),
+    extraInvalidateKeys: [["/api/admin/dashboard"]],
+    successToast: { title: "Alert resolved" },
   });
 
   const acknowledgeAllMutation = useMutation({
@@ -2478,7 +2470,7 @@ export default function FounderDashboard() {
                           size="icon"
                           variant="ghost"
                           className="h-6 w-6"
-                          onClick={() => acknowledgeMutation.mutate(alert.id)}
+                          onClick={() => acknowledgeMutation.mutate({ id: alert.id })}
                           aria-label="Acknowledge alert"
                           data-testid={`button-acknowledge-alert-${alert.id}`}
                         >
@@ -2488,7 +2480,7 @@ export default function FounderDashboard() {
                           size="icon"
                           variant="ghost"
                           className="h-6 w-6"
-                          onClick={() => resolveMutation.mutate(alert.id)}
+                          onClick={() => resolveMutation.mutate({ id: alert.id })}
                           aria-label="Resolve alert"
                           data-testid={`button-resolve-alert-${alert.id}`}
                         >
@@ -3091,7 +3083,7 @@ export default function FounderDashboard() {
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => acknowledgeMutation.mutate(alert.id)}
+                              onClick={() => acknowledgeMutation.mutate({ id: alert.id })}
                               disabled={acknowledgeMutation.isPending}
                               data-testid={`button-ack-${alert.id}`}
                             >
@@ -3102,7 +3094,7 @@ export default function FounderDashboard() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => resolveMutation.mutate(alert.id)}
+                            onClick={() => resolveMutation.mutate({ id: alert.id })}
                             disabled={resolveMutation.isPending}
                             data-testid={`button-resolve-${alert.id}`}
                           >
@@ -4401,11 +4393,11 @@ export default function FounderDashboard() {
                       {alert.status !== 'resolved' && (
                         <div className="flex gap-1 flex-shrink-0">
                           {alert.status !== 'acknowledged' && (
-                            <Button size="sm" variant="outline" onClick={() => acknowledgeMutation.mutate(alert.id)} disabled={acknowledgeMutation.isPending}>
+                            <Button size="sm" variant="outline" onClick={() => acknowledgeMutation.mutate({ id: alert.id })} disabled={acknowledgeMutation.isPending}>
                               <Eye className="w-3 h-3 mr-1" />Ack
                             </Button>
                           )}
-                          <Button size="sm" variant="outline" onClick={() => resolveMutation.mutate(alert.id)} disabled={resolveMutation.isPending}>
+                          <Button size="sm" variant="outline" onClick={() => resolveMutation.mutate({ id: alert.id })} disabled={resolveMutation.isPending}>
                             <Check className="w-3 h-3 mr-1" />Resolve
                           </Button>
                         </div>
@@ -4744,18 +4736,25 @@ function AIModelsSection() {
   });
   const { toast } = useToast();
 
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) =>
+  // Optimistic toggle + weight edit on AI-model rows — the switch / weight
+  // input should reflect instantly even on cellular. Errors roll back to
+  // the prior cached row and surface a destructive toast.
+  const toggleMutation = useOptimisticUpdate<{ id: number; enabled: boolean }>({
+    mutationFn: async ({ id, enabled }) =>
       apiRequest("PUT", `/api/admin/ai-models/${id}`, { enabled }),
-    onSuccess: () => { refetch(); },
-    onError: () => toast({ title: "Couldn't update model", description: "The model's existing enabled state is unchanged.", variant: "destructive" }),
+    listKeys: [["/api/admin/ai-models"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ enabled }) => ({ enabled }),
+    successToast: false,
   });
 
-  const updateWeightMutation = useMutation({
-    mutationFn: async ({ id, weight }: { id: number; weight: number }) =>
+  const updateWeightMutation = useOptimisticUpdate<{ id: number; weight: number }>({
+    mutationFn: async ({ id, weight }) =>
       apiRequest("PUT", `/api/admin/ai-models/${id}`, { weight }),
-    onSuccess: () => { refetch(); },
-    onError: () => toast({ title: "Couldn't update weight", description: "The model's existing weight is unchanged.", variant: "destructive" }),
+    listKeys: [["/api/admin/ai-models"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ weight }) => ({ weight }),
+    successToast: false,
   });
 
   return (
@@ -4854,14 +4853,17 @@ function FeatureFlagsSection() {
     queryKey: ["/api/founder/feature-flags"],
   });
 
-  const toggleMutation = useMutation({
-    mutationFn: async ({ key, enabled }: { key: string; enabled: boolean }) =>
+  // Optimistic feature-flag toggle — switch should flip instantly, rolling
+  // back if the server rejects. Carries the flag's row id (not the slug
+  // key) so the cached row gets patched by id-match.
+  const toggleMutation = useOptimisticUpdate<{ id: number; key: string; enabled: boolean }>({
+    mutationFn: async ({ key, enabled }) =>
       apiRequest("PUT", `/api/founder/feature-flags/${key}`, { enabled }),
-    onSuccess: () => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/config/features"] });
-    },
-    onError: () => toast({ title: "Couldn't update flag", description: "The flag's existing value is unchanged.", variant: "destructive" }),
+    listKeys: [["/api/founder/feature-flags"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ enabled }) => ({ enabled }),
+    extraInvalidateKeys: [["/api/config/features"]],
+    successToast: false,
   });
 
   return (
@@ -4884,7 +4886,7 @@ function FeatureFlagsSection() {
             <div key={flag.key} className="flex items-start gap-3 p-3 border rounded-card">
               <Switch
                 checked={flag.enabled}
-                onCheckedChange={(enabled) => toggleMutation.mutate({ key: flag.key, enabled })}
+                onCheckedChange={(enabled) => toggleMutation.mutate({ id: flag.id, key: flag.key, enabled })}
                 disabled={toggleMutation.isPending}
                 className="mt-0.5 shrink-0"
               />
@@ -4930,14 +4932,20 @@ function PricingSection() {
     queryKey: ["/api/founder/pricing"],
   });
 
-  const updatePriceMutation = useMutation({
-    mutationFn: async ({ tier, monthly, yearly }: { tier: string; monthly: number; yearly: number }) =>
+  // Optimistic price update — closes the edit panel instantly while the
+  // PUT is in flight. Carries the row id so the list cache can match by id.
+  const updatePriceMutation = useOptimisticUpdate<{ id: number; tier: string; monthly: number; yearly: number }>({
+    mutationFn: async ({ tier, monthly, yearly }) =>
       apiRequest("PUT", `/api/founder/pricing/${tier}`, {
         displayPriceMonthly: monthly,
         displayPriceYearly: yearly,
       }),
-    onSuccess: () => { refetch(); setEditingTier(null); toast({ title: "Prices updated" }); },
-    onError: () => toast({ title: "Couldn't update prices", description: "Tier pricing is unchanged. Try again.", variant: "destructive" }),
+    listKeys: [["/api/founder/pricing"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ monthly, yearly }) => ({ displayPriceMonthly: monthly, displayPriceYearly: yearly }),
+    successToast: { title: "Prices updated" },
+  }, {
+    onSuccess: () => setEditingTier(null),
   });
 
   const createPromoMutation = useMutation({
@@ -4957,11 +4965,13 @@ function PricingSection() {
     onError: () => toast({ title: "Couldn't clear promotion", description: "The promotion is still active. Try again.", variant: "destructive" }),
   });
 
-  const togglePromoCodesMutation = useMutation({
-    mutationFn: async ({ tier, allow }: { tier: string; allow: boolean }) =>
+  const togglePromoCodesMutation = useOptimisticUpdate<{ id: number; tier: string; allow: boolean }>({
+    mutationFn: async ({ tier, allow }) =>
       apiRequest("PUT", `/api/founder/pricing/${tier}`, { allowPromoCodes: allow }),
-    onSuccess: () => refetch(),
-    onError: () => toast({ title: "Couldn't update promo code setting", description: "The existing setting is unchanged.", variant: "destructive" }),
+    listKeys: [["/api/founder/pricing"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ allow }) => ({ allowPromoCodes: allow }),
+    successToast: false,
   });
 
   const tierLabels: Record<string, string> = {
@@ -5024,7 +5034,7 @@ function PricingSection() {
                         <Button
                           size="sm"
                           className="h-8"
-                          onClick={() => updatePriceMutation.mutate({ tier: cfg.tier, monthly: parseInt(draftPrices.monthly), yearly: parseInt(draftPrices.yearly) })}
+                          onClick={() => updatePriceMutation.mutate({ id: cfg.id, tier: cfg.tier, monthly: parseInt(draftPrices.monthly), yearly: parseInt(draftPrices.yearly) })}
                           disabled={updatePriceMutation.isPending}
                         >
                           Save
@@ -5062,7 +5072,7 @@ function PricingSection() {
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={cfg.allowPromoCodes}
-                      onCheckedChange={(allow) => togglePromoCodesMutation.mutate({ tier: cfg.tier, allow })}
+                      onCheckedChange={(allow) => togglePromoCodesMutation.mutate({ id: cfg.id, tier: cfg.tier, allow })}
                       className="scale-75"
                     />
                     <span className="text-xs text-muted-foreground">User promo codes at checkout</span>
@@ -5327,40 +5337,32 @@ function CompanyBriefingPanel() {
     refetchInterval: 60 * 60 * 1000, // refresh every hour
   });
 
-  const approveMutation = useMutation({
-    mutationFn: async (decisionId: number) => {
-      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${decisionId}`, {
+  // Optimistic approve/reject on decisions-inbox — the card should reflect
+  // its new state instantly. Rollback restores prior status on server error.
+  const approveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${id}`, {
         action: "approve",
       });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Decision approved" });
-      refetch();
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({ title, description, variant: "destructive" });
-    },
+    listKeys: [["/api/founder/intelligence/decisions-inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "approved" }),
+    successToast: { title: "Decision approved" },
   });
 
-  const rejectMutation = useMutation({
-    mutationFn: async (decisionId: number) => {
-      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${decisionId}`, {
+  const rejectMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${id}`, {
         action: "reject",
       });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Decision rejected" });
-      refetch();
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({ title, description, variant: "destructive" });
-    },
+    listKeys: [["/api/founder/intelligence/decisions-inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "rejected" }),
+    successToast: { title: "Decision rejected" },
   });
 
   if (isLoading) {
@@ -5482,7 +5484,7 @@ function CompanyBriefingPanel() {
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs border-acr-pos/30 text-acr-pos hover:bg-acr-pos/10"
-                        onClick={() => approveMutation.mutate(decision.id)}
+                        onClick={() => approveMutation.mutate({ id: decision.id })}
                         disabled={approveMutation.isPending}
                       >
                         Approve
@@ -5491,7 +5493,7 @@ function CompanyBriefingPanel() {
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs border-acr-neg/30 text-acr-neg hover:bg-acr-neg/10"
-                        onClick={() => rejectMutation.mutate(decision.id)}
+                        onClick={() => rejectMutation.mutate({ id: decision.id })}
                         disabled={rejectMutation.isPending}
                       >
                         Reject

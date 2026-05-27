@@ -23,6 +23,7 @@ import {
   uniqueIndex,
   date,
   real,
+  numeric,
   check,
   primaryKey,
 } from "drizzle-orm/pg-core";

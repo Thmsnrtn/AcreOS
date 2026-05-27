@@ -104,47 +104,20 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ─── Rotating vertical label (hero) ─────────────────────────────────
-   Each label slides up out of view and the next slides up from below.
-   The sizer reserves width at the widest label so the remainder of
-   the headline doesn't shift as labels cycle. */
-.lp-vertical-rotator {
-  position: relative;
-  display: inline-block;
-  vertical-align: baseline;
+/* ─── Wedge sentence (under H1) ──────────────────────────────────────
+   One defensible line that names the consolidation. Sits between the
+   serif H1 and the longer sub-copy paragraph. Heavier weight than
+   .lp-hero-sub so a scan-reader catches it without reading the full
+   paragraph. */
+.lp-hero-wedge {
+  font: 600 19px/1.45 var(--font-sans);
+  color: var(--acr-ink, #241607);
+  margin: 0 0 18px;
+  max-width: 640px;
+  letter-spacing: -0.005em;
 }
-.lp-vertical-rotator-sizer {
-  display: inline-block;
-  visibility: hidden;
-  white-space: nowrap;
-}
-.lp-vertical-rotator-window {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: baseline;
-}
-.lp-vertical-rotator-label {
-  display: inline-block;
-  white-space: nowrap;
-  animation: lp-vertical-slide 2.6s cubic-bezier(0.16, 0.84, 0.44, 1) both;
-  /* italic + brand color inherited from .lp-hero-line:nth-child(2) on
-     the parent line. */
-}
-@keyframes lp-vertical-slide {
-  /* Slide in from below */
-  0%   { opacity: 0; transform: translateY(0.9em); }
-  10%  { opacity: 1; transform: translateY(0); }
-  /* Hold mid-cycle */
-  85%  { opacity: 1; transform: translateY(0); }
-  /* Slide out the top */
-  100% { opacity: 0; transform: translateY(-0.9em); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .lp-vertical-rotator-label {
-    animation: none;
-  }
+@media (max-width: 768px) {
+  .lp-hero-wedge { font-size: 17px; }
 }
 
 .lp-hero-sub {
@@ -1666,6 +1639,28 @@
   color: var(--acr-ink-2, rgba(36, 22, 7, 0.72));
   max-width: 720px;
   line-height: 1.5;
+}
+.lp-positioning-roadmap-list {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 720px;
+}
+.lp-positioning-roadmap-chip {
+  font-family: var(--font-sans, system-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acr-ink-3, rgba(36, 22, 7, 0.55));
+  padding: 6px 12px;
+  border: 0.5px solid var(--acr-line-soft, rgba(80, 40, 15, 0.12));
+  border-radius: 999px;
+  background: var(--acr-surface, #FFFCF6);
+  /* Intentionally non-interactive — these are roadmap markers, not
+     CTAs. No hover, no cursor:pointer. */
 }
 @media (max-width: 720px) {
   .lp-positioning-inner {

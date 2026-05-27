@@ -35,7 +35,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(alerts);
     } catch (error: any) {
       logger.error("Get alerts error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch alerts" });
+      Errors.internal(res, error);
     }
   });
 
@@ -71,7 +71,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(score);
     } catch (error: any) {
       logger.error("Get lead intent score error", error);
-      res.status(500).json({ message: error.message || "Failed to calculate intent score" });
+      Errors.internal(res, error);
     }
   });
 
@@ -117,7 +117,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ hotLeads: hotLeadIds.length, leadIds: hotLeadIds });
     } catch (error: any) {
       logger.error("Check hot leads error", error);
-      res.status(500).json({ message: error.message || "Failed to check hot leads" });
+      Errors.internal(res, error);
     }
   });
 
@@ -135,7 +135,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ system: systemTemplates, organization: orgTemplates });
     } catch (error: any) {
       logger.error("Get automation templates error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch templates" });
+      Errors.internal(res, error);
     }
   });
 
@@ -150,7 +150,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(jobs);
     } catch (error: any) {
       logger.error("Get automation jobs error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch jobs" });
+      Errors.internal(res, error);
     }
   });
 
@@ -223,7 +223,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(config);
     } catch (error: any) {
       logger.error("Check SMS config error", error);
-      res.status(500).json({ message: error.message || "Failed to check SMS configuration" });
+      Errors.internal(res, error);
     }
   });
 
@@ -233,7 +233,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { accountSid, authToken, fromPhoneNumber } = req.body;
       
       if (!accountSid || !authToken || !fromPhoneNumber) {
-        return res.status(400).json({ message: "Account SID, Auth Token, and Phone Number are required" });
+        return Errors.badRequest(res, "Account SID, Auth Token, and Phone Number are required");
       }
 
       const result = await smsServiceModule.saveTwilioCredentials(
@@ -260,7 +260,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { to, message } = req.body;
 
       if (!to || !message) {
-        return res.status(400).json({ message: "Phone number and message are required" });
+        return Errors.badRequest(res, "Phone number and message are required");
       }
 
       // ── TCPA gate ────────────────────────────────────────────────────
@@ -353,13 +353,13 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { message } = req.body;
 
       if (!message) {
-        return res.status(400).json({ message: "Message is required" });
+        return Errors.badRequest(res, "Message is required");
       }
 
       // ── TCPA gate ────────────────────────────────────────────────────
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
       const { canSendViaChannel, isWithinQuietHoursForLead } = await import(
         "./services/tcpaCompliance"
@@ -597,7 +597,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       // Validate payload is provided
       if (!payload || typeof payload !== "object") {
-        return res.status(400).json({ message: "Payload is required and must be an object" });
+        return Errors.badRequest(res, "Payload is required and must be an object");
       }
       
       // Create job
@@ -608,7 +608,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json(job);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to create job" });
+      Errors.internal(res, error);
     }
   });
   
@@ -619,12 +619,12 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const job = jobQueueService.getJobStatus(req.params.id);
       
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return Errors.notFound(res, "Job");
       }
       
       res.json(job);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get job" });
+      Errors.internal(res, error);
     }
   });
   
@@ -641,7 +641,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         stats: jobQueueService.getStats(),
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get jobs" });
+      Errors.internal(res, error);
     }
   });
   
@@ -653,7 +653,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json(stats);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get job statistics" });
+      Errors.internal(res, error);
     }
   });
 
@@ -685,7 +685,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(statuses);
     } catch (error: any) {
       logger.error("Error fetching integration statuses", error);
-      res.status(500).json({ message: "Failed to fetch integration statuses" });
+      Errors.internal(res, new Error('Failed to fetch integration statuses'));
     }
   });
 
@@ -696,13 +696,13 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { service, apiKey } = req.body;
 
       if (!service || !apiKey) {
-        return res.status(400).json({ message: "Service and API key are required" });
+        return Errors.badRequest(res, "Service and API key are required");
       }
 
       // Validate service is one of the allowed ones
       const allowedServices = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       if (!allowedServices.includes(service)) {
-        return res.status(400).json({ message: "Invalid service" });
+        return Errors.badRequest(res, "Invalid service");
       }
 
       // Save the integration
@@ -730,7 +730,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ success: true, message: `${service} API key saved successfully` });
     } catch (error: any) {
       logger.error("Error saving API key", error);
-      res.status(500).json({ message: error.message || "Failed to save API key" });
+      Errors.internal(res, error);
     }
   });
 
@@ -877,7 +877,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(position);
     } catch (err: any) {
       logger.error("Tax optimizer error", err);
-      res.status(500).json({ message: err.message || "Failed to analyze tax position" });
+      Errors.internal(res, err);
     }
   });
 
@@ -890,7 +890,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
       res.json(estimate);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to estimate deal tax" });
+      Errors.internal(res, err);
     }
   });
 
@@ -903,7 +903,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
       res.json({ report, taxYear });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to generate tax report" });
+      Errors.internal(res, err);
     }
   });
 
@@ -931,7 +931,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(result);
     } catch (err: any) {
       logger.error("Dealer classification error", err);
-      res.status(500).json({ message: err.message || "Failed to classify" });
+      Errors.internal(res, err);
     }
   });
 
@@ -943,10 +943,10 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const totalWorkHoursThisYear = Number(req.body?.totalWorkHoursThisYear ?? 0);
       const hasMaterialParticipationLog = Boolean(req.body?.hasMaterialParticipationLog);
       if (!Number.isFinite(realEstateHoursThisYear) || realEstateHoursThisYear < 0) {
-        return res.status(400).json({ message: "realEstateHoursThisYear must be a non-negative number" });
+        return Errors.badRequest(res, "realEstateHoursThisYear must be a non-negative number");
       }
       if (!Number.isFinite(totalWorkHoursThisYear) || totalWorkHoursThisYear < 0) {
-        return res.status(400).json({ message: "totalWorkHoursThisYear must be a non-negative number" });
+        return Errors.badRequest(res, "totalWorkHoursThisYear must be a non-negative number");
       }
       const { evaluateRealEstateProfessional } = await import("./services/dealerInvestorClassifier");
       const result = evaluateRealEstateProfessional({
@@ -957,7 +957,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(result);
     } catch (err: any) {
       logger.error("RE-professional test error", err);
-      res.status(500).json({ message: err.message || "Failed to evaluate" });
+      Errors.internal(res, err);
     }
   });
 
@@ -979,7 +979,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         .where(eq(investorProfiles.organizationId, org.id));
       res.json({ profile: profile || null });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1020,7 +1020,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         res.json({ profile: created });
       }
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1061,7 +1061,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           : "Verification documents submitted for review (1-2 business days).",
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1078,7 +1078,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         .limit(50);
       res.json({ profiles, count: profiles.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

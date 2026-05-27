@@ -5,14 +5,14 @@
  * does, not why it was built. No "I built this", no founder-letter
  * tone, no audience-flattering rhetorical hooks.
  *
- * Positioning: AcreOS is a multi-vertical operating system. Land
- * Investors are the founding vertical and remain the prevailing
- * framing in deep product surfaces, but the public landing speaks to
- * every persona we serve — land flippers, note investors,
+ * Positioning: AcreOS leads with Land Investors as the founding
+ * vertical (per v6 positioning). Other verticals — note investors,
  * fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers,
- * buy-and-hold landlords. The hero headline cycles through them via
- * RotatingVertical so a wholesaler or note investor reading the page
- * isn't visually told "this is for someone else."
+ * buy-and-hold landlords — are roadmap-framed under the positioning
+ * band, with no active CTAs. The earlier 7-persona rotating headline
+ * was removed because it diluted the wedge and made the page read as
+ * a generic "real estate investor suite" rather than the consolidation
+ * play it actually is.
  *
  * 10-second test: a reader should understand within 10 seconds who
  * the platform is for, what it does, and how it works. Every section
@@ -24,29 +24,31 @@
 
 export const LANDING_COPY = {
   hero: {
-    eyebrow: "Built for property investors",
-    // The headline reads "The operating system / for <ROTATOR>." Hero.tsx
-    // composes it with the <RotatingVertical /> component to keep the
-    // line stable while the vertical label cycles every ~2.6s.
+    eyebrow: "Built for Land Investors",
+    // Static two-line headline. The italic brand-color line two is
+    // rendered by .lp-hero-line:nth-child(2). No rotation — Land
+    // Investors is the wedge and we name it.
     title: [
       "The operating system",
-      // Kept as a single fallback string so the OpenGraph + JsonLd
-      // surfaces have a static phrase to lead with.
-      "for land investors.",
+      "for Land Investors.",
     ] as const,
-    titleForPrefix: "for ",
-    titleSuffix: ".",
+    // The wedge sentence: one defensible line that names the
+    // consolidation. Five verbs map 1:1 to the lifecycle the product
+    // owns end-to-end — find, mail, reply, close, service. Nothing
+    // else on the market does the last two for a land operator.
+    wedge:
+      "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
     sub:
-      "One platform for every property investor — pull lists, run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold, AcreOS does the busy work so the operator only handles judgment calls.",
+      "AcreOS pulls lists, runs comps, sends direct mail, drafts seller replies, and tracks every parcel from cold lead through closed note. The operator handles judgment calls; the system handles the busy work.",
     cta1: "Start free trial",
     cta2: "See how it works",
     ctaSub: "14 days free. No credit card required.",
     proof: "",
   },
   positioning: {
-    primary: "One operating system. Every investor type.",
+    primary: "Built for Land Investors.",
     roadmap:
-      "Land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords — each gets the vocabulary, workflows, and compliance their vertical needs.",
+      "Coming soon for note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Each vertical gets its own vocabulary, workflows, and compliance — shipped one at a time, not bundled into a generic suite.",
   },
   how: {
     eyebrow: "How it works",
@@ -55,7 +57,7 @@ export const LANDING_COPY = {
       {
         n: 1,
         t: "Define the buy-box",
-        b: "Your criteria — geography, deal type, price band, condition, yield. AcreOS filters every new lead against it.",
+        b: "Counties, acreage, price band, owner profile. AcreOS filters every new lead against it.",
       },
       {
         n: 2,
@@ -73,18 +75,18 @@ export const LANDING_COPY = {
     eyebrow: "Meet Pax",
     title: "Pax — your AI operations partner.",
     sub:
-      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, books follow-ups, services notes, tracks rehabs. Every action is shown with the data it used. Nothing happens behind your back.",
+      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, books follow-ups, services notes. Every action is shown with the data it used. Nothing happens behind your back.",
   },
   day: {
     eyebrow: "A Tuesday in May",
     title: "Two versions of the same week.",
     sub:
-      "Before AcreOS, a typical Tuesday looks like the left column. With AcreOS, it looks like the right — regardless of whether you're underwriting a parcel, a note, a rehab, or a rental.",
+      "Before AcreOS, a typical Tuesday looks like the left column. With AcreOS, it looks like the right.",
   },
   features: {
     eyebrow: "What's in the box",
-    title: "Every tool a property investor needs, in one place.",
-    sub: "Find, analyze, reach, close, service. No tab-juggling, no vertical-locked tools.",
+    title: "Every tool a Land Investor needs, in one place.",
+    sub: "Find, analyze, reach, close, service. No tab-juggling, no per-step subscriptions.",
   },
   quotes: {
     eyebrow: "What the system does",
@@ -94,7 +96,7 @@ export const LANDING_COPY = {
     eyebrow: "Pricing",
     title: "Transparent pricing.",
     sub:
-      "Numbers on the page. No \"contact us\" wall. Pick a tier that matches operation size — same price regardless of which vertical you operate in.",
+      "Numbers on the page. No \"contact us\" wall. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the data costs every operator already pays.",
   },
   faq: {
     eyebrow: "Common questions",
@@ -104,7 +106,7 @@ export const LANDING_COPY = {
     eyebrow: "Ready when you are",
     title: "Try AcreOS for two weeks.",
     sub:
-      "No card, no calls, no pressure. Full feature access during the trial — across every vertical.",
+      "No card, no calls, no pressure. Full feature access during the trial.",
     cta1: "Start free trial",
     cta2: "Email us first",
   },

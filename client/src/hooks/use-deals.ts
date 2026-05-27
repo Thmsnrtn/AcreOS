@@ -148,29 +148,19 @@ export function useDeleteDeal() {
 }
 
 export function useSaveDealAnalysis() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async ({ dealId, analysisResults }: { dealId: number; analysisResults: object }) => {
+  // Optimistic analysis save — patches analysisResults into every cached
+  // deal list + the detail cache so the UI never shows a stale empty
+  // analysis panel after the calc is submitted. Backed by useOptimisticUpdate.
+  return useOptimisticUpdate<{ dealId: number; analysisResults: object }, Deal>({
+    mutationFn: async ({ dealId, analysisResults }) => {
       const res = await apiRequest("PUT", `/api/deals/${dealId}`, { analysisResults });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-      toast({
-        title: "Success",
-        description: "Deal analysis saved successfully.",
-      });
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({
-        title,
-        description,
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/deals"]],
+    detailKey: ({ dealId }) => ["/api/deals", dealId],
+    getId: ({ dealId }) => dealId,
+    buildPatch: ({ analysisResults }) => ({ analysisResults }),
+    successToast: { title: "Success", description: "Deal analysis saved successfully." },
   });
 }
 

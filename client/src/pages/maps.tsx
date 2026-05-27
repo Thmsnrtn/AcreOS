@@ -5,7 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
-import { PropertyMap } from "@/components/property-map";
+import { PropertyMap } from "@/components/property-map-lazy";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";

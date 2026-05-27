@@ -27,6 +27,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useMotionValue, useTransform, type PanInfo, AnimatePresence } from "framer-motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { useLocation } from "wouter";
 import {
   Mail,
@@ -183,6 +184,8 @@ export function InboxTab() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  // Respect prefers-reduced-motion for the swipe-card exit collapse.
+  const cardExitTransition = useRespectfulTransition({ duration: 0.18 });
 
   const {
     data: conversations = [],
@@ -316,7 +319,7 @@ export function InboxTab() {
             layout
             initial={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0, marginTop: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={cardExitTransition}
           >
             <InboxCard
               conversation={c}

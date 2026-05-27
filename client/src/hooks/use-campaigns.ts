@@ -220,15 +220,19 @@ export function useOptimizeCampaign() {
 }
 
 export function useMarkOptimizationImplemented() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ optimizationId, campaignId }: { optimizationId: number; campaignId: number }) => {
+  // Optimistic flag — mark the suggestion as implemented in the cached
+  // list immediately so the "Implement" button reflects done-state, and
+  // roll back if the server rejects. listKey resolves per-call against
+  // the campaign's optimizations cache.
+  return useOptimisticUpdate<{ optimizationId: number; campaignId: number }, CampaignOptimization>({
+    mutationFn: async ({ optimizationId }) => {
       const res = await apiRequest("PUT", `/api/optimizations/${optimizationId}/implement`, {});
       return res.json() as Promise<CampaignOptimization>;
     },
-    onSuccess: (_data, { campaignId }) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'optimizations'] });
-    },
+    listKeys: [({ campaignId }) => ['/api/campaigns', campaignId, 'optimizations']],
+    getId: ({ optimizationId }) => optimizationId,
+    buildPatch: () => ({ isImplemented: true }),
+    successToast: false,
   });
 }
 

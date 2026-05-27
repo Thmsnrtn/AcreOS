@@ -34,6 +34,7 @@ import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { SPRING_SOFT } from "@/lib/motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { LiveDot } from "./LiveDot";
 
 type Snap = "peek" | "half" | "full";
@@ -91,11 +92,14 @@ export function BridgeAtlasSheet({
     return fullPx - PEEK_PX;
   };
 
-  // Animate to the current snap whenever it changes.
+  // Animate to the current snap whenever it changes. Respect
+  // prefers-reduced-motion — when on, snap instantly instead of
+  // animating across half the viewport.
+  const snapTransition = useRespectfulTransition(SPRING_SOFT);
   useEffect(() => {
-    void controls.start({ y: offsetForSnap(snap), transition: SPRING_SOFT });
+    void controls.start({ y: offsetForSnap(snap), transition: snapTransition });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap, fullPx]);
+  }, [snap, fullPx, snapTransition]);
 
   // If a prefill arrives while peeked, jump to full so the user can
   // immediately edit-and-send.

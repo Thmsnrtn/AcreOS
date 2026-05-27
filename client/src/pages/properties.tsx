@@ -118,7 +118,7 @@ import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
+import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/property-map-lazy";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";

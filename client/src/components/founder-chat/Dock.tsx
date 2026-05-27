@@ -48,6 +48,10 @@ import {
   SPRING_SOFT,
   TAP_PRESS,
 } from "@/lib/motion";
+import {
+  useRespectfulTransition,
+  useRespectfulVariants,
+} from "@/lib/motion-tokens";
 import { TOUCH_TARGET_PT } from "@/lib/spacing";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
@@ -83,6 +87,12 @@ export interface DockProps {
 export function Dock({ pageContext, prefillMessage }: DockProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
+
+  // Respect prefers-reduced-motion: the trigger bubble + panel slide
+  // both collapse to instant when the OS reports reduce.
+  const triggerVariants = useRespectfulVariants(REVEAL_FROM_BELOW);
+  const triggerTransition = useRespectfulTransition(SPRING_INTERACTIVE);
+  const panelTransition = useRespectfulTransition(SPRING_SOFT);
 
   // Hydrate persisted open state once on mount. Done in effect (not
   // useState initializer) so SSR + first-paint stay deterministic.
@@ -224,12 +234,12 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
             minWidth: TOUCH_TARGET_PT + 12,
             minHeight: TOUCH_TARGET_PT + 12,
           }}
-          variants={REVEAL_FROM_BELOW}
+          variants={triggerVariants}
           initial="initial"
           animate="animate"
           exit="exit"
           whileTap={TAP_PRESS}
-          transition={SPRING_INTERACTIVE}
+          transition={triggerTransition}
         >
           <Sparkles className="w-5 h-5" aria-hidden="true" />
           {badgeCount > 0 && (
@@ -287,7 +297,7 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
                   ? { y: "100%", opacity: 1 }
                   : { x: 24, opacity: 0 }
               }
-              transition={SPRING_SOFT}
+              transition={panelTransition}
             >
               {/* Mobile drag handle */}
               {isMobile && (

@@ -673,7 +673,7 @@ export function registerAdminRoutes(app: Express): void {
     }
 
     logger.warn("Admin access denied", { userId, userEmail, path: req.path });
-    res.status(403).json({ message: "Access denied. Admin privileges required." });
+    Errors.forbidden(res, "Access denied. Admin privileges required.");
   };
 
   // F-A01-1: Cross-org admin guard — validates URL :orgId matches authenticated org
@@ -891,7 +891,7 @@ export function registerAdminRoutes(app: Express): void {
       const job = getValidationJob(req.params.jobId);
       
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return Errors.notFound(res, "Job");
       }
       
       const includeFullResults = req.query.full === "true" || job.status === "completed";
@@ -978,7 +978,7 @@ export function registerAdminRoutes(app: Express): void {
       const targetOrgId = organizationId || org?.id;
       
       if (!targetOrgId) {
-        return res.status(400).json({ message: "Organization ID is required" });
+        return Errors.badRequest(res, "Organization ID is required");
       }
       
       const [updated] = await db
@@ -1202,7 +1202,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsedGis.success) return res.status(400).json({ message: "Invalid input", errors: parsedGis.error.issues });
       const { state, county, baseUrl, endpointType } = parsedGis.data;
       if (!state || !county || !baseUrl) {
-        return res.status(400).json({ message: "state, county, and baseUrl are required" });
+        return Errors.badRequest(res, "state, county, and baseUrl are required");
       }
       
       const endpoint = await db.insert(countyGisEndpoints).values({
@@ -1673,13 +1673,13 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.issues });
       const { endpoints } = parsedBulkAdd.data;
       if (!endpoints || !Array.isArray(endpoints) || endpoints.length === 0) {
-        return res.status(400).json({ message: "No endpoints provided" });
+        return Errors.badRequest(res, "No endpoints provided");
       }
       
       // Validate each endpoint has required fields
       for (const ep of endpoints) {
         if (!ep.state || !ep.county || !ep.baseUrl) {
-          return res.status(400).json({ message: "Each endpoint must have state, county, and baseUrl" });
+          return Errors.badRequest(res, "Each endpoint must have state, county, and baseUrl");
         }
       }
       
@@ -2135,10 +2135,10 @@ export function registerAdminRoutes(app: Express): void {
       const { sources } = parsedBulk.data;
 
       if (!Array.isArray(sources) || sources.length === 0) {
-        return res.status(400).json({ message: "sources must be a non-empty array" });
+        return Errors.badRequest(res, "sources must be a non-empty array");
       }
       if (sources.length > 500) {
-        return res.status(400).json({ message: "Cannot import more than 500 sources at once" });
+        return Errors.badRequest(res, "Cannot import more than 500 sources at once");
       }
 
       let imported = 0;
@@ -2223,7 +2223,7 @@ export function registerAdminRoutes(app: Express): void {
       const { propertyId, forceRefresh } = parsedPe.data;
 
       if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
+        return Errors.badRequest(res, "propertyId is required");
       }
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
@@ -2251,7 +2251,7 @@ export function registerAdminRoutes(app: Express): void {
       const { latitude, longitude, categories, state, county, apn, forceRefresh } = parsedCoord.data;
 
       if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
+        return Errors.badRequest(res, "latitude and longitude are required");
       }
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
@@ -3048,7 +3048,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { adAccountId, accessToken, pixelId, appId, appSecret } = req.body;
       if (!adAccountId || !accessToken) {
-        return res.status(400).json({ message: "adAccountId and accessToken are required" });
+        return Errors.badRequest(res, "adAccountId and accessToken are required");
       }
       const account = await storage.upsertFounderAdAccount({
         platform: "meta",
@@ -3090,11 +3090,11 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { name, templateKey, dailyBudgetCents, targetCountries } = req.body;
       if (!name || !templateKey) {
-        return res.status(400).json({ message: "name and templateKey are required" });
+        return Errors.badRequest(res, "name and templateKey are required");
       }
       const adAccount = await storage.getFounderAdAccount("meta");
       if (!adAccount) {
-        return res.status(400).json({ message: "No Meta ad account configured. Add your Meta ad account credentials first." });
+        return Errors.badRequest(res, "No Meta ad account configured. Add your Meta ad account credentials first.");
       }
 
       // Create the campaign in Meta via the growth ad service

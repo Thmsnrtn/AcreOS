@@ -191,6 +191,49 @@ export function respectReducedMotion(t: Transition, reduced: boolean): Transitio
   return reduced ? MOTION.instant : t;
 }
 
+/**
+ * Hook variant of `respectReducedMotion` — handles the media-query
+ * subscription internally. Components animating spatial motion
+ * (slides, scales, spring entrances) should call this and spread the
+ * result onto their `transition` prop. When the OS reports
+ * prefers-reduced-motion: reduce, every consumer collapses to a
+ * zero-duration noop without further ceremony.
+ *
+ *   const transition = useRespectfulTransition(SPRINGS.smooth);
+ *   <motion.div transition={transition} animate={{ y: 0 }} />
+ */
+export function useRespectfulTransition(t: Transition): Transition {
+  const reduced = useReducedMotionPreference();
+  return reduced ? MOTION.instant : t;
+}
+
+/**
+ * Hook: rewrite a Variants map so every `transition` block becomes
+ * the zero-duration instant noop when prefers-reduced-motion is on.
+ *
+ * Returns the original variants untouched when motion is allowed, so
+ * there's no extra allocation in the common case.
+ *
+ *   const variants = useRespectfulVariants(REVEAL_FROM_BELOW);
+ *   <motion.div variants={variants} initial="initial" animate="animate" />
+ */
+export function useRespectfulVariants(variants: Variants): Variants {
+  const reduced = useReducedMotionPreference();
+  if (!reduced) return variants;
+  // Strip transitions + spatial deltas from each state so the change
+  // applies instantly without scale/translate jumps mid-paint.
+  const flattened: Variants = {};
+  for (const key of Object.keys(variants)) {
+    const value = variants[key];
+    if (typeof value === "function") {
+      flattened[key] = value;
+      continue;
+    }
+    flattened[key] = { ...value, transition: { duration: 0 } };
+  }
+  return flattened;
+}
+
 // ─── Re-export the variant primitives that consume these tokens ─────────
 // Keeping the same names + shapes as before so existing imports of
 // `staggerContainer`, `staggerItem`, etc. from `@/lib/animations` continue

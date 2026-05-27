@@ -10,6 +10,7 @@
 
 import { useState, useRef } from "react";
 import { motion, useMotionValue, useTransform, AnimatePresence } from "framer-motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,10 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
   const hapticFired = useRef(false);
   const qc = useQueryClient();
   const x = useMotionValue(0);
+
+  // Respect prefers-reduced-motion for the flash spring + expand fade.
+  const flashSpring = useRespectfulTransition({ type: "spring", stiffness: 400, damping: 15 });
+  const expandFade = useRespectfulTransition({ duration: 0.2 });
 
   // Color interpolation based on drag position
   const backgroundColor = useTransform(
@@ -181,11 +186,11 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
               }`}
             >
               {flashState === 'approved' ? (
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={flashSpring}>
                   <Check className="h-12 w-12 text-acr-pos" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               ) : (
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={flashSpring}>
                   <X className="h-12 w-12 text-acr-neg" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               )}
@@ -244,7 +249,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                transition={expandFade}
                 className="overflow-hidden"
               >
                 <pre className="text-xs bg-muted rounded-card p-3 overflow-auto max-h-32">
