@@ -232,8 +232,11 @@ const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
 
 // Admin / Founder
 const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
-const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
-const FounderHomePage = React.lazy(() => import("@/pages/founder-home"));
+// IA consolidation (Lens 4): the legacy FounderDashboard and FounderHomePage
+// page bundles are no longer mounted — every prior founder-home route
+// redirects to /founder/bridge. Files remain on disk pending dedicated
+// extraction sweep (founder-dashboard.tsx is the 7,400-line monolith
+// tracked in docs/exhaustive-completion/FOUNDER-DASHBOARD-V2-PLAN.md).
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
@@ -259,17 +262,15 @@ const FounderTitlePartnersPage = React.lazy(() => import("@/pages/founder/title-
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
-const FounderNowPage = React.lazy(() => import("@/pages/founder/now"));
-// Phase C — Atlas chat shell. Becomes the /founder default landing;
-// legacy tile-driven Now layout stays reachable at /founder/dashboard
-// via LegacyNowSurface until Phase F deprecates it.
+// FounderNowPage removed (Lens 4) — /founder/now now redirects to
+// /founder/bridge. The page file lives on disk pending extraction sweep.
+// /founder is the Atlas chat shell; /founder/bridge is the fused
+// canonical home (chat + telemetry).
 const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
 const FounderBridgePage = React.lazy(() => import("@/pages/founder/bridge"));
-const FounderLegacyDashboard = React.lazy(() =>
-  import("@/components/founder-chat/LegacyNowSurface").then((m) => ({
-    default: m.LegacyNowSurface,
-  })),
-);
+// FounderLegacyDashboard removed (Lens 4) — /founder/dashboard now
+// redirects to /founder/bridge. LegacyNowSurface lives on disk for
+// reference but is no longer route-mounted.
 const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
@@ -827,26 +828,30 @@ function Router() {
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
+      {/* IA consolidation (Lens 4): /founder/bridge is the canonical
+          founder home — fused chat + telemetry surface. Every prior
+          founder-home variant redirects here.
+            • /founder-dashboard  — was the legacy 7,400-line operations
+              console (FounderDashboard). Now points to bridge; the legacy
+              component itself stays reachable via the sidebar "Operations
+              console (legacy)" overflow entry which still hits its old
+              route → bridge (no longer the real dashboard, but extraction
+              continues per Sigfried §1).
+            • /founder-home      — was the early "clean home" landing page.
+            • /founder/now       — was the tile-driven daily inbox.
+            • /founder/cockpit   — was the weekly steering surface.
+          See client/src/lib/route-redirects.ts. */}
       <Route path="/founder-dashboard">
-        {() => <FounderProtectedRoute component={FounderDashboard} />}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* /founder and /founder-home now serve the new clean home with
-          autonomy-health card + unified todo preview. The legacy
-          operational dashboard lives at /founder-dashboard. */}
-      {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/founder-home">
-        {() => <Redirect to="/founder" />}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* Founder redesign Phase F — legacy /founder/now and /founder/cockpit
-          redirect to the new canonical surfaces. Pages themselves remain
-          live (rendered by the new /founder + /founder/steering routes);
-          only the URLs deprecate. 60-day window then 404 per the
-          founder-redesign plan. */}
       <Route path="/founder/now">
-        {() => <Redirect to="/founder" />}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/cockpit">
-        {() => <Redirect to="/founder/steering" />}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       {/* Pillar R — per-(agent, category) tier admin. Linked from the
           cockpit's autonomy section. */}
@@ -872,20 +877,23 @@ function Router() {
       <Route path="/founder/inspector/audit">
         {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
-      {/* Founder Chat (Atlas) Phase C — /founder is now the chat shell.
-          The previous tile-driven Now-surface (FounderNowPage) moves to
-          /founder/dashboard via LegacyNowSurface during the transition;
-          Phase E folds its tiles into the chat as a morning-brief
-          artifact and Phase F deprecates the dashboard surface. */}
+      {/* IA consolidation (Lens 4): /founder/dashboard was the legacy
+          tile-driven Now-surface (LegacyNowSurface). Folded into the
+          bridge per the consolidation plan. */}
       <Route path="/founder/dashboard">
-        {() => <FounderProtectedRoute component={FounderLegacyDashboard} />}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
+      {/* /founder is the chat shell (Phase C). The fused bridge surface
+          at /founder/bridge is the canonical home — /founder still
+          renders the chat shell directly so the URL is unchanged for
+          users who bookmarked it, but every variant home above
+          (/founder-dashboard, /founder-home, /founder/now,
+          /founder/cockpit, /founder/dashboard) now points at bridge. */}
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderChatPage} />}
       </Route>
-      {/* Bridge — fused chat + telemetry surface. Gated by
-          founder_settings `atlas.bridge_enabled` (default OFF). When
-          dogfooded, this swaps in for /founder. */}
+      {/* Bridge — fused chat + telemetry surface. Canonical founder home
+          per the Lens 4 IA consolidation. */}
       <Route path="/founder/bridge">
         {() => <FounderProtectedRoute component={FounderBridgePage} />}
       </Route>

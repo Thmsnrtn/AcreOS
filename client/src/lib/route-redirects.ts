@@ -44,10 +44,38 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
   },
   {
     legacy: "/founder-home",
-    canonical: "/founder",
-    sunsetOn: "2026-07-02",
+    canonical: "/founder/bridge",
+    sunsetOn: "2026-07-26",
     reason:
-      "/founder and /founder-home both rendered FounderHomePage. /founder is the canonical founder-surface root.",
+      "IA consolidation (Lens 4): /founder/bridge is the canonical founder home. /founder-home, /founder-dashboard, /founder/now, /founder/cockpit, /founder/dashboard all redirected here.",
+  },
+  {
+    legacy: "/founder-dashboard",
+    canonical: "/founder/bridge",
+    sunsetOn: "2026-07-26",
+    reason:
+      "IA consolidation (Lens 4): legacy 7,400-line operations console. Sidebar overflow still links here as 'Operations console (legacy)' but the route now redirects to bridge.",
+  },
+  {
+    legacy: "/founder/now",
+    canonical: "/founder/bridge",
+    sunsetOn: "2026-07-26",
+    reason:
+      "IA consolidation (Lens 4): tile-driven daily inbox folded into the bridge surface.",
+  },
+  {
+    legacy: "/founder/cockpit",
+    canonical: "/founder/bridge",
+    sunsetOn: "2026-07-26",
+    reason:
+      "IA consolidation (Lens 4): weekly steering folded into the bridge. /founder/steering still renders the cockpit component for the sidebar 'Steering' entry.",
+  },
+  {
+    legacy: "/founder/dashboard",
+    canonical: "/founder/bridge",
+    sunsetOn: "2026-07-26",
+    reason:
+      "IA consolidation (Lens 4): legacy LegacyNowSurface tile layout folded into the bridge surface.",
   },
   /* ── Phase 4 Week 19-20 (cmdk-v2 / Anya §8) ─────────────────────────
    * ⌘K is the discoverability spine. The Pax assistant, AI hub and

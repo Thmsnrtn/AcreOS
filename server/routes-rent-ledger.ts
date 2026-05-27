@@ -410,4 +410,48 @@ export function registerRentLedgerRoutes(app: Express): void {
       return Errors.internal(res, err);
     }
   });
+
+  // Overnight rent receipts — the Imelda "answer-the-phone-from-the-truck"
+  // surface needs a single read that says "X dollars came in since 12:01am,
+  // Y of it was HAP." `since` is an ISO timestamp (date or datetime); the
+  // route trims it to a date for the DB column (rent_payments.received_at
+  // is a date, not a timestamp).
+  app.get("/api/rent-ledger/summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const rawSince = typeof req.query.since === "string" ? req.query.since : null;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      // Normalize "2026-05-26" or "2026-05-26T00:00:00.000Z" -> "2026-05-26".
+      // Anything unparseable falls back to today (start of day in server tz),
+      // which matches the Today-tab intent without surfacing a 400.
+      let sinceDate = todayIso;
+      if (rawSince) {
+        const parsed = new Date(rawSince);
+        if (Number.isFinite(parsed.getTime())) {
+          sinceDate = parsed.toISOString().slice(0, 10);
+        }
+      }
+
+      const totalsRow = await db.execute(sql`
+        SELECT
+          COUNT(*)::int AS payments_count,
+          COALESCE(SUM(amount_cents), 0)::bigint AS total_cents,
+          COALESCE(SUM(CASE WHEN payor_type = 'hap' THEN amount_cents ELSE 0 END), 0)::bigint AS hap_cents,
+          COALESCE(SUM(CASE WHEN payor_type = 'tenant' THEN amount_cents ELSE 0 END), 0)::bigint AS tenant_cents
+        FROM rent_payments
+        WHERE organization_id = ${orgId}
+          AND received_at >= ${sinceDate}::date
+      `);
+      const r = ((totalsRow as any).rows?.[0]) ?? {};
+      return res.json({
+        since: sinceDate,
+        paymentsCount: Number(r.payments_count) || 0,
+        totalCents: Number(r.total_cents) || 0,
+        hapCents: Number(r.hap_cents) || 0,
+        tenantCents: Number(r.tenant_cents) || 0,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
 }
