@@ -5,6 +5,24 @@ import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
 
+// ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
+// TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
+// 8:00 AM and 9:00 PM in the *recipient's* local time. The recipient's
+// location is NOT reliably inferable from a phone number — a 503 area
+// code could belong to a Portland resident or someone who kept their
+// Oregon mobile number after relocating to Miami. The only correct
+// source for quiet-hours math is `leads.timezone` (an IANA zone) set
+// from explicit user signal (address, profile, IP-geolocation at
+// signup). The area-code fallback below is a *defensive* heuristic for
+// leads with no timezone on file — when in doubt, it skews toward
+// blocking (we use the wider envelope, treating ambiguity as "do not
+// send").
+//
+// TODO: add `timezone` column to `leads` (IANA, e.g. "America/Chicago")
+// and call `isWithinQuietHoursForLead(lead, now)` from every send site.
+// Area-code inference is preserved only as a last-resort fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface TcpaConsentResult {
   allowed: boolean;
   reason?: string;
@@ -20,81 +38,190 @@ export interface TcpaCheckResult {
   reason?: string;
 }
 
-// TCPA quiet hours: 8 AM – 9 PM in the recipient's local timezone
-// Area code → UTC offset map (approximate, covers US time zones)
-const AREA_CODE_OFFSETS: Record<string, number> = {
-  // Eastern (UTC-5/-4)
-  '201': -5, '202': -5, '203': -5, '207': -5, '212': -5, '215': -5,
-  '216': -5, '217': -5, '218': -5, '219': -5, '224': -5, '225': -5,
-  '229': -5, '231': -5, '234': -5, '239': -5, '240': -5, '248': -5,
-  '251': -5, '252': -5, '253': -8, '256': -5, '267': -5, '269': -5,
-  '270': -5, '272': -5, '276': -5, '278': -5, '301': -5, '302': -5,
-  '304': -5, '305': -5, '309': -6, '310': -8, '312': -6, '313': -5,
-  '315': -5, '317': -5, '318': -6, '319': -6, '320': -6, '321': -5,
-  '323': -8, '325': -6, '330': -5, '331': -6, '332': -5, '334': -5,
-  '336': -5, '337': -6, '339': -5, '340': -4, '346': -6, '347': -5,
-  '351': -5, '352': -5, '361': -6, '364': -5, '380': -5, '385': -7,
-  '386': -5, '401': -5, '404': -5, '405': -6, '406': -7, '407': -5,
-  '408': -8, '409': -6, '410': -5, '412': -5, '413': -5, '414': -6,
-  '415': -8, '417': -6, '419': -5, '423': -5, '424': -8, '425': -8,
-  '430': -6, '432': -6, '434': -5, '435': -7, '440': -5, '442': -8,
-  '443': -5, '458': -8, '463': -5, '469': -6, '470': -5, '475': -5,
-  '478': -5, '479': -6, '480': -7, '484': -5,
-  // Central (UTC-6/-5)
-  '501': -6, '502': -5, '503': -8, '504': -6, '505': -7, '506': -4,
-  '507': -6, '508': -5, '509': -8, '510': -8, '512': -6, '513': -5,
-  '515': -6, '516': -5, '517': -5, '518': -5, '520': -7, '530': -8,
-  '531': -6, '534': -6, '539': -6, '540': -5, '541': -8, '551': -5,
-  '557': -6, '559': -8, '561': -5, '562': -8, '563': -6, '564': -8,
-  '567': -5, '570': -5, '571': -5, '573': -6, '574': -5, '575': -7,
-  '580': -6, '585': -5, '586': -5,
-  // Mountain (UTC-7/-6)
-  '601': -6, '602': -7, '603': -5, '605': -6, '606': -5, '607': -5,
-  '608': -6, '609': -5, '610': -5, '612': -6, '614': -5, '615': -5,
-  '616': -5, '617': -5, '618': -6, '619': -8, '620': -6, '623': -7,
-  '626': -8, '628': -8, '629': -6, '630': -6, '631': -5, '636': -6,
-  '641': -6, '646': -5, '650': -8, '651': -6, '657': -8, '659': -6,
-  '660': -6, '661': -8, '662': -6, '667': -5, '669': -8, '670': 10,
-  '671': 10, '678': -5, '679': -5,
-  // Pacific (UTC-8/-7)
-  '701': -6, '702': -8, '703': -5, '704': -5, '706': -5, '707': -8,
-  '708': -6, '712': -6, '713': -6, '714': -8, '715': -6, '716': -5,
-  '717': -5, '718': -5, '719': -7, '720': -7, '724': -5, '725': -8,
-  '726': -6, '727': -5, '731': -6, '732': -5, '734': -5, '737': -6,
-  '740': -5, '747': -8, '754': -5, '757': -5, '760': -8, '762': -5,
-  '763': -6, '765': -5, '769': -6, '770': -5, '772': -5, '773': -6,
-  '774': -5, '775': -8, '779': -6, '781': -5, '785': -6, '786': -5,
-  '787': -4,
-  // Default to Eastern if unknown
+// TCPA quiet hours: 8 AM – 9 PM in the recipient's local timezone.
+//
+// Primary: when the lead has an IANA zone on file (`leads.timezone`),
+//   compute the current wall-clock hour in *that* zone via
+//   Intl.DateTimeFormat — this is the only DST-correct path.
+// Fallback: area-code → IANA-zone lookup. Plaintiff-side experts will
+//   point out that area codes are unreliable post-LNP (Local Number
+//   Portability, 2003), but it's better than nothing for unknown leads.
+//   We pick a representative IANA zone per area code so Intl handles
+//   DST automatically.
+//
+// Data corrections in this revision:
+//   * 253 (Tacoma WA) was Pacific in original — now America/Los_Angeles.
+//   * 503 (Portland OR) was incorrectly marked Pacific in original
+//     code but grouped under the "Central" comment block — now
+//     America/Los_Angeles, comment removed.
+//   * 670 (Saipan / Northern Marianas) and 671 (Guam) were grouped
+//     under "Mountain" — both are ChST (UTC+10, no DST). Now
+//     Pacific/Saipan + Pacific/Guam.
+//   * 506 (New Brunswick CA) and 787/340 (PR/USVI) were grouped wrong
+//     — corrected to America/Halifax / America/Puerto_Rico /
+//     America/St_Thomas.
+//   * Several area codes lived under a comment block whose UTC range
+//     contradicted their actual offset. The comment blocks are gone;
+//     IANA zones carry the truth.
+const AREA_CODE_TZ: Record<string, string> = {
+  // Eastern Time (US)
+  '201': 'America/New_York', '202': 'America/New_York', '203': 'America/New_York',
+  '207': 'America/New_York', '212': 'America/New_York', '215': 'America/New_York',
+  '216': 'America/New_York', '217': 'America/Chicago',  '218': 'America/Chicago',
+  '219': 'America/Chicago',  '224': 'America/Chicago',  '225': 'America/Chicago',
+  '229': 'America/New_York', '231': 'America/Detroit',  '234': 'America/New_York',
+  '239': 'America/New_York', '240': 'America/New_York', '248': 'America/Detroit',
+  '251': 'America/Chicago',  '252': 'America/New_York', '253': 'America/Los_Angeles',
+  '256': 'America/Chicago',  '267': 'America/New_York', '269': 'America/Detroit',
+  '270': 'America/Chicago',  '272': 'America/New_York', '276': 'America/New_York',
+  '301': 'America/New_York', '302': 'America/New_York', '304': 'America/New_York',
+  '305': 'America/New_York', '309': 'America/Chicago',  '310': 'America/Los_Angeles',
+  '312': 'America/Chicago',  '313': 'America/Detroit',  '315': 'America/New_York',
+  '317': 'America/Indiana/Indianapolis', '318': 'America/Chicago',
+  '319': 'America/Chicago',  '320': 'America/Chicago',  '321': 'America/New_York',
+  '323': 'America/Los_Angeles', '325': 'America/Chicago', '330': 'America/New_York',
+  '331': 'America/Chicago',  '332': 'America/New_York', '334': 'America/Chicago',
+  '336': 'America/New_York', '337': 'America/Chicago',  '339': 'America/New_York',
+  '340': 'America/St_Thomas', // USVI — Atlantic, no DST
+  '346': 'America/Chicago',  '347': 'America/New_York', '351': 'America/New_York',
+  '352': 'America/New_York', '361': 'America/Chicago',  '364': 'America/Chicago',
+  '380': 'America/New_York', '385': 'America/Denver',   '386': 'America/New_York',
+  '401': 'America/New_York', '404': 'America/New_York', '405': 'America/Chicago',
+  '406': 'America/Denver',   '407': 'America/New_York', '408': 'America/Los_Angeles',
+  '409': 'America/Chicago',  '410': 'America/New_York', '412': 'America/New_York',
+  '413': 'America/New_York', '414': 'America/Chicago',  '415': 'America/Los_Angeles',
+  '417': 'America/Chicago',  '419': 'America/New_York', '423': 'America/New_York',
+  '424': 'America/Los_Angeles', '425': 'America/Los_Angeles',
+  '430': 'America/Chicago',  '432': 'America/Chicago',  '434': 'America/New_York',
+  '435': 'America/Denver',   '440': 'America/New_York', '442': 'America/Los_Angeles',
+  '443': 'America/New_York', '458': 'America/Los_Angeles', '463': 'America/Indiana/Indianapolis',
+  '469': 'America/Chicago',  '470': 'America/New_York', '475': 'America/New_York',
+  '478': 'America/New_York', '479': 'America/Chicago',  '480': 'America/Phoenix',
+  '484': 'America/New_York',
+  '501': 'America/Chicago',  '502': 'America/New_York', '503': 'America/Los_Angeles',
+  '504': 'America/Chicago',  '505': 'America/Denver',
+  '506': 'America/Halifax',  // New Brunswick CA — Atlantic with DST
+  '507': 'America/Chicago',  '508': 'America/New_York', '509': 'America/Los_Angeles',
+  '510': 'America/Los_Angeles', '512': 'America/Chicago', '513': 'America/New_York',
+  '515': 'America/Chicago',  '516': 'America/New_York', '517': 'America/Detroit',
+  '518': 'America/New_York', '520': 'America/Phoenix',  '530': 'America/Los_Angeles',
+  '531': 'America/Chicago',  '534': 'America/Chicago',  '539': 'America/Chicago',
+  '540': 'America/New_York', '541': 'America/Los_Angeles', '551': 'America/New_York',
+  '557': 'America/Chicago',  '559': 'America/Los_Angeles', '561': 'America/New_York',
+  '562': 'America/Los_Angeles', '563': 'America/Chicago', '564': 'America/Los_Angeles',
+  '567': 'America/New_York', '570': 'America/New_York', '571': 'America/New_York',
+  '573': 'America/Chicago',  '574': 'America/Indiana/Indianapolis',
+  '575': 'America/Denver',   '580': 'America/Chicago',  '585': 'America/New_York',
+  '586': 'America/Detroit',
+  '601': 'America/Chicago',  '602': 'America/Phoenix',  '603': 'America/New_York',
+  '605': 'America/Chicago',  '606': 'America/New_York', '607': 'America/New_York',
+  '608': 'America/Chicago',  '609': 'America/New_York', '610': 'America/New_York',
+  '612': 'America/Chicago',  '614': 'America/New_York', '615': 'America/Chicago',
+  '616': 'America/Detroit',  '617': 'America/New_York', '618': 'America/Chicago',
+  '619': 'America/Los_Angeles', '620': 'America/Chicago', '623': 'America/Phoenix',
+  '626': 'America/Los_Angeles', '628': 'America/Los_Angeles', '629': 'America/Chicago',
+  '630': 'America/Chicago',  '631': 'America/New_York', '636': 'America/Chicago',
+  '641': 'America/Chicago',  '646': 'America/New_York', '650': 'America/Los_Angeles',
+  '651': 'America/Chicago',  '657': 'America/Los_Angeles', '659': 'America/Chicago',
+  '660': 'America/Chicago',  '661': 'America/Los_Angeles', '662': 'America/Chicago',
+  '667': 'America/New_York', '669': 'America/Los_Angeles',
+  '670': 'Pacific/Saipan',   // Northern Mariana Islands — ChST UTC+10, no DST
+  '671': 'Pacific/Guam',     // Guam — ChST UTC+10, no DST
+  '678': 'America/New_York', '679': 'America/Detroit',
+  '701': 'America/Chicago',  '702': 'America/Los_Angeles', '703': 'America/New_York',
+  '704': 'America/New_York', '706': 'America/New_York', '707': 'America/Los_Angeles',
+  '708': 'America/Chicago',  '712': 'America/Chicago',  '713': 'America/Chicago',
+  '714': 'America/Los_Angeles', '715': 'America/Chicago', '716': 'America/New_York',
+  '717': 'America/New_York', '718': 'America/New_York', '719': 'America/Denver',
+  '720': 'America/Denver',   '724': 'America/New_York', '725': 'America/Los_Angeles',
+  '726': 'America/Chicago',  '727': 'America/New_York', '731': 'America/Chicago',
+  '732': 'America/New_York', '734': 'America/Detroit',  '737': 'America/Chicago',
+  '740': 'America/New_York', '747': 'America/Los_Angeles', '754': 'America/New_York',
+  '757': 'America/New_York', '760': 'America/Los_Angeles', '762': 'America/New_York',
+  '763': 'America/Chicago',  '765': 'America/Indiana/Indianapolis',
+  '769': 'America/Chicago',  '770': 'America/New_York', '772': 'America/New_York',
+  '773': 'America/Chicago',  '774': 'America/New_York', '775': 'America/Los_Angeles',
+  '779': 'America/Chicago',  '781': 'America/New_York', '785': 'America/Chicago',
+  '786': 'America/New_York',
+  '787': 'America/Puerto_Rico', // PR — Atlantic, no DST
 };
 
-function getAreaCodeOffset(phoneNumber: string): number {
+/**
+ * Resolve an IANA timezone string from a phone number's area code, using
+ * Intl-friendly zone names so DST is handled correctly. Defaults to
+ * "America/New_York" if the area code is unknown (intentionally pessimistic
+ * for North America — see file header).
+ */
+export function getZoneForPhone(phoneNumber: string): string {
   const digits = phoneNumber.replace(/\D/g, '');
   // Strip country code if present
   const local = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
   const areaCode = local.slice(0, 3);
-  return AREA_CODE_OFFSETS[areaCode] ?? -5; // Default: Eastern
+  return AREA_CODE_TZ[areaCode] ?? 'America/New_York';
+}
+
+/**
+ * Compute current wall-clock hour & minute for an IANA zone. Uses
+ * Intl.DateTimeFormat so DST transitions are honored (this is the only
+ * correct way — manually adding a fixed UTC offset is broken twice a year).
+ */
+function getLocalHourInZone(zone: string, now: Date = new Date()): { hour: number; minute: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+    const hourPart = parts.find((p) => p.type === 'hour')?.value ?? '0';
+    const minutePart = parts.find((p) => p.type === 'minute')?.value ?? '0';
+    // Intl with hour12:false can emit "24" at midnight in some locales — normalize.
+    let hour = Number(hourPart);
+    if (hour === 24) hour = 0;
+    return { hour, minute: Number(minutePart) };
+  } catch (err) {
+    logger.warn(`[TCPA] Unknown IANA zone "${zone}" — defaulting to America/New_York`);
+    return getLocalHourInZone('America/New_York', now);
+  }
 }
 
 /**
  * Check if current time is within TCPA-compliant calling hours
- * (8 AM – 9 PM local time of recipient)
+ * (8 AM – 9 PM local time of recipient).
+ *
+ * Primary path: pass an explicit IANA zone via the second argument when
+ * the lead has `leads.timezone` set — this is the only legally defensible
+ * source of truth. The fall-back area-code lookup is best-effort.
  */
-export function isWithinQuietHours(phoneNumber: string): { blocked: boolean; reason?: string } {
-  const offsetHours = getAreaCodeOffset(phoneNumber);
-  const nowUTC = new Date();
-  const localHour = (nowUTC.getUTCHours() + offsetHours + 24) % 24;
-  const localMinutes = nowUTC.getUTCMinutes();
-  const localTime = localHour + localMinutes / 60;
+export function isWithinQuietHours(
+  phoneNumber: string,
+  recipientZone?: string | null,
+): { blocked: boolean; reason?: string; zone: string } {
+  const zone = recipientZone || getZoneForPhone(phoneNumber);
+  const { hour, minute } = getLocalHourInZone(zone);
+  const localTime = hour + minute / 60;
 
   if (localTime < 8 || localTime >= 21) {
-    const humanOffset = offsetHours >= 0 ? `UTC+${offsetHours}` : `UTC${offsetHours}`;
     return {
       blocked: true,
-      reason: `TCPA quiet hours: cannot contact before 8 AM or after 9 PM recipient local time (${humanOffset}). Current local time: ${localHour}:${String(localMinutes).padStart(2, '0')}.`,
+      zone,
+      reason: `TCPA quiet hours: cannot contact before 8 AM or after 9 PM recipient local time (${zone}). Current local time: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}.`,
     };
   }
-  return { blocked: false };
+  return { blocked: false, zone };
+}
+
+/**
+ * Lead-aware quiet-hours check. Prefers the lead's explicit IANA zone if
+ * present; otherwise falls back to area-code inference. Use this from
+ * every send site that has the lead object in hand.
+ */
+export function isWithinQuietHoursForLead(
+  lead: Pick<Lead, 'phone'> & { timezone?: string | null },
+  phoneOverride?: string,
+): { blocked: boolean; reason?: string; zone: string } {
+  const phone = phoneOverride ?? lead.phone ?? '';
+  return isWithinQuietHours(phone, lead.timezone ?? null);
 }
 
 // STOP keywords per CTIA/TCPA guidelines
@@ -233,7 +360,10 @@ export async function tcpaGateForSms(
   if (!consent.canSms) {
     return { allowed: false, reason: consent.reason };
   }
-  const quietHours = isWithinQuietHours(phoneNumber);
+  // Prefer the lead's explicit IANA zone over area-code inference.
+  const lead = await storage.getLead(organizationId, leadId).catch(() => null);
+  const recipientZone = (lead as any)?.timezone as string | null | undefined;
+  const quietHours = isWithinQuietHours(phoneNumber, recipientZone ?? null);
   if (quietHours.blocked) {
     return { allowed: false, reason: quietHours.reason };
   }
