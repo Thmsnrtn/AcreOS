@@ -1151,73 +1151,8 @@ export class DatabaseStorage implements IStorage {
 
   // Notes + payments — moved to server/storage/noteRepo.ts.
 
-  // Campaigns
-  async getCampaigns(orgId: number) {
-    return await db.select().from(campaigns)
-      .where(eq(campaigns.organizationId, orgId))
-      .orderBy(desc(campaigns.createdAt));
-  }
-  
-  async getCampaign(orgId: number, id: number) {
-    const [campaign] = await db.select().from(campaigns)
-      .where(and(eq(campaigns.organizationId, orgId), eq(campaigns.id, id)));
-    return campaign;
-  }
-  
-  async createCampaign(campaign: InsertCampaign) {
-    const [newCampaign] = await db.insert(campaigns).values(campaign).returning();
-    return newCampaign;
-  }
-  
-  async updateCampaign(id: number, updates: Partial<InsertCampaign>, organizationId?: number) {
-    const conditions = [eq(campaigns.id, id)];
-    if (organizationId) conditions.push(eq(campaigns.organizationId, organizationId));
-    const [updated] = await db.update(campaigns)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-  
-  // Campaign Optimizations
-  async getCampaignOptimizations(campaignId: number) {
-    return await db.select().from(campaignOptimizations)
-      .where(eq(campaignOptimizations.campaignId, campaignId))
-      .orderBy(desc(campaignOptimizations.createdAt));
-  }
-  
-  async createCampaignOptimization(optimization: InsertCampaignOptimization) {
-    const [newOptimization] = await db.insert(campaignOptimizations).values(optimization).returning();
-    return newOptimization;
-  }
-  
-  async markOptimizationImplemented(optimizationId: number, resultDelta: CampaignOptimization["resultDelta"]) {
-    const [updated] = await db.update(campaignOptimizations)
-      .set({ 
-        implemented: true, 
-        implementedAt: new Date(),
-        resultDelta
-      })
-      .where(eq(campaignOptimizations.id, optimizationId))
-      .returning();
-    return updated;
-  }
-  
-  async getCampaignsNeedingOptimization(orgId: number): Promise<Campaign[]> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return await db.select().from(campaigns)
-      .where(and(
-        eq(campaigns.organizationId, orgId),
-        eq(campaigns.status, "active"),
-        sql`COALESCE(${campaigns.totalSent}, 0) > 100`,
-        or(
-          sql`${campaigns.lastOptimizedAt} IS NULL`,
-          lte(campaigns.lastOptimizedAt, sevenDaysAgo)
-        )
-      ))
-      .orderBy(desc(campaigns.totalSent));
-  }
-  
+  // Campaigns + optimizations — moved to server/storage/campaignRepo.ts.
+
   // Agent Configs
   async getAgentConfigs(orgId: number) {
     return await db.select().from(agentConfigs)
@@ -7849,9 +7784,10 @@ import { leadRepo, type LeadRepo } from "./storage/leadRepo";
 import { propertyRepo, type PropertyRepo } from "./storage/propertyRepo";
 import { dealRepo, type DealRepo } from "./storage/dealRepo";
 import { noteRepo, type NoteRepo } from "./storage/noteRepo";
+import { campaignRepo, type CampaignRepo } from "./storage/campaignRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -7861,6 +7797,7 @@ Object.assign(
   propertyRepo,
   dealRepo,
   noteRepo,
+  campaignRepo,
 );
 
 export const storage = new DatabaseStorage();
