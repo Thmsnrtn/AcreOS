@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -2296,6 +2296,22 @@ export const chatPendingToolCalls = pgTable("chat_pending_tool_calls", {
   index("chat_pending_tool_calls_expires_idx").on(table.expiresAt),
   index("chat_pending_tool_calls_thread_idx").on(table.threadId),
 ]);
+
+// Lens 13 / Kareem §2: persistent Tier-3 cooldown ledger. Replaces the
+// in-memory Map in server/services/founder-chat/executor.ts that did not
+// survive Fly restarts. One row per (user_id, tool_name); last_confirmed_at
+// is overwritten on each successful Tier-3 execution.
+export const chatToolCooldowns = pgTable("chat_tool_cooldowns", {
+  userId: text("user_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  lastConfirmedAt: timestamp("last_confirmed_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.toolName] }),
+  index("chat_tool_cooldowns_last_confirmed_idx").on(table.lastConfirmedAt),
+]);
+
+export type ChatToolCooldown = typeof chatToolCooldowns.$inferSelect;
+export type InsertChatToolCooldown = typeof chatToolCooldowns.$inferInsert;
 
 // Founder Chat — sealed paste requests for secret rotation (Phase G/H/I batch 2).
 // One-time-use tokens minted by `fly_secret_set`. The chat client POSTs the
