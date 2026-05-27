@@ -3011,4 +3011,47 @@ export async function runScheduledJobs(): Promise<void> {
   }).catch((err) => {
     log(`Failed to import archival job: ${err}`, "ops");
   });
+
+  // ─── Marcus / Lens 17 — Nightly redemption-clock refresh ─────────────
+  // Re-runs per-cert redemption math every night so:
+  //   - rule attorney-review updates propagate without manual reseed
+  //   - owner-occupied / SCRA flag flips re-anchor the deadline
+  //   - morning-brief has a source of truth for "X certs cross
+  //     redemption threshold today" (was previously client-only)
+  // See server/jobs/redemptionClockRefresh.ts for the dedupe logic.
+  import("./redemptionClockRefresh").then(({ runRedemptionClockRefresh }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      // 24h cadence, initial delay aligned to ~3:15am UTC so we land
+      // after archival (4am isn't in conflict — they're independent —
+      // but we want to be early enough that morning-brief at 7am CT
+      // (~13:00 UTC) sees fresh data).
+      const THREE_FIFTEEN_AM_DELAY_MS = (() => {
+        const now = new Date();
+        const target = new Date(now);
+        target.setUTCHours(3, 15, 0, 0);
+        if (target.getTime() <= now.getTime()) {
+          target.setUTCDate(target.getUTCDate() + 1);
+        }
+        return target.getTime() - now.getTime();
+      })();
+
+      log("Redemption clock refresh registered (daily 3:15am UTC)", "redemption-clock");
+      scheduleSelfRescheduling({
+        name: "redemption_clock_refresh",
+        intervalMs: 24 * 60 * 60 * 1000,
+        initialDelayMs: THREE_FIFTEEN_AM_DELAY_MS,
+        run: async () => {
+          await withJobLock("redemption_clock_refresh", 60 * 60, async () => {
+            const r = await runRedemptionClockRefresh();
+            log(
+              `[redemption-clock] scanned=${r.certsScanned} changed=${r.deadlineChanged} alerts=${r.alertsEmitted} errors=${r.errors}`,
+              "redemption-clock",
+            );
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import redemption-clock refresh job: ${err}`, "redemption-clock");
+  });
 }
