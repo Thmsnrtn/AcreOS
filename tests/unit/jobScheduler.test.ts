@@ -22,10 +22,21 @@ vi.mock("../../server/db", () => {
     obj.where = async () => undefined;
     return obj;
   };
+  const txMock: any = {
+    insert: () => chainable(),
+    update: () => chainable(),
+    // Lens 13 §3: simulate `pg_try_advisory_xact_lock` returning true so
+    // the scheduler's tick proceeds with `run()`. Returning false here
+    // would simulate "another machine holds the lock — skip".
+    execute: async (_q: unknown) => ({ rows: [{ pg_try_advisory_xact_lock: true }] }),
+  };
   return {
     db: {
       insert: () => chainable(),
       update: () => chainable(),
+      transaction: async (fn: (tx: any) => Promise<void>) => {
+        return fn(txMock);
+      },
     },
     pool: {},
   };
@@ -73,6 +84,37 @@ describe("scheduleSelfRescheduling", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("skips the tick when pg_try_advisory_xact_lock returns false", async () => {
+    // Lens 13 §3: simulate another Fly machine already holding the lock.
+    // Re-import the db module via the existing mock and stub `execute`
+    // to return false for this test.
+    const dbMod = await import("../../server/db");
+    const realDb = (dbMod as any).db;
+    const realTransaction = realDb.transaction;
+    realDb.transaction = async (fn: (tx: any) => Promise<void>) => {
+      return fn({
+        execute: async () => ({ rows: [{ pg_try_advisory_xact_lock: false }] }),
+        insert: realDb.insert,
+        update: realDb.update,
+      });
+    };
+    try {
+      const run = vi.fn().mockResolvedValue(undefined);
+      const cancel = scheduleSelfRescheduling({
+        name: "test-lock-skip",
+        intervalMs: 1000,
+        run,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      // The job's `run()` should NOT have been called because the lock
+      // wasn't acquired.
+      expect(run).toHaveBeenCalledTimes(0);
+      cancel();
+    } finally {
+      realDb.transaction = realTransaction;
+    }
   });
 
   it("invokes run() then schedules next tick at intervalMs", async () => {

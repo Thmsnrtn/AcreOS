@@ -40,10 +40,57 @@
  * function's own error path is unaffected.
  */
 
+import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { jobRuns, outboxDlq } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { coerceTimerDelay } from "../utils/safeTimer";
+
+/**
+ * Lens 13 / Kareem §3: FNV-1a 64-bit hash → signed bigint. Deterministic,
+ * collision-resistant enough for ~hundreds of job names, and produces the
+ * same bigint across every Fly machine in the process group. Used as the
+ * key for `pg_advisory_xact_lock(int8)` so two machines polling the same
+ * cron interval never double-fire the same job.
+ *
+ * Postgres' advisory-lock space is a single int64. We return a signed
+ * BigInt (range −2^63 … 2^63−1) so it fits Postgres' expected int8. The
+ * FNV-1a output is unsigned; we reinterpret the top bit as the sign bit.
+ */
+export function fnv1a64Signed(input: string): bigint {
+  const FNV_OFFSET = 0xcbf29ce484222325n;
+  const FNV_PRIME = 0x100000001b3n;
+  const MASK = 0xffffffffffffffffn;
+  let h = FNV_OFFSET;
+  for (let i = 0; i < input.length; i++) {
+    h ^= BigInt(input.charCodeAt(i) & 0xff);
+    h = (h * FNV_PRIME) & MASK;
+  }
+  // Reinterpret as signed int64: if the top bit is set, subtract 2^64.
+  return h >= 0x8000000000000000n ? h - 0x10000000000000000n : h;
+}
+
+/**
+ * Try to acquire a transaction-scoped advisory lock keyed by the job name.
+ * Returns true if the lock was acquired (caller proceeds), false if some
+ * other machine already holds it (caller should skip this tick). The lock
+ * auto-releases on commit/rollback of the surrounding transaction.
+ *
+ * Why xact-scoped vs session-scoped: session locks would leak across
+ * scheduler ticks because we hold the DB pool connection longer than the
+ * tick itself. Transaction-scoped is the right granularity — once the
+ * tick's transaction ends, the lock is gone.
+ */
+async function tryAcquireJobLock(name: string, tx: typeof db): Promise<boolean> {
+  const key = fnv1a64Signed(`acreos:job:${name}`);
+  const result = await tx.execute<{ pg_try_advisory_xact_lock: boolean }>(
+    sql`SELECT pg_try_advisory_xact_lock(${key}::bigint) AS pg_try_advisory_xact_lock`,
+  );
+  // drizzle's execute returns { rows } or array depending on driver. Handle both.
+  const rows = (result as { rows?: { pg_try_advisory_xact_lock: boolean }[] }).rows ?? (result as unknown as { pg_try_advisory_xact_lock: boolean }[]);
+  const row = rows?.[0];
+  return Boolean(row?.pg_try_advisory_xact_lock);
+}
 
 export interface SelfReschedulingOpts {
   /** Logical job name. Used for `job_runs.job_name` and DLQ event_type. */
@@ -186,21 +233,49 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
   const tick = async (): Promise<void> => {
     if (status.cancelled) return;
 
+    // Lens 13 / Kareem §3: try to acquire a transaction-scoped advisory
+    // lock keyed by the job name. If we can't acquire it, another machine
+    // in the Fly process group is already running this tick — skip this
+    // round, reschedule normally. We open a *short* transaction just to
+    // hold the lock; the `run()` body executes inside that transaction so
+    // the lock is held for the duration of the work and auto-released on
+    // commit/rollback.
     status.lastRunStartedAt = new Date();
     status.lastStatus = "running";
-    const runId = await insertJobRunStart();
 
     let nextDelayMs = intervalMs;
+    let acquiredLock = false;
+    let runId: number | null = null;
 
     try {
-      const recordsProcessed = await run();
-      status.lastRunCompletedAt = new Date();
-      status.lastStatus = "success";
-      status.consecutiveFailures = 0;
-      await updateJobRunEnd(runId, {
-        status: "success",
-        recordsProcessed: typeof recordsProcessed === "number" ? recordsProcessed : undefined,
+      await db.transaction(async (tx) => {
+        acquiredLock = await tryAcquireJobLock(name, tx as unknown as typeof db);
+        if (!acquiredLock) {
+          logger.info(`[jobs:${name}] skipped tick — advisory lock held by another machine`, {
+            metadata: { jobName: name },
+          });
+          return;
+        }
+
+        // Record the job_runs row inside the same transaction so the start
+        // marker is rolled back on lock-skip (cleaner job_runs ledger).
+        runId = await insertJobRunStart();
+
+        const recordsProcessed = await run();
+        status.lastRunCompletedAt = new Date();
+        status.lastStatus = "success";
+        status.consecutiveFailures = 0;
+        await updateJobRunEnd(runId, {
+          status: "success",
+          recordsProcessed: typeof recordsProcessed === "number" ? recordsProcessed : undefined,
+        });
       });
+
+      if (!acquiredLock) {
+        // Skipped tick — reset status and reschedule on the normal cadence.
+        status.lastStatus = null;
+        status.lastRunCompletedAt = new Date();
+      }
     } catch (err) {
       status.lastRunCompletedAt = new Date();
       status.lastStatus = "failure";
@@ -211,6 +286,9 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         metadata: { jobName: name, consecutiveFailures: status.consecutiveFailures },
       });
 
+      // `insertJobRunStart` runs on the shared db pool (not on `tx`), so
+      // the start-row commit is independent of the locked tx's rollback.
+      // updateJobRunEnd patches that row to status=failure.
       await updateJobRunEnd(runId, { status: "failure", errorMessage: message });
       await deadLetter(err);
 
