@@ -73,6 +73,41 @@ export interface RateLimitConfig {
 type KeyFunction = (req: Request) => string;
 
 /**
+ * Key function for auth-attempt endpoints (login, register, password-reset).
+ *
+ * Cellular-NAT-aware: by default many auth endpoints are pure-IP keyed,
+ * which is wrong on carrier-grade NAT. T-Mobile, Verizon, and most
+ * cellular networks share a single egress IP across many devices on
+ * the same cell — one bad actor on the network 429s every iPhone in
+ * the neighborhood. Inversely, attackers can hop CGNAT cells to dilute
+ * a per-IP cap.
+ *
+ * Preference order (most specific to least):
+ *   1. submitted email/identifier from the POST body — the credential
+ *      being targeted is what we want to limit, regardless of source IP
+ *   2. authenticated userId if somehow present (rare on auth endpoints)
+ *   3. IP as the last-resort floor (still good for unauthenticated probes
+ *      against random-email lists)
+ *
+ * See memory/feedback_rate_limit_ip_keying.md.
+ */
+export const authAttemptKeyFunction: KeyFunction = (req: Request) => {
+  const body = (req as any).body ?? {};
+  const submittedEmail =
+    typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+  const submittedIdentifier =
+    typeof body.identifier === "string"
+      ? body.identifier.toLowerCase().trim()
+      : "";
+  if (submittedEmail) return `auth:email:${submittedEmail}`;
+  if (submittedIdentifier) return `auth:id:${submittedIdentifier}`;
+  const userId = (req as any).user?.id;
+  if (userId) return `auth:user:${userId}`;
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  return `auth:ip:${ip}`;
+};
+
+/**
  * Predefined rate limit configurations
  */
 export const RATE_LIMIT_CONFIGS = {
@@ -286,14 +321,25 @@ export function createAuthenticatedRateLimiter(config: RateLimitConfig) {
 export const rateLimiters = {
   default: createAuthenticatedRateLimiter(RATE_LIMIT_CONFIGS.default),
   strict: createAuthenticatedRateLimiter(RATE_LIMIT_CONFIGS.strict),
-  auth: createRateLimiter(RATE_LIMIT_CONFIGS.auth), // IP-based for auth endpoints
+  // Auth: keyed by submitted email/identifier first, then userId, then IP.
+  // Pure-IP rate limiting on auth paths punishes everyone on a single CGNAT
+  // egress when one attacker probes the network — see authAttemptKeyFunction.
+  auth: createRateLimiter(RATE_LIMIT_CONFIGS.auth, authAttemptKeyFunction),
   public: createRateLimiter(RATE_LIMIT_CONFIGS.public), // IP-based for public endpoints
 };
 
 /**
- * Named limiters for specific route groups
+ * Named limiters for specific route groups.
+ *
+ * `authLimiter` deliberately uses authAttemptKeyFunction (email/identifier
+ * first, IP last) so that one bad actor on a shared cellular NAT doesn't
+ * 429 every other phone on the same carrier egress. See
+ * memory/feedback_rate_limit_ip_keying.md.
  */
-export const authLimiter = createRateLimiter({ maxRequests: 10, windowMs: 15 * 60 * 1000 });
+export const authLimiter = createRateLimiter(
+  { maxRequests: 10, windowMs: 15 * 60 * 1000 },
+  authAttemptKeyFunction,
+);
 
 // ─── Pillar D / D2 — Per-org tier-aware rate limits ─────────────────────────
 //

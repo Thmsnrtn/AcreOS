@@ -47,6 +47,19 @@ export interface DoddFrankInput {
   balloonAfterMonths?: number;
   /** Annual interest rate (as a decimal, e.g. 0.12 for 12%) */
   interestRate: number;
+  /**
+   * Total points and fees in cents (12 CFR 1026.32(b)(1)). Includes
+   * origination fees, discount points the borrower didn't choose, mortgage-
+   * broker comp, and most third-party charges paid by the borrower. Optional
+   * — when omitted, the HOEPA points/fees screen is skipped.
+   */
+  totalPointsAndFeesCents?: number;
+  /** Total loan amount in cents (Reg-Z definition — financed amount). */
+  totalLoanAmountCents?: number;
+  /** Prepayment-penalty period, in months from consummation. */
+  prepaymentPenaltyMonths?: number;
+  /** Max prepayment-penalty as a fraction of the prepaid amount (e.g. 0.02 = 2%). */
+  prepaymentPenaltyMaxPercent?: number;
 }
 
 export type ComplianceRisk = 'compliant' | 'review_needed' | 'likely_violation' | 'attorney_required';
@@ -168,14 +181,86 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
     recommendations.push('Consider extending the balloon period to 60+ months to preserve exemption eligibility.');
   }
 
-  // Rate check — above 10% triggers higher-priced mortgage scrutiny
-  if (input.interestRate > 0.10) {
+  // ── HPML / HOEPA pricing screens ─────────────────────────────────────────
+  //
+  // HPML (Higher-Priced Mortgage Loan, 12 CFR 1026.35) — APR threshold:
+  //    1st-lien (jumbo): APOR + 2.5%
+  //    1st-lien (non-jumbo): APOR + 1.5%
+  //    Subordinate-lien: APOR + 3.5%
+  // HPML triggers escrow + appraisal requirements.
+  //
+  // HOEPA (High-Cost Mortgage, 12 CFR 1026.32) — three independent triggers:
+  //    APR trigger:
+  //      1st-lien:        APR > APOR + 6.5%
+  //      1st-lien <$50k secured by personal property (incl. manufactured
+  //                       home titled, not as real property): APOR + 8.5%
+  //      Subordinate:     APR > APOR + 8.5%
+  //    Points-and-fees trigger (loans consummated 2024+):
+  //      Loan ≥ $26,968:  > 5% of total loan amount
+  //      Loan <  $26,968: greater of 8% or $1,348 (2024 dollar figure)
+  //    Prepayment-penalty trigger:
+  //      Penalty period > 36 months OR penalty > 2% of any prepaid amount.
+  //
+  // The CFPB updates the loan-amount and dollar-fee thresholds annually
+  // (12 CFR 1026.32(a)(1)(ii)(B)). When you update these constants check
+  // the most-recent Reg-Z Comment 1026.32(a)(1)(ii)-1.
+  //
+  // AcreOS doesn't have APOR live in scope here; we surface the rate-only
+  // posture as a conservative screen. The hard threshold check happens in
+  // the seller-finance origination form once APOR is resolved.
+  if (input.interestRate > 0.085) {
     findings.push({
-      issue: 'High Interest Rate — HPML Threshold',
-      detail: `Rate of ${(input.interestRate * 100).toFixed(1)}% may exceed the Higher-Priced Mortgage Loan (HPML) threshold (APOR + 1.5%). HPMLs have additional appraisal and escrow requirements.`,
+      issue: 'HOEPA High-Cost Mortgage — APR trigger',
+      detail: `Rate of ${(input.interestRate * 100).toFixed(2)}% likely exceeds the HOEPA APR trigger (APOR + 6.5% for 1st-lien; APOR + 8.5% for small-loan / personal-property and subordinate liens). A high-cost mortgage carries balloon prohibitions, pre-loan counseling, ability-to-repay requirements, and severe assignee-liability exposure. Confirm against current APOR (FFIEC) before consummation.`,
+      severity: 'critical',
+    });
+    recommendations.push('Pull current APOR from FFIEC for the consummation date and recompute APR-over-APOR delta. If HOEPA-triggered, do NOT close without HOEPA-specific counsel — assignee liability follows the note.');
+  } else if (input.interestRate > 0.065) {
+    findings.push({
+      issue: 'HPML zone — likely Higher-Priced Mortgage Loan',
+      detail: `Rate of ${(input.interestRate * 100).toFixed(2)}% likely exceeds the HPML threshold (APOR + 1.5% on 1st-lien). HPMLs require an escrow account for property taxes + insurance (5-year minimum), a full interior appraisal, and ability-to-repay documentation.`,
       severity: 'warning',
     });
-    recommendations.push('Verify current APOR (Average Prime Offer Rate) from FFIEC to determine if rate triggers HPML requirements.');
+    recommendations.push('Verify current APOR (Average Prime Offer Rate) from FFIEC to determine if rate triggers HPML requirements. If HPML, enable tax + insurance escrow and capture an ability-to-repay determination.');
+  }
+
+  // ── HOEPA points-and-fees / prepay-penalty triggers ──────────────────────
+  if (input.totalPointsAndFeesCents !== undefined && input.totalLoanAmountCents !== undefined) {
+    const HOEPA_PF_LARGE_LOAN_FLOOR_CENTS = 2_695_200; // $26,968 (2024 figure, Reg-Z Comment 1026.32(a)(1)(ii)-1)
+    const HOEPA_PF_SMALL_LOAN_DOLLAR_FLOOR_CENTS = 134_800; // $1,348 (2024)
+    const pfRatio = input.totalPointsAndFeesCents / input.totalLoanAmountCents;
+    if (input.totalLoanAmountCents >= HOEPA_PF_LARGE_LOAN_FLOOR_CENTS) {
+      if (pfRatio > 0.05) {
+        findings.push({
+          issue: 'HOEPA points-and-fees trigger exceeded',
+          detail: `Points + fees ($${(input.totalPointsAndFeesCents/100).toFixed(0)}) = ${(pfRatio*100).toFixed(2)}% of loan amount; HOEPA caps this at 5% for loans ≥ $26,968 (12 CFR 1026.32(a)(1)(ii)(A)). Loan is a high-cost mortgage.`,
+          severity: 'critical',
+        });
+      }
+    } else {
+      const smallLoanLimit = Math.max(HOEPA_PF_SMALL_LOAN_DOLLAR_FLOOR_CENTS, input.totalLoanAmountCents * 0.08);
+      if (input.totalPointsAndFeesCents > smallLoanLimit) {
+        findings.push({
+          issue: 'HOEPA points-and-fees trigger exceeded (small loan)',
+          detail: `Loan amount <$26,968. Points + fees cap is the greater of 8% ($${(input.totalLoanAmountCents*0.08/100).toFixed(0)}) or $1,348. Reported $${(input.totalPointsAndFeesCents/100).toFixed(0)} exceeds the limit. Loan is a high-cost mortgage.`,
+          severity: 'critical',
+        });
+      }
+    }
+  }
+  if (input.prepaymentPenaltyMonths !== undefined && input.prepaymentPenaltyMonths > 36) {
+    findings.push({
+      issue: 'HOEPA prepayment-penalty trigger',
+      detail: `Prepayment penalty period of ${input.prepaymentPenaltyMonths} months exceeds the 36-month HOEPA limit (12 CFR 1026.32(a)(1)(iii)). Loan is a high-cost mortgage.`,
+      severity: 'critical',
+    });
+  }
+  if (input.prepaymentPenaltyMaxPercent !== undefined && input.prepaymentPenaltyMaxPercent > 0.02) {
+    findings.push({
+      issue: 'HOEPA prepayment-penalty amount trigger',
+      detail: `Prepayment penalty of ${(input.prepaymentPenaltyMaxPercent*100).toFixed(2)}% of the prepaid amount exceeds the 2% HOEPA limit. Loan is a high-cost mortgage.`,
+      severity: 'critical',
+    });
   }
 
   // Seller constructed the property

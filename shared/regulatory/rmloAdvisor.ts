@@ -123,8 +123,171 @@ const STATE_USURY_BPS: Record<string, { bps: number | null; note: string }> = {
 const DISCLAIMER =
   "Not legal advice. AcreOS surfaces compliance posture as a starting point — every operator must confirm specific requirements with their attorney before originating, buying, or servicing a note. State laws change; AcreOS does not warrant currentness.";
 
-const HOEPA_RATE_TRIGGER_BPS_OVER_APR_TABLE = 650;  // First-lien threshold
-const HOEPA_POINTS_FEE_TRIGGER_BPS = 500;            // Per Reg-Z 1026.32
+// HOEPA triggers — 12 CFR 1026.32(a)(1). CFPB updates the loan-amount /
+// dollar-fee thresholds annually; the BPS-over-APOR figures are statutory
+// and have not moved since the 2014 rule.
+const HOEPA_RATE_TRIGGER_BPS_OVER_APOR_1ST_LIEN = 650;       // APR > APOR + 6.5%
+const HOEPA_RATE_TRIGGER_BPS_OVER_APOR_SMALL_OR_SUB = 850;   // APR > APOR + 8.5%
+const HOEPA_POINTS_FEE_TRIGGER_PCT_LARGE_LOAN = 0.05;        // 5% for loans ≥ $26,968 (2024)
+const HOEPA_POINTS_FEE_TRIGGER_PCT_SMALL_LOAN = 0.08;        // 8% (or $1,348 floor) for smaller loans
+const HOEPA_LARGE_LOAN_FLOOR_CENTS = 2_695_200;              // $26,968 — 2024 Reg-Z Comment 1026.32(a)(1)(ii)-1
+const HOEPA_SMALL_LOAN_DOLLAR_FLOOR_CENTS = 134_800;         // $1,348 (2024)
+const HOEPA_PREPAYMENT_PENALTY_MONTHS_TRIGGER = 36;          // > 36 months → high-cost
+const HOEPA_PREPAYMENT_PENALTY_PCT_TRIGGER = 0.02;           // > 2% of prepaid amount → high-cost
+
+// ─── Habitualness self-assessment ────────────────────────────────────────
+//
+// State RMLO licensing turns on whether the seller-financer is engaged in
+// the *business* of originating residential mortgage loans. The SAFE Act
+// federal floor (12 USC 5102) defers to state law on what counts as
+// "engaging in the business" / "habitually" originating. There is no
+// single national bright line. The three numbers that appear most
+// frequently in state statutes and AG opinions:
+//
+//   - 1 loan / 12 months — strictest reading; some states (incl. AZ, NC,
+//     interpretations) treat a single owner-occupied consumer-purpose
+//     origination as triggering, unless it's the seller's own residence.
+//   - 3 loans / 12 months — matches the federal Reg-Z seller-financer
+//     exemption ceiling (12 CFR 1026.36(a)(4)) and many states piggyback.
+//   - 5 loans / 12 months — minority position; usually requires
+//     additional facts (advertising, "in the business" language).
+//
+// We surface the test as a tiered self-assessment rather than a yes/no.
+// Operators who cross the 3-in-12 ceiling cannot use the federal
+// seller-finance exemption and almost certainly need RMLO licensing
+// regardless of state.
+
+export type HabitualnessTier =
+  | "exempt_de_minimis"  // ≤ 1 loan / 12 months on seller's own residence
+  | "low_volume_review"  // 2-3 loans / 12 months, owner-occupied consumer
+  | "likely_habitual"    // 4+ loans / 12 months OR pattern indicators
+  | "definitely_habitual"; // any advertising / brokered originations / 5+
+
+export interface HabitualnessInput {
+  loansOriginatedTrailing12Months: number;
+  /** Has the operator advertised "we finance" or similar publicly? */
+  advertisesSellerFinancing?: boolean;
+  /** Are any of the originations brokered to third-party borrowers
+   *  (vs. buyers of the operator's own land inventory)? */
+  brokersToThirdParties?: boolean;
+  /** Is any loan secured by the seller's primary or secondary residence? */
+  anyLoanOnOwnResidence?: boolean;
+  /** Operator's home state (drives strictness — informational only). */
+  state?: string;
+}
+
+export interface HabitualnessOutput {
+  tier: HabitualnessTier;
+  rmloLicensingPosture:
+    | "likely_exempt"
+    | "consult_state_dfi"
+    | "license_required"
+    | "license_required_immediately";
+  /** Explanation surfaced to the operator. */
+  rationale: string;
+  /** Concrete next-step list. */
+  actions: string[];
+  /** States known to be more aggressive than the federal floor — informational. */
+  stateNote?: string;
+}
+
+/**
+ * Self-assess whether the operator's seller-finance volume triggers a
+ * state RMLO licensing requirement. Returned independently of advise()
+ * because the question is org-level (how many loans this year), not
+ * deal-level (this loan's pricing).
+ */
+export function assessHabitualness(input: HabitualnessInput): HabitualnessOutput {
+  const n = Math.max(0, input.loansOriginatedTrailing12Months || 0);
+  const ads = !!input.advertisesSellerFinancing;
+  const broker = !!input.brokersToThirdParties;
+
+  // Strict-state list — informational, surfaced when the operator's
+  // state is one where AG opinions or DFI policy has gone broader than
+  // the federal 3-in-12 ceiling. NOT exhaustive; intentionally
+  // conservative.
+  const STRICT_STATES = new Set(["AZ", "CA", "NC", "NV", "OR", "MN", "MA", "MD", "TX"]);
+  const stateNote =
+    input.state && STRICT_STATES.has(input.state.toUpperCase())
+      ? `${input.state.toUpperCase()} interprets "in the business" of mortgage origination more strictly than the federal 3-in-12 ceiling. Confirm with the state DFI before relying on any safe harbor.`
+      : undefined;
+
+  // Hard escalators — any of these push to "definitely habitual"
+  // regardless of count.
+  if (broker || n >= 5 || (ads && n >= 2)) {
+    return {
+      tier: "definitely_habitual",
+      rmloLicensingPosture: "license_required_immediately",
+      rationale:
+        broker
+          ? "Brokering loans to third-party borrowers (originating loans secured by property the operator does not own) is core RMLO activity. The SAFE Act and every state statute treat this as a licensed mortgage broker / loan originator function."
+          : n >= 5
+            ? `Originating ${n} loans in a trailing 12-month period materially exceeds every state safe harbor we know of. No federal seller-finance exemption applies above 3 loans/12 months.`
+            : `Advertising seller financing publicly + originating ${n} loans in 12 months establishes a pattern of being "engaged in the business" of mortgage origination. State DFIs treat this as licensable activity.`,
+      actions: [
+        "Stop new originations until RMLO licensing is in place OR loans are restructured (lease-option, land contract where state-permissible, or hire a licensed MLO to originate).",
+        "Engage state-licensed mortgage compliance counsel this week.",
+        "Audit the trailing-12-month book — every consumer-purpose owner-occupied loan needs Reg-Z + ATR documentation review.",
+      ],
+      stateNote,
+    };
+  }
+
+  if (n >= 4) {
+    return {
+      tier: "likely_habitual",
+      rmloLicensingPosture: "license_required",
+      rationale: `Originating ${n} loans in a trailing 12-month period exceeds the federal 3-in-12 seller-finance exemption ceiling (12 CFR 1026.36(a)(4)). Once the federal exemption is lost, the SAFE Act default applies and state RMLO licensing is almost certainly required.`,
+      actions: [
+        "Engage a licensed MLO to originate any additional loans this year, OR pursue state RMLO licensing.",
+        "Confirm Reg-Z disclosures (Loan Estimate, Closing Disclosure) and ATR documentation are on file for every owner-occupied consumer-purpose loan in the trailing-12 book.",
+        "Move marketing copy away from any language that signals 'in the business of' lending.",
+      ],
+      stateNote,
+    };
+  }
+
+  if (n >= 2 && n <= 3) {
+    return {
+      tier: "low_volume_review",
+      rmloLicensingPosture: "consult_state_dfi",
+      rationale: `Originating ${n} loans in 12 months sits at or under the federal 3-property exemption ceiling, BUT state habitualness tests vary. Some state DFIs have taken the position that 2+ loans evidences being "in the business" of mortgage origination.${ads ? " Public advertising of seller financing is a key factor regulators look at and is present here." : ""}`,
+      actions: [
+        "Document the basis for each loan (purchaser identity, owner-occupancy status, dwelling vs. land-only).",
+        "Get a written opinion from a state-licensed mortgage compliance attorney before originating the 4th loan in any rolling 12-month window.",
+        "Track every origination in a spreadsheet keyed by consummation date — the 12-month window is rolling, not calendar.",
+      ],
+      stateNote,
+    };
+  }
+
+  // n <= 1, no broker, no ads
+  if (n <= 1 && input.anyLoanOnOwnResidence) {
+    return {
+      tier: "exempt_de_minimis",
+      rmloLicensingPosture: "likely_exempt",
+      rationale:
+        "≤1 loan per 12 months on the seller's own residence falls inside the federal 1-property-natural-person exemption (12 CFR 1026.36(a)(4)(ii)) and is generally below state habitualness triggers. Reg-Z still imposes disclosure obligations on the origination.",
+      actions: [
+        "Confirm the seller is a natural person, estate, or trust (entities do NOT qualify for the 1-property exemption).",
+        "Verify the note's terms — fixed-rate OR balloon ≥ 60 months, no negative amortization.",
+        "Keep documentation of the exemption basis in the deal file.",
+      ],
+      stateNote,
+    };
+  }
+
+  return {
+    tier: "low_volume_review",
+    rmloLicensingPosture: "consult_state_dfi",
+    rationale: `Originating ${n} loans in 12 months is below the 3-in-12 federal exemption ceiling but the operator should still confirm state-specific habitualness posture, especially for owner-occupied consumer-purpose loans on property the operator does not personally reside in.`,
+    actions: [
+      "Confirm with state DFI or counsel whether the state's RMLO exemption tracks the federal 3-in-12 ceiling or imposes a tighter test.",
+      "Document the exemption rationale in the deal file.",
+    ],
+    stateNote,
+  };
+}
 
 export function advise(input: AdvisorInput): AdvisorOutput {
   const state = (input.state || "").toUpperCase();

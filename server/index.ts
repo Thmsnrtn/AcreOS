@@ -254,12 +254,40 @@ const authLimiter = rateLimit({
 });
 
 // Auth-attempt endpoints (OAuth init/callback, legacy login/register): keep
-// an aggressive per-IP cap to slow credential-stuffing and brute force.
+// an aggressive cap to slow credential-stuffing and brute force.
+//
+// IMPORTANT: Do NOT key purely by IP. Carrier-grade NAT (T-Mobile, Verizon,
+// most cellular networks) shares a single egress IP across many devices on
+// the same cell. A pure-IP cap would 429 entire neighborhoods after one
+// attacker on the same CGNAT block trips it — and inversely, an attacker
+// can hop CGNAT cells to dilute the per-IP rate. The correct key is:
+//
+//   submitted-email (during login/register)   ← protects the targeted account
+//   sub (oauth state cookie)                  ← protects the resumed flow
+//   ip                                        ← last-resort floor
+//
+// We never want to key by req.user.id here because by definition these
+// endpoints fire BEFORE we have an authenticated session. The submitted
+// email in the POST body is the identity-of-record for credential stuffing
+// purposes. See memory/feedback_rate_limit_ip_keying.md.
 const authAttemptLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const body = (req as any).body ?? {};
+    const submittedEmail =
+      typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+    const submittedIdentifier =
+      typeof body.identifier === "string" ? body.identifier.toLowerCase().trim() : "";
+    // Prefer submitted email / identifier — the credential being targeted is
+    // what we actually want to rate-limit. Fall back to IP for OAuth
+    // endpoints where the request body is empty (state callback).
+    if (submittedEmail) return `email:${submittedEmail}`;
+    if (submittedIdentifier) return `id:${submittedIdentifier}`;
+    return `ip:${req.ip || "unknown"}`;
+  },
   message: { message: "Too many sign-in attempts. Please try again later." },
 });
 
