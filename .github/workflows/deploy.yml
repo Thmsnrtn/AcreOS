@@ -123,6 +123,64 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         continue-on-error: true
 
+      # Kareem §5: record this deploy in the deployments table so the
+      # SOC 2 Type II auditor can tie every production change back to a
+      # GIT_SHA + actor + workflow run. Auth is the DEPLOY_BOT_TOKEN
+      # shared secret (gh secret set DEPLOY_BOT_TOKEN; fly secrets set
+      # DEPLOY_BOT_TOKEN). Soft-failure: if the deploy ledger is
+      # unreachable we still consider the deploy itself successful.
+      - name: Record deployment in audit ledger
+        if: success()
+        run: |
+          set -e
+          HOST="$(flyctl info --json | jq -r '.Hostname')"
+          PR_NUMBER=""
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          else
+            # Try to find the PR that introduced this commit on main.
+            PR_NUMBER="$(gh pr list --search "${GITHUB_SHA}" --state merged --json number --jq '.[0].number // empty' || true)"
+          fi
+          APPROVED_BY=""
+          if [ -n "$PR_NUMBER" ]; then
+            APPROVED_BY="$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state=="APPROVED") | .author.login] | join(",") // ""' || true)"
+          fi
+          BODY="$(jq -n \
+            --arg gitSha "$GITHUB_SHA" \
+            --arg deployedBy "$GITHUB_ACTOR" \
+            --arg workflowRunUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg approvedBy "$APPROVED_BY" \
+            --argjson prNumber "${PR_NUMBER:-null}" \
+            '{gitSha:$gitSha, deployedBy:$deployedBy, workflowRunUrl:$workflowRunUrl, approvedBy:($approvedBy // null), prNumber:$prNumber, status:"success", environment:"production"}')"
+          curl --fail --retry 3 --retry-delay 5 \
+            -X POST "https://${HOST}/api/admin/deployments" \
+            -H "Content-Type: application/json" \
+            -H "X-Deploy-Bot-Token: ${{ secrets.DEPLOY_BOT_TOKEN }}" \
+            -d "$BODY" \
+            || echo "Deploy ledger POST failed — investigate but do not fail deploy"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Record FAILED deployment in audit ledger
+        if: failure()
+        run: |
+          set -e
+          HOST="acreos.app"
+          BODY="$(jq -n \
+            --arg gitSha "$GITHUB_SHA" \
+            --arg deployedBy "$GITHUB_ACTOR" \
+            --arg workflowRunUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{gitSha:$gitSha, deployedBy:$deployedBy, workflowRunUrl:$workflowRunUrl, status:"failure", environment:"production"}')"
+          curl --fail --retry 1 \
+            -X POST "https://${HOST}/api/admin/deployments" \
+            -H "Content-Type: application/json" \
+            -H "X-Deploy-Bot-Token: ${{ secrets.DEPLOY_BOT_TOKEN }}" \
+            -d "$BODY" \
+            || echo "Deploy ledger POST (failure path) failed — investigate"
+        continue-on-error: true
+
       - name: Notify on failure
         if: failure()
         run: echo "Deploy failed — check Fly.io dashboard for rollback options"

@@ -20521,6 +20521,14 @@ export const leaseTenants = pgTable(
     tenantId: varchar("tenant_id").notNull(),
     rentSharePct: numeric("rent_share_pct").notNull().default("1"),  // 1.0 for joint, 0.5/0.5 etc for per_unit
     isPrimary: boolean("is_primary").notNull().default(true),
+    // Glenn Okonkwo audit: joint-and-several liability requires EXPLICIT
+    // per-tenant consent in most jurisdictions. Defaulting every co-tenant
+    // to "yes, I will pay the other tenants' rent if they default" is how
+    // a judge sets aside cross-collection in landlord/tenant court.
+    // Default false — operator must affirm per-tenant before relying on
+    // the lease's liabilityModel='joint_and_several' for collection.
+    holdsJointAndSeveral: boolean("holds_joint_and_several").notNull().default(false),
+    jointAndSeveralAcknowledgedAt: timestamp("joint_and_several_acknowledged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

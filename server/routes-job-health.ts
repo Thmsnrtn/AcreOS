@@ -21,7 +21,7 @@
 import type { Express, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { jobRuns } from "@shared/schema";
+import { jobRuns, drDrills } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
@@ -131,7 +131,49 @@ export function registerJobHealthRoutes(app: Express): void {
           });
         }
 
-        return res.json({ jobs: out });
+        // Kareem §7: surface DR drill staleness alongside job health. A
+        // drill that hasn't run in > 100 days is "stale" (quarterly cadence
+        // = 91 days + slack); > 200 days is "failing." Pulls the most
+        // recent dr_drills row.
+        const DRILL_STALE_DAYS = 100;
+        const DRILL_FAILING_DAYS = 200;
+        const [lastDrill] = await db
+          .select({
+            id: drDrills.id,
+            ranAt: drDrills.ranAt,
+            totalRtoMinutes: drDrills.totalRtoMinutes,
+            passedRtoTarget: drDrills.passedRtoTarget,
+          })
+          .from(drDrills)
+          .orderBy(desc(drDrills.ranAt))
+          .limit(1);
+
+        let drDrill: {
+          lastRanAt: string | null;
+          daysSince: number | null;
+          status: "ok" | "stale" | "failing" | "never_ran";
+          lastTotalRtoMinutes: number | null;
+          lastPassedRtoTarget: boolean | null;
+        } = {
+          lastRanAt: null,
+          daysSince: null,
+          status: "never_ran",
+          lastTotalRtoMinutes: null,
+          lastPassedRtoTarget: null,
+        };
+
+        if (lastDrill?.ranAt) {
+          const days = Math.floor((Date.now() - new Date(lastDrill.ranAt).getTime()) / 86_400_000);
+          drDrill = {
+            lastRanAt: new Date(lastDrill.ranAt).toISOString(),
+            daysSince: days,
+            status: days > DRILL_FAILING_DAYS ? "failing" : days > DRILL_STALE_DAYS ? "stale" : "ok",
+            lastTotalRtoMinutes: lastDrill.totalRtoMinutes ?? null,
+            lastPassedRtoTarget: lastDrill.passedRtoTarget ?? null,
+          };
+        }
+
+        return res.json({ jobs: out, drDrill });
       } catch (err) {
         logger.error("jobs.health failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);

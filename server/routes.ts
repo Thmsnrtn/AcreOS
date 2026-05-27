@@ -141,6 +141,7 @@ import { requireClerkMFA } from "./middleware/requireClerkMFA";
 import { registerDashboardRoutes } from "./routes-dashboard";
 import { registerJobHealthRoutes } from "./routes-job-health";
 import { registerAdminAuditLogRoutes } from "./routes-admin-audit";
+import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
 import { registerOrganizationRoutes } from "./routes-organization";
 import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
@@ -1979,6 +1980,10 @@ export async function registerRoutes(
   // Kareem §1: admin endpoints to verify the audit_log hash chain. Founder-
   // only; emits its own audit_event for every verification run.
   registerAdminAuditLogRoutes(app);
+  // Kareem §5 + §7: change-management ledger (deployments) and DR drill
+  // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
+  // founder records DR drills here after each quarterly run.
+  registerAdminComplianceRoutes(app);
   registerOrganizationRoutes(app);
   // Phase 5 §5 — team-readiness endpoints (per-seat pricing, lead-assignment
   // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).
