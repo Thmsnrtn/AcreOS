@@ -133,10 +133,161 @@ const US_STATES = [
   { code: "PA", name: "Pennsylvania" },
 ];
 
+// ─── Carla Mendoza fix (2026-05-27): UPL / assignment-disclosure warnings ────
+//
+// The blind-offer wizard's letter-generator was emitting "I am a private
+// investor … I would like to make you a firm offer" with no awareness of
+// the broker-licensing or equitable-interest doctrines that govern
+// whether an unlicensed wholesaler can legally do that. Stuffing the
+// warning into the FINAL step (after the customer has invested time) is
+// behavioral-economics malpractice — we put the warning at STEP 1, the
+// moment the state field is filled, so the customer is making an
+// informed call about whether to even continue.
+//
+// Sourcing for each entry: the citations are paralegal-level (cite-
+// check before you quote in pleadings) and refer to the broker-licensing
+// + assignment-disclosure regime AS OF the rule-data date stamp the user
+// can see on /wholesaler-state-rules.
+//
+// "license_required": you cannot lawfully assign the contract for a fee
+//   in this state without a real-estate broker license.
+// "advertising_restricted": you cannot advertise property you don't own
+//   without disclosing that you hold an equitable interest only.
+// "equitable_interest": California-specific — the equitable-interest
+//   doctrine means an unrecorded contract is not necessarily a defense
+//   to UPL if the wholesaler's intent was to never close.
+// "recording": some states (e.g. NC, FL) require the assignment itself
+//   to be recorded for the assignee to claim against the property.
+
+interface StateUplWarning {
+  states: string[];
+  severity: "block" | "warn";
+  kind: "license_required" | "advertising_restricted" | "equitable_interest" | "recording" | "disclosure";
+  headline: string;
+  body: string;
+  citation: string;
+}
+
+const STATE_UPL_WARNINGS: StateUplWarning[] = [
+  {
+    states: ["OK"],
+    severity: "block",
+    kind: "license_required",
+    headline: "Oklahoma: assigning a real-estate contract for a fee is the unauthorized practice of real estate without a broker license.",
+    body: "Generating an assignment-for-fee here without a license can trigger a class-A misdemeanor and disgorgement of any assignment fee. Use the double-close flow instead, or partner with a licensed broker.",
+    citation: "59 O.S. § 858-301 (broker license required to negotiate the purchase or sale of real estate for compensation).",
+  },
+  {
+    states: ["IL"],
+    severity: "block",
+    kind: "license_required",
+    headline: "Illinois: the Wholesale Disclosure Act + Real Estate License Act treat for-fee assignment without a license as a licensable activity.",
+    body: "Illinois HB 1063 (2019) and the 2023 wholesaler-specific amendment treat soliciting purchase contracts and assigning them for a fee as activity requiring a broker license. Equitable-interest argument is narrowly construed.",
+    citation: "225 ILCS 454/1-10 (broker definition); Public Act 103-0099 (wholesaler disclosure).",
+  },
+  {
+    states: ["SC"],
+    severity: "block",
+    kind: "license_required",
+    headline: "South Carolina: cannot wholesale more than one deal per year without a broker license.",
+    body: "South Carolina caps unlicensed assignment-for-fee activity at one transaction per 12 months per person. Multiple deals = brokerage activity = license required.",
+    citation: "S.C. Code § 40-57-30(D)(8) (one-transaction-per-year exemption).",
+  },
+  {
+    states: ["PA"],
+    severity: "block",
+    kind: "license_required",
+    headline: "Pennsylvania: assignment-for-fee is broker activity under the RE License Act.",
+    body: "Pennsylvania prosecutes unlicensed wholesaling aggressively. The 2024 wholesaler amendments require disclosure of intent to assign in the marketing material itself.",
+    citation: "63 P.S. § 455.201 et seq.; 49 Pa. Code § 35.201.",
+  },
+  {
+    states: ["CA"],
+    severity: "warn",
+    kind: "equitable_interest",
+    headline: "California: the equitable-interest doctrine is narrowly construed; AB 968 (2024) and DRE advisories treat 'never intended to close' as evidence of unlicensed brokerage.",
+    body: "If you market the property before closing, you must disclose that you hold only an equitable interest (an executed purchase contract), not title. Failure to disclose can void the assignment and expose you to a § 10130 enforcement action.",
+    citation: "Cal. Bus. & Prof. Code § 10130; AB 968 (2024); DRE Bulletin 2023-04.",
+  },
+  {
+    states: ["NC"],
+    severity: "warn",
+    kind: "disclosure",
+    headline: "North Carolina: NCREC's 2022 guidance requires disclosure of wholesaler intent in writing to the seller.",
+    body: "NCREC Real Estate Bulletin Vol. 53 No. 2 (Oct 2022): wholesalers who market property they do not own to a third party must (a) disclose to the original seller that they intend to assign the contract, and (b) disclose to the end buyer that they are not the owner of record.",
+    citation: "NCREC Bulletin Vol. 53 No. 2 (Oct 2022); N.C.G.S. § 93A-2.",
+  },
+  {
+    states: ["TX"],
+    severity: "warn",
+    kind: "disclosure",
+    headline: "Texas: HB 2730 (2017) requires written disclosure to the seller that you intend to assign the contract, BEFORE the contract is signed.",
+    body: "TREC has prosecuted wholesalers who 'forgot' the assignment disclosure. The disclosure must be in writing and made before the contract is executed — not after.",
+    citation: "Tex. Occ. Code § 1101.0045 (equitable-interest disclosure).",
+  },
+  {
+    states: ["FL"],
+    severity: "warn",
+    kind: "advertising_restricted",
+    headline: "Florida: § 475.42 makes it unlawful to advertise property you do not own without disclosing your equitable interest.",
+    body: "DBPR has issued cease-and-desist orders to wholesalers who post properties on Zillow/Craigslist before closing. Marketing language must disclose 'equitable interest only — assignment of contract.'",
+    citation: "Fla. Stat. § 475.42(1)(b); DBPR FREC Final Orders 2021-2024.",
+  },
+];
+
+function findStateWarning(state: string | undefined): StateUplWarning | null {
+  if (!state) return null;
+  return STATE_UPL_WARNINGS.find((w) => w.states.includes(state.toUpperCase())) ?? null;
+}
+
+function StateUplBanner({ state }: { state: string }) {
+  const warning = findStateWarning(state);
+  if (!warning) return null;
+  const isBlock = warning.severity === "block";
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className={`rounded-xl border p-4 ${
+        isBlock
+          ? "border-acr-neg/40 bg-acr-neg-soft dark:bg-acr-neg-soft/10"
+          : "border-acr-warn/40 bg-acr-warn-soft dark:bg-acr-warn-soft/10"
+      }`}
+    >
+      <div className="flex gap-3">
+        <AlertTriangle
+          className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}
+          aria-hidden="true"
+        />
+        <div className="text-sm">
+          <p className={`font-bold mb-1 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}>
+            {isBlock ? "STOP — license required in this state" : "Disclosure required before mailing"}
+          </p>
+          <p className={`mb-2 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}>
+            {warning.headline}
+          </p>
+          <p className={`mb-2 text-xs ${isBlock ? "text-acr-neg/80" : "text-acr-warn/80"}`}>
+            {warning.body}
+          </p>
+          <p className={`text-xs italic ${isBlock ? "text-acr-neg/70" : "text-acr-warn/70"}`}>
+            Citation: {warning.citation}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Not legal advice. Confirm with state counsel before relying on
+            this. See <a href={`/wholesaler-state-rules/${state}`} className="underline">/wholesaler-state-rules/{state}</a> for the full entry.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Step Components ──────────────────────────────────────────────────────────
 
 function StepCounty({ state, setState, county, setCounty, acres, setAcres, sellerProfile, setSellerProfile, onNext }: any) {
-  const canProceed = state && county && acres > 0;
+  const warning = findStateWarning(state);
+  const isBlocked = warning?.severity === "block";
+  const canProceed = state && county && acres > 0 && !isBlocked;
   const stateId = useId();
   const countyId = useId();
   const acresId = useId();
@@ -216,6 +367,11 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
         </div>
       </fieldset>
 
+      {/* Carla Mendoza fix: surface state-specific UPL / assignment-
+          disclosure warnings the MOMENT the operator picks a state.
+          Block-severity states disable Continue. */}
+      <StateUplBanner state={state} />
+
       <div className="rounded-xl border border-acr-accent bg-acr-accent dark:border-acr-accent/50 dark:bg-acr-accent/10 p-4">
         <div className="flex gap-3">
           <Star className="w-4 h-4 text-acr-accent mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -227,7 +383,9 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
       </div>
 
       <Button type="submit" disabled={!canProceed} className="w-full">
-        Continue to comp research <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
+        {isBlocked
+          ? "Blocked by state — use double-close flow instead"
+          : (<>Continue to comp research <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" /></>)}
       </Button>
     </form>
   );
@@ -590,6 +748,18 @@ function StepLetter({ report, onBack }: any) {
   const [, setLocation] = useLocation();
   if (!report) return null;
   const lv = report.letterVariables;
+  const warning = findStateWarning(report.state);
+
+  // Carla Mendoza fix: in disclosure-required states (TX, NC, FL, CA) the
+  // assignment-disclosure clause has to be in the OFFER LETTER itself —
+  // not buried in the contract that follows. Texas Occ. Code § 1101.0045
+  // requires the disclosure BEFORE the contract is signed; an offer
+  // letter is "before." Without this paragraph, the wholesaler walks into
+  // a TREC complaint the moment a seller forwards the letter to a
+  // licensee.
+  const assignmentDisclosure = warning && warning.severity === "warn"
+    ? `\n\nIMPORTANT DISCLOSURE: I am a real-estate investor who buys land directly from sellers. I may, at my option, assign this contract to another buyer prior to closing, or I may close on the property myself. I am not a licensed real-estate broker or agent in ${lv.stateName}, and I am not representing you as your agent. I hold only an equitable interest in any contract we sign — I am the buyer, not your broker.\n`
+    : "";
 
   const letterText = `[Owner's Name]
 [Owner's Address]
@@ -611,7 +781,7 @@ There are NO real estate commissions, NO agent fees, and NO closing costs on you
 2. I send a simple purchase agreement
 3. We close at a title company of your choice within ${lv.closingTimeline}
 4. You receive your money
-
+${assignmentDisclosure}
 This offer is valid for 21 days from the date of this letter. There is no obligation — simply call or email to accept or to ask any questions.
 
 Please contact me at:
@@ -641,6 +811,12 @@ Private Real Estate Investor`;
         <h2 className="text-xl font-bold mb-1">Step 5: Blind offer letter</h2>
         <p className="text-sm text-muted-foreground">Your personalized blind offer letter. Customize and mail to the property owner. Keep it simple — one page, specific price, clear call-to-action.</p>
       </div>
+
+      {/* Carla Mendoza fix: re-show the state UPL banner on the letter
+          step. Some operators skip step 1 by deep-linking. The
+          assignment-disclosure paragraph in the letter is conditional on
+          this warning's severity. */}
+      <StateUplBanner state={report.state} />
 
       {/* Offer summary */}
       <dl className="grid grid-cols-3 gap-4 m-0">
