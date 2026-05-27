@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { voiceLearningService } from './services/voiceLearning';
 import { contextProfileService } from './services/contextProfile';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -19,8 +20,8 @@ router.get('/voice-profile', async (req: Request, res: Response) => {
     const org = req.organization;
     const profile = await voiceLearningService.getProfile(org.id);
     res.json({ profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -35,8 +36,8 @@ router.post('/voice-profile/refresh', async (req: Request, res: Response) => {
     voiceLearningService.invalidateProfile(org.id);
     const profile = await voiceLearningService.buildProfile(org.id);
     res.json({ profile, refreshed: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -51,14 +52,14 @@ router.post('/voice-profile/apply', async (req: Request, res: Response) => {
     const { text } = req.body;
 
     if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'text is required' });
+      return Errors.badRequest(res, 'text is required');
     }
 
     const profile = await voiceLearningService.getProfile(org.id);
     const rewritten = await voiceLearningService.applyVoice(text, profile);
     res.json({ original: text, rewritten, profile: { formality: profile.formality, tone: profile.tone } });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -72,8 +73,8 @@ router.get('/voice-profile/style-instruction', async (req: Request, res: Respons
     const profile = await voiceLearningService.getProfile(org.id);
     const instruction = voiceLearningService.buildStyleInstruction(profile);
     res.json({ instruction, profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -90,8 +91,8 @@ router.get('/context-profile', async (req: Request, res: Response) => {
     const org = req.organization;
     const profile = await contextProfileService.getProfile(org.id);
     res.json({ profile });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -105,8 +106,8 @@ router.post('/context-profile/refresh', async (req: Request, res: Response) => {
     contextProfileService.invalidate(org.id);
     const profile = await contextProfileService.buildProfile(org.id);
     res.json({ profile, refreshed: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

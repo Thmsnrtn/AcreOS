@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { cashFlowForecasterService } from './services/cashFlowForecaster';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -17,8 +18,8 @@ router.post('/forecast', async (req: Request, res: Response) => {
       { noteId, propertyId, periodMonths }
     );
     res.json({ forecast });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -31,8 +32,8 @@ router.get('/portfolio/summary', async (req: Request, res: Response) => {
     const org = req.organization;
     const summary = await cashFlowForecasterService.getPortfolioCashFlowSummary(org.id);
     res.json({ summary });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -41,8 +42,8 @@ router.get('/portfolio/high-risk', async (req: Request, res: Response) => {
     const org = req.organization;
     const highRisk = await cashFlowForecasterService.flagHighRiskNotes(org.id);
     res.json({ highRisk });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -54,8 +55,8 @@ router.get('/notes/:noteId/health', async (req: Request, res: Response) => {
   try {
     const health = await cashFlowForecasterService.analyzePaymentHealth(parseInt(req.params.noteId));
     res.json({ health });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -64,8 +65,8 @@ router.get('/notes/:noteId/risk-score', async (req: Request, res: Response) => {
     const riskScore = await cashFlowForecasterService.calculatePaymentRiskScore(parseInt(req.params.noteId));
     const riskFactors = await cashFlowForecasterService.identifyRiskFactors(parseInt(req.params.noteId));
     res.json({ riskScore, riskFactors });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -77,8 +78,8 @@ router.get('/forecast/:forecastId/insights', async (req: Request, res: Response)
   try {
     const insights = await cashFlowForecasterService.generateInsights(parseInt(req.params.forecastId));
     res.json({ insights });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -94,8 +95,8 @@ router.get('/portfolio/timeline', async (req: Request, res: Response) => {
     const months = Math.min(parseInt((req.query.months as string) || '24', 10), 36);
     const timeline = await cashFlowForecasterService.getPortfolioTimeline(org.id, months);
     res.json({ timeline });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -112,8 +113,8 @@ router.get('/forecast/actual-vs-projected', async (req: Request, res: Response) 
       parseInt(periodMonths as string)
     );
     res.json({ comparison });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 

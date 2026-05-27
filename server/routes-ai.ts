@@ -1571,7 +1571,7 @@ export function registerAIRoutes(app: Express): void {
 
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+        return Errors.limitExceeded(res, { message: "AI request limit reached. Upgrade to continue." });
       }
 
       const result = await vaAgentService.processAgentTask(org.id, agentType, task);
@@ -1654,7 +1654,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+        return Errors.limitExceeded(res, { message: "AI request limit reached. Upgrade to continue." });
       }
       const briefing = await vaAgentService.generateBriefing(org.id);
       res.json(briefing);

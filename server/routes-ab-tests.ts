@@ -18,6 +18,7 @@ import {
   getVariant,
   type AbTest,
 } from "./services/abTestEngine";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -34,41 +35,41 @@ router.post("/", (req: Request, res: Response) => {
     const { id, name, variants, metric } = req.body;
 
     if (!id || !name || !variants || !metric) {
-      return res.status(400).json({ error: "id, name, variants, and metric are required" });
+      return Errors.badRequest(res, "id, name, variants, and metric are required");
     }
     if (!Array.isArray(variants) || variants.length < 2) {
-      return res.status(400).json({ error: "Must have at least 2 variants" });
+      return Errors.badRequest(res, "Must have at least 2 variants");
     }
     const totalWeight = variants.reduce((s: number, v: any) => s + (v.weight ?? 0), 0);
     if (Math.abs(totalWeight - 100) > 1) {
-      return res.status(400).json({ error: "Variant weights must sum to 100" });
+      return Errors.badRequest(res, "Variant weights must sum to 100");
     }
 
     const test = createTest({ id, name, orgId: org.id, variants, metric });
     res.status(201).json(test);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
 router.get("/:id", (req: Request, res: Response) => {
   const test = getTest(req.params.id);
-  if (!test) return res.status(404).json({ error: "Test not found" });
+  if (!test) return Errors.notFound(res, "Test");
   res.json(test);
 });
 
 router.get("/:id/results", (req: Request, res: Response) => {
   const test = getTest(req.params.id);
-  if (!test) return res.status(404).json({ error: "Test not found" });
+  if (!test) return Errors.notFound(res, "Test");
   const results = getResults(test);
   res.json(results);
 });
 
 router.get("/:id/variant/:leadId", (req: Request, res: Response) => {
   const test = getTest(req.params.id);
-  if (!test) return res.status(404).json({ error: "Test not found" });
+  if (!test) return Errors.notFound(res, "Test");
   const leadId = parseInt(req.params.leadId);
-  if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+  if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
   const variant = getVariant(test, leadId);
   res.json({ variant });
 });
