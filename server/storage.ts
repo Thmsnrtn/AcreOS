@@ -1181,244 +1181,9 @@ export class DatabaseStorage implements IStorage {
 
   // Leads (+ activities, soft-delete, scoring, dedup) — moved to server/storage/leadRepo.ts.
 
-  // Properties
-  async getProperties(orgId: number) {
-    // Task 223: exclude soft-deleted properties from list queries
-    return await db.select().from(properties)
-      .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
-      .orderBy(desc(properties.createdAt))
-      .limit(5000);
-  }
+  // Properties — moved to server/storage/propertyRepo.ts.
 
-  async getPropertiesPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>> {
-    const whereClause = and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`);
-    const [{ count: total }] = await db.select({ count: count() }).from(properties).where(whereClause);
-    const totalNum = Number(total);
-    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
-    const offset = (options.page - 1) * options.pageSize;
-
-    const sortColumn = (properties as any)[options.sortBy] ?? properties.createdAt;
-    const orderFn = options.sortOrder === "asc" ? asc : desc;
-
-    const data = await db.select().from(properties)
-      .where(whereClause)
-      .orderBy(orderFn(sortColumn))
-      .limit(options.pageSize)
-      .offset(offset);
-
-    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
-  }
-  
-  async getProperty(orgId: number, id: number) {
-    const [property] = await db.select().from(properties)
-      .where(and(eq(properties.organizationId, orgId), eq(properties.id, id)));
-    return property;
-  }
-  
-  async createProperty(property: InsertProperty) {
-    const [newProperty] = await db.insert(properties).values(property).returning();
-    await this.logActivity({
-      organizationId: property.organizationId,
-      action: "created",
-      entityType: "property",
-      entityId: newProperty.id,
-      description: `Property ${newProperty.apn} created`,
-    });
-    return newProperty;
-  }
-  
-  async updateProperty(id: number, updates: Partial<InsertProperty>, organizationId?: number) {
-    const conditions = [eq(properties.id, id)];
-    if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
-    const [updated] = await db.update(properties)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async deleteProperty(id: number, organizationId?: number) {
-    // Task 223: Soft delete — set status='deleted' on the property (and cascade soft-delete
-    // dependent deals) so records are preserved for audit purposes.
-    // Legal-hold (Phase 3 Week 11): blocks even soft-delete while a hold covers
-    // the property (org_wide or property_specific).
-    if (organizationId !== undefined) {
-      await assertNotUnderLegalHold(organizationId, "property", id);
-    }
-    const conditions = [eq(properties.id, id)];
-    if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
-    await db.update(properties)
-      .set({ status: "deleted", updatedAt: new Date() })
-      .where(and(...conditions));
-    // Soft-delete any deals tied to this property so they also disappear from list views
-    const dealConditions: any[] = [eq(deals.propertyId, id)];
-    if (organizationId) dealConditions.push(eq(deals.organizationId, organizationId));
-    await db.update(deals)
-      .set({ status: "deleted", updatedAt: new Date() })
-      .where(and(...dealConditions));
-  }
-  
-  async getPropertyCount(orgId: number) {
-    const [result] = await db.select({ count: count() }).from(properties).where(eq(properties.organizationId, orgId));
-    return result?.count || 0;
-  }
-  
-  async bulkDeleteProperties(orgId: number, ids: number[]): Promise<number> {
-    if (ids.length === 0) return 0;
-    
-    // Delete all related records first to avoid foreign key constraints
-    await db.delete(dueDiligenceDossiers).where(inArray(dueDiligenceDossiers.propertyId, ids));
-    await db.delete(dueDiligenceChecklists).where(inArray(dueDiligenceChecklists.propertyId, ids));
-    await db.delete(dueDiligenceItems).where(inArray(dueDiligenceItems.propertyId, ids));
-    await db.delete(propertyListings).where(inArray(propertyListings.propertyId, ids));
-    await db.delete(deals).where(inArray(deals.propertyId, ids));
-    
-    // Now delete the properties
-    await db.delete(properties)
-      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
-    return ids.length;
-  }
-  
-  async bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
-    if (ids.length === 0) return 0;
-    await db.update(properties)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
-    return ids.length;
-  }
-  
-  // Deals
-  async getDeals(orgId: number) {
-    // Task 223: exclude soft-deleted deals from list queries
-    return await db.select().from(deals)
-      .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
-      .orderBy(desc(deals.createdAt))
-      .limit(5000);
-  }
-
-  async getDealsPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>> {
-    const whereClause = and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`);
-    const [{ count: total }] = await db.select({ count: count() }).from(deals).where(whereClause);
-    const totalNum = Number(total);
-    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
-    const offset = (options.page - 1) * options.pageSize;
-
-    const sortColumn = (deals as any)[options.sortBy] ?? deals.createdAt;
-    const orderFn = options.sortOrder === "asc" ? asc : desc;
-
-    const data = await db.select().from(deals)
-      .where(whereClause)
-      .orderBy(orderFn(sortColumn))
-      .limit(options.pageSize)
-      .offset(offset);
-
-    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
-  }
-
-  async getDeal(orgId: number, id: number) {
-    const [deal] = await db.select().from(deals)
-      .where(and(eq(deals.organizationId, orgId), eq(deals.id, id)));
-    return deal;
-  }
-  
-  async createDeal(deal: InsertDeal) {
-    const [newDeal] = await db.insert(deals).values(deal).returning();
-    return newDeal;
-  }
-  
-  async updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number) {
-    // Task 219: Optimistic locking — if the caller provides an expectedUpdatedAt timestamp,
-    // only apply the update when the row still has that timestamp (prevents lost-update
-    // races between concurrent requests).
-    const conditions = [eq(deals.id, id)];
-    if (organizationId) conditions.push(eq(deals.organizationId, organizationId));
-    if (expectedUpdatedAt) conditions.push(eq(deals.updatedAt, expectedUpdatedAt));
-    const whereClause = and(...conditions);
-
-    // Capture pre-update status so the post-update hook can tell
-    // whether the status actually transitioned (vs. other field updates).
-    const [before] = await db.select({ status: deals.status, propertyId: deals.propertyId })
-      .from(deals)
-      .where(eq(deals.id, id));
-
-    const [updated] = await db.update(deals)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(whereClause!)
-      .returning();
-
-    if (!updated && expectedUpdatedAt) {
-      // Row existed but timestamp didn't match — concurrent modification detected
-      throw new Error(
-        "Deal was modified by another request. Please reload and retry your changes."
-      );
-    }
-
-    // Autonomy hook: when a deal transitions to an actionable closing
-    // status (accepted / under_contract / in_escrow) and no checklist
-    // exists yet, generate one automatically. State-specific via
-    // stateDocumentConfig. Keeps the closing workflow from getting
-    // stuck on "who's supposed to create this checklist."
-    if (updated && before?.status !== updated.status) {
-      const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
-      if (triggerStatuses.has(updated.status ?? "")) {
-        void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
-          // Never let a hook failure break the primary update.
-          // eslint-disable-next-line no-console
-          console.warn("[storage.updateDeal] auto-checklist skipped:", err?.message);
-        });
-      }
-    }
-
-    return updated;
-  }
-
-  /**
-   * Fire-and-forget: generate a closing checklist if none exists.
-   * Called from updateDeal's post-update hook on status transitions
-   * into accepted / under_contract / in_escrow.
-   */
-  private async _autoGenerateClosingChecklist(dealId: number, propertyId: number | null) {
-    const existing = await this.getDealChecklist(dealId);
-    if (existing) return;
-    // Pull property state for state-specific checklist (stateDocumentConfig).
-    let state = "TX";
-    if (propertyId) {
-      try {
-        const [prop] = await db.select({ state: properties.state })
-          .from(properties)
-          .where(eq(properties.id, propertyId))
-          .limit(1);
-        if (prop?.state && prop.state.length === 2) state = prop.state.toUpperCase();
-      } catch {}
-    }
-    const closingDate = new Date();
-    closingDate.setDate(closingDate.getDate() + 30);
-    const { generateClosingChecklist } = await import("./services/closingChecklistGenerator");
-    await generateClosingChecklist(dealId, state, closingDate, false).catch(() => {});
-  }
-
-  async bulkDeleteDeals(orgId: number, ids: number[]): Promise<number> {
-    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
-    if (ids.length === 0) return 0;
-    await db.update(deals)
-      .set({ status: "deleted", updatedAt: new Date() })
-      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
-    return ids.length;
-  }
-
-  async getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]> {
-    if (ids.length === 0) return [];
-    return await db.select().from(deals)
-      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
-  }
-
-  async bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number> {
-    if (ids.length === 0) return 0;
-    await db.update(deals)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
-    return ids.length;
-  }
+  // Deals — moved to server/storage/dealRepo.ts.
 
   // Notes (Financing)
   async getNotes(orgId: number) {
@@ -8257,15 +8022,19 @@ Notary Public</p>
 import { orgRepo, type OrgRepo } from "./storage/orgRepo";
 import { teamRepo, type TeamRepo } from "./storage/teamRepo";
 import { leadRepo, type LeadRepo } from "./storage/leadRepo";
+import { propertyRepo, type PropertyRepo } from "./storage/propertyRepo";
+import { dealRepo, type DealRepo } from "./storage/dealRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
   orgRepo,
   teamRepo,
   leadRepo,
+  propertyRepo,
+  dealRepo,
 );
 
 export const storage = new DatabaseStorage();
