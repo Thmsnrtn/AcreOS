@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { documentIntelligenceService } from './services/documentIntelligence';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -8,7 +9,7 @@ const router = Router();
 router.post('/upload', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    if (!org) return res.status(401).json({ error: "Unauthorized" });
+    if (!org) return Errors.unauthorized(res);
     const { name, documentName, fileUrl, fileType, documentType, propertyId, dealId } = req.body;
     // Service signature is (organizationId, { documentType, documentName, fileUrl, propertyId, dealId }).
     // Accept either the old shape ({ name, fileType }) or the service's native
@@ -21,8 +22,8 @@ router.post('/upload', async (req: Request, res: Response) => {
       dealId: dealId ? parseInt(dealId) : undefined,
     });
     res.json({ document: doc });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -31,8 +32,8 @@ router.post('/documents/:id/process', async (req: Request, res: Response) => {
   try {
     const analysis = await documentIntelligenceService.processDocument(parseInt(req.params.id));
     res.json({ analysis });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -43,8 +44,8 @@ router.get('/documents/:id/text', async (req: Request, res: Response) => {
     // Fetch fileUrl from document record then extract
     const text = await documentIntelligenceService.extractText(parseInt(req.params.id), req.query.fileUrl as string || '');
     res.json({ text });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -53,8 +54,8 @@ router.get('/documents/:id/key-terms', async (req: Request, res: Response) => {
   try {
     const terms = await documentIntelligenceService.extractKeyTerms(parseInt(req.params.id));
     res.json({ terms });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -63,8 +64,8 @@ router.get('/documents/:id/risks', async (req: Request, res: Response) => {
   try {
     const risks = await documentIntelligenceService.analyzeRisks(parseInt(req.params.id));
     res.json({ risks });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -73,8 +74,8 @@ router.get('/documents/:id/summary', async (req: Request, res: Response) => {
   try {
     const summary = await documentIntelligenceService.generateDocumentSummary(parseInt(req.params.id));
     res.json({ summary });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -83,8 +84,8 @@ router.get('/properties/:id/documents', async (req: Request, res: Response) => {
   try {
     const docs = await documentIntelligenceService.getDocumentsByProperty(parseInt(req.params.id));
     res.json({ documents: docs });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -93,8 +94,8 @@ router.get('/deals/:id/documents', async (req: Request, res: Response) => {
   try {
     const docs = await documentIntelligenceService.getDocumentsByDeal(parseInt(req.params.id));
     res.json({ documents: docs });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -105,8 +106,8 @@ router.post('/search', async (req: Request, res: Response) => {
     const { query, filters } = req.body;
     const results = await documentIntelligenceService.searchDocuments(org.id, query, filters);
     res.json({ results });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 
@@ -119,8 +120,8 @@ router.post('/documents/:id/compare', async (req: Request, res: Response) => {
       parseInt(compareDocumentId)
     );
     res.json({ diff });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    Errors.internal(res, err);
   }
 });
 

@@ -196,7 +196,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
     const { state, county, targetAcres, comps, sellerProfile, marketCondition, ownerFinanceGoal, propertyId } = req.body;
 
     if (!state || !county || !targetAcres) {
-      return res.status(400).json({ error: "state, county, and targetAcres are required" });
+      return Errors.badRequest(res, "state, county, and targetAcres are required");
     }
 
     // Aniyah §2 — block blind-offer generation on Indian-Country / federal
@@ -248,7 +248,7 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
     } = req.body;
 
     if (!latitude || !longitude || !state || !county) {
-      return res.status(400).json({ error: "latitude, longitude, state, and county are required" });
+      return Errors.badRequest(res, "latitude, longitude, state, and county are required");
     }
 
     const report = await generateLandIntelligenceReport({
@@ -284,11 +284,11 @@ router.post("/screen-counties", async (req: Request, res: Response) => {
     const { counties } = req.body;
 
     if (!Array.isArray(counties) || counties.length === 0) {
-      return res.status(400).json({ error: "counties array is required" });
+      return Errors.badRequest(res, "counties array is required");
     }
 
     if (counties.length > 20) {
-      return res.status(400).json({ error: "Maximum 20 counties per batch" });
+      return Errors.badRequest(res, "Maximum 20 counties per batch");
     }
 
     const results = await screenCountiesForCampaign(counties);
@@ -328,7 +328,7 @@ router.post("/campaign-sizing", async (req: Request, res: Response) => {
     const { county, state, targetDealsPerMonth, expectedAcceptanceRate, averageDealSize } = req.body;
 
     if (!county || !state || !targetDealsPerMonth) {
-      return res.status(400).json({ error: "county, state, and targetDealsPerMonth are required" });
+      return Errors.badRequest(res, "county, state, and targetDealsPerMonth are required");
     }
 
     const sizing = sizeCampaign({
@@ -340,8 +340,8 @@ router.post("/campaign-sizing", async (req: Request, res: Response) => {
     });
 
     res.json(sizing);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  } catch (err) {
+    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
@@ -568,7 +568,7 @@ router.post("/lead-intelligence/score", async (req: Request, res: Response) => {
   try {
     const { scoreLeadIntelligence } = await import("./services/leadIntelligenceEngine");
     const { lead, nassData } = req.body;
-    if (!lead) return res.status(400).json({ error: "lead object is required" });
+    if (!lead) return Errors.badRequest(res, "lead object is required");
     const profile = await scoreLeadIntelligence(lead, nassData);
     res.json(profile);
   } catch (err: any) {
@@ -606,7 +606,7 @@ router.post("/solar-potential", async (req: Request, res: Response) => {
     };
 
     if (!lat || !lng || !acres || !state) {
-      return res.status(400).json({ error: "lat, lng, acres, and state are required" });
+      return Errors.badRequest(res, "lat, lng, acres, and state are required");
     }
 
     const { calculateSolarPotential } = await import("./services/solarPotentialService");
@@ -632,7 +632,7 @@ router.get("/county-disaster-history/:state/:county", async (req: Request, res: 
     const { state, county } = req.params;
     const { getCountyDisasterHistory } = await import("./services/censusDataService");
     const result = await getCountyDisasterHistory(state, county);
-    if (!result) return res.status(404).json({ error: "No disaster data found for this county" });
+    if (!result) return Errors.notFound(res, "disaster data");
     res.json(result);
   } catch (err: any) {
     Errors.internal(res, err);
@@ -649,7 +649,7 @@ router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request
     const { stateFips, countyFips } = req.params;
     const { getCountyMigrationFlows } = await import("./services/censusDataService");
     const result = await getCountyMigrationFlows(stateFips, countyFips);
-    if (!result) return res.status(404).json({ error: "No migration flow data found" });
+    if (!result) return Errors.notFound(res, "migration flow data");
     res.json(result);
   } catch (err: any) {
     Errors.internal(res, err);
@@ -715,7 +715,7 @@ router.get("/data-freshness/:propertyId", async (req: Request, res: Response) =>
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     const property = await storage.getProperty(org.id, propertyId);
-    if (!property) return res.status(404).json({ error: "Property not found" });
+    if (!property) return Errors.notFound(res, "Property");
     const { assessDataFreshness } = await import("./services/dataIntelligenceEngine");
     const report = assessDataFreshness((property as any).enrichmentData, propertyId);
     res.json(report);
@@ -773,7 +773,7 @@ router.get("/prospect/:leadId", async (req: Request, res: Response) => {
     const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     const lead = await storage.getLead(org.id, leadId);
-    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead) return Errors.notFound(res, "Lead");
 
     const leadData = lead as any;
     const activeSignals: string[] = [];

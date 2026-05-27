@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { landCredit } from './services/landCredit';
+import { Errors } from './utils/errors';
 
 const router = Router();
 
@@ -16,8 +17,8 @@ router.post('/score/:propertyId', async (req: Request, res: Response) => {
       req.params.propertyId
     );
     res.json({ score });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -29,8 +30,8 @@ router.get('/property/:propertyId', async (req: Request, res: Response) => {
       req.params.propertyId
     );
     res.json({ history });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -43,8 +44,8 @@ router.get('/portfolio', async (req: Request, res: Response) => {
     const org = req.organization;
     const distribution = await landCredit.getPortfolioScoreDistribution(org.id.toString());
     res.json({ distribution });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -57,8 +58,8 @@ router.post('/bulk', async (req: Request, res: Response) => {
     const org = req.organization;
     await landCredit.calculateBulkScores(org.id.toString());
     res.json({ success: true, message: 'Bulk scoring started' });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
 
@@ -70,8 +71,8 @@ router.get('/feature-importance', async (_req: Request, res: Response) => {
   try {
     const features = landCredit.getFeatureImportance();
     res.json({ features });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -87,8 +88,8 @@ router.get('/drilldown/:propertyId', async (req: Request, res: Response) => {
       org.id.toString()
     );
     res.json(drillDown);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -106,8 +107,8 @@ router.get('/benchmark/:propertyId', async (req: Request, res: Response) => {
       state as string
     );
     res.json({ benchmark });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -119,12 +120,12 @@ router.post('/personalize', async (req: Request, res: Response) => {
   try {
     const { baseScore, strategy } = req.body;
     if (!baseScore || !strategy) {
-      return res.status(400).json({ error: 'baseScore and strategy are required' });
+      return Errors.badRequest(res, 'baseScore and strategy are required');
     }
     const result = landCredit.personalizeScore(parseInt(baseScore), strategy);
     res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -136,8 +137,8 @@ router.get('/backtest/:propertyId', async (req: Request, res: Response) => {
   try {
     const result = await landCredit.backtestScore(req.params.propertyId);
     res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
@@ -155,8 +156,8 @@ router.get('/report/:propertyId', async (req: Request, res: Response) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=land-credit-report-${req.params.propertyId}.pdf`);
     res.send(pdf);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    Errors.internal(res, error);
   }
 });
 
