@@ -835,3 +835,134 @@ export type InsertNoteQuietTitleCase = typeof noteQuietTitleCases.$inferInsert;
 export type QuietTitleStep = typeof quietTitleSteps.$inferSelect;
 export type InsertQuietTitleStep = typeof quietTitleSteps.$inferInsert;
 
+// ============================================================================
+// NOTE SERVICER (Pillar K — Ursa persona) — foundation
+// ----------------------------------------------------------------------------
+// A note servicer collects and posts payments on notes owned by OTHERS (fund
+// LPs, IRA holders, family offices, trusts), remits net proceeds per period,
+// files informational tax forms on behalf of the owner, and holds Reg AB-
+// style licensing obligations per state.
+//
+// Three tables ship in this foundation PR:
+//   - note_ownership_of_record — third-party legal owner per note.
+//                                 DISTINCT from noteOwnershipSplits which
+//                                 models INTERNAL fractional ownership.
+//   - servicer_remittances     — monthly per-owner sub-ledger.
+//   - servicer_licenses        — per-state Reg AB licensing posture.
+//
+// 1099-INT-on-behalf-of-owner and Reg AB reporting are deferred (state-by-
+// state filing requirements need counsel; Reg AB report is fund-admin-grade
+// work). See Lens 16 follow-ups.
+// ============================================================================
+
+export const NOTE_OWNER_OF_RECORD_TYPES = [
+  "org",
+  "lp",
+  "ira_custodian",
+  "trust",
+] as const;
+export type NoteOwnerOfRecordType = typeof NOTE_OWNER_OF_RECORD_TYPES[number];
+
+export const noteOwnershipOfRecord = pgTable(
+  "note_ownership_of_record",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    // The SERVICING org — the one doing the collection / remittance work.
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    // The BENEFICIAL owner organization. May be the servicing org itself
+    // (for self-serviced notes), an LP fund, an IRA custodian, or a trust.
+    // Restrict-on-delete so a remittance history isn't orphaned by an
+    // owner-org delete.
+    ownerOrgId: integer("owner_org_id").references(() => organizations.id, { onDelete: "restrict" }).notNull(),
+    ownerType: text("owner_type").$type<NoteOwnerOfRecordType>().notNull(),
+    // Percent of the note's cashflow this owner is entitled to. Sum across
+    // active rows for a given (org, note) should equal 100.00; the API
+    // doesn't enforce it on write (history rows mean the rule is "active
+    // rows sum to 100"), but the UI surfaces a warning if not.
+    basisPercentage: numeric("basis_percentage", { precision: 5, scale: 2 }).notNull().default("100.00"),
+    effectiveAt: timestamp("effective_at", { withTimezone: true }).defaultNow().notNull(),
+    // When this owner-of-record row was superseded by a new one (e.g.
+    // ownership reassigned). Null = currently active.
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("note_owner_of_record_org_note_idx").on(table.organizationId, table.noteId),
+    index("note_owner_of_record_owner_idx").on(table.ownerOrgId, table.supersededAt),
+  ],
+);
+
+export type NoteOwnershipOfRecord = typeof noteOwnershipOfRecord.$inferSelect;
+export type InsertNoteOwnershipOfRecord = typeof noteOwnershipOfRecord.$inferInsert;
+
+export const SERVICER_REMITTANCE_STATUSES = ["draft", "sent", "paid"] as const;
+export type ServicerRemittanceStatus = typeof SERVICER_REMITTANCE_STATUSES[number];
+
+export const servicerRemittances = pgTable(
+  "servicer_remittances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    // The SERVICER org — the one writing the remittance.
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    // The BENEFICIAL owner the remittance is going to.
+    ownerOrgId: integer("owner_org_id").references(() => organizations.id, { onDelete: "restrict" }).notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    grossCents: bigint("gross_cents", { mode: "number" }).notNull().default(0),
+    servicerFeeCents: bigint("servicer_fee_cents", { mode: "number" }).notNull().default(0),
+    netCents: bigint("net_cents", { mode: "number" }).notNull().default(0),
+    status: text("status").$type<ServicerRemittanceStatus>().notNull().default("draft"),
+    pdfS3Key: text("pdf_s3_key"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("servicer_remit_org_owner_period_idx").on(table.organizationId, table.ownerOrgId, table.periodEnd),
+    index("servicer_remit_org_status_idx").on(table.organizationId, table.status),
+    uniqueIndex("servicer_remit_uniq_period_uk").on(
+      table.organizationId,
+      table.ownerOrgId,
+      table.periodStart,
+      table.periodEnd,
+    ),
+  ],
+);
+
+export type ServicerRemittance = typeof servicerRemittances.$inferSelect;
+export type InsertServicerRemittance = typeof servicerRemittances.$inferInsert;
+
+export const SERVICER_LICENSE_TYPES = [
+  "sub_servicer",
+  "master_servicer",
+  "rmlo",
+  "none_required",
+] as const;
+export type ServicerLicenseType = typeof SERVICER_LICENSE_TYPES[number];
+
+export const servicerLicenses = pgTable(
+  "servicer_licenses",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    state: text("state").notNull(), // 2-letter US state code
+    licenseType: text("license_type").$type<ServicerLicenseType>().notNull(),
+    licenseNumber: text("license_number"),
+    expiresAt: date("expires_at"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("servicer_licenses_org_state_idx").on(table.organizationId, table.state),
+    index("servicer_licenses_org_expiring_idx").on(table.organizationId, table.expiresAt),
+    uniqueIndex("servicer_licenses_state_uk").on(table.organizationId, table.state, table.licenseType),
+  ],
+);
+
+export type ServicerLicense = typeof servicerLicenses.$inferSelect;
+export type InsertServicerLicense = typeof servicerLicenses.$inferInsert;
