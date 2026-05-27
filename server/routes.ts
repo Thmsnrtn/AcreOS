@@ -1697,7 +1697,7 @@ export async function registerRoutes(
     registerFounderV7Routes(app);
     const { registerFounderV8Routes } = await import("./routes-founder-living-organization");
     registerFounderV8Routes(app);
-    const { registerFounderV10Routes } = await import("./routes-founder-v10");
+    const { registerFounderV10Routes } = await import("./routes-founder-conscious-organization");
     registerFounderV10Routes(app);
     const { registerFounderV11Routes } = await import("./routes-founder-v11");
     registerFounderV11Routes(app);
