@@ -1449,6 +1449,38 @@ function startDataRetentionJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Kareem §2: Quarterly access review (SOC 2 CC6.2) ─────────────────────────
+// Fires on the first Tuesday of January / April / July / October at 14:00 UTC
+// (8 AM CT). Enumerates every team_members row with role IN ('owner','admin'),
+// joins lastActiveAt, flags stale admins, emails the founder, persists an
+// audit_event for evidence. Idempotent within a day via systemMeta sentinel.
+async function processQuarterlyAccessReview() {
+  try {
+    const { runQuarterlyAccessReview, alreadyRanToday, isQuarterlyAccessReviewDay } = await import("./accessReview");
+    if (!isQuarterlyAccessReviewDay()) return;
+    if (await alreadyRanToday()) {
+      log("Access review skipped — already ran today", "access-review");
+      return;
+    }
+    const result = await runQuarterlyAccessReview();
+    log(`Access review complete: reviewed=${result.rows.length} stale=${result.stale.length}`, "access-review");
+  } catch (err) {
+    log(`Access review failed: ${err}`, "access-review");
+  }
+}
+
+function startQuarterlyAccessReviewJob() {
+  log("Starting quarterly access review job (first Tue of Jan/Apr/Jul/Oct at 14:00 UTC)", "access-review");
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 14 && now.getUTCMinutes() < 5) {
+      withJobLock("access_review_quarterly", 60 * 60, processQuarterlyAccessReview).catch((err) => {
+        log(`Access review lock error: ${err}`, "access-review");
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ============================================================================
 // Sovereign Company Protocol — Agent Seeding & Background Jobs
 // ============================================================================
@@ -2753,6 +2785,12 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Data retention: nightly purge of expired rows (3:30am UTC)
   startDataRetentionJob();
+
+  // Kareem §2: quarterly access review (SOC 2 CC6.2) — first Tuesday of
+  // Jan/Apr/Jul/Oct at 14:00 UTC. Emails the founder a list of all
+  // owner/admin team_members + lastActiveAt + stale flag, persists evidence
+  // to audit_events.
+  startQuarterlyAccessReviewJob();
 
   // ─── Rosy River B / county-GIS autonomous discovery (weekly) ──────────
   // Pillar B / B3 — perpetual discovery of new county ArcGIS parcel
