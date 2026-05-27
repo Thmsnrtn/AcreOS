@@ -1995,6 +1995,12 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       </div>
                     </>
                   )}
+                  <HoldPeriodBadge
+                    purchaseDate={currentProperty.purchaseDate}
+                    soldDate={currentProperty.soldDate}
+                    purchasePrice={currentProperty.purchasePrice}
+                    soldPrice={currentProperty.soldPrice}
+                  />
                   {parcelData?.taxAmount && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Annual Taxes <span className="text-muted-foreground/60">USD</span></span>
@@ -2387,6 +2393,117 @@ interface EnrichmentData {
     source?: string;
   };
   errors?: Record<string, string>;
+}
+
+/**
+ * Hold-period badge — surfaces short-term vs. long-term capital-gains
+ * status for the property. §1222 distinguishes:
+ *   - Holding period > 1 year = LONG-TERM (max 20% federal LTCG + 3.8% NIIT)
+ *   - Holding period ≤ 1 year = SHORT-TERM (ordinary income, up to 37%)
+ *
+ * For unsold properties, the badge warns if the operator is approaching
+ * the 1-year mark — selling at day 365 versus day 366 is a 17-22 point
+ * tax-rate swing on the gain.
+ *
+ * Lisa Tanaka: this is the cheapest tax mistake to avoid. People close
+ * 2 weeks before the 1-year mark to "get it done" and pay $50k more in
+ * tax than they had to. Surface it loudly.
+ */
+function HoldPeriodBadge({
+  purchaseDate,
+  soldDate,
+  purchasePrice,
+  soldPrice,
+}: {
+  purchaseDate: Date | string | null | undefined;
+  soldDate: Date | string | null | undefined;
+  purchasePrice: string | number | null | undefined;
+  soldPrice: string | number | null | undefined;
+}) {
+  if (!purchaseDate) return null;
+
+  const purchase = new Date(purchaseDate);
+  const end = soldDate ? new Date(soldDate) : new Date();
+  const holdDays = Math.floor((end.getTime() - purchase.getTime()) / (1000 * 60 * 60 * 24));
+  // §1222(3) — long-term = held "more than 1 year." Day 365 is still
+  // short-term; day 366 is long-term. The IRS counts the day AFTER
+  // acquisition as day 1 and counts through and including the sale day.
+  const isLongTerm = holdDays > 365;
+  const daysToLongTerm = 366 - holdDays;
+
+  // Compute gain if both prices exist
+  const gainNum = soldPrice && purchasePrice
+    ? Number(soldPrice) - Number(purchasePrice)
+    : null;
+  const positiveGain = gainNum !== null && gainNum > 0;
+
+  // SOLD path — show the actual treatment that hits
+  if (soldDate) {
+    return (
+      <div className="space-y-1 col-span-2 md:col-span-3 mt-2 p-3 rounded-md border bg-muted/30" data-testid="hold-period-sold">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Holding period</span>
+            <Badge
+              variant={isLongTerm ? "default" : "destructive"}
+              className="tabular-nums"
+              aria-label={isLongTerm ? "Long-term capital gain treatment" : "Short-term capital gain — ordinary income rates"}
+            >
+              {isLongTerm ? "Long-term" : "Short-term"} · {holdDays}d
+            </Badge>
+          </div>
+          {positiveGain && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Gain {usd(gainNum!, { noCents: true })}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {isLongTerm
+            ? "§1222(3) long-term: max 20% federal + 3.8% NIIT IF investor-classified (not dealer property)."
+            : "§1222(1) short-term: taxed as ORDINARY INCOME (up to 37% federal). No preferential rate."}
+        </p>
+        {!isLongTerm && positiveGain && (
+          <p className="text-xs text-acr-warn">
+            Sold {365 - holdDays + 1} {365 - holdDays + 1 === 1 ? "day" : "days"} before long-term threshold. At a 20%-vs-37% spread, the timing cost is roughly {usd((gainNum! * 0.17), { noCents: true })}.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // STILL HELD path — warn if approaching the threshold
+  return (
+    <div className="space-y-1 col-span-2 md:col-span-3 mt-2 p-3 rounded-md border bg-muted/30" data-testid="hold-period-held">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Current holding period</span>
+          <Badge
+            variant={isLongTerm ? "default" : "secondary"}
+            className="tabular-nums"
+            aria-label={isLongTerm ? "Currently qualifies for long-term capital gains" : `Short-term — ${daysToLongTerm} days until long-term threshold`}
+          >
+            {isLongTerm ? "Long-term qualified" : "Short-term"} · {holdDays}d
+          </Badge>
+        </div>
+      </div>
+      {!isLongTerm && daysToLongTerm > 0 && daysToLongTerm <= 90 && (
+        <p className="text-xs text-acr-warn font-medium">
+          Selling now triggers SHORT-TERM rates (ordinary income, up to 37%). Wait {daysToLongTerm} {daysToLongTerm === 1 ? "day" : "days"} for §1222(3) long-term treatment (max 20% + 3.8% NIIT).
+        </p>
+      )}
+      {!isLongTerm && daysToLongTerm > 90 && (
+        <p className="text-xs text-muted-foreground">
+          {daysToLongTerm} days remaining until §1222(3) long-term threshold.
+        </p>
+      )}
+      {isLongTerm && (
+        <p className="text-xs text-muted-foreground">
+          Eligible for long-term capital-gain treatment IF you are classified as an investor (not a dealer). See the Tax Optimizer dealer/investor surface.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function getRiskBadgeVariant(risk?: "low" | "medium" | "high"): "default" | "secondary" | "destructive" {
