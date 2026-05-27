@@ -3,6 +3,7 @@ import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import "./today.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -121,41 +122,17 @@ function EmailMessageRow({
   leadName?: string;
 }) {
   const { toast } = useToast();
-  const starMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inbox/${message.id}/star`);
+  // Hand-rolled snapshot/rollback collapsed to the shared factory. Optimistic
+  // toggle: flip isStarred across every cached inbox list immediately.
+  const starMutation = useOptimisticUpdate<{ id: number; isStarred: boolean }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/star`);
       return res.json();
     },
-    // Optimistic toggle: flip isStarred across every cached inbox list immediately.
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["/api/inbox"] });
-      const snapshots: Array<[readonly unknown[], unknown]> = [];
-      const entries = queryClient.getQueriesData({ queryKey: ["/api/inbox"] });
-      for (const [key, value] of entries) {
-        snapshots.push([key, value]);
-        if (Array.isArray(value)) {
-          queryClient.setQueryData(key, value.map((m: any) =>
-            m?.id === message.id ? { ...m, isStarred: !m.isStarred } : m
-          ));
-        }
-      }
-      return { snapshots };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.snapshots) {
-        for (const [key, value] of context.snapshots) {
-          queryClient.setQueryData(key, value);
-        }
-      }
-      toast({
-        title: message.isStarred ? "Couldn't unstar message" : "Couldn't star message",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ isStarred }) => ({ isStarred: !isStarred }),
+    successToast: false,
   });
 
   const senderLabel = message.senderName || message.senderEmail || "Unknown sender";
@@ -218,7 +195,7 @@ function EmailMessageRow({
         data-testid={`button-star-email-${message.id}`}
         onClick={(e) => {
           e.stopPropagation();
-          starMutation.mutate();
+          starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
         }}
         disabled={starMutation.isPending}
         className={message.isStarred ? "text-acr-warn" : "text-muted-foreground"}
@@ -338,80 +315,56 @@ function EmailMessageDetail({
     }
   }, [showReply, hasAutoDrafted, replyText, draftReplyMutation]);
 
-  const markReadMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inbox/${message.id}/read`);
+  // Mark-read / mark-unread / star / archive on a single message — all
+  // four are pure optimistic flips. Factory snapshots every cached inbox
+  // list and the unread-count cache so rollback restores correctly.
+  const markReadMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/read`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't mark as read",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isRead: true }),
+    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    successToast: false,
   });
 
-  const markUnreadMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inbox/${message.id}/unread`);
+  const markUnreadMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/unread`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't mark as unread",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isRead: false }),
+    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    successToast: false,
   });
 
-  const starMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inbox/${message.id}/star`);
+  const starMutation = useOptimisticUpdate<{ id: number; isStarred: boolean }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/star`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-    },
-    onError: () => {
-      toast({
-        title: message.isStarred ? "Couldn't unstar message" : "Couldn't star message",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ isStarred }) => ({ isStarred: !isStarred }),
+    successToast: false,
   });
 
-  const archiveMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inbox/${message.id}/archive`);
+  const archiveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/archive`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
-      toast({
-        title: "Message archived",
-        description: "The message has been moved to archive.",
-      });
-      onBack();
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't archive message",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isArchived: true }),
+    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    successToast: { title: "Message archived", description: "The message has been moved to archive." },
+  }, {
+    onSuccess: () => onBack(),
   });
 
   const sendReplyMutation = useMutation({
@@ -461,7 +414,7 @@ function EmailMessageDetail({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => message.isRead ? markUnreadMutation.mutate() : markReadMutation.mutate()}
+            onClick={() => message.isRead ? markUnreadMutation.mutate({ id: message.id }) : markReadMutation.mutate({ id: message.id })}
             disabled={markReadMutation.isPending || markUnreadMutation.isPending}
             data-testid="button-toggle-read"
             aria-pressed={!message.isRead}
@@ -479,7 +432,7 @@ function EmailMessageDetail({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => starMutation.mutate()}
+            onClick={() => starMutation.mutate({ id: message.id, isStarred: !!message.isStarred })}
             disabled={starMutation.isPending}
             data-testid="button-star-message"
             aria-pressed={!!message.isStarred}
@@ -686,7 +639,7 @@ function EmailMessageDetail({
         description="The email moves to your Archived tab. You can restore it later by switching to that tab and unstarring/replying — nothing is permanently deleted."
         confirmLabel="Archive email"
         onConfirm={() => {
-          archiveMutation.mutate();
+          archiveMutation.mutate({ id: message.id });
           setPendingArchive(false);
         }}
         isLoading={archiveMutation.isPending}

@@ -141,14 +141,22 @@ export function useCreatePortalSession() {
 }
 
 export function useUpdateOrganization() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (updates: Partial<Organization>) => {
+  // Optimistic org-settings patch — name / investorType edits should
+  // reflect instantly in the sidebar + workspace switcher. The org cache
+  // hosts a single object (not a list), so we use detailKey; the helper
+  // patches `{ ...detail, ...patch }` against the cached org row.
+  return useOptimisticUpdate<Partial<Organization> & { id?: number }, Organization>({
+    mutationFn: async (updates) => {
       const res = await apiRequest("PATCH", "/api/organization", updates);
       return res.json() as Promise<Organization>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+    listKeys: [],
+    detailKey: () => ["/api/organization"],
+    // No row matching needed — only detailKey patching is used.
+    getId: () => "org",
+    buildPatch: (updates) => {
+      const { id: _id, ...rest } = updates;
+      return rest;
     },
   });
 }

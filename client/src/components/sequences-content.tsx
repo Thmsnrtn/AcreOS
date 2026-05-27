@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -119,37 +120,31 @@ export function SequencesContent() {
     },
   });
 
-  const pauseEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/pause`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
-      toast({ title: "Enrollment paused" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't pause enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still active.`, variant: "destructive" });
-    },
+  // Pause / resume / cancel each flip enrollment status — instant UX is
+  // important since these are exposed on table rows. Factory snapshots
+  // the list cache so a server reject rolls back the optimistic patch.
+  const pauseEnrollmentMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/enrollments/${id}/pause`, {}),
+    listKeys: [["/api/enrollments/active"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "paused" }),
+    successToast: { title: "Enrollment paused" },
   });
 
-  const resumeEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/resume`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
-      toast({ title: "Enrollment resumed" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't resume enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still paused.`, variant: "destructive" });
-    },
+  const resumeEnrollmentMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/enrollments/${id}/resume`, {}),
+    listKeys: [["/api/enrollments/active"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "active" }),
+    successToast: { title: "Enrollment resumed" },
   });
 
-  const cancelEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/cancel`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
-      toast({ title: "Enrollment cancelled" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't cancel enrollment", description: `${err?.message ?? "Network error"} — the enrollment is still active.`, variant: "destructive" });
-    },
+  const cancelEnrollmentMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/enrollments/${id}/cancel`, {}),
+    listKeys: [["/api/enrollments/active"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "cancelled" }),
+    successToast: { title: "Enrollment cancelled" },
   });
 
   const resetForm = () => {
@@ -474,7 +469,7 @@ export function SequencesContent() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => pauseEnrollmentMutation.mutate(enrollment.id)}
+                                onClick={() => pauseEnrollmentMutation.mutate({ id: enrollment.id })}
                                 aria-label="Pause enrollment"
                                 data-testid={`button-pause-enrollment-${enrollment.id}`}
                               >
@@ -484,7 +479,7 @@ export function SequencesContent() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => resumeEnrollmentMutation.mutate(enrollment.id)}
+                                onClick={() => resumeEnrollmentMutation.mutate({ id: enrollment.id })}
                                 aria-label="Resume enrollment"
                                 data-testid={`button-resume-enrollment-${enrollment.id}`}
                               >
@@ -494,7 +489,7 @@ export function SequencesContent() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => cancelEnrollmentMutation.mutate(enrollment.id)}
+                              onClick={() => cancelEnrollmentMutation.mutate({ id: enrollment.id })}
                               aria-label="Cancel enrollment"
                               data-testid={`button-cancel-enrollment-${enrollment.id}`}
                             >

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,51 +230,35 @@ export function SupportContent() {
     },
   });
 
-  const resolveCaseMutation = useMutation({
-    mutationFn: async (caseId: number) => {
-      const res = await apiRequest("POST", `/api/support/cases/${caseId}/resolve`, {});
+  // Optimistic resolve — patch the case row to status="resolved" so the
+  // banner + status pill flip instantly. Detail key is cancelled too so
+  // the open case view doesn't briefly disagree with the list.
+  const resolveCaseMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/support/cases/${id}/resolve`, {});
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/support/cases", activeCaseId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/support/cases"] });
-      setShowRating(true);
-      toast({
-        title: "Case resolved",
-        description: "Thank you! Please take a moment to rate your experience.",
-      });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't resolve case",
-        description: `${err.message || "Case status is unchanged"} — the case is still open.`,
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/support/cases"]],
+    detailKey: ({ id }) => ["/api/support/cases", id],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "resolved" }),
+    successToast: { title: "Case resolved", description: "Thank you! Please take a moment to rate your experience." },
+  }, {
+    onSuccess: () => setShowRating(true),
   });
 
-  const rateCaseMutation = useMutation({
-    mutationFn: async (data: { caseId: number; rating: number }) => {
-      const res = await apiRequest("POST", `/api/support/cases/${data.caseId}/rate`, { rating: data.rating });
+  const rateCaseMutation = useOptimisticUpdate<{ id: number; rating: number }>({
+    mutationFn: async ({ id, rating: r }) => {
+      const res = await apiRequest("POST", `/api/support/cases/${id}/rate`, { rating: r });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/support/cases", activeCaseId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/support/cases"] });
-      setShowRating(false);
-      setRating(0);
-      toast({
-        title: "Thank you!",
-        description: "Your feedback helps us improve.",
-      });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't submit rating",
-        description: `${err.message || "Your rating wasn't saved"} — try again or leave the rating dialog open.`,
-        variant: "destructive",
-      });
-    },
+    listKeys: [["/api/support/cases"]],
+    detailKey: ({ id }) => ["/api/support/cases", id],
+    getId: ({ id }) => id,
+    buildPatch: ({ rating: r }) => ({ rating: r }),
+    successToast: { title: "Thank you!", description: "Your feedback helps us improve." },
+  }, {
+    onSuccess: () => { setShowRating(false); setRating(0); },
   });
 
   useEffect(() => {
@@ -294,12 +279,12 @@ export function SupportContent() {
 
   const handleResolve = () => {
     if (!activeCaseId) return;
-    resolveCaseMutation.mutate(activeCaseId);
+    resolveCaseMutation.mutate({ id: activeCaseId });
   };
 
   const handleRate = () => {
     if (!activeCaseId || rating === 0) return;
-    rateCaseMutation.mutate({ caseId: activeCaseId, rating });
+    rateCaseMutation.mutate({ id: activeCaseId, rating });
   };
 
   const handleCreateFeatureRequest = () => {
