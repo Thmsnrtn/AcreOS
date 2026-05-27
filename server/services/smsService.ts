@@ -30,6 +30,7 @@ import {
   leads,
   organizationIntegrations,
   sequenceEnrollments,
+  activityLog,
 } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
@@ -285,6 +286,13 @@ export async function handleIncomingSMS(
   const last10Digits = cleanPhone.slice(-10);
 
   // ── TCPA opt-out: handle STOP keywords immediately ───────────────────────
+  // CRITICAL: STOP revocation must (a) set doNotContact=true so ALL channels
+  // (email/SMS/direct mail/phone) are suppressed, (b) record consentSource +
+  // optOutReason for plaintiff-side discovery, (c) write an immutable
+  // activity_log row with the *exact inbound text and MessageSid*. The prior
+  // implementation only cleared tcpaConsent — email + direct-mail send paths
+  // still saw consent=null & would have shipped. That's a $1500/violation
+  // TCPA exposure per lead per mailing.
   const normalizedBody = body.trim().toLowerCase();
   if (SMS_STOP_WORDS.has(normalizedBody)) {
     const allLeadsInOrg = await db
@@ -295,17 +303,52 @@ export async function handleIncomingSMS(
       const p = l.phone?.replace(/\D/g, "") || "";
       return p.length >= 7 && (p.slice(-10) === last10Digits || p.includes(last10Digits));
     });
+    const now = new Date();
     for (const lead of matchingLeads) {
       await db
         .update(leads)
-        .set({ tcpaConsent: false, optOutDate: new Date() })
+        .set({
+          tcpaConsent: false,
+          doNotContact: true, // suppress ALL channels — TCPA revocation is global
+          optOutDate: now,
+          optOutReason: `SMS STOP keyword: "${body.trim()}" (MessageSid ${messageSid})`,
+          updatedAt: now,
+        })
         .where(eq(leads.id, lead.id));
       await db
         .update(sequenceEnrollments)
-        .set({ status: "cancelled", completedAt: new Date() })
+        .set({ status: "cancelled", completedAt: now })
         .where(
           and(eq(sequenceEnrollments.leadId, lead.id), eq(sequenceEnrollments.status, "active")),
         );
+      // Immutable revocation audit-trail row. This is the exhibit a plaintiff's
+      // expert (i.e. me) will subpoena. Capture channel + verbatim inbound text
+      // + Twilio SID + recipient + timestamp. Never edit/delete these rows.
+      try {
+        await db.insert(activityLog).values({
+          organizationId,
+          entityType: "lead",
+          entityId: lead.id,
+          action: "tcpa_opt_out",
+          description: `Lead opted out via SMS STOP keyword "${body.trim()}"`,
+          metadata: {
+            channel: "sms",
+            keyword: normalizedBody,
+            inboundText: body, // verbatim — never sanitize
+            messageSid,
+            fromPhone,
+            toPhone,
+            receivedAt: now.toISOString(),
+            revokedChannels: ["sms", "email", "direct_mail", "phone"],
+          },
+        });
+      } catch (err: any) {
+        // Audit log failure must surface — but the consent revocation itself
+        // already landed in `leads`, which is what protects us in court.
+        logger.error("[SMS] activity_log write failed for STOP revocation", err, {
+          metadata: { leadId: lead.id, messageSid },
+        });
+      }
       try {
         const { handleDomainEvent } = await import("./paxNudges");
         await handleDomainEvent({
@@ -321,7 +364,7 @@ export async function handleIncomingSMS(
       } catch {}
     }
     logger.info(
-      `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`,
+      `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s) across all channels`,
     );
     return { success: true, leadId: matchingLeads[0]?.id };
   }
