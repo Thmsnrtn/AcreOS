@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { PropertyListing, Property } from "@shared/schema";
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -224,17 +225,14 @@ export default function ListingsPage() {
     },
   });
 
-  const unpublishMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return apiRequest("POST", `/api/listings/${id}/unpublish`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      toast({ title: "Listing unpublished" });
-    },
-    onError: (error: any) => {
-      toast({ title: "Couldn't unpublish listing", description: `${error.message} — the listing is still live on its current platforms.`, variant: "destructive" });
-    },
+  // Optimistic unpublish — flips listing status to draft instantly so the
+  // row badge + actions reflect new state. Rolls back on server error.
+  const unpublishMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => apiRequest("POST", `/api/listings/${id}/unpublish`),
+    listKeys: [["/api/listings"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "draft" }),
+    successToast: { title: "Listing unpublished" },
   });
 
   const form = useForm<ListingFormValues>({
@@ -1072,7 +1070,7 @@ export default function ListingsPage() {
           description="This pulls the listing from every active syndication target. View counts and inquiries to date are preserved; you can re-publish later."
           confirmLabel="Unpublish"
           onConfirm={() => {
-            if (pendingUnpublish) unpublishMutation.mutate(pendingUnpublish.id);
+            if (pendingUnpublish) unpublishMutation.mutate({ id: pendingUnpublish.id });
             setPendingUnpublish(null);
           }}
         />

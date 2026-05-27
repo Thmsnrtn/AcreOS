@@ -40,6 +40,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { usePersonaMode } from "@/hooks/use-persona-mode";
@@ -264,6 +265,9 @@ interface AIResponse {
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
+  // Respect prefers-reduced-motion for backdrop fade + palette spring.
+  const backdropFade = useRespectfulTransition({ duration: 0.18 });
+  const paletteSpring = useRespectfulTransition({ type: "spring", stiffness: 500, damping: 32, mass: 0.8 });
   const [inputValue, setInputValue] = useState("");
   const [aiMode, setAiMode] = useState(false);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
@@ -678,7 +682,7 @@ export function CommandPalette() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={backdropFade}
             className="fixed inset-0 z-[60] command-backdrop"
             onClick={() => setOpen(false)}
             data-testid="command-palette-backdrop"
@@ -690,7 +694,7 @@ export function CommandPalette() {
             initial={{ opacity: 0, scale: 0.92, y: -16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: -12 }}
-            transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.8 }}
+            transition={paletteSpring}
             className="fixed left-1/2 top-[14vh] z-[60] w-full max-w-[560px] -translate-x-1/2 p-4"
             data-testid="command-palette-dialog"
           >

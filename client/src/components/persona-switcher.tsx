@@ -25,6 +25,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { usePersonaMode, type PersonaMode } from "@/hooks/use-persona-mode";
 import { SPRING_INTERACTIVE, TAP_PRESS } from "@/lib/motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { TOUCH_TARGET_PT } from "@/lib/spacing";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ interface PersonaSwitcherProps {
 export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
   const { isFounder } = useAuth();
   const { mode, setMode } = usePersonaMode();
+  const tapSpring = useRespectfulTransition(SPRING_INTERACTIVE);
 
   // Only founders ever see the toggle — for everyone else this would
   // dead-end on /founder (403).
@@ -60,7 +62,7 @@ export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
         <motion.button
           type="button"
           whileTap={TAP_PRESS}
-          transition={SPRING_INTERACTIVE}
+          transition={tapSpring}
           aria-label={`Switch mode. Currently ${MODE_LABEL[mode]} mode.`}
           data-testid="persona-switcher-trigger"
           style={{ minHeight: TOUCH_TARGET_PT }}

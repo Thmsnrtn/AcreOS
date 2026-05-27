@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -304,26 +305,22 @@ function SelfCalibration() {
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/founder/v10/calibration/${id}/approve`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/founder/v10/calibration"] });
-      toast({ title: "Calibration approved" });
-    },
-    onError: () => {
-      toast({ variant: "destructive", title: "Couldn't approve calibration", description: "Status is unchanged. Try again." });
-    },
+  // Optimistic calibration status flip — pending list retires the row
+  // instantly so the founder can move on to the next decision.
+  const approveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/founder/v10/calibration/${id}/approve`),
+    listKeys: [["/api/founder/v10/calibration"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "approved" }),
+    successToast: { title: "Calibration approved" },
   });
 
-  const revertMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/founder/v10/calibration/${id}/revert`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/founder/v10/calibration"] });
-      toast({ title: "Calibration reverted" });
-    },
-    onError: () => {
-      toast({ variant: "destructive", title: "Couldn't revert calibration", description: "Status is unchanged. Try again." });
-    },
+  const revertMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/founder/v10/calibration/${id}/revert`),
+    listKeys: [["/api/founder/v10/calibration"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "reverted" }),
+    successToast: { title: "Calibration reverted" },
   });
 
   return (
@@ -351,8 +348,8 @@ function SelfCalibration() {
                     <p className="text-xs text-muted-foreground tabular-nums">{c.parameterName}: {c.oldValue} → {c.newValue}</p>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => approveMutation.mutate(c.id)} aria-label={`Approve calibration for ${c.agentCodename}`}><CheckCircle className="h-3 w-3" aria-hidden="true" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => revertMutation.mutate(c.id)} aria-label={`Revert calibration for ${c.agentCodename}`}><AlertCircle className="h-3 w-3" aria-hidden="true" /></Button>
+                    <Button size="sm" variant="outline" onClick={() => approveMutation.mutate({ id: c.id })} aria-label={`Approve calibration for ${c.agentCodename}`}><CheckCircle className="h-3 w-3" aria-hidden="true" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => revertMutation.mutate({ id: c.id })} aria-label={`Revert calibration for ${c.agentCodename}`}><AlertCircle className="h-3 w-3" aria-hidden="true" /></Button>
                   </div>
                 </li>
               ))}

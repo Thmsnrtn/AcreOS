@@ -1,6 +1,7 @@
 import { useState, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,40 +123,29 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
     },
   });
 
-  const startTestMutation = useMutation({
-    mutationFn: async (testId: number) => {
-      const res = await apiRequest("PATCH", `/api/ab-tests/${testId}/start`);
+  // Optimistic A/B test lifecycle flips — start moves draft→running and
+  // complete moves running→completed. The badge + buttons reflect the
+  // new state instantly with rollback if the server rejects.
+  const startTestMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PATCH", `/api/ab-tests/${id}/start`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/ab-tests'] });
-      toast({ title: "A/B test started" });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't start A/B test",
-        description: `${err.message} — the test is still in draft and no messages have been sent.`,
-        variant: "destructive",
-      });
-    },
+    listKeys: [['/api/ab-tests']],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "running" }),
+    successToast: { title: "A/B test started" },
   });
 
-  const completeTestMutation = useMutation({
-    mutationFn: async (testId: number) => {
-      const res = await apiRequest("PATCH", `/api/ab-tests/${testId}/complete`);
+  const completeTestMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("PATCH", `/api/ab-tests/${id}/complete`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/ab-tests'] });
-      toast({ title: "A/B test completed", description: "Winner has been determined." });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't complete A/B test",
-        description: `${err.message} — the test is still running.`,
-        variant: "destructive",
-      });
-    },
+    listKeys: [['/api/ab-tests']],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "completed" }),
+    successToast: { title: "A/B test completed", description: "Winner has been determined." },
   });
 
   const applyWinnerMutation = useMutation({
@@ -399,7 +389,7 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
           <CardContent>
             <AbTestCard
               test={activeTest}
-              onComplete={() => completeTestMutation.mutate(activeTest.id)}
+              onComplete={() => completeTestMutation.mutate({ id: activeTest.id })}
               isCompletePending={completeTestMutation.isPending}
             />
           </CardContent>
@@ -460,7 +450,7 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
                             test={test}
                             onApplyWinner={() => applyWinnerMutation.mutate(test.id)}
                             onDelete={() => deleteTestMutation.mutate(test.id)}
-                            onStart={() => startTestMutation.mutate(test.id)}
+                            onStart={() => startTestMutation.mutate({ id: test.id })}
                             isApplyPending={applyWinnerMutation.isPending}
                             isDeletePending={deleteTestMutation.isPending}
                             isStartPending={startTestMutation.isPending}

@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { staggerContainer, staggerItem, fadeInUp } from "@/lib/animations";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import {
   AGENT_AVATARS,
   AGENT_ROLES,
@@ -63,6 +64,8 @@ function HealthRing({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 36;
   const filled = (score / 100) * circumference;
   const color = score >= 80 ? "#22c55e" : score >= 60 ? "#f59e0b" : "#ef4444";
+  // Respect prefers-reduced-motion for the ring sweep.
+  const ringSweep = useRespectfulTransition({ duration: 1, ease: "easeOut", delay: 0.3 });
 
   return (
     <div
@@ -83,7 +86,7 @@ function HealthRing({ score }: { score: number }) {
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: circumference - filled }}
-          transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
+          transition={ringSweep}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">

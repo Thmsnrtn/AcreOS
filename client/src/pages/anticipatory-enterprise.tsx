@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 import { Sidebar } from "@/components/layout-sidebar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,11 +268,16 @@ function CognitiveModel() {
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const toggleMutation = useMutation({
-    mutationFn: ({ category, enabled }: { category: string; enabled: boolean }) =>
+  // Optimistic autopilot toggle — flips autopilotEnabled on the row so
+  // the Switch + badge reflect new state instantly. Carries the row id
+  // so the cached list can match by id-equality.
+  const toggleMutation = useOptimisticUpdate<{ id: number; category: string; enabled: boolean }>({
+    mutationFn: ({ category, enabled }) =>
       apiRequest("POST", `/api/founder/v11/cognitive/${category}/autopilot`, { enabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v11/cognitive/models"] }),
-    onError: (e: any) => toast({ title: "Couldn't toggle autopilot", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    listKeys: [["/api/founder/v11/cognitive/models"], ["/api/founder/v11/cognitive/autopilot-eligible"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ enabled }) => ({ autopilotEnabled: enabled }),
+    successToast: false,
   });
 
   return (
@@ -293,7 +299,7 @@ function CognitiveModel() {
                     <Button
                       size="sm"
                       variant={m.autopilotEnabled ? "default" : "outline"}
-                      onClick={() => toggleMutation.mutate({ category: m.decisionCategory, enabled: !m.autopilotEnabled })}
+                      onClick={() => toggleMutation.mutate({ id: m.id, category: m.decisionCategory, enabled: !m.autopilotEnabled })}
                       aria-label={m.autopilotEnabled ? `Disable autopilot for ${m.decisionCategory}` : `Enable autopilot for ${m.decisionCategory}`}
                       aria-pressed={m.autopilotEnabled}
                     >
@@ -543,10 +549,13 @@ function DelegationTokens() {
     onError: (e: any) => toast({ title: "Couldn't grant delegation", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
-  const revokeMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/founder/v11/delegations/${id}/revoke`, { reason: "CEO revoked" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v11/delegations"] }),
-    onError: (e: any) => toast({ title: "Couldn't revoke delegation", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+  // Optimistic revoke — delegation status flips to revoked instantly.
+  const revokeMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: ({ id }) => apiRequest("POST", `/api/founder/v11/delegations/${id}/revoke`, { reason: "CEO revoked" }),
+    listKeys: [["/api/founder/v11/delegations/active"], ["/api/founder/v11/delegations"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ status: "revoked" }),
+    successToast: false,
   });
 
   function handleGrant(e: FormEvent<HTMLFormElement>) {
@@ -636,7 +645,7 @@ function DelegationTokens() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => revokeMutation.mutate(t.id)}
+                        onClick={() => revokeMutation.mutate({ id: t.id })}
                         aria-label={`Revoke delegation: ${t.scope} for ${t.agentCodename}`}
                       >
                         <XCircle className="h-3 w-3" aria-hidden="true" />

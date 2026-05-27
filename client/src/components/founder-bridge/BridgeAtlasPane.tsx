@@ -18,6 +18,7 @@ import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { SPRING_SOFT } from "@/lib/motion";
+import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { LiveDot } from "./LiveDot";
 
 export interface BridgeAtlasPaneProps {
@@ -51,6 +52,9 @@ export function BridgeAtlasPane({
   );
   const [activeThreadId, setActiveThreadId] = useState<string>(defaultThreadId);
   const [threadsOpen, setThreadsOpen] = useState(false);
+  // Respect prefers-reduced-motion for the threads-strip expand/collapse.
+  const threadsOpenTransition = useRespectfulTransition(SPRING_SOFT);
+  const threadsCloseTransition = useRespectfulTransition({ duration: 0.15 });
 
   const { messages, sendMessage, isStreaming, activeToolCalls, status } =
     useFounderChat(activeThreadId);
@@ -103,8 +107,8 @@ export function BridgeAtlasPane({
             <motion.ul
               key="threads-strip"
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1, transition: SPRING_SOFT }}
-              exit={{ height: 0, opacity: 0, transition: { duration: 0.15 } }}
+              animate={{ height: "auto", opacity: 1, transition: threadsOpenTransition }}
+              exit={{ height: 0, opacity: 0, transition: threadsCloseTransition }}
               className="overflow-hidden border-t border-white/[0.04]"
             >
               <div className="flex flex-col px-2 py-1.5">

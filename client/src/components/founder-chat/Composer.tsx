@@ -16,6 +16,7 @@ import { Mic, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { filterSlashTools, type SlashTool } from "@/components/founder-chat/slash-tools";
 import { REVEAL_FROM_BELOW, SPRING_INTERACTIVE, TAP_PRESS } from "@/lib/motion";
+import { useRespectfulTransition, useReducedMotionPreference } from "@/lib/motion-tokens";
 import { RADIUS_CARD, TOUCH_TARGET_PT } from "@/lib/spacing";
 
 interface ComposerProps {
@@ -37,6 +38,16 @@ const MAX_ROWS = 8;
 const MIN_ROWS = 1;
 
 export function Composer({ onSubmit, disabled, placeholder, initialText }: ComposerProps) {
+  // Respect prefers-reduced-motion for the slash-popover reveal + send-button spring.
+  const reducedMotion = useReducedMotionPreference();
+  const sendSpring = useRespectfulTransition(SPRING_INTERACTIVE);
+  const popoverInitial = reducedMotion ? { opacity: 0 } : REVEAL_FROM_BELOW.initial;
+  const popoverAnimate = reducedMotion
+    ? { opacity: 1, transition: { duration: 0 } }
+    : REVEAL_FROM_BELOW.animate;
+  const popoverExit = reducedMotion
+    ? { opacity: 0, transition: { duration: 0 } }
+    : REVEAL_FROM_BELOW.exit;
   const [text, setText] = useState("");
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
@@ -155,9 +166,9 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
         {slashOpen && (
           <motion.div
             key="slash-popover"
-            initial={REVEAL_FROM_BELOW.initial}
-            animate={REVEAL_FROM_BELOW.animate}
-            exit={REVEAL_FROM_BELOW.exit}
+            initial={popoverInitial}
+            animate={popoverAnimate}
+            exit={popoverExit}
             className="absolute bottom-full left-0 right-0 mb-1 mx-2 sm:mx-3 z-20"
             role="listbox"
             aria-label="Slash commands"
@@ -259,7 +270,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
           aria-label="Send message"
           whileTap={canSend ? TAP_PRESS : undefined}
           whileHover={canSend ? { scale: 1.02 } : undefined}
-          transition={SPRING_INTERACTIVE}
+          transition={sendSpring}
           className={cn(
             "shrink-0 inline-flex items-center justify-center rounded-full",
             "text-primary-foreground",

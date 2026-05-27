@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,8 +59,11 @@ export default function OfferApprovalsPage() {
     },
   });
 
-  const decisionMutation = useMutation({
-    mutationFn: async ({ id, decision, notesText }: { id: number; decision: "approved" | "declined"; notesText?: string }) => {
+  // Optimistic approval decision — the row flips status instantly so the
+  // pending list retires the entry. Rollback restores prior status if the
+  // server rejects.
+  const decisionMutation = useOptimisticUpdate<{ id: number; decision: "approved" | "declined"; notesText?: string }>({
+    mutationFn: async ({ id, decision, notesText }) => {
       const res = await apiRequest(
         "POST",
         `/api/team-readiness/offer-approvals/${id}/decision`,
@@ -67,11 +71,10 @@ export default function OfferApprovalsPage() {
       );
       return await res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/offer-approvals"] });
-      toast({ title: "Decision recorded" });
-    },
-    onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    listKeys: [["/api/team-readiness/offer-approvals"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ decision }) => ({ status: decision }),
+    successToast: { title: "Decision recorded" },
   });
 
   const thresholdMutation = useMutation({

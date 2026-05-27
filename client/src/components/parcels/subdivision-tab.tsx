@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { Layers, PlusCircle, AlertTriangle, ArrowRight, ClipboardList, CheckCircle2, Clock } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -973,20 +974,23 @@ function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number })
     onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
-  const updateStatus = useMutation({
-    mutationFn: async (vars: { planId: string; status: string }) => {
-      const res = await fetch(`/api/plans/${vars.planId}`, {
+  // Optimistic plan-status flip — Select shows new state instantly in
+  // every cached plans list. Rolls back if the PATCH fails.
+  const updateStatus = useOptimisticUpdate<{ id: string; status: string; parentParcelId: number }>({
+    mutationFn: async ({ id, status }) => {
+      const res = await fetch(`/api/plans/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrf() },
-        body: JSON.stringify({ status: vars.status }),
+        body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcels", parentParcelId, "plans"] });
-    },
+    listKeys: [({ parentParcelId: ppid }) => ["/api/parcels", ppid, "plans"]],
+    getId: ({ id }) => id,
+    buildPatch: ({ status }) => ({ status }),
+    successToast: false,
   });
 
   return (
@@ -1023,7 +1027,7 @@ function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number })
                   >
                     {editingPlanId === p.id ? "Close map" : "Edit on map"}
                   </Button>
-                  <Select value={p.status} onValueChange={(s) => updateStatus.mutate({ planId: p.id, status: s })}>
+                  <Select value={p.status} onValueChange={(s) => updateStatus.mutate({ id: p.id, status: s, parentParcelId })}>
                     <SelectTrigger className="h-7 w-[160px] text-xs">
                       <SelectValue>
                         <Badge variant={planStatusBadge(p.status)} className="text-xs">{p.status.replace(/_/g, " ")}</Badge>

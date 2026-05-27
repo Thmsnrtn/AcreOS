@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type IslandType, useDynamicIsland } from "@/contexts/dynamic-island-context";
+import { useRespectfulVariants, useRespectfulTransition } from "@/lib/motion-tokens";
 
 /* ── Icon map ──────────────────────────────────────────────────────── */
 const TYPE_ICONS: Record<IslandType, React.ReactNode> = {
@@ -81,6 +82,11 @@ const contentVariants: any = {
  */
 export function DynamicIsland() {
   const { message, dismiss } = useDynamicIsland();
+  // Respect prefers-reduced-motion across all four motion surfaces.
+  const respIslandVariants = useRespectfulVariants(islandVariants);
+  const respContentVariants = useRespectfulVariants(contentVariants);
+  const iconEnter = useRespectfulTransition({ type: "spring", stiffness: 600, damping: 25 });
+  const iconExit = useRespectfulTransition({ duration: 0.1 });
 
   return (
     <div
@@ -93,7 +99,7 @@ export function DynamicIsland() {
           <motion.button
             key={message.id}
             type="button"
-            variants={islandVariants}
+            variants={respIslandVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
@@ -120,8 +126,8 @@ export function DynamicIsland() {
               <motion.span
                 key={`icon-${message.type}`}
                 initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0, transition: { type: "spring", stiffness: 600, damping: 25 } }}
-                exit={{ opacity: 0, scale: 0.5, rotate: 15, transition: { duration: 0.1 } }}
+                animate={{ opacity: 1, scale: 1, rotate: 0, transition: iconEnter }}
+                exit={{ opacity: 0, scale: 0.5, rotate: 15, transition: iconExit }}
                 className={cn("flex-shrink-0", TYPE_COLORS[message.type])}
               >
                 {message.icon ?? TYPE_ICONS[message.type]}
@@ -130,7 +136,7 @@ export function DynamicIsland() {
 
             {/* Text */}
             <motion.span
-              variants={contentVariants}
+              variants={respContentVariants}
               initial="hidden"
               animate="visible"
               exit="exit"
