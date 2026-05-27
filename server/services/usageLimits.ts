@@ -1,52 +1,28 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
+// Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
+// pricing page, upgrade modal, and server gate can never drift. Re-exported
+// from this module for back-compat with existing imports.
+import {
+  TIER_LIMITS,
+  FOUNDER_TIER_LIMITS,
+  PRICING_FEATURE_FLAGS,
+  isTierVisible,
+  getVisibleTiers,
+  type SubscriptionTier,
+  type ResourceType,
+  type TierLimits,
+} from "@shared/billing/tier-limits";
 
-export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
-
-export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
-
-export interface TierLimits {
-  leads: number | null;
-  properties: number | null;
-  notes: number | null;
-  ai_requests: number | null;
-  campaigns: number | null; // null = unlimited
-  sequences: number | null; // null = unlimited
-  byokSupport: boolean; // Bring Your Own Key data provider support
-  includedSeats: number; // Seats included in the tier
-  maxSeats: number | null; // Maximum seats allowed (null = unlimited)
-  seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
-  /**
-   * Pillar 4 — Credit System + Tier Realignment (foundation, 2026-05-22).
-   *
-   * Monthly credit pool size (1 credit ≈ $0.01 of provider cost). Metered
-   * actions debit this pool per `shared/billing/credit-weights.ts`. Pool
-   * resets at each billing cycle. Pro+ tiers can also enable BYOK lanes
-   * that bypass the pool entirely (see `byokSupport`).
-   *
-   * NOTE: this field is foundation-only at present — action handlers do
-   * not yet draw from the pool. Hard-wall / pay-as-you-go enforcement
-   * ships in a follow-up task.
-   */
-  creditPool: number;
-}
-
-// Feature flags for higher tiers — Scale and Enterprise are hidden until manually enabled
-export const PRICING_FEATURE_FLAGS = {
-  pricing_scale_tier_enabled: true,
-  pricing_enterprise_tier_enabled: false,
-} as const;
-
-export function isTierVisible(tier: SubscriptionTier): boolean {
-  if (tier === "scale") return PRICING_FEATURE_FLAGS.pricing_scale_tier_enabled;
-  if (tier === "enterprise") return PRICING_FEATURE_FLAGS.pricing_enterprise_tier_enabled;
-  return true; // free, starter, pro always visible
-}
-
-export function getVisibleTiers(): SubscriptionTier[] {
-  return (Object.keys(TIER_LIMITS) as SubscriptionTier[]).filter(isTierVisible);
-}
+export {
+  TIER_LIMITS,
+  FOUNDER_TIER_LIMITS,
+  PRICING_FEATURE_FLAGS,
+  isTierVisible,
+  getVisibleTiers,
+};
+export type { SubscriptionTier, ResourceType, TierLimits };
 
 export interface UsageLimitResult {
   allowed: boolean;
@@ -55,98 +31,6 @@ export interface UsageLimitResult {
   resourceType: ResourceType;
   tier: SubscriptionTier;
 }
-
-export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
-  free: {
-    // Bumped 10 → 50 (2026-05-11): the sample-data flow seeds 35+ leads
-    // during evaluation, so the prior 10-lead cap surfaced as a hard wall
-    // before a new user could even finish exploring the canned dataset.
-    // 50 leaves enough headroom for sample data + a few user-added leads
-    // without making the upgrade decision feel coerced.
-    leads: 50,
-    properties: 3,
-    notes: 2,
-    ai_requests: 25,
-    campaigns: 0, // No campaigns on free tier
-    sequences: 0, // No sequences on free tier
-    byokSupport: false,
-    includedSeats: 1,
-    maxSeats: 1, // Cannot add seats on free tier
-    seatPriceCents: null,
-    creditPool: 50,
-  },
-  starter: {
-    leads: 250,
-    properties: 50,
-    notes: 25,
-    ai_requests: 500,
-    campaigns: 5,
-    sequences: 2,
-    byokSupport: false,
-    includedSeats: 1,
-    maxSeats: 1,
-    seatPriceCents: null,
-    creditPool: 750,
-  },
-  pro: {
-    leads: 500,
-    properties: 100,
-    notes: 50,
-    ai_requests: 1000,
-    campaigns: null, // Unlimited
-    sequences: null, // Unlimited
-    byokSupport: true, // BYOK data provider support (Regrid, ATTOM, BatchData)
-    includedSeats: 2,
-    maxSeats: 5,
-    seatPriceCents: 2000, // $20/seat
-    creditPool: 2500,
-  },
-  // Scale and Enterprise are feature-flagged — not visible in UI until manually enabled
-  scale: {
-    leads: null,
-    properties: null,
-    notes: null,
-    ai_requests: null,
-    campaigns: null,
-    sequences: null,
-    byokSupport: true,
-    includedSeats: 10,
-    maxSeats: 100,
-    seatPriceCents: 4000, // $40/seat
-    creditPool: 8000,
-  },
-  enterprise: {
-    leads: null,
-    properties: null,
-    notes: null,
-    ai_requests: null,
-    campaigns: null,
-    sequences: null,
-    byokSupport: true,
-    includedSeats: 25,
-    maxSeats: null, // Unlimited
-    seatPriceCents: 5000, // $50/seat (negotiable)
-    // Enterprise pools are negotiated per-deal; this is the default floor.
-    creditPool: 25000,
-  },
-};
-
-// Founder tier has unlimited everything
-export const FOUNDER_TIER_LIMITS: TierLimits = {
-  leads: null,
-  properties: null,
-  notes: null,
-  ai_requests: null,
-  campaigns: null,
-  sequences: null,
-  byokSupport: true,
-  includedSeats: 1000, // Effectively unlimited
-  maxSeats: null,
-  seatPriceCents: null, // Founders don't pay for seats
-  // Founders are not metered — a very large pool serves as a sentinel for
-  // any consumer that does not separately gate on `isFounder`.
-  creditPool: 1_000_000,
-};
 
 function normalizeTier(tier: string): SubscriptionTier {
   const normalized = tier.toLowerCase();
