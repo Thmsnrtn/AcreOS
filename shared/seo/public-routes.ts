@@ -39,11 +39,19 @@ export interface PublicRoute {
 export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/", changefreq: "weekly", priority: 1.0, label: "Landing", prerender: true },
   { path: "/pricing", changefreq: "monthly", priority: 0.9, label: "Pricing", prerender: true },
+  { path: "/why", changefreq: "monthly", priority: 0.8, label: "Why we built this", prerender: true },
   { path: "/security", changefreq: "monthly", priority: 0.7, label: "Security", prerender: true },
   { path: "/glossary", changefreq: "monthly", priority: 0.7, label: "Glossary", prerender: true },
+  // Comparison landers — high-intent "[competitor] alternative" search
+  // traffic. prerender:false because the page mounts a noindex meta tag
+  // until the founder fills in positioning copy (see ComparisonPage.tsx).
+  // Once those go live we flip prerender on and drop the noindex guard.
+  { path: "/compare/acreos-vs-propstream", changefreq: "monthly", priority: 0.7, label: "Compare · PropStream", prerender: false },
+  { path: "/compare/acreos-vs-dealmachine", changefreq: "monthly", priority: 0.7, label: "Compare · DealMachine", prerender: false },
   { path: "/changelog", changefreq: "weekly", priority: 0.6, label: "Changelog", prerender: true },
   { path: "/auth", changefreq: "monthly", priority: 0.5, label: "Sign in", prerender: false },
   { path: "/status", changefreq: "daily", priority: 0.5, label: "Status", prerender: false },
+  { path: "/legal/sub-processors", changefreq: "monthly", priority: 0.4, label: "Sub-processors", prerender: false },
   { path: "/terms", changefreq: "yearly", priority: 0.3, label: "Terms", prerender: false },
   { path: "/privacy", changefreq: "yearly", priority: 0.3, label: "Privacy", prerender: false },
 ];

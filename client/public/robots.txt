@@ -18,11 +18,15 @@ Disallow: /analytics
 # Allow public pages
 Allow: /
 Allow: /pricing
+Allow: /why
 Allow: /security
 Allow: /glossary
+Allow: /compare/acreos-vs-propstream
+Allow: /compare/acreos-vs-dealmachine
 Allow: /changelog
 Allow: /auth
 Allow: /status
+Allow: /legal/sub-processors
 Allow: /terms
 Allow: /privacy
 

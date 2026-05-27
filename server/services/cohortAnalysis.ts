@@ -52,13 +52,23 @@ export interface CohortReport {
   generatedAt: string;
 }
 
+/**
+ * Cohort labels — compute in UTC because `createdAt` is stored UTC and a
+ * lead in PST created on April 1 03:00 UTC is still "April" from the
+ * cohort-bucketing perspective. Using local time here would put PST
+ * users' April leads into March cohorts.
+ */
 function quarterLabel(date: Date): string {
-  const q = Math.floor(date.getMonth() / 3) + 1;
-  return `Q${q} ${date.getFullYear()}`;
+  const q = Math.floor(date.getUTCMonth() / 3) + 1;
+  return `Q${q} ${date.getUTCFullYear()}`;
 }
 
 function monthLabel(date: Date): string {
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "short" });
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 export async function buildCohortReport(
