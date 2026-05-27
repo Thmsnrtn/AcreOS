@@ -19601,6 +19601,14 @@ export const subdivisionPlans = pgTable(
     totalRoadFeet: integer("total_road_feet"),
     totalAcres: numeric("total_acres"),
 
+    // Carrying-cost projections (Brigid §3: "I burn $7-12k a month while
+    // the plat sits in the planning queue"). Stored on the plan so re-plats
+    // (Plan A vs Plan B) can compare burn projections side-by-side. The
+    // Subdivision tab surfaces parent-basis + these as a to-date burn tile.
+    engineeringCostCents: bigint("engineering_cost_cents", { mode: "number" }),
+    surveyCostCents: bigint("survey_cost_cents", { mode: "number" }),
+    roadConstructionCostBondCents: bigint("road_construction_cost_bond_cents", { mode: "number" }),
+
     notes: text("notes"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -832,6 +832,7 @@ const STATEMENTS = [
      "phone" text,
      "address" jsonb,
      "license_number" text,
+     "license_expires_at" date,
      "insurance_expires_at" date,
      "trades" jsonb DEFAULT '[]'::jsonb,
      "tax_id_encrypted" text,
@@ -847,6 +848,10 @@ const STATEMENTS = [
    )`,
   'CREATE INDEX IF NOT EXISTS "contractors_org_idx" ON "contractors" ("organization_id", "active_status")',
   'CREATE INDEX IF NOT EXISTS "contractors_org_name_idx" ON "contractors" ("organization_id", "name")',
+  // Devon FF (2026-05-27): add license_expires_at on prod tables that pre-date
+  // the column. CREATE TABLE IF NOT EXISTS above no-ops when the table
+  // exists, so we need the explicit ADD COLUMN IF NOT EXISTS to backfill.
+  'ALTER TABLE "contractors" ADD COLUMN IF NOT EXISTS "license_expires_at" date',
 
   `CREATE TABLE IF NOT EXISTS "contractor_w9_documents" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
