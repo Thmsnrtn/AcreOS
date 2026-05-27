@@ -80,13 +80,19 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
 
       const userId = String(user?.id || user.id);
 
+      // SEC: must filter to is_active = true so deactivated/off-boarded
+      // members can't continue to authenticate against the org. Lens 23
+      // finding #2 — without the isActive predicate, a row that's been
+      // flagged inactive (admin removed them, employee left, etc.) still
+      // satisfies the role check and grants full role-gated access.
       const [member] = await db
         .select({ role: teamMembers.role })
         .from(teamMembers)
         .where(
           and(
             eq(teamMembers.organizationId, org.id),
-            eq(teamMembers.userId, userId)
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.isActive, true)
           )
         );
 
