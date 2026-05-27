@@ -180,7 +180,8 @@ const MapsPage = React.lazy(() => import("@/pages/maps"));
 const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
 const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
 const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory-enterprise"));
-const RealRuntimePage = React.lazy(() => import("@/pages/real-runtime"));
+// /real-runtime removed (Lens 4 Fix 4): customer-facing surface that
+// exposed runtime internals and had no nav link or referrers.
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
@@ -374,9 +375,14 @@ const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
-const FreedomMeterPage = React.lazy(() => import("@/pages/freedom-meter"));
+// /freedom-meter removed (Lens 4 Fix 4): 706-line customer-facing
+// surface with no nav link, no in-app referrers, no link to /today.
+// Stale standalone page — deleted.
 const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard"));
-const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
+// /night-cap + /evening-review removed (Lens 4 Fix 4): both URLs
+// pointed at the same EveningReviewPage and neither was linked from
+// any nav surface. Server-side /api/night-cap/snapshot endpoint
+// remains for any Today-page consumer.
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
@@ -839,6 +845,17 @@ function Router() {
       <Route path="/help">
         {() => <ProtectedRoute component={HelpPage} />}
       </Route>
+      {/* Lens 25 #3 — public KB browse + article surfaces. These render
+          without ProtectedRoute so signed-out users can land on a
+          docsSlug deep link (from an `Errors.*` toast) and read the
+          explanation. /help/kb is the alias to the dedicated browse
+          page; /help itself still hosts the legacy FAQ tab. */}
+      <Route path="/help/kb">
+        {() => <KnowledgeBasePage />}
+      </Route>
+      <Route path="/help/article/:slug">
+        {() => <KnowledgeBaseArticlePage />}
+      </Route>
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
@@ -1222,9 +1239,7 @@ function Router() {
             see one AI brand (Pax), not the dozen under the hood. */}
         {() => <FounderProtectedRoute component={AnticipatoryEnterprisePage} />}
       </Route>
-      <Route path="/real-runtime">
-        {() => <ProtectedRoute component={RealRuntimePage} />}
-      </Route>
+      {/* /real-runtime removed (Lens 4 Fix 4) — see lazy-import note. */}
       <Route path="/agent-command-center">
         {() => <Redirect to="/ai#agents" />}
       </Route>
@@ -1327,17 +1342,10 @@ function Router() {
       <Route path="/dunning">
         {() => <ProtectedRoute component={DunningManagerPage} />}
       </Route>
-      <Route path="/freedom-meter">
-        {() => <ProtectedRoute component={FreedomMeterPage} />}
-      </Route>
+      {/* /freedom-meter, /night-cap, /evening-review removed (Lens 4
+          Fix 4) — see lazy-import notes. Page files deleted. */}
       <Route path="/blind-offer-wizard">
         {() => <ProtectedRoute component={BlindOfferWizardPage} />}
-      </Route>
-      <Route path="/night-cap">
-        {() => <ProtectedRoute component={EveningReviewPage} />}
-      </Route>
-      <Route path="/evening-review">
-        {() => <ProtectedRoute component={EveningReviewPage} />}
       </Route>
 
       {/* Founder / Admin — additional */}

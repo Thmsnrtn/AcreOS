@@ -279,7 +279,7 @@ function PaxNotificationBadge() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-foreground leading-snug">{obs.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{obs.description}</p>
-                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                      <p className="text-micro text-muted-foreground/60 mt-1">
                         {new Date(obs.detectedAt).toLocaleDateString()}
                       </p>
                     </div>
@@ -294,7 +294,7 @@ function PaxNotificationBadge() {
                   {obs.status === "detected" && (
                     <button
                       onClick={() => handleAcknowledge(obs.id)}
-                      className="mt-1.5 ml-5 text-[10px] text-primary hover:underline"
+                      className="mt-1.5 ml-5 text-micro text-primary hover:underline"
                     >
                       Mark as seen
                     </button>
@@ -638,12 +638,38 @@ const NAV_MODULES: NavModule[] = [
       { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", description: "Public support/feedback/question submissions from landing pages" },
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Founder feed", icon: Activity, href: "/founder/feed", description: "Unified timeline — feedback + agent events + code proposals in one view" },
+      // ── Sovereign Protocol / Visibility Layer (Lens 4 Fix 4 surface) ──
+      // Founder-only surfaces previously registered in App.tsx but
+      // unreachable from any nav. Each has a real UI and surfaces
+      // founder data, so they're linked here instead of being deleted.
+      // Grouped so it's clear they're the "look at how the org is
+      // running" surfaces, not the daily-decision ones above.
+      { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", description: "Sovereign Protocol — top-level visibility into the autonomous org" },
+      { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", description: "Sovereign Protocol v13 — latest experimental surface" },
+      { label: "Board of directors", icon: Shield, href: "/board-of-directors", description: "AI board — strategic-review members + cadence" },
+      { label: "Conscious organization", icon: Brain, href: "/conscious-organization", description: "Org-consciousness agent surface (Atlas/Sophie/Forge taxonomy)" },
+      { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", description: "Inter-agent negotiation / capability anticipation" },
+      { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
+      { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", description: "Cross-wing agent collaboration patterns" },
+      { label: "Memory browser", icon: Database, href: "/memory-browser", description: "Per-agent semantic + episodic memory inspector" },
+      { label: "Event log", icon: FileCode, href: "/event-log", description: "Agent-event firehose — every decision and side effect" },
+      { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
+      // ── Founder business surfaces ─────────────────────────────────────
+      { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
+      { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },
+      { label: "Executive dashboard", icon: LayoutDashboard, href: "/executive-dashboard", description: "Cross-org executive KPI roll-up" },
       // Sigfried §1: legacy operational dashboard (~7,400 lines) is being
-      // extracted into the focused /founder/* surfaces above. Founder still
-      // needs access during the extraction window — flagged with a Legacy
-      // badge so it's clearly the old path. Customers never see this entry
-      // because the entire founder-business module is `founderOnly: true`.
-      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — being extracted into focused founder surfaces", legacy: true },
+      // extracted into the focused /founder/* surfaces above. Founder
+      // still needs access during the extraction window — flagged with
+      // a Legacy badge so it's clearly the old path. Customers never
+      // see this entry because the entire founder-business module is
+      // `founderOnly: true`.
+      // IA consolidation (Lens 4 Fix 1): /founder-dashboard now redirects
+      // to /founder/bridge; the actual legacy page lives on disk but is
+      // no longer route-mounted. Entry left in place so the sidebar
+      // continues to land the founder on bridge until the dedicated
+      // extraction sweep finishes.
+      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — redirects to /founder/bridge until extraction completes", legacy: true },
     ],
   },
 
@@ -905,7 +931,7 @@ export function Sidebar() {
               {isFounder && (
                 <Badge
                   variant="outline"
-                  className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-[10px] px-1.5 py-0 shrink-0"
+                  className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-micro px-1.5 py-0 shrink-0"
                   data-testid="badge-founder"
                 >
                   <Crown className="w-2.5 h-2.5 mr-0.5" />
@@ -984,7 +1010,7 @@ export function Sidebar() {
             >
               <Search className="w-3.5 h-3.5 shrink-0" />
               <span className="flex-1 text-left truncate">Search or jump to…</span>
-              <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground/70">
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">K</kbd>
               </span>
@@ -999,7 +1025,7 @@ export function Sidebar() {
             >
               <Send className="w-3.5 h-3.5 shrink-0" />
               <span className="flex-1 text-left truncate">Quick offer</span>
-              <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground/70">
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">O</kbd>
               </span>
@@ -1210,7 +1236,7 @@ export function Sidebar() {
                         <span className="font-medium">
                           {expandedOverflow.has(module.id) ? "Less" : "More"}
                         </span>
-                        <span className="text-[11px] text-muted-foreground/70 ml-auto tabular-nums">
+                        <span className="text-caption text-muted-foreground/70 ml-auto tabular-nums">
                           {module.overflow!.length}
                         </span>
                       </button>
