@@ -26,7 +26,7 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, eq, isNull, sql, asc } from "drizzle-orm";
 import { db } from "./db";
-import { properties, lotBasisAllocations } from "@shared/schema";
+import { properties, lotBasisAllocations, notes, leads } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -54,6 +54,26 @@ const createLotsBatchSchema = z.object({
   subdivisionPlanId: z.string().uuid().optional(),
 });
 
+// Seller-financing terms accompanying a child-lot sale. When present and
+// status flips to "sold", the LOT → NOTE bridge auto-creates a `notes`
+// row using the buyer as borrower and the child lot as collateral. This
+// is step 9 of Brigid's literal workflow ("contract closes seller-financed
+// → I now hold paper, not cash").
+const lotSellerFinancingSchema = z.object({
+  sellerFinanced: z.literal(true),
+  // Sale price (dollars) — falls back to the lot's listPrice/soldPrice if
+  // omitted. Used as the originalPrincipal denominator.
+  salePrice: z.coerce.number().positive().optional(),
+  downPayment: z.coerce.number().nonnegative().default(0),
+  interestRate: z.coerce.number().positive(),  // annual % (e.g. 9.5)
+  termMonths: z.coerce.number().int().min(1).max(1200),
+  startDate: z.string().min(1),                 // ISO date
+  firstPaymentDate: z.string().min(1),          // ISO date
+  monthlyPayment: z.coerce.number().positive().optional(), // computed if absent
+  paymentMethod: z.string().max(40).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
 const editLotSchema = z.object({
   childLotNumber: z.string().min(1).max(64).optional(),
   sizeAcres: z.coerce.number().positive().optional(),
@@ -63,7 +83,18 @@ const editLotSchema = z.object({
   zoning: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
+  soldPrice: z.coerce.number().nonnegative().optional(),
+  soldDate: z.string().optional(),
+  sellerFinancing: lotSellerFinancingSchema.optional(),
 });
+
+// Pure helper — standard amortized monthly payment.
+function calcMonthlyPayment(principal: number, annualRatePct: number, termMonths: number): number {
+  if (principal <= 0 || termMonths <= 0) return 0;
+  if (annualRatePct <= 0) return principal / termMonths;
+  const r = annualRatePct / 100 / 12;
+  return (principal * r) / (1 - Math.pow(1 + r, -termMonths));
+}
 
 // ----------------------------------------------------------------------------
 // Rollup metric helpers
@@ -340,6 +371,24 @@ export function registerSubdivisionRoutes(app: Express): void {
         if (parsed.data.zoning !== undefined) updates.zoning = parsed.data.zoning;
         if (parsed.data.address !== undefined) updates.address = parsed.data.address;
         if (parsed.data.notes !== undefined) updates.description = parsed.data.notes;
+        if (parsed.data.soldPrice !== undefined) updates.soldPrice = String(parsed.data.soldPrice);
+        if (parsed.data.soldDate !== undefined) updates.soldDate = new Date(parsed.data.soldDate);
+
+        // If status is flipping to "sold" we need the prior row to know if
+        // this is the transition that should fire the LOT → NOTE bridge.
+        const [existing] = await db
+          .select()
+          .from(properties)
+          .where(and(
+            eq(properties.id, childId),
+            eq(properties.organizationId, orgId),
+          ));
+        if (!existing) return Errors.notFound(res, "Lot");
+
+        // Default soldDate when status flips to "sold" without one supplied.
+        if (parsed.data.status === "sold" && existing.status !== "sold" && !parsed.data.soldDate) {
+          updates.soldDate = new Date();
+        }
 
         const [updated] = await db
           .update(properties)
@@ -351,7 +400,134 @@ export function registerSubdivisionRoutes(app: Express): void {
           .returning();
         if (!updated) return Errors.notFound(res, "Lot");
 
-        return res.json({ lot: updated });
+        // ────────────────────────────────────────────────────────────────
+        // LOT → NOTE bridge (Brigid Lens 19 #2 — most important code gap):
+        // when a child lot transitions to "sold" AND seller-financing terms
+        // are supplied, originate a `notes` row. Borrower = buyer (from
+        // properties.buyerId), collateral = this child lot, terms straight
+        // from the payload.
+        //
+        // Idempotent: if a non-deleted note for this property already
+        // exists, skip — re-PATCHing the lot must not create duplicates.
+        // ────────────────────────────────────────────────────────────────
+        let createdNoteId: number | null = null;
+        let bridgeSkipReason: string | null = null;
+
+        const isSoldTransition =
+          parsed.data.status === "sold" && existing.status !== "sold" && updated.parentParcelId != null;
+
+        if (isSoldTransition && parsed.data.sellerFinancing) {
+          const sf = parsed.data.sellerFinancing;
+
+          // Pre-existing note check — keep this PATCH idempotent.
+          const [existingNote] = await db
+            .select({ id: notes.id })
+            .from(notes)
+            .where(and(
+              eq(notes.organizationId, orgId),
+              eq(notes.propertyId, updated.id),
+              isNull(notes.deletedAt),
+            ));
+
+          if (existingNote) {
+            bridgeSkipReason = "note_already_exists";
+            logger.info("[lot→note bridge] skipped — note exists", {
+              orgId,
+              userId,
+              childParcelId: updated.id,
+              existingNoteId: existingNote.id,
+            });
+          } else {
+            const borrowerId =
+              parsed.data.buyerId !== undefined && parsed.data.buyerId !== null
+                ? parsed.data.buyerId
+                : updated.buyerId ?? null;
+
+            if (borrowerId == null) {
+              bridgeSkipReason = "missing_buyer";
+              logger.warn("[lot→note bridge] skipped — no buyer", {
+                orgId,
+                userId,
+                childParcelId: updated.id,
+              });
+            } else {
+              // Verify the buyer lead is org-scoped (defense-in-depth).
+              const [borrower] = await db
+                .select({ id: leads.id })
+                .from(leads)
+                .where(and(eq(leads.id, borrowerId), eq(leads.organizationId, orgId)));
+              if (!borrower) {
+                bridgeSkipReason = "buyer_not_in_org";
+                logger.warn("[lot→note bridge] skipped — buyer not in org", {
+                  orgId,
+                  userId,
+                  childParcelId: updated.id,
+                  borrowerId,
+                });
+              } else {
+                const salePrice =
+                  sf.salePrice
+                    ?? (parsed.data.soldPrice ?? (updated.soldPrice ? parseFloat(updated.soldPrice) : null))
+                    ?? (updated.listPrice ? parseFloat(updated.listPrice) : null);
+
+                if (salePrice == null || !Number.isFinite(salePrice) || salePrice <= 0) {
+                  bridgeSkipReason = "missing_sale_price";
+                  logger.warn("[lot→note bridge] skipped — no sale price", {
+                    orgId,
+                    userId,
+                    childParcelId: updated.id,
+                  });
+                } else {
+                  const principal = Math.max(0, salePrice - sf.downPayment);
+                  const monthly = sf.monthlyPayment
+                    ?? calcMonthlyPayment(principal, sf.interestRate, sf.termMonths);
+
+                  const startDate = new Date(sf.startDate);
+                  const firstPaymentDate = new Date(sf.firstPaymentDate);
+
+                  const [newNote] = await db.insert(notes).values({
+                    organizationId: orgId,
+                    propertyId: updated.id,
+                    borrowerId,
+                    originalPrincipal: String(principal),
+                    currentBalance: String(principal),
+                    interestRate: String(sf.interestRate),
+                    termMonths: sf.termMonths,
+                    monthlyPayment: String(monthly.toFixed(2)),
+                    downPayment: String(sf.downPayment),
+                    downPaymentReceived: sf.downPayment > 0,
+                    startDate,
+                    firstPaymentDate,
+                    nextPaymentDate: firstPaymentDate,
+                    status: "active",
+                    paymentMethod: sf.paymentMethod ?? null,
+                    notes: sf.notes ?? `Originated from child lot ${updated.childLotNumber ?? updated.apn}`,
+                    accessToken: `note_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+                  }).returning({ id: notes.id });
+
+                  createdNoteId = newNote.id;
+
+                  logger.info("[lot→note bridge] note originated", {
+                    orgId,
+                    userId,
+                    childParcelId: updated.id,
+                    noteId: newNote.id,
+                    principal,
+                    interestRate: sf.interestRate,
+                    termMonths: sf.termMonths,
+                    borrowerId,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        return res.json({
+          lot: updated,
+          ...(createdNoteId ? { noteId: createdNoteId } : {}),
+          ...(bridgeSkipReason ? { bridgeSkipReason } : {}),
+        });
       } catch (err) {
         return Errors.internal(res, err);
       }
