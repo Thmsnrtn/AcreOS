@@ -29,12 +29,16 @@ interface CohortRow {
 }
 
 function quarterLabel(date: Date): string {
-  const q = Math.floor(date.getMonth() / 3) + 1;
-  return `Q${q} ${date.getFullYear()}`;
+  const q = Math.floor(date.getUTCMonth() / 3) + 1;
+  return `Q${q} ${date.getUTCFullYear()}`;
 }
 
 function monthLabel(date: Date): string {
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "short" });
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function calculateRate(numerator: number, denominator: number): number {

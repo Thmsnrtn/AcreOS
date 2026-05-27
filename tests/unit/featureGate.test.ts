@@ -18,7 +18,7 @@ const mockFrom = vi.fn();
 const mockWhere = vi.fn();
 const mockLimit = vi.fn();
 
-vi.mock("../../server/storage", () => ({
+vi.mock("../../server/db", () => ({
   db: {
     select: (...args: any[]) => {
       mockSelect(...args);
@@ -98,13 +98,16 @@ describe("featureGate middleware", () => {
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  it("calls next() when the database throws (graceful fallthrough)", async () => {
+  it("returns 404 when the database throws (fail closed for non-founders)", async () => {
+    // Post-port behavior (featureFlagService): getByKey swallows DB errors
+    // and returns null. isEnabled then returns ctx.isFounder. For a request
+    // with no founder context the gate fails closed.
     mockLimit.mockRejectedValueOnce(new Error("relation does not exist"));
 
     const { req, res, next } = mockReqRes();
     await featureGate("feature_marketplace")(req, res, next);
 
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });

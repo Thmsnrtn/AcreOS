@@ -31,7 +31,7 @@ function estimateRedemptionDeadline(
   const months = redemptionMonths[stateCode.toUpperCase()] ?? 12;
   const saleDate = new Date(taxSaleDate);
   const deadline = new Date(saleDate);
-  deadline.setMonth(deadline.getMonth() + months);
+  deadline.setUTCMonth(deadline.getUTCMonth() + months);
   return deadline;
 }
 
@@ -108,14 +108,14 @@ describe("calculateDelinquencyScore", () => {
 describe("estimateRedemptionDeadline", () => {
   it("uses TX 24-month redemption period", () => {
     const deadline = estimateRedemptionDeadline("2024-01-01", "TX");
-    expect(deadline.getFullYear()).toBe(2026);
-    expect(deadline.getMonth()).toBe(0); // January
+    expect(deadline.getUTCFullYear()).toBe(2026);
+    expect(deadline.getUTCMonth()).toBe(0); // January
   });
 
   it("uses CA 12-month redemption period", () => {
     const deadline = estimateRedemptionDeadline("2024-01-01", "CA");
-    expect(deadline.getFullYear()).toBe(2025);
-    expect(deadline.getMonth()).toBe(0);
+    expect(deadline.getUTCFullYear()).toBe(2025);
+    expect(deadline.getUTCMonth()).toBe(0);
   });
 
   it("defaults to 12 months for unknown state", () => {

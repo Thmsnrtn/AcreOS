@@ -31,8 +31,40 @@ vi.mock("../../server/storage", () => ({
         where: vi.fn().mockResolvedValue([]),
       }),
     }),
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
   },
 }));
+
+// Mock server/db so getOrCreateOrg's withTransaction calls don't hit Postgres.
+vi.mock("../../server/db", () => {
+  const fakeOrgRow = { id: 1, name: "Test Org", ownerId: "user-1" };
+  const fakeTx = {
+    insert: (_table: any) => ({
+      values: (_vals: any) => {
+        const result: any = Promise.resolve(undefined);
+        result.returning = () => Promise.resolve([fakeOrgRow]);
+        return result;
+      },
+    }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([]),
+        }),
+      }),
+    }),
+  };
+  return {
+    db: fakeTx,
+    withTransaction: async (fn: (tx: any) => Promise<any>) => fn(fakeTx),
+  };
+});
 
 // ─── Task #249 — IDOR Test ────────────────────────────────────────────────────
 

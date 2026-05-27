@@ -337,13 +337,15 @@ describe("Indigo win-back matrix lookups", () => {
     expect(cell.pitch.toLowerCase()).toContain("$20");
   });
 
-  it("price × operator/empire cell pitches the downgrade-to-solo line", () => {
+  it("price × operator/empire cell pitches the drop-to-Starter line", () => {
+    // Canonical pricing tiers are Starter/Pro/Scale (see messages.ts header).
+    // WinbackTier identifiers (solo/operator/empire) remain as persisted keys.
     const op = winbackCellFor("price", "operator");
     const emp = winbackCellFor("price", "empire");
     expect(op.approach).toBe("tailored_email");
     expect(emp.approach).toBe("tailored_email");
-    expect(op.pitch.toLowerCase()).toContain("solo");
-    expect(emp.pitch.toLowerCase()).toContain("solo");
+    expect(op.pitch.toLowerCase()).toContain("starter");
+    expect(emp.pitch.toLowerCase()).toContain("starter");
   });
 
   it("wrong_fit cells across all tiers are no_touch", () => {

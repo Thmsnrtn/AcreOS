@@ -230,10 +230,12 @@ describe("createRateLimiter", () => {
 
   describe("authenticatedKeyFunction", () => {
     it("uses user ID for authenticated requests", () => {
+      // Post-Clerk-port: auth attaches the user directly as req.user with
+      // `id` (not `claims.sub`). See server/middleware/rateLimit.ts.
       const req = {
         ip: "10.0.5.1",
         socket: { remoteAddress: "10.0.5.1" },
-        user: { claims: { sub: "user-abc" } },
+        user: { id: "user-abc" },
       } as unknown as Request;
 
       expect(authenticatedKeyFunction(req)).toBe("user:user-abc");
@@ -249,11 +251,11 @@ describe("createRateLimiter", () => {
       expect(authenticatedKeyFunction(req)).toBe("ip:10.0.5.2");
     });
 
-    it("falls back to IP when user has no sub claim", () => {
+    it("falls back to IP when user has no id", () => {
       const req = {
         ip: "10.0.5.3",
         socket: { remoteAddress: "10.0.5.3" },
-        user: { claims: {} },
+        user: {},
       } as unknown as Request;
 
       expect(authenticatedKeyFunction(req)).toBe("ip:10.0.5.3");

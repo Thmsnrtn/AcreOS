@@ -96,7 +96,7 @@ describe("Stripe Webhook: checkout.session.completed — credit purchase (Task #
 
     const mod = await import("../../server/webhookHandlers");
     WebhookHandlers = mod.WebhookHandlers;
-  });
+  }, 30000);
 
   it("processes credit_purchase checkout session (Task #73)", async () => {
     const session = {
@@ -817,11 +817,13 @@ describe("Stripe Webhook: idempotency (Task #92)", () => {
   it("skips processing when event has already been handled (Task #92)", async () => {
     const { db } = await import("../../server/storage");
 
-    // Simulate event already in DB (isDuplicate returns true)
-    (db.select as any).mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ id: 99 }]), // non-empty = duplicate
+    // DEFECT-0006: idempotency was switched from select-then-insert (TOCTOU)
+    // to atomic INSERT ... ON CONFLICT DO NOTHING RETURNING. A duplicate
+    // returns an empty result array from the returning() call.
+    (db.insert as any).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]), // empty = already claimed
         }),
       }),
     });

@@ -35,7 +35,7 @@ function getNextStepDate(enrolledAt: Date, steps: SequenceStep[], currentStep: n
   const totalDelayDays = stepsUpToNext.reduce((sum, s) => sum + s.delayDays, 0);
 
   const nextDate = new Date(enrolledAt);
-  nextDate.setDate(nextDate.getDate() + totalDelayDays);
+  nextDate.setUTCDate(nextDate.getUTCDate() + totalDelayDays);
   return nextDate;
 }
 
@@ -109,7 +109,7 @@ describe("getNextStepDate", () => {
     const nextDate = getNextStepDate(enrolled, steps, 1);
     expect(nextDate).not.toBeNull();
     // Step 2 has 0 (step 1) + 3 days = 3 days from enrolled
-    expect(nextDate!.getDate()).toBe(4); // Jan 4
+    expect(nextDate!.getUTCDate()).toBe(4); // Jan 4
   });
 
   it("accumulates delay for step 3", () => {

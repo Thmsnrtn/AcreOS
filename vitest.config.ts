@@ -9,9 +9,16 @@ export default defineConfig({
     // jsdom via the `// @vitest-environment jsdom` pragma at file head
     // (Phase D — dock.test.tsx is the first such test).
     include: ["**/*.test.ts", "**/*.test.tsx"],
-    exclude: ["node_modules", "dist", "client", ".claude"],
+    // `**/node_modules` catches nested deps (e.g. tests/e2e-intelligent/node_modules/zod)
+    // that the bare `node_modules` token misses; we were running Zod's vendored
+    // test suite by accident until this was tightened.
+    exclude: ["**/node_modules/**", "dist", "client", ".claude", "**/.claude/**"],
     setupFiles: ["./tests/setup.ts"],
     testTimeout: 15000,
+    // Some hooks dynamically import large modules (routes-founder-chat
+    // pulls in 40+ tool modules; webhookHandlers pulls in stripe). The
+    // default 10s hook timeout is too tight on cold caches.
+    hookTimeout: 30000,
     pool: "forks",
     coverage: {
       provider: "v8",

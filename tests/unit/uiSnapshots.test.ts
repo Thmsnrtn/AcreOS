@@ -283,10 +283,14 @@ describe("Animation Variant Config Shape (Task #253)", () => {
     expect(animFileContent).toContain("visible:");
   });
 
-  it("pageTransition has initial, animate, and exit keys", () => {
-    expect(animFileContent).toContain("initial:");
-    expect(animFileContent).toContain("animate:");
-    expect(animFileContent).toContain("exit:");
+  it("pageTransition has initial, animate, and exit keys", async () => {
+    // pageTransition is re-exported from motion-tokens via variantPageFade,
+    // so check the variant object at runtime rather than the source string.
+    const mod = await import("@/lib/animations");
+    const pt = (mod as { pageTransition: Record<string, unknown> }).pageTransition;
+    expect(pt).toHaveProperty("initial");
+    expect(pt).toHaveProperty("animate");
+    expect(pt).toHaveProperty("exit");
   });
 
   it("staggerContainer has staggerChildren configuration", () => {

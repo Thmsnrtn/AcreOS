@@ -50,9 +50,9 @@ jobs:
 
       - name: Run tests
         run: npx vitest run
-        continue-on-error: true # Tests fail on unrelated DB-cred/test-fixture drift; tracked separately.
         env:
           CI: true
+          SENTRY_SOURCEMAPS: skip
 
   deploy:
     name: Deploy to Fly.io
@@ -121,7 +121,10 @@ jobs:
             || (echo "Health check failed after deploy" && exit 1)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        continue-on-error: true
+        # Fail the workflow when health check fails — the deploy itself has
+        # already completed, but a 5xx on /api/health means the new release
+        # is broken. Failing here triggers the "Record FAILED deployment"
+        # ledger step and surfaces the bad release loudly.
 
       # Kareem §5: record this deploy in the deployments table so the
       # SOC 2 Type II auditor can tie every production change back to a

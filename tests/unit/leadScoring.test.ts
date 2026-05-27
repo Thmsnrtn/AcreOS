@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ────────────────────────────────────────────────────────────────────
-vi.mock("../../../server/db", () => ({
+vi.mock("../../server/db", () => ({
   db: {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -43,15 +43,24 @@ vi.mock("../../../server/db", () => ({
 }));
 
 // ── DataSourceBroker mock ──────────────────────────────────────────────────────
-vi.mock("../../../server/services/data-source-broker", () => ({
-  DataSourceBroker: vi.fn().mockImplementation(() => ({
-    lookupParcelData: vi.fn().mockResolvedValue(null),
-    lookupFloodData: vi.fn().mockResolvedValue(null),
-    lookup: vi.fn().mockResolvedValue({ success: false, data: null }),
-  })),
-}));
+// Must be a real class — leadScoring instantiates with `new DataSourceBroker()`
+// and vitest's vi.fn() return is not a constructor.
+vi.mock("../../server/services/data-source-broker", () => {
+  class DataSourceBroker {
+    async lookupParcelData() {
+      return null;
+    }
+    async lookupFloodData() {
+      return null;
+    }
+    async lookup() {
+      return { success: false, data: null };
+    }
+  }
+  return { DataSourceBroker };
+});
 
-import { LeadScoringService } from "../../../server/services/leadScoring";
+import { LeadScoringService } from "../../server/services/leadScoring";
 
 // ── Minimal mock types ─────────────────────────────────────────────────────────
 const makeProfile = (overrides = {}) => ({

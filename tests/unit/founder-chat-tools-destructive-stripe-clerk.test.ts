@@ -90,10 +90,24 @@ vi.mock("../../server/db", () => ({
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+        // .where() may be awaited directly OR chained to .limit().
+        where: vi.fn().mockImplementation(() => {
+          const p: any = Promise.resolve([]);
+          p.limit = vi.fn().mockResolvedValue([]);
+          return p;
+        }),
       }),
     }),
   },
+}));
+
+// Bypass the org-scoping assertion in destructive tool handlers. Those
+// assertions hit the live Stripe API / DB and are covered separately —
+// here we only care that the confirmed call invokes the provider.
+vi.mock("../../server/services/founder-chat/assert-entity-org", () => ({
+  AtlasEntityOrgMismatchError: class extends Error {},
+  assertEntityOrg: vi.fn(async () => {}),
+  assertEntityOrgFromCtx: vi.fn(async () => {}),
 }));
 
 function ctx(): FounderToolContext {
