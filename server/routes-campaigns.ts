@@ -1735,7 +1735,11 @@ export function registerCampaignRoutes(app: Express): void {
 
   // POST /api/campaigns/:id/send-sms — send SMS campaign to selected leads
   // DEFECT-0047: Upfront atomic credit deduction + per-recipient dedup
-  api.post("/api/campaigns/:id/send-sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // TCPA: idempotencyMiddleware prevents replay-based double-send (a
+  // single Twilio call costs ~$0.008 + ledger debit + a $1500 statutory
+  // violation if the second send happens after a STOP was processed
+  // between attempts). Lens 14 flagged the missing middleware.
+  api.post("/api/campaigns/:id/send-sms", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
@@ -1758,6 +1762,44 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No recipients with valid phone numbers");
       }
 
+      // ── TCPA CONSENT GATE (mandatory pre-filter) ────────────────────────
+      // Drop any lead missing express written consent, marked DNC, or who
+      // ever sent a STOP keyword. Each blocked send carries $500-$1500 in
+      // statutory damages — this filter is the difference between a
+      // routine batch and a class-action exhibit. Per-channel check uses
+      // canSendViaChannel() which respects doNotContact + tcpaConsent.
+      const { canSendViaChannel, isWithinQuietHoursForLead } = await import("./services/tcpaCompliance");
+      const tcpaBlocked: Array<{ leadId: number; phone: string; reason: string }> = [];
+      const quietHoursBlocked: Array<{ leadId: number; phone: string; reason: string }> = [];
+      const tcpaCleared = validLeads.filter((l) => {
+        const check = canSendViaChannel(l!, "sms");
+        if (!check.allowed) {
+          tcpaBlocked.push({ leadId: l!.id, phone: l!.phone || "", reason: check.reason || "TCPA blocked" });
+          return false;
+        }
+        return true;
+      });
+      // Per-recipient quiet-hours check — uses lead.timezone if set,
+      // otherwise area-code inference (see tcpaCompliance.ts header).
+      // Area-code is NOT a legally reliable signal — every batch send
+      // should prompt the user to add `timezone` to imported leads.
+      const recipientReady = tcpaCleared.filter((l) => {
+        const qh = isWithinQuietHoursForLead(l! as any);
+        if (qh.blocked) {
+          quietHoursBlocked.push({ leadId: l!.id, phone: l!.phone || "", reason: qh.reason || "Quiet hours" });
+          return false;
+        }
+        return true;
+      });
+
+      if (recipientReady.length === 0) {
+        return Errors.badRequest(
+          res,
+          `No recipients eligible. TCPA-blocked: ${tcpaBlocked.length}. Quiet-hours blocked: ${quietHoursBlocked.length}.`,
+          { tcpaBlocked, quietHoursBlocked }
+        );
+      }
+
       // DEFECT-0047: Per-recipient dedup — check which leads already received
       // this campaign via SMS and skip them
       const existingDeliveries = await db
@@ -1770,11 +1812,11 @@ export function registerCampaignRoutes(app: Express): void {
           )
         );
       const alreadySentLeadIds = new Set(existingDeliveries.map(d => d.leadId));
-      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l!.id));
-      const skippedDuplicates = validLeads.length - dedupedLeads.length;
+      const dedupedLeads = recipientReady.filter(l => !alreadySentLeadIds.has(l!.id));
+      const skippedDuplicates = recipientReady.length - dedupedLeads.length;
 
       if (dedupedLeads.length === 0) {
-        return Errors.badRequest(res, "All recipients have already been sent this campaign via SMS");
+        return Errors.badRequest(res, "All TCPA-eligible recipients have already been sent this campaign via SMS");
       }
 
       // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
@@ -1901,6 +1943,10 @@ export function registerCampaignRoutes(app: Express): void {
         sent: results.sent,
         failed: results.failed,
         skippedDuplicates,
+        tcpaBlocked: tcpaBlocked.length,
+        quietHoursBlocked: quietHoursBlocked.length,
+        tcpaBlockedSamples: tcpaBlocked.slice(0, 5),
+        quietHoursBlockedSamples: quietHoursBlocked.slice(0, 5),
         total: validLeads.length,
         errors: results.errors.slice(0, 10),
       });
