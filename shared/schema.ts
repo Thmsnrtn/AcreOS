@@ -4718,6 +4718,60 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 // COMPLIANCE: AUDIT LOG (20.1)
 // ============================================
 
+// ─── Production deploy ledger (Kareem §5, SOC 2 CC8.1) ───────────────────────
+// Every prod deploy lands a row here, recording GIT_SHA, actor, PR ID,
+// timestamp, and the GitHub workflow run URL. The deploy workflow POSTs to
+// /api/admin/deployments after a successful flyctl deploy; the endpoint is
+// authenticated by a deploy-bot token from the workflow environment.
+// Auditors can pull `SELECT * FROM deployments ORDER BY deployed_at DESC`
+// and tie every production change back to a PR + approver in GitHub.
+export const deployments = pgTable("deployments", {
+  id: serial("id").primaryKey(),
+  gitSha: text("git_sha").notNull(),
+  prNumber: integer("pr_number"),
+  approvedBy: text("approved_by"),
+  deployedBy: text("deployed_by").notNull(),
+  workflowRunUrl: text("workflow_run_url"),
+  flyMachineIds: text("fly_machine_ids"),
+  environment: text("environment").notNull().default("production"),
+  status: text("status").notNull().default("success"),
+  rollbackOfDeploymentId: integer("rollback_of_deployment_id"),
+  deployedAt: timestamp("deployed_at").notNull().defaultNow(),
+  notes: text("notes"),
+}, (table) => ({
+  byGitSha: index("deployments_git_sha_idx").on(table.gitSha),
+  byDeployedAt: index("deployments_deployed_at_idx").on(table.deployedAt),
+}));
+
+export type Deployment = typeof deployments.$inferSelect;
+export type InsertDeployment = typeof deployments.$inferInsert;
+
+// ─── DR drill ledger (Kareem §7, SOC 2 A1.2) ─────────────────────────────────
+// Quarterly DR drill measurements per docs/runbooks/dr-drill-quarterly.md.
+// Surfaces on /api/jobs/health as a staleness check so the founder sees a
+// red badge if the last drill is > 100 days old.
+export const drDrills = pgTable("dr_drills", {
+  id: serial("id").primaryKey(),
+  ranAt: timestamp("ran_at").notNull().defaultNow(),
+  ranBy: text("ran_by").notNull(),
+  snapshotAgeHours: integer("snapshot_age_hours"),
+  restoreMinutes: integer("restore_minutes"),
+  bootMinutes: integer("boot_minutes"),
+  syntheticCheckMinutes: integer("synthetic_check_minutes"),
+  dataVerifyMinutes: integer("data_verify_minutes"),
+  totalRtoMinutes: integer("total_rto_minutes").notNull(),
+  passedRtoTarget: boolean("passed_rto_target").notNull().default(false),
+  whatWentWrong: text("what_went_wrong"),
+  whatsFlaky: text("whats_flaky"),
+  actionItems: text("action_items"),
+  postmortemRef: text("postmortem_ref"),
+}, (table) => ({
+  byRanAt: index("dr_drills_ran_at_idx").on(table.ranAt),
+}));
+
+export type DrDrill = typeof drDrills.$inferSelect;
+export type InsertDrDrill = typeof drDrills.$inferInsert;
+
 // ─── Audit-log integrity (Kareem §1, SOC 2 CC7.2 / CC7.3) ────────────────────
 // Every row is SHA-256 chained to the previous row in the same organization.
 // Tamper-evident: an auditor can replay the chain (or hit
@@ -5081,6 +5135,32 @@ export const ACTIVATION_EVENTS = [
   "first_1099_generated",
   "first_team_member_invited",
   "onboarding_path_selected",
+  // Lenore §1 — value-event telemetry expansion (Lens 5). The 7 below
+  // measure first true "aha" moments inside the actual workflows. They
+  // are the leading indicators that decide whether day-7 retention will
+  // hold. Fire-and-forget at the first successful execution of each path
+  // (idempotent via the (orgId, eventName) unique index — no double-counts).
+  //
+  // Notes on overlap:
+  //   - first_mailer_sent is intentionally distinct from first_letter_sent:
+  //     `letter_sent` fires from the postcard/letter direct-mail path; the
+  //     new `mailer_sent` fires from the email/SMS campaign send path.
+  //   - first_payment_recorded is distinct from first_payment_processed
+  //     (Stripe subscription) and first_borrower_payment_received: this
+  //     one fires the first time the user MANUALLY records a payment in
+  //     bookkeeping (the funnel needs to see "they're using the books",
+  //     not "we charged them" or "Stripe webhook fired").
+  //   - first_deal_closed already exists above; the brief's listing it
+  //     a second time is intentional (we want it in the day-7/day-30
+  //     surface) but we re-use the existing canonical event rather
+  //     than mint a duplicate.
+  "first_lead_enriched",
+  "first_comp_run",
+  "first_offer_drafted",
+  "first_motivation_score_seen",
+  "first_pax_question_asked",
+  "first_mailer_sent",
+  "first_payment_recorded",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]
