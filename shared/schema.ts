@@ -20427,6 +20427,72 @@ export const arvCalculations = pgTable(
 export type ArvCalculation = typeof arvCalculations.$inferSelect;
 export type InsertArvCalculation = typeof arvCalculations.$inferInsert;
 
+// ----------------------------------------------------------------------------
+// REHAB PHOTOS — Devon §5.1: line items track "category, scope, vendor,
+// budgeted, committed, spent, variance, photos." Everything except photos
+// is tracked. This is the photo evidence table that backs four use cases:
+//
+//   1. before / during / after — jobsite proof
+//   2. defect                 — warranty / dispute evidence
+//   3. lender_draw            — required photo set for construction draws
+//   4. tax                    — basis evidence for §1.263A capitalization
+//
+// Tag is constrained DB-side because the lender_draw + tax surfaces depend
+// on the tag being one of a known set. The CHECK constraint is installed by
+// migrations/0089_rehab_photos.sql.
+// ----------------------------------------------------------------------------
+
+export const REHAB_PHOTO_TAGS = [
+  "before",
+  "during",
+  "after",
+  "defect",
+  "lender_draw",
+  "tax",
+] as const;
+export type RehabPhotoTag = typeof REHAB_PHOTO_TAGS[number];
+
+export const rehabPhotos = pgTable(
+  "rehab_photos",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    // SET NULL — if a line item is deleted (scope swap), the photo evidence
+    // still belongs to the rehab and the auditor still wants to see it.
+    lineItemId: varchar("line_item_id").references((): any => rehabLineItems.id, { onDelete: "set null" }),
+
+    // Blob-storage pointer. We don't sign URLs at the DB layer; the read
+    // route signs at fetch time so the column survives URL-schema changes.
+    s3Key: text("s3_key").notNull(),
+    caption: text("caption"),
+    tag: text("tag").$type<RehabPhotoTag>(),
+
+    capturedAt: timestamp("captured_at", { withTimezone: true }).defaultNow(),
+    // SET NULL — auditor wants the photo to outlive the captor's user row.
+    // users.id is varchar(uuid) in this codebase (see shared/models/auth.ts);
+    // the spec line read "int FK → users" but we follow Drizzle types.
+    capturedBy: varchar("captured_by").references(() => users.id, { onDelete: "set null" }),
+
+    lat: numeric("lat"),
+    lng: numeric("lng"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  },
+  (table) => [
+    // Hot path — gallery view sorted by recency.
+    index("rehab_photos_org_rehab_captured_idx").on(
+      table.organizationId,
+      table.rehabId,
+      table.capturedAt.desc(),
+    ),
+    // Tag filter — lender_draw / tax bundling needs cheap point lookups.
+    index("rehab_photos_rehab_tag_idx").on(table.rehabId, table.tag),
+  ],
+);
+
+export type RehabPhoto = typeof rehabPhotos.$inferSelect;
+export type InsertRehabPhoto = typeof rehabPhotos.$inferInsert;
+
 // ============================================================================
 // BUY-AND-HOLD VERTICAL — BH-1 schema foundation (Imelda)
 // ----------------------------------------------------------------------------
