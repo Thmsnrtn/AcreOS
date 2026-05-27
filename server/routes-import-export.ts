@@ -25,6 +25,7 @@ import {
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { Errors } from "./utils/errors";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
@@ -54,12 +55,12 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
-        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, or deals." });
+        return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, or deals.");
       }
       const columns = getExpectedColumns(entityType);
       res.json({ columns });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get columns" });
+      Errors.internal(res, error);
     }
   });
 
@@ -67,11 +68,11 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
-        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, or deals." });
+        return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, or deals.");
       }
 
       if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
 
       const csvString = req.file.buffer.toString("utf-8");
@@ -87,7 +88,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(preview);
     } catch (error: any) {
       logger.error("Import preview error", error);
-      res.status(500).json({ message: error.message || "Failed to preview import" });
+      Errors.internal(res, error);
     }
   });
 
@@ -111,11 +112,11 @@ export function registerImportExportRoutes(app: Express): void {
       }
 
       if (!["leads", "properties", "deals"].includes(entityType)) {
-        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, deals, notes, communications, or documents." });
+        return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, deals, notes, communications, or documents.");
       }
 
       if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
 
       const csvString = req.file.buffer.toString("utf-8");
@@ -188,7 +189,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(result);
     } catch (error: any) {
       logger.error("Import error", error);
-      res.status(500).json({ message: error.message || "Failed to import data" });
+      Errors.internal(res, error);
     }
   });
 
@@ -210,7 +211,7 @@ export function registerImportExportRoutes(app: Express): void {
       const org = req.organization;
 
       if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
 
       const csvString = req.file.buffer.toString("utf-8");
@@ -267,7 +268,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(result);
     } catch (error: any) {
       logger.error("[import/notes] Error", error);
-      res.status(500).json({ message: error.message || "Failed to import notes" });
+      Errors.internal(res, error);
     }
   });
 
@@ -292,11 +293,11 @@ export function registerImportExportRoutes(app: Express): void {
       res.setHeader("X-Deprecation-Sunset", "2026-07-02");
 
       if (!["leads", "properties", "deals", "notes"].includes(entityType)) {
-        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, deals, or notes." });
+        return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, deals, or notes.");
       }
 
       if (!["csv", "json"].includes(format)) {
-        return res.status(400).json({ message: "Invalid format. Must be csv or json." });
+        return Errors.badRequest(res, "Invalid format. Must be csv or json.");
       }
 
       const filters: ExportFilters = {
@@ -356,7 +357,7 @@ export function registerImportExportRoutes(app: Express): void {
       }
     } catch (error: any) {
       logger.error("Export error", error);
-      res.status(500).json({ message: error.message || "Failed to export data" });
+      Errors.internal(res, error);
     }
   });
 
@@ -394,7 +395,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.send(JSON.stringify(jsonResponse, null, 2));
     } catch (error: any) {
       logger.error("Backup error", error);
-      res.status(500).json({ message: error.message || "Failed to create backup" });
+      Errors.internal(res, error);
     }
   });
 
@@ -435,7 +436,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json({ logs, count });
     } catch (error: any) {
       logger.error("Audit log error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch audit logs" });
+      Errors.internal(res, error);
     }
   });
 
@@ -447,7 +448,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(leads);
     } catch (error: any) {
       logger.error("TCPA no-consent error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch leads without consent" });
+      Errors.internal(res, error);
     }
   });
 
@@ -458,7 +459,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(leads);
     } catch (error: any) {
       logger.error("TCPA opted-out error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch opted-out leads" });
+      Errors.internal(res, error);
     }
   });
 
@@ -471,7 +472,7 @@ export function registerImportExportRoutes(app: Express): void {
       
       const existingLead = await storage.getLead(orgId, leadId);
       if (!existingLead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
       
       const updated = await storage.updateLeadConsent(leadId, {
@@ -499,7 +500,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(updated);
     } catch (error: any) {
       logger.error("Update consent error", error);
-      res.status(500).json({ message: error.message || "Failed to update consent" });
+      Errors.internal(res, error);
     }
   });
 
@@ -516,7 +517,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(policies);
     } catch (error: any) {
       logger.error("Get retention policies error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch retention policies" });
+      Errors.internal(res, error);
     }
   });
 
@@ -553,7 +554,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json(updated.settings?.retentionPolicies);
     } catch (error: any) {
       logger.error("Update retention policies error", error);
-      res.status(500).json({ message: error.message || "Failed to update retention policies" });
+      Errors.internal(res, error);
     }
   });
 
@@ -564,7 +565,7 @@ export function registerImportExportRoutes(app: Express): void {
       const { dataType, beforeDate } = req.body;
       
       if (!dataType || !beforeDate) {
-        return res.status(400).json({ message: "dataType and beforeDate are required" });
+        return Errors.badRequest(res, "dataType and beforeDate are required");
       }
       
       const date = new Date(beforeDate);
@@ -584,7 +585,7 @@ export function registerImportExportRoutes(app: Express): void {
           purgedCount = await storage.purgeOldCommunications(orgId, date);
           break;
         default:
-          return res.status(400).json({ message: "Invalid dataType" });
+          return Errors.badRequest(res, "Invalid dataType");
       }
       
       // Log purge action in audit log
@@ -606,7 +607,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json({ purgedCount, dataType, beforeDate });
     } catch (error: any) {
       logger.error("Purge data error", error);
-      res.status(500).json({ message: error.message || "Failed to purge data" });
+      Errors.internal(res, error);
     }
   });
 
@@ -631,7 +632,7 @@ export function registerImportExportRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("TCPA stats error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch TCPA stats" });
+      Errors.internal(res, error);
     }
   });
 
@@ -662,9 +663,9 @@ export function registerImportExportRoutes(app: Express): void {
         const org = req.organization!;
         const user = req.user as any;
         const userId = user?.id || user?.id;
-        if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+        if (!req.file) return Errors.badRequest(res, "No file uploaded");
         if (req.file.size > HARD_BYTE_CAP) {
-          return res.status(400).json({ message: "File exceeds size cap" });
+          return Errors.badRequest(res, "File exceeds size cap");
         }
         const job = await createImportJob({
           organizationId: org.id,
@@ -681,10 +682,10 @@ export function registerImportExportRoutes(app: Express): void {
         });
       } catch (error: any) {
         if (typeof error?.message === "string" && error.message.includes("exceeds maximum")) {
-          return res.status(400).json({ message: error.message });
+          return Errors.badRequest(res, error.message ?? "Bad request");
         }
         logger.error("[import/communications] error", error);
-        res.status(500).json({ message: error.message || "Failed to queue communications import" });
+        Errors.internal(res, error);
       }
     }
   );
@@ -700,11 +701,11 @@ export function registerImportExportRoutes(app: Express): void {
         const org = req.organization!;
         const user = req.user as any;
         const userId = user?.id || user?.id;
-        if (!req.file) return res.status(400).json({ message: "No ZIP uploaded" });
+        if (!req.file) return Errors.badRequest(res, "No ZIP uploaded");
         // ZIP magic check: PK\x03\x04
         const buf = req.file.buffer;
         if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) {
-          return res.status(400).json({ message: "Uploaded file is not a ZIP archive" });
+          return Errors.badRequest(res, "Uploaded file is not a ZIP archive");
         }
         const job = await createImportJob({
           organizationId: org.id,
@@ -720,7 +721,7 @@ export function registerImportExportRoutes(app: Express): void {
         });
       } catch (error: any) {
         logger.error("[import/documents] error", error);
-        res.status(500).json({ message: error.message || "Failed to queue documents import" });
+        Errors.internal(res, error);
       }
     }
   );
@@ -734,7 +735,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json({ jobs });
     } catch (error: any) {
       logger.error("[import/jobs list] error", error);
-      res.status(500).json({ message: error.message || "Failed to list import jobs" });
+      Errors.internal(res, error);
     }
   });
 
@@ -743,13 +744,13 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const org = req.organization!;
       const id = parseInt(req.params.id, 10);
-      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid job ID" });
+      if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
       const job = await getImportJob(org.id, id);
-      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (!job) return Errors.notFound(res, "Job");
       res.json(job);
     } catch (error: any) {
       logger.error("[import/jobs get] error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch import job" });
+      Errors.internal(res, error);
     }
   });
 
@@ -789,7 +790,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.status(202).json({ jobId: job.id, status: job.status });
     } catch (error: any) {
       logger.error("[export/everything] error", error);
-      res.status(500).json({ message: error.message || "Failed to queue export" });
+      Errors.internal(res, error);
     }
   });
 
@@ -801,7 +802,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.json({ jobs });
     } catch (error: any) {
       logger.error("[export/jobs list] error", error);
-      res.status(500).json({ message: error.message || "Failed to list export jobs" });
+      Errors.internal(res, error);
     }
   });
 
@@ -809,13 +810,13 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const org = req.organization!;
       const id = parseInt(req.params.id, 10);
-      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid job ID" });
+      if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
       const job = await getExportJob(org.id, id);
-      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (!job) return Errors.notFound(res, "Job");
       res.json(job);
     } catch (error: any) {
       logger.error("[export/jobs get] error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch export job" });
+      Errors.internal(res, error);
     }
   });
 
@@ -828,9 +829,9 @@ export function registerImportExportRoutes(app: Express): void {
       try {
         const org = req.organization!;
         const id = parseInt(req.params.id, 10);
-        if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid job ID" });
+        if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
         const job = await getExportJob(org.id, id);
-        if (!job) return res.status(404).json({ message: "Job not found" });
+        if (!job) return Errors.notFound(res, "Job");
         if (job.status !== "completed") {
           return res
             .status(409)
@@ -847,7 +848,7 @@ export function registerImportExportRoutes(app: Express): void {
         res.send(buf);
       } catch (error: any) {
         logger.error("[export/jobs download] error", error);
-        res.status(500).json({ message: error.message || "Failed to download archive" });
+        Errors.internal(res, error);
       }
     }
   );

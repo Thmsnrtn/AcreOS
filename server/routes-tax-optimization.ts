@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { taxOptimizationEngine as taxOptimizationService } from './services/taxOptimizationEngine';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get('/tax-optimization/strategies', async (req: Request, res: Response) =
     });
     res.json({ strategies });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -32,7 +33,7 @@ router.get('/tax-optimization/strategies/:id', async (req: Request, res: Respons
     }
     res.json({ strategy });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -49,7 +50,7 @@ router.post('/tax-optimization/analyze', async (req: Request, res: Response) => 
     });
     res.json({ analysis, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -68,7 +69,7 @@ router.get('/tax-optimization/scenarios', async (req: Request, res: Response) =>
     });
     res.json({ scenarios });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -96,7 +97,7 @@ router.post('/tax-optimization/scenarios', async (req: Request, res: Response) =
     });
     res.status(201).json({ scenario, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -109,7 +110,7 @@ router.get('/tax-optimization/scenarios/:id', async (req: Request, res: Response
     }
     res.json({ scenario });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -119,7 +120,7 @@ router.delete('/tax-optimization/scenarios/:id', async (req: Request, res: Respo
     await taxOptimizationService.deleteScenario(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -133,7 +134,7 @@ router.get('/tax-optimization/cost-basis/:propertyId', async (req: Request, res:
     const costBasis = await taxOptimizationService.getCostBasis(req.params.propertyId);
     res.json({ costBasis });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -163,7 +164,7 @@ router.post('/tax-optimization/cost-basis', async (req: Request, res: Response) 
     });
     res.status(201).json({ costBasis, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -178,7 +179,7 @@ router.get('/tax-optimization/oz-holdings', async (req: Request, res: Response) 
     const holdings = await taxOptimizationService.getOZHoldings(org.id);
     res.json({ holdings });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -208,7 +209,7 @@ router.post('/tax-optimization/oz-holdings', async (req: Request, res: Response)
     });
     res.status(201).json({ holding, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -226,7 +227,7 @@ router.get('/tax-optimization/depreciation/:propertyId', async (req: Request, re
     );
     res.json({ schedule });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 

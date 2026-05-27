@@ -32,6 +32,7 @@ import { db } from "./db";
 import { properties, notes, organizations, generatedDocuments, organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -57,13 +58,13 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       } = req.body;
 
       if (!amount || !paymentDate) {
-        return res.status(400).json({ message: "amount and paymentDate are required" });
+        return Errors.badRequest(res, "amount and paymentDate are required");
       }
 
       const [note] = await db.select().from(notes)
         .where(and(eq(notes.id, noteId), eq(notes.organizationId, org.id)));
 
-      if (!note) return res.status(404).json({ message: "Note not found" });
+      if (!note) return Errors.notFound(res, "Note");
 
       const currentBalance = parseFloat(note.currentBalance || "0");
       const interestRate = parseFloat(note.interestRate || "0");
@@ -130,7 +131,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         nextPaymentDateAdvanced: paymentType === "scheduled",
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -143,10 +144,10 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const noteId = parseInt(req.params.id);
       const status = await propertyTaxService.getNoteEscrowStatus(noteId, org.id);
-      if (!status) return res.status(404).json({ message: "Note not found" });
+      if (!status) return Errors.notFound(res, "Note");
       res.json(status);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -156,7 +157,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const noteId = parseInt(req.params.id);
       const { annualPropertyTax, nextTaxDueDate, countyTaxPortalUrl } = req.body;
       if (!annualPropertyTax || !nextTaxDueDate) {
-        return res.status(400).json({ message: "annualPropertyTax and nextTaxDueDate required" });
+        return Errors.badRequest(res, "annualPropertyTax and nextTaxDueDate required");
       }
       await propertyTaxService.enableTaxEscrow(
         org.id, noteId,
@@ -167,7 +168,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const status = await propertyTaxService.getNoteEscrowStatus(noteId, org.id);
       res.json({ success: true, escrowStatus: status });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -177,7 +178,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       await propertyTaxService.disableTaxEscrow(org.id, parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -193,7 +194,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -203,7 +204,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const summary = await propertyTaxService.getPortfolioTaxSummary(org.id);
       res.json(summary);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -234,20 +235,20 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const [property] = await db.select().from(properties)
         .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
 
-      if (!property) return res.status(404).json({ message: "Property not found" });
+      if (!property) return Errors.notFound(res, "Property");
 
       const lat = property.latitude ? parseFloat(String(property.latitude)) : req.body.lat;
       const lng = property.longitude ? parseFloat(String(property.longitude)) : req.body.lng;
 
       if (!lat || !lng) {
-        return res.status(400).json({ message: "Property latitude/longitude required to run due diligence" });
+        return Errors.badRequest(res, "Property latitude/longitude required to run due diligence");
       }
 
       const acreage = property.sizeAcres ? parseFloat(String(property.sizeAcres)) : undefined;
       const report = await runAutoDueDiligence(propertyId, org.id, lat, lng, acreage);
       res.json(report);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -278,7 +279,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(body).digest("hex");
         if (signature !== expected) {
           logger.warn("[meta-leads] Webhook signature mismatch — rejecting");
-          return res.status(401).json({ message: "Invalid signature" });
+          return Errors.unauthorized(res);
         }
       }
 
@@ -298,7 +299,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Meta Lead Ads webhook error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -317,7 +318,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -326,7 +327,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -338,7 +339,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const result = await metaAdsService.syncPropertyCatalog(org.id, catalogId, appUrl);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -354,7 +355,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -364,7 +365,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const result = await actumProcessing.runMonthlyActumPaymentBatch(org.id);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -385,12 +386,12 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const { platforms, overrides } = req.body;
 
-      if (!platforms?.length) return res.status(400).json({ message: "platforms array required" });
+      if (!platforms?.length) return Errors.badRequest(res, "platforms array required");
 
       // Load property from listing
       const { storage } = await import("./storage");
       const listing = await storage.getPropertyListing(org.id, parseInt(req.params.id));
-      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (!listing) return Errors.notFound(res, "Listing");
 
       const [property] = await db.select().from(properties)
         .where(and(eq(properties.id, listing.propertyId), eq(properties.organizationId, org.id)));
@@ -409,7 +410,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const results = await listingSyndication.syndicateListing(normalizedListing, platforms);
       res.json({ results });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -419,7 +420,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const result = await listingSyndication.takeDownListing(platform, externalListingId);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -434,7 +435,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const report = await bookkeeping.generateAnnualInterestReport(org.id, taxYear);
       res.json(report);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -454,7 +455,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
           noteId: err.noteId,
         });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -465,7 +466,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const summary = await bookkeeping.getPortfolioAnnualSummary(org.id, taxYear);
       res.json(summary);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -482,7 +483,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const url = bookkeeping.getQboOAuthUrl(org.id);
       res.json({ url });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -498,12 +499,12 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         .limit(1);
 
       if (!integration?.credentials) {
-        return res.status(400).json({ message: "QuickBooks is not connected. Visit Settings > Integrations to connect." });
+        return Errors.badRequest(res, "QuickBooks is not connected. Visit Settings > Integrations to connect.");
       }
 
       const creds = integration.credentials as any;
       if (!creds.accessToken || !creds.realmId) {
-        return res.status(400).json({ message: "QuickBooks credentials incomplete. Please reconnect." });
+        return Errors.badRequest(res, "QuickBooks credentials incomplete. Please reconnect.");
       }
 
       // Default: sync payments from the last 30 days (or caller-supplied fromDate)
@@ -517,7 +518,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       res.json({ success: true, ...result });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -527,7 +528,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/state-documents/:state", ...auth, (req: Request, res: Response) => {
     const config = getStateConfig(req.params.state);
-    if (!config) return res.status(404).json({ message: "State not found" });
+    if (!config) return Errors.notFound(res, "State");
     res.json(config);
   });
 
@@ -580,7 +581,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       );
       res.json(digest);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -591,7 +592,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const metrics = vaManagement.calculateVaMetrics(tasks || [], userId, period || "week");
       res.json(metrics);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -602,7 +603,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const task = vaManagement.createTask({ ...req.body, organizationId: org.id });
       res.json(task);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -613,7 +614,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const updated = vaManagement.updateTask(task, updates);
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

@@ -813,7 +813,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       });
       res.json(batch);
     } catch (err: any) {
-      res.status(400).json({ message: err.message });
+      Errors.badRequest(res, err.message ?? "Bad request");
     }
   });
 
@@ -822,7 +822,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const org = req.organization;
       const { getBatchStatus } = await import("./services/offerBatchService");
       const batch = await getBatchStatus(parseInt(req.params.id, 10), org.id);
-      if (!batch) return res.status(404).json({ message: "Batch not found" });
+      if (!batch) return Errors.notFound(res, "Batch");
       res.json(batch);
     } catch (err: any) {
       Errors.internal(res, err);

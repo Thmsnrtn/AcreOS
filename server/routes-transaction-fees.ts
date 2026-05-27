@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get('/fees/analytics', async (_req: Request, res: Response) => {
     };
     res.json({ analytics });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -47,7 +48,7 @@ router.get('/fees/settlements', async (req: Request, res: Response) => {
     const settlements: any[] = [];
     res.json({ settlements, total: 0, filters: { status, range } });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -57,7 +58,7 @@ router.get('/fees/settlements/:id', async (req: Request, res: Response) => {
     // Stub: replace with DB lookup
     res.status(404).json({ error: 'Settlement not found' });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -80,7 +81,7 @@ router.post('/fees/settlements', async (req: Request, res: Response) => {
     };
     res.status(201).json({ settlement, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -97,7 +98,7 @@ router.patch('/fees/settlements/:id/release', async (req: Request, res: Response
     };
     res.json({ settlement, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -120,7 +121,7 @@ router.get('/fees/ledger', async (req: Request, res: Response) => {
       range,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -141,7 +142,7 @@ router.get('/fees/payouts', async (req: Request, res: Response) => {
       offset: offset ? parseInt(offset as string) : 0,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -165,7 +166,7 @@ router.post('/fees/payouts/schedule', async (req: Request, res: Response) => {
     };
     res.json({ schedule, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -187,7 +188,7 @@ router.post('/fees/payouts/trigger', async (req: Request, res: Response) => {
     };
     res.status(202).json({ payout, success: true, message: 'Payout triggered and processing' });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 

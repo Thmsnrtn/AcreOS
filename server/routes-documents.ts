@@ -6,6 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
+import { Errors } from "./utils/errors";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -102,7 +103,7 @@ export function registerDocumentRoutes(app: Express): void {
       const { leadId, propertyId, offerAmount, earnestMoney, closingDate, contingencies, additionalTerms } = req.body;
 
       if (!leadId || !propertyId) {
-        return res.status(400).json({ message: "leadId and propertyId are required" });
+        return Errors.badRequest(res, "leadId and propertyId are required");
       }
 
       // Aniyah §2 — block offer-letter auto-doc on Indian-Country parcels.
@@ -156,7 +157,7 @@ export function registerDocumentRoutes(app: Express): void {
       const { propertyId, purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts } = req.body;
 
       if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
+        return Errors.badRequest(res, "propertyId is required");
       }
 
       // Aniyah §2 — block settlement-statement auto-doc on Indian-Country parcels.
@@ -207,7 +208,7 @@ export function registerDocumentRoutes(app: Express): void {
       const { propertyId, headline, price, priceLabel, highlights, contactName, contactPhone, contactEmail, qrCodePlaceholder } = req.body;
       
       if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
+        return Errors.badRequest(res, "propertyId is required");
       }
       
       // Credit pre-check for PDF generation (5 cents per document)
@@ -253,7 +254,7 @@ export function registerDocumentRoutes(app: Express): void {
       const { noteId } = req.body;
       
       if (!noteId) {
-        return res.status(400).json({ message: "noteId is required" });
+        return Errors.badRequest(res, "noteId is required");
       }
       
       // Credit pre-check for PDF generation (5 cents per document)
@@ -295,7 +296,7 @@ export function registerDocumentRoutes(app: Express): void {
       const { propertyId } = req.body;
 
       if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
+        return Errors.badRequest(res, "propertyId is required");
       }
 
       // Aniyah §2 — block deed auto-doc on Indian-Country parcels.
@@ -350,7 +351,7 @@ export function registerDocumentRoutes(app: Express): void {
       if (entityType === "note" && type === "promissory_note") {
         const note = await storage.getNote(org.id, Number(entityId));
         if (!note) {
-          return res.status(404).json({ message: "Note not found" });
+          return Errors.notFound(res, "Note");
         }
         
         let borrowerName = "Borrower";
@@ -404,7 +405,7 @@ ${org.name}                      ${borrowerName}
       } else if (entityType === "property" && type === "deed") {
         const property = await storage.getProperty(org.id, Number(entityId));
         if (!property) {
-          return res.status(404).json({ message: "Property not found" });
+          return Errors.notFound(res, "Property");
         }
         
         documentTitle = `Warranty Deed - ${property.apn}`;
@@ -442,7 +443,7 @@ COUNTY OF ${property.county}
       } else if (entityType === "lead" && type === "offer_letter") {
         const lead = await storage.getLead(org.id, Number(entityId));
         if (!lead) {
-          return res.status(404).json({ message: "Lead not found" });
+          return Errors.notFound(res, "Lead");
         }
         
         const sellerAddress = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
@@ -494,7 +495,7 @@ _______________________          Date: ________________
 Seller Signature (if applicable)
 `;
       } else {
-        return res.status(400).json({ message: "Invalid document type or entity" });
+        return Errors.badRequest(res, "Invalid document type or entity");
       }
       
       res.json({
@@ -504,7 +505,7 @@ Seller Signature (if applicable)
         generatedAt: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -528,7 +529,7 @@ Seller Signature (if applicable)
       res.send(pdfBuffer);
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -552,7 +553,7 @@ Seller Signature (if applicable)
       res.send(pdfBuffer);
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

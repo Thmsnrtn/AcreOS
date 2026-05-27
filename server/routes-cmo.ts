@@ -36,6 +36,7 @@ import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { logger } from "./utils/logger";
 import { getStorage } from "./services/cmo/storage";
+import { Errors } from "./utils/errors";
 
 export function registerCmoRoutes(app: Express) {
   // ─── Dashboard ──────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ export function registerCmoRoutes(app: Express) {
 
   app.patch("/api/founder/cmo/brand-profile", isAuthenticated, requireFounder, async (req, res) => {
     const { id, ...updates } = req.body as { id?: number } & Partial<typeof brandProfiles.$inferInsert>;
-    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!id) return Errors.badRequest(res, "id is required");
     const [updated] = await db
       .update(brandProfiles)
       .set({ ...updates, updatedAt: new Date() })
@@ -136,7 +137,7 @@ export function registerCmoRoutes(app: Express) {
       weeklyCapCents?: number;
       monthlyCapCents?: number;
     };
-    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!id) return Errors.badRequest(res, "id is required");
     const updates: Partial<typeof cmoBudget.$inferInsert> = { updatedAt: new Date() };
     if (typeof dailyCapCents === "number") updates.dailyCapCents = dailyCapCents;
     if (typeof weeklyCapCents === "number") updates.weeklyCapCents = weeklyCapCents;
@@ -159,10 +160,10 @@ export function registerCmoRoutes(app: Express) {
       forcePremium?: boolean;
     };
     if (!intent || !count) {
-      return res.status(400).json({ error: "intent and count are required" });
+      return Errors.badRequest(res, "intent and count are required");
     }
     if (count < 1 || count > 12) {
-      return res.status(400).json({ error: "count must be 1-12" });
+      return Errors.badRequest(res, "count must be 1-12");
     }
 
     const [event] = await db
@@ -179,7 +180,7 @@ export function registerCmoRoutes(app: Express) {
   // ─── Approval + broadcast ──────────────────────────────────────────────
   app.post("/api/founder/cmo/approve", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const { inboxItemId, platforms } = req.body as { inboxItemId: number; platforms?: string[] };
-    if (!inboxItemId) return res.status(400).json({ error: "inboxItemId is required" });
+    if (!inboxItemId) return Errors.badRequest(res, "inboxItemId is required");
 
     const item = await db.query.decisionsInboxItems.findFirst({
       where: eq(decisionsInboxItems.id, inboxItemId),
@@ -194,7 +195,7 @@ export function registerCmoRoutes(app: Express) {
     const ctx = item.contextBundle as { renders?: Array<{ id: string }>; bundleId?: string } | null;
     const renderIds = (ctx?.renders ?? []).map((r) => r.id);
     if (renderIds.length === 0) {
-      return res.status(400).json({ error: "inbox item has no renders attached" });
+      return Errors.badRequest(res, "inbox item has no renders attached");
     }
 
     const targetPlatforms = platforms ?? ["meta", "tiktok"];
@@ -243,13 +244,13 @@ export function registerCmoRoutes(app: Express) {
       tags?: string[];
       note?: string;
     };
-    if (!inboxItemId) return res.status(400).json({ error: "inboxItemId is required" });
+    if (!inboxItemId) return Errors.badRequest(res, "inboxItemId is required");
 
     const item = await db.query.decisionsInboxItems.findFirst({
       where: eq(decisionsInboxItems.id, inboxItemId),
     });
     if (!item || item.itemType !== "cmo_ad_review") {
-      return res.status(404).json({ error: "inbox item not found" });
+      return Errors.notFound(res, "inbox item");
     }
 
     const ctx = item.contextBundle as {
@@ -262,7 +263,7 @@ export function registerCmoRoutes(app: Express) {
       ? await db.query.brandProfiles.findFirst({ where: eq(brandProfiles.slug, ctx.brandSlug) })
       : await db.query.brandProfiles.findFirst({ where: eq(brandProfiles.slug, "acreos") });
 
-    if (!brand) return res.status(500).json({ error: "brand profile not found" });
+    if (!brand) return Errors.internal(res, new Error('brand profile not found'));
 
     const [rejectionNote] = await db
       .insert(cmoRejectionNotes)
@@ -324,11 +325,11 @@ export function registerCmoRoutes(app: Express) {
   // ─── Asset download (gated streaming for local FS storage in v1) ────────
   app.get("/api/founder/cmo/asset", isAuthenticated, requireFounder, async (req: Request, res: Response) => {
     const key = String(req.query.key ?? "");
-    if (!key) return res.status(400).json({ error: "key is required" });
+    if (!key) return Errors.badRequest(res, "key is required");
 
     const storage = getStorage();
     const exists = await storage.exists(`local:${key}` as `local:${string}`);
-    if (!exists) return res.status(404).json({ error: "asset not found" });
+    if (!exists) return Errors.notFound(res, "asset");
 
     const root = process.env.CMO_STORAGE_ROOT ?? "/data/cmo";
     const absolutePath = path.join(root, key);
@@ -348,7 +349,7 @@ export function registerCmoRoutes(app: Express) {
       logger.error("[cmo:routes] asset stream failed", err instanceof Error ? err : undefined, {
         metadata: { key },
       });
-      res.status(500).json({ error: "stream failed" });
+      Errors.internal(res, new Error('stream failed'));
     }
   });
 

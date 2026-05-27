@@ -20,6 +20,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { dueDiligencePodService } from "./services/dueDiligencePods";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -28,11 +29,11 @@ router.post("/request/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, req.body);
     res.status(201).json({ dossier });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -40,12 +41,12 @@ router.post("/request/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
 router.get("/dossier/:id", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid dossier ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
     const dossier = await dueDiligencePodService.getDossier(id);
-    if (!dossier) return res.status(404).json({ error: "Dossier not found" });
+    if (!dossier) return Errors.notFound(res, "Dossier");
     res.json({ dossier });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -54,11 +55,11 @@ router.get("/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const dossiers = await dueDiligencePodService.getPropertyDossiers(org.id, propertyId);
     res.json({ dossiers });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -66,11 +67,11 @@ router.get("/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
 router.post("/:id/run", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid dossier ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
     const dossier = await dueDiligencePodService.runDossierPod(id);
     res.json({ dossier });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -78,11 +79,11 @@ router.post("/:id/run", isAuthenticated, async (req: Request, res: Response) => 
 router.get("/:propertyId/title", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchTitle(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -90,11 +91,11 @@ router.get("/:propertyId/title", isAuthenticated, getOrCreateOrg, async (req: Re
 router.get("/:propertyId/tax", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchTax(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -102,11 +103,11 @@ router.get("/:propertyId/tax", isAuthenticated, getOrCreateOrg, async (req: Requ
 router.get("/:propertyId/environmental", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchEnvironmental(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -114,11 +115,11 @@ router.get("/:propertyId/environmental", isAuthenticated, getOrCreateOrg, async 
 router.get("/:propertyId/zoning", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchZoning(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -126,11 +127,11 @@ router.get("/:propertyId/zoning", isAuthenticated, getOrCreateOrg, async (req: R
 router.get("/:propertyId/access", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchAccess(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -138,11 +139,11 @@ router.get("/:propertyId/access", isAuthenticated, getOrCreateOrg, async (req: R
 router.get("/:propertyId/comps", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchComps(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -150,11 +151,11 @@ router.get("/:propertyId/comps", isAuthenticated, getOrCreateOrg, async (req: Re
 router.get("/:propertyId/owner", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const findings = await dueDiligencePodService.researchOwner(propertyId);
     res.json({ findings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -162,13 +163,13 @@ router.get("/:propertyId/owner", isAuthenticated, getOrCreateOrg, async (req: Re
 router.get("/dossier/:id/summary", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid dossier ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
     const dossier = await dueDiligencePodService.getDossier(id);
-    if (!dossier) return res.status(404).json({ error: "Dossier not found" });
+    if (!dossier) return Errors.notFound(res, "Dossier");
     const summary = await dueDiligencePodService.aggregateToExecutiveSummary(dossier);
     res.json({ summary });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -176,13 +177,13 @@ router.get("/dossier/:id/summary", isAuthenticated, async (req: Request, res: Re
 router.get("/dossier/:id/recommendation", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid dossier ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
     const dossier = await dueDiligencePodService.getDossier(id);
-    if (!dossier) return res.status(404).json({ error: "Dossier not found" });
+    if (!dossier) return Errors.notFound(res, "Dossier");
     const recommendation = await dueDiligencePodService.generateRecommendation(dossier);
     res.json({ recommendation });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -194,7 +195,7 @@ router.get("/:propertyId/dd-report", isAuthenticated, getOrCreateOrg, async (req
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const { generateFullReport } = await import("./services/dueDiligenceReportGenerator");
     const result = await generateFullReport(propertyId, org.id);
@@ -203,7 +204,7 @@ router.get("/:propertyId/dd-report", isAuthenticated, getOrCreateOrg, async (req
     res.setHeader("Content-Disposition", `attachment; filename=dd-report-${propertyId}.pdf`);
     res.send(result.pdf);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -216,7 +217,7 @@ const previewRateLimits = new Map<string, { count: number; date: string }>();
 router.post("/public/dd-preview", async (req: Request, res: Response) => {
   try {
     const { apn, state, email } = req.body;
-    if (!apn || !state) return res.status(400).json({ error: "apn and state are required" });
+    if (!apn || !state) return Errors.badRequest(res, "apn and state are required");
 
     // Rate limit: 3/day per IP, 10/day per email
     const ip = req.ip || "unknown";
@@ -254,7 +255,7 @@ router.post("/public/dd-preview", async (req: Request, res: Response) => {
     res.setHeader("Content-Disposition", `inline; filename=dd-preview-${apn}.pdf`);
     res.send(pdf);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

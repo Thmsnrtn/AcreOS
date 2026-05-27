@@ -17,7 +17,7 @@ router.get('/auctions', async (req: Request, res: Response) => {
     });
     res.json({ auctions });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -32,7 +32,7 @@ router.get('/auctions/:id/listings', async (req: Request, res: Response) => {
     });
     res.json({ listings });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -43,7 +43,7 @@ router.post('/scan', async (req: Request, res: Response) => {
     const result = await taxResearcher.scanAuctionCalendar(state);
     res.json({ result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -58,7 +58,7 @@ router.get('/delinquent', async (req: Request, res: Response) => {
     });
     res.json({ properties });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -69,7 +69,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
     const alerts = await taxResearcher.getTaxSaleAlerts(org.id);
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -80,7 +80,7 @@ router.post('/alerts', async (req: Request, res: Response) => {
     const alert = await taxResearcher.createTaxSaleAlert({ ...req.body, organizationId: org.id });
     res.json({ alert });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -91,7 +91,7 @@ router.delete('/alerts/:id', async (req: Request, res: Response) => {
     await taxResearcher.deleteTaxSaleAlert(parseInt(req.params.id), org.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -102,7 +102,7 @@ router.get('/watchlist', async (req: Request, res: Response) => {
     const watchlist = await taxResearcher.getWatchlist(org.id);
     res.json({ watchlist });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -114,7 +114,7 @@ router.post('/watchlist', async (req: Request, res: Response) => {
     await taxResearcher.addToWatchlist(org.id, parseInt(listingId));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -125,7 +125,7 @@ router.get('/redemption-rates', async (req: Request, res: Response) => {
     const rates = await taxResearcher.getCountyRedemptionRates(state as string);
     res.json({ rates });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -136,7 +136,7 @@ router.post('/surface-to-radar', async (req: Request, res: Response) => {
     const result = await taxResearcher.surfaceTaxOpportunitiesToRadar(org.id);
     res.json({ result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -153,6 +153,7 @@ import {
   AUCTION_BID_ACTIONS,
   TAX_LISTING_ACQUISITION_SOURCES,
 } from "@shared/schema";
+import { Errors } from "./utils/errors";
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
@@ -164,7 +165,7 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid listing id" });
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z.object({
       maxBidCents: z.number().int().nonnegative().nullable().optional(),
       walkAwayAboveCents: z.number().int().nonnegative().nullable().optional(),
@@ -185,10 +186,10 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
       .set(update as any)
       .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
       .returning();
-    if (!row) return res.status(404).json({ error: "Listing not found" });
+    if (!row) return Errors.notFound(res, "Listing");
     res.json({ listing: row });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -197,7 +198,7 @@ router.get('/listings/:id/bid-log', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid listing id" });
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const rows = await drizzleDb
       .select()
       .from(auctionBidLog)
@@ -205,7 +206,7 @@ router.get('/listings/:id/bid-log', async (req: Request, res: Response) => {
       .orderBy(descOrder(auctionBidLog.performedAt));
     res.json({ entries: rows });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -214,7 +215,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid listing id" });
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z.object({
       action: z.enum(AUCTION_BID_ACTIONS),
       amountCents: z.number().int().nonnegative().optional(),
@@ -227,7 +228,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
       .from(taxSaleListings)
       .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
       .limit(1);
-    if (!listing) return res.status(404).json({ error: "Listing not found" });
+    if (!listing) return Errors.notFound(res, "Listing");
 
     const userId = (req.user as any)?.id || (req.user as any)?.id || null;
 
@@ -263,7 +264,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
 
     res.status(201).json({ entry });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -277,7 +278,7 @@ router.get('/county-summary', async (req: Request, res: Response) => {
     const state = (req.query.state as string | undefined)?.toUpperCase();
     const county = req.query.county as string | undefined;
     if (!state || !county) {
-      return res.status(400).json({ error: "state + county query params required" });
+      return Errors.badRequest(res, "state + county query params required");
     }
 
     const today = new Date().toISOString().slice(0, 10);
@@ -351,7 +352,7 @@ router.get('/county-summary', async (req: Request, res: Response) => {
       worksheetItemsCount: Number(worksheetCount),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -380,7 +381,7 @@ router.get('/auction-worksheet', async (req: Request, res: Response) => {
       .orderBy(asc(taxSaleListings.minimumBid));
     res.json({ listings: rows });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

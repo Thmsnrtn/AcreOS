@@ -5,6 +5,7 @@ import { db } from './db';
 import { auditEvents, deals } from '@shared/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { logger } from './utils/logger';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     const dashboard = await complianceAI.getComplianceDashboard(org.id);
     res.json({ dashboard });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -27,7 +28,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
     const alerts = await complianceAI.getAlertsForOrganization(org.id);
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -37,7 +38,7 @@ router.get('/properties/:id/alerts', async (req: Request, res: Response) => {
     const alerts = await complianceAI.getAlertsForProperty(parseInt(req.params.id));
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -47,7 +48,7 @@ router.get('/properties/:id/check', async (req: Request, res: Response) => {
     const result = await complianceAI.checkPropertyCompliance(parseInt(req.params.id));
     res.json({ result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -75,7 +76,7 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -104,7 +105,7 @@ router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -132,7 +133,7 @@ router.post('/disclosures', async (req: Request, res: Response) => {
 
     res.json({ disclosure });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -160,7 +161,7 @@ router.post('/monitor', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

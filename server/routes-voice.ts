@@ -6,6 +6,7 @@ import { voiceAI } from './services/voiceAI';
 import { logger } from "./utils/logger";
 import { verifyTwilioSignature } from './middleware/twilioSignature';
 import { withIdempotency } from './services/webhook-idempotency';
+import { Errors } from "./utils/errors";
 
 const voiceRouter = Router();
 
@@ -206,7 +207,7 @@ voiceRouter.post('/calls', async (req: Request, res: Response) => {
     res.status(201).json({ callId, success: true });
   } catch (error: any) {
     logger.error('[POST /api/voice/calls] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -241,7 +242,7 @@ voiceRouter.get('/calls', async (req: Request, res: Response) => {
     res.json({ calls, success: true });
   } catch (error: any) {
     logger.error('[GET /api/voice/calls] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -276,7 +277,7 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
     res.json({ call, transcript: transcript || null, success: true });
   } catch (error: any) {
     logger.error('[GET /api/voice/calls/:id/transcript] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -314,7 +315,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
     const { type, notes } = req.body;
     const validTypes = ['interested', 'not-interested', 'callback', 'voicemail'];
     if (!type || !validTypes.includes(type)) {
-      return res.status(400).json({ error: `type must be one of: ${validTypes.join(', ')}` });
+      return Errors.badRequest(res, `type must be one of: ${validTypes.join(', ')}`);
     }
 
     const call = await db.query.voiceCalls.findFirst({
@@ -338,7 +339,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
     res.json({ success: true, callId, outcome: type });
   } catch (error: any) {
     logger.error('[POST /voice/calls/:id/outcome] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -385,7 +386,7 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('[GET /voice/calls/:id/summary] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -442,7 +443,7 @@ voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
     res.json({ success: true, results, total: results.length, query: q });
   } catch (error: any) {
     logger.error('[GET /voice/transcripts/search] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -495,7 +496,7 @@ voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
     res.json({ success: true, callId, speakers, segmentCount: segments.length });
   } catch (error: any) {
     logger.error('[GET /voice/calls/:id/speakers] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -510,7 +511,7 @@ voiceRouter.get('/analytics', async (req: Request, res: Response) => {
     res.json({ success: true, analytics });
   } catch (error: any) {
     logger.error('[GET /voice/analytics] Error', error);
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 

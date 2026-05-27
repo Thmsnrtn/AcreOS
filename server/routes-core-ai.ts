@@ -6,6 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import type { AuthenticatedRequest } from "./types/request";
 
 export function registerCoreAIRoutes(app: Express): void {
   const api = app;
@@ -271,7 +272,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.delete("/api/agents/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const memoryId = parseInt(req.params.id);
       if (isNaN(memoryId)) {
         return Errors.badRequest(res, "Invalid memory ID");

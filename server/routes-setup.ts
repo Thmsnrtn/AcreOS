@@ -25,6 +25,7 @@ import {
   SERVICE_GROUPS,
 } from "./services/configManager";
 import { isFounderEmail } from "./services/founder";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ const router = Router();
 function requireFounder(req: any, res: any, next: any) {
   const email = req.user?.email || req.user?.email;
   if (!isFounderEmail(email)) {
-    return res.status(403).json({ error: "Founder access required" });
+    return Errors.forbidden(res, "Founder access required");
   }
   next();
 }
@@ -90,7 +91,7 @@ router.get("/status", requireFounder, async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -103,7 +104,7 @@ router.post("/save", requireFounder, async (req: Request, res: Response) => {
   try {
     const { credentials } = req.body as { credentials: Record<string, string> };
     if (!credentials || typeof credentials !== "object") {
-      return res.status(400).json({ error: "credentials object required" });
+      return Errors.badRequest(res, "credentials object required");
     }
 
     const defMap = new Map(CREDENTIAL_DEFINITIONS.map(d => [d.key, d]));
@@ -132,7 +133,7 @@ router.post("/save", requireFounder, async (req: Request, res: Response) => {
 
     res.json({ saved, errors });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -144,11 +145,11 @@ router.post("/save", requireFounder, async (req: Request, res: Response) => {
 router.post("/delete", requireFounder, async (req: Request, res: Response) => {
   try {
     const { key } = req.body as { key: string };
-    if (!key) return res.status(400).json({ error: "key required" });
+    if (!key) return Errors.badRequest(res, "key required");
     await deleteCredential(key);
     res.json({ deleted: key });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -177,12 +178,12 @@ router.post("/generate/:type", requireFounder, async (req: Request, res: Respons
         key = "MCP_API_KEY";
         break;
       default:
-        return res.status(400).json({ error: `Unknown type: ${type}` });
+        return Errors.badRequest(res, `Unknown type: ${type}`);
     }
 
     res.json({ key, value });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -338,10 +339,10 @@ router.post("/validate/:service", requireFounder, async (req: Request, res: Resp
       }
 
       default:
-        return res.status(400).json({ error: `Unknown service: ${service}` });
+        return Errors.badRequest(res, `Unknown service: ${service}`);
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -413,10 +414,10 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
       }
 
       default:
-        return res.status(400).json({ error: `Auto-wiring not available for: ${service}` });
+        return Errors.badRequest(res, `Auto-wiring not available for: ${service}`);
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -452,7 +453,7 @@ router.get("/readiness", requireFounder, async (req: Request, res: Response) => 
       missingOptional,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

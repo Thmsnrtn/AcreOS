@@ -16,6 +16,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { portfolioSentinelService } from "./services/portfolioSentinel";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.get("/alerts", isAuthenticated, getOrCreateOrg, async (req: Request, res:
     const alerts = await portfolioSentinelService.getActiveAlerts(org.id, filters);
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -46,7 +47,7 @@ router.get("/alerts/summary", isAuthenticated, getOrCreateOrg, async (req: Reque
     const summary = await portfolioSentinelService.generateAlertSummary(org.id);
     res.json({ summary });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -55,11 +56,11 @@ router.get("/property/:id", isAuthenticated, getOrCreateOrg, async (req: Request
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const result = await portfolioSentinelService.monitorProperty(org.id, propertyId);
     res.json({ result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -68,11 +69,11 @@ router.get("/property/:id/alerts", isAuthenticated, getOrCreateOrg, async (req: 
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const alerts = await portfolioSentinelService.getPropertyAlerts(org.id, propertyId);
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -83,7 +84,7 @@ router.post("/monitor", isAuthenticated, getOrCreateOrg, async (req: Request, re
     const results = await portfolioSentinelService.monitorPortfolio(org.id);
     res.json({ results });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -92,12 +93,12 @@ router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Req
   try {
     const user = getUser(req);
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert ID" });
+    if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const alert = await portfolioSentinelService.acknowledgeAlert(alertId, user.id);
-    if (!alert) return res.status(404).json({ error: "Alert not found" });
+    if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -105,14 +106,14 @@ router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Req
 router.patch("/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert ID" });
+    if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const { resolution } = req.body;
-    if (!resolution) return res.status(400).json({ error: "resolution is required" });
+    if (!resolution) return Errors.badRequest(res, "resolution is required");
     const alert = await portfolioSentinelService.resolveAlert(alertId, resolution);
-    if (!alert) return res.status(404).json({ error: "Alert not found" });
+    if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -120,12 +121,12 @@ router.patch("/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req:
 router.patch("/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert ID" });
+    if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const alert = await portfolioSentinelService.dismissAlert(alertId);
-    if (!alert) return res.status(404).json({ error: "Alert not found" });
+    if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -133,11 +134,11 @@ router.patch("/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req:
 router.get("/alerts/:id/suggest", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert ID" });
+    if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const suggestions = await portfolioSentinelService.suggestActions(alertId);
     res.json({ suggestions });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

@@ -43,6 +43,7 @@ import { properties } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 import { Errors } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
 
 const router = Router();
 
@@ -205,7 +206,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
     // exploration and aren't generating a binding letter — those still flow
     // through, but the per-property lookup runs at letter-generation time.
     if (propertyId) {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const orgId = org?.id;
       if (orgId) {
         const [parcel] = await db

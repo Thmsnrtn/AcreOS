@@ -17,6 +17,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { sellerIntentPredictorService } from "./services/sellerIntentPredictor";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -25,11 +26,11 @@ const router = Router();
 router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const prediction = await sellerIntentPredictorService.predictIntent(leadId);
     res.json({ prediction });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -37,11 +38,11 @@ router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res
 router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzeUrgencySignals(leadId);
     res.json({ signals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -49,12 +50,12 @@ router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Requ
 router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
     const signals = await sellerIntentPredictorService.analyzeFinancialSignals(leadId, propertyId);
     res.json({ signals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -62,11 +63,11 @@ router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Re
 router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzeEngagementSignals(leadId);
     res.json({ signals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -74,11 +75,11 @@ router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: R
 router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzePriceFlexibility(leadId);
     res.json({ signals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -86,11 +87,11 @@ router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async 
 router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const approach = await sellerIntentPredictorService.generateApproachRecommendation(leadId);
     res.json({ approach });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -98,12 +99,12 @@ router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Re
 router.post("/:leadId/offer-range", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { propertyId } = req.body;
     const range = await sellerIntentPredictorService.suggestOfferRange(leadId, propertyId);
     res.json({ range });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -111,13 +112,13 @@ router.post("/:leadId/offer-range", isAuthenticated, getOrCreateOrg, async (req:
 router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const leadId = parseInt(req.params.leadId);
-    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { outcome, finalPrice, notes } = req.body;
-    if (!outcome) return res.status(400).json({ error: "outcome is required" });
+    if (!outcome) return Errors.badRequest(res, "outcome is required");
     await sellerIntentPredictorService.recordOutcome(leadId, outcome, finalPrice, notes);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -128,7 +129,7 @@ router.get("/accuracy", isAuthenticated, getOrCreateOrg, async (req: Request, re
     const accuracy = await sellerIntentPredictorService.analyzeAccuracy(org.id);
     res.json({ accuracy });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -140,7 +141,7 @@ router.get("/hot-leads", isAuthenticated, getOrCreateOrg, async (req: Request, r
     const predictions = await sellerIntentPredictorService.getLeadPredictions(org.id, minScore);
     res.json({ predictions });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

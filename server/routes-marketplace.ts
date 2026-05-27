@@ -6,6 +6,7 @@ import { asyncHandler } from './middleware/asyncHandler';
 import { db } from './db';
 import { investorProfiles, organizations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.post('/listings', asyncHandler(async (req: Request, res: Response) => {
     const listing = await marketplaceService.createListing(org.id, propertyId, data);
     res.json({ listing, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -44,7 +45,7 @@ router.get('/listings', asyncHandler(async (req: Request, res: Response) => {
 
     res.json({ listings });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -60,7 +61,7 @@ router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => 
     }
     res.json({ listing });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -70,7 +71,7 @@ router.delete('/listings/:id', asyncHandler(async (req: Request, res: Response) 
     const listing = await marketplaceService.deactivateListing(org.id, parseInt(req.params.id));
     res.json({ listing, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -84,7 +85,7 @@ router.get('/my/listings', asyncHandler(async (req: Request, res: Response) => {
     const listings = await marketplaceService.getMyListings(org.id);
     res.json({ listings });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -94,7 +95,7 @@ router.get('/my/bids', asyncHandler(async (req: Request, res: Response) => {
     const bids = await marketplaceService.getMyBids(org.id);
     res.json({ bids });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -140,7 +141,7 @@ router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Respons
 
     res.json({ bid, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -156,7 +157,7 @@ router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response
     const bids = await marketplaceService.getBidsForListing(listingId);
     res.json({ bids });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -170,7 +171,7 @@ router.post('/listings/:id/accept/:bidId', asyncHandler(async (req: Request, res
     );
     res.json(result);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -185,7 +186,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req: Request, res: Response)
     );
     res.json(result);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -200,7 +201,7 @@ router.post('/bids/:id/reject', asyncHandler(async (req: Request, res: Response)
     );
     res.json(result);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -216,7 +217,7 @@ router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response
     );
     res.json(result);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -235,7 +236,7 @@ router.post('/transactions/complete', asyncHandler(async (req: Request, res: Res
     );
     res.json({ transaction, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -249,7 +250,7 @@ router.get('/investor-profile', asyncHandler(async (req: Request, res: Response)
     const profile = await marketplaceService.getInvestorProfile(org.id);
     res.json({ profile });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -259,7 +260,7 @@ router.post('/investor-profile', asyncHandler(async (req: Request, res: Response
     const profile = await marketplaceService.updateInvestorProfile(org.id, req.body);
     res.json({ profile, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -273,7 +274,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
     const stats = await marketplaceService.getMarketplaceStats(org.id);
     res.json({ stats });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -292,7 +293,7 @@ router.get('/search', asyncHandler(async (req: Request, res: Response) => {
     });
     res.json({ listings });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -306,7 +307,7 @@ router.get('/matches', asyncHandler(async (req: Request, res: Response) => {
     const matches = await matchmaking.findMatchesForInvestor(org.id);
     res.json({ matches });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -315,7 +316,7 @@ router.get('/listings/:id/buyers', asyncHandler(async (req: Request, res: Respon
     const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id));
     res.json({ buyers });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -330,7 +331,7 @@ router.post('/deal-rooms', asyncHandler(async (req: Request, res: Response) => {
     const dealRoom = await marketplaceService.createDealRoom(listingId, org.id, sellerOrgId);
     res.json({ dealRoom, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -350,7 +351,7 @@ router.get('/deal-rooms/:id', asyncHandler(async (req: Request, res: Response) =
     }
     res.json({ dealRoom: room });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -373,7 +374,7 @@ router.get('/investors', asyncHandler(async (req: Request, res: Response) => {
       .orderBy(desc(investorProfiles.isVerified), desc(investorProfiles.dealsClosed));
     res.json({ investors: profiles });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -398,7 +399,7 @@ router.get('/investors/:id', asyncHandler(async (req: Request, res: Response) =>
     }
     res.json({ investor: results[0] });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -432,7 +433,7 @@ router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) =
       .returning();
     res.json({ profile: updated, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -446,7 +447,7 @@ router.post('/listings/:id/upgrade', asyncHandler(async (req: Request, res: Resp
     const result = await marketplaceService.upgradeToPremium(org.id, parseInt(req.params.id));
     res.json({ result, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 

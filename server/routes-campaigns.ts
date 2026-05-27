@@ -18,6 +18,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
 import { Errors } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
@@ -1881,7 +1882,7 @@ export function registerCampaignRoutes(app: Express): void {
           const { recordActivationEventAsync } = await import("./services/activation");
           recordActivationEventAsync({
             orgId: org.id,
-            userId: (req as any).user?.id ?? null,
+            userId: (req as AuthenticatedRequest).user?.id ?? null,
             eventName: "first_mailer_sent",
             eventValue: { campaignId, channel: "email", recipients: results.sent },
           });
@@ -2115,7 +2116,7 @@ export function registerCampaignRoutes(app: Express): void {
           const { recordActivationEventAsync } = await import("./services/activation");
           recordActivationEventAsync({
             orgId: org.id,
-            userId: (req as any).user?.id ?? null,
+            userId: (req as AuthenticatedRequest).user?.id ?? null,
             eventName: "first_mailer_sent",
             eventValue: { campaignId, channel: "sms", recipients: results.sent },
           });

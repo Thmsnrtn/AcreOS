@@ -11,6 +11,7 @@ import { activityLogger } from "./services/activityLogger";
 import { generateOfferSuggestions, generateOfferLetter, predictAcceptanceProbability, type PropertyData, type OfferLetterRequest, type AcceptancePredictionRequest } from "./services/aiOfferService";
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
+import { Errors } from "./utils/errors";
 
 export function registerCRMExtrasRoutes(app: Express): void {
   const api = app;
@@ -38,7 +39,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const result = await generateOfferSuggestions(propertyData);
 
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
 
       res.json(result);
@@ -77,7 +78,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const result = await generateOfferLetter(request);
 
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
 
       res.json(result);
@@ -103,7 +104,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const result = await predictAcceptanceProbability(request);
       
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
       
       res.json(result);
@@ -149,7 +150,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("Activity feed error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
+      Errors.internal(res, error);
     }
   });
 
@@ -166,7 +167,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(preferences);
     } catch (error: any) {
       logger.error("Get notification preferences error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch notification preferences" });
+      Errors.internal(res, error);
     }
   });
 
@@ -178,7 +179,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const { eventType, emailEnabled, pushEnabled, inAppEnabled } = req.body;
       
       if (!eventType) {
-        return res.status(400).json({ message: "eventType is required" });
+        return Errors.badRequest(res, "eventType is required");
       }
       
       const pref = await storage.upsertNotificationPreference({
@@ -193,7 +194,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(pref);
     } catch (error: any) {
       logger.error("Create notification preference error", error);
-      res.status(500).json({ message: error.message || "Failed to save notification preference" });
+      Errors.internal(res, error);
     }
   });
 
@@ -206,7 +207,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         .from(notificationPreferences)
         .where(and(eq(notificationPreferences.id, id), eq(notificationPreferences.organizationId, org.id)))
         .limit(1);
-      if (!existing) return res.status(404).json({ message: "Notification preference not found" });
+      if (!existing) return Errors.notFound(res, "Notification preference");
       const { emailEnabled, pushEnabled, inAppEnabled } = req.body;
 
       const pref = await storage.updateNotificationPreference(id, {
@@ -218,7 +219,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(pref);
     } catch (error: any) {
       logger.error("Update notification preference error", error);
-      res.status(500).json({ message: error.message || "Failed to update notification preference" });
+      Errors.internal(res, error);
     }
   });
 
@@ -241,7 +242,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(tasks);
     } catch (error: any) {
       logger.error("Get tasks error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -252,13 +253,13 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
       
       res.json(task);
     } catch (error: any) {
       logger.error("Get task error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -300,7 +301,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.status(201).json(task);
     } catch (error: any) {
       logger.error("Create task error", error);
-      res.status(500).json({ message: error.message || "Failed to create task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -312,7 +313,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
       
       const updates: any = { ...req.body };
@@ -346,7 +347,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(task);
     } catch (error: any) {
       logger.error("Update task error", error);
-      res.status(500).json({ message: error.message || "Failed to update task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -357,7 +358,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
       
       const user = req.user as any;
@@ -379,7 +380,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json({ message: "Task deleted" });
     } catch (error: any) {
       logger.error("Delete task error", error);
-      res.status(500).json({ message: error.message || "Failed to delete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -391,7 +392,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
       
       const completedTask = await storage.completeTask(id);
@@ -413,7 +414,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json({ completedTask });
     } catch (error: any) {
       logger.error("Complete task error", error);
-      res.status(500).json({ message: error.message || "Failed to complete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -430,7 +431,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json({ processed: recurringTasksDue.length, created: createdTasks });
     } catch (error: any) {
       logger.error("Process recurring tasks error", error);
-      res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
+      Errors.internal(res, error);
     }
   });
 

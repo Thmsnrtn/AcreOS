@@ -7,6 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { inArray, or } from "drizzle-orm";
 import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@shared/schema";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -23,7 +24,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const { subject, description, category, priority, pageContext, errorContext } = req.body;
       
       if (!subject || !description) {
-        return res.status(400).json({ message: "Subject and description are required" });
+        return Errors.badRequest(res, "Subject and description are required");
       }
       
       const { createSupportTicket } = await import("./ai/supportAgent");
@@ -38,7 +39,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.status(201).json(ticket);
     } catch (error: any) {
       logger.error("[support] Error creating ticket", error);
-      res.status(500).json({ message: error.message || "Failed to create support ticket" });
+      Errors.internal(res, error);
     }
   });
   
@@ -58,7 +59,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(tickets);
     } catch (error: any) {
       logger.error("[support] Error fetching tickets", error);
-      res.status(500).json({ message: error.message || "Failed to fetch tickets" });
+      Errors.internal(res, error);
     }
   });
   
@@ -73,7 +74,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(supportTickets.id, ticketId));
       
       if (!ticket) {
-        return res.status(404).json({ message: "Ticket not found" });
+        return Errors.notFound(res, "Ticket");
       }
       
       const messages = await getTicketMessages(ticketId);
@@ -81,7 +82,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json({ ticket, messages });
     } catch (error: any) {
       logger.error("[support] Error fetching ticket", error);
-      res.status(500).json({ message: error.message || "Failed to fetch ticket" });
+      Errors.internal(res, error);
     }
   });
   
@@ -94,7 +95,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const { message } = req.body;
       
       if (!message) {
-        return res.status(400).json({ message: "Message is required" });
+        return Errors.badRequest(res, "Message is required");
       }
       
       // Add user message
@@ -111,7 +112,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(response);
     } catch (error: any) {
       logger.error("[support] Error processing message", error);
-      res.status(500).json({ message: error.message || "Failed to process message" });
+      Errors.internal(res, error);
     }
   });
   
@@ -135,7 +136,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error closing ticket", error);
-      res.status(500).json({ message: error.message || "Failed to close ticket" });
+      Errors.internal(res, error);
     }
   });
   
@@ -147,7 +148,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const { resolution, rating, feedback, addToKnowledgeBase } = req.body;
       
       if (!resolution) {
-        return res.status(400).json({ message: "Resolution is required" });
+        return Errors.badRequest(res, "Resolution is required");
       }
       
       const [ticket] = await db.select()
@@ -155,7 +156,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(supportTickets.id, ticketId));
       
       if (!ticket) {
-        return res.status(404).json({ message: "Ticket not found" });
+        return Errors.notFound(res, "Ticket");
       }
       
       // Mark ticket as resolved by human
@@ -252,7 +253,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("[support] Error resolving ticket", error);
-      res.status(500).json({ message: error.message || "Failed to resolve ticket" });
+      Errors.internal(res, error);
     }
   });
   
@@ -281,7 +282,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(filtered);
     } catch (error: any) {
       logger.error("[support] Error fetching knowledge base", error);
-      res.status(500).json({ message: error.message || "Failed to fetch articles" });
+      Errors.internal(res, error);
     }
   });
   
@@ -295,7 +296,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(knowledgeBaseArticles.slug, slug));
       
       if (!article) {
-        return res.status(404).json({ message: "Article not found" });
+        return Errors.notFound(res, "Article");
       }
       
       // Increment view count
@@ -306,7 +307,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(article);
     } catch (error: any) {
       logger.error("[support] Error fetching article", error);
-      res.status(500).json({ message: error.message || "Failed to fetch article" });
+      Errors.internal(res, error);
     }
   });
   
@@ -321,7 +322,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(knowledgeBaseArticles.id, articleId));
       
       if (!article) {
-        return res.status(404).json({ message: "Article not found" });
+        return Errors.notFound(res, "Article");
       }
       
       await db.update(knowledgeBaseArticles)
@@ -334,7 +335,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error recording feedback", error);
-      res.status(500).json({ message: error.message || "Failed to record feedback" });
+      Errors.internal(res, error);
     }
   });
   
@@ -368,7 +369,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const tickets = await db.select()
@@ -379,7 +380,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(tickets);
     } catch (error: any) {
       logger.error("[support] Error fetching all tickets", error);
-      res.status(500).json({ message: error.message || "Failed to fetch tickets" });
+      Errors.internal(res, error);
     }
   });
   
@@ -389,7 +390,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const [totalTickets] = await db.select({ count: sql<number>`count(*)` })
@@ -422,7 +423,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("[support] Error fetching analytics", error);
-      res.status(500).json({ message: error.message || "Failed to fetch analytics" });
+      Errors.internal(res, error);
     }
   });
 
@@ -432,7 +433,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       // Get escalated tickets that are not resolved
@@ -521,7 +522,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       res.json(enrichedTickets);
     } catch (error: any) {
       logger.error("[founder] Error fetching escalations", error);
-      res.status(500).json({ message: error.message || "Failed to fetch escalations" });
+      Errors.internal(res, error);
     }
   });
 
@@ -531,12 +532,12 @@ export function registerSupportTicketRoutes(app: Express): void {
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const ticketId = parseInt(req.params.id);
       if (isNaN(ticketId)) {
-        return res.status(400).json({ message: "Invalid ticket ID" });
+        return Errors.badRequest(res, "Invalid ticket ID");
       }
       
       // Get the ticket with full context
@@ -545,7 +546,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(supportTickets.id, ticketId));
       
       if (!ticket) {
-        return res.status(404).json({ message: "Ticket not found" });
+        return Errors.notFound(res, "Ticket");
       }
       
       // Get organization
@@ -669,7 +670,7 @@ This ticket was escalated by Pax (AI Support Agent) because it could not be reso
       res.json({ prompt });
     } catch (error: any) {
       logger.error("[founder] Error generating prompt", error);
-      res.status(500).json({ message: error.message || "Failed to generate prompt" });
+      Errors.internal(res, error);
     }
   });
 
@@ -679,13 +680,13 @@ This ticket was escalated by Pax (AI Support Agent) because it could not be reso
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const { ticketIds } = req.body as { ticketIds: number[] };
       
       if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
-        return res.status(400).json({ message: "ticketIds array is required" });
+        return Errors.badRequest(res, "ticketIds array is required");
       }
       
       // Get all tickets
@@ -765,7 +766,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       res.json({ prompt });
     } catch (error: any) {
       logger.error("[founder] Error generating batch prompt", error);
-      res.status(500).json({ message: error.message || "Failed to generate batch prompt" });
+      Errors.internal(res, error);
     }
   });
 
@@ -775,12 +776,12 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const ticketId = parseInt(req.params.id);
       if (isNaN(ticketId)) {
-        return res.status(400).json({ message: "Invalid ticket ID" });
+        return Errors.badRequest(res, "Invalid ticket ID");
       }
       
       const { resolution } = req.body as { resolution?: string };
@@ -797,7 +798,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[founder] Error resolving escalation", error);
-      res.status(500).json({ message: error.message || "Failed to resolve escalation" });
+      Errors.internal(res, error);
     }
   });
 
@@ -811,7 +812,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       const org = req.organization!;
       
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
+        return Errors.forbidden(res, "Founder access required");
       }
       
       const { paxLearningService } = await import("./services/paxLearning");
@@ -820,7 +821,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       res.json(learnings);
     } catch (error: any) {
       logger.error("[founder] Error fetching Pax learnings", error);
-      res.status(500).json({ message: error.message || "Failed to fetch learnings" });
+      Errors.internal(res, error);
     }
   });
   
@@ -847,7 +848,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       } = req.body;
       
       if (!title || !description) {
-        return res.status(400).json({ message: "Title and description are required" });
+        return Errors.badRequest(res, "Title and description are required");
       }
       
       let orgHealth = null;
@@ -931,7 +932,7 @@ ${actualBehavior || 'Not provided'}
       });
     } catch (error: any) {
       logger.error("[support] Error creating bug report", error);
-      res.status(500).json({ message: error.message || "Failed to submit bug report" });
+      Errors.internal(res, error);
     }
   });
 

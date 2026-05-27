@@ -17,6 +17,7 @@ import { agentSelfImprovementService } from "./services/agentSelfImprovement";
 import { founderTwinService } from "./services/founderTwin";
 import { attentionOptimizerService } from "./services/attentionOptimizer";
 import { institutionalMemoryService } from "./services/institutionalMemory";
+import { Errors } from "./utils/errors";
 
 export function registerFounderV7Routes(app: Express) {
 
@@ -27,7 +28,7 @@ export function registerFounderV7Routes(app: Express) {
       const patterns = await decisionAutopilotService.getPatterns();
       res.json(patterns);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -36,7 +37,7 @@ export function registerFounderV7Routes(app: Express) {
       const stats = await decisionAutopilotService.getAccuracyStats();
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -45,14 +46,14 @@ export function registerFounderV7Routes(app: Express) {
       const suggestions = await decisionAutopilotService.getSuggestions();
       res.json(suggestions);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
   app.post("/api/founder/v7/autopilot/:id/toggle", async (req, res) => {
     try {
       const pattern = (await decisionAutopilotService.getPatterns()).find(p => p.id === parseInt(req.params.id));
-      if (!pattern) return res.status(404).json({ error: "Pattern not found" });
+      if (!pattern) return Errors.notFound(res, "Pattern");
 
       if (pattern.isAutopilotActive) {
         await decisionAutopilotService.disableAutopilot(pattern.id);
@@ -61,7 +62,7 @@ export function registerFounderV7Routes(app: Express) {
       }
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -72,7 +73,7 @@ export function registerFounderV7Routes(app: Express) {
       const scenarios = await scenarioEngineService.getRecent(10);
       res.json(scenarios);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -81,7 +82,7 @@ export function registerFounderV7Routes(app: Express) {
       const scenario = await scenarioEngineService.getById(parseInt(req.params.id));
       res.json(scenario || null);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -90,7 +91,7 @@ export function registerFounderV7Routes(app: Express) {
       const id = await scenarioEngineService.simulate(req.body.hypothesis, req.body.scenarioType);
       res.json({ id, status: "running" });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -101,7 +102,7 @@ export function registerFounderV7Routes(app: Express) {
       const plans = await agentSelfImprovementService.getActivePlans();
       res.json(plans);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -110,7 +111,7 @@ export function registerFounderV7Routes(app: Express) {
       const ids = await agentSelfImprovementService.generateAllPlans();
       res.json({ generated: ids.length, ids });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -122,7 +123,7 @@ export function registerFounderV7Routes(app: Express) {
       );
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -134,7 +135,7 @@ export function registerFounderV7Routes(app: Express) {
       );
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -145,7 +146,7 @@ export function registerFounderV7Routes(app: Express) {
       const drafts = await founderTwinService.getRecentDrafts(10);
       res.json(drafts);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -158,7 +159,7 @@ export function registerFounderV7Routes(app: Express) {
       });
       res.json({ id });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -167,7 +168,7 @@ export function registerFounderV7Routes(app: Express) {
       await founderTwinService.saveDraftEdits(parseInt(req.params.id), req.body.content);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -176,7 +177,7 @@ export function registerFounderV7Routes(app: Express) {
       await founderTwinService.approveDraft(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -185,7 +186,7 @@ export function registerFounderV7Routes(app: Express) {
       const profile = await founderTwinService.getStyleProfile();
       res.json({ profile });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -196,7 +197,7 @@ export function registerFounderV7Routes(app: Express) {
       const focusCard = await attentionOptimizerService.getLatestFocusCard();
       res.json({ focusCard });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -205,7 +206,7 @@ export function registerFounderV7Routes(app: Express) {
       const focusCard = await attentionOptimizerService.generateFocusCard();
       res.json({ focusCard });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -214,7 +215,7 @@ export function registerFounderV7Routes(app: Express) {
       await attentionOptimizerService.recordTimeSpent(req.body.area, req.body.durationMinutes);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -223,7 +224,7 @@ export function registerFounderV7Routes(app: Express) {
       const recs = await attentionOptimizerService.generateWeeklyRecommendations();
       res.json(recs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -234,7 +235,7 @@ export function registerFounderV7Routes(app: Express) {
       const patterns = await institutionalMemoryService.getPatterns();
       res.json(patterns);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -243,7 +244,7 @@ export function registerFounderV7Routes(app: Express) {
       const correlations = await institutionalMemoryService.getCorrelations();
       res.json(correlations);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -252,7 +253,7 @@ export function registerFounderV7Routes(app: Express) {
       const created = await institutionalMemoryService.discoverPatterns();
       res.json({ discovered: created });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err);
     }
   });
 }

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { education } from './services/education';
 import { CreditService } from './services/credits';
 import { logger } from './utils/logger';
+import type { AuthenticatedRequest } from './types/request';
 
 const creditService = new CreditService();
 
@@ -139,7 +140,7 @@ router.post('/tutor/message', async (req: Request, res: Response) => {
     const { message, courseId, history } = req.body;
 
     // Credit check for AI tutor
-    const org = (req as any).organization;
+    const org = (req as AuthenticatedRequest).organization;
     if (org) {
       const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
       if (!hasCredits) {

@@ -20,6 +20,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -43,7 +44,7 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
       .where(and(eq(leads.id, parseInt(req.params.leadId)), eq(leads.organizationId, org.id)))
       .limit(1);
 
-    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead) return Errors.notFound(res, "Lead");
 
     const assessedValue = parseFloat((lead as any).assessedValue || "5000");
     const input = {
@@ -77,7 +78,7 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
       outreachTiming,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -87,7 +88,7 @@ router.post("/seller-motivation/score", async (req: Request, res: Response) => {
     const result = computeSellerMotivationScore(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -99,7 +100,7 @@ router.post("/seller-motivation/rescore-org", async (req: Request, res: Response
     const result = await rescoreLeadsForOrg(org.id);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -166,7 +167,7 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
 
     res.json({ county, state: state.toUpperCase(), score, alerts, report, marketData: marketData || null });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -185,7 +186,7 @@ router.post("/title-chain/analyze", async (req: Request, res: Response) => {
 
     res.json({ titleChain, scheduleBExceptions, closingChecklist });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -203,13 +204,13 @@ router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => 
       .where(and(eq(deals.id, parseInt(req.params.dealId)), eq(deals.organizationId, org.id)))
       .limit(1);
 
-    if (!deal) return res.status(404).json({ error: "Deal not found" });
+    if (!deal) return Errors.notFound(res, "Deal");
 
     const dealType = (deal as any).dealType || "cash";
     const checklist = getClosingChecklistReference(dealType, true, true);
     res.json({ dealId: deal.id, checklist });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -235,7 +236,7 @@ router.get("/investor-network/trust-score", async (req: Request, res: Response) 
 
     res.json({ organizationId: org.id, trustScore, badges });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -255,7 +256,7 @@ router.post("/investor-network/share-deal", async (req: Request, res: Response) 
 
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -269,7 +270,7 @@ router.post("/financial/deal-pnl", async (req: Request, res: Response) => {
     const result = calculateDealPnL(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -281,7 +282,7 @@ router.get("/financial/tax-report/:year", async (req: Request, res: Response) =>
     const report = await generateTaxReport(org.id, year);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -297,7 +298,7 @@ router.post("/financial/note-amortization", async (req: Request, res: Response) 
     });
     res.json({ schedule, paymentCount: schedule.length });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -311,7 +312,7 @@ router.post("/financial/note-payoff", async (req: Request, res: Response) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -325,7 +326,7 @@ router.post("/financial/1031-status", async (req: Request, res: Response) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -338,7 +339,7 @@ router.get("/developer/openapi", async (req: Request, res: Response) => {
     const { ACREOS_OPENAPI_SPEC } = await import("./services/developerApiService");
     res.json(ACREOS_OPENAPI_SPEC);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -377,7 +378,7 @@ router.post("/developer/api-keys", async (req: Request, res: Response) => {
       warning: "Store this key securely. It will not be shown again.",
     });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message ?? "Bad request");
   }
 });
 
@@ -389,7 +390,7 @@ router.get("/developer/widget-embed/:type", async (req: Request, res: Response) 
     const widgetType = req.params.type;
 
     if (!validTypes.includes(widgetType)) {
-      return res.status(400).json({ error: "Invalid widget type" });
+      return Errors.badRequest(res, "Invalid widget type");
     }
 
     const embedCode = generateWidgetEmbedCode({
@@ -400,7 +401,7 @@ router.get("/developer/widget-embed/:type", async (req: Request, res: Response) 
 
     res.json({ embedCode, widgetType });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

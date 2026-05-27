@@ -160,7 +160,7 @@ router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res:
 
     res.status(201).json({ message });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -195,7 +195,7 @@ router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res:
 
     res.json({ documents: grouped });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -226,14 +226,14 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
           statusCode: 422,
         });
       }
-      return res.status(400).json({ error: `Invalid file URL: ${urlError.message}` });
+      return Errors.badRequest(res, `Invalid file URL: ${urlError.message}`);
     }
 
     // Block dangerous file extensions
     const ext = fileName.split('.').pop()?.toLowerCase();
     const blocked = ['exe', 'sh', 'bat', 'cmd', 'ps1', 'php', 'py', 'rb', 'pl', 'js', 'ts', 'jar', 'com', 'vbs'];
     if (ext && blocked.includes(ext)) {
-      return res.status(400).json({ error: `File type .${ext} is not allowed` });
+      return Errors.badRequest(res, `File type .${ext} is not allowed`);
     }
 
     // Enforce file size limit (10MB)
@@ -281,7 +281,7 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
 
     res.status(201).json({ document: doc });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -324,7 +324,7 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
 
     res.json({ url: signedUrl, expiresAt: new Date(expiresAt).toISOString() });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -388,7 +388,7 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
 
     res.status(201).json({ dealRoom: updated });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -417,7 +417,7 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Authenticated
 
     res.json({ dealRoom: updated });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -450,7 +450,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
 
     res.json({ dealRoom: updated });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -504,7 +504,7 @@ router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: 
 
     res.json({ activity });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -579,7 +579,7 @@ Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
 
     res.status(201).json({ document: ndaDoc, ndaContent });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 
@@ -630,7 +630,7 @@ router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest,
       systemMessage,
     });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 }));
 

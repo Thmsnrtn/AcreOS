@@ -3,6 +3,7 @@ import { marketIntelligence } from './services/marketIntelligence';
 import { cacheResponse } from './middleware/responseCache';
 import { generateMonthlyMarketReport, generateCountyReport } from './services/marketReportGenerator';
 import { logger } from './utils/logger';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/analyze', cacheResponse(600), async (req: Request, res: Response) =
     const result = await marketIntelligence.analyzeMarket(county as string, state as string);
     res.json({ analysis: result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -28,7 +29,7 @@ router.get('/health', cacheResponse(300), async (req: Request, res: Response) =>
     const health = await marketIntelligence.getMarketHealth(county as string, state as string);
     res.json({ health });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -41,7 +42,7 @@ router.get('/trends', cacheResponse(600), async (req: Request, res: Response) =>
     const trends = await marketIntelligence.predictPriceTrends(county as string, state as string);
     res.json({ trends });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -52,7 +53,7 @@ router.post('/compare', async (req: Request, res: Response) => {
     const comparison = await marketIntelligence.compareMarkets(markets);
     res.json({ comparison });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -65,7 +66,7 @@ router.get('/growth-indicators', cacheResponse(300), async (req: Request, res: R
     const indicators = await marketIntelligence.getGrowthIndicators(county as string, state as string);
     res.json({ indicators });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -76,7 +77,7 @@ router.get('/accuracy', cacheResponse(900), async (req: Request, res: Response) 
     const accuracy = await marketIntelligence.trackPredictionAccuracy();
     res.json({ accuracy });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

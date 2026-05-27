@@ -7,6 +7,7 @@ import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { eq, count, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 // Generate a random 8-char alphanumeric referral code
 function generateCode(): string {
@@ -21,10 +22,10 @@ export function registerReferralRoutes(app: Express): void {
   app.get("/api/referral/code", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user) return Errors.notFound(res, "User");
 
       if (user.referralCode) {
         return res.json({ code: user.referralCode });
@@ -52,7 +53,7 @@ export function registerReferralRoutes(app: Express): void {
       return res.json({ code });
     } catch (err) {
       logger.error("[referral] GET /code error", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return Errors.internal(res, new Error('Internal server error'));
     }
   });
 
@@ -63,7 +64,7 @@ export function registerReferralRoutes(app: Express): void {
   app.get("/api/referral/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       const org = req.organization;
 
@@ -84,7 +85,7 @@ export function registerReferralRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("[referral] GET /stats error", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return Errors.internal(res, new Error('Internal server error'));
     }
   });
 
@@ -98,7 +99,7 @@ export function registerReferralRoutes(app: Express): void {
   app.post("/api/referral/apply", isAuthenticated, async (req, res) => {
     try {
       const { code, refereeId } = req.body as { code?: string; refereeId?: string };
-      if (!code || !refereeId) return res.status(400).json({ message: "code and refereeId required" });
+      if (!code || !refereeId) return Errors.badRequest(res, "code and refereeId required");
 
       // Find the referrer by code
       const [referrer] = await db
@@ -108,7 +109,7 @@ export function registerReferralRoutes(app: Express): void {
         .limit(1);
 
       if (!referrer) return res.status(404).json({ message: "Invalid referral code" });
-      if (referrer.id === refereeId) return res.status(400).json({ message: "Cannot refer yourself" });
+      if (referrer.id === refereeId) return Errors.badRequest(res, "Cannot refer yourself");
 
       // Upsert the referral row — update status to signed_up if it was pending
       const existing = await db
@@ -134,7 +135,7 @@ export function registerReferralRoutes(app: Express): void {
       return res.json({ ok: true });
     } catch (err) {
       logger.error("[referral] POST /apply error", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return Errors.internal(res, new Error('Internal server error'));
     }
   });
 
@@ -146,7 +147,7 @@ export function registerReferralRoutes(app: Express): void {
   app.post("/api/referral/activate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       // Find referral where this user is the referee
       const [referral] = await db
@@ -195,7 +196,7 @@ export function registerReferralRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("[referral] POST /activate error", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return Errors.internal(res, new Error('Internal server error'));
     }
   });
 
@@ -206,7 +207,7 @@ export function registerReferralRoutes(app: Express): void {
   app.get("/api/referral/referees", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) return Errors.unauthorized(res);
 
       const refs = await db
         .select()
@@ -223,7 +224,7 @@ export function registerReferralRoutes(app: Express): void {
       return res.json({ referees });
     } catch (err) {
       logger.error("[referral] GET /referees error", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return Errors.internal(res, new Error('Internal server error'));
     }
   });
 }

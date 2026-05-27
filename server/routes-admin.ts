@@ -91,7 +91,7 @@ export function registerAdminRoutes(app: Express): void {
       const { subject, message } = parsed.data;
       
       if (!subject || !message) {
-        return res.status(400).json({ error: "Subject and message are required" });
+        return Errors.badRequest(res, "Subject and message are required");
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
@@ -112,7 +112,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Create support case error", err);
-      res.status(500).json({ error: err.message || "Failed to create support case" });
+      Errors.internal(res, err);
     }
   });
 
@@ -141,7 +141,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(casesWithSla);
     } catch (err: any) {
       logger.error("Get support cases error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch support cases" });
+      Errors.internal(res, err);
     }
   });
 
@@ -162,7 +162,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ case: supportCase, messages, actions });
     } catch (err: any) {
       logger.error("Get support case error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch support case" });
+      Errors.internal(res, err);
     }
   });
 
@@ -181,7 +181,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (supportCase.status === "closed" || supportCase.status === "resolved") {
-        return res.status(400).json({ error: "This case is already closed" });
+        return Errors.badRequest(res, "This case is already closed");
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
@@ -195,7 +195,7 @@ export function registerAdminRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Send support message error", err);
-      res.status(500).json({ error: err.message || "Failed to send message" });
+      Errors.internal(res, err);
     }
   });
 
@@ -219,7 +219,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true, message: "Thank you for your feedback!" });
     } catch (err: any) {
       logger.error("Rate support case error", err);
-      res.status(500).json({ error: err.message || "Failed to rate case" });
+      Errors.internal(res, err);
     }
   });
 
@@ -240,7 +240,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Resolve support case error", err);
-      res.status(500).json({ error: err.message || "Failed to resolve case" });
+      Errors.internal(res, err);
     }
   });
 
@@ -278,7 +278,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(casesWithSla);
     } catch (err: any) {
       logger.error("Get escalated cases error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch escalated cases" });
+      Errors.internal(res, err);
     }
   });
 
@@ -328,7 +328,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       logger.error("Admin respond to case error", err);
-      res.status(500).json({ error: err.message || "Failed to respond to case" });
+      Errors.internal(res, err);
     }
   });
 
@@ -362,7 +362,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(metrics);
     } catch (err: any) {
       logger.error("Get support metrics error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
+      Errors.internal(res, err);
     }
   });
 
@@ -395,7 +395,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { content } = parsed.data;
       if (!content || !content.trim()) {
-        return res.status(400).json({ error: "Message content is required" });
+        return Errors.badRequest(res, "Message content is required");
       }
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
@@ -444,14 +444,14 @@ export function registerAdminRoutes(app: Express): void {
       });
 
       if (!validation.success) {
-        return res.status(400).json({ error: validation.error.message });
+        return Errors.badRequest(res, validation.error.message);
       }
 
       const featureRequest = await storage.createFeatureRequest(validation.data);
       res.status(201).json(featureRequest);
     } catch (err: any) {
       logger.error("Create feature request error", err);
-      res.status(500).json({ error: err.message || "Failed to create feature request" });
+      Errors.internal(res, err);
     }
   });
 
@@ -463,7 +463,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(requests);
     } catch (err: any) {
       logger.error("Get feature requests error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
+      Errors.internal(res, err);
     }
   });
 
@@ -485,7 +485,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(requests);
     } catch (err: any) {
       logger.error("Get all feature requests error", err);
-      res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
+      Errors.internal(res, err);
     }
   });
 
@@ -516,7 +516,7 @@ export function registerAdminRoutes(app: Express): void {
       res.json(updated);
     } catch (err: any) {
       logger.error("Update feature request error", err);
-      res.status(500).json({ error: err.message || "Failed to update feature request" });
+      Errors.internal(res, err);
     }
   });
 
@@ -683,7 +683,7 @@ export function registerAdminRoutes(app: Express): void {
     const paramOrgId = req.params.orgId ? parseInt(req.params.orgId, 10) : null;
     if (paramOrgId !== null && org && org.id !== paramOrgId) {
       logger.warn("Cross-org access attempt blocked", { orgId: org.id, requestedOrgId: paramOrgId, path: req.path });
-      return res.status(403).json({ error: "Access denied: organization mismatch" });
+      return Errors.forbidden(res, "Access denied: organization mismatch");
     }
     next();
   };
@@ -849,7 +849,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { validateAllEndpoints, getEndpointStats, startValidationJob } = await import("./services/gisValidation");
       const parsedGisAll = gisValidateAllSchema.safeParse(req.body);
-      if (!parsedGisAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisAll.error.issues });
+      if (!parsedGisAll.success) return Errors.validationFailed(res, parsedGisAll.error.issues);
       const { stateFilter, maxConcurrent = 10, async: runAsync = false } = parsedGisAll.data;
       
       const stats = await getEndpointStats();
@@ -970,7 +970,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedFounder = setFounderSchema.safeParse(req.body);
-      if (!parsedFounder.success) return res.status(400).json({ message: "Invalid input", errors: parsedFounder.error.issues });
+      if (!parsedFounder.success) return Errors.validationFailed(res, parsedFounder.error.issues);
       const { organizationId, isFounder } = parsedFounder.data;
 
       // If no organizationId provided, use the current user's organization
@@ -1091,7 +1091,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/data-sources/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedDsv = dataSourceValidateSchema.safeParse(req.body);
-      if (!parsedDsv.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsv.error.issues });
+      if (!parsedDsv.success) return Errors.validationFailed(res, parsedDsv.error.issues);
       const { sourceId, category, limit = 50 } = parsedDsv.data;
       const { dataSourceValidator } = await import("./services/data-source-validator");
       
@@ -1136,7 +1136,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const sourceId = Number(req.params.id);
       const parsedDsp = dataSourcePatchSchema.safeParse(req.body);
-      if (!parsedDsp.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsp.error.issues });
+      if (!parsedDsp.success) return Errors.validationFailed(res, parsedDsp.error.issues);
       const { isEnabled, priority, notes } = parsedDsp.data;
       
       const updates: Record<string, any> = { updatedAt: new Date() };
@@ -1199,7 +1199,7 @@ export function registerAdminRoutes(app: Express): void {
       const { countyGisEndpoints, insertCountyGisEndpointSchema } = await import('@shared/schema');
       
       const parsedGis = countyGisEndpointCreateSchema.safeParse(req.body);
-      if (!parsedGis.success) return res.status(400).json({ message: "Invalid input", errors: parsedGis.error.issues });
+      if (!parsedGis.success) return Errors.validationFailed(res, parsedGis.error.issues);
       const { state, county, baseUrl, endpointType } = parsedGis.data;
       if (!state || !county || !baseUrl) {
         return Errors.badRequest(res, "state, county, and baseUrl are required");
@@ -1670,7 +1670,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/county-gis-endpoints/bulk-add", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedBulkAdd = bulkAddEndpointsSchema.safeParse(req.body);
-      if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.issues });
+      if (!parsedBulkAdd.success) return Errors.validationFailed(res, parsedBulkAdd.error.issues);
       const { endpoints } = parsedBulkAdd.data;
       if (!endpoints || !Array.isArray(endpoints) || endpoints.length === 0) {
         return Errors.badRequest(res, "No endpoints provided");
@@ -1781,7 +1781,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { runDiscoveryScan } = await import('./services/arcgis-discovery');
       const parsedScan = discoveryScanSchema.safeParse(req.body);
-      if (!parsedScan.success) return res.status(400).json({ message: "Invalid input", errors: parsedScan.error.issues });
+      if (!parsedScan.success) return Errors.validationFailed(res, parsedScan.error.issues);
       const { keywords, maxResults, targetStates } = parsedScan.data;
       
       logger.info("[Discovery] Starting ArcGIS Online scan...");
@@ -2001,7 +2001,7 @@ export function registerAdminRoutes(app: Express): void {
       
       const parseResult = updateDataSourceSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parseResult.error.issues });
+        return Errors.validationFailed(res, parseResult.error.issues);
       }
       
       const source = await storage.getDataSource(id);
@@ -2131,7 +2131,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedBulk = dataSourcesBulkImportSchema.safeParse(req.body);
-      if (!parsedBulk.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulk.error.issues });
+      if (!parsedBulk.success) return Errors.validationFailed(res, parsedBulk.error.issues);
       const { sources } = parsedBulk.data;
 
       if (!Array.isArray(sources) || sources.length === 0) {
@@ -2201,7 +2201,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const parseResult = brokerLookupSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.issues });
+        return Errors.validationFailed(res, parseResult.error.issues);
       }
 
       const { dataSourceBroker } = await import('./services/data-source-broker');
@@ -2219,7 +2219,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = req.organization;
       const parsedPe = propertyEnrichSchema.safeParse(req.body);
-      if (!parsedPe.success) return res.status(400).json({ message: "Invalid input", errors: parsedPe.error.issues });
+      if (!parsedPe.success) return Errors.validationFailed(res, parsedPe.error.issues);
       const { propertyId, forceRefresh } = parsedPe.data;
 
       if (!propertyId) {
@@ -2247,7 +2247,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/enrichment/coordinates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const parsedCoord = coordinatesEnrichSchema.safeParse(req.body);
-      if (!parsedCoord.success) return res.status(400).json({ message: "Invalid input", errors: parsedCoord.error.issues });
+      if (!parsedCoord.success) return Errors.validationFailed(res, parsedCoord.error.issues);
       const { latitude, longitude, categories, state, county, apn, forceRefresh } = parsedCoord.data;
 
       if (!latitude || !longitude) {
@@ -2316,7 +2316,7 @@ export function registerAdminRoutes(app: Express): void {
 
       const layerId = Number(req.params.layerId);
       const parsedPref = z.object({ enabled: z.boolean().optional(), opacity: z.coerce.number().min(0).max(1).optional() }).safeParse(req.body);
-      if (!parsedPref.success) return res.status(400).json({ message: "Invalid input", errors: parsedPref.error.issues });
+      if (!parsedPref.success) return Errors.validationFailed(res, parsedPref.error.issues);
       const { enabled, opacity } = parsedPref.data;
 
       const { userMapLayerPreferences } = await import("@shared/schema");
@@ -2369,7 +2369,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedEnrich = z.object({ forceRefresh: z.boolean().optional(), orgId: z.number().int().positive().optional() }).safeParse(req.body);
-      if (!parsedEnrich.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrich.error.issues });
+      if (!parsedEnrich.success) return Errors.validationFailed(res, parsedEnrich.error.issues);
       const { forceRefresh = false, orgId: targetOrgId } = parsedEnrich.data;
       const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
 
@@ -2521,7 +2521,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { provider } = req.params;
       const parsedApiKey = systemApiKeyUpdateSchema.safeParse(req.body);
-      if (!parsedApiKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedApiKey.error.issues });
+      if (!parsedApiKey.success) return Errors.validationFailed(res, parsedApiKey.error.issues);
       const { apiKey, isActive } = parsedApiKey.data;
       const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
       if (existing) {
@@ -2921,10 +2921,10 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { key } = req.params;
       const parsedFlag = z.object({ enabled: z.boolean() }).safeParse(req.body);
-      if (!parsedFlag.success) return res.status(400).json({ message: "enabled must be a boolean" });
+      if (!parsedFlag.success) return Errors.badRequest(res, "enabled must be a boolean");
       const { enabled } = parsedFlag.data;
       const flag = await storage.updateFeatureFlag(key, enabled);
-      if (!flag) return res.status(404).json({ message: "Feature flag not found" });
+      if (!flag) return Errors.notFound(res, "Feature flag");
       res.json(flag);
     } catch (err: any) {
       Errors.internal(res, err);
@@ -2972,7 +2972,7 @@ export function registerAdminRoutes(app: Express): void {
         ...(displayPriceYearly !== undefined && { displayPriceYearly }),
         ...(allowPromoCodes !== undefined && { allowPromoCodes }),
       });
-      if (!updated) return res.status(404).json({ message: "Tier not found" });
+      if (!updated) return Errors.notFound(res, "Tier");
       res.json(updated);
     } catch (err: any) {
       Errors.internal(res, err);
@@ -2984,7 +2984,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { tier } = req.params;
       const parsedPromo = z.object({ promoLabel: z.string().min(1), promoDiscountPercent: z.coerce.number().min(1).max(100), promoEndsAt: z.string().datetime() }).safeParse(req.body);
-      if (!parsedPromo.success) return res.status(400).json({ message: "Invalid promo input", errors: parsedPromo.error.issues });
+      if (!parsedPromo.success) return Errors.validationFailed(res, parsedPromo.error.issues);
       const { promoLabel, promoDiscountPercent, promoEndsAt } = parsedPromo.data;
       // Create a Stripe coupon
       const { getUncachableStripeClient } = await import("./stripeClient");
@@ -3131,10 +3131,10 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       const parsedStatus = z.object({ status: z.enum(["active", "paused"]) }).safeParse(req.body);
-      if (!parsedStatus.success) return res.status(400).json({ message: "status must be 'active' or 'paused'" });
+      if (!parsedStatus.success) return Errors.badRequest(res, "status must be 'active' or 'paused'");
       const { status } = parsedStatus.data;
       const campaign = await storage.getGrowthCampaign(id);
-      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       if (campaign.externalCampaignId) {
         const adAccount = await storage.getFounderAdAccount("meta");
@@ -3156,10 +3156,10 @@ export function registerAdminRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const campaign = await storage.getGrowthCampaign(id);
       if (!campaign || !campaign.externalCampaignId) {
-        return res.status(404).json({ message: "Campaign not found or not yet live" });
+        return Errors.notFound(res, "Campaign (or not yet live)");
       }
       const adAccount = await storage.getFounderAdAccount("meta");
-      if (!adAccount) return res.status(400).json({ message: "No ad account configured" });
+      if (!adAccount) return Errors.badRequest(res, "No ad account configured");
       const { growthAdService } = await import("./services/growthAdService");
       const stats = await growthAdService.getCampaignStats(adAccount, campaign.externalCampaignId);
       const updated = await storage.updateGrowthCampaign(id, {
@@ -3180,7 +3180,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/founder/growth/generate-creative", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { templateKey } = req.body;
-      if (!templateKey) return res.status(400).json({ message: "templateKey is required" });
+      if (!templateKey) return Errors.badRequest(res, "templateKey is required");
 
       // Create the bundle record immediately so client can poll
       const bundle = await storage.createAdCreativeBundle({ templateKey, status: "generating" });
@@ -3225,12 +3225,12 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { angle } = req.body;
       const bundle = await storage.getAdCreativeBundle(req.params.id);
-      if (!bundle || bundle.status !== "ready") return res.status(400).json({ message: "Bundle not ready" });
+      if (!bundle || bundle.status !== "ready") return Errors.badRequest(res, "Bundle not ready");
 
       const { adCreativeService } = await import("./services/adCreativeService");
       const allVariants = await adCreativeService.generateCopyVariants(bundle.templateKey);
       const newVariant = allVariants.find((v) => v.angle === angle);
-      if (!newVariant) return res.status(404).json({ message: "Angle not found" });
+      if (!newVariant) return Errors.notFound(res, "Angle");
 
       const copies = (bundle.copies as any[] || []).map((c: any) =>
         c.angle === angle ? newVariant : c
@@ -3246,14 +3246,14 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/founder/growth/creative-bundles/:id/deploy", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { name, dailyBudgetCents, targetCountries } = req.body;
-      if (!name) return res.status(400).json({ message: "Campaign name is required" });
+      if (!name) return Errors.badRequest(res, "Campaign name is required");
 
       const bundle = await storage.getAdCreativeBundle(req.params.id);
       if (!bundle) return Errors.notFound(res, "Bundle");
-      if (bundle.status !== "ready") return res.status(400).json({ message: `Bundle is ${bundle.status}, not ready` });
+      if (bundle.status !== "ready") return Errors.badRequest(res, `Bundle is ${bundle.status}, not ready`);
 
       const adAccount = await storage.getFounderAdAccount("meta");
-      if (!adAccount) return res.status(400).json({ message: "No Meta ad account configured" });
+      if (!adAccount) return Errors.badRequest(res, "No Meta ad account configured");
 
       const { growthAdService } = await import("./services/growthAdService");
 
@@ -3506,7 +3506,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const ticketId = parseInt(req.params.ticketId);
       const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
-      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (!ticket) return Errors.notFound(res, "Ticket");
 
       const messages = await db.select().from(supportTicketMessages)
         .where(eq(supportTicketMessages.ticketId, ticketId))
@@ -3548,7 +3548,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const ticketId = parseInt(req.params.ticketId);
       const { message, resolve } = req.body;
-      if (!message) return res.status(400).json({ message: "message is required" });
+      if (!message) return Errors.badRequest(res, "message is required");
 
       await db.insert(supportTicketMessages).values({
         ticketId,
@@ -3689,7 +3689,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const orgId = Number(req.params.orgId);
       const { churnEngine } = await import("./services/churnEngine");
       const org = await storage.getOrganization(orgId);
-      if (!org) return res.status(404).json({ message: "Org not found" });
+      if (!org) return Errors.notFound(res, "Org");
       await db.update(organizations).set({ churnRescueSentAt: null }).where(eq(organizations.id, orgId));
       const score = await churnEngine.scoreOrg(orgId, { dunningStage: org.dunningStage });
       res.json({ message: "Rescue triggered", riskScore: score });
@@ -3745,7 +3745,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .where(eq(paxObservations.id, obsId))
         .limit(1);
 
-      if (!obs) return res.status(404).json({ message: "Observation not found" });
+      if (!obs) return Errors.notFound(res, "Observation");
 
       const suggestedAction = (obs.metadata as any)?.suggestedAction;
       let actionTaken = "acknowledged";
@@ -3838,10 +3838,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const user = req.user as any;
       const userId = user?.id || user?.id;
       const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
-      if (!parsedKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedKey.error.issues });
+      if (!parsedKey.success) return Errors.validationFailed(res, parsedKey.error.issues);
       const { name, scope = "read", expiresInDays } = parsedKey.data;
       if (!name || !name.trim()) {
-        return res.status(400).json({ error: "Name is required" });
+        return Errors.badRequest(res, "Name is required");
       }
 
       // Generate: "acos_" + 32 random hex chars
@@ -3882,7 +3882,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .set({ isRevoked: true, updatedAt: new Date() })
         .where(and(eq(orgApiKeys.id, keyId), eq(orgApiKeys.organizationId, org.id)))
         .returning({ id: orgApiKeys.id });
-      if (!updated) return res.status(404).json({ error: "Key not found" });
+      if (!updated) return Errors.notFound(res, "Key");
       res.json({ message: "Key revoked" });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -4207,7 +4207,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const org = getOrganization(req);
       const userId = getUserId(req);
       const { page, feedback } = req.body as { page: string; feedback: string };
-      if (!feedback?.trim()) return res.status(400).json({ message: "Feedback required" });
+      if (!feedback?.trim()) return Errors.badRequest(res, "Feedback required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const id = await betaAnalytics.submitFeedback(userId, org.id, page || "/", feedback.trim());
       res.json({ id, success: true });
@@ -4274,7 +4274,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/analytics/session/end", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { sessionId } = req.body as { sessionId: number };
-      if (!sessionId) return res.status(400).json({ message: "sessionId required" });
+      if (!sessionId) return Errors.badRequest(res, "sessionId required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       await betaAnalytics.endSession(sessionId);
       res.json({ success: true });
@@ -4287,7 +4287,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/analytics/pageview", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { sessionId, path } = req.body as { sessionId: number; path: string };
-      if (!sessionId || !path) return res.status(400).json({ message: "sessionId and path required" });
+      if (!sessionId || !path) return Errors.badRequest(res, "sessionId and path required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       await betaAnalytics.recordPageView(sessionId, path);
       res.json({ success: true });
@@ -4302,7 +4302,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const org = getOrganization(req);
       const userId = getUserId(req);
       const { eventName } = req.body as { eventName: string };
-      if (!eventName) return res.status(400).json({ message: "eventName required" });
+      if (!eventName) return Errors.badRequest(res, "eventName required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const recorded = await betaAnalytics.trackActivation(userId, org.id, eventName as any);
       res.json({ recorded });
@@ -4331,7 +4331,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const { setAgentEnabled } = await import("./agents/index");
       const { enabled } = req.body as { enabled: boolean };
       const success = setAgentEnabled(req.params.name, enabled);
-      if (!success) return res.status(404).json({ message: "Agent not found" });
+      if (!success) return Errors.notFound(res, "Agent");
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -4404,7 +4404,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { tier, reason, expiresAt } = req.body;
-      if (!tier || !reason) return res.status(400).json({ message: "tier and reason are required" });
+      if (!tier || !reason) return Errors.badRequest(res, "tier and reason are required");
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const [updated] = await db.update(organizations)
@@ -4465,7 +4465,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { features } = req.body;
-      if (!features || typeof features !== "object") return res.status(400).json({ message: "features object required" });
+      if (!features || typeof features !== "object") return Errors.badRequest(res, "features object required");
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       await db.update(organizations)

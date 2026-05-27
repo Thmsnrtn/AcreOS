@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/call-routing/config', async (req: Request, res: Response) => {
     };
     res.json({ config });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -53,7 +54,7 @@ router.put('/call-routing/config', async (req: Request, res: Response) => {
     };
     res.json({ config, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -70,7 +71,7 @@ router.get('/call-routing/agents', async (req: Request, res: Response) => {
     const agents: any[] = [];
     res.json({ agents, organizationId: org.id, availableOnly: available === 'true' });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -92,7 +93,7 @@ router.patch('/call-routing/agents/:agentId/status', async (req: Request, res: R
     };
     res.json({ agent, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -116,7 +117,7 @@ router.get('/call-routing/queue', async (req: Request, res: Response) => {
     };
     res.json({ queue });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -145,7 +146,7 @@ router.post('/call-routing/route', async (req: Request, res: Response) => {
     };
     res.json({ routing, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -167,7 +168,7 @@ router.post('/call-routing/transfer', async (req: Request, res: Response) => {
     };
     res.json({ transfer, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 
@@ -196,7 +197,7 @@ router.get('/call-routing/stats', async (req: Request, res: Response) => {
     };
     res.json({ stats });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -212,7 +213,7 @@ router.get('/call-routing/skills', async (req: Request, res: Response) => {
     const skills: any[] = [];
     res.json({ skills, organizationId: org.id });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -232,7 +233,7 @@ router.post('/call-routing/skills', async (req: Request, res: Response) => {
     };
     res.status(201).json({ assignment, success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message ?? "Bad request");
   }
 });
 

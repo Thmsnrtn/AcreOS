@@ -32,6 +32,7 @@ import {
 } from "./jobs/autonomousTaskProcessor";
 import { executeAgentTask, type CoreAgentType } from "./services/core-agents";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 const CORE_AGENT_TYPES: CoreAgentType[] = ["research", "deals", "communications", "operations"];
 
@@ -102,7 +103,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       );
       res.json(statuses);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -113,13 +114,13 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const { type } = req.params;
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
-        return res.status(400).json({ message: "Invalid agent type" });
+        return Errors.badRequest(res, "Invalid agent type");
       }
 
       const status = await autonomousAgentEngine.getAgentStatus(org.id, type);
       res.json(status);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -130,12 +131,12 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const { type } = req.params;
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
-        return res.status(400).json({ message: "Invalid agent type" });
+        return Errors.badRequest(res, "Invalid agent type");
       }
 
       const parsed = autonomyConfigSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid config", errors: parsed.error.issues });
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       await autonomousAgentEngine.updateAgentConfig(org.id, type, {
@@ -150,7 +151,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const updated = await autonomousAgentEngine.getAgentStatus(org.id, type);
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -191,7 +192,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       res.json(tasks);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -215,7 +216,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       res.json(tasks);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -225,7 +226,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const org = req.organization;
       const parsed = queueTaskSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid task", errors: parsed.error.issues });
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const taskId = await queueAgentTask(
@@ -243,7 +244,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       res.status(201).json({ taskId, message: "Task queued for autonomous processing" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -263,7 +264,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         .limit(1);
 
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
 
       await approveEscalatedTask(taskId, user.id, notes);
@@ -273,7 +274,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       res.json({ message: "Task approved and queued for execution" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -292,13 +293,13 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         .limit(1);
 
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
 
       await rejectEscalatedTask(taskId, user.id, notes);
       res.json({ message: "Task rejected" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -317,11 +318,11 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         .limit(1);
 
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "Task");
       }
 
       if (!["pending", "failed"].includes(task.status)) {
-        return res.status(400).json({ message: `Cannot run task in status: ${task.status}` });
+        return Errors.badRequest(res, `Cannot run task in status: ${task.status}`);
       }
 
       const input = task.input as Record<string, any>;
@@ -364,7 +365,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       res.json({ result, executionTimeMs });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -375,7 +376,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       const org = req.organization;
       const parsed = evaluateActionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.issues });
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const { agentType, actionDescription, parameters } = parsed.data;
@@ -413,7 +414,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         ),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -425,7 +426,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       runOnce().catch(err => logger.error("[autonomous] Manual trigger failed", err));
       res.json({ message: "Processor triggered" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

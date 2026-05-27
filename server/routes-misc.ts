@@ -48,7 +48,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Acknowledge alert error", error);
-      res.status(400).json({ message: error.message || "Failed to acknowledge alert" });
+      Errors.badRequest(res, error.message ?? "Failed to acknowledge alert");
     }
   });
 
@@ -59,7 +59,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Dismiss alert error", error);
-      res.status(400).json({ message: error.message || "Failed to dismiss alert" });
+      Errors.badRequest(res, error.message ?? "Failed to dismiss alert");
     }
   });
 
@@ -89,7 +89,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json(signals);
     } catch (error: any) {
       logger.error("Analyze message error", error);
-      res.status(400).json({ message: error.message || "Failed to analyze message" });
+      Errors.badRequest(res, error.message ?? "Failed to analyze message");
     }
   });
 
@@ -106,7 +106,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.json({ response });
     } catch (error: any) {
       logger.error("Generate suggested response error", error);
-      res.status(400).json({ message: error.message || "Failed to generate response" });
+      Errors.badRequest(res, error.message ?? "Failed to generate response");
     }
   });
 
@@ -187,7 +187,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       res.status(201).json(job);
     } catch (error: any) {
       logger.error("Create automation job error", error);
-      res.status(400).json({ message: error.message || "Failed to create job" });
+      Errors.badRequest(res, error.message ?? "Failed to create job");
     }
   });
 
@@ -244,13 +244,13 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       );
       
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
       
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Save SMS config error", error);
-      res.status(400).json({ message: error.message || "Failed to save SMS configuration" });
+      Errors.badRequest(res, error.message ?? "Failed to save SMS configuration");
     }
   });
 
@@ -285,16 +285,16 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       if (matched) {
         const consent = canSendViaChannel(matched, "sms");
         if (!consent.allowed) {
-          return res.status(403).json({ message: `TCPA blocked: ${consent.reason}` });
+          return Errors.forbidden(res, `TCPA blocked: ${consent.reason}`);
         }
         const qh = isWithinQuietHoursForLead(matched as any, to);
         if (qh.blocked) {
-          return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+          return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
         }
       } else {
         const qh = isWithinQuietHours(to);
         if (qh.blocked) {
-          return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+          return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
         }
       }
 
@@ -326,7 +326,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             reason: `SMS send failed: ${result.error}`,
           });
         }
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
 
       // Surface the pool deduction so the client can update the gauge
@@ -341,7 +341,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       });
     } catch (error: any) {
       logger.error("Send SMS error", error);
-      res.status(400).json({ message: error.message || "Failed to send SMS" });
+      Errors.badRequest(res, error.message ?? "Failed to send SMS");
     }
   });
 
@@ -366,23 +366,23 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       );
       const consent = canSendViaChannel(lead, "sms");
       if (!consent.allowed) {
-        return res.status(403).json({ message: `TCPA blocked: ${consent.reason}` });
+        return Errors.forbidden(res, `TCPA blocked: ${consent.reason}`);
       }
       const qh = isWithinQuietHoursForLead(lead as any);
       if (qh.blocked) {
-        return res.status(403).json({ message: `TCPA quiet hours: ${qh.reason}` });
+        return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
       }
 
       const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id);
 
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
 
       res.json(result);
     } catch (error: any) {
       logger.error("Send SMS to lead error", error);
-      res.status(400).json({ message: error.message || "Failed to send SMS to lead" });
+      Errors.badRequest(res, error.message ?? "Failed to send SMS to lead");
     }
   });
 
@@ -590,9 +590,10 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // Validate job type
       const validTypes = ["email", "webhook", "payment_sync", "notification"];
       if (!validTypes.includes(type)) {
-        return res.status(400).json({ 
-          message: `Invalid job type. Supported types: ${validTypes.join(", ")}` 
-        });
+        return Errors.badRequest(
+          res,
+          `Invalid job type. Supported types: ${validTypes.join(", ")}`,
+        );
       }
       
       // Validate payload is provided

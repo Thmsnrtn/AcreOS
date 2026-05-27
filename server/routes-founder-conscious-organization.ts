@@ -21,6 +21,7 @@ import { ceoDecisionReplayService } from "./services/ceoDecisionReplayV10";
 import { resilienceTestingService } from "./services/resilienceTestingV10";
 import { realtimeNervousSystemService } from "./services/realtimeNervousSystemV10";
 import { adaptiveSurfaceService } from "./services/adaptiveSurfaceV10";
+import { Errors } from "./utils/errors";
 
 export function registerFounderV10Routes(app: Express) {
 
@@ -36,7 +37,7 @@ export function registerFounderV10Routes(app: Express) {
         parameters: req.body.parameters || {},
       });
       res.json(scenario);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get a specific scenario
@@ -44,7 +45,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const scenario = await scenarioWarRoomService.getById(parseInt(req.params.id));
       res.json(scenario || null);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get recent scenarios
@@ -53,7 +54,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "20"));
       const scenarios = await scenarioWarRoomService.getRecent(limit);
       res.json(scenarios);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get scenarios by type
@@ -61,7 +62,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const scenarios = await scenarioWarRoomService.getByType(req.params.type);
       res.json(scenarios);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Compare scenario prediction vs actual outcome
@@ -72,7 +73,7 @@ export function registerFounderV10Routes(app: Express) {
         req.body.actualOutcome,
       );
       res.json(comparison);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get outcome comparisons for a scenario
@@ -80,7 +81,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const comparisons = await scenarioWarRoomService.getComparisons(parseInt(req.params.id));
       res.json(comparisons);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Archive a scenario
@@ -88,7 +89,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       await scenarioWarRoomService.archive(parseInt(req.params.id));
       res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 2. Closed-Loop Learning Engine ────────────────────────────────────
@@ -104,7 +105,7 @@ export function registerFounderV10Routes(app: Express) {
         outcomeWindowDays: req.body.outcomeWindowDays,
       });
       res.json({ id });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Measure outcome against prediction
@@ -115,7 +116,7 @@ export function registerFounderV10Routes(app: Express) {
         { actualOutcome: req.body.actualOutcome, actualSuccess: req.body.actualSuccess },
       );
       res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get predictions awaiting outcome
@@ -124,7 +125,7 @@ export function registerFounderV10Routes(app: Express) {
       const agent = req.query.agent as string | undefined;
       const awaiting = await closedLoopLearningService.getAwaitingOutcome(agent);
       res.json(awaiting);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get overdue predictions
@@ -132,7 +133,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const overdue = await closedLoopLearningService.getOverduePredictions();
       res.json(overdue);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get calibration stats for all agents
@@ -140,7 +141,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const stats = await closedLoopLearningService.getAllCalibrationStats();
       res.json(stats);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get calibration stats for a specific agent
@@ -148,7 +149,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const stats = await closedLoopLearningService.getAgentCalibrationStats(req.params.agent);
       res.json(stats);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get recent learning propagations
@@ -157,7 +158,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "20"));
       const learnings = await closedLoopLearningService.getRecentLearnings(limit);
       res.json(learnings);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get learnings for a specific agent
@@ -165,7 +166,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const learnings = await closedLoopLearningService.getLearningsForAgent(req.params.agent);
       res.json(learnings);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get learning velocity
@@ -173,7 +174,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const velocity = await closedLoopLearningService.getLearningVelocity();
       res.json(velocity);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 3. Organizational Heartbeat Monitor ───────────────────────────────
@@ -184,7 +185,7 @@ export function registerFounderV10Routes(app: Express) {
       const type = req.body.type || "hourly";
       const snapshot = await orgHeartbeatService.takeSnapshot(type);
       res.json(snapshot);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get latest heartbeat
@@ -192,7 +193,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const latest = await orgHeartbeatService.getLatest();
       res.json(latest || null);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get recent heartbeat snapshots
@@ -201,7 +202,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "24"));
       const snapshots = await orgHeartbeatService.getRecent(limit);
       res.json(snapshots);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get health trend
@@ -210,7 +211,7 @@ export function registerFounderV10Routes(app: Express) {
       const days = parseInt(String(req.query.days || "7"));
       const trend = await orgHeartbeatService.getHealthTrend(days);
       res.json(trend);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get active anomalies
@@ -218,7 +219,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const anomalies = await orgHeartbeatService.getActiveAnomalies();
       res.json(anomalies);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 4. Agent Self-Calibration Protocol ────────────────────────────────
@@ -228,7 +229,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const calibrations = await agentSelfCalibrationService.runCalibrationCycle();
       res.json(calibrations);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Run AI-driven calibration for a specific agent
@@ -236,7 +237,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const calibration = await agentSelfCalibrationService.analyzeAndCalibrate(req.params.codename);
       res.json(calibration || { noCalibrationNeeded: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get pending calibrations
@@ -244,7 +245,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const pending = await agentSelfCalibrationService.getPending();
       res.json(pending);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get calibration history for an agent
@@ -252,7 +253,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const history = await agentSelfCalibrationService.getAgentHistory(req.params.codename);
       res.json(history);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get all recent calibrations
@@ -261,7 +262,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "30"));
       const calibrations = await agentSelfCalibrationService.getRecent(limit);
       res.json(calibrations);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Approve a calibration
@@ -269,7 +270,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       await agentSelfCalibrationService.approve(parseInt(req.params.id));
       res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Revert a calibration
@@ -277,7 +278,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       await agentSelfCalibrationService.revert(parseInt(req.params.id));
       res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 5. CEO Decision Replay + Bias Detection ──────────────────────────
@@ -293,7 +294,7 @@ export function registerFounderV10Routes(app: Express) {
         ceoChoice: req.body.ceoChoice,
       });
       res.json({ id });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Replay a decision with outcome data
@@ -304,7 +305,7 @@ export function registerFounderV10Routes(app: Express) {
         req.body.outcomeData,
       );
       res.json(replay);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get bias analysis
@@ -313,7 +314,7 @@ export function registerFounderV10Routes(app: Express) {
       const days = parseInt(String(req.query.days || "90"));
       const analysis = await ceoDecisionReplayService.analyzeBiases(days);
       res.json(analysis);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get decisions awaiting replay
@@ -321,7 +322,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const awaiting = await ceoDecisionReplayService.getAwaitingReplay();
       res.json(awaiting);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get recent replayed decisions
@@ -330,7 +331,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "20"));
       const replays = await ceoDecisionReplayService.getRecentReplays(limit);
       res.json(replays);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get decision quality trend
@@ -339,7 +340,7 @@ export function registerFounderV10Routes(app: Express) {
       const days = parseInt(String(req.query.days || "90"));
       const trend = await ceoDecisionReplayService.getQualityTrend(days);
       res.json(trend);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 6. Resilience & Chaos Testing ────────────────────────────────────
@@ -352,7 +353,7 @@ export function registerFounderV10Routes(app: Express) {
         req.body.params,
       );
       res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Run full resilience suite
@@ -360,7 +361,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const suite = await resilienceTestingService.runFullSuite();
       res.json(suite);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get recent resilience tests
@@ -369,7 +370,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "20"));
       const tests = await resilienceTestingService.getRecent(limit);
       res.json(tests);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get resilience tests by type
@@ -377,7 +378,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const tests = await resilienceTestingService.getByType(req.params.type);
       res.json(tests);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get latest resilience score
@@ -385,7 +386,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const score = await resilienceTestingService.getLatestScore();
       res.json(score || { score: 0, grade: "?", testCount: 0 });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 7. Real-Time Nervous System ──────────────────────────────────────
@@ -396,7 +397,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "50"));
       const events = await realtimeNervousSystemService.getRecentEvents(limit);
       res.json(events);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get events by type
@@ -404,7 +405,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const events = await realtimeNervousSystemService.getEventsByType(req.params.type);
       res.json(events);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get events for a specific agent
@@ -412,7 +413,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const events = await realtimeNervousSystemService.getAgentEvents(req.params.codename);
       res.json(events);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get event stats
@@ -421,7 +422,7 @@ export function registerFounderV10Routes(app: Express) {
       const hours = parseInt(String(req.query.hours || "24"));
       const stats = await realtimeNervousSystemService.getEventStats(hours);
       res.json(stats);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Start nervous system heartbeat
@@ -429,7 +430,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       realtimeNervousSystemService.startHeartbeat();
       res.json({ success: true, message: "Heartbeat started" });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Stop nervous system heartbeat
@@ -437,7 +438,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       realtimeNervousSystemService.stopHeartbeat();
       res.json({ success: true, message: "Heartbeat stopped" });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // ─── 8. Adaptive CEO Command Surface ──────────────────────────────────
@@ -447,7 +448,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const state = await adaptiveSurfaceService.detectContext();
       res.json(state);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get current surface state
@@ -455,7 +456,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const state = await adaptiveSurfaceService.getCurrent();
       res.json(state || { contextMode: "default", activeLayers: [], suppressedLayers: [] });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Force a specific surface mode
@@ -463,7 +464,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const state = await adaptiveSurfaceService.forceMode(req.body.mode, req.body.reason);
       res.json(state);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get surface context history
@@ -472,7 +473,7 @@ export function registerFounderV10Routes(app: Express) {
       const limit = parseInt(String(req.query.limit || "30"));
       const history = await adaptiveSurfaceService.getHistory(limit);
       res.json(history);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get available layers
@@ -480,7 +481,7 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const layers = adaptiveSurfaceService.getAvailableLayers();
       res.json(layers);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   // Get available modes
@@ -488,6 +489,6 @@ export function registerFounderV10Routes(app: Express) {
     try {
       const modes = adaptiveSurfaceService.getAvailableModes();
       res.json(modes);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { Errors.internal(res, err); }
   });
 }
