@@ -1691,7 +1691,7 @@ export async function registerRoutes(
     app.use('/api/scp/v2', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/notifications', isAuthenticated, getOrCreateOrg);
 
-    const { registerFounderV6Routes } = await import("./routes-founder-v6");
+    const { registerFounderV6Routes } = await import("./routes-founder-sovereign-company");
     registerFounderV6Routes(app);
     const { registerFounderV7Routes } = await import("./routes-founder-v7");
     registerFounderV7Routes(app);

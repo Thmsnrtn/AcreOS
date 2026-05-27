@@ -192,7 +192,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("Get playbooks error", { error: error.message });
-      res.status(500).json({ message: "Failed to get playbooks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -201,22 +201,22 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const { id } = req.params;
       const org = req.organization;
-      
+
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
       if (!template) {
-        return res.status(404).json({ message: "Playbook template not found" });
+        return Errors.notFound(res, "Playbook template");
       }
-      
+
       // Check for active instance
       const activeInstance = await storage.getPlaybookInstanceByTemplate(org.id, id);
-      
+
       res.json({
         template,
         activeInstance,
       });
     } catch (error: any) {
       logger.error("Get playbook error", { error: error.message });
-      res.status(500).json({ message: "Failed to get playbook" });
+      Errors.internal(res, error);
     }
   });
 
@@ -239,7 +239,7 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
       if (!template) {
-        return res.status(404).json({ message: "Playbook template not found" });
+        return Errors.notFound(res, "Playbook template");
       }
       
       // Check if there's already an active instance
@@ -274,7 +274,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json(instance);
     } catch (error: any) {
       logger.error("Start playbook error", { error: error.message });
-      res.status(500).json({ message: "Failed to start playbook" });
+      Errors.internal(res, new Error('Failed to start playbook'));
     }
   });
 
@@ -286,7 +286,7 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
-        return res.status(404).json({ message: "Playbook instance not found" });
+        return Errors.notFound(res, "Playbook instance");
       }
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === instance.templateId);
@@ -297,7 +297,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("Get playbook instance error", { error: error.message });
-      res.status(500).json({ message: "Failed to get playbook instance" });
+      Errors.internal(res, new Error('Failed to get playbook instance'));
     }
   });
 
@@ -309,18 +309,18 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
-        return res.status(404).json({ message: "Playbook instance not found" });
+        return Errors.notFound(res, "Playbook instance");
       }
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === instance.templateId);
       if (!template) {
-        return res.status(404).json({ message: "Playbook template not found" });
+        return Errors.notFound(res, "Playbook template");
       }
       
       // Verify step exists in template
       const step = template.steps.find((s: any) => s.id === stepId);
       if (!step) {
-        return res.status(404).json({ message: "Step not found in playbook" });
+        return Errors.notFound(res, "Step in playbook");
       }
       
       // Add step to completed steps if not already
@@ -360,7 +360,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json(updatedInstance);
     } catch (error: any) {
       logger.error("Complete step error", { error: error.message });
-      res.status(500).json({ message: "Failed to complete step" });
+      Errors.internal(res, new Error('Failed to complete step'));
     }
   });
 
@@ -372,7 +372,7 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
-        return res.status(404).json({ message: "Playbook instance not found" });
+        return Errors.notFound(res, "Playbook instance");
       }
       
       // Remove step from completed steps
@@ -387,7 +387,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json(updatedInstance);
     } catch (error: any) {
       logger.error("Uncomplete step error", { error: error.message });
-      res.status(500).json({ message: "Failed to uncomplete step" });
+      Errors.internal(res, new Error('Failed to uncomplete step'));
     }
   });
 
@@ -402,7 +402,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Delete playbook instance error", { error: error.message });
-      res.status(500).json({ message: "Failed to delete playbook instance" });
+      Errors.internal(res, new Error('Failed to delete playbook instance'));
     }
   });
   
@@ -731,7 +731,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("Get provider status error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to get provider status" });
+      Errors.internal(res, error);
     }
   });
   
@@ -744,7 +744,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json(seatInfo);
     } catch (error: any) {
       logger.error("Get seat info error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch seat info" });
+      Errors.internal(res, error);
     }
   });
   
@@ -789,7 +789,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("Get seat pricing error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch seat pricing" });
+      Errors.internal(res, error);
     }
   });
   
@@ -810,11 +810,12 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const tier = org.subscriptionTier || "free";
       if (tier === "free" || tier === "enterprise") {
-        return res.status(400).json({ 
-          message: tier === "free" 
-            ? "Upgrade to a paid plan first" 
-            : "Contact sales for enterprise seat additions"
-        });
+        return Errors.badRequest(
+          res,
+          tier === "free"
+            ? "Upgrade to a paid plan first"
+            : "Contact sales for enterprise seat additions",
+        );
       }
       
       const { getUncachableStripeClient } = await import("./stripeClient");
@@ -828,7 +829,7 @@ export function registerOrganizationRoutes(app: Express): void {
       
       const validPrice = prices.data.find((p) => p.recurring?.interval === interval);
       if (!validPrice) {
-        return res.status(400).json({ message: `Seat add-on pricing not available for ${tier} ${billingPeriod}` });
+        return Errors.badRequest(res, `Seat add-on pricing not available for ${tier} ${billingPeriod}`);
       }
       
       let customerId = org.stripeCustomerId;
@@ -866,7 +867,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json({ url: session.url });
     } catch (error: any) {
       logger.error("Purchase seats error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to create checkout session" });
+      Errors.internal(res, error);
     }
   });
   
@@ -880,7 +881,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const status = await onboardingService.getOnboardingStatus(org.id);
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -907,7 +908,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -934,7 +935,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -960,7 +961,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const result = await onboardingService.provisionTemplates(org.id, businessType as BusinessType);
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -970,7 +971,7 @@ export function registerOrganizationRoutes(app: Express): void {
       await onboardingService.completeOnboarding(org.id);
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -989,7 +990,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const tips = await onboardingService.generatePersonalizedTips(org.id, stepNumber);
       res.json({ tips });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -999,7 +1000,7 @@ export function registerOrganizationRoutes(app: Express): void {
       await onboardingService.resetOnboarding(org.id);
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1009,7 +1010,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const result = await onboardingService.generateSampleData(org.id);
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1019,7 +1020,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const result = await onboardingService.clearSampleData(org.id);
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1079,7 +1080,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const org = req.organization;
     const context = await getUserPermissionContext(req.user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return Errors.forbidden(res, "You are not a member of this organization");
     }
     res.json({
       userId: context.userId,
@@ -1112,15 +1113,15 @@ export function registerOrganizationRoutes(app: Express): void {
     const targetMember = members.find(m => m.id === memberId);
 
     if (!targetMember) {
-      return res.status(404).json({ message: "Team member not found" });
+      return Errors.notFound(res, "Team member");
     }
 
     if (targetMember.role === "owner" && context.role !== "owner") {
-      return res.status(403).json({ message: "Only the owner can change the owner's role" });
+      return Errors.forbidden(res, "Only the owner can change the owner's role");
     }
 
     if (role === "owner" && context.role !== "owner") {
-      return res.status(403).json({ message: "Only the owner can assign the owner role" });
+      return Errors.forbidden(res, "Only the owner can assign the owner role");
     }
 
     // Liana §1: admins can promote between member and va (and to viewer), but
@@ -1133,7 +1134,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
     const owners = members.filter(m => m.role === "owner");
     if (targetMember.role === "owner" && owners.length === 1 && role !== "owner") {
-      return res.status(400).json({ message: "Cannot remove the only owner. Transfer ownership first." });
+      return Errors.badRequest(res, "Cannot remove the only owner. Transfer ownership first.");
     }
 
     // When assigning the `va` role, default the assigned-leads-only flag on.
@@ -1459,7 +1460,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json(responseData);
     } catch (error: any) {
       logger.error("Team performance error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch team performance" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1509,7 +1510,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("Recent items fetch error", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to fetch recent items" });
+      Errors.internal(res, new Error('Failed to fetch recent items'));
     }
   });
 
@@ -1552,7 +1553,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
       res.json({ settings: updated.settings });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to update settings" });
+      Errors.internal(res, err);
     }
   });
 
@@ -2025,7 +2026,7 @@ export function registerOrganizationRoutes(app: Express): void {
       await db.execute(sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to remove subscription" });
+      Errors.internal(res, err);
     }
   });
 
@@ -2039,7 +2040,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const config = await getCommissionConfig(req.organization.id);
       res.json(config);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2062,7 +2063,7 @@ export function registerOrganizationRoutes(app: Express): void {
       await saveCommissionConfig(req.organization.id, parsed.data);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2073,7 +2074,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       res.json(summaries);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2090,7 +2091,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
       res.json(records);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2118,7 +2119,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.status(201).json(record);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2141,7 +2142,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2151,7 +2152,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       const summary = summaries.find(s => s.teamMemberId === parseInt(req.params.teamMemberId));
-      if (!summary) return res.status(404).json({ message: "Team member not found" });
+      if (!summary) return Errors.notFound(res, "Team member");
 
       const org = req.organization;
       const statement = generateCommissionStatement(summary, org.name || "Organization", year);
@@ -2163,7 +2164,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.send(statement);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
