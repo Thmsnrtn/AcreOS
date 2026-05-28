@@ -23,6 +23,14 @@ const STATEMENTS = [
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "deleted_by" text',
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "version" integer NOT NULL DEFAULT 1',
 
+  // 2026-05-27 — ATR (Ability-to-Repay) attestation columns. Schema
+  // defines these (shared/schema.ts) without a SQL migration; prod
+  // SELECT-* from notes started 500-ing on /api/dashboard/stats after
+  // the schema-split surfaced the drift. Idempotent ADDs; back-fill NULL.
+  'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "atr_determination" jsonb',
+  'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "atr_determination_completed" boolean DEFAULT false',
+  'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "atr_determination_completed_at" timestamp',
+
   // agent_llm_traces — added 2026-04 for action-replay. See
   // migrations/0027_agent_llm_traces.sql. Create table + indexes
   // idempotently so every agent LLM call can be audited.
