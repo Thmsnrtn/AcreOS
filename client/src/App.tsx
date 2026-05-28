@@ -527,7 +527,14 @@ function HomeRoute() {
 // status is loading we render PageLoader rather than the page itself
 // to avoid a flash of `/today` before the redirect resolves.
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { data: organization, isLoading } = useQuery<{ onboardingCompleted?: boolean } | null>({
+  const { isFounder } = useAuth();
+  const { data: organization, isLoading } = useQuery<{
+    onboardingCompleted?: boolean;
+    onboardingStep?: number;
+    onboardingData?: { businessType?: string };
+    settings?: { onboardingCompleted?: boolean };
+    createdAt?: string;
+  } | null>({
     queryKey: ["/api/organization"],
     queryFn: async () => {
       const res = await fetch("/api/organization", { credentials: "include" });
@@ -538,12 +545,36 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   });
 
   if (isLoading) return <PageLoader />;
+
+  // Founders never get force-onboarded — the persona-architecture rule.
+  if (isFounder) return <>{children}</>;
+
   // If we couldn't fetch the org (e.g. 401 during refresh) fall through
   // to the protected page — its own auth guard will handle the redirect.
-  if (organization && organization.onboardingCompleted !== true) {
-    return <Redirect to="/onboarding-v2" />;
+  if (!organization) return <>{children}</>;
+
+  // Pre-W5-7 users completed onboarding via the dialog wizard which
+  // doesn't reliably flip the top-level `onboardingCompleted` column.
+  // Honor any of the legacy completion signals so existing customers
+  // don't get force-redirected back to the wizard on every page load.
+  const completedSignals = [
+    organization.onboardingCompleted === true,
+    organization.settings?.onboardingCompleted === true,
+    (organization.onboardingStep ?? 0) > 0,
+    Boolean(organization.onboardingData?.businessType),
+  ];
+  if (completedSignals.some(Boolean)) return <>{children}</>;
+
+  // Brand-new account with no completion signal → route through the
+  // page-route wizard. Also bypass when the org is less than 60 seconds
+  // old to avoid a flash-redirect during the first-paint of a fresh
+  // signup that's still flipping settings server-side.
+  if (organization.createdAt) {
+    const ageMs = Date.now() - new Date(organization.createdAt).getTime();
+    if (ageMs < 60_000) return <>{children}</>;
   }
-  return <>{children}</>;
+
+  return <Redirect to="/onboarding-v2" />;
 }
 
 // ─── Router ─────────────────────────────────────────────────────────────────
