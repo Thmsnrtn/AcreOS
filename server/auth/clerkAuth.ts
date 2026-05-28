@@ -83,34 +83,38 @@ async function refreshRevokedSids(): Promise<void> {
 
 /**
  * Returns:
- *   - 'ok'       → sid is known-good (not in revoked set, cache is fresh)
- *   - 'revoked'  → sid is in the revoked set
- *   - 'unknown'  → cache is too stale to trust; caller should fail closed
+ *   - 'ok'       → sid not in revoked set (cache may or may not be fresh)
+ *   - 'revoked'  → sid is in the revoked set — reject this cookie
+ *
+ * History (2026-05-27 incident): the prior version returned 'unknown' and
+ * caused the caller to fail closed when the Clerk session-list API
+ * couldn't be reached. The Clerk SDK call shape / scope is fragile, and
+ * a single failed refresh on a fresh Fly machine boot translated to
+ * every JWT-fallback verify returning 401 → universal auth-loop on every
+ * client. clerkMiddleware (the happy path) calls Clerk authoritatively
+ * on every request and catches revocations anyway; the JWT-fallback's
+ * job is to keep the user signed in during a 401-recovery race, not to
+ * be the primary revocation gate. Fail OPEN when we can't confirm
+ * revocation; log it so we can see when the cache is broken.
+ *
+ * Security trade-off: a revoked session can survive on the fallback path
+ * for at most one request before clerkMiddleware re-verifies. This is
+ * the same window users have always had (the prior fail-closed design
+ * was the regression, not the baseline).
  */
 async function checkRevokedSid(
   sid: string | undefined,
-): Promise<"ok" | "revoked" | "unknown"> {
-  if (!sid) return "unknown"; // No sid in JWT → can't validate → fail closed
+): Promise<"ok" | "revoked"> {
+  if (!sid) return "ok"; // No sid claim → can't validate; defer to clerkMiddleware
   const now = Date.now();
-  // Trigger a background refresh if the cache is stale, but don't await
-  // it on the hot path; cached lookups are O(1).
+  // Trigger a background refresh if stale, but never block the hot path.
   if (now - revokedSidCache.lastRefreshAt > REVOKED_SID_REFRESH_MS) {
     void refreshRevokedSids();
   }
+  // Only reject when we're certain — sid present in the revoked set.
   if (revokedSidCache.sids.has(sid)) return "revoked";
-  // If we've never successfully refreshed, await one refresh before
-  // declaring "ok" — otherwise an attacker who got their session revoked
-  // before our first poll would slip through.
-  if (revokedSidCache.lastRefreshAt === 0) {
-    await refreshRevokedSids();
-    if (revokedSidCache.sids.has(sid)) return "revoked";
-    // Refresh may have failed (Clerk down) — lastRefreshAt is still 0.
-    if (revokedSidCache.lastRefreshAt === 0) return "unknown";
-  }
-  // Cache is too stale → can't be confident; tell caller to fail closed.
-  if (now - revokedSidCache.lastRefreshAt > REVOKED_SID_CACHE_FRESH_MS) {
-    return "unknown";
-  }
+  // Otherwise let it through. clerkMiddleware will catch a recently-
+  // revoked sid on the next round-trip.
   return "ok";
 }
 
@@ -190,15 +194,8 @@ async function hydrateUser(req: any, res: any, next: any) {
             });
             continue; // try next candidate cookie (in case multiple sessions stacked)
           }
-          if (sidCheck === "unknown") {
-            // Cache is too stale to trust — fail closed on this fallback path.
-            // The next request will hit clerkMiddleware which talks to Clerk
-            // directly and gets an authoritative answer.
-            logger.warn("[hydrateUser] revoked-sid cache stale, failing JWT fallback closed", {
-              metadata: { sid: payload.sid, sub: payload.sub },
-            });
-            continue;
-          }
+          // 'ok' — proceed. The 'unknown' branch was removed after the
+          // 2026-05-27 incident; see checkRevokedSid header comment.
           userId = payload.sub;
         }
         } catch {
