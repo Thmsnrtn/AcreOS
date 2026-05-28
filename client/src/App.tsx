@@ -527,69 +527,31 @@ function HomeRoute() {
 // status is loading we render PageLoader rather than the page itself
 // to avoid a flash of `/today` before the redirect resolves.
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { isFounder } = useAuth();
-  const { data: organization, isLoading } = useQuery<{
-    onboardingCompleted?: boolean;
-    onboardingStep?: number;
-    onboardingData?: { businessType?: string };
-    settings?: { onboardingCompleted?: boolean };
-    createdAt?: string;
-  } | null>({
-    queryKey: ["/api/organization"],
-    queryFn: async () => {
-      const res = await fetch("/api/organization", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
+  // Server is the source of truth — `/api/me/needs-onboarding` returns
+  // a single boolean that consolidates founder-bypass + legacy-completion
+  // signals + canonical column read. Migration 0098 backfilled
+  // organizations.onboarding_completed for every legacy customer, so the
+  // server answer is now accurate.
+  //
+  // History (pre-2026-05-27): an earlier version of this gate read
+  // /api/organization directly and OR'd four completion fields client-side
+  // because the legacy dialog wizard wrote to three different columns.
+  // It ran on every /today render, false-redirected every legacy user
+  // (including the founder), and shipped with a ?bypass-onboarding=1
+  // escape valve we needed twice on the day it shipped. Replaced with
+  // this 5-line version after the migration consolidated the data.
+  const { data, isLoading, error } = useQuery<{ needsOnboarding: boolean }>({
+    queryKey: ["/api/me/needs-onboarding"],
     staleTime: 60_000,
   });
 
   if (isLoading) return <PageLoader />;
-
-  // Hard escape valve — `?bypass-onboarding=1` skips the gate entirely
-  // for the rest of the session. Useful when a legacy completion signal
-  // is mis-shaped or this code itself has a latent bug. Tom can paste
-  // /today?bypass-onboarding=1 in a stuck state and unblock himself
-  // without waiting on a deploy.
-  if (typeof window !== "undefined") {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("bypass-onboarding") === "1") {
-      sessionStorage.setItem("acreos:bypass-onboarding-gate", "1");
-    }
-    if (sessionStorage.getItem("acreos:bypass-onboarding-gate") === "1") {
-      return <>{children}</>;
-    }
-  }
-
-  // Founders never get force-onboarded — the persona-architecture rule.
-  if (isFounder) return <>{children}</>;
-
-  // If we couldn't fetch the org (e.g. 401 during refresh) fall through
-  // to the protected page — its own auth guard will handle the redirect.
-  if (!organization) return <>{children}</>;
-
-  // Pre-W5-7 users completed onboarding via the dialog wizard which
-  // doesn't reliably flip the top-level `onboardingCompleted` column.
-  // Honor any of the legacy completion signals so existing customers
-  // don't get force-redirected back to the wizard on every page load.
-  const completedSignals = [
-    organization.onboardingCompleted === true,
-    organization.settings?.onboardingCompleted === true,
-    (organization.onboardingStep ?? 0) > 0,
-    Boolean(organization.onboardingData?.businessType),
-  ];
-  if (completedSignals.some(Boolean)) return <>{children}</>;
-
-  // Brand-new account with no completion signal → route through the
-  // page-route wizard. Also bypass when the org is less than 60 seconds
-  // old to avoid a flash-redirect during the first-paint of a fresh
-  // signup that's still flipping settings server-side.
-  if (organization.createdAt) {
-    const ageMs = Date.now() - new Date(organization.createdAt).getTime();
-    if (ageMs < 60_000) return <>{children}</>;
-  }
-
-  return <Redirect to="/onboarding-v2" />;
+  // If the endpoint failed (network, 401 during refresh, etc.) fall
+  // through to render the page — its own auth guard handles the real
+  // redirect. Never force-bounce a user into a wizard from an error path.
+  if (error || !data) return <>{children}</>;
+  if (data.needsOnboarding) return <Redirect to="/onboarding-v2" />;
+  return <>{children}</>;
 }
 
 // ─── Router ─────────────────────────────────────────────────────────────────
