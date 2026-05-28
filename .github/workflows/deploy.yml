@@ -109,7 +109,7 @@ jobs:
           echo "MIGRATION_COUNT=$MIGRATION_COUNT" >> $GITHUB_ENV
 
       - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only --wait-timeout 300
+        run: flyctl deploy --remote-only --wait-timeout 300 --build-arg GIT_SHA=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 

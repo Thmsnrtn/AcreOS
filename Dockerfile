@@ -5,6 +5,13 @@
 # ──────────────────────────────────────────────
 
 ARG NODE_VERSION=22.21.1
+# Deploy-time git SHA. Flows into VITE_GIT_SHA so (1) vite bakes it into the
+# client bundle at build and (2) the runtime server reports it at /api/version
+# and injects it into window.__ENV__. The version-check self-heal compares the
+# two — when a new deploy changes the SHA, every open tab reloads itself onto
+# the new build with no manual cache clearing. Defaults to "unknown" for local
+# builds that don't pass it.
+ARG GIT_SHA=unknown
 FROM node:${NODE_VERSION}-slim AS base
 
 LABEL fly_launch_runtime="Node.js"
@@ -14,6 +21,11 @@ ENV NODE_ENV="production"
 
 # --- Build stage ---
 FROM base AS build
+
+# Re-declare to bring the global ARG into this stage's scope, then expose it
+# as VITE_GIT_SHA so `vite build` bakes it into the client bundle.
+ARG GIT_SHA
+ENV VITE_GIT_SHA=${GIT_SHA}
 
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
@@ -27,6 +39,11 @@ RUN npm prune --omit=dev --legacy-peer-deps
 
 # --- Production stage ---
 FROM base
+
+# Re-declare so the runtime server (process.env.VITE_GIT_SHA) reports the same
+# SHA the client bundle was built with — /api/version and window.__ENV__.
+ARG GIT_SHA
+ENV VITE_GIT_SHA=${GIT_SHA}
 
 # Chromium for puppeteer-core (browser automation features) +
 # gh CLI + git for Rosy River C3 — the evolution pipeline opens PRs via `gh`

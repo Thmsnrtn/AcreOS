@@ -81,6 +81,11 @@ function buildRuntimeEnvPayload(): string {
   if (process.env.VITE_MAPBOX_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_TOKEN;
   if (process.env.VITE_MAPBOX_ACCESS_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_ACCESS_TOKEN;
   if (process.env.VITE_SENTRY_DSN) cfg.VITE_SENTRY_DSN = process.env.VITE_SENTRY_DSN;
+  // Deploy SHA — lets version-check.ts read the running build's SHA from
+  // window.__ENV__ even when vite didn't bake VITE_GIT_SHA into the bundle.
+  // Without a real SHA here, installVersionCheck() no-ops and stale tabs
+  // never auto-reload (the cache-clearing pain users hit).
+  if (process.env.VITE_GIT_SHA) cfg.VITE_GIT_SHA = process.env.VITE_GIT_SHA;
   if (Object.keys(cfg).length === 0) return "";
   return JSON.stringify(cfg).replace(/</g, "\\u003c");
 }
