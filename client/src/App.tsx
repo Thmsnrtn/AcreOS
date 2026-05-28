@@ -546,6 +546,21 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 
   if (isLoading) return <PageLoader />;
 
+  // Hard escape valve — `?bypass-onboarding=1` skips the gate entirely
+  // for the rest of the session. Useful when a legacy completion signal
+  // is mis-shaped or this code itself has a latent bug. Tom can paste
+  // /today?bypass-onboarding=1 in a stuck state and unblock himself
+  // without waiting on a deploy.
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("bypass-onboarding") === "1") {
+      sessionStorage.setItem("acreos:bypass-onboarding-gate", "1");
+    }
+    if (sessionStorage.getItem("acreos:bypass-onboarding-gate") === "1") {
+      return <>{children}</>;
+    }
+  }
+
   // Founders never get force-onboarded — the persona-architecture rule.
   if (isFounder) return <>{children}</>;
 

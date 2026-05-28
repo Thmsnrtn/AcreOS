@@ -1,11 +1,9 @@
-// Bumped to v12 for the persona-mobile push (2026-05-26 evening): the
-// new mobile shell rolls out persona-aware Today/Portfolio tabs for
-// 3 priority personas + a mobile redemption-clock card view, and
-// /api/auction-listings + /api/conversations join the offline-queue
-// list so CourthouseMode bids and Inbox swipes survive a connection
-// drop. Forces eviction of v11 so every client picks up the new shell
-// + offline-routing on next page load.
-const CACHE_NAME = 'acreos-v12';
+// Bumped to v13 for the auth-loop hotfix (2026-05-27): W5-7's OnboardingGate
+// was redirecting legacy users to /onboarding-v2 on every page load because
+// it only checked the new `onboardingCompleted` column and not the legacy
+// signals. Force-evict v12 caches so every client picks up the patched
+// App.tsx with the four-signal legacy-completion bypass.
+const CACHE_NAME = 'acreos-v13';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
