@@ -209,7 +209,7 @@ class StrategicCompassV8Service {
           { role: "system", content: "Analyze business data to suggest mode changes. Modes: growth, efficiency, crisis, exploration, balanced. Only suggest if clear evidence." },
           { role: "user", content: `Current mode: ${compass.mode}\nData: ${JSON.stringify(data)}\nRespond JSON: { "shouldSwitch": boolean, "suggestedMode": "...", "reason": "...", "confidence": "low|medium|high" }` },
         ],
-        responseFormat: { type: "json_object" }, temperature: 0.3,
+        responseFormat: "json", temperature: 0.3,
       });
       const parsed = JSON.parse(response.content);
       return parsed.shouldSwitch ? { suggestedMode: parsed.suggestedMode, reason: parsed.reason, confidence: parsed.confidence } : null;

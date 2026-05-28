@@ -77,7 +77,7 @@ router.patch("/match/:matchId", isAuthenticated, getOrCreateOrg, async (req: Req
     const matchId = parseInt(req.params.matchId);
     if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     const { outcome, helpedClose } = req.body;
-    await dealPatternCloningService.updateMatchOutcome(matchId, { outcome, helpedClose });
+    await dealPatternCloningService.updateMatchOutcome(matchId, String(outcome), !!helpedClose);
     res.json({ success: true });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");

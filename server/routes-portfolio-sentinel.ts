@@ -94,7 +94,10 @@ router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Req
     const user = getUser(req);
     const alertId = parseInt(req.params.id);
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
-    const alert = await portfolioSentinelService.acknowledgeAlert(alertId, user.id);
+    // acknowledgeAlert writes to portfolio_alerts.acknowledged_by (integer).
+    // TODO(tsc): user.id is a string user id; the column/service expect a
+    // numeric id — needs a schema reconciliation.
+    const alert = await portfolioSentinelService.acknowledgeAlert(alertId, Number(user.id));
     if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {

@@ -5,7 +5,7 @@ import {
   satelliteSnapshots,
   properties 
 } from '../../shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
@@ -93,10 +93,10 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
         photoQuality: analysis.photoQuality,
         isUsableForMarketing: analysis.isUsableForMarketing,
         aiDescription: analysis.aiDescription,
-        estimatedAcreageVisible: analysis.estimatedAcreageVisible,
-        vegetationDensity: analysis.vegetationDensity,
+        estimatedAcreageVisible: analysis.estimatedAcreageVisible != null ? String(analysis.estimatedAcreageVisible) : null,
+        vegetationDensity: String(analysis.vegetationDensity),
         modelVersion: 'gpt-4-vision-preview',
-        confidence: analysis.confidence,
+        confidence: String(analysis.confidence),
       }).returning();
 
       // Update photo to mark as analyzed
@@ -220,8 +220,8 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
         // Buildings can be good or bad depending on context
         if (a.buildingDetected) score += 10;
 
-        // Confidence
-        score += (a.confidence / 100) * 20;
+        // Confidence (stored as numeric → string|null)
+        score += ((Number(a.confidence) || 0) / 100) * 20;
 
         return { ...a, score };
       });
@@ -261,7 +261,7 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
       }
 
       // Combine descriptions
-      const descriptions = analyses.map(a => a.aiDescription).filter(d => d);
+      const descriptions = analyses.map(a => a.aiDescription).filter((d): d is string => !!d);
 
       // Use GPT-4 to synthesize a cohesive description
       const prompt = `Based on these descriptions of a land property from multiple photos, create a single cohesive, compelling property description (3-4 sentences) suitable for a real estate listing:
@@ -304,9 +304,9 @@ Create a flowing description that highlights the best features without repeating
         propertyId,
         imageUrl,
         provider,
-        resolution: 1.0, // meters per pixel (approximate for Google Maps)
+        resolution: "1.0", // meters per pixel (approximate for Google Maps)
         captureDate: new Date(),
-        cloudCoverage: 0, // Would be detected from image
+        cloudCoverage: "0", // Would be detected from image
         changeDetected: false,
       }).returning();
 
@@ -553,8 +553,8 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
         if (analysis.waterDetected) hasWater = true;
         if (analysis.buildingDetected) hasBuildings = true;
 
-        // Vegetation
-        totalVegetation += analysis.vegetationDensity;
+        // Vegetation (stored as numeric → string|null)
+        totalVegetation += Number(analysis.vegetationDensity) || 0;
 
         // Marketing
         if (analysis.isUsableForMarketing) marketingReady++;

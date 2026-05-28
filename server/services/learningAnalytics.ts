@@ -39,7 +39,7 @@ export class LearningAnalyticsService {
 
     const lastActivityDate = enrollments
       .filter(e => e.lastAccessedAt)
-      .map(e => new Date(e.lastAccessedAt))
+      .map(e => new Date(e.lastAccessedAt!))
       .sort((a, b) => b.getTime() - a.getTime())[0];
 
     const daysSinceLastActivity = lastActivityDate
@@ -93,7 +93,7 @@ export class LearningAnalyticsService {
 
     // Find courses where student is stuck (low progress, enrolled > 14 days)
     const stuckEnrollments = enrollments.filter(e => {
-      const daysEnrolled = (Date.now() - new Date(e.createdAt).getTime()) / (24 * 3600 * 1000);
+      const daysEnrolled = (Date.now() - new Date(e.createdAt ?? Date.now()).getTime()) / (24 * 3600 * 1000);
       return !e.isCompleted && parseFloat(e.progressPercentage || "0") < 30 && daysEnrolled > 14;
     });
 
@@ -111,7 +111,7 @@ export class LearningAnalyticsService {
       const modules = await db.select()
         .from(courseModules)
         .where(eq(courseModules.courseId, enrollment.courseId))
-        .orderBy(courseModules.order);
+        .orderBy(courseModules.sortOrder);
 
       const completedIds = (enrollment.completedModules as number[]) || [];
       const nextModule = modules.find(m => !completedIds.includes(m.id));
@@ -223,7 +223,7 @@ export class LearningAnalyticsService {
     const riskFactors: string[] = [];
     let riskScore = 0;
 
-    const daysEnrolled = (Date.now() - new Date(enrollment.createdAt).getTime()) / (24 * 3600 * 1000);
+    const daysEnrolled = (Date.now() - new Date(enrollment.createdAt ?? Date.now()).getTime()) / (24 * 3600 * 1000);
     const progress = parseFloat(enrollment.progressPercentage || "0");
     const lastAccessed = enrollment.lastAccessedAt ? new Date(enrollment.lastAccessedAt) : null;
     const daysSinceAccess = lastAccessed

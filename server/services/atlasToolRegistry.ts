@@ -12,9 +12,22 @@
  */
 
 import { db } from "../db";
-import { atlasToolUsage } from "@shared/schema";
 import { eq, and, gte, count, desc, sql } from "drizzle-orm";
+import { pgTable, serial, integer, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { toolDefinitions } from "../ai/tools";
+
+// TODO(tsc): `atlas_tool_usage` is referenced here but was never added to the frozen
+// shared schema. Defined locally to match the columns this service reads/writes so the
+// runtime SQL is unchanged; migrate this definition into shared/schema when unfrozen.
+const atlasToolUsage = pgTable("atlas_tool_usage", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: integer("user_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  success: boolean("success").notNull(),
+  usedAt: timestamp("used_at").notNull().defaultNow(),
+});
 
 export interface ToolRegistryEntry {
   name: string;

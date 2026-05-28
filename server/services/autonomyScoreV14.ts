@@ -471,7 +471,7 @@ class AutonomyScoreService {
         const secondHalf = scores.slice(0, Math.floor(scores.length / 2));
         const firstAvg = firstHalf.length > 0 ? firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length : 0;
         const secondAvg = secondHalf.length > 0 ? secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length : 0;
-        const trend = secondAvg - firstAvg > 3 ? "improving" : secondAvg - firstAvg < -3 ? "declining" : "stable";
+        const trend: "improving" | "stable" | "declining" = secondAvg - firstAvg > 3 ? "improving" : secondAvg - firstAvg < -3 ? "declining" : "stable";
         return {
           agent,
           autonomyPct,
@@ -522,7 +522,7 @@ class AutonomyScoreService {
         const mid = Math.floor(scores.length / 2);
         const firstAvg = scores.slice(mid).reduce((a, b) => a + b, 0) / (scores.length - mid || 1);
         const secondAvg = scores.slice(0, mid).reduce((a, b) => a + b, 0) / (mid || 1);
-        const trend = secondAvg - firstAvg > 3 ? "improving" : secondAvg - firstAvg < -3 ? "declining" : "stable";
+        const trend: "improving" | "stable" | "declining" = secondAvg - firstAvg > 3 ? "improving" : secondAvg - firstAvg < -3 ? "declining" : "stable";
         return { category, autonomyPct, totalDecisions: stats.total, founderRequired, avgLatencyMs: 0, trend };
       })
       .sort((a, b) => a.autonomyPct - b.autonomyPct);

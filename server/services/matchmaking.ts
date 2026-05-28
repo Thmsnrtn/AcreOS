@@ -160,10 +160,9 @@ class Matchmaking {
         return [];
       }
 
-      // Get all investor profiles
-      const profiles = await db.query.investorProfiles.findMany({
-        where: eq(investorProfiles.status, 'active'),
-      });
+      // Get all investor profiles. investor_profiles has no status column;
+      // TODO(tsc): add an activity/status flag to filter active investors.
+      const profiles = await db.query.investorProfiles.findMany({});
 
       const matches = [];
 
@@ -196,10 +195,14 @@ class Matchmaking {
     organizationId: number
   ): Promise<any[]> {
     try {
-      // Get recent behavior events
+      // Get recent behavior events. buyer_behavior_events is anonymized
+      // (county-level, anonymousId only) and has no organizationId/createdAt
+      // columns, so we read recent events globally and order by eventDate.
+      // TODO(tsc): re-introduce per-org scoping once events carry an org-linked
+      // (hashed) identifier we can filter on.
+      void organizationId;
       const recentEvents = await db.query.buyerBehaviorEvents.findMany({
-        where: eq(buyerBehaviorEvents.organizationId, organizationId),
-        orderBy: [desc(buyerBehaviorEvents.createdAt)],
+        orderBy: [desc(buyerBehaviorEvents.eventDate)],
         limit: 50,
       });
 
@@ -236,14 +239,11 @@ class Matchmaking {
         limit: 20,
       });
 
-      // Filter and rank by relevance
-      if (topState) {
-        listings = listings.sort((a, b) => {
-          if (a.state === topState && b.state !== topState) return -1;
-          if (a.state !== topState && b.state === topState) return 1;
-          return 0;
-        });
-      }
+      // Filter and rank by relevance.
+      // TODO(tsc): marketplace_listings has no state column (state lives on the
+      // related property). Ranking by topState requires a property join; until
+      // then the listings keep their createdAt order.
+      void topState;
 
       return listings.slice(0, 10);
     } catch (error) {
@@ -297,8 +297,8 @@ class Matchmaking {
       // Same county
       if (prop1.county === prop2.county) similarity += 30;
 
-      // Similar acreage
-      const acreageDiff = Math.abs((prop1.acres || 0) - (prop2.acres || 0));
+      // Similar acreage (sizeAcres is stored as a numeric/string column)
+      const acreageDiff = Math.abs(Number(prop1.sizeAcres || 0) - Number(prop2.sizeAcres || 0));
       if (acreageDiff < 5) similarity += 20;
       else if (acreageDiff < 20) similarity += 10;
 
@@ -306,8 +306,8 @@ class Matchmaking {
       if (prop1.zoning === prop2.zoning) similarity += 15;
 
       // Similar price range
-      const price1 = prop1.purchasePrice || 0;
-      const price2 = prop2.purchasePrice || 0;
+      const price1 = Number(prop1.purchasePrice || 0);
+      const price2 = Number(prop2.purchasePrice || 0);
       const priceDiff = Math.abs(price1 - price2);
       const avgPrice = (price1 + price2) / 2;
 

@@ -42,7 +42,7 @@ export async function hasListingPriceChanged(listingId: number): Promise<{ chang
     .limit(1);
 
   if (priceChanges.length > 0) {
-    const change = priceChanges[0].details as any;
+    const change = priceChanges[0].changes as any;
     return { changed: true, previousPrice: change?.previousPrice, currentPrice: change?.newPrice };
   }
   return { changed: false };

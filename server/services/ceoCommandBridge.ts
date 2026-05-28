@@ -216,7 +216,7 @@ Respond: {"category": "...", "params": {...}}`,
         },
         { role: "user", content: input },
       ],
-      responseFormat: { type: "json_object" },
+      responseFormat: "json",
       temperature: 0.1,
     });
 
@@ -411,17 +411,20 @@ async function handleCustomerStatus(params: any): Promise<CommandResult> {
   // Get churn risk
   const risk = await db.select()
     .from(churnRiskScores)
-    .where(eq(churnRiskScores.orgId, org.id))
-    .orderBy(desc(churnRiskScores.calculatedAt))
+    .where(eq(churnRiskScores.organizationId, org.id))
+    .orderBy(desc(churnRiskScores.scoredAt))
     .limit(1);
 
   const riskScore = risk[0]?.riskScore || "unknown";
-  const lastLogin = org.lastLoginAt ? new Date(org.lastLoginAt).toLocaleDateString() : "never";
+  // TODO(tsc): organizations has no lastLoginAt column; derive last activity from the
+  // churn score's daysSinceLastActive when available.
+  const daysSinceActive = risk[0]?.daysSinceLastActive;
+  const lastLogin = daysSinceActive != null ? `${daysSinceActive}d ago` : "never";
 
   return {
     understood: true,
     action: "customer_status",
-    result: `${org.name}: Churn risk ${riskScore}/100. Last login: ${lastLogin}. Plan: ${org.plan || "unknown"}.`,
+    result: `${org.name}: Churn risk ${riskScore}/100. Last login: ${lastLogin}. Plan: ${org.subscriptionTier || "unknown"}.`,
     data: { orgId: org.id, name: org.name, riskScore, lastLogin },
   };
 }

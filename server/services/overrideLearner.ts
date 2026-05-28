@@ -68,7 +68,7 @@ CEO's notes: ${context.ceoOverrideNotes || "No notes provided"}
 What should the agent learn from this rejection?`,
         },
       ],
-      responseFormat: { type: "json_object" },
+      responseFormat: "json",
       temperature: 0.2,
     });
 

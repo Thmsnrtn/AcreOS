@@ -12,7 +12,7 @@ import {
   outcomeVerificationContracts,
   type OutcomeVerificationContract,
 } from "@shared/schema";
-import { eq, desc, and, lte, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, lte, gte, sql, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 // ─── Verification Method Registry ─────────────────────────────────────────────
@@ -56,7 +56,7 @@ async function verifyEmailDelivery(config: Record<string, any>): Promise<Verific
     const [action] = await db.select()
       .from(agentActionLog)
       .where(and(
-        sql`${agentActionLog.actionInput}->>'emailId' = ${emailId}`,
+        sql`${agentActionLog.input}->>'emailId' = ${emailId}`,
         sql`${agentActionLog.actionName} ILIKE '%email%'`,
       ))
       .orderBy(desc(agentActionLog.createdAt))
@@ -141,13 +141,13 @@ async function verifyPaymentStatus(config: Record<string, any>): Promise<Verific
     // Check deals table for payment/deal status
     const { deals } = await import("@shared/schema");
     if (config.dealId) {
-      const [deal] = await db.select({ stage: deals.stage, status: deals.status })
+      const [deal] = await db.select({ status: deals.status })
         .from(deals)
         .where(eq(deals.id, parseInt(String(config.dealId), 10)))
         .limit(1);
 
       if (deal) {
-        const actualStatus = deal.status ?? deal.stage ?? "unknown";
+        const actualStatus = deal.status ?? "unknown";
         const isExpected = actualStatus.toLowerCase().includes(expectedStatus.toLowerCase());
         return {
           verified: isExpected,
@@ -162,7 +162,7 @@ async function verifyPaymentStatus(config: Record<string, any>): Promise<Verific
     const [action] = await db.select()
       .from(agentActionLog)
       .where(and(
-        sql`${agentActionLog.actionInput}->>'paymentId' = ${String(paymentId)}`,
+        sql`${agentActionLog.input}->>'paymentId' = ${String(paymentId)}`,
         eq(agentActionLog.outcome, "success"),
       ))
       .orderBy(desc(agentActionLog.createdAt))
@@ -233,7 +233,7 @@ async function verifyApiResponse(config: Record<string, any>): Promise<Verificat
     const [execution] = await db.select()
       .from(integrationExecutionLog)
       .where(sql`${integrationExecutionLog.endpoint} = ${endpoint}`)
-      .orderBy(desc(integrationExecutionLog.executedAt))
+      .orderBy(desc(integrationExecutionLog.createdAt))
       .limit(1);
 
     if (execution) {

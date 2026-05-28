@@ -4,7 +4,7 @@
  */
 
 import { db } from "../db";
-import { organizations, deals, notes, payments } from "@shared/schema";
+import { organizations, deals, notes, payments, properties } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 
 // Item 189: Push notification payload for seller responses
@@ -40,16 +40,22 @@ export async function getWidgetData(orgId: number): Promise<{
   unreadMessages: number;
 }> {
   const { dailyDealFeed } = await import("@shared/schema");
-  const [top] = await db.select()
+  const [feed] = await db.select()
     .from(dailyDealFeed)
     .where(eq(dailyDealFeed.organizationId, orgId))
-    .orderBy(desc(dailyDealFeed.compositeScore))
+    .orderBy(desc(dailyDealFeed.generatedAt))
     .limit(1);
 
+  // compositeScore/acreage/county live inside the opportunities jsonb, not as
+  // top-level columns. Pick the highest-composite opportunity from the feed.
+  const topOpp = feed?.opportunities
+    ?.slice()
+    .sort((a, b) => (b.scores?.composite ?? 0) - (a.scores?.composite ?? 0))[0];
+
   return {
-    topOpportunity: top ? {
-      title: `${top.acreage || 0} ac in ${top.county || "Unknown"}`,
-      score: top.compositeScore || 0,
+    topOpportunity: topOpp ? {
+      title: `${topOpp.parcel?.acreage || 0} ac in ${topOpp.parcel?.county || "Unknown"}`,
+      score: topOpp.scores?.composite || 0,
     } : null,
     pendingTasks: 0,
     unreadMessages: 0,
@@ -65,10 +71,10 @@ export async function getOfflineCacheManifest(orgId: number, counties: string[])
   let totalCount = 0;
   for (const county of counties) {
     const [result] = await db.select({ count: sql<number>`COUNT(*)` })
-      .from(db.schema.properties)
+      .from(properties)
       .where(and(
-        eq(db.schema.properties.organizationId, orgId),
-        sql`LOWER(${db.schema.properties.county}) = LOWER(${county})`,
+        eq(properties.organizationId, orgId),
+        sql`LOWER(${properties.county}) = LOWER(${county})`,
       ));
     totalCount += Number(result?.count || 0);
   }

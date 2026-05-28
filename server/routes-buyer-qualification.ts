@@ -27,13 +27,16 @@ const router = Router();
 router.post("/start", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { buyerName, email, phone, dealId } = req.body;
-    if (!buyerName || !email) {
-      return Errors.badRequest(res, "buyerName and email are required");
+    // startQualification(organizationId, buyerProfileId). The service operates
+    // on an existing buyer profile, not raw buyer details.
+    const { buyerProfileId } = req.body;
+    const profileId = Number(buyerProfileId);
+    if (!Number.isFinite(profileId)) {
+      return Errors.badRequest(res, "buyerProfileId is required");
     }
     const qualification = await buyerQualificationBotService.startQualification(
       org.id,
-      { buyerName, email, phone, dealId }
+      profileId
     );
     res.status(201).json({ qualification });
   } catch (err: any) {
@@ -141,7 +144,10 @@ router.get("/:id/probability", isAuthenticated, getOrCreateOrg, async (req: Requ
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
-    const probability = await buyerQualificationBotService.estimateClosingProbability(id);
+    // estimateClosingProbability(buyerProfileId, propertyId)
+    const propertyId = parseInt(String(req.query.propertyId));
+    if (isNaN(propertyId)) return Errors.badRequest(res, "propertyId query param is required");
+    const probability = await buyerQualificationBotService.estimateClosingProbability(id, propertyId);
     res.json({ probability });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -153,9 +159,10 @@ router.patch("/:id/status", isAuthenticated, getOrCreateOrg, async (req: Request
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
-    const { status, notes } = req.body;
+    const { status } = req.body;
     if (!status) return Errors.badRequest(res, "status is required");
-    const qualification = await buyerQualificationBotService.updateQualificationStatus(id, status, notes);
+    // updateQualificationStatus(qualificationId, status) — notes not accepted.
+    const qualification = await buyerQualificationBotService.updateQualificationStatus(id, status);
     if (!qualification) return Errors.notFound(res, "Qualification");
     res.json({ qualification });
   } catch (err: any) {

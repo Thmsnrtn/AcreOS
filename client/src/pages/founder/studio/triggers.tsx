@@ -85,7 +85,7 @@ export default function FounderStudioTriggers() {
     },
   });
 
-  if (isLoading || !draft) {
+  if (isLoading || !draft || !data) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-12 w-full" />

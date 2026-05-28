@@ -195,7 +195,7 @@ export const decisionsInboxService = {
     });
 
     const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-    if (!toolCall) return null;
+    if (!toolCall || toolCall.type !== "function") return null;
 
     const analysis = JSON.parse(toolCall.function.arguments);
 

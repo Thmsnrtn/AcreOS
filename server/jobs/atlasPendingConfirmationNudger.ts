@@ -56,7 +56,8 @@ export async function runNudgePass(now = new Date()): Promise<number> {
   let pushed = 0;
   for (const row of candidates) {
     try {
-      await sendPushToUser(row.founderUserId, {
+      // Founder push is platform-scoped (org 0), matching founderChatBackgroundTaskRunner.
+      await sendPushToUser(0, row.founderUserId, {
         title: "Atlas needs your approval",
         body: `Pending: ${row.toolName}`,
         url: `/founder?thread=${row.threadId}&confirm=${row.id}`,

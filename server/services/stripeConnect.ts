@@ -460,7 +460,7 @@ export class StripeConnectService {
           amortizationSchedule: updatedSchedule,
           nextPaymentDate: nextPaymentDate,
           status: noteStatus,
-        }, organizationId);
+        }, Number(organizationId));
       }
     }
 

@@ -171,7 +171,7 @@ export async function findMentorMatches(orgId: number): Promise<MentorMatch[]> {
     try {
       const { computeInvestorTrustScore } = await import("./investorNetworkService");
       const trust = await computeInvestorTrustScore(r.organization_id);
-      const trustScore = trust?.score ?? 0;
+      const trustScore = trust?.total ?? 0;
       if (trustScore < MIN_MENTOR_TRUST) continue;
 
       mentors.push({

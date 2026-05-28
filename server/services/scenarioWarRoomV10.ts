@@ -89,11 +89,11 @@ class ScenarioWarRoomService {
     parameters: Record<string, any>;
   }): Promise<ScenarioSimulation> {
     // Create the scenario record
+    // TODO(tsc): scenario_simulations has no scenarioType/parameters columns.
+    // Only title/hypothesis/status are persisted until those columns exist.
     const [scenario] = await db.insert(scenarioSimulations).values({
       title: params.title,
-      scenarioType: params.scenarioType,
       hypothesis: params.hypothesis,
-      parameters: params.parameters,
       status: "running",
     }).returning();
 
@@ -168,6 +168,18 @@ Respond in JSON:
 
     const projections = await Promise.all(projectionPromises);
 
+    // Map the rich projection objects onto the agentAnalyses column shape
+    // ({ agentCodename, perspective, analysis, metrics, confidence band }).
+    const toConfidenceBand = (c: number): "low" | "medium" | "high" =>
+      c >= 70 ? "high" : c >= 40 ? "medium" : "low";
+    const agentAnalyses = projections.map((p) => ({
+      agentCodename: p.agentCodename,
+      perspective: p.domain,
+      analysis: p.projection,
+      metrics: { confidence: p.confidence, risks: p.risks, opportunities: p.opportunities } as Record<string, any>,
+      confidence: toConfidenceBand(p.confidence),
+    }));
+
     // Generate consensus synthesis
     const consensusPrompt = `You are the Scenario War Room synthesizer. ${projections.length} agents have modeled a scenario.
 
@@ -199,14 +211,15 @@ Respond in JSON:
         responseFormat: "json",
       });
 
-      const parsed = JSON.parse(consensus.response);
+      const parsed = JSON.parse(consensus.content);
 
+      // TODO(tsc): scenario_simulations has no consensusSummary/
+      // consensusRecommendation/confidenceInterval columns. agent projections
+      // map to agentAnalyses; the recommendation maps to `recommendation`.
       const [updated] = await db.update(scenarioSimulations)
         .set({
-          agentProjections: projections,
-          consensusSummary: parsed.summary,
-          consensusRecommendation: parsed.recommendation,
-          confidenceInterval: parsed.confidenceInterval || { low: 30, mid: 50, high: 70 },
+          agentAnalyses,
+          recommendation: parsed.recommendation ?? parsed.summary,
           status: "completed",
           completedAt: new Date(),
         })
@@ -218,8 +231,8 @@ Respond in JSON:
       // Still save projections even if consensus fails
       const [updated] = await db.update(scenarioSimulations)
         .set({
-          agentProjections: projections,
-          consensusSummary: "Consensus synthesis failed — review individual projections",
+          agentAnalyses,
+          recommendation: "Consensus synthesis failed — review individual projections",
           status: "completed",
           completedAt: new Date(),
         })
@@ -243,8 +256,8 @@ Respond in JSON:
     const prompt = `Compare these scenario predictions against actual outcomes:
 
 SCENARIO: ${scenario.title}
-PREDICTIONS: ${scenario.consensusSummary}
-Agent Projections: ${JSON.stringify(scenario.agentProjections)}
+PREDICTIONS: ${scenario.recommendation}
+Agent Projections: ${JSON.stringify(scenario.agentAnalyses)}
 ACTUAL OUTCOME: ${JSON.stringify(actualOutcome)}
 
 Rate overall accuracy 0-100 and each agent's accuracy. Extract key lessons.
@@ -267,9 +280,9 @@ Respond in JSON:
     const [comparison] = await db.insert(scenarioOutcomeComparisons).values({
       scenarioId,
       predictedOutcome: {
-        summary: scenario.consensusSummary,
-        recommendation: scenario.consensusRecommendation,
-        projections: scenario.agentProjections,
+        summary: scenario.recommendation,
+        recommendation: scenario.recommendation,
+        projections: scenario.agentAnalyses,
       },
       actualOutcome,
       accuracyScore: parsed.accuracyScore || 50,
@@ -293,8 +306,10 @@ Respond in JSON:
   }
 
   async getByType(type: string, limit = 10): Promise<ScenarioSimulation[]> {
+    // TODO(tsc): scenario_simulations has no scenarioType column to filter on;
+    // returning the most recent simulations until that column exists.
+    void type;
     return db.select().from(scenarioSimulations)
-      .where(eq(scenarioSimulations.scenarioType, type))
       .orderBy(desc(scenarioSimulations.createdAt))
       .limit(limit);
   }

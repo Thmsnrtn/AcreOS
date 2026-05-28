@@ -223,7 +223,7 @@ class ComplianceAI {
   async acknowledgeAlert(
     organizationId: number,
     alertId: string,
-    userId: number
+    userId: string
   ): Promise<void> {
     try {
       await db.update(complianceAlerts)
@@ -291,9 +291,9 @@ class ComplianceAI {
 Property: ${property.address}
 State: ${property.state}
 County: ${property.county}
-Acres: ${property.acres}
+Acres: ${property.sizeAcres}
 Zoning: ${property.zoning || 'Unknown'}
-Flood Zone: ${property.floodZone || 'Unknown'}
+Flood Zone: ${(property.enrichmentData as { floodZone?: string } | null)?.floodZone || 'Unknown'}
 `;
 
       const alertContext = alerts.length > 0
@@ -464,7 +464,7 @@ Format as a professional report.`;
       const recentChanges = alerts.filter(a => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        return a.createdAt >= thirtyDaysAgo;
+        return a.createdAt != null && a.createdAt >= thirtyDaysAgo;
       }).length;
 
       // Calculate compliance score (0-100)
@@ -519,7 +519,7 @@ Format as a professional report.`;
 
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const recentChanges = alerts.filter(a => a.createdAt >= thirtyDaysAgo).length;
+      const recentChanges = alerts.filter(a => a.createdAt != null && a.createdAt >= thirtyDaysAgo).length;
 
       // Alert breakdown by type
       const typeMap = new Map<string, number>();

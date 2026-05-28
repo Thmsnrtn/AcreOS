@@ -55,7 +55,7 @@ async function findStaleProperties(): Promise<any[]> {
       .orderBy(desc(landCreditScores.createdAt))
       .limit(1);
 
-    if (!latestScore || new Date(latestScore.createdAt) < cutoff) {
+    if (!latestScore || !latestScore.createdAt || new Date(latestScore.createdAt) < cutoff) {
       stale.push({ property, priorScore: latestScore || null });
     }
   }
@@ -72,24 +72,33 @@ async function recalculateProperty(
   priorScore: any | null
 ): Promise<{ newScore: number; dropped: boolean; dropAmount: number }> {
   // Call the landCredit service
-  const scoreResult = await landCredit.calculateCreditScore(property.id, property.organizationId);
+  const scoreResult = await landCredit.calculateCreditScore(property.organizationId, property.id);
 
-  const newOverall = scoreResult.overallScore;
+  const newOverall = scoreResult.overall;
   const priorOverall = priorScore?.overallScore ?? newOverall;
   const dropAmount = priorOverall - newOverall;
   const dropped = dropAmount > SCORE_DROP_ALERT_THRESHOLD;
 
-  // Persist new score record
+  // Map the service's ScoringFactors (0-100 per dimension) onto the
+  // land_credit_scores columns. The service has no dedicated model version,
+  // so a constant is used.
+  const f = scoreResult.factors;
   await db.insert(landCreditScores).values({
     propertyId: property.id,
-    liquidityScore: scoreResult.scores?.liquidity ?? 50,
-    riskScore: scoreResult.scores?.risk ?? 50,
-    developmentPotentialScore: scoreResult.scores?.developmentPotential ?? 50,
-    marketabilityScore: scoreResult.scores?.marketability ?? 50,
-    overallScore: newOverall,
+    liquidityScore: Math.round(f.financial.factors.liquidity ?? 50),
+    riskScore: Math.round(f.environmental.score ?? 50),
+    developmentPotentialScore: Math.round(f.legal.score ?? 50),
+    marketabilityScore: Math.round(f.market.score ?? 50),
+    overallScore: Math.round(newOverall),
     grade: scoreResult.grade,
-    scoreBreakdown: scoreResult.breakdown ?? null,
-    modelVersion: scoreResult.modelVersion ?? "1.0",
+    scoreBreakdown: {
+      location: Math.round(f.location.score),
+      characteristics: Math.round(f.physical.score),
+      marketDemand: Math.round(f.market.score),
+      economicFactors: Math.round(f.financial.score),
+      timeOnMarket: Math.round(f.market.factors.daysOnMarket),
+    },
+    modelVersion: "1.0",
     validUntil: addDays(new Date(), STALE_DAYS),
   });
 
@@ -110,10 +119,10 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "land_credit_score_recalculation",
+      type: "land_credit_score_recalculation",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -146,7 +155,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: { totalChecked, totalRecalculated, totalDropped, totalFailed },
         })
         .where(eq(backgroundJobs.id, bgJobId));
@@ -158,7 +167,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;

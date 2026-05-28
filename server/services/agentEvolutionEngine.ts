@@ -97,7 +97,7 @@ class AgentEvolutionEngine {
     const escalationRate = total > 0 ? (escalated / total) * 100 : 0;
 
     // Get most recent review grade
-    const review = await db.query.agentPerformanceReviewsTable.findFirst({
+    const review = await db.query.agentPerformanceReviews.findFirst({
       where: eq(agentPerformanceReviewsTable.agentCodename, agentCodename),
       orderBy: [desc(agentPerformanceReviewsTable.createdAt)],
     });

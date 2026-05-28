@@ -151,7 +151,7 @@ async function gh<T>(path: string, init: RequestInit = {}): Promise<T> {
     });
     const text = await res.text();
     if (!res.ok) {
-      logger.warn({ url, status: res.status, body: text.slice(0, 200) }, "github api non-ok");
+      logger.warn("github api non-ok", { url, status: res.status, body: text.slice(0, 200) });
       throw new GithubClientError(`GitHub API ${res.status} on ${path}`, res.status, text);
     }
     return text ? (JSON.parse(text) as T) : ({} as T);

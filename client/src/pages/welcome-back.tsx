@@ -263,7 +263,9 @@ export default function WelcomeBackPage() {
                   ))}
                 </ul>
                 <div className="pt-2">
-                  <Button asChild variant="link" className="px-0">
+                  {/* TODO(tsc): Button has no "link" variant (button.tsx is outside
+                      this bucket). Using "ghost" + px-0 + underline to mimic a text link. */}
+                  <Button asChild variant="ghost" className="px-0 underline underline-offset-4 hover:bg-transparent">
                     <Link href="/changelog">See the full changelog →</Link>
                   </Button>
                 </div>

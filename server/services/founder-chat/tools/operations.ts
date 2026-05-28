@@ -71,7 +71,7 @@ registerTool({
       return FALLBACK_TEXT(lines.join("\n"));
     } catch (err) {
       if (err instanceof FlyClientError) {
-        logger.warn({ status: err.status }, "fly_status failed");
+        logger.warn("fly_status failed", { status: err.status });
         return FALLBACK_TEXT(`Fly API unavailable (${err.status}). ${err.message}`);
       }
       throw err;
@@ -180,7 +180,7 @@ registerTool({
         `### Stripe customers matching "${query}"\n\n${lines.join("\n")}`,
       );
     } catch (err) {
-      logger.warn({ err: err instanceof Error ? err.message : String(err) }, "stripe_lookup_customer failed");
+      logger.warn("stripe_lookup_customer failed", { err: err instanceof Error ? err.message : String(err) });
       return FALLBACK_TEXT(
         `Stripe customer lookup failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -597,8 +597,8 @@ registerTool({
         return FALLBACK_TEXT(`Query failed (${err.kind}): ${err.message}`);
       }
       logger.warn(
-        { err: err instanceof Error ? err.message : String(err) },
         "db_query unexpected error",
+        { err: err instanceof Error ? err.message : String(err) },
       );
       return FALLBACK_TEXT(
         `Query failed: ${err instanceof Error ? err.message : String(err)}`,

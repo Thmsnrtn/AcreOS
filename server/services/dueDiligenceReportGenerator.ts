@@ -90,23 +90,40 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   let redFlags = 0;
   let greenFlags = 0;
 
+  // The DD engine, comps, and valuation all need the property's coordinates +
+  // acreage, so fetch the property first, then gather the rest in parallel.
+  const property = await db.query.properties.findFirst({ where: eq(properties.id, propertyId) });
+  const lat = Number(property?.latitude ?? 0);
+  const lng = Number(property?.longitude ?? 0);
+  const propertyAcres = Number(property?.sizeAcres ?? 0);
+  const propertyStateCode = property?.state ?? undefined;
+
   // Gather all data in parallel — target <3 seconds
-  const [ddResult, lcsResult, compsResult, valuationResult, propertyResult] = await Promise.allSettled([
-    import("./dueDiligenceEngine").then(m => m.runAutoDueDiligence(propertyId, orgId)),
+  const [ddResult, lcsResult, compsResult, valuationResult] = await Promise.allSettled([
+    import("./dueDiligenceEngine").then(m => m.runAutoDueDiligence(propertyId, orgId, lat, lng, propertyAcres, propertyStateCode)),
     import("./landCredit").then(m => {
-      const svc = new m.default();
-      return svc.calculateCreditScore(orgId, propertyId);
+      const svc = m.landCredit;
+      return svc.calculateCreditScore(String(orgId), String(propertyId));
     }),
-    import("./comps").then(m => m.getComps(orgId, propertyId)),
-    import("./acreOSValuation").then(m => m.estimateValue(orgId, propertyId)),
-    db.query.properties.findFirst({ where: eq(properties.id, propertyId) }),
+    import("./comps").then(m => m.getPropertyComps(lat, lng, propertyAcres, 5, {}, undefined, orgId)),
+    import("./acreOSValuation").then(m => m.acreOSValuation.generateValuation(String(orgId), {
+      propertyId: String(propertyId),
+      acres: propertyAcres,
+      location: {
+        state: property?.state ?? "",
+        county: property?.county ?? "",
+        zipCode: property?.zip ?? "",
+        latitude: lat,
+        longitude: lng,
+      },
+      characteristics: {},
+    })),
   ]);
 
   const dd = ddResult.status === "fulfilled" ? ddResult.value : null;
   const lcs = lcsResult.status === "fulfilled" ? lcsResult.value : null;
   const comps = compsResult.status === "fulfilled" ? compsResult.value : null;
   const valuation = valuationResult.status === "fulfilled" ? valuationResult.value : null;
-  const property = propertyResult.status === "fulfilled" ? propertyResult.value : null;
 
   if (dd) sourcesResponded += 6;
   if (lcs) sourcesResponded += 6;
@@ -137,7 +154,7 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   const address = property?.address || `APN: ${property?.apn || "Unknown"}`;
   y = addRow(doc, "Address", address, y, margin);
   y = addRow(doc, "County/State", `${property?.county || "—"}, ${property?.state || "—"}`, y, margin);
-  y = addRow(doc, "Acreage", property?.acreage ? `${property.acreage} acres` : "Acreage unknown", y, margin);
+  y = addRow(doc, "Acreage", property?.sizeAcres ? `${property.sizeAcres} acres` : "Acreage unknown", y, margin);
   y += 0.15;
 
   // LCS badge
@@ -178,8 +195,8 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
     { name: "Wetlands", result: dd?.checks?.wetlands, key: "wetlands" },
     { name: "EPA/Superfund", result: dd?.checks?.environmental, key: "environmental" },
     { name: "Soil Contamination", result: dd?.checks?.soil, key: "soil" },
-    { name: "Wildfire Risk", result: dd?.checks?.wildfire, key: "wildfire" },
-    { name: "Endangered Species", result: dd?.checks?.endangered, key: "endangered" },
+    { name: "Wildfire Risk", result: dd?.checks?.wildfireRisk, key: "wildfire" },
+    { name: "Endangered Species", result: dd?.checks?.endangeredSpecies, key: "endangered" },
   ];
 
   for (const check of envChecks) {
@@ -250,9 +267,9 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
 
   // Carbon credit estimate
   try {
-    const landCover = (dd?.checks?.landCover as string) || "";
-    if (landCover.toLowerCase().includes("forest") && property?.acreage) {
-      const carbonEst = estimateCarbonCredits(propertyState, property.acreage, "forest");
+    const landCover = dd?.checks?.landCover?.dominantCover ?? "";
+    if (landCover.toLowerCase().includes("forest") && propertyAcres > 0) {
+      const carbonEst = estimateCarbonCredits(propertyState, propertyAcres, "forest");
       if (carbonEst.eligible) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
@@ -311,9 +328,11 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   y = addRow(doc, "Elevation", dd?.checks?.elevation?.elevationFeet ? `${dd.checks.elevation.elevationFeet} ft` : "Unknown", y, margin);
   y = addRow(doc, "Slope", dd?.checks?.elevation?.slope || "Unknown", y, margin);
   y = addRow(doc, "Soil/Farmland", dd?.checks?.soil?.farmlandClassification || "Unknown", y, margin);
-  y = addRow(doc, "Land Cover", dd?.checks?.landCover || "Unknown", y, margin);
+  y = addRow(doc, "Land Cover", dd?.checks?.landCover?.dominantCover || "Unknown", y, margin);
   y = addRow(doc, "Road Access", dd?.checks?.roadAccess?.roadType ? `${dd.checks.roadAccess.roadType} (${dd.checks.roadAccess.nearestRoadDistanceFeet || "?"} ft)` : "Unknown", y, margin);
-  y = addRow(doc, "Utilities", property?.utilities || "Unknown", y, margin);
+  y = addRow(doc, "Utilities", property?.utilities
+    ? Object.entries(property.utilities).filter(([, v]) => v).map(([k]) => k).join(", ") || "None"
+    : "Unknown", y, margin);
 
   // ─── Page 4: Market Analysis ────────────────────────────────────────
   doc.addPage();
@@ -322,7 +341,7 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   if (comps?.comps?.length) {
     y = addSection(doc, "Comparable Sales", y, margin);
     for (const comp of comps.comps.slice(0, 8)) {
-      const line = `${comp.address || "—"} | ${comp.acres || "?"}ac | ${fmt$(comp.pricePerAcre)}/ac | ${comp.saleDate || "—"}`;
+      const line = `${comp.address || "—"} | ${comp.acreage || "?"}ac | ${fmt$(comp.pricePerAcre)}/ac | ${comp.saleDate || "—"}`;
       doc.setFontSize(8);
       doc.setTextColor(...DARK);
       doc.text(line, margin + 0.2, y, { maxWidth: pageWidth - margin * 2 - 0.2 });
@@ -336,13 +355,13 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   }
 
   y += 0.15;
-  y = addRow(doc, "Estimated Value", fmt$(valuation?.estimate || property?.estimatedValue), y, margin);
+  y = addRow(doc, "Estimated Value", fmt$(valuation?.estimatedValue ?? (property?.marketValue ? Number(property.marketValue) : undefined)), y, margin);
 
   // ─── Page 5: Financial Projections ──────────────────────────────────
   doc.addPage();
   y = addPageHeader(doc, "Financial Projections", 5, margin, pageWidth);
 
-  const estValue = valuation?.estimate || property?.estimatedValue || 0;
+  const estValue = valuation?.estimatedValue || (property?.marketValue ? Number(property.marketValue) : 0);
   const tiers = [
     { name: "Aggressive (25%)", price: Math.round(estValue * 0.25) },
     { name: "Market (40%)", price: Math.round(estValue * 0.40) },

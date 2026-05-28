@@ -43,7 +43,7 @@
  */
 
 import { db } from "../db";
-import { deals, notes, payments, organizations } from "@shared/schema";
+import { deals, notes, payments, organizations, properties } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { addDays, addMonths, format, differenceInDays } from "date-fns";
 
@@ -393,15 +393,15 @@ export function calculateDealPnL(input: DealPnLInput): {
   }
 
   const breakdown: ReturnType<typeof calculateDealPnL>["breakdown"] = [
-    { category: "Purchase Price", amount: -input.purchasePrice, type: "cost" },
-    { category: "Closing Costs (Purchase)", amount: -input.closingCostsAtPurchase, type: "cost" },
-    { category: "Due Diligence", amount: -input.dueDiligenceCosts, type: "cost" },
-    { category: "Direct Mail / Marketing", amount: -input.mailingCosts, type: "cost" },
-    { category: "Property Taxes (Hold)", amount: -holdingTaxes, type: "cost" },
-    { category: "Interest Paid", amount: -input.interestPaid, type: "cost" },
-    { category: "Sale Price", amount: input.salePrice, type: "income" },
-    { category: "Agent Commission", amount: -input.agentCommission, type: "cost" },
-    { category: "Closing Costs (Sale)", amount: -input.closingCostsAtSale, type: "cost" },
+    { category: "Purchase Price", amount: -input.purchasePrice, type: "cost" as const },
+    { category: "Closing Costs (Purchase)", amount: -input.closingCostsAtPurchase, type: "cost" as const },
+    { category: "Due Diligence", amount: -input.dueDiligenceCosts, type: "cost" as const },
+    { category: "Direct Mail / Marketing", amount: -input.mailingCosts, type: "cost" as const },
+    { category: "Property Taxes (Hold)", amount: -holdingTaxes, type: "cost" as const },
+    { category: "Interest Paid", amount: -input.interestPaid, type: "cost" as const },
+    { category: "Sale Price", amount: input.salePrice, type: "income" as const },
+    { category: "Agent Commission", amount: -input.agentCommission, type: "cost" as const },
+    { category: "Closing Costs (Sale)", amount: -input.closingCostsAtSale, type: "cost" as const },
   ].filter((item) => item.amount !== 0);
 
   return {
@@ -460,6 +460,7 @@ export async function generateTaxReport(
   const yearStart = new Date(taxYear, 0, 1);
   const yearEnd = new Date(taxYear, 11, 31);
 
+  // deals uses closingDate (timestamp), not a closedDate string column.
   const closedDeals = await db
     .select()
     .from(deals)
@@ -467,12 +468,12 @@ export async function generateTaxReport(
       and(
         eq(deals.organizationId, organizationId),
         eq(deals.status, "closed"),
-        gte(deals.closedDate as any, yearStart.toISOString().split("T")[0])
+        gte(deals.closingDate, yearStart)
       )
     );
 
   const filteredDeals = closedDeals.filter((d) => {
-    const closedDate = new Date(d.closedDate || "");
+    const closedDate = new Date(d.closingDate || "");
     return closedDate <= yearEnd;
   });
 
@@ -481,16 +482,21 @@ export async function generateTaxReport(
   const transactions: TaxableTransaction[] = [];
 
   for (const deal of filteredDeals) {
-    const acquired = new Date(deal.contractDate || deal.createdAt || yearStart);
-    const sold = new Date(deal.closedDate || yearEnd);
+    // contractDate/purchasePrice/listPrice/title live on the related property,
+    // not the deal row. Fetch the property for these financial figures.
+    const dealProperty = await db.query.properties.findFirst({
+      where: eq(properties.id, deal.propertyId),
+    });
+    const acquired = new Date(dealProperty?.purchaseDate || deal.offerDate || deal.createdAt || yearStart);
+    const sold = new Date(deal.closingDate || yearEnd);
     const holdingMonths = Math.max(
       0,
       Math.floor((sold.getTime() - acquired.getTime()) / (30 * 24 * 60 * 60 * 1000))
     );
     const isLongTerm = holdingMonths >= 12;
 
-    const purchasePrice = parseFloat(deal.purchasePrice || "0");
-    const salePrice = parseFloat(deal.listPrice || "0");
+    const purchasePrice = parseFloat(dealProperty?.purchasePrice || "0");
+    const salePrice = parseFloat(dealProperty?.listPrice || "0");
     const adjustedBasis = purchasePrice * 1.03; // Rough: add ~3% for closing costs
     const grossSaleProceeds = salePrice * 0.96; // Rough: subtract ~4% for selling costs
     const gainOrLoss = grossSaleProceeds - adjustedBasis;
@@ -503,9 +509,9 @@ export async function generateTaxReport(
 
     transactions.push({
       dealId: deal.id,
-      propertyDescription: `Land - ${deal.title || "Vacant Land"}`,
-      county: (deal as any).county || "",
-      state: (deal as any).state || "",
+      propertyDescription: `Land - ${dealProperty?.address || dealProperty?.apn || "Vacant Land"}`,
+      county: dealProperty?.county || "",
+      state: dealProperty?.state || "",
       acquiredDate: format(acquired, "MM/dd/yyyy"),
       soldDate: format(sold, "MM/dd/yyyy"),
       purchasePrice,

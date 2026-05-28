@@ -611,8 +611,8 @@ const generateBatchOffersSkill: Skill = {
       const existingOffers = await storage.getOffersByBatch(context.organizationId, batchId);
       const processedLeadIds = new Set(existingOffers.map(o => o.leadId));
 
-      const marketingList = batch.marketingListId 
-        ? await storage.getMarketingListById(context.organizationId, batch.marketingListId)
+      const marketingList = batch.sourceListId
+        ? await storage.getMarketingListById(context.organizationId, batch.sourceListId)
         : null;
 
       const allLeads = await storage.getLeads(context.organizationId);
@@ -690,8 +690,10 @@ const generateBatchOffersSkill: Skill = {
       }
 
       await storage.updateOfferBatch(context.organizationId, batchId, {
+        // offer_batches has no completedAt column; generatedAt marks completion
+        // of offer generation.
         status: "completed",
-        completedAt: new Date(),
+        generatedAt: new Date(),
       });
 
       return {
@@ -740,9 +742,10 @@ const scrubLeadListSkill: Skill = {
         return { success: false, error: "Marketing list not found" };
       }
 
+      // TODO(tsc): marketing_lists has no leadIds column linking member leads.
+      // Until a list↔lead linkage exists, scrub across the org's leads.
       const allLeads = await storage.getLeads(context.organizationId);
-      const listLeadIds = new Set((list.leadIds as number[]) || []);
-      const listLeads = allLeads.filter(l => listLeadIds.has(l.id));
+      const listLeads = allLeads;
 
       const stats = {
         total: listLeads.length,
@@ -797,15 +800,16 @@ const scrubLeadListSkill: Skill = {
         validLeadIds.push(lead.id);
       }
 
+      // marketing_lists has no leadIds/stats columns; persist the scrub results
+      // into the discrete record-count columns and mark processedAt.
+      void validLeadIds;
       await storage.updateMarketingList(context.organizationId, listId, {
-        leadIds: validLeadIds,
-        stats: {
-          total: stats.total,
-          valid: stats.valid,
-          invalid: stats.invalid,
-          duplicates: stats.duplicates,
-          scrubbedAt: new Date().toISOString(),
-        },
+        status: "scrubbed",
+        totalRecords: stats.total,
+        validRecords: stats.valid,
+        invalidAddresses: stats.invalid,
+        duplicatesRemoved: stats.duplicates,
+        processedAt: new Date(),
       });
 
       return {
@@ -1148,7 +1152,7 @@ const researchCountySkill: Skill = {
         
         if (countyGisSources.length > 0) {
           research.gisAvailable = true;
-          research.gisUrl = countyGisSources[0].apiEndpoint;
+          research.gisUrl = countyGisSources[0].apiUrl;
         }
       } catch {
         // Continue with what we have
@@ -2395,7 +2399,7 @@ const analyzeNoteSkill: Skill = {
         return { success: false, error: "Note not found" };
       }
 
-      const principal = parseFloat(note.principal?.toString() || "0");
+      const principal = parseFloat(note.originalPrincipal?.toString() || "0");
       const interestRate = parseFloat(note.interestRate?.toString() || "0");
       const termMonths = note.termMonths || 0;
       const monthlyPayment = parseFloat(note.monthlyPayment?.toString() || "0");
@@ -2495,6 +2499,7 @@ const suggestFollowUpSkill: Skill = {
 
       const recentReplies = activities.filter(a =>
         (a.type === "email_replied" || a.type === "sms_replied" || a.type === "call_completed") &&
+        a.createdAt != null &&
         new Date(a.createdAt) > new Date(Date.now() - 30 * 86_400_000)
       );
 

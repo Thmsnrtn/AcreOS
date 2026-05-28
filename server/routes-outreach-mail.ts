@@ -315,7 +315,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = quoteSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       try {
@@ -340,7 +340,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = queueSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
 
       const org = getOrganization(req);
@@ -500,7 +500,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           // We don't know the exact debited amount from the canceled shipment,
           // so we recompute from the per-piece weight × pieceCount. Same math
           // as queue time, so the refund matches.
-          const action = mailPoolActionFor(existing.provider, existing.pieceType);
+          const action = mailPoolActionFor(existing.provider ?? "", existing.pieceType);
           const { creditCost } = await import("@shared/billing/credit-weights");
           const weight = await creditCost(action);
           const refundCents = Math.max(0, Math.ceil(weight * existing.pieceCount));
@@ -1120,7 +1120,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = rechargeSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const org = getOrganization(req);
       const userId = getUserId(req);

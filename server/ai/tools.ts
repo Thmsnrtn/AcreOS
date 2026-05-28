@@ -1836,8 +1836,8 @@ export async function executeTool(
               enrichedAt: null,
               completenessScore: 0,
               enrichment: null,
+              message: "No enrichment data yet. Use research_property to trigger a first run.",
             },
-            message: "No enrichment data yet. Use research_property to trigger a first run.",
           };
         }
 

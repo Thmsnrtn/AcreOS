@@ -57,7 +57,9 @@ export const leadRepo = {
     return lead;
   },
 
-  async createLead(this: DatabaseStorage, lead: InsertLead): Promise<Lead> {
+  // organizationId is omitted from InsertLead (set server-side) but the DB
+  // column is NOT NULL — callers supply it, so it is required here.
+  async createLead(this: DatabaseStorage, lead: InsertLead & { organizationId: number }): Promise<Lead> {
     const [newLead] = await db.insert(leads).values(lead).returning();
     await this.logActivity({
       organizationId: lead.organizationId,
@@ -69,7 +71,7 @@ export const leadRepo = {
     return newLead;
   },
 
-  async createLeadsBatch(this: DatabaseStorage, leadsData: InsertLead[]): Promise<Lead[]> {
+  async createLeadsBatch(this: DatabaseStorage, leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]> {
     if (leadsData.length === 0) return [];
     // Batch insert all leads in a single query instead of N individual inserts
     const newLeads = await db.insert(leads).values(leadsData).returning();

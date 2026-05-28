@@ -602,7 +602,9 @@ class DealPatternCloningService {
     const persistedEmbedding =
       embedding && embedding.length === 1536 ? embedding : undefined;
 
-    const insertData: InsertDealPattern = {
+    // Use the Drizzle insert type — InsertDealPattern (Zod) cannot faithfully
+    // infer the custom pgvector column type, which breaks .values().
+    const insertData: typeof dealPatterns.$inferInsert = {
       organizationId,
       dealId,
       fingerprint,

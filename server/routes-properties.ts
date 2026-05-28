@@ -12,8 +12,9 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
-// Partial update schema for PUT endpoints
-const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
+// Partial update schema for PUT endpoints.
+// insertPropertySchema already omits organizationId, so no further omit needed.
+const updatePropertySchema = insertPropertySchema.partial();
 
 // Zod schema for comps search
 const compsSearchSchema = z.object({
@@ -227,8 +228,10 @@ export function registerPropertyRoutes(app: Express): void {
         }
       }
 
+      // insertPropertySchema omits organizationId, so re-attach it for the
+      // createProperty(InsertProperty & { organizationId }) contract.
       const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
-      const property = await storage.createProperty(input);
+      const property = await storage.createProperty({ ...input, organizationId: org.id });
 
       const user = req.user as any;
       const userId = user?.id || user?.id;
@@ -391,10 +394,12 @@ export function registerPropertyRoutes(app: Express): void {
         entityId: propertyId,
         changes: {
           before: { landStatus: existing.landStatus },
-          after: { landStatus: parsed.data.landStatus },
+          after: {
+            landStatus: parsed.data.landStatus,
+            verificationNotes: parsed.data.verificationNotes,
+            regulatoryBasis: ["25 USC §177", "25 CFR §152"],
+          },
           fields: ["landStatus"],
-          verificationNotes: parsed.data.verificationNotes,
-          regulatoryBasis: ["25 USC §177", "25 CFR §152"],
         },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
@@ -470,7 +475,7 @@ export function registerPropertyRoutes(app: Express): void {
         action: "bulk_delete",
         entityType: "property",
         entityId: 0,
-        changes: { ids, count: deletedCount },
+        changes: { after: { ids, count: deletedCount } },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -501,7 +506,7 @@ export function registerPropertyRoutes(app: Express): void {
         action: "bulk_update",
         entityType: "property",
         entityId: 0,
-        changes: { ids, updates, count: updatedCount },
+        changes: { after: { ids, updates, count: updatedCount } },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -776,8 +781,10 @@ export function registerPropertyRoutes(app: Express): void {
         }
         const org = req.organization;
         result = await lookupParcelByAPN(apn, path, org?.id);
-      } else {
+      } else if (lat != null && lng != null) {
         result = await lookupParcelByCoordinates(lat, lng);
+      } else {
+        return Errors.badRequest(res, "Provide either an apn or lat/lng coordinates");
       }
       
       if (!result.found) {
@@ -1010,9 +1017,11 @@ export function registerPropertyRoutes(app: Express): void {
         entityType: "property",
         entityId: propertyId,
         changes: {
-          coords: { lat, lng },
-          result,
-          regulatoryBasis: ["25 USC §177", "25 CFR §152"],
+          after: {
+            coords: { lat, lng },
+            result,
+            regulatoryBasis: ["25 USC §177", "25 CFR §152"],
+          },
         },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],

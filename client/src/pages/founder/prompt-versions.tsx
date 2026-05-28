@@ -139,10 +139,7 @@ export default function FounderPromptVersionsPage() {
   );
 
   return (
-    <PageShell
-      title="Prompt versions — A/B harness"
-      description="Inspect prompt versions, A/B traffic splits, and eval-score deltas. Promote a candidate when its 7-day score is ≥ 5% better than production."
-    >
+    <PageShell label="Prompt versions — A/B harness">
       <div className="space-y-6">
         {/* Aggregate strip */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

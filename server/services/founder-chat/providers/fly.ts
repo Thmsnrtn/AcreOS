@@ -98,7 +98,7 @@ async function flyFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     });
     const text = await res.text();
     if (!res.ok) {
-      logger.warn({ url, status: res.status, body: text.slice(0, 200) }, "fly api non-ok");
+      logger.warn("fly api non-ok", { metadata: { url, status: res.status, body: text.slice(0, 200) } });
       throw new FlyClientError(`Fly API ${res.status} on ${path}`, res.status, text);
     }
     return text ? (JSON.parse(text) as T) : ({} as T);
@@ -135,7 +135,7 @@ export async function listReleases(limit = 10, app?: string): Promise<FlyRelease
     return Array.isArray(data) ? data.slice(0, limit) : [];
   } catch (err) {
     if (err instanceof FlyClientError && err.status === 404) {
-      logger.info({ app: appName(app) }, "fly /releases endpoint not available; returning []");
+      logger.info("fly /releases endpoint not available; returning []", { metadata: { app: appName(app) } });
       return [];
     }
     throw err;

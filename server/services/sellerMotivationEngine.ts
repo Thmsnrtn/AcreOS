@@ -571,20 +571,22 @@ export async function rescoreLeadsForOrg(organizationId: number): Promise<{
 
   for (const lead of orgLeads) {
     try {
+      // TODO(tsc): tax-delinquency / ownership / owner-name / valuation signals live on the
+      // related property (properties.dueDiligenceData.distress, properties.assessedValue),
+      // NOT on the lead row. The leads table carries none of these columns, so they
+      // resolved to undefined at runtime here. Defaulting explicitly preserves that
+      // behavior until this scorer is wired to join the lead's property.
       const input: SellerMotivationInput = {
-        isTaxDelinquent: lead.taxDelinquent ?? false,
-        taxDelinquentYears: lead.taxDelinquentYears ?? 0,
-        taxDelinquentAmount: parseFloat(lead.taxDelinquentAmount || "0"),
-        assessedValue: parseFloat(lead.assessedValue || "0"),
-        isOutOfState:
-          lead.ownerState && lead.county
-            ? lead.ownerState.toUpperCase() !== (lead.state || "").toUpperCase()
-            : false,
-        ownershipYears: lead.ownershipYears ?? 0,
-        isInherited: lead.ownerName?.toLowerCase().includes("estate") || false,
-        isCorporateOwner: /llc|inc|corp|trust|ltd/i.test(lead.ownerName || ""),
-        lastSalePrice: parseFloat(lead.lastSalePrice || "0"),
-        estimatedCurrentValue: parseFloat(lead.estimatedValue || lead.assessedValue || "0"),
+        isTaxDelinquent: false,
+        taxDelinquentYears: 0,
+        taxDelinquentAmount: 0,
+        assessedValue: 0,
+        isOutOfState: false,
+        ownershipYears: 0,
+        isInherited: false,
+        isCorporateOwner: false,
+        lastSalePrice: 0,
+        estimatedCurrentValue: 0,
         hasRecentPermit: false, // Default
         countyCompetitionLevel: "medium", // Default
       };

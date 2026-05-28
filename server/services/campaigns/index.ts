@@ -9,3 +9,9 @@ export * from "../directMail";
 export * from "../directMailService";
 export * from "../sequenceOptimizer";
 export * from "../sequenceProcessor";
+
+// Both campaignOptimizer and sequenceOptimizer export an `OptimizationSuggestion`
+// type. Re-export campaignOptimizer's as the canonical one to resolve the
+// star-export ambiguity, and expose sequenceOptimizer's under an alias.
+export type { OptimizationSuggestion } from "../campaignOptimizer";
+export type { OptimizationSuggestion as SequenceOptimizationSuggestion } from "../sequenceOptimizer";

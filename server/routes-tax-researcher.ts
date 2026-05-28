@@ -10,10 +10,10 @@ router.get('/auctions', async (req: Request, res: Response) => {
     const org = req.organization;
     const { state, county, startDate, endDate } = req.query;
     const auctions = await taxResearcher.getUpcomingAuctions(org.id, {
-      state: state as string | undefined,
-      county: county as string | undefined,
-      startDate: startDate as string | undefined,
-      endDate: endDate as string | undefined,
+      states: state ? [state as string] : undefined,
+      counties: county ? [county as string] : undefined,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined,
     });
     res.json({ auctions });
   } catch (err: any) {
@@ -24,11 +24,11 @@ router.get('/auctions', async (req: Request, res: Response) => {
 // GET /auctions/:id/listings — listings in a specific auction
 router.get('/auctions/:id/listings', async (req: Request, res: Response) => {
   try {
-    const { minAcres, maxBid, zoning } = req.query;
+    const { minAcres } = req.query;
+    // ListingFilterOptions exposes minAcreage/maxAcreage/maxTaxOwed/propertyTypes
+    // — there is no maxBid or zoning filter, so those query params are ignored.
     const listings = await taxResearcher.getAuctionListings(parseInt(req.params.id), {
-      minAcres: minAcres ? parseFloat(minAcres as string) : undefined,
-      maxBid: maxBid ? parseFloat(maxBid as string) : undefined,
-      zoning: zoning as string | undefined,
+      minAcreage: minAcres ? parseFloat(minAcres as string) : undefined,
     });
     res.json({ listings });
   } catch (err: any) {
@@ -39,8 +39,10 @@ router.get('/auctions/:id/listings', async (req: Request, res: Response) => {
 // POST /scan — scan auction calendar for a state
 router.post('/scan', async (req: Request, res: Response) => {
   try {
-    const { state } = req.body;
-    const result = await taxResearcher.scanAuctionCalendar(state);
+    const org = req.organization;
+    const { state, county } = req.body;
+    // scanAuctionCalendar(county, state, organizationId?)
+    const result = await taxResearcher.scanAuctionCalendar(county, state, org?.id);
     res.json({ result });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -50,12 +52,14 @@ router.post('/scan', async (req: Request, res: Response) => {
 // GET /delinquent — track tax delinquent properties
 router.get('/delinquent', async (req: Request, res: Response) => {
   try {
-    const { state, county, minOweAmount } = req.query;
-    const properties = await taxResearcher.trackTaxDelinquentProperties({
-      state: state as string | undefined,
-      county: county as string | undefined,
-      minOweAmount: minOweAmount ? parseFloat(minOweAmount as string) : undefined,
-    });
+    const org = req.organization;
+    const { state, county } = req.query;
+    // trackTaxDelinquentProperties(county, state, organizationId?)
+    const properties = await taxResearcher.trackTaxDelinquentProperties(
+      county as string,
+      state as string,
+      org?.id
+    );
     res.json({ properties });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -77,7 +81,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
 router.post('/alerts', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const alert = await taxResearcher.createTaxSaleAlert({ ...req.body, organizationId: org.id });
+    const alert = await taxResearcher.createTaxSaleAlert(org.id, req.body);
     res.json({ alert });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -111,7 +115,8 @@ router.post('/watchlist', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { listingId } = req.body;
-    await taxResearcher.addToWatchlist(org.id, parseInt(listingId));
+    // addToWatchlist(listingId, organizationId) — args were previously swapped.
+    await taxResearcher.addToWatchlist(parseInt(listingId), org.id);
     res.json({ success: true });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -121,8 +126,9 @@ router.post('/watchlist', async (req: Request, res: Response) => {
 // GET /redemption-rates?state= — county redemption rate data
 router.get('/redemption-rates', async (req: Request, res: Response) => {
   try {
-    const { state } = req.query;
-    const rates = await taxResearcher.getCountyRedemptionRates(state as string);
+    const { state, county } = req.query;
+    // getCountyRedemptionRates(county, state)
+    const rates = await taxResearcher.getCountyRedemptionRates(county as string, state as string);
     res.json({ rates });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -289,14 +295,16 @@ router.get('/county-summary', async (req: Request, res: Response) => {
     const { sql: sqlTag } = await import("drizzle-orm");
     const { leads: leadsTbl, taxCertificates, taxSaleListings, taxSaleAuctions } = await import("@shared/schema");
 
+    // TODO(tsc): the leads table has no taxDelinquent or county columns, so we
+    // cannot scope this count to tax-delinquent leads in a specific county.
+    // Counting org leads in the state only. Needs leads.county + a delinquency
+    // flag (or a property join) for accurate scoping.
     const [{ leadsCount = 0 } = {}] = await drizzleDb
       .select({ leadsCount: sqlTag<number>`COUNT(*)::int` })
       .from(leadsTbl)
       .where(and(
         eq(leadsTbl.organizationId, org.id),
-        eq(leadsTbl.taxDelinquent, true),
         eq(leadsTbl.state, state),
-        eq(leadsTbl.county, county),
       ));
 
     const [{ activeCerts = 0 } = {}] = await drizzleDb
@@ -338,7 +346,7 @@ router.get('/county-summary', async (req: Request, res: Response) => {
         eq(taxSaleListings.organizationId, org.id),
         eq(taxSaleListings.state, state),
         eq(taxSaleListings.county, county),
-        sqlTag`${taxSaleListings.maxBidCents} IS NOT NULL`,
+        sqlTag`${taxSaleListings.bidAmount} IS NOT NULL`,
       ));
 
     res.json({

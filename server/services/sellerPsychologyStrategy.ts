@@ -7,7 +7,7 @@
  */
 
 import { db } from "../db";
-import { sellerIntentPredictions, leads, deals } from "@shared/schema";
+import { sellerIntentPredictions, leads, deals, properties } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -251,8 +251,10 @@ export async function getDealFeedMotivationSignals(
   const signals: DealFeedMotivationSignal[] = [];
 
   for (const dealId of dealIds) {
-    const [deal] = await db.select({ leadId: deals.leadId, id: deals.id })
+    // deals has no leadId; the seller lead lives on the linked property.
+    const [deal] = await db.select({ leadId: properties.sellerId, id: deals.id })
       .from(deals)
+      .innerJoin(properties, eq(deals.propertyId, properties.id))
       .where(and(eq(deals.id, dealId), eq(deals.organizationId, orgId)))
       .limit(1);
 

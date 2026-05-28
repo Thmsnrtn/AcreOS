@@ -757,6 +757,12 @@ export class WebhookHandlers {
    */
   static async processChargeRefunded(charge: Stripe.Charge): Promise<void> {
     try {
+      // Stripe SDK v20 dropped `invoice` from the Charge type, but legacy
+      // webhook payloads can still carry the linkage. Read it through a narrow
+      // typed view rather than `any`.
+      const chargeInvoice = (charge as Stripe.Charge & {
+        invoice?: string | { id: string } | null;
+      }).invoice;
       const customerId = typeof charge.customer === 'string'
         ? charge.customer
         : charge.customer?.id;
@@ -770,7 +776,7 @@ export class WebhookHandlers {
         organizationId: org.id,
         amountRefundedCents: charge.amount_refunded ?? 0,
         refundedAt: new Date().toISOString(),
-        invoiceId: typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id,
+        invoiceId: typeof chargeInvoice === 'string' ? chargeInvoice : chargeInvoice?.id,
         description: `Stripe refund — charge ${charge.id}`,
       });
 
@@ -790,10 +796,10 @@ export class WebhookHandlers {
             amountCents: refundCents,
             externalEventId: `stripe:refund:${refundId}`,
             originalRevenueEventId:
-              typeof charge.invoice === 'string'
-                ? `stripe:invoice:${charge.invoice}`
-                : charge.invoice?.id
-                ? `stripe:invoice:${charge.invoice.id}`
+              typeof chargeInvoice === 'string'
+                ? `stripe:invoice:${chargeInvoice}`
+                : chargeInvoice?.id
+                ? `stripe:invoice:${chargeInvoice.id}`
                 : undefined,
           });
         }

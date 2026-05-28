@@ -71,8 +71,10 @@ export async function calculateAvgResponseTime(orgId: number): Promise<{ avgHour
   if (recentLeads.length === 0) return { avgHours: 0, median: 0 };
 
   const responseTimes = recentLeads
-    .filter(l => l.createdAt && l.updatedAt)
-    .map(l => (new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / (1000 * 60 * 60));
+    .flatMap(l => {
+      if (!l.createdAt || !l.updatedAt) return [];
+      return [(new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / (1000 * 60 * 60)];
+    });
 
   const avg = responseTimes.reduce((s, t) => s + t, 0) / responseTimes.length;
   responseTimes.sort((a, b) => a - b);

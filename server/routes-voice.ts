@@ -46,8 +46,19 @@ async function extractMotivationSignals(callId: number): Promise<{
   confidence: number;
 }> {
   try {
+    // Resolve the transcript via the voiceCall's transcriptId FK. The numeric
+    // callId here is voiceCalls.id; callTranscripts.callId is an external text
+    // id, so it cannot be matched against it directly.
+    const voiceCall = await db.query.voiceCalls.findFirst({
+      where: eq(voiceCalls.id, callId),
+    });
+
+    if (!voiceCall?.transcriptId) {
+      return { isMotivated: false, signals: [], confidence: 0 };
+    }
+
     const transcript = await db.query.callTranscripts.findFirst({
-      where: eq(callTranscripts.callId, callId),
+      where: eq(callTranscripts.id, voiceCall.transcriptId),
     });
 
     if (!transcript) {
@@ -270,9 +281,11 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
       return Errors.notFound(res, 'Call');
     }
 
-    const transcript = await db.query.callTranscripts.findFirst({
-      where: eq(callTranscripts.callId, callId),
-    });
+    const transcript = call.transcriptId
+      ? await db.query.callTranscripts.findFirst({
+          where: eq(callTranscripts.id, call.transcriptId),
+        })
+      : null;
 
     res.json({ call, transcript: transcript || null, success: true });
   } catch (error: any) {
@@ -323,10 +336,9 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
     });
     if (!call) return Errors.notFound(res, 'Call');
 
-    await db.update(voiceCalls)
-      .set({ outcome: type, outcomeNotes: notes || null, updatedAt: new Date() })
-      .where(eq(voiceCalls.id, callId));
-
+    // TODO(tsc): voice_calls has no outcome/outcome_notes/updated_at columns,
+    // so the outcome can only be persisted to agent_events below. A schema
+    // migration is needed to store the outcome directly on the call row.
     await db.insert(agentEvents).values({
       organizationId: org.id,
       eventType: 'call_outcome_tagged',
@@ -358,12 +370,15 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
     });
     if (!call) return Errors.notFound(res, 'Call');
 
-    const transcript = await db.query.callTranscripts.findFirst({
-      where: eq(callTranscripts.callId, callId),
-    });
+    const transcript = call.transcriptId
+      ? await db.query.callTranscripts.findFirst({
+          where: eq(callTranscripts.id, call.transcriptId),
+        })
+      : null;
 
-    // Generate summary if not already present
-    let summary = call.summary;
+    // Generate summary if not already present. Summary/sentiment live on the
+    // transcript record (call_transcripts), not on voice_calls.
+    let summary = transcript?.summary ?? null;
     if (!summary && transcript) {
       summary = await voiceAI.generateCallSummary(callId);
     }
@@ -376,12 +391,17 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
       callId,
       summary: summary || 'No summary available',
       actionItems,
-      sentiment: call.sentiment,
-      intent: call.intent,
-      duration: call.duration,
-      outcome: (call as any).outcome || null,
+      sentiment: transcript?.sentiment ?? null,
+      // TODO(tsc): voice_calls/call_transcripts have no `intent` column; needs
+      // a schema migration to persist call intent. Returning null preserves the
+      // response shape until then.
+      intent: null,
+      duration: call.durationSeconds,
+      // TODO(tsc): voice_calls has no `outcome` column (the /outcome endpoint
+      // records outcome to agent_events). Schema migration needed to surface it.
+      outcome: null,
       transcript: transcript
-        ? { id: transcript.id, preview: (transcript.fullTranscript || '').slice(0, 300) }
+        ? { id: transcript.id, preview: (transcript.transcriptRaw || '').slice(0, 300) }
         : null,
     });
   } catch (error: any) {
@@ -408,31 +428,33 @@ voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
       .select({
         id: callTranscripts.id,
         callId: callTranscripts.callId,
-        fullTranscript: callTranscripts.fullTranscript,
+        transcriptRaw: callTranscripts.transcriptRaw,
         createdAt: callTranscripts.createdAt,
       })
       .from(callTranscripts)
       .where(
         and(
           // Filter to org's calls via a subquery approach — join voiceCalls
-          like(callTranscripts.fullTranscript, `%${q}%`)
+          like(callTranscripts.transcriptRaw, `%${q}%`)
         )
       )
       .orderBy(desc(callTranscripts.createdAt))
       .limit(parseInt(limit as string, 10));
 
-    // Filter to only org's calls
-    const orgCallIds = await db
-      .select({ id: voiceCalls.id })
+    // Filter to only org's transcripts via the voiceCalls.transcriptId FK.
+    const orgTranscriptIds = await db
+      .select({ transcriptId: voiceCalls.transcriptId })
       .from(voiceCalls)
       .where(eq(voiceCalls.organizationId, org.id));
-    const orgCallIdSet = new Set(orgCallIds.map(c => c.id));
+    const orgTranscriptIdSet = new Set(
+      orgTranscriptIds.map(c => c.transcriptId).filter((id): id is number => id != null)
+    );
 
-    const filtered = transcripts.filter(t => t.callId && orgCallIdSet.has(t.callId));
+    const filtered = transcripts.filter(t => orgTranscriptIdSet.has(t.id));
 
     // Highlight context around the search term
     const results = filtered.map(t => {
-      const text = t.fullTranscript || '';
+      const text = t.transcriptRaw || '';
       const idx = text.toLowerCase().indexOf(q.toLowerCase());
       const snippet = idx >= 0
         ? text.slice(Math.max(0, idx - 80), idx + q.length + 80)
@@ -462,9 +484,11 @@ voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
     });
     if (!call) return Errors.notFound(res, 'Call');
 
-    const transcript = await db.query.callTranscripts.findFirst({
-      where: eq(callTranscripts.callId, callId),
-    });
+    const transcript = call.transcriptId
+      ? await db.query.callTranscripts.findFirst({
+          where: eq(callTranscripts.id, call.transcriptId),
+        })
+      : null;
 
     if (!transcript) {
       return res.json({ success: true, callId, speakers: [], segments: [] });

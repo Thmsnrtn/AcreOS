@@ -59,7 +59,7 @@ export async function initiateOffer(dealId: number, orgId: number): Promise<Offe
 
   // Estimate value — use deal's or property's data
   const estimatedValue = (deal as any).estimatedValue
-    || property?.estimatedValue
+    || property?.marketValue
     || property?.listPrice
     || 0;
 
@@ -209,9 +209,25 @@ export async function generateLetter(
   // Try AI letter generation, fall back to template
   try {
     const { generateOfferLetter } = await import("./aiOfferService");
-    const aiLetter = await generateOfferLetter(deal, property, tier, customizations);
-    if (aiLetter) {
-      return { letter: aiLetter, deliveryOptions: ["email", "direct_mail", "download_pdf"] };
+    const tone: "professional" | "friendly" | "urgent" =
+      tier === "aggressive" ? "urgent" : tier === "generous" ? "friendly" : "professional";
+    const aiResult = await generateOfferLetter({
+      property: {
+        id: property?.id,
+        apn: property?.apn ?? undefined,
+        address: property?.address ?? undefined,
+        county: property?.county ?? "",
+        state: property?.state ?? "",
+        sizeAcres: Number(property?.sizeAcres ?? 0),
+        zoning: property?.zoning ?? undefined,
+      },
+      offerAmount: Number(deal.offerAmount ?? 0),
+      buyerName: customizations?.senderName || "The Team",
+      tone,
+      organizationId: orgId,
+    });
+    if (aiResult?.success && aiResult.letter) {
+      return { letter: aiResult.letter, deliveryOptions: ["email", "direct_mail", "download_pdf"] };
     }
   } catch {
     // AI unavailable — use template

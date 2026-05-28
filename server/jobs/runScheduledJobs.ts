@@ -1891,7 +1891,9 @@ function startCompanyBriefingJob() {
                 pendingDecisions: Number(n) || 0,
               });
             } catch {
-              return null;
+              // Empty fingerprint is treated as "no match" by shouldRunAIJob
+              // (falsy), identical downstream behavior to returning null.
+              return "";
             }
           },
         });

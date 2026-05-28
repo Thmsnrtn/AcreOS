@@ -8,57 +8,28 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { kpiStreaming as kpiStreamingService } from "./services/kpiStreamingService";
 
 const router = Router();
 
 
-router.get("/", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const period = (req.query.period as string) ?? "mtd";
-    const metrics = await kpiStreamingService.getMetrics(org.id, period);
-    res.json(metrics);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+// TODO(tsc): kpiStreaming service only exposes emit* methods; getMetrics,
+// getMetricDetail, setTargets, and exportReport are not implemented. These
+// endpoints crashed at runtime previously (calling undefined methods). They
+// now return 501 until the KPI query/target/export service methods are built.
+router.get("/", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "KPI metrics endpoint not implemented" });
 });
 
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const { id } = req.params;
-    const periods = Math.min(parseInt(String(req.query.periods ?? "12")), 36);
-    const detail = await kpiStreamingService.getMetricDetail(org.id, id, periods);
-    if (!detail) return res.status(404).json({ error: "KPI not found" });
-    res.json(detail);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+router.get("/:id", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "KPI detail endpoint not implemented" });
 });
 
-router.post("/targets", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const { targets } = req.body;
-    if (!Array.isArray(targets)) return res.status(400).json({ error: "targets must be an array" });
-
-    const result = await kpiStreamingService.setTargets(org.id, targets);
-    res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
+router.post("/targets", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "KPI targets endpoint not implemented" });
 });
 
-router.get("/export", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const period = (req.query.period as string) ?? "mtd";
-    const report = await kpiStreamingService.exportReport(org.id, period);
-    res.json(report);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+router.get("/export", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "KPI export endpoint not implemented" });
 });
 
 export default router;

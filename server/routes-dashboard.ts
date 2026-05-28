@@ -373,15 +373,18 @@ export function registerDashboardRoutes(app: Express): void {
         });
       }
 
-      // Find properties that need action
+      // Find properties that need action.
+      // TODO(tsc): properties has no dedicated `listDate` column; using
+      // `updatedAt` (set when status flips to "listed") as the proxy for how
+      // long a listing has been live.
       const pendingProperties = allProperties
-        .filter(p => p.status === "listed" && p.listDate)
-        .sort((a, b) => new Date(a.listDate!).getTime() - new Date(b.listDate!).getTime())
+        .filter(p => p.status === "listed" && p.updatedAt)
+        .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
         .slice(0, 2);
 
       for (const property of pendingProperties) {
-        const daysListed = property.listDate 
-          ? Math.floor((now.getTime() - new Date(property.listDate).getTime()) / (24 * 60 * 60 * 1000))
+        const daysListed = property.updatedAt
+          ? Math.floor((now.getTime() - new Date(property.updatedAt).getTime()) / (24 * 60 * 60 * 1000))
           : 0;
 
         if (daysListed > 30) {
@@ -494,7 +497,7 @@ export function registerDashboardRoutes(app: Express): void {
         db.select({ total: sql<number>`coalesce(sum(amount::numeric), 0)` }).from(payments)
           .where(eq(payments.organizationId, org.id)),
         db.select({ count: sqlCount() }).from(activityLog)
-          .where(and(eq(activityLog.organizationId, org.id), eq(activityLog.type, "contact_logged"))),
+          .where(and(eq(activityLog.organizationId, org.id), eq(activityLog.action, "contact_logged"))),
       ]);
 
       const currentValues: Record<string, number> = {

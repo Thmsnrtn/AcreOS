@@ -267,7 +267,10 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         return Errors.notFound(res, "Task");
       }
 
-      await approveEscalatedTask(taskId, user.id, notes);
+      // reviewedBy is a numeric reviewer id; user.id is a UUID. Follow the
+      // rosy-river convention of parseInt (non-numeric ids collapse to 0).
+      const reviewerId = parseInt(String(user.id), 10);
+      await approveEscalatedTask(taskId, Number.isNaN(reviewerId) ? 0 : reviewerId, notes);
 
       // Immediately trigger the processor to pick it up
       runOnce().catch(err => logger.error("[autonomous] Immediate run failed", err));
@@ -296,7 +299,8 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         return Errors.notFound(res, "Task");
       }
 
-      await rejectEscalatedTask(taskId, user.id, notes);
+      const reviewerId = parseInt(String(user.id), 10);
+      await rejectEscalatedTask(taskId, Number.isNaN(reviewerId) ? 0 : reviewerId, notes);
       res.json({ message: "Task rejected" });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -358,7 +362,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
           completedAt: new Date(),
           executionTimeMs,
           requiresReview: !!result.requiresApproval,
-          reviewedBy: user.id,
+          reviewedBy: Number.isNaN(parseInt(String(user.id), 10)) ? null : parseInt(String(user.id), 10),
           reviewedAt: new Date(),
         })
         .where(eq(agentTasks.id, taskId));

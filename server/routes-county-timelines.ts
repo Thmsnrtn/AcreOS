@@ -103,6 +103,7 @@ export function registerCountyTimelineRoutes(app: Express): void {
 
         const parsed = carrySchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+        const carryData = parsed.data;
 
         const [parent] = await db
           .select()
@@ -130,7 +131,7 @@ export function registerCountyTimelineRoutes(app: Express): void {
 
         function project(months: number | null) {
           if (months === null) return null;
-          const holding = Math.round(parsed.data.holdingCostMonthlyCents * months);
+          const holding = Math.round(carryData.holdingCostMonthlyCents * months);
           const debt = Math.round((annualDebtCents / 12) * months);
           const opp = Math.round((annualOppCents / 12) * months);
           const total = holding + debt + opp;

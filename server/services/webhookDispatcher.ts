@@ -135,7 +135,11 @@ export async function saveWebhookEndpoints(
     )
     .limit(1);
 
-  const credentials = { endpoints };
+  // TODO(tsc): organization_integrations.credentials has no `endpoints` field in its
+  // typed jsonb shape; webhook endpoints are persisted here by reusing the column.
+  // Typed against the column's credentials type so the write is structurally checked.
+  type IntegrationCredentials = typeof organizationIntegrations.$inferInsert["credentials"];
+  const credentials = { endpoints } as IntegrationCredentials;
 
   if (existing) {
     await db
@@ -194,6 +198,7 @@ export async function dispatchWebhook(
     timestamp: new Date().toISOString(),
     organizationId,
     data,
+    metadata: { version: '1.0', source: 'acreos' },
   };
   const payloadJson = JSON.stringify(payload);
 

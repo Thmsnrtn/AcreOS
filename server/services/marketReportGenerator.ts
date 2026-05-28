@@ -303,12 +303,12 @@ async function getCountyPrediction(state: string, county: string) {
 
 async function getCountyOpportunityScore(state: string, county: string) {
   try {
-    const { evaluateCountyOpportunity } = await import("./countyOpportunityScore");
-    const result = await evaluateCountyOpportunity({ state, county } as any);
+    const { computeCountyOpportunityScore } = await import("./countyOpportunityScore");
+    const result = computeCountyOpportunityScore({ state, county } as any);
     return {
       score: result?.overallScore ?? null,
-      delinquentVolume: null,
-      environmentalRisk: null,
+      delinquentVolume: null as number | null,
+      environmentalRisk: null as string | null,
     };
   } catch {
     return null;

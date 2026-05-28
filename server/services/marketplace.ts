@@ -54,7 +54,7 @@ export class MarketplaceService {
       propertyId,
       listingType: data.listingType || "wholesale",
       title: data.title || `${property.sizeAcres} Acres - ${property.county}, ${property.state}`,
-      description: data.description || property.notes || "",
+      description: data.description || property.description || "",
       askingPrice: data.askingPrice || property.listPrice || property.marketValue || "0",
       minAcceptablePrice: data.minAcceptablePrice, // Private
       closingTimelineDays: data.closingTimelineDays || 30,
@@ -183,7 +183,7 @@ export class MarketplaceService {
     }
     
     // Get bids if seller
-    let bids = [];
+    let bids: Awaited<ReturnType<typeof this.getBidsForListing>> = [];
     if (viewerOrgId && result.listing.sellerOrganizationId === viewerOrgId) {
       bids = await this.getBidsForListing(listingId);
     }

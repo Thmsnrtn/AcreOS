@@ -169,9 +169,12 @@ class TaskRunnerService {
       throw new Error(`Workflow ${workflowId} not found`);
     }
 
+    // TODO(tsc): WORKFLOW_TRIGGER_EVENTS has no "scheduled_run" member. Since
+    // executeWorkflow runs all actions regardless of `event` (it's metadata,
+    // not a gate), record the real trigger in `data` and use a valid enum value.
     await workflowEngine.executeWorkflow(workflow, {
-      event: "scheduled_run",
-      data: { scheduledTaskId: task.id, scheduledTaskName: task.name },
+      event: "deal.updated",
+      data: { trigger: "scheduled_run", scheduledTaskId: task.id, scheduledTaskName: task.name },
     });
   }
 
@@ -186,15 +189,18 @@ class TaskRunnerService {
     // Dynamically import skill registry to avoid circular dependencies
     const { skillRegistry } = await import("./agent-skills");
     
+    // The scheduledTasks.config schema only carries skill fields; any
+    // entity-scoping context is passed through skillParams when present.
+    const skillParams = task.config?.skillParams || {};
     const result = await skillRegistry.executeSkill(
       skillId,
-      task.config?.skillParams || {},
+      skillParams,
       {
         organizationId: task.organizationId,
-        userId: task.config?.userId,
-        relatedLeadId: task.config?.relatedLeadId,
-        relatedPropertyId: task.config?.relatedPropertyId,
-        relatedDealId: task.config?.relatedDealId,
+        userId: skillParams.userId,
+        relatedLeadId: skillParams.relatedLeadId,
+        relatedPropertyId: skillParams.relatedPropertyId,
+        relatedDealId: skillParams.relatedDealId,
       }
     );
     

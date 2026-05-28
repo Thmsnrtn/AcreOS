@@ -68,7 +68,7 @@ class SelfHealingExecutor {
    */
   async evaluateAndExecute(orgId: number, anomalyId: string): Promise<void> {
     try {
-      const { selfHealingMesh } = await import("./selfHealingMeshV13");
+      const { selfHealingMeshService: selfHealingMesh } = await import("./selfHealingMeshV13");
       const { matched, actions } = await selfHealingMesh.evaluatePlaybooks(anomalyId);
 
       for (const entry of actions) {

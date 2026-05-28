@@ -102,10 +102,10 @@ async function processDataIngestJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "data_ingest",
+      type: "data_ingest",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id, lookbackDays: LOOKBACK_DAYS },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id, lookbackDays: LOOKBACK_DAYS },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -127,10 +127,10 @@ async function processDataIngestJob(job: Job): Promise<void> {
       .where(
         and(
           eq(deals.status, "closed"),
-          gte(deals.closedDate as any, cutoffDate)
+          gte(deals.closingDate, cutoffDate)
         )
       )
-      .orderBy(desc(deals.closedDate as any))
+      .orderBy(desc(deals.closingDate))
       .limit(2000);
 
     totalPulled = recentDeals.length;
@@ -167,7 +167,7 @@ async function processDataIngestJob(job: Job): Promise<void> {
         continue;
       }
 
-      const price = parseFloat(deal.purchasePrice || deal.listPrice || "0");
+      const price = parseFloat(deal.acceptedAmount || property?.purchasePrice || property?.listPrice || "0");
       const acres = parseFloat(property?.sizeAcres || "0");
       const pricePerAcre = price / acres;
 
@@ -175,23 +175,25 @@ async function processDataIngestJob(job: Job): Promise<void> {
       try {
         await db.insert(transactionTraining).values({
           transactionHash: hash,
-          state: property?.state || deal.state || "",
+          state: property?.state || "",
           county: property?.county || "",
-          propertyType: property?.propertyType || "land",
+          // properties has no propertyType column; land is the only ingested type.
+          propertyType: "land",
           sizeAcres: String(acres),
           zoning: property?.zoning || null,
-          hasRoadAccess: property?.hasRoadAccess ?? null,
-          hasUtilities: property?.hasUtilities ?? null,
-          hasWater: property?.hasWater ?? null,
-          floodZone: property?.floodZone || null,
-          hasWetlands: property?.hasWetlands ?? null,
-          soilQuality: property?.soilQuality || null,
+          hasRoadAccess: property?.roadAccess ? property.roadAccess !== "none" : null,
+          hasUtilities: property?.utilities ? Object.values(property.utilities).some(Boolean) : null,
+          hasWater: property?.utilities?.water ?? null,
+          // TODO(tsc): properties has no floodZone/wetlands/soilQuality columns; left null until source columns exist.
+          floodZone: null,
+          hasWetlands: null,
+          soilQuality: null,
           countyMedianIncome: null,
           populationDensity: null,
           distanceToMetro: null,
           salePrice: String(price),
           pricePerAcre: String(pricePerAcre.toFixed(2)),
-          saleDate: deal.closedDate ? new Date(deal.closedDate) : new Date(),
+          saleDate: deal.closingDate ? new Date(deal.closingDate) : new Date(),
           dataQuality: validation.quality,
           isOutlier: false,
         });
@@ -225,7 +227,7 @@ async function processDataIngestJob(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: report,
         })
         .where(eq(backgroundJobs.id, bgJobId));
@@ -237,7 +239,7 @@ async function processDataIngestJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;

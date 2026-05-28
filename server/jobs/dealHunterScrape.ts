@@ -18,7 +18,7 @@ import {
   dealAlerts,
   backgroundJobs,
 } from "@shared/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, ne, sql, desc } from "drizzle-orm";
 import { dealHunterService } from "../services/dealHunter";
 import { createHash } from "crypto";
 import { logger } from "../utils/logger";
@@ -58,11 +58,26 @@ function buildDealHash(apn: string, county: string, state: string): string {
 // Deduplication helper
 // ---------------------------------------------------------------------------
 
-async function isDuplicate(hash: string): Promise<boolean> {
+// scraped_deals has no contentHash column; dedup on the natural parcel key
+// (apn + county + state) instead, excluding the row currently being normalized.
+async function isDuplicate(
+  apn: string,
+  county: string,
+  state: string,
+  excludeId: number,
+): Promise<boolean> {
+  if (!apn) return false;
   const existing = await db
     .select({ id: scrapedDeals.id })
     .from(scrapedDeals)
-    .where(eq(scrapedDeals.contentHash, hash))
+    .where(
+      and(
+        eq(scrapedDeals.apn, apn),
+        eq(scrapedDeals.county, county),
+        eq(scrapedDeals.state, state),
+        ne(scrapedDeals.id, excludeId),
+      ),
+    )
     .limit(1);
   return existing.length > 0;
 }
@@ -141,8 +156,6 @@ async function processSource(sourceId: number): Promise<{ dealsFound: number; ne
     .limit(result.dealsFound || 0);
 
   for (const deal of recentDeals) {
-    const hash = buildDealHash(deal.apn || "", deal.county || "", deal.state || "");
-
     // Normalize fields
     const normalized = {
       listPrice: normalizePrice(deal.listPrice),
@@ -150,17 +163,24 @@ async function processSource(sourceId: number): Promise<{ dealsFound: number; ne
       assessedValue: normalizePrice(deal.assessedValue),
       sizeAcres: normalizeAcreage(deal.sizeAcres),
       address: normalizeAddress(deal.address),
-      contentHash: hash,
     };
 
     // Check deduplication (skip if already stored from another source)
-    if (await isDuplicate(hash)) {
+    if (await isDuplicate(deal.apn || "", deal.county || "", deal.state || "", deal.id)) {
       duplicates++;
       continue;
     }
 
     await db.update(scrapedDeals)
-      .set({ ...normalized, updatedAt: new Date() })
+      .set({
+        // numeric columns are stored as strings in Drizzle
+        listPrice: normalized.listPrice == null ? null : String(normalized.listPrice),
+        minimumBid: normalized.minimumBid == null ? null : String(normalized.minimumBid),
+        assessedValue: normalized.assessedValue == null ? null : String(normalized.assessedValue),
+        sizeAcres: normalized.sizeAcres == null ? null : String(normalized.sizeAcres),
+        address: normalized.address,
+        updatedAt: new Date(),
+      })
       .where(eq(scrapedDeals.id, deal.id));
 
     // Send alerts for high-score deals
@@ -195,10 +215,10 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "deal_hunter_scrape",
+      type: "deal_hunter_scrape",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -232,7 +252,7 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
       await db.update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: { totalDeals, totalNew, totalDuplicates, sourcesProcessed, sourcesFailed },
         })
         .where(eq(backgroundJobs.id, jobId));
@@ -243,7 +263,7 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
     logger.error("[DealHunterScrape] Fatal error", err);
     if (jobId) {
       await db.update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, jobId));
     }
     throw err;

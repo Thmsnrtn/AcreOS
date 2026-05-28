@@ -244,7 +244,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
 
         const out = checklists.map((c) => {
           const cgates = gatesByChecklist.get(c.id) ?? [];
-          const completed = cgates.filter((g) => g.status === "approved" || g.status === "completed" || g.status === "skipped").length;
+          const completed = cgates.filter((g) => g.status === "approved" || g.status === "skipped").length;
           const stalled = cgates.filter((g) => isStalledGate(g)).length;
           return { ...c, gates: cgates, completedCount: completed, stalledCount: stalled };
         });

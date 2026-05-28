@@ -12,8 +12,8 @@
  */
 
 import { db } from "../db";
-import { agentEvents, leads, deals, tasks } from "@shared/schema";
-import { eq, and, sql, desc, gte, inArray } from "drizzle-orm";
+import { agentEvents, leads, deals, tasks, properties } from "@shared/schema";
+import { eq, and, or, sql, desc, gte, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 interface VerificationResult {
@@ -53,6 +53,9 @@ class OutcomeVerificationLoop {
     for (const action of actions) {
       const payload = action.payload as Record<string, any>;
       const actionType = payload?.action;
+      // agent_events has no agentCodename column; it is carried in the payload.
+      const agentCodename: string = payload?.agentCodename ?? "unknown";
+      const actionCreatedAt: Date = action.createdAt ?? new Date();
 
       try {
         let result: VerificationResult | null = null;
@@ -81,9 +84,9 @@ class OutcomeVerificationLoop {
               const [logEntry] = await db.select()
                 .from(agentActionLog)
                 .where(and(
-                  eq(agentActionLog.agentCodename, action.agentCodename),
+                  eq(agentActionLog.agentCodename, agentCodename),
                   eq(agentActionLog.actionName, actionType ?? ""),
-                  sql`${agentActionLog.createdAt} >= ${action.createdAt}`,
+                  sql`${agentActionLog.createdAt} >= ${actionCreatedAt}`,
                 ))
                 .orderBy(desc(agentActionLog.createdAt))
                 .limit(1);
@@ -91,28 +94,28 @@ class OutcomeVerificationLoop {
               if (logEntry) {
                 const actionOutcome = logEntry.outcome === "success" ? "positive" : "negative";
                 result = {
-                  agentCodename: action.agentCodename,
+                  agentCodename,
                   action: actionType ?? "unknown",
                   outcome: actionOutcome,
                   reason: `Verified via action log: ${logEntry.outcome}`,
-                  createdAt: action.createdAt,
+                  createdAt: actionCreatedAt,
                 };
               } else {
                 result = {
-                  agentCodename: action.agentCodename,
+                  agentCodename,
                   action: actionType ?? "unknown",
                   outcome: "neutral",
                   reason: `No action log entry found for ${actionType} — cannot verify outcome`,
-                  createdAt: action.createdAt,
+                  createdAt: actionCreatedAt,
                 };
               }
             } catch {
               result = {
-                agentCodename: action.agentCodename,
+                agentCodename,
                 action: actionType ?? "unknown",
                 outcome: "neutral",
                 reason: "Verification query failed for this action type",
-                createdAt: action.createdAt,
+                createdAt: actionCreatedAt,
               };
             }
           }
@@ -137,9 +140,12 @@ class OutcomeVerificationLoop {
     for (const result of results) {
       try {
         await db.insert(agentEvents).values({
-          agentCodename: result.agentCodename,
+          organizationId: orgId,
           eventType: "outcome_verified",
+          eventSource: "agent",
+          // agent_events has no agentCodename column; carry it in the payload.
           payload: {
+            agentCodename: result.agentCodename,
             action: result.action,
             outcome: result.outcome,
             reason: result.reason,
@@ -183,9 +189,15 @@ class OutcomeVerificationLoop {
     if (!leadId) return { agentCodename: action.agentCodename, action: "update_lead_status", outcome: "neutral", reason: "No leadId", createdAt: action.createdAt };
 
     try {
+      // deals has no leadId column; the lead → deal link is via the property
+      // (properties.sellerId / buyerId reference leads). Join through it.
       const dealCount = await db.select({ count: sql<number>`count(*)::int` })
         .from(deals)
-        .where(and(eq(deals.leadId, leadId), gte(deals.createdAt, action.createdAt)));
+        .innerJoin(properties, eq(properties.id, deals.propertyId))
+        .where(and(
+          or(eq(properties.sellerId, leadId), eq(properties.buyerId, leadId)),
+          gte(deals.createdAt, action.createdAt),
+        ));
 
       if (dealCount[0]?.count > 0) {
         return { agentCodename: action.agentCodename, action: "update_lead_status", outcome: "positive", reason: "Deal created after status change", createdAt: action.createdAt };

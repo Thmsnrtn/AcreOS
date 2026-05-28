@@ -8,6 +8,8 @@ import { z } from "zod";
 // The re-exports at the bottom of this file are still the public API; these
 // imports just resolve the forward-reference for the relations() calls.
 import { chartOfAccounts, accountLedgerEntries } from "./schema/accounting-ops";
+import { users } from "./models/auth";
+import { dealRooms } from "./schema/marketplace";
 
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.

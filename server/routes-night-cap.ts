@@ -170,9 +170,11 @@ router.get("/snapshot", async (req: Request, res: Response) => {
       // Win of the day: latest closed deal
       db.select({
         id: deals.id,
-        title: deals.title,
+        // deals has no title/salePrice columns; surface type + the accepted
+        // amount (falling back to offer amount).
+        title: deals.type,
         status: deals.status,
-        salePrice: deals.salePrice,
+        salePrice: deals.acceptedAmount,
         updatedAt: deals.updatedAt,
       }).from(deals)
         .where(and(
@@ -194,7 +196,9 @@ router.get("/snapshot", async (req: Request, res: Response) => {
 
     // Freedom meter calculation
     const monthlyPassiveIncome = Number(freedomData.monthlyIncome) || 0;
-    const monthlyExpenses = org.settings?.monthlyExpenses || org.freedomNumber || 5000;
+    // TODO(tsc): neither organizations.settings.monthlyExpenses nor a
+    // freedomNumber column exists yet; default the freedom-meter denominator.
+    const monthlyExpenses = 5000;
     const freedomPercent = monthlyExpenses > 0
       ? Math.min(100, Math.round((monthlyPassiveIncome / monthlyExpenses) * 100))
       : 0;

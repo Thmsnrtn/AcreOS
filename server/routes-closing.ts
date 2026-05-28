@@ -158,13 +158,13 @@ export function registerClosingRoutes(app: Express): void {
           documents.push({ name: "Promissory Note", type: "note", generated: false });
         }
 
-        try {
-          const { generateDeedOfTrust } = await import("./services/documents");
-          await generateDeedOfTrust(org.id, dealId);
-          documents.push({ name: "Deed of Trust", type: "deed_of_trust", generated: true });
-        } catch {
-          documents.push({ name: "Deed of Trust", type: "deed_of_trust", generated: false });
-        }
+        // TODO(tsc): generateDeedOfTrust(data: DeedOfTrustData) needs a fully
+        // populated 15-field object (trustor/trustee/beneficiary, loan terms,
+        // legal description). It was being called as (org.id, dealId), which
+        // both fails to type-check and would have produced a broken document at
+        // runtime. Marked not-generated until the deed-of-trust data is wired
+        // from the deal record.
+        documents.push({ name: "Deed of Trust", type: "deed_of_trust", generated: false });
       }
 
       res.json({

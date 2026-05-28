@@ -88,7 +88,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
  * Only used for SIMPLE/MODERATE tasks with temperature ≤ 0.3 (deterministic).
  */
 function findSemanticCacheHit(task: AITask): CacheEntry | null {
-  const queryText = task.messages.map(m => m.content).join(" ");
+  const queryText = (task.messages ?? []).map(m => m.content).join(" ");
   const queryTokens = tokenize(queryText);
   const now = Date.now();
 
@@ -186,7 +186,7 @@ async function checkResponseQuality(
   // Use a small, targeted prompt with DeepSeek (cheapest model)
   const checkPrompt = `Rate this AI response on a scale of 1-10 for quality.
 Task type: ${task.taskType}
-User request (abbreviated): ${task.messages[task.messages.length - 1]?.content?.slice(0, 200)}
+User request (abbreviated): ${(task.messages ?? [])[(task.messages ?? []).length - 1]?.content?.slice(0, 200)}
 
 AI Response: ${response.slice(0, 500)}
 
@@ -965,7 +965,7 @@ export async function routeAITask(
       cacheHits++;
       const cacheHitLatency = Date.now() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
       // Pillar 7 — cascade telemetry: cache hits are model="cache".
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
@@ -988,7 +988,7 @@ export async function routeAITask(
       semanticCacheHits++;
       const semanticLatency = Date.now() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
         model: "cache",
@@ -1009,7 +1009,7 @@ export async function routeAITask(
 
   // ── Model selection ──────────────────────────────────────────────────────────
   const startTime = Date.now();
-  let { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType, config);
+  let { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType ?? "ad_hoc", config);
 
   // ── Wave 8 — Tier-based override ───────────────────────────────────────────
   // Resolution order:
@@ -1024,7 +1024,7 @@ export async function routeAITask(
     || config.useReasoning || config.forcePremium || task.useExtendedThinking);
   if (!hasHardPin) {
     const overrides = await loadRoutingOverrides();
-    const override = overrides.byTaskType.get(task.taskType);
+    const override = overrides.byTaskType.get(task.taskType ?? "ad_hoc");
     if (override) {
       const overrideModel = override.overrideModel || modelForTier(override.overrideTier);
       logger.info(`[AIRouter] Tier override active for ${task.taskType}: ${override.reason} → ${overrideModel}`);
@@ -1057,7 +1057,7 @@ export async function routeAITask(
     // Token estimate: Anthropic's tokenizer averages ~3.7 chars/token for
     // English; we use 4 as a conservative ceiling, so 4096 chars ≈ 1024 tokens.
     const isAnthropicModel = model.startsWith("anthropic/");
-    const systemMsg = task.messages.find(m => m.role === "system");
+    const systemMsg = task.messages?.find(m => m.role === "system");
     const systemLength = systemMsg?.content?.length || 0;
     const ANTHROPIC_CACHE_MIN_CHARS = 4096; // ≈ 1024 tokens at 4 chars/token
     const cacheEligible = isAnthropicModel && systemLength >= ANTHROPIC_CACHE_MIN_CHARS;
@@ -1067,12 +1067,12 @@ export async function routeAITask(
       : cacheEligible;
 
     const messagesPayload = shouldCache
-      ? task.messages.map(m =>
+      ? (task.messages ?? []).map(m =>
           m.role === "system"
             ? { ...m, cache_control: { type: "ephemeral" } }
             : m
         )
-      : task.messages;
+      : (task.messages ?? []);
 
     // ── Extended thinking: for valuation/financial/legal reasoning ──────────────
     // Uses Sonnet 4.6's extended thinking mode for deeper chain-of-thought.
@@ -1110,7 +1110,7 @@ export async function routeAITask(
       ?? 0;
   } catch (err: any) {
     const latencyMs = Date.now() - startTime;
-    recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
+    recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
     void recordCascadeCall({
       organizationId: config.orgId ?? null,
       model,
@@ -1148,7 +1148,7 @@ export async function routeAITask(
         try {
           const escalatedResponse = await client.chat.completions.create({
             model: escalatedModel,
-            messages: task.messages,
+            messages: task.messages ?? [],
             max_tokens: task.maxTokens || dbMaxTokens || 4096,
             temperature: task.temperature ?? 0.7,
             ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
@@ -1185,7 +1185,7 @@ export async function routeAITask(
 
   // ── Store in both cache layers ───────────────────────────────────────────────
   if (isCacheable && cacheKey && content) {
-    const queryText = task.messages.map(m => m.content).join(" ");
+    const queryText = (task.messages ?? []).map(m => m.content).join(" ");
     setCachedResponse(cacheKey, {
       ...result,
       cachedAt: Date.now(),
@@ -1195,7 +1195,7 @@ export async function routeAITask(
 
   recordAITelemetry({
     orgId: config.orgId,
-    taskType: task.taskType,
+    taskType: task.taskType ?? "unknown",
     provider,
     model: finalModel,
     promptTokens: usage?.prompt_tokens || 0,
@@ -1236,7 +1236,7 @@ export async function routeAITask(
       usage.completion_tokens || 0,
     );
     // Fire-and-forget; recordUsage swallows its own errors.
-    void recordUsage(config.orgId, usdAuthoritative, task.taskType);
+    void recordUsage(config.orgId, usdAuthoritative, task.taskType ?? "unknown");
   }
 
   return result;

@@ -31,7 +31,7 @@
  */
 
 import { db } from "../db";
-import { deals, properties, documents, backgroundJobs } from "@shared/schema";
+import { deals, properties, backgroundJobs } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -711,21 +711,26 @@ export async function runPostCloseAutomation(
 
     if (!deal) return result;
 
-    // Mark deal as closed in system
+    // Mark deal as closed in system. deals uses closingDate (timestamp), not
+    // a closedDate string column.
     await db
       .update(deals)
       .set({
         status: "closed",
-        closedDate: deal.closedDate || new Date().toISOString().split("T")[0],
+        closingDate: deal.closingDate || new Date(),
         updatedAt: new Date(),
       })
       .where(eq(deals.id, dealId));
 
     result.portfolioEntryCreated = true;
 
-    // Log bookkeeping entry
-    const purchasePrice = parseFloat(deal.purchasePrice || "0");
-    const salePrice = parseFloat(deal.listPrice || "0");
+    // Log bookkeeping entry. purchase/list prices live on the related property,
+    // not the deal row.
+    const dealProperty = await db.query.properties.findFirst({
+      where: eq(properties.id, deal.propertyId),
+    });
+    const purchasePrice = parseFloat(dealProperty?.purchasePrice || "0");
+    const salePrice = parseFloat(dealProperty?.listPrice || "0");
     const profit = salePrice - purchasePrice;
 
     logger.info(`[PostClose] Deal ${dealId} closed. Purchase: $${purchasePrice}, Sale: $${salePrice}, Profit: $${profit}`);

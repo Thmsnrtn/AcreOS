@@ -295,10 +295,10 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "valuation_model_retrain",
+      type: "valuation_model_retrain",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -312,7 +312,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
       if (bgJobId) {
         await db
           .update(backgroundJobs)
-          .set({ status: "completed", finishedAt: new Date(), result: { skipped: true, reason: validation.reason } })
+          .set({ status: "completed", completedAt: new Date(), result: { skipped: true, reason: validation.reason } })
           .where(eq(backgroundJobs.id, bgJobId));
       }
       return;
@@ -352,7 +352,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: {
             newVersionId,
             promoted,
@@ -371,7 +371,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;

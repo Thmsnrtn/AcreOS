@@ -12,7 +12,7 @@
 import { db } from "../db";
 import { companySeasons, type CompanySeason } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { strategicCompassService } from "./strategicCompass";
+import { strategicCompassV8Service } from "./strategicCompassV8";
 
 // ─── Season Configurations ───────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ class CompanySeasonService {
     }).returning({ id: companySeasons.id });
 
     // Also update the strategic compass to match
-    await strategicCompassService.switchMode(
+    await strategicCompassV8Service.switchMode(
       season === "crisis" ? "crisis" : season === "exploration" ? "exploration" : season === "efficiency" ? "efficiency" : season === "growth" ? "growth" : "balanced",
       `Season changed to ${season}`,
     );

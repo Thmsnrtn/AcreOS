@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
 import { insertDealSchema } from "@shared/schema";
+import type { DueDiligenceChecklistItem } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
@@ -13,6 +14,13 @@ import { eq } from "drizzle-orm";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import {
+  getAllHandoffs,
+  getHandoffsForDeal,
+  initiateHandoff,
+  updateHandoffChecklist,
+  completeHandoff,
+} from "./services/dealHandoffService";
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve
 // `(itemId, orgId) → item` only when the item's parent property belongs to
@@ -26,7 +34,7 @@ async function getDueDiligenceItemOrgScoped(itemId: number, orgId: number) {
 }
 
 // Partial update schema for PUT endpoints
-const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
+const updateDealSchema = insertDealSchema.partial();
 
 // Task 211: Offer amount validation constants
 const MIN_OFFER_AMOUNT = 0;         // exclusive lower bound
@@ -169,7 +177,8 @@ export function registerDealRoutes(app: Express): void {
       const userId = user?.id || user?.id;
 
       const deal = await withTransaction(async () => {
-        const newDeal = await storage.createDeal(input);
+        // insertDealSchema strips organizationId; the repo write requires it.
+        const newDeal = await storage.createDeal({ ...input, organizationId: org.id });
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId,
@@ -312,11 +321,13 @@ export function registerDealRoutes(app: Express): void {
             decisionAt: deal.createdAt ? new Date(deal.createdAt as any) : new Date(),
             outcomeAt: new Date(),
             features: {
-              dealType: deal.dealType,
+              dealType: deal.type,
               propertyId: deal.propertyId,
               offerAmount,
               analysisResults: deal.analysisResults ?? null,
-              sequenceId: deal.sequenceId ?? null,
+              // TODO(tsc): deals has no sequenceId column; telemetry feature
+              // left null until/if a sequence linkage is added.
+              sequenceId: null,
             },
             labels: {
               outcome: wonOrLost,
@@ -345,11 +356,11 @@ export function registerDealRoutes(app: Express): void {
             const property = deal.propertyId
               ? await storage.getProperty(org.id, deal.propertyId)
               : null;
-            if (property && property.leadId) {
+            if (property && property.sellerId) {
               pairOutcomeAsync({
                 snapshotType: "lead_conversion",
                 subjectType: "lead",
-                subjectId: String(property.leadId),
+                subjectId: String(property.sellerId),
                 outcomeLabels: {
                   outcome: isFirstClose ? "converted" : "dismissed",
                   dealId: deal.id,
@@ -375,7 +386,7 @@ export function registerDealRoutes(app: Express): void {
             context: {
               dealId: deal.id,
               acceptedAmount: deal.acceptedAmount,
-              dealType: deal.dealType,
+              dealType: deal.type,
             },
           });
         } catch { /* non-fatal */ }
@@ -383,9 +394,9 @@ export function registerDealRoutes(app: Express): void {
         try {
           // Get the property to find associated lead
           const property = await storage.getProperty(org.id, deal.propertyId);
-          if (property && property.leadId) {
+          if (property && property.sellerId) {
             const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
-            await leadScoringService.recordConversion(property.leadId, org.id, "deal_closed", {
+            await leadScoringService.recordConversion(property.sellerId, org.id, "deal_closed", {
               dealValue,
               profitMargin: deal.analysisResults?.netProfit,
             });
@@ -414,11 +425,11 @@ export function registerDealRoutes(app: Express): void {
           outcome: {
             success: true,
             value: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined,
-            details: { dealType: deal.dealType, stage: deal.status },
+            details: { dealType: deal.type, stage: deal.status },
           },
           contributingFactors: {
             offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : undefined,
-            sequenceUsed: deal.sequenceId ? String(deal.sequenceId) : undefined,
+            sequenceUsed: undefined, // TODO(tsc): deals has no sequenceId column
             marketConditions: deal.analysisResults ?? undefined,
           },
           relatedDealId: deal.id,
@@ -426,12 +437,12 @@ export function registerDealRoutes(app: Express): void {
         }).catch(() => {});
 
         // Fire Pillar 3 market signal contribution (non-blocking)
-        import("./services/marketNetworkContributor").then(({ contributeMarketSignal }) => {
-          contributeMarketSignal(org.id, deal).catch((err) => {
-            logger.error("Market signal contribution failed", { error: err.message });
+        import("./services/marketNetworkContributor").then(({ contributeClosedDealToNetwork }) => {
+          contributeClosedDealToNetwork(deal.id, org.id).catch((err: unknown) => {
+            logger.error("Market signal contribution failed", { error: err instanceof Error ? err.message : String(err) });
           });
-        }).catch((err) => {
-          logger.error("Failed to load marketNetworkContributor", { error: err.message });
+        }).catch((err: unknown) => {
+          logger.error("Failed to load marketNetworkContributor", { error: err instanceof Error ? err.message : String(err) });
         });
 
         // Auto-fingerprint closed deal for pattern cloning (non-blocking)
@@ -457,7 +468,7 @@ export function registerDealRoutes(app: Express): void {
             orgId: org.id,
             decisionAt: new Date(),
             features: {
-              dealType: deal.dealType,
+              dealType: deal.type,
               propertyId: deal.propertyId,
               offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : null,
               analysisResults: deal.analysisResults ?? null,
@@ -659,8 +670,18 @@ export function registerDealRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
+      // Map the request's loose item shape into the persisted
+      // DueDiligenceChecklistItem shape ({ id, category, name, required }).
+      const items = (parsed.data.items ?? []).map((item, idx) => ({
+        id: `item_${idx}`,
+        category: item.category ?? parsed.data.category ?? "general",
+        name: item.title,
+        description: item.description,
+        required: item.priority === "required" || item.priority === "high",
+      }));
       const template = await storage.createDueDiligenceTemplate({
-        ...parsed.data,
+        name: parsed.data.name,
+        items,
         organizationId: org.id,
       });
       res.status(201).json(template);
@@ -683,7 +704,19 @@ export function registerDealRoutes(app: Express): void {
     // F-D39: refuse to mutate another org's template.
     const existing = await storage.getDueDiligenceTemplate(Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), parsed.data);
+    // Map loose request items into the persisted DueDiligenceChecklistItem shape.
+    const updates: Partial<{ name: string; items: DueDiligenceChecklistItem[]; isDefault: boolean }> = {};
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+    if (parsed.data.items !== undefined) {
+      updates.items = parsed.data.items.map((item, idx) => ({
+        id: `item_${idx}`,
+        category: item.category ?? parsed.data.category ?? "general",
+        name: item.title,
+        description: item.description,
+        required: item.priority === "required" || item.priority === "high",
+      }));
+    }
+    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), updates);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -754,9 +787,15 @@ export function registerDealRoutes(app: Express): void {
       // F-D39: refuse to attach a checklist item to another org's property.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
+      // Map the request shape to the due_diligence_items columns
+      // (itemName/category are notNull; priority/description/dueDate are not
+      // columns on this table and are dropped).
       const item = await storage.createDueDiligenceItem({
-        ...parsed.data,
         propertyId,
+        itemName: parsed.data.title,
+        category: parsed.data.category ?? "general",
+        completed: parsed.data.completed ?? false,
+        notes: parsed.data.notes,
       });
       res.status(201).json(item);
     } catch (err) {
@@ -1220,7 +1259,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
             lookup = await lookupParcelByCoordinates(
               Number(property.latitude),
               Number(property.longitude),
-              org.id,
             );
           }
           if (lookup?.found && lookup.parcel?.data?.taxAmount) {
@@ -1809,8 +1847,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       const buffer = await generateOfferLetterPdf({
         orgName: org.name || "Buyer",
-        orgEmail: org.email,
-        orgPhone: org.phone,
+        orgEmail: org.settings?.companyEmail,
+        orgPhone: org.settings?.companyPhone,
         sellerName: sellerName || "Property Owner",
         apn: property?.apn || "Unknown",
         propertyAddress: propertyAddress || offerData.propertyAddress,

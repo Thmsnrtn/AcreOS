@@ -129,17 +129,24 @@ async function lookupTenantByDomain(
     if (rows.length === 0) return null;
 
     const row = rows[0];
-    if (row.status !== "active") return null;
+    if (!row.isActive) return null;
 
-    return {
-      tenantId: row.id,
-      organizationId: row.organizationId,
-      customDomain: row.customDomain,
-      brandName: row.brandName,
-      logoUrl: row.logoUrl ?? null,
-      primaryColor: row.primaryColor ?? "#000000",
-      status: row.status,
-    };
+    // TODO(tsc): whitelabel_tenants has no organization_id column, so a custom
+    // domain cannot yet be resolved to a tenant org. Until that FK is added the
+    // router cannot safely inject an organizationId — bail out (matches the
+    // prior runtime behaviour where row.status was always undefined → null).
+    return null;
+
+    // Intended mapping once whitelabel_tenants gains organization_id:
+    // return {
+    //   tenantId: row.id,
+    //   organizationId: row.organizationId,
+    //   customDomain: row.customDomain ?? "",
+    //   brandName: row.tenantName,
+    //   logoUrl: row.logoUrl ?? null,
+    //   primaryColor: row.primaryColor ?? "#000000",
+    //   status: row.isActive ? "active" : "inactive",
+    // };
   } catch (err) {
     // Table may not exist yet in dev environments
     logger.error("[customDomainRouter] DB lookup error", err);

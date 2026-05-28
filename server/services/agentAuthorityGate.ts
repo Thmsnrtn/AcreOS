@@ -108,6 +108,17 @@ export async function checkAuthority(codename: string, action: string): Promise<
     };
   }
 
+  // Determine which level this action is in
+  let requestedLevel: 0 | 1 | 2 | 3 = 3;
+  if (config.level0Actions?.includes(action)) requestedLevel = 0;
+  else if (config.level1Actions?.includes(action)) requestedLevel = 1;
+  else if (config.level2Actions?.includes(action)) requestedLevel = 2;
+  else if (config.level3Actions?.includes(action)) requestedLevel = 3;
+  else {
+    // Action not in any level — default to level 2 (recommend + wait)
+    requestedLevel = 2;
+  }
+
   // v5: Check for temporary CEO delegation before applying static authority
   try {
     const { checkTemporaryDelegation } = await import("./temporaryDelegation");
@@ -125,17 +136,6 @@ export async function checkAuthority(codename: string, action: string): Promise<
       };
     }
   } catch {}
-
-  // Determine which level this action is in
-  let requestedLevel: 0 | 1 | 2 | 3 = 3;
-  if (config.level0Actions?.includes(action)) requestedLevel = 0;
-  else if (config.level1Actions?.includes(action)) requestedLevel = 1;
-  else if (config.level2Actions?.includes(action)) requestedLevel = 2;
-  else if (config.level3Actions?.includes(action)) requestedLevel = 3;
-  else {
-    // Action not in any level — default to level 2 (recommend + wait)
-    requestedLevel = 2;
-  }
 
   // v4: Dynamic trust-based promotion
   // If an agent's trust score exceeds a higher level's threshold,

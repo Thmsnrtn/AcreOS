@@ -46,7 +46,9 @@ export const propertyRepo = {
     return property;
   },
 
-  async createProperty(this: DatabaseStorage, property: InsertProperty): Promise<Property> {
+  // organizationId is omitted from InsertProperty (set server-side) but the DB
+  // column is NOT NULL — callers supply it, so it is required here.
+  async createProperty(this: DatabaseStorage, property: InsertProperty & { organizationId: number }): Promise<Property> {
     const [newProperty] = await db.insert(properties).values(property).returning();
     await this.logActivity({
       organizationId: property.organizationId,

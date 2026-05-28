@@ -1193,7 +1193,7 @@ export default function FieldScout() {
                   key={lead.id || i}
                   type="button"
                   onClick={() => setSelectedLead(lead)}
-                  aria-label={`View lead ${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "View lead"}
+                  aria-label={lead.ownerName ? `View lead ${lead.ownerName}` : "View lead"}
                   className="w-full flex items-center justify-between p-2 rounded hover:bg-acr-bg-sunken text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
                 >
                   <div>

@@ -210,19 +210,19 @@ function normalizeRow<T extends Record<string, string>>(
   return normalized as T;
 }
 
-const leadImportSchema = insertLeadSchema.omit({ organizationId: true }).extend({
+const leadImportSchema = insertLeadSchema.extend({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
 });
 
-const propertyImportSchema = insertPropertySchema.omit({ organizationId: true }).extend({
+const propertyImportSchema = insertPropertySchema.extend({
   apn: z.string().min(1, "APN is required"),
   county: z.string().min(1, "County is required"),
   state: z.string().min(1, "State is required"),
   sizeAcres: z.string().min(1, "Size is required").or(z.number()),
 });
 
-const dealImportSchema = insertDealSchema.omit({ organizationId: true }).extend({
+const dealImportSchema = insertDealSchema.extend({
   propertyId: z.number().or(z.string().transform((v) => parseInt(v, 10))),
   type: z.string().min(1, "Type is required"),
 });

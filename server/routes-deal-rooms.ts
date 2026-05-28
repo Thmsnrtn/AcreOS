@@ -41,6 +41,12 @@ function getUser(req: AuthenticatedRequest) {
   return user;
 }
 
+// The users table stores firstName/lastName, not a single displayName column.
+function userDisplayName(user: { firstName?: string | null; lastName?: string | null }): string | null {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return name || null;
+}
+
 
 function parseId(value: string, res: Response, label = "ID"): number | null {
   const id = parseInt(value, 10);
@@ -147,7 +153,7 @@ router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res:
       .values({
         dealRoomId,
         senderId: String(user.id),
-        senderName: user.displayName ?? user.email ?? 'Unknown',
+        senderName: userDisplayName(user) ?? user.email ?? 'Unknown',
         content: content.trim(),
         messageType,
         attachmentUrl: attachmentUrl ?? null,
@@ -276,7 +282,7 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
     broadcastToDealRoom(req, dealRoomId, {
       type: 'document_uploaded',
       document: doc,
-      uploadedBy: user.displayName ?? user.email,
+      uploadedBy: userDisplayName(user) ?? user.email,
     });
 
     res.status(201).json({ document: doc });
@@ -532,7 +538,7 @@ NON-DISCLOSURE AGREEMENT
 Effective Date: ${effectiveDate}
 
 This Non-Disclosure Agreement ("Agreement") is entered into as of the Effective Date
-between ${disclosingParty} ("Disclosing Party") and ${partyName ?? user.displayName ?? 'Receiving Party'} ("Receiving Party").
+between ${disclosingParty} ("Disclosing Party") and ${partyName ?? userDisplayName(user) ?? 'Receiving Party'} ("Receiving Party").
 
 1. CONFIDENTIAL INFORMATION
    The Receiving Party agrees to keep confidential all non-public information disclosed
@@ -549,7 +555,7 @@ between ${disclosingParty} ("Disclosing Party") and ${partyName ?? user.displayN
    This Agreement shall be governed by the laws of the applicable jurisdiction.
 
 Disclosing Party: ${disclosingParty}
-Receiving Party: ${partyName ?? user.displayName}
+Receiving Party: ${partyName ?? userDisplayName(user)}
 Title: ${partyTitle ?? ''}
 Signed: ${new Date().toISOString()}
 Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
@@ -574,7 +580,7 @@ Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
     broadcastToDealRoom(req, dealRoomId, {
       type: 'nda_generated',
       document: ndaDoc,
-      generatedFor: partyName ?? user.displayName,
+      generatedFor: partyName ?? userDisplayName(user),
     });
 
     res.status(201).json({ document: ndaDoc, ndaContent });
@@ -620,7 +626,7 @@ router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest,
       type: 'notification',
       subject,
       message,
-      sentBy: user.displayName ?? user.email,
+      sentBy: userDisplayName(user) ?? user.email,
       targetCount: targets.length,
     });
 

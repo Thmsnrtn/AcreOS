@@ -92,7 +92,7 @@ Status: ${ticket.status}
 Organization ID: ${ticket.organizationId ?? "unknown"}
 
 CONVERSATION:
-${messages.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n---\n\n")}
+${messages.map(m => `[${m.agentName ?? m.role}]: ${m.content}`).join("\n\n---\n\n")}
 
 PRIOR INTERNAL ANALYSIS: ${sophieAnalysis ?? "No analysis provided"}
 PRIOR DRAFT (use as starting point or improve): ${originalDraft ?? "None"}
@@ -105,14 +105,14 @@ Please provide a definitive resolution. Address the customer as Pax / AcreOS Sup
 
     if (confidence >= 80 && parsed.response) {
       // Opus is confident — auto-send
+      // TODO(tsc): support_ticket_messages has no senderId/messageType/isInternal columns;
+      // map to role/agentName/content. agentName encodes the resolver for telemetry.
       await db.insert(supportTicketMessages).values({
         ticketId,
-        senderId: "sophie_genius",
-        senderName: "AcreOS Support",
+        role: "agent",
+        agentName: "sophie_genius",
         content: parsed.response,
-        messageType: "reply",
-        isInternal: false,
-      } as any);
+      });
       await db.update(supportTickets)
         .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
         .where(eq(supportTickets.id, ticketId));
@@ -160,16 +160,17 @@ export const customerSupportAutoResolver = {
     const effectiveThreshold = isBilling ? 90 : threshold;
 
     // Path 1: Sophie is confident — auto-resolve directly
-    // (Internal codename `sophie` retained for senderId / agent telemetry; customer-facing
-    // senderName is the Pax-canonical brand. Customers must never see internal codenames.)
+    // (Internal codename `sophie` retained in agentName for agent telemetry only.
+    // Customers must never see internal codenames — customer-facing rendering must map
+    // agentName to the Pax-canonical brand.)
     if (confidence >= effectiveThreshold && opts?.draftResponse) {
+      // TODO(tsc): support_ticket_messages has no senderId/messageType/isInternal columns;
+      // map to the schema's role/agentName/content fields.
       await db.insert(supportTicketMessages).values({
         ticketId,
-        senderId: "sophie",
-        senderName: "Pax (AcreOS Support)",
+        role: "agent",
+        agentName: "sophie",
         content: opts.draftResponse,
-        messageType: "reply",
-        isInternal: false,
       });
       await db.update(supportTickets)
         .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
@@ -220,14 +221,14 @@ export const customerSupportAutoResolver = {
     const [sophieResult] = await db.select({ c: count() })
       .from(supportTicketMessages)
       .where(and(
-        eq(supportTicketMessages.senderId, "sophie"),
+        eq(supportTicketMessages.agentName, "sophie"),
         gte(supportTicketMessages.createdAt, since),
       ));
 
     const [geniusResult] = await db.select({ c: count() })
       .from(supportTicketMessages)
       .where(and(
-        eq(supportTicketMessages.senderId, "sophie_genius"),
+        eq(supportTicketMessages.agentName, "sophie_genius"),
         gte(supportTicketMessages.createdAt, since),
       ));
 

@@ -15,7 +15,7 @@
 import { db } from "../db";
 import {
   jobHealthLogs, supportTickets, supportTicketMessages, campaigns,
-  churnRiskScores, organizations, systemAlerts, agentActionLog,
+  churnRiskScores, organizations, systemAlerts, agentActionLog, users,
 } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
 import { emailService } from "./emailService";
@@ -45,6 +45,32 @@ export interface ActionContext {
 }
 
 type ExecutorFn = (context: ActionContext) => Promise<ActionResult>;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a contact email for an organization. The organizations table has no
+ * dedicated email column — the canonical address is settings.companyEmail,
+ * falling back to the owner user's email (same convention as dunning.ts).
+ */
+async function resolveOrgContactEmail(
+  org: typeof organizations.$inferSelect,
+): Promise<string | null> {
+  const settings = org.settings as Record<string, unknown> | null;
+  if (settings?.companyEmail && typeof settings.companyEmail === "string") {
+    return settings.companyEmail;
+  }
+  try {
+    const [owner] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.clerkUserId, org.ownerId))
+      .limit(1);
+    return owner?.email ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Executor Registry ──────────────────────────────────────────────────────
 
@@ -97,7 +123,7 @@ registerExecutor("sophie_csm", "send_retention_email", async (ctx) => {
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
 
   // Find the org's contact email
-  const contactEmail = org.contactEmail || org.billingEmail;
+  const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) {
     return { success: false, detail: `No contact email for ${org.name}` };
   }
@@ -163,7 +189,7 @@ registerExecutor("forge_revenue", "send_churn_rescue", async (ctx) => {
   });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
 
-  const contactEmail = org.contactEmail || org.billingEmail;
+  const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) {
     return { success: false, detail: `No contact email for ${org.name}` };
   }
@@ -240,7 +266,7 @@ registerExecutor("atlas_cto", "acknowledge_incident", async (ctx) => {
   if (!alertId) return { success: false, detail: "No alert ID provided" };
 
   await db.update(systemAlerts)
-    .set({ status: "acknowledged", updatedAt: new Date() })
+    .set({ status: "acknowledged", acknowledgedAt: new Date() })
     .where(eq(systemAlerts.id, alertId));
 
   return {
@@ -400,7 +426,7 @@ registerExecutor("forge_revenue", "send_upgrade_nudge", async (ctx) => {
   if (!orgId) return { success: false, detail: "No organization ID provided" };
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
-  const contactEmail = org.contactEmail || org.billingEmail;
+  const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
   const result = await emailService.sendEmail({
     to: contactEmail,
@@ -418,7 +444,7 @@ registerExecutor("sophie_csm", "schedule_call", async (ctx) => {
   if (!orgId) return { success: false, detail: "No organization ID provided" };
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
-  const contactEmail = org.contactEmail || org.billingEmail;
+  const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
   const result = await emailService.sendEmail({
     to: contactEmail,
@@ -448,7 +474,7 @@ registerExecutor("sophie_csm", "send_guided_walkthrough", async (ctx) => {
   if (!orgId) return { success: false, detail: "No organization ID provided" };
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
-  const contactEmail = org.contactEmail || org.billingEmail;
+  const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
   const featureGuides: Record<string, string> = {
     deals: "Creating your first deal: Go to Pipeline → Deals → New Deal. Add the property APN, your offer price, and the seller contact.",
@@ -474,8 +500,9 @@ registerExecutor("sentinel_devops", "clear_cache", async (ctx) => {
   if (!cacheKey) return { success: false, detail: "No cache key provided" };
   if (cacheKey.includes("auth") || cacheKey.includes("session")) return { success: false, detail: "Governance: cannot clear auth/session caches" };
   try {
-    const { cacheService } = await import("./cache");
-    cacheService.delete(cacheKey);
+    const { getCache } = await import("./cache");
+    const cache = await getCache();
+    await cache.del(cacheKey);
     return { success: true, detail: `Cache cleared: ${cacheKey}`, metrics: { cacheKey } };
   } catch (err: any) {
     return { success: false, detail: `Cache clear failed: ${err.message}` };
@@ -579,13 +606,13 @@ export async function governedExecute(ctx: ActionContext): Promise<ActionResult>
   // 1. Check governance policy
   try {
     const { governanceBrainService } = await import("./governanceBrainV13");
-    const govCheck = await governanceBrainService.evaluateAction(
-      `${ctx.agentCodename}:${ctx.actionName}`,
-      ctx.agentCodename,
-      ctx.actionName,
-      ctx.input,
-      ctx.input.orgId || 0,
-    );
+    const govCheck = await governanceBrainService.evaluateAction({
+      actionId: `${ctx.agentCodename}:${ctx.actionName}`,
+      agentCodename: ctx.agentCodename,
+      actionType: ctx.actionName,
+      actionContext: ctx.input,
+      orgId: ctx.input.orgId || 0,
+    });
     if (govCheck.overallResult === "blocked") {
       return { success: false, detail: `Blocked by governance: ${govCheck.explanation || "policy violation"}` };
     }

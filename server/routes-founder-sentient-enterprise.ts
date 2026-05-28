@@ -39,12 +39,20 @@ export function registerFounderV13Routes(app: Express) {
   });
 
   app.get("/api/founder/v13/memory/facts/:codename", async (req, res) => {
-    try { res.json(await cognitiveMemoryService.queryFacts(req.params.codename, req.query)); }
+    try {
+      const q = req.query;
+      res.json(await cognitiveMemoryService.queryFacts(req.params.codename, {
+        category: typeof q.category === "string" ? q.category : undefined,
+        minConfidence: q.minConfidence ? Number(q.minConfidence) : undefined,
+        includeShared: q.includeShared === "true" || q.includeShared === "1",
+        limit: q.limit ? Number(q.limit) : undefined,
+      }));
+    }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v13/memory/facts/:factId/share", async (req, res) => {
-    try { res.json(await cognitiveMemoryService.shareFact(req.params.factId, req.body.withAgents)); }
+    try { res.json(await cognitiveMemoryService.shareFact(parseInt(req.params.factId, 10), req.body.withAgents)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 

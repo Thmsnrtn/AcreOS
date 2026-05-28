@@ -4,6 +4,7 @@
 // calculateMonthlyPayment) — they're imported here.
 
 import { and, desc, eq, count, sum } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { db, withTransaction } from "../db";
 import {
   notes, payments,
@@ -77,7 +78,7 @@ export const noteRepo = {
 
   async createNote(this: DatabaseStorage, noteData: InsertNote): Promise<Note> {
     // Calculate amortization if not provided
-    let amortization = noteData.amortizationSchedule;
+    let amortization: typeof notes.$inferInsert["amortizationSchedule"] = noteData.amortizationSchedule;
     if (!amortization && noteData.originalPrincipal && noteData.interestRate && noteData.termMonths) {
       const principal = Number(noteData.originalPrincipal);
       const rate = Number(noteData.interestRate);
@@ -92,14 +93,26 @@ export const noteRepo = {
     // Generate access token for borrower portal
     const accessToken = noteData.accessToken || `note_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 
-    const [newNote] = await db.insert(notes).values({
+    // updatedAt has a DB default but drizzle's $inferInsert types it as
+    // required; set it explicitly (equivalent to the default) so the value
+    // object satisfies the insert type.
+    // TODO(tsc): drizzle-zod (0.8) mis-infers the `atrDetermination` jsonb
+    // column (its $type is `{…} | null`) as the loose recursive `Json` type
+    // instead of the column's `$type` shape, so InsertNote['atrDetermination']
+    // is wider than the column accepts. Schema is frozen; narrow back to the
+    // column's own insert type (the runtime value already conforms — it is
+    // validated by insertNoteSchema before reaching here).
+    const insertValues: typeof notes.$inferInsert = {
       ...noteData,
+      atrDetermination: noteData.atrDetermination as typeof notes.$inferInsert["atrDetermination"],
       currentBalance: noteData.currentBalance || noteData.originalPrincipal,
       amortizationSchedule: amortization,
       maturityDate: maturityDate,
       nextPaymentDate: noteData.firstPaymentDate,
       accessToken,
-    }).returning();
+      updatedAt: new Date(),
+    };
+    const [newNote] = await db.insert(notes).values(insertValues).returning();
 
     await this.logActivity({
       organizationId: noteData.organizationId,
@@ -115,8 +128,16 @@ export const noteRepo = {
   async updateNote(this: DatabaseStorage, id: number, updates: Partial<InsertNote>, organizationId?: number): Promise<Note> {
     const conditions = [eq(notes.id, id)];
     if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
+    // Type the payload as drizzle's own update-set source. atrDetermination is
+    // narrowed back to the column's type — see TODO(tsc) in createNote: a
+    // drizzle-zod inference gap widens InsertNote['atrDetermination'] to `Json`.
+    const setValues: PgUpdateSetSource<typeof notes> = {
+      ...updates,
+      atrDetermination: updates.atrDetermination as typeof notes.$inferInsert["atrDetermination"],
+      updatedAt: new Date(),
+    };
     const [updated] = await db.update(notes)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(setValues)
       .where(and(...conditions))
       .returning();
     return updated;

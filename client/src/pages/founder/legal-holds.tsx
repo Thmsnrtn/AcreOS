@@ -182,10 +182,7 @@ export default function FounderLegalHoldsPage() {
   const releasedHolds = holds.filter((h) => h.status === "released");
 
   return (
-    <PageShell
-      title="Legal Holds"
-      description="FRCP 37(e) data-preservation orders. Active holds block automatic retention sweeps and storage-layer deletes."
-    >
+    <PageShell label="Legal Holds">
       {/* Place new hold */}
       <Card className="mb-6 border-destructive/30">
         <CardHeader>

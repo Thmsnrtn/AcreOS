@@ -62,12 +62,12 @@ class VoiceLearningService {
     // Notes on leads, properties, deals
     try {
       const orgNotes = await db
-        .select({ body: notes.content, createdAt: notes.createdAt })
+        .select({ body: notes.notes, createdAt: notes.createdAt })
         .from(notes)
         .where(
           and(
             eq(notes.organizationId, organizationId),
-            isNotNull(notes.content),
+            isNotNull(notes.notes),
           )
         )
         .orderBy(desc(notes.createdAt))
@@ -75,7 +75,7 @@ class VoiceLearningService {
 
       for (const n of orgNotes) {
         if (n.body && n.body.trim().length > 20) {
-          samples.push({ text: n.body.trim(), source: 'note', createdAt: n.createdAt });
+          samples.push({ text: n.body.trim(), source: 'note', createdAt: n.createdAt ?? new Date() });
         }
       }
     } catch (_) { /* table may not have notes column — skip */ }
@@ -83,13 +83,13 @@ class VoiceLearningService {
     // Outbound communications (emails, SMS)
     try {
       const comms = await db
-        .select({ body: communications.body, type: communications.type, createdAt: communications.createdAt })
+        .select({ body: communications.content, type: communications.channel, createdAt: communications.createdAt })
         .from(communications)
         .where(
           and(
             eq(communications.organizationId, organizationId),
             eq(communications.direction, 'outbound'),
-            isNotNull(communications.body),
+            isNotNull(communications.content),
           )
         )
         .orderBy(desc(communications.createdAt))
@@ -98,7 +98,7 @@ class VoiceLearningService {
       for (const c of comms) {
         if (c.body && c.body.trim().length > 30) {
           const source = c.type === 'sms' ? 'sms' : 'email';
-          samples.push({ text: c.body.trim(), source, createdAt: c.createdAt });
+          samples.push({ text: c.body.trim(), source, createdAt: c.createdAt ?? new Date() });
         }
       }
     } catch (_) { /* skip */ }

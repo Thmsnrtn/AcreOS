@@ -8,6 +8,7 @@
 
 import { Router, type Response } from "express";
 import { skipTracingService } from "./services/skipTracingService";
+import { storage } from "./storage";
 import { poolDebit, refundPoolDebit } from "./services/creditPool";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -37,9 +38,31 @@ router.post("/trace/:leadId", async (req: AuthenticatedRequest, res: Response) =
       isFounder: req.isFounder,
     });
 
+    // The service traces a SkipTraceInput (name/address), not a raw leadId —
+    // load the lead and build the input from its fields.
+    const lead = await storage.getLead(orgId, leadId);
+    if (!lead) {
+      if (traceDebit.debitedCents > 0) {
+        await refundPoolDebit({
+          organizationId: orgId,
+          originalEventId: traceKey,
+          amountCents: traceDebit.debitedCents,
+          reason: "Skip trace: lead not found",
+        });
+      }
+      return Errors.notFound(res, "Lead");
+    }
+
     let result;
     try {
-      result = await skipTracingService.traceLead(leadId, orgId);
+      result = await skipTracingService.trace({
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        address: lead.address ?? undefined,
+        city: lead.city ?? undefined,
+        state: lead.state ?? undefined,
+        zip: lead.zip ?? undefined,
+      }, orgId);
     } catch (err) {
       if (traceDebit.debitedCents > 0) {
         await refundPoolDebit({
@@ -88,7 +111,19 @@ router.post("/batch", async (req: AuthenticatedRequest, res: Response) => {
 
     let queued: number;
     try {
-      queued = await skipTracingService.queueBatchTrace(orgId, capped);
+      // No queueBatchTrace on the service — trace up to `capped` leads inline
+      // via traceBatch and report how many were processed.
+      const leads = (await storage.getLeads(orgId)).slice(0, capped);
+      const inputs = leads.map((lead) => ({
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        address: lead.address ?? undefined,
+        city: lead.city ?? undefined,
+        state: lead.state ?? undefined,
+        zip: lead.zip ?? undefined,
+      }));
+      const results = await skipTracingService.traceBatch(inputs);
+      queued = results.length;
     } catch (err) {
       if (batchDebit.debitedCents > 0) {
         await refundPoolDebit({
@@ -134,7 +169,14 @@ router.post("/batch", async (req: AuthenticatedRequest, res: Response) => {
 router.get("/stats", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orgId = getOrganizationId(req);
-    const stats = await skipTracingService.getStats(orgId);
+    // TODO(tsc): skipTracingService exposes no getStats(); report whether the
+    // provider is configured plus the org's lead total as a basic summary
+    // until per-org trace stats are persisted.
+    const totalLeads = (await storage.getLeads(orgId)).length;
+    const stats = {
+      configured: skipTracingService.isConfigured(),
+      totalLeads,
+    };
     res.json(stats);
   } catch (err: any) {
     Errors.internal(res, err);

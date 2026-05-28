@@ -2112,7 +2112,12 @@ function TwoFactorAuthSettings() {
               </DialogDescription>
             </DialogHeader>
             <div className="max-h-[80vh] overflow-y-auto">
-              <UserProfile routing="virtual" />
+              {/* TODO(tsc): Clerk's public UserProfileProps types `routing` as
+                  'path' | 'hash' only — 'virtual' is runtime-valid (used by Clerk
+                  for modal mounting) but not exposed on the component props.
+                  Using 'hash' here keeps navigation off the app router (closest
+                  type-valid equivalent to 'virtual' for this in-Dialog embed). */}
+              <UserProfile routing="hash" />
             </div>
           </DialogContent>
         </Dialog>

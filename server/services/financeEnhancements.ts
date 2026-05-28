@@ -24,7 +24,8 @@ export async function getPaymentCalendar(orgId: number, year: number, month: num
 
   const calendar = [];
   for (const note of allNotes) {
-    const dueDay = note.paymentDueDay || 1;
+    // TODO(tsc): notes has no paymentDueDay column; derive the due day-of-month from firstPaymentDate.
+    const dueDay = note.firstPaymentDate ? new Date(note.firstPaymentDate).getDate() : 1;
     if (dueDay >= 1 && dueDay <= endDate.getDate()) {
       calendar.push({
         day: dueDay,
@@ -84,8 +85,8 @@ export async function getCollectionRate(orgId: number, months: number = 6): Prom
       .from(payments)
       .where(and(
         eq(payments.organizationId, orgId),
-        gte(payments.paidAt, monthStart),
-        lte(payments.paidAt, monthEnd),
+        gte(payments.paymentDate, monthStart),
+        lte(payments.paymentDate, monthEnd),
       ));
 
     // Estimate expected from active notes

@@ -67,7 +67,7 @@ export async function projectMRR(): Promise<MRRProjection> {
       .from(organizations)
       .where(and(
         lte(organizations.createdAt, monthEnd),
-        sql`${organizations.plan} IS NOT NULL AND ${organizations.plan} != 'free' AND ${organizations.plan} != ''`,
+        sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`,
       ));
 
     // Estimate MRR from active paid orgs (avg $49/mo assumption if no payment data)
@@ -194,7 +194,7 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
   // Total active paying customers
   const [orgCount] = await db.select({ c: count() })
     .from(organizations)
-    .where(sql`${organizations.plan} IS NOT NULL AND ${organizations.plan} != 'free' AND ${organizations.plan} != ''`);
+    .where(sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`);
 
   const totalCustomers = Number(orgCount?.c || 0);
 
@@ -209,7 +209,7 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
   const [churned] = await db.select({ c: count() })
     .from(organizations)
     .where(and(
-      sql`${organizations.plan} = 'free' OR ${organizations.plan} IS NULL`,
+      sql`${organizations.subscriptionTier} = 'free' OR ${organizations.subscriptionTier} IS NULL`,
       gte(organizations.updatedAt, thirtyDaysAgo),
     ));
 

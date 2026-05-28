@@ -180,7 +180,17 @@ router.get("/dossier/:id/recommendation", isAuthenticated, async (req: Request, 
     if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
     const dossier = await dueDiligencePodService.getDossier(id);
     if (!dossier) return Errors.notFound(res, "Dossier");
-    const recommendation = await dueDiligencePodService.generateRecommendation(dossier);
+    // generateRecommendation takes the calculated scores + findings, both
+    // persisted on the dossier row (was incorrectly called with the whole row).
+    const scores = {
+      investabilityScore: dossier.investabilityScore ?? 0,
+      riskScore: dossier.riskScore ?? 0,
+      breakdown: dossier.scoreBreakdown ?? {},
+    } as Parameters<typeof dueDiligencePodService.generateRecommendation>[0];
+    const recommendation = await dueDiligencePodService.generateRecommendation(
+      scores,
+      (dossier.findings ?? {}) as Parameters<typeof dueDiligencePodService.generateRecommendation>[1],
+    );
     res.json({ recommendation });
   } catch (err: any) {
     Errors.internal(res, err);

@@ -134,16 +134,27 @@ export async function createOfferBatch(
   config: BatchConfig
 ): Promise<BatchResult> {
   // Create the batch record
+  // TODO(tsc): offer_batches has no createdBy/metadata columns and `pricingMatrix` is a
+  // notNull jsonb with a fixed shape. Map the rule-based config into the required shape;
+  // sent count column is `offersSent`, not `sentOffers`.
+  const pricePerAcreValues = config.pricingMatrix
+    .map((r) => r.pricePerAcre)
+    .filter((v) => typeof v === "number");
   const [batch] = await db
     .insert(offerBatches)
     .values({
       organizationId: config.orgId,
-      createdBy: config.userId,
       name: config.name,
       status: "pending",
       totalOffers: parcels.length,
-      sentOffers: 0,
-      metadata: { config } as any,
+      offersSent: 0,
+      pricingMatrix: {
+        targetMargin: (config.defaultDiscountPct ?? 0) / 100,
+        minOfferAmount: 0,
+        maxOfferAmount: pricePerAcreValues.length ? Math.max(...pricePerAcreValues) : 0,
+        roundTo: 100,
+        adjustments: [],
+      },
     })
     .returning({ id: offerBatches.id });
 
@@ -178,26 +189,23 @@ export async function createOfferBatch(
             (Math.pow(1 + monthlyRate, n) - 1);
     }
 
+    // TODO(tsc): offers has no apn/earnestMoneyDeposit/closingDays/expirationDays/
+    // sellerFinancing/metadata columns. Map amount→cashOffer and seller-financing terms
+    // onto the dedicated columns; expiration is stored as an absolute expiresAt timestamp.
+    const expiresAt = new Date(Date.now() + (config.expirationDays ?? 10) * 86400000);
+    const sf = config.sellerFinancing?.enabled ? config.sellerFinancing : null;
     offerRows.push({
       organizationId: config.orgId,
       batchId,
       leadId: parcel.leadId,
       propertyId: parcel.propertyId,
-      apn: parcel.apn,
-      offerAmount: amount.toString(),
-      earnestMoneyDeposit: config.earnestMoneyDeposit?.toString(),
-      closingDays: config.closingDays ?? 30,
+      cashOffer: amount.toString(),
       status: "draft",
-      expirationDays: config.expirationDays ?? 10,
-      sellerFinancing: config.sellerFinancing?.enabled
-        ? {
-            downPaymentPct: config.sellerFinancing.downPaymentPct,
-            interestRate: config.sellerFinancing.interestRate,
-            termMonths: config.sellerFinancing.termMonths,
-            monthlyPayment: sfMonthlyPayment,
-          }
-        : null,
-      metadata: { acreage: parcel.acreage, state: parcel.state, county: parcel.county } as any,
+      expiresAt,
+      downPayment: sf ? (amount * (sf.downPaymentPct / 100)).toString() : null,
+      interestRate: sf ? sf.interestRate.toString() : null,
+      termMonths: sf ? sf.termMonths : null,
+      monthlyPayment: sfMonthlyPayment != null ? sfMonthlyPayment.toString() : null,
     });
   }
 
@@ -206,7 +214,7 @@ export async function createOfferBatch(
   }
 
   // Queue the async processing job
-  const jobId = await jobQueueService.add(
+  const job = jobQueueService.addJob(
     "process-offer-batch",
     {
       batchId,
@@ -214,13 +222,14 @@ export async function createOfferBatch(
       sendViaEmail: config.sendViaEmail ?? false,
       sendViaMail: config.sendViaMail ?? false,
     },
-    { attempts: 3, backoff: { type: "exponential", delay: 5000 } }
+    { maxAttempts: 3 }
   );
+  const jobId = job.id;
 
   // Update batch status to queued
   await db
     .update(offerBatches)
-    .set({ status: "processing", sentOffers: 0 })
+    .set({ status: "processing", offersSent: 0 })
     .where(eq(offerBatches.id, batchId));
 
   return {
@@ -241,11 +250,11 @@ export async function getBatchStatus(batchId: number, orgId: number) {
 
   if (!batch) return null;
 
+  // TODO(tsc): offers has no apn column and amount is `cashOffer`, not `offerAmount`.
   const batchOffers = await db
     .select({
       id: offers.id,
-      apn: offers.apn,
-      offerAmount: offers.offerAmount,
+      offerAmount: offers.cashOffer,
       status: offers.status,
     })
     .from(offers)

@@ -130,8 +130,8 @@ export class DataQualityService {
   }> {
     const records = await db.select().from(properties).limit(10_000);
 
-    const states = Array.from(new Set(records.map(r => r.state).filter(Boolean)));
-    const propertyTypes = Array.from(new Set(records.map(r => r.zoning || r.propertyType).filter(Boolean)));
+    const states = Array.from(new Set(records.map(r => r.state).filter((s): s is string => Boolean(s))));
+    const propertyTypes = Array.from(new Set(records.map(r => r.zoning || r.structureType).filter((s): s is string => Boolean(s))));
 
     const now = Date.now();
     const recency = records.reduce(

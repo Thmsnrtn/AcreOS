@@ -15,13 +15,14 @@ const router = Router();
 // POST /api/title-search/search
 router.post("/search", async (req: Request, res: Response) => {
   try {
-    const org = req.organization;
-    const { address, parcelId, propertyId } = req.body;
-    if (!address && !parcelId) {
-      return res.status(400).json({ error: "address or parcelId required" });
+    const { apn, parcelId, state } = req.body;
+    // The service searches by APN (+ optional state). Accept apn or parcelId.
+    const apnValue = apn || parcelId;
+    if (!apnValue) {
+      return res.status(400).json({ error: "apn or parcelId required" });
     }
 
-    const result = await titleSearchService.runSearch({ address, parcelId, propertyId, organizationId: org.id });
+    const result = await titleSearchService.search(String(apnValue), state ? String(state) : undefined);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -29,27 +30,17 @@ router.post("/search", async (req: Request, res: Response) => {
 });
 
 // GET /api/title-search/report/:id
-router.get("/report/:id", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const report = await titleSearchService.getReport(req.params.id, org.id);
-    if (!report) return res.status(404).json({ error: "Report not found" });
-    res.json(report);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+// TODO(tsc): titleSearchService does not persist reports (no getReport()).
+// Results are returned synchronously from /search; saved-report retrieval
+// needs a persistence layer before this can return real data.
+router.get("/report/:id", async (_req: Request, res: Response) => {
+  res.status(404).json({ error: "Report not found" });
 });
 
 // GET /api/title-search/history
-router.get("/history", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20")), 100);
-    const history = await titleSearchService.listReports(org.id, limit);
-    res.json({ reports: history });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+// TODO(tsc): titleSearchService does not persist reports (no listReports()).
+router.get("/history", async (_req: Request, res: Response) => {
+  res.json({ reports: [] });
 });
 
 export default router;

@@ -150,10 +150,7 @@ export default function FounderEtlPage() {
   });
 
   return (
-    <PageShell
-      title="ETL orchestrator"
-      description="Wenzeslaus pull pipeline: watermarks, DLQ replay, soft-delete propagation."
-    >
+    <PageShell label="ETL orchestrator">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

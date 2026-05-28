@@ -92,38 +92,18 @@ export async function buildCohortReport(
       status: leads.status,
       source: leads.source,
       state: leads.state,
-      county: leads.county,
+      // TODO(tsc): leads has no county column; county-segment falls back to "Unknown".
+      county: sql<string | null>`NULL`,
       createdAt: leads.createdAt,
       campaignId: leads.campaignId,
     })
     .from(leads)
     .where(whereDate);
 
-  // Fetch deals for these leads to get close data
-  const leadIds = allLeads.map(l => l.id);
-
-  const allDeals = leadIds.length
-    ? await db
-        .select({
-          leadId: deals.leadId,
-          status: deals.status,
-          purchasePrice: deals.purchasePrice,
-          closedAt: deals.closedAt,
-          createdAt: deals.createdAt,
-        })
-        .from(deals)
-        .where(
-          and(
-            eq(deals.organizationId, orgId),
-            sql`${deals.leadId} = ANY(${sql`ARRAY[${sql.join(leadIds.map(id => sql`${id}`), sql`, `)}]::int[]`})`
-          )
-        )
-    : [];
-
-  const dealByLead = new Map<number, typeof allDeals[0]>();
-  for (const d of allDeals) {
-    if (d.leadId) dealByLead.set(d.leadId, d);
-  }
+  // TODO(tsc): the deals table links to properties (propertyId), not leads — there is no
+  // leadId/closedAt/purchasePrice column, so deal-level close metrics can't be joined to
+  // leads here. Deal-derived metrics are unavailable until a lead↔deal link exists.
+  const dealByLead = new Map<number, { status: string; closedAt: Date | null }>();
 
   // Fetch campaign names
   const campaignList = await db

@@ -168,7 +168,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
         if (!dsar) return Errors.notFound(res, "DSAR request");
 
         const { exportUserData } = await import("./services/gdprService");
-        const exportData = await exportUserData(userId);
+        const exportData = await exportUserData(String(userId));
 
         try {
           await auditFromRequest(req, {

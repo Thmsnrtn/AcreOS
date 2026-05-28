@@ -588,12 +588,14 @@ class TaxResearcherService {
           .limit(1);
 
         if (existing.length === 0) {
-          await db.insert(taxSaleListings).values(prop as InsertTaxSaleListing);
+          // Cast to the Drizzle insert type — InsertTaxSaleListing (Zod) widens
+          // the $type-narrowed columns (e.g. acquisitionSource) to plain string.
+          await db.insert(taxSaleListings).values(prop as typeof taxSaleListings.$inferInsert);
         } else {
           await db
             .update(taxSaleListings)
             .set({
-              ...prop,
+              ...(prop as Partial<typeof taxSaleListings.$inferInsert>),
               updatedAt: new Date(),
             })
             .where(eq(taxSaleListings.id, existing[0].id));

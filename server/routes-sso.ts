@@ -30,7 +30,7 @@ function requireEnterpriseTier(req: any, res: any, next: any) {
 // List SAML connections
 ssoRouter.get("/connections", isAuthenticated, getOrCreateOrg, requireEnterpriseTier, async (req, res) => {
   try {
-    const connections = await clerkClient.samlConnections.getSAMLConnectionList();
+    const connections = await clerkClient.samlConnections.getSamlConnectionList();
     const filtered = connections.data.filter((c: any) =>
       // Filter to connections relevant to this organization (by domain if possible)
       true // Clerk doesn't scope by org — show all for founder, or filter by domain match
@@ -66,7 +66,7 @@ ssoRouter.post("/connections", isAuthenticated, getOrCreateOrg, requireEnterpris
       return Errors.badRequest(res, "Name and domain are required.");
     }
 
-    const connection = await clerkClient.samlConnections.createSAMLConnection({
+    const connection = await clerkClient.samlConnections.createSamlConnection({
       name,
       domain,
       provider: provider || "saml_custom",
@@ -96,7 +96,7 @@ ssoRouter.post("/connections", isAuthenticated, getOrCreateOrg, requireEnterpris
 // Delete SAML connection
 ssoRouter.delete("/connections/:id", isAuthenticated, getOrCreateOrg, requireEnterpriseTier, async (req, res) => {
   try {
-    await clerkClient.samlConnections.deleteSAMLConnection(req.params.id);
+    await clerkClient.samlConnections.deleteSamlConnection(req.params.id);
     logger.info("SAML connection deleted", { connectionId: req.params.id });
     res.json({ success: true });
   } catch (error: any) {

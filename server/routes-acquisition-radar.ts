@@ -99,8 +99,9 @@ router.post('/score', async (req: Request, res: Response) => {
 
 router.patch('/opportunities/:id/status', async (req: Request, res: Response) => {
   try {
-    const { status } = req.body;
-    await acquisitionRadar.updateOpportunityStatus(parseInt(req.params.id), status);
+    const org = req.organization;
+    const { status, reviewNotes } = req.body;
+    await acquisitionRadar.updateOpportunityStatus(parseInt(req.params.id), org.id, status, reviewNotes);
     res.json({ success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

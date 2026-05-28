@@ -207,8 +207,17 @@ class AgentResourceGovernorService {
     hourlyRateLimit?: number;
     circuitBreakerThreshold?: number;
   }): Promise<AgentResourceQuota> {
+    // circuit_breaker_threshold is a numeric column (string in drizzle); the
+    // caller passes a number, so coerce it. The rest map 1:1.
+    const { circuitBreakerThreshold, ...rest } = limits;
     const [updated] = await db.update(agentResourceQuotas)
-      .set({ ...limits, updatedAt: new Date() })
+      .set({
+        ...rest,
+        ...(circuitBreakerThreshold !== undefined
+          ? { circuitBreakerThreshold: String(circuitBreakerThreshold) }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(agentResourceQuotas.agentCodename, agentCodename))
       .returning();
     return updated;

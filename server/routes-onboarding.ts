@@ -117,35 +117,26 @@ router.get("/status", async (req: Request, res: Response) => {
 
 router.post("/skip", async (req: Request, res: Response) => {
   try {
-    const user = getUser(req);
     const org = req.organization;
-    await onboardingService.skipOnboarding(user.id, org.id);
+    // onboardingService has no skipOnboarding; skipping marks onboarding
+    // complete for the org (org-scoped onboarding state).
+    await onboardingService.completeOnboarding(org.id);
     res.json({ skipped: true });
   } catch (err) {
     Errors.internal(res, err);
   }
 });
 
-router.get("/checklist", async (req: Request, res: Response) => {
-  try {
-    const user = getUser(req);
-    const org = req.organization;
-    const checklist = await onboardingService.getChecklist(user.id, org.id);
-    res.json({ checklist });
-  } catch (err) {
-    Errors.internal(res, err);
-  }
+// TODO(tsc): onboardingService has no getChecklist/completeChecklistItem
+// methods. The checklist-status endpoint below computes checklist completion
+// directly. These endpoints return 501 until per-item checklist mutation is
+// implemented on the service.
+router.get("/checklist", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "Checklist endpoint not implemented" });
 });
 
-router.post("/checklist/:item", async (req: Request, res: Response) => {
-  try {
-    const user = getUser(req);
-    const org = req.organization;
-    const updated = await onboardingService.completeChecklistItem(user.id, org.id, req.params.item);
-    res.json({ checklist: updated });
-  } catch (err) {
-    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
-  }
+router.post("/checklist/:item", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "Checklist item endpoint not implemented" });
 });
 
 // ============================================================================
@@ -209,12 +200,15 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
     const { leads } = await import("@shared/schema");
     const { eq, and, desc } = await import("drizzle-orm");
 
-    // Pull real leads for this county from the database
+    // Pull real leads for this state from the database.
+    // TODO(tsc): the leads table has no `county` column, so county-level
+    // filtering is not possible here — filtering by state only. A leads.county
+    // column (or a property join) is needed for true county scoping.
     const countyLeads = await db
       .select()
       .from(leads)
-      .where(and(eq(leads.county as any, String(county)), eq(leads.state as any, String(state))))
-      .orderBy(desc(leads.score as any))
+      .where(eq(leads.state, String(state)))
+      .orderBy(desc(leads.score))
       .limit(10);
 
     if (countyLeads.length > 0) {

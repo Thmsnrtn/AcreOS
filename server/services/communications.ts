@@ -303,7 +303,7 @@ export class CommunicationsService {
     // Require real return address — never send mail with a fake fallback address
     const settings = org?.settings as any || {};
     if (!settings.companyAddress || !settings.companyCity || !settings.companyState || !settings.companyZip) {
-      return { success: false, error: "Return address not configured. Set your company address in Settings before sending direct mail." };
+      return { success: false, channel: 'mail', error: "Return address not configured. Set your company address in Settings before sending direct mail." };
     }
     const fromAddress = {
       name: org?.name || 'AcreOS',

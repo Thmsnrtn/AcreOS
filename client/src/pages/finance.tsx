@@ -1718,7 +1718,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const buyerLeads = leads?.filter((l: any) => l.type === 'buyer') || [];
   const buyers = buyerLeads.length > 0 ? buyerLeads : (leads || []);
 
-  const form = useForm<z.infer<typeof noteFormSchema>>({
+  const form = useForm<z.input<typeof noteFormSchema>, unknown, z.output<typeof noteFormSchema>>({
     resolver: zodResolver(noteFormSchema),
     defaultValues: {
       status: "active",

@@ -260,7 +260,7 @@ export class CostBasisTracker {
     });
 
     // Round summary numbers
-    for (const key of Object.keys(summary)) {
+    for (const key of Object.keys(summary) as Array<keyof typeof summary>) {
       if (typeof summary[key] === "number") {
         summary[key] = Math.round(summary[key] * 100) / 100;
       }

@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Response, NextFunction } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, desc, sql, lt } from "drizzle-orm";
@@ -17,7 +18,6 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import * as listingSyndication from "./services/listingSyndication";
-import type { NextFunction } from "express";
 import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 
@@ -28,7 +28,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // ============================================
   
   // Tier gating middleware for team messaging (requires 2+ seats)
-  const requireMessagingTier = async (req: Request, res: Response, next: NextFunction) => {
+  const requireMessagingTier = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const org = req.organization;
     if (!org) {
       return Errors.unauthorized(res);

@@ -1,13 +1,15 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Response } from 'express';
 import { investorVerificationService } from './services/investorVerification';
 import { Errors } from './utils/errors';
+import type { AuthenticatedRequest } from './types/request';
+import { isAdminOrAbove } from './utils/permissions';
 
 const router = Router();
 
 
-function isAdmin(req: Request): boolean {
-  const user = req.user;
-  return user?.role === 'admin' || user?.role === 'super_admin';
+function isAdmin(req: AuthenticatedRequest): boolean {
+  const role = req.permissionContext?.role;
+  return (!!role && isAdminOrAbove(role)) || req.isFounder === true;
 }
 
 // =====================
@@ -15,10 +17,12 @@ function isAdmin(req: Request): boolean {
 // =====================
 
 // GET /verifications/:investorId — get verification status
-router.get('/verifications/:investorId', async (req: Request, res: Response) => {
+router.get('/verifications/:investorId', async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const investorProfileId = parseInt(req.params.investorId, 10);
+    if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid investor id');
     const verification = await investorVerificationService.getVerificationStatus(
-      req.params.investorId
+      investorProfileId
     );
     if (!verification) {
       return Errors.notFound(res, 'Verification');
@@ -30,13 +34,15 @@ router.get('/verifications/:investorId', async (req: Request, res: Response) => 
 });
 
 // POST /verifications — create verification request
-router.post('/verifications', async (req: Request, res: Response) => {
+router.post('/verifications', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const verification = await investorVerificationService.createVerification({
-      ...req.body,
-      organizationId: org.id,
-    });
+    const investorProfileId = parseInt(String(req.body.investorProfileId), 10);
+    if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'investorProfileId required');
+    const verification = await investorVerificationService.createVerificationRequest(
+      investorProfileId,
+      org.id,
+    );
     res.status(201).json({ verification, success: true });
   } catch (error) {
     Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
@@ -44,11 +50,14 @@ router.post('/verifications', async (req: Request, res: Response) => {
 });
 
 // POST /verifications/:id/documents — upload verification document
-router.post('/verifications/:id/documents', async (req: Request, res: Response) => {
+router.post('/verifications/:id/documents', async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const verificationId = parseInt(req.params.id, 10);
+    if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
     const document = await investorVerificationService.uploadDocument(
-      req.params.id,
-      req.body
+      verificationId,
+      req.body?.docType,
+      req.body?.fileData,
     );
     res.status(201).json({ document, success: true });
   } catch (error) {
@@ -57,9 +66,11 @@ router.post('/verifications/:id/documents', async (req: Request, res: Response) 
 });
 
 // PATCH /verifications/:id/submit — submit for review
-router.patch('/verifications/:id/submit', async (req: Request, res: Response) => {
+router.patch('/verifications/:id/submit', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const verification = await investorVerificationService.submitForReview(req.params.id);
+    const verificationId = parseInt(req.params.id, 10);
+    if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
+    const verification = await investorVerificationService.submitForReview(verificationId);
     res.json({ verification, success: true });
   } catch (error) {
     Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
@@ -67,17 +78,21 @@ router.patch('/verifications/:id/submit', async (req: Request, res: Response) =>
 });
 
 // PATCH /verifications/:id/review — admin: approve/reject/request-more-info
-router.patch('/verifications/:id/review', async (req: Request, res: Response) => {
+router.patch('/verifications/:id/review', async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!isAdmin(req)) {
       return Errors.forbidden(res, 'Admin access required');
     }
+    const verificationId = parseInt(req.params.id, 10);
+    if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
     const { decision, notes } = req.body;
-    if (!['approved', 'rejected', 'request_more_info'].includes(decision)) {
-      return Errors.badRequest(res, 'Invalid decision. Must be approved, rejected, or request_more_info');
+    if (!['approved', 'rejected', 'more_info_needed'].includes(decision)) {
+      return Errors.badRequest(res, 'Invalid decision. Must be approved, rejected, or more_info_needed');
     }
+    const adminId = parseInt(String(req.user?.id), 10);
     const verification = await investorVerificationService.reviewVerification(
-      req.params.id,
+      verificationId,
+      Number.isNaN(adminId) ? 0 : adminId,
       decision,
       notes
     );
@@ -88,9 +103,11 @@ router.patch('/verifications/:id/review', async (req: Request, res: Response) =>
 });
 
 // GET /verifications/:id/history — audit trail
-router.get('/verifications/:id/history', async (req: Request, res: Response) => {
+router.get('/verifications/:id/history', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const history = await investorVerificationService.getAuditTrail(req.params.id);
+    const investorProfileId = parseInt(req.params.id, 10);
+    if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid id');
+    const history = await investorVerificationService.getVerificationHistory(investorProfileId);
     res.json({ history });
   } catch (error) {
     Errors.internal(res, error);
@@ -98,29 +115,32 @@ router.get('/verifications/:id/history', async (req: Request, res: Response) => 
 });
 
 // GET /admin/verifications — list all pending verifications (admin only)
-router.get('/admin/verifications', async (req: Request, res: Response) => {
+// TODO(tsc): InvestorVerificationService exposes no listAllVerifications()
+// (state lives in an in-memory per-process store keyed by investor profile).
+// Endpoint preserved but returns an empty set until a persistent listing API
+// is added to the service.
+router.get('/admin/verifications', async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!isAdmin(req)) {
       return Errors.forbidden(res, 'Admin access required');
     }
-    const { status, limit, offset } = req.query;
-    const verifications = await investorVerificationService.listAllVerifications({
-      status: status as string | undefined,
-      limit: limit ? parseInt(limit as string) : 50,
-      offset: offset ? parseInt(offset as string) : 0,
-    });
-    res.json({ verifications });
+    res.json({ verifications: [] });
   } catch (error) {
     Errors.internal(res, error);
   }
 });
 
 // POST /verifications/:id/accreditation — submit accreditation attestation
-router.post('/verifications/:id/accreditation', async (req: Request, res: Response) => {
+router.post('/verifications/:id/accreditation', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const accreditation = await investorVerificationService.submitAccreditationAttestation(
-      req.params.id,
-      req.body
+    const investorProfileId = parseInt(req.params.id, 10);
+    if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid id');
+    const accreditation = await investorVerificationService.accreditationCheck(
+      investorProfileId,
+      {
+        netWorth: Number(req.body?.netWorth) || 0,
+        annualIncome: Number(req.body?.annualIncome) || 0,
+      },
     );
     res.status(201).json({ accreditation, success: true });
   } catch (error) {

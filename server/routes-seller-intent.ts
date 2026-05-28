@@ -25,9 +25,10 @@ const router = Router();
 // Full intent prediction for a lead
 router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const prediction = await sellerIntentPredictorService.predictIntent(leadId);
+    const prediction = await sellerIntentPredictorService.predictIntent(org.id, leadId);
     res.json({ prediction });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -86,9 +87,17 @@ router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async 
 // Recommended approach strategy
 router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const approach = await sellerIntentPredictorService.generateApproachRecommendation(leadId);
+    // generateApproachRecommendation operates on computed signals; deriving the
+    // recommendation for a lead goes through predictIntent, which produces and
+    // persists the recommendedApproach + approachReasoning fields.
+    const prediction = await sellerIntentPredictorService.predictIntent(org.id, leadId);
+    const approach = {
+      recommendedApproach: prediction.recommendedApproach,
+      approachReasoning: prediction.approachReasoning,
+    };
     res.json({ approach });
   } catch (err: any) {
     Errors.badRequest(res, err.message ?? "Bad request");
@@ -113,9 +122,11 @@ router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Req
   try {
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const { outcome, finalPrice, notes } = req.body;
+    const { outcome } = req.body;
     if (!outcome) return Errors.badRequest(res, "outcome is required");
-    await sellerIntentPredictorService.recordOutcome(leadId, outcome, finalPrice, notes);
+    // recordOutcome(predictionId, outcome). finalPrice/notes are not accepted
+    // by the service (they were silently dropped at runtime previously).
+    await sellerIntentPredictorService.recordOutcome(leadId, outcome);
     res.json({ success: true });
   } catch (err: any) {
     Errors.badRequest(res, err.message ?? "Bad request");

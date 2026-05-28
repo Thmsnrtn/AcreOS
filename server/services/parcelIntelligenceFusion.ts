@@ -215,8 +215,6 @@ export async function generateLandIntelligenceReport(
         hasLakeOrRiver: false,
         hasNationalForest: false,
         hasRecreationalAmenities: false,
-      }).then(r => {
-        return r;
       }),
       // Census demographic profile
       buildCountyOpportunityProfile(input.state, input.county).then(r => {
@@ -259,7 +257,7 @@ export async function generateLandIntelligenceReport(
   );
 
   const countyIntel = {
-    opportunityScore: countyScore?.totalScore || 50,
+    opportunityScore: countyScore?.overallScore || 50,
     trend: trend?.trend || "unknown",
     usdaLandValue: nassData?.pasturePerAcre || 0,
     landValueCagr5Year: trend?.cagr5Year || 0,

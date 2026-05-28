@@ -105,11 +105,12 @@ export function registerBillingRoutes(app: Express): void {
       }
       const { actionType, quantity } = parsed.data;
 
-      if (!USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
+      const validActionType = actionType as keyof typeof USAGE_ACTION_TYPES;
+      if (!USAGE_ACTION_TYPES[validActionType]) {
         return Errors.badRequest(res, "Invalid action type");
       }
 
-      const cost = await usageMeteringService.calculateCost(actionType, quantity);
+      const cost = await usageMeteringService.calculateCost(validActionType, quantity);
       const balance = await creditService.getBalance(org.id);
       
       res.json({
@@ -748,7 +749,9 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/subscription/cancellation-context", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
-      const limits = await getAllUsageLimits(org.id, (org.subscriptionTier || "free") as SubscriptionTier);
+      // getAllUsageLimits(organizationId, options) — the tier is resolved
+      // internally; the second argument is UsageLimitOptions, not a tier.
+      const limits = await getAllUsageLimits(org.id, { isFounder: req.isFounder });
 
       res.json({
         currentTier: org.subscriptionTier,
@@ -764,7 +767,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/subscription/cancel", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
-      const userId = req.auth?.userId;
+      const userId = req.user?.id;
 
       const schema = z.object({
         reason: z.enum(["too_expensive", "not_using", "missing_features", "switching_competitor", "other"]),
@@ -841,7 +844,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const userId = req.auth?.userId;
+      const userId = req.user?.id;
 
       const schema = z.object({
         reason: z.string().min(1).max(500),

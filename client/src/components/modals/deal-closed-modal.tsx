@@ -63,17 +63,15 @@ export function DealClosedModal() {
             One down.
           </DialogTitle>
           <DialogDescription className="text-center">
-            {deal?.parcel ? (
-              <>
-                {deal.parcel} closed. Pax has the paper from here — receipts,
-                schedule, the next due date.
-              </>
-            ) : (
-              <>
-                Closed. Pax has the paper from here — receipts, schedule,
-                the next due date.
-              </>
-            )}
+            {/* TODO(tsc): the `Deal` type has no `parcel` field (parcel/APN lives on
+                the related `property`, not the deal). The previous `deal.parcel`
+                reference was always undefined at runtime, so only the generic copy
+                ever rendered — that behavior is preserved here. To show the parcel,
+                the modal store would need to carry the joined property/APN. */}
+            <>
+              Closed. Pax has the paper from here — receipts, schedule,
+              the next due date.
+            </>
           </DialogDescription>
         </DialogHeader>
 

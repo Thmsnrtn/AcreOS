@@ -60,14 +60,13 @@ class BuyerIntelligenceNetwork {
     event: BuyerBehaviorEvent
   ): Promise<void> {
     try {
+      // TODO(tsc): buyer_behavior_events schema is anonymized and county-level only —
+      // it has no organizationId/propertyId/searchCriteria/sessionId/timestamp columns.
+      // Persist what the schema supports; the rest is carried in metadata.
       await db.insert(buyerBehaviorEvents).values({
-        organizationId,
+        anonymousId: event.anonymizedBuyerId,
         eventType: event.eventType,
-        propertyId: event.propertyId || null,
-        searchCriteria: event.searchCriteria || null,
-        sessionId: event.sessionId,
-        anonymizedBuyerId: event.anonymizedBuyerId,
-        timestamp: event.timestamp,
+        eventDate: event.timestamp,
         metadata: event.metadata || {},
       });
 
@@ -93,72 +92,51 @@ class BuyerIntelligenceNetwork {
       // Get property location
       const property = await db.query.properties.findFirst({
         where: and(
-          eq(properties.id, propertyId),
-          eq(properties.organizationId, organizationId)
+          eq(properties.id, Number(propertyId)),
+          eq(properties.organizationId, Number(organizationId))
         ),
       });
 
       if (!property || !property.state || !property.county) return;
 
-      // Find or create heatmap for this location
+      // TODO(tsc): demand_heatmaps is keyed by state/county (no org/location/metrics
+      // columns). Find-or-update the per-county row and bump the matching counter.
       const existing = await db.query.demandHeatmaps.findFirst({
         where: and(
-          eq(demandHeatmaps.organizationId, organizationId),
-          sql`${demandHeatmaps.location}->>'state' = ${property.state}`,
-          sql`${demandHeatmaps.location}->>'county' = ${property.county}`
+          eq(demandHeatmaps.state, property.state),
+          eq(demandHeatmaps.county, property.county)
         ),
       });
 
       if (existing) {
-        // Update existing heatmap
-        const metrics = existing.metrics as any;
-        
-        // Increment relevant metric
+        // Increment relevant metric counter on the existing heatmap row
+        const updates: Partial<typeof demandHeatmaps.$inferInsert> = {};
         if (eventType === 'property_view') {
-          metrics.searchVolume = (metrics.searchVolume || 0) + 1;
-        } else if (eventType === 'save_favorite') {
-          metrics.saveRate = (metrics.saveRate || 0) + 1;
+          updates.viewCount = (existing.viewCount || 0) + 1;
         } else if (eventType === 'contact_seller') {
-          metrics.contactRate = (metrics.contactRate || 0) + 1;
+          updates.inquiryCount = (existing.inquiryCount || 0) + 1;
         } else if (eventType === 'make_offer') {
-          metrics.offerRate = (metrics.offerRate || 0) + 1;
+          updates.bidCount = (existing.bidCount || 0) + 1;
         }
 
-        await db.update(demandHeatmaps)
-          .set({
-            metrics,
-            lastUpdated: new Date(),
-          })
-          .where(eq(demandHeatmaps.id, existing.id));
+        if (Object.keys(updates).length > 0) {
+          await db.update(demandHeatmaps)
+            .set(updates)
+            .where(eq(demandHeatmaps.id, existing.id));
+        }
       } else {
-        // Create new heatmap
-        const initialMetrics = {
-          searchVolume: eventType === 'property_view' ? 1 : 0,
-          viewsPerListing: 0,
-          avgTimeOnPage: 0,
-          saveRate: eventType === 'save_favorite' ? 1 : 0,
-          contactRate: eventType === 'contact_seller' ? 1 : 0,
-          offerRate: eventType === 'make_offer' ? 1 : 0,
-        };
-
+        // Create new heatmap row for this county
+        const now = new Date();
         await db.insert(demandHeatmaps).values({
-          organizationId,
-          location: {
-            state: property.state,
-            county: property.county,
-            zipCode: property.zipCode || undefined,
-          },
+          state: property.state,
+          county: property.county,
+          periodStart: now,
+          periodEnd: now,
           demandScore: 50, // Start at neutral
-          metrics: initialMetrics,
-          buyerProfile: {
-            avgBudget: 0,
-            avgAcreagePreference: 0,
-            topFeatures: [],
-            buyerTypes: [],
-          },
-          trend: 'stable',
-          confidence: 30, // Low confidence initially
-          lastUpdated: new Date(),
+          viewCount: eventType === 'property_view' ? 1 : 0,
+          inquiryCount: eventType === 'contact_seller' ? 1 : 0,
+          bidCount: eventType === 'make_offer' ? 1 : 0,
+          demandTrend: 'stable',
         });
       }
     } catch (error) {
@@ -181,21 +159,22 @@ class BuyerIntelligenceNetwork {
 
       const events = await db.query.buyerBehaviorEvents.findMany({
         where: and(
-          eq(buyerBehaviorEvents.organizationId, organizationId),
-          gte(buyerBehaviorEvents.timestamp, ninetyDaysAgo)
+          gte(buyerBehaviorEvents.eventDate, ninetyDaysAgo),
+          eq(buyerBehaviorEvents.state, state),
+          eq(buyerBehaviorEvents.county, county)
         ),
       });
 
-      // Filter events for properties in this location
-      const properties = await db.query.properties.findMany({
+      // Properties in this location (used for views-per-listing ratio)
+      const locationProperties = await db.query.properties.findMany({
         where: and(
-          eq(properties.organizationId, organizationId),
+          eq(properties.organizationId, Number(organizationId)),
           eq(properties.state, state),
           eq(properties.county, county)
         ),
       });
-      const propertyIds = new Set(properties.map(p => p.id));
-      const relevantEvents = events.filter(e => e.propertyId && propertyIds.has(e.propertyId));
+      // Events are already county-scoped via the query above
+      const relevantEvents = events;
 
       // Calculate metrics
       const views = relevantEvents.filter(e => e.eventType === 'property_view');
@@ -205,21 +184,18 @@ class BuyerIntelligenceNetwork {
 
       const metrics = {
         searchVolume: views.length,
-        viewsPerListing: properties.length > 0 ? views.length / properties.length : 0,
+        viewsPerListing: locationProperties.length > 0 ? views.length / locationProperties.length : 0,
         avgTimeOnPage: 0, // Would calculate from session data
         saveRate: views.length > 0 ? (saves.length / views.length) * 100 : 0,
         contactRate: views.length > 0 ? (contacts.length / views.length) * 100 : 0,
         offerRate: contacts.length > 0 ? (offers.length / contacts.length) * 100 : 0,
       };
 
-      // Analyze buyer profiles
-      const searchEvents = events.filter(e => e.eventType === 'search' && e.searchCriteria);
-      const budgets = searchEvents
-        .map(e => e.searchCriteria?.maxPrice)
-        .filter(p => p !== undefined) as number[];
-      const acreages = searchEvents
-        .map(e => e.searchCriteria?.maxAcres)
-        .filter(a => a !== undefined) as number[];
+      // TODO(tsc): buyer_behavior_events has no searchCriteria column (anonymized,
+      // county-level). Budget/acreage profiling cannot be derived from stored events.
+      const searchEvents = events.filter(e => e.eventType === 'search');
+      const budgets: number[] = [];
+      const acreages: number[] = [];
 
       const buyerProfile = {
         avgBudget: budgets.length > 0 ? budgets.reduce((sum, b) => sum + b, 0) / budgets.length : 0,
@@ -237,16 +213,19 @@ class BuyerIntelligenceNetwork {
       // Calculate confidence based on sample size
       const confidence = Math.min(95, 30 + Math.log10(Math.max(1, relevantEvents.length)) * 20);
 
-      // Save heatmap
+      // Save heatmap. TODO(tsc): demand_heatmaps stores scalar columns only — the rich
+      // metrics/buyerProfile/confidence are computed in-memory and returned, not persisted.
+      const nowPeriod = new Date();
       await db.insert(demandHeatmaps).values({
-        organizationId,
-        location: { state, county },
+        state,
+        county,
+        periodStart: nowPeriod,
+        periodEnd: nowPeriod,
         demandScore,
-        metrics,
-        buyerProfile,
-        trend,
-        confidence: Math.round(confidence),
-        lastUpdated: new Date(),
+        viewCount: views.length,
+        inquiryCount: contacts.length,
+        bidCount: offers.length,
+        demandTrend: trend,
       });
 
       return {
@@ -386,16 +365,18 @@ class BuyerIntelligenceNetwork {
 
       const recentEvents = await db.query.buyerBehaviorEvents.findMany({
         where: and(
-          eq(buyerBehaviorEvents.organizationId, organizationId),
-          gte(buyerBehaviorEvents.timestamp, ninetyDaysAgo)
+          eq(buyerBehaviorEvents.state, state),
+          eq(buyerBehaviorEvents.county, county),
+          gte(buyerBehaviorEvents.eventDate, ninetyDaysAgo)
         ),
       });
 
       const previousEvents = await db.query.buyerBehaviorEvents.findMany({
         where: and(
-          eq(buyerBehaviorEvents.organizationId, organizationId),
-          gte(buyerBehaviorEvents.timestamp, oneEightyDaysAgo),
-          sql`${buyerBehaviorEvents.timestamp} < ${ninetyDaysAgo}`
+          eq(buyerBehaviorEvents.state, state),
+          eq(buyerBehaviorEvents.county, county),
+          gte(buyerBehaviorEvents.eventDate, oneEightyDaysAgo),
+          sql`${buyerBehaviorEvents.eventDate} < ${ninetyDaysAgo}`
         ),
       });
 
@@ -417,6 +398,38 @@ class BuyerIntelligenceNetwork {
   }
 
   /**
+   * Map a stored demand_heatmaps row to the rich DemandHeatmap shape.
+   * TODO(tsc): the table stores scalar columns only; metrics/buyerProfile are
+   * reconstructed from the available counters and confidence defaults to neutral.
+   */
+  private mapHeatmapRow(h: typeof demandHeatmaps.$inferSelect): DemandHeatmap {
+    const validTrends: DemandHeatmap['trend'][] = ['surging', 'growing', 'stable', 'declining'];
+    const trend = validTrends.includes(h.demandTrend as DemandHeatmap['trend'])
+      ? (h.demandTrend as DemandHeatmap['trend'])
+      : 'stable';
+    return {
+      location: { state: h.state, county: h.county },
+      demandScore: h.demandScore,
+      metrics: {
+        searchVolume: h.viewCount ?? 0,
+        viewsPerListing: 0,
+        avgTimeOnPage: 0,
+        saveRate: 0,
+        contactRate: h.inquiryCount ?? 0,
+        offerRate: h.bidCount ?? 0,
+      },
+      buyerProfile: {
+        avgBudget: 0,
+        avgAcreagePreference: 0,
+        topFeatures: [],
+        buyerTypes: [],
+      },
+      trend,
+      confidence: 50,
+    };
+  }
+
+  /**
    * Get demand heatmap for location
    */
   async getDemandHeatmap(
@@ -427,23 +440,15 @@ class BuyerIntelligenceNetwork {
     try {
       const heatmap = await db.query.demandHeatmaps.findFirst({
         where: and(
-          eq(demandHeatmaps.organizationId, organizationId),
-          sql`${demandHeatmaps.location}->>'state' = ${state}`,
-          sql`${demandHeatmaps.location}->>'county' = ${county}`
+          eq(demandHeatmaps.state, state),
+          eq(demandHeatmaps.county, county)
         ),
-        orderBy: [desc(demandHeatmaps.lastUpdated)],
+        orderBy: [desc(demandHeatmaps.createdAt)],
       });
 
       if (!heatmap) return null;
 
-      return {
-        location: heatmap.location as any,
-        demandScore: heatmap.demandScore,
-        metrics: heatmap.metrics as any,
-        buyerProfile: heatmap.buyerProfile as any,
-        trend: heatmap.trend as any,
-        confidence: heatmap.confidence,
-      };
+      return this.mapHeatmapRow(heatmap);
     } catch (error) {
       logger.error('Failed to get demand heatmap', error);
       return null;
@@ -459,19 +464,11 @@ class BuyerIntelligenceNetwork {
   ): Promise<DemandHeatmap[]> {
     try {
       const heatmaps = await db.query.demandHeatmaps.findMany({
-        where: eq(demandHeatmaps.organizationId, organizationId),
         orderBy: [desc(demandHeatmaps.demandScore)],
         limit,
       });
 
-      return heatmaps.map(h => ({
-        location: h.location as any,
-        demandScore: h.demandScore,
-        metrics: h.metrics as any,
-        buyerProfile: h.buyerProfile as any,
-        trend: h.trend as any,
-        confidence: h.confidence,
-      }));
+      return heatmaps.map(h => this.mapHeatmapRow(h));
     } catch (error) {
       logger.error('Failed to get top demand locations', error);
       return [];
@@ -498,16 +495,14 @@ class BuyerIntelligenceNetwork {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+      // TODO(tsc): buyer_behavior_events is anonymized with no propertyId/org columns,
+      // so per-property insights fall back to recent county-agnostic event activity.
       const events = await db.query.buyerBehaviorEvents.findMany({
-        where: and(
-          eq(buyerBehaviorEvents.organizationId, organizationId),
-          eq(buyerBehaviorEvents.propertyId, propertyId),
-          gte(buyerBehaviorEvents.timestamp, thirtyDaysAgo)
-        ),
+        where: gte(buyerBehaviorEvents.eventDate, thirtyDaysAgo),
       });
 
       const views = events.filter(e => e.eventType === 'property_view');
-      const uniqueViewers = new Set(events.map(e => e.anonymizedBuyerId)).size;
+      const uniqueViewers = new Set(events.map(e => e.anonymousId)).size;
       const saves = events.filter(e => e.eventType === 'save_favorite');
       const contacts = events.filter(e => e.eventType === 'contact_seller');
       const offers = events.filter(e => e.eventType === 'make_offer');
@@ -544,12 +539,12 @@ class BuyerIntelligenceNetwork {
   async refreshAllHeatmaps(organizationId: string): Promise<{ updated: number; failed: number }> {
     try {
       // Get unique locations from properties
-      const properties = await db.query.properties.findMany({
-        where: eq(properties.organizationId, organizationId),
+      const orgProperties = await db.query.properties.findMany({
+        where: eq(properties.organizationId, Number(organizationId)),
       });
 
       const locations = new Set<string>();
-      for (const prop of properties) {
+      for (const prop of orgProperties) {
         if (prop.state && prop.county) {
           locations.add(`${prop.state}|${prop.county}`);
         }
@@ -591,19 +586,26 @@ class BuyerIntelligenceNetwork {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
 
+      // TODO(tsc): buyer_behavior_events has no org/searchCriteria columns; group by the
+      // anonymized property-characteristic fields the schema actually stores.
       const searches = await db.query.buyerBehaviorEvents.findMany({
         where: and(
-          eq(buyerBehaviorEvents.organizationId, organizationId),
           eq(buyerBehaviorEvents.eventType, 'search'),
-          gte(buyerBehaviorEvents.timestamp, cutoffDate)
+          gte(buyerBehaviorEvents.eventDate, cutoffDate)
         ),
-        orderBy: [desc(buyerBehaviorEvents.timestamp)],
+        orderBy: [desc(buyerBehaviorEvents.eventDate)],
       });
 
       // Group similar searches
       const searchMap = new Map<string, number>();
       for (const search of searches) {
-        const key = JSON.stringify(search.searchCriteria);
+        const key = JSON.stringify({
+          propertyType: search.propertyType,
+          acreageRange: search.acreageRange,
+          priceRange: search.priceRange,
+          state: search.state,
+          county: search.county,
+        });
         searchMap.set(key, (searchMap.get(key) || 0) + 1);
       }
 

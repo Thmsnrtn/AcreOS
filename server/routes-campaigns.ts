@@ -682,7 +682,9 @@ export function registerCampaignRoutes(app: Express): void {
       const leadsData = await Promise.all(
         leadIds.map(id => storage.getLead(org.id, id))
       );
-      const validLeadsRaw = leadsData.filter(l => l && l.address && l.city && l.state && l.zip);
+      const validLeadsRaw = leadsData.filter(
+        (l): l is NonNullable<typeof l> => Boolean(l && l.address && l.city && l.state && l.zip)
+      );
 
       if (validLeadsRaw.length === 0) {
         return Errors.badRequest(res, "No valid recipients with complete addresses");
@@ -1461,19 +1463,19 @@ export function registerCampaignRoutes(app: Express): void {
           continue;
         }
         
-        if (!lead.mailingAddress || !lead.city || !lead.state || !lead.zipCode) {
+        if (!lead.address || !lead.city || !lead.state || !lead.zip) {
           results.push({ leadId, isValid: false, deliverability: 'incomplete_address', errorMessage: 'Incomplete address information' });
           undeliverable++;
           continue;
         }
-        
+
         try {
           const verificationResult = await verifyAddress({
-            line1: lead.mailingAddress,
+            line1: lead.address,
             line2: undefined,
             city: lead.city,
             state: lead.state,
-            zip: lead.zipCode,
+            zip: lead.zip,
           });
           
           results.push({
@@ -1868,11 +1870,12 @@ export function registerCampaignRoutes(app: Express): void {
         logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
       }
 
-      // Update campaign stats
-      await storage.updateCampaign(org.id, campaignId, {
+      // Update campaign stats. Note: the campaigns table has no sentCount
+      // column (sent_count lives on campaign_variants), so only status is set
+      // — matching prior runtime behavior where the sentCount spread was a no-op.
+      await storage.updateCampaign(campaignId, {
         status: "sent",
-        ...(campaign as any).sentCount !== undefined ? { sentCount: ((campaign as any).sentCount || 0) + results.sent } : {},
-      } as any);
+      }, org.id);
 
       // Lenore §1 — value-event telemetry. First mailer sent via email
       // channel (distinct from first_letter_sent which is postcard).
@@ -2033,9 +2036,27 @@ export function registerCampaignRoutes(app: Express): void {
       // called Twilio directly instead of going through smsService. Without
       // this branch a global kill-switch was a lie for the campaign batch
       // path. Caught 2026-05-10.
+      // Minimal structural type for the subset of the Twilio SDK we call.
+      // The `twilio` package is an optional runtime dependency (loaded only
+      // for live sends), so it is imported through a non-literal specifier to
+      // avoid a compile-time module resolution requirement.
+      type TwilioClient = {
+        messages: {
+          create(opts: {
+            to: string;
+            from: string;
+            body: string;
+            mediaUrl?: string[];
+          }): Promise<unknown>;
+        };
+      };
+      type TwilioFactory = (sid: string, token: string) => TwilioClient;
       const simulated = shouldSimulate("sms", org);
-      const twilio = simulated ? null : (await import("twilio")).default;
-      const client = simulated ? null : twilio!(twilioSid, twilioToken);
+      const twilioModuleName = "twilio";
+      const twilio = simulated
+        ? null
+        : ((await import(twilioModuleName)).default as TwilioFactory);
+      const client: TwilioClient | null = simulated ? null : twilio!(twilioSid, twilioToken);
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -2103,9 +2124,9 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       // Update campaign stats
-      await storage.updateCampaign(org.id, campaignId, {
+      await storage.updateCampaign(campaignId, {
         status: "sent",
-      } as any);
+      }, org.id);
 
       // Lenore §1 — value-event telemetry. First mailer sent via SMS
       // channel. Same canonical event as email; the (orgId, eventName)

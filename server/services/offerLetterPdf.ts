@@ -163,13 +163,13 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Buf
   doc.setFont("helvetica", "normal");
   doc.setTextColor(40, 40, 40);
 
-  const propDetails: [string, string][] = [
+  const propDetails: [string, string][] = ([
     ["Assessor Parcel Number (APN)", data.apn],
     ["Property Address", data.propertyAddress || "Per county records"],
     ["County / State", [data.county, data.state].filter(Boolean).join(", ")],
     data.acres ? ["Approximate Acreage", `${data.acres.toLocaleString()} acres`] : ["", ""],
     data.legalDescription ? ["Legal Description", data.legalDescription] : ["", ""],
-  ].filter(([k]) => k);
+  ] as [string, string][]).filter(([k]) => k);
 
   for (const [label, value] of propDetails) {
     doc.setFont("helvetica", "bold");

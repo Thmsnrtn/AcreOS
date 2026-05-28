@@ -68,6 +68,7 @@ interface ActivationSummary {
   policiesCreated: string[];
   chainsCreated: string[];
   totalResources: number;
+  warnings?: string[];
 }
 
 // ─── Keyword Maps ─────────────────────────────────────────────────────────────
@@ -445,14 +446,13 @@ class FounderIntentService {
       try {
         const { reactiveOrchestrationService } = await import("./reactiveOrchestrationV14");
         const agentForMetric = this.getAgentForMetric(goal.metric);
-        const chain = await reactiveOrchestrationService.createChain({
+        const chain = await reactiveOrchestrationService.createChain(intent.orgId, {
           name: `intent_${goal.metric}_${intentId.slice(0, 8)}`,
-          triggerEvent: `metric_${goal.metric}_drift`,
+          triggerEventType: `metric_${goal.metric}_drift`,
           steps: [
-            { agentCodename: agentForMetric, action: `check_${goal.metric}`, input: { target: goal.target, direction: goal.direction } },
-            { agentCodename: agentForMetric, action: `adjust_${goal.metric}`, input: { target: goal.target, filters: goal.filters } },
+            { agentCodename: agentForMetric, action: `check_${goal.metric}`, inputMapping: {}, governanceCheck: true, timeoutMs: 30000 },
+            { agentCodename: agentForMetric, action: `adjust_${goal.metric}`, inputMapping: {}, governanceCheck: true, timeoutMs: 30000 },
           ],
-          orgId: 0,
         });
         if (chain?.chainId) summary.chainsCreated.push(chain.chainId);
       } catch (e: any) {
@@ -745,11 +745,14 @@ class FounderIntentService {
 
       switch (goal.metric) {
         case "deals_closed": {
+          // deals has no propertyState column — state lives on the linked
+          // property; filter via a propertyId subquery.
           const stateFilter = goal.filters?.state
-            ? [sql`${deals.propertyState} = ${goal.filters.state}`]
+            ? [sql`${deals.propertyId} IN (SELECT ${properties.id} FROM ${properties} WHERE ${properties.state} = ${goal.filters.state})`]
             : [];
+          // deals has no offerAmountCents column; offerAmount is numeric dollars.
           const priceFilter = goal.filters?.maxPrice
-            ? [sql`${deals.offerAmountCents} <= ${goal.filters.maxPrice * 100}`]
+            ? [sql`${deals.offerAmount} <= ${goal.filters.maxPrice}`]
             : [];
           const [result] = await db.select({ c: count() })
             .from(deals)
@@ -804,8 +807,9 @@ class FounderIntentService {
         }
 
         case "revenue": {
+          // deals has no offerAmountCents column; offerAmount is numeric dollars.
           const result = await db.select({
-            total: sql<number>`COALESCE(SUM(${deals.offerAmountCents}), 0)`,
+            total: sql<number>`COALESCE(SUM(${deals.offerAmount}), 0)`,
           })
             .from(deals)
             .where(and(
@@ -813,7 +817,7 @@ class FounderIntentService {
               eq(deals.status, "closed"),
               gte(deals.createdAt, since),
             ));
-          return Number(result[0]?.total ?? 0) / 100; // cents to dollars
+          return Number(result[0]?.total ?? 0); // offerAmount is already in dollars
         }
 
         case "outreach_emails":
@@ -865,7 +869,7 @@ class FounderIntentService {
           const [result] = await db.select({ c: count() })
             .from(deals)
             .where(and(
-              eq(deals.stage, "closed_won"),
+              eq(deals.status, "closed"),
               gte(deals.createdAt, since),
             ));
           return Number(result?.c ?? 0);

@@ -121,7 +121,8 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const { getPortfolioPnl } = await import("./services/portfolioPnl");
       let portfolioAvgRoi = 0;
       try {
-        const pnl = await getPortfolioPnl(org.id, "quarterly");
+        const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+        const pnl = await getPortfolioPnl(org.id, ytdStart, new Date(), "quarterly");
         portfolioAvgRoi = pnl?.totals?.irr || 0;
       } catch {}
 
@@ -192,13 +193,15 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   // QuickBooks sync
   app.post("/api/integrations/quickbooks/sync", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
       const { syncPaymentsToQbo } = await import("./services/bookkeeping");
       if (typeof syncPaymentsToQbo !== "function") {
         return Errors.badRequest(res, "QuickBooks sync not available");
       }
-      const result = await syncPaymentsToQbo(org.id);
-      res.json(result);
+      // TODO(tsc): syncPaymentsToQbo(orgId, tokens, fromDate) needs the org's
+      // stored QBO OAuth tokens; there is no exported loader yet, so the sync
+      // cannot be invoked. Surface a clear not-connected error rather than
+      // crashing on missing tokens.
+      return Errors.badRequest(res, "QuickBooks is not connected for this organization");
     } catch (error) {
       Errors.internal(res, error);
     }
@@ -437,7 +440,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
           : null,
         reviewCount: countyReviewsList.length,
         lcsBenchmarks: benchmarks,
-        hasSufficientData: (countyData?.dealCount || 0) >= 5,
+        hasSufficientData: (countyData?.propertyCount || 0) >= 5,
       });
     } catch (error) { Errors.internal(res, error); }
   });
@@ -1048,15 +1051,15 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
       const state = property.state || "TX";
       const propertyType = (property as any).zoning || "agricultural";
-      const comparison = benchmarking.compareToIndustry(score.overall ?? 0, propertyType, state);
+      const comparison = benchmarking.compareToIndustry(score.overallScore ?? 0, propertyType, state);
       const benchmarks = benchmarking.getBenchmarks(propertyType, state);
 
       res.json({
-        score: score.overall,
+        score: score.overallScore,
         grade: score.grade,
         comparison,
         benchmarks,
-        summary: `Your LCS: ${score.overall}. State benchmark: median ${benchmarks.median}, 75th percentile: ${benchmarks.p75}. Your property ranks in the ${comparison.percentile}th percentile for ${state} ${propertyType}.`,
+        summary: `Your LCS: ${score.overallScore}. State benchmark: median ${benchmarks.median}, 75th percentile: ${benchmarks.p75}. Your property ranks in the ${comparison.percentile}th percentile for ${state} ${propertyType}.`,
       });
     } catch (error) { Errors.internal(res, error); }
   });

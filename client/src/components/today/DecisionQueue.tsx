@@ -16,6 +16,7 @@ import {
   ArrowRight,
   EyeOff,
   RotateCcw,
+  type LucideIcon,
 } from "lucide-react";
 
 // Priority → semantic --acr-* tone (carried from today.tsx).
@@ -48,7 +49,7 @@ const sourcePillLabel: Record<DecisionSource, string> = {
   "portfolio-alert": "Alert",
 };
 
-const sourceIcon: Record<DecisionSource, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
+const sourceIcon: Record<DecisionSource, LucideIcon> = {
   "pax-priority": Zap,
   "pax-suggests": Sparkles,
   "pax-noticed": Sparkles,

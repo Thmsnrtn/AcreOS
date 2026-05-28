@@ -114,8 +114,8 @@ class LandCreditScoring {
       // Get property details
       const property = await db.query.properties.findFirst({
         where: and(
-          eq(properties.id, propertyId),
-          eq(properties.organizationId, organizationId)
+          eq(properties.id, Number(propertyId)),
+          eq(properties.organizationId, Number(organizationId))
         ),
       });
 
@@ -164,17 +164,29 @@ class LandCreditScoring {
       // Compute confidence based on how many dimensions have real data vs defaults
       const confidence = this.computeConfidence(factors, creditScore);
 
-      // Save score to database
+      // Save score to database.
+      // TODO(tsc): land_credit_scores has no organizationId/score/factors/
+      // riskLevel/strengths/weaknesses/recommendations columns. Map to the real
+      // schema: discrete 0-100 sub-scores, overallScore (0-100), grade, and the
+      // scoreBreakdown blob. The rich factors/strengths data has no schema home
+      // and is only returned to the caller, not persisted.
       await db.insert(landCreditScores).values({
-        organizationId,
-        propertyId,
-        score: creditScore,
+        propertyId: Number(propertyId),
+        liquidityScore: market.score,
+        riskScore: environmental.score,
+        developmentPotentialScore: physical.score,
+        marketabilityScore: market.score,
+        overallScore: overall,
         grade,
-        factors: factors as any,
-        riskLevel,
-        strengths,
-        weaknesses,
-        recommendations,
+        scoreBreakdown: {
+          location: location.score,
+          characteristics: physical.score,
+          marketDemand: market.score,
+          economicFactors: financial.score,
+          timeOnMarket: legal.score,
+        },
+        modelVersion: "v1",
+        validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       });
 
       return {
@@ -688,7 +700,7 @@ class LandCreditScoring {
   ): Promise<{ scored: number; failed: number }> {
     try {
       const props = await db.query.properties.findMany({
-        where: eq(properties.organizationId, organizationId),
+        where: eq(properties.organizationId, Number(organizationId)),
       });
 
       let scored = 0;
@@ -696,7 +708,7 @@ class LandCreditScoring {
 
       for (const prop of props) {
         try {
-          await this.calculateCreditScore(organizationId, prop.id);
+          await this.calculateCreditScore(organizationId, String(prop.id));
           scored++;
         } catch (error) {
           failed++;
@@ -722,12 +734,21 @@ class LandCreditScoring {
     riskDistribution: { risk: string; count: number }[];
   }> {
     try {
-      const scores = await db.query.landCreditScores.findMany({
-        where: eq(landCreditScores.organizationId, organizationId),
-        orderBy: [desc(landCreditScores.createdAt)],
-      });
+      // land_credit_scores has no organizationId column; scope by joining to
+      // the score's property. overallScore replaces the old `score` column and
+      // riskLevel is derived from riskScore (no stored riskLevel column).
+      const scoreRows = await db
+        .select({
+          overallScore: landCreditScores.overallScore,
+          grade: landCreditScores.grade,
+          riskScore: landCreditScores.riskScore,
+        })
+        .from(landCreditScores)
+        .innerJoin(properties, eq(landCreditScores.propertyId, properties.id))
+        .where(eq(properties.organizationId, Number(organizationId)))
+        .orderBy(desc(landCreditScores.createdAt));
 
-      if (scores.length === 0) {
+      if (scoreRows.length === 0) {
         return {
           avgScore: 0,
           gradeDistribution: [],
@@ -737,22 +758,25 @@ class LandCreditScoring {
 
       // Calculate average score
       const avgScore = Math.round(
-        scores.reduce((sum, s) => sum + s.score, 0) / scores.length
+        scoreRows.reduce((sum, s) => sum + s.overallScore, 0) / scoreRows.length
       );
 
       // Grade distribution
       const gradeMap = new Map<string, number>();
-      for (const score of scores) {
+      for (const score of scoreRows) {
         gradeMap.set(score.grade, (gradeMap.get(score.grade) || 0) + 1);
       }
       const gradeDistribution = Array.from(gradeMap.entries())
         .map(([grade, count]) => ({ grade, count }))
         .sort((a, b) => b.count - a.count);
 
-      // Risk distribution
+      // Risk distribution — derive a risk band from the numeric riskScore.
+      const riskBand = (riskScore: number): string =>
+        riskScore >= 70 ? "high" : riskScore >= 40 ? "medium" : "low";
       const riskMap = new Map<string, number>();
-      for (const score of scores) {
-        riskMap.set(score.riskLevel, (riskMap.get(score.riskLevel) || 0) + 1);
+      for (const score of scoreRows) {
+        const level = riskBand(score.riskScore);
+        riskMap.set(level, (riskMap.get(level) || 0) + 1);
       }
       const riskDistribution = Array.from(riskMap.entries())
         .map(([risk, count]) => ({ risk, count }))
@@ -886,8 +910,8 @@ class LandCreditScoring {
   }> {
     const property = await db.query.properties.findFirst({
       where: and(
-        eq(properties.id, propertyId),
-        eq(properties.organizationId, orgId)
+        eq(properties.id, Number(propertyId)),
+        eq(properties.organizationId, Number(orgId))
       ),
     });
 
@@ -942,7 +966,7 @@ class LandCreditScoring {
     accuracy: number;
   }> {
     const scores = await db.query.landCreditScores.findMany({
-      where: eq(landCreditScores.propertyId, propertyId),
+      where: eq(landCreditScores.propertyId, Number(propertyId)),
       orderBy: [desc(landCreditScores.createdAt)],
     });
 
@@ -962,13 +986,16 @@ class LandCreditScoring {
     const predictedAppreciation = gradeAppreciation[latestScore.grade] || 5;
 
     const property = await db.query.properties.findFirst({
-      where: eq(properties.id, propertyId),
+      where: eq(properties.id, Number(propertyId)),
     });
 
-    // Actual appreciation (from property data)
+    // Actual appreciation (from property data). estimatedValue maps to the
+    // marketValue column; both numeric columns are stored as strings.
     let actualAppreciation = 0;
-    if (property?.purchasePrice && property?.estimatedValue) {
-      actualAppreciation = ((property.estimatedValue - property.purchasePrice) / property.purchasePrice) * 100;
+    if (property?.purchasePrice && property?.marketValue) {
+      const market = Number(property.marketValue);
+      const purchase = Number(property.purchasePrice);
+      actualAppreciation = purchase > 0 ? ((market - purchase) / purchase) * 100 : 0;
     }
 
     const accuracy = actualAppreciation > 0
@@ -1026,7 +1053,7 @@ class LandCreditScoring {
     y += 0.2;
     doc.text(`County: ${property?.county || "—"}, ${property?.state || "—"}`, margin, y);
     y += 0.2;
-    const acreage = property?.acreage ? `${property.acreage} acres` : "Acreage unknown";
+    const acreage = property?.sizeAcres ? `${property.sizeAcres} acres` : "Acreage unknown";
     doc.text(`Size: ${acreage}`, margin, y);
     y += 0.4;
 

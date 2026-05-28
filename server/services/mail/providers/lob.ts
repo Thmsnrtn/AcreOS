@@ -75,10 +75,10 @@ export const lobAdapter: MailProvider = {
     // primary verified identity. If none exists, callers that need
     // mid-flight identity selection should call directMailService
     // directly until we add senderIdentityId to MailShipment.
-    const identities = await storage.getMailSenderIdentitiesByOrganizationId
-      ? await (storage as any).getMailSenderIdentitiesByOrganizationId(shipment.organizationId)
-      : [];
-    const senderIdentity = Array.isArray(identities) ? identities.find((i: any) => i.isDefault && i.isActive) ?? identities[0] : null;
+    const identities = await storage.getMailSenderIdentities(shipment.organizationId);
+    const senderIdentity = Array.isArray(identities)
+      ? identities.find((i) => i.isDefault && i.isActive) ?? identities[0]
+      : null;
     if (!senderIdentity) {
       throw new Error(
         `Lob send requires a verified mail_sender_identity for org ${shipment.organizationId}; none found.`,

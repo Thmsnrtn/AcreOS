@@ -409,7 +409,8 @@ class InfrastructureSelfManager {
 
     // Check health via existing circuit breaker
     try {
-      const { circuitBreakerService } = await import("./circuitBreaker");
+      // Ensure the circuit breaker module is loadable before reporting health.
+      await import("../utils/circuitBreaker");
       const currentProvider = config.currentProvider === "primary" ? config.primary : config.fallback;
       return { healthy: config.healthStatus === "healthy", provider: currentProvider, latencyMs: 50 };
     } catch {

@@ -9,6 +9,7 @@ import {
   TIER_LIMITS,
   nextPaidTier,
   type ResourceType,
+  type TierLimits,
 } from "@shared/billing/tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
 
@@ -72,7 +73,7 @@ export function UsageLimitBanner() {
   const knownResource = resourceKey in TIER_LIMITS.free;
   const nextLimit: number | null | undefined =
     nextTier && knownResource
-      ? ((TIER_LIMITS[nextTier] as Record<string, unknown>)[resourceKey] as number | null)
+      ? (TIER_LIMITS[nextTier][resourceKey as keyof TierLimits] as number | null)
       : undefined;
   const nextPricing =
     nextTier && nextTier !== "free" && nextTier !== "enterprise"

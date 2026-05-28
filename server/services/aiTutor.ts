@@ -15,18 +15,20 @@ class AITutor {
    * Start a new tutoring session
    */
   async startSession(
-    userId: number,
+    userId: string,
     courseId: number,
-    moduleId?: number
+    _moduleId?: number
   ): Promise<string> {
     try {
+      // TODO(tsc): tutor_sessions has no moduleId/status columns in the frozen
+      // schema. moduleId can't be persisted (module-specific context below is
+      // therefore unavailable on resume); session lifecycle is tracked via
+      // endedAt rather than a status string.
       const [session] = await db.insert(tutorSessions).values({
         userId,
         courseId,
-        moduleId: moduleId || null,
         messages: [],
-        duration: 0,
-        status: 'active',
+        durationMinutes: 0,
       }).returning();
 
       return session.id.toString();
@@ -52,25 +54,14 @@ class AITutor {
         throw new Error('Session not found');
       }
 
-      // Get module context if available
-      let moduleContext = '';
-      if (session.moduleId) {
-        const module = await db.query.courseModules.findFirst({
-          where: eq(courseModules.id, session.moduleId),
-        });
-
-        if (module) {
-          moduleContext = `
-Current Module: ${module.title}
-Module Content: ${module.content.substring(0, 500)}...
-`;
-        }
-      }
+      // Module context is unavailable: tutor_sessions doesn't persist moduleId
+      // (see startSession TODO). Tutoring proceeds with general course context.
+      const moduleContext = '';
 
       // Build conversation history
-      const messages = session.messages as TutorMessage[] || [];
-      const conversationHistory = messages.map(m => ({
-        role: m.role,
+      const storedMessages = session.messages ?? [];
+      const conversationHistory = storedMessages.map(m => ({
+        role: m.role as 'user' | 'assistant',
         content: m.content,
       }));
 
@@ -102,25 +93,25 @@ Be conversational, supportive, and focus on practical knowledge that students ca
 
       const assistantMessage = completion.choices[0].message.content || 'I apologize, I had trouble generating a response.';
 
-      // Update session with new messages
+      // Update session with new messages (stored shape uses ISO-string timestamps).
       const updatedMessages = [
-        ...messages,
+        ...storedMessages,
         {
-          role: 'user' as const,
+          role: 'user',
           content: userMessage,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         },
         {
-          role: 'assistant' as const,
+          role: 'assistant',
           content: assistantMessage,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         },
       ];
 
       await db.update(tutorSessions)
         .set({
           messages: updatedMessages,
-          updatedAt: new Date(),
+          messageCount: updatedMessages.length,
         })
         .where(eq(tutorSessions.id, sessionId));
 
@@ -145,14 +136,14 @@ Be conversational, supportive, and focus on practical knowledge that students ca
       }
 
       // Calculate duration
+      const startedAt = session.createdAt ?? new Date();
       const duration = Math.floor(
-        (new Date().getTime() - session.createdAt.getTime()) / 1000 / 60
+        (new Date().getTime() - startedAt.getTime()) / 1000 / 60
       );
 
       await db.update(tutorSessions)
         .set({
-          status: 'completed',
-          duration,
+          durationMinutes: duration,
           endedAt: new Date(),
         })
         .where(eq(tutorSessions.id, sessionId));
@@ -165,7 +156,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
   /**
    * Get user's tutoring history
    */
-  async getUserSessions(userId: number): Promise<any[]> {
+  async getUserSessions(userId: string): Promise<any[]> {
     try {
       return await db.query.tutorSessions.findMany({
         where: eq(tutorSessions.userId, userId),
@@ -244,14 +235,14 @@ Format the response as JSON array with this structure:
    * Provide personalized study plan
    */
   async generateStudyPlan(
-    userId: number,
+    _userId: string,
     courseId: number
   ): Promise<string> {
     try {
       // Get course modules
       const modules = await db.query.courseModules.findMany({
         where: eq(courseModules.courseId, courseId),
-        orderBy: [courseModules.order],
+        orderBy: [courseModules.sortOrder],
       });
 
       if (modules.length === 0) {
@@ -259,7 +250,7 @@ Format the response as JSON array with this structure:
       }
 
       const moduleList = modules
-        .map((m, i) => `${i + 1}. ${m.title} (${m.duration} min)`)
+        .map((m, i) => `${i + 1}. ${m.title} (${m.durationMinutes ?? 0} min)`)
         .join('\n');
 
       const prompt = `Create a personalized study plan for a land investment course with the following modules:
@@ -291,7 +282,7 @@ Keep it concise and actionable.`;
   /**
    * Analyze user's learning patterns
    */
-  async analyzeLearningPattern(userId: number): Promise<{
+  async analyzeLearningPattern(userId: string): Promise<{
     totalSessions: number;
     averageSessionDuration: number;
     mostActiveTime: string;
@@ -306,7 +297,7 @@ Keep it concise and actionable.`;
       const totalSessions = sessions.length;
 
       const avgDuration = sessions.length > 0
-        ? sessions.reduce((sum, s) => sum + (s.duration || 0), 0) / sessions.length
+        ? sessions.reduce((sum, s) => sum + (s.durationMinutes || 0), 0) / sessions.length
         : 0;
 
       // Determine most active time (placeholder)

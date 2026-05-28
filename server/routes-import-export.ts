@@ -784,7 +784,7 @@ export function registerImportExportRoutes(app: Express): void {
       });
       await auditFromRequest(req, {
         action: AuditActions.DATA_EXPORT,
-        target: { type: "export-job", id: job.id },
+        target: { type: "export", id: job.id },
         metadata: { params: parsed.data },
       });
       res.status(202).json({ jobId: job.id, status: job.status });

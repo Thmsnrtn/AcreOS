@@ -143,7 +143,7 @@ Analyze this from your ${perspective.replace(/_/g, " ")} perspective. Respond in
 }`,
             },
           ],
-          responseFormat: { type: "json_object" },
+          responseFormat: "json",
           temperature: 0.3,
         });
 
@@ -198,7 +198,7 @@ Synthesize into JSON:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.2,
       });
 

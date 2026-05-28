@@ -34,8 +34,7 @@ export interface KpiUpdate {
 
 function broadcastKpi(orgId: number, payload: Omit<KpiUpdate, "type" | "orgId">) {
   try {
-    wss.broadcast(`org:${orgId}`, {
-      type: "kpi.update",
+    wss.broadcast(`org:${orgId}`, "kpi.update", {
       orgId,
       ...payload,
     });

@@ -75,14 +75,16 @@ class AgentInitiativeService {
 
     // Store each initiative
     for (const thinking of thinkingResults) {
+      // agent_initiatives uses proposedBy/title/thesis/evidence. priority,
+      // confidence, proposedAction, and actionApprovalNeeded have no columns;
+      // their context is folded into the thesis. evidence rows are objects.
       await db.insert(agentInitiatives).values({
-        agentCodename: thinking.agentCodename,
-        priority: thinking.priority,
-        summary: thinking.summary,
-        evidence: thinking.evidence,
-        proposedAction: thinking.proposedAction || null,
-        actionApprovalNeeded: thinking.actionApprovalNeeded,
-        confidence: thinking.confidence,
+        proposedBy: thinking.agentCodename,
+        title: thinking.title,
+        thesis: thinking.summary
+          + (thinking.proposedAction ? `\n\nProposed action: ${thinking.proposedAction}` : "")
+          + `\n\n(priority: ${thinking.priority}, confidence: ${thinking.confidence}, approval needed: ${thinking.actionApprovalNeeded})`,
+        evidence: thinking.evidence.map((e) => ({ type: "pattern" as const, description: e })),
         status: thinking.actionApprovalNeeded ? "pending_approval" : "noted",
       });
     }
@@ -156,7 +158,7 @@ Run your thinking cycle. Respond in JSON:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.3,
       });
 
@@ -266,7 +268,7 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
    */
   async approveAction(initiativeId: number): Promise<void> {
     await db.update(agentInitiatives)
-      .set({ status: "approved", resolvedAt: new Date() })
+      .set({ status: "approved", votedAt: new Date() })
       .where(eq(agentInitiatives.id, initiativeId));
   }
 
@@ -277,8 +279,8 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
     await db.update(agentInitiatives)
       .set({
         status: "rejected",
-        ceoResponse: reason,
-        resolvedAt: new Date(),
+        ceoNotes: reason,
+        votedAt: new Date(),
       })
       .where(eq(agentInitiatives.id, initiativeId));
   }
@@ -309,7 +311,7 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
   /** Get recent initiatives for an agent */
   async getAgentInitiatives(codename: string, limit = 10): Promise<AgentInitiative[]> {
     return db.query.agentInitiatives.findMany({
-      where: eq(agentInitiatives.agentCodename, codename),
+      where: eq(agentInitiatives.proposedBy, codename),
       orderBy: [desc(agentInitiatives.createdAt)],
       limit,
     });

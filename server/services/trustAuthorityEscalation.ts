@@ -150,12 +150,11 @@ class TrustAuthorityEscalation {
     // 4. Store in cognitive memory so agent "knows" its new abilities
     try {
       const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-      await cognitiveMemoryService.store({
-        type: "semantic",
-        agent: agentCodename,
-        content: `Promoted to ${newTier.label} (Level ${newTier.level}). New abilities: ${newActions.join(", ")}`,
-        tags: ["authority", "promotion", `level_${newTier.level}`],
-        strength: 1.0,
+      await cognitiveMemoryService.extractFact(agentCodename, {
+        fact: `Promoted to ${newTier.label} (Level ${newTier.level}). New abilities: ${newActions.join(", ")}`,
+        category: "authority",
+        sourceEpisodes: [],
+        confidence: 1.0,
       });
     } catch {}
   }

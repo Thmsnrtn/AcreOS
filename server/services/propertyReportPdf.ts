@@ -72,7 +72,6 @@ export async function generatePropertyReport(input: PropertyReportInput) {
     .orderBy(desc(parcelSnapshots.fetchedAt))
     .limit(1);
 
-  // @ts-expect-error — pdfkit has no type declarations installed
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ margin: 50, info: { Title: `Property report — APN ${prop.apn}` } });
 
@@ -172,7 +171,7 @@ export async function generatePropertyReport(input: PropertyReportInput) {
 
 // ── helpers ──
 
-function section(doc: { moveDown: (n: number) => void; fontSize: (n: number) => unknown; font: (s: string) => unknown; fillColor: (c: string) => unknown; text: (s: string) => unknown; rect: (x: number, y: number, w: number, h: number) => { fill: (c: string) => unknown }; y: number; page: { width: number } }, title: string) {
+function section(doc: PDFKit.PDFDocument, title: string) {
   doc.moveDown(0.6);
   const y = doc.y;
   doc.rect(50, y - 2, 4, 14).fill(PRIMARY);
@@ -180,7 +179,7 @@ function section(doc: { moveDown: (n: number) => void; fontSize: (n: number) => 
   doc.moveDown(0.4);
 }
 
-function kvRows(doc: { fontSize: (n: number) => unknown; font: (s: string) => unknown; fillColor: (c: string) => unknown; text: (s: string, opts?: Record<string, unknown>) => unknown; moveDown: (n: number) => void; y: number; page: { width: number } }, rows: Array<[string, string | null | undefined]>) {
+function kvRows(doc: PDFKit.PDFDocument, rows: Array<[string, string | null | undefined]>) {
   for (const [label, value] of rows) {
     doc.fontSize(9).font("Helvetica").fillColor(MUTED).text(label, { continued: true, width: 150 });
     doc.fillColor(TEXT).font("Helvetica").text(`  ${value || "—"}`);

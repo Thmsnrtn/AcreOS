@@ -47,3 +47,9 @@ export * from "../modelIntelligence";
 export * from "../modelServing";
 export * from "../modelTraining";
 export * from "../selfAssessmentAgent";
+
+// Explicit re-exports to resolve ambiguous `export *` collisions (TS2308).
+// Several modules independently declare these names; pick a canonical source.
+export { agentInitiativeService } from "../agentInitiativeV9";
+export type { AgentContext, CoreAgentType } from "../agent-skills";
+export { getAllSkills } from "../core-agents";

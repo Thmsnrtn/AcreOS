@@ -3,6 +3,7 @@ import {
   type Workflow,
   type WorkflowRun,
   type WorkflowAction,
+  type WorkflowActionType,
   type WorkflowTriggerEvent,
   type WorkflowExecutionLogEntry,
   WORKFLOW_TRIGGER_EVENTS,
@@ -17,13 +18,30 @@ import { logger } from "../utils/logger";
 // placeholder action IDs that are stable for de-duplication checks.
 // ---------------------------------------------------------------------------
 
+// TODO(tsc): these trigger events are fired/handled by this engine but are not yet
+// declared in the frozen shared WORKFLOW_TRIGGER_EVENTS union. Declared locally so the
+// templates typecheck; fold these into shared/schema's union when it is unfrozen.
+type ExtendedTriggerEvent =
+  | WorkflowTriggerEvent
+  | "buyer.match_created"
+  | "payment.confirmed"
+  | "note.delinquent_60d"
+  | "property.listed"
+  | "campaign.response_received"
+  | "org.milestone_reached"
+  | "lead.scored"
+  | "offers.batch_sent"
+  | "lease.expiring_60d"
+  | "support.ticket_created"
+  | "schedule.weekly_monday";
+
 export type WorkflowTemplate = {
   id: string; // stable identifier for the template
   name: string;
   description: string;
   category: "leads" | "notes" | "deals";
   trigger: {
-    event: WorkflowTriggerEvent;
+    event: ExtendedTriggerEvent;
     conditions?: { field: string; operator: string; value: any }[];
   };
   actions: {
@@ -1646,7 +1664,9 @@ class WorkflowEngine {
     action: WorkflowAction,
     context: WorkflowExecutionContext
   ): Promise<Record<string, any> | void> {
-    switch (action.type) {
+    // TODO(tsc): "conditional" is handled here but not declared in the frozen
+    // WORKFLOW_ACTION_TYPES union; widen the discriminant locally so the case typechecks.
+    switch (action.type as WorkflowActionType | "conditional") {
       case "send_email":
         return this.executeSendEmail(action, context);
       case "create_task":
@@ -1716,6 +1736,7 @@ class WorkflowEngine {
 
     const task = await storage.createTask({
       organizationId: context.organizationId,
+      createdBy: "system", // workflow-engine acts as the system actor
       title,
       description,
       priority: config.priority || "medium",

@@ -17,8 +17,8 @@ export async function gatherPropertyContext(propertyId: number, orgId: number): 
   const parts = [
     `Property: ${prop.address || prop.apn || "Unknown"}`,
     `Location: ${prop.county}, ${prop.state}`,
-    `Acreage: ${prop.acreage || "Unknown"}`,
-    prop.estimatedValue ? `Estimated value: $${Number(prop.estimatedValue).toLocaleString()}` : null,
+    `Acreage: ${prop.sizeAcres || "Unknown"}`,
+    prop.marketValue ? `Estimated value: $${Number(prop.marketValue).toLocaleString()}` : null,
     prop.zoning ? `Zoning: ${prop.zoning}` : null,
     (prop as any).purchasePrice ? `Purchase price: $${Number((prop as any).purchasePrice).toLocaleString()}` : null,
     (prop as any).taxAssessedValue ? `Tax assessed: $${Number((prop as any).taxAssessedValue).toLocaleString()}` : null,
@@ -34,13 +34,18 @@ export async function gatherDealContext(dealId: number, orgId: number): Promise<
   });
   if (!deal) return "Deal not found.";
 
+  // County/state/acreage live on the related property, not the deal row.
+  const dealProperty = await db.query.properties.findFirst({
+    where: and(eq(properties.id, deal.propertyId), eq(properties.organizationId, orgId)),
+  });
+
   return [
     `Deal: ${(deal as any).title || `Deal #${deal.id}`}`,
     `Status: ${deal.status}`,
-    `County: ${deal.county}, ${deal.state}`,
+    dealProperty ? `County: ${dealProperty.county}, ${dealProperty.state}` : null,
     (deal as any).offerAmount ? `Offer: $${Number((deal as any).offerAmount).toLocaleString()}` : null,
     (deal as any).askingPrice ? `Asking: $${Number((deal as any).askingPrice).toLocaleString()}` : null,
-    deal.acreage ? `Acreage: ${deal.acreage}` : null,
+    dealProperty?.sizeAcres ? `Acreage: ${dealProperty.sizeAcres}` : null,
   ].filter(Boolean).join("\n");
 }
 
@@ -48,10 +53,14 @@ export async function gatherDealContext(dealId: number, orgId: number): Promise<
 export async function gatherCountyContext(county: string, state: string, orgId: number): Promise<string> {
   const [propCount] = await db.select({ count: count() }).from(properties)
     .where(and(eq(properties.organizationId, orgId), sql`LOWER(${properties.county}) = LOWER(${county})`));
+  // deals has no county column — count deals whose property is in this county.
   const [dealCount] = await db.select({ count: count() }).from(deals)
-    .where(and(eq(deals.organizationId, orgId), sql`LOWER(${deals.county}) = LOWER(${county})`));
+    .innerJoin(properties, eq(deals.propertyId, properties.id))
+    .where(and(eq(deals.organizationId, orgId), sql`LOWER(${properties.county}) = LOWER(${county})`));
+  // TODO(tsc): leads has no county column; approximate the county briefing
+  // by matching the lead's state until a county field is added to leads.
   const [leadCount] = await db.select({ count: count() }).from(leads)
-    .where(and(eq(leads.organizationId, orgId), sql`LOWER(${leads.county}) = LOWER(${county})`));
+    .where(and(eq(leads.organizationId, orgId), sql`LOWER(${leads.state}) = LOWER(${state})`));
 
   return [
     `County: ${county}, ${state}`,

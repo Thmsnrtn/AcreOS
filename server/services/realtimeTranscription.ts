@@ -81,8 +81,7 @@ export async function processTranscriptChunk(
     };
 
     // Broadcast to org's WebSocket channel
-    wsServer.broadcast(`org:${orgId}`, {
-      type: "call.transcript",
+    wsServer.broadcast(`org:${orgId}`, "call.transcript", {
       callSid,
       leadId,
       segment,
@@ -91,18 +90,22 @@ export async function processTranscriptChunk(
     // If motivation signals detected and transcript is final, create Sophie observation
     if (isFinal && motivationSignals.length > 0) {
       try {
-        const { sophieObserver } = await import("./sophieObserver");
-        // Observer will surface this in the Today page decision queue
-        await (sophieObserver as any).createObservation?.({
+        const { paxObserver } = await import("./paxObserver");
+        // Observer will surface this in the Today page decision queue.
+        // The canonical service is paxObserver.recordObservation; the prior
+        // ./sophieObserver module + createObservation API no longer exist.
+        await paxObserver.recordObservation({
           organizationId: orgId,
-          type: "motivated_caller",
+          type: "opportunity",
           title: "Motivation signal detected on live call",
-          message: `Seller mentioned: "${motivationSignals.join('", "')}" — ${text.slice(0, 100)}`,
+          description: `Seller mentioned: "${motivationSignals.join('", "')}" — ${text.slice(0, 100)}`,
           severity: "medium",
-          confidence: Math.min(0.9, confidence + 0.2),
-          entityType: "lead",
-          entityId: leadId,
-          metadata: { callSid, motivationSignals, transcript: text },
+          confidenceScore: Math.min(0.9, confidence + 0.2),
+          metadata: {
+            relatedEntityType: "lead",
+            relatedEntityId: leadId,
+            dataPoints: { callSid, motivationSignals, transcript: text },
+          },
         });
       } catch {} // Observer failure is non-fatal
     }

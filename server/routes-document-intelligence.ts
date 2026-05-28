@@ -82,7 +82,8 @@ router.get('/documents/:id/summary', async (req: Request, res: Response) => {
 // GET /properties/:id/documents — all documents for a property
 router.get('/properties/:id/documents', async (req: Request, res: Response) => {
   try {
-    const docs = await documentIntelligenceService.getDocumentsByProperty(parseInt(req.params.id));
+    const org = req.organization;
+    const docs = await documentIntelligenceService.getDocumentsByProperty(org.id, parseInt(req.params.id));
     res.json({ documents: docs });
   } catch (err) {
     Errors.internal(res, err);
@@ -92,7 +93,8 @@ router.get('/properties/:id/documents', async (req: Request, res: Response) => {
 // GET /deals/:id/documents — all documents for a deal
 router.get('/deals/:id/documents', async (req: Request, res: Response) => {
   try {
-    const docs = await documentIntelligenceService.getDocumentsByDeal(parseInt(req.params.id));
+    const org = req.organization;
+    const docs = await documentIntelligenceService.getDocumentsByDeal(org.id, parseInt(req.params.id));
     res.json({ documents: docs });
   } catch (err) {
     Errors.internal(res, err);
@@ -103,8 +105,8 @@ router.get('/deals/:id/documents', async (req: Request, res: Response) => {
 router.post('/search', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { query, filters } = req.body;
-    const results = await documentIntelligenceService.searchDocuments(org.id, query, filters);
+    const { query } = req.body;
+    const results = await documentIntelligenceService.searchDocuments(org.id, query);
     res.json({ results });
   } catch (err) {
     Errors.internal(res, err);

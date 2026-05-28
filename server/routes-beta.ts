@@ -91,7 +91,7 @@ router.post("/feedback", isAuthenticated, async (req, res) => {
   try {
     const user = req.user;
     const data = feedbackSchema.parse(req.body);
-    const result = await betaProgramService.submitFeedback({ ...data, email: user.email });
+    const result = await betaProgramService.submitFeedback({ ...data, email: user.email ?? "" });
     res.json(result);
   } catch (err: any) {
     if (err.issues) return Errors.validationFailed(res, err.issues);

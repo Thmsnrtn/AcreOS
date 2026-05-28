@@ -5,7 +5,7 @@ import {
   courseEnrollments,
   users 
 } from '../../shared/schema';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { logger } from "../utils/logger";
 
 interface CourseModule {
@@ -21,7 +21,7 @@ class Education {
    * Create a new course
    */
   async createCourse(
-    organizationId: number,
+    _organizationId: number,
     courseData: {
       title: string;
       description: string;
@@ -33,17 +33,21 @@ class Education {
     }
   ): Promise<string> {
     try {
+      // NOTE: the `courses` schema has no `organizationId`/`level`/`status`
+      // columns. `level` (a difficulty label) maps to integer `difficultyLevel`
+      // when numeric; publish state lives in `isPublished`; numerics are stored
+      // as strings.
+      const parsedLevel = Number(courseData.level);
       const [course] = await db.insert(courses).values({
-        organizationId,
         title: courseData.title,
         description: courseData.description,
         category: courseData.category,
-        level: courseData.level,
-        price: courseData.price,
-        duration: courseData.duration,
+        difficultyLevel: Number.isFinite(parsedLevel) ? parsedLevel : null,
+        price: courseData.price.toString(),
+        totalDurationMinutes: courseData.duration,
         enrollmentCount: 0,
-        rating: 0,
-        status: 'draft',
+        avgRating: "0",
+        isPublished: false,
       }).returning();
 
       // Create course modules
@@ -52,10 +56,10 @@ class Education {
           courseId: course.id,
           title: module.title,
           content: module.content,
+          contentType: module.videoUrl ? "video" : "text",
           videoUrl: module.videoUrl || null,
-          duration: module.duration,
-          order: module.order,
-          quizData: null,
+          durationMinutes: module.duration,
+          sortOrder: module.order,
         });
       }
 
@@ -81,7 +85,7 @@ class Education {
 
       const modules = await db.query.courseModules.findMany({
         where: eq(courseModules.courseId, courseId),
-        orderBy: [courseModules.order],
+        orderBy: [courseModules.sortOrder],
       });
 
       return {
@@ -103,29 +107,22 @@ class Education {
     status?: string;
   }): Promise<any[]> {
     try {
-      let where;
-
-      if (filters?.category && filters?.level && filters?.status) {
-        where = and(
-          eq(courses.category, filters.category),
-          eq(courses.level, filters.level),
-          eq(courses.status, filters.status)
-        );
-      } else if (filters?.category && filters?.level) {
-        where = and(
-          eq(courses.category, filters.category),
-          eq(courses.level, filters.level)
-        );
-      } else if (filters?.category) {
-        where = eq(courses.category, filters.category);
-      } else if (filters?.level) {
-        where = eq(courses.level, filters.level);
-      } else if (filters?.status) {
-        where = eq(courses.status, filters.status);
+      const conditions = [];
+      if (filters?.category) {
+        conditions.push(eq(courses.category, filters.category));
+      }
+      if (filters?.level) {
+        // `level` maps to integer difficultyLevel.
+        const lvl = Number(filters.level);
+        if (Number.isFinite(lvl)) conditions.push(eq(courses.difficultyLevel, lvl));
+      }
+      if (filters?.status) {
+        // `status` maps to the boolean isPublished flag.
+        conditions.push(eq(courses.isPublished, filters.status === "published"));
       }
 
       return await db.query.courses.findMany({
-        where,
+        where: conditions.length > 0 ? and(...conditions) : undefined,
         orderBy: [desc(courses.enrollmentCount)],
       });
     } catch (error) {
@@ -138,7 +135,7 @@ class Education {
    * Enroll user in course
    */
   async enrollInCourse(
-    userId: number,
+    userId: string,
     courseId: number
   ): Promise<string> {
     try {
@@ -158,15 +155,15 @@ class Education {
       const [enrollment] = await db.insert(courseEnrollments).values({
         userId,
         courseId,
-        status: 'active',
-        progress: 0,
+        progressPercentage: "0",
+        isCompleted: false,
         completedModules: [],
       }).returning();
 
       // Increment enrollment count
       await db.update(courses)
         .set({
-          enrollmentCount: courses.enrollmentCount + 1,
+          enrollmentCount: sql`${courses.enrollmentCount} + 1`,
         })
         .where(eq(courses.id, courseId));
 
@@ -205,20 +202,17 @@ class Education {
       }
 
       // Calculate progress percentage
-      const progress = (completedModules.length / modules.length) * 100;
-
-      // Determine status
-      let status = 'active';
-      if (progress >= 100) {
-        status = 'completed';
-      }
+      const progress = modules.length > 0
+        ? (completedModules.length / modules.length) * 100
+        : 0;
+      const isCompleted = progress >= 100;
 
       await db.update(courseEnrollments)
         .set({
           completedModules,
-          progress,
-          status,
-          completedAt: progress >= 100 ? new Date() : null,
+          progressPercentage: progress.toString(),
+          isCompleted,
+          completedAt: isCompleted ? new Date() : null,
         })
         .where(eq(courseEnrollments.id, enrollmentId));
     } catch (error) {
@@ -230,11 +224,11 @@ class Education {
   /**
    * Get user enrollments
    */
-  async getUserEnrollments(userId: number): Promise<any[]> {
+  async getUserEnrollments(userId: string): Promise<any[]> {
     try {
       const enrollments = await db.query.courseEnrollments.findMany({
         where: eq(courseEnrollments.userId, userId),
-        orderBy: [desc(courseEnrollments.enrolledAt)],
+        orderBy: [desc(courseEnrollments.createdAt)],
       });
 
       // N+1 fix: Batch-fetch all courses in one query instead of one query per enrollment
@@ -260,7 +254,7 @@ class Education {
    * Rate a course
    */
   async rateCourse(
-    userId: number,
+    _userId: string,
     courseId: number,
     rating: number
   ): Promise<void> {
@@ -269,30 +263,13 @@ class Education {
         throw new Error('Rating must be between 1 and 5');
       }
 
-      // Update enrollment with rating
-      await db.update(courseEnrollments)
-        .set({ rating })
-        .where(and(
-          eq(courseEnrollments.userId, userId),
-          eq(courseEnrollments.courseId, courseId)
-        ));
-
-      // Recalculate average course rating
-      const enrollments = await db.query.courseEnrollments.findMany({
-        where: eq(courseEnrollments.courseId, courseId),
-      });
-
-      const ratings = enrollments
-        .filter(e => e.rating !== null)
-        .map(e => e.rating as number);
-
-      if (ratings.length > 0) {
-        const avgRating = ratings.reduce((sum, r) => sum + r, 0) / ratings.length;
-
-        await db.update(courses)
-          .set({ rating: avgRating })
-          .where(eq(courses.id, courseId));
-      }
+      // TODO(tsc): course_enrollments has no per-user `rating` column in the
+      // frozen schema, so individual ratings cannot be persisted or averaged.
+      // Until a `rating` column (or a dedicated course_ratings table) is added,
+      // we record the latest rating directly on the course's avgRating.
+      await db.update(courses)
+        .set({ avgRating: rating.toString() })
+        .where(eq(courses.id, courseId));
     } catch (error) {
       logger.error('Failed to rate course', error);
       throw error;
@@ -305,8 +282,8 @@ class Education {
   async publishCourse(courseId: number): Promise<void> {
     try {
       await db.update(courses)
-        .set({ 
-          status: 'published',
+        .set({
+          isPublished: true,
           publishedAt: new Date(),
         })
         .where(eq(courses.id, courseId));
@@ -338,19 +315,19 @@ class Education {
         where: eq(courseEnrollments.courseId, courseId),
       });
 
-      const completedCount = enrollments.filter(e => e.status === 'completed').length;
+      const completedCount = enrollments.filter(e => e.isCompleted).length;
       const completionRate = enrollments.length > 0
         ? (completedCount / enrollments.length) * 100
         : 0;
 
       const avgProgress = enrollments.length > 0
-        ? enrollments.reduce((sum, e) => sum + (e.progress || 0), 0) / enrollments.length
+        ? enrollments.reduce((sum, e) => sum + Number(e.progressPercentage ?? 0), 0) / enrollments.length
         : 0;
 
       return {
         enrollmentCount: enrollments.length,
         completionRate,
-        averageRating: course.rating || 0,
+        averageRating: Number(course.avgRating ?? 0),
         averageProgress: avgProgress,
       };
     } catch (error) {
@@ -367,13 +344,13 @@ class Education {
   /**
    * Get recommended courses for user based on their activity
    */
-  async getRecommendedCourses(userId: number): Promise<any[]> {
+  async getRecommendedCourses(userId: string): Promise<any[]> {
     try {
       // Get user's completed courses
       const userEnrollments = await db.query.courseEnrollments.findMany({
         where: and(
           eq(courseEnrollments.userId, userId),
-          eq(courseEnrollments.status, 'completed')
+          eq(courseEnrollments.isCompleted, true)
         ),
       });
 
@@ -391,9 +368,9 @@ class Education {
           return await db.query.courses.findMany({
             where: and(
               eq(courses.category, category),
-              eq(courses.status, 'published')
+              eq(courses.isPublished, true)
             ),
-            orderBy: [desc(courses.rating)],
+            orderBy: [desc(courses.avgRating)],
             limit: 5,
           });
         }
@@ -401,7 +378,7 @@ class Education {
 
       // Otherwise, recommend popular courses
       return await db.query.courses.findMany({
-        where: eq(courses.status, 'published'),
+        where: eq(courses.isPublished, true),
         orderBy: [desc(courses.enrollmentCount)],
         limit: 5,
       });

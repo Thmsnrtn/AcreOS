@@ -324,8 +324,8 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       dealsFound: sql<number>`coalesce(sum((result->>'newDealsFound')::int), 0)`,
     }).from(backgroundJobs)
       .where(and(
-        eq(backgroundJobs.jobType, "autonomous_deal_machine"),
-        gte(backgroundJobs.startedAt, thisWeek.start),
+        eq(backgroundJobs.type, "autonomous_deal_machine"),
+        gte(backgroundJobs.scheduledFor, thisWeek.start),
         eq(backgroundJobs.status, "completed"),
       )),
     db.select({
@@ -397,7 +397,7 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`),
   ]);
 
-  const ticketData = ticketStats.status === "fulfilled" ? ticketStats.value[0] : { open: 0, newThis: 0, resolvedThis: 0 };
+  const ticketData = ticketStats.status === "fulfilled" ? ticketStats.value[0] : { open: 0, newThis: 0, resolvedThis: 0, avgResolutionHours: null };
   const alertData = alertStats.status === "fulfilled" ? alertStats.value[0] : { critical: 0, resolvedThis: 0 };
   const inboxData = inboxStats.status === "fulfilled" ? inboxStats.value[0] : { pending: 0 };
   const churnCritical = churnStats.status === "fulfilled" ? Number(churnStats.value[0]?.c || 0) : 0;

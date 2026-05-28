@@ -5,8 +5,8 @@
 
 import { db } from "../db";
 import { reactionChains } from "@shared/schema";
-import { eq } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
+import { eq, and } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger";
 
 interface ChainStep {
@@ -194,7 +194,7 @@ const CHAIN_DEFINITIONS: ChainDef[] = [
   },
 ];
 
-export async function seedReactionChains(): Promise<{ seeded: number; skipped: number }> {
+export async function seedReactionChains(orgId: number): Promise<{ seeded: number; skipped: number }> {
   let seeded = 0;
   let skipped = 0;
 
@@ -202,7 +202,7 @@ export async function seedReactionChains(): Promise<{ seeded: number; skipped: n
     try {
       const existing = await db.select({ id: reactionChains.id })
         .from(reactionChains)
-        .where(eq(reactionChains.name, def.name))
+        .where(and(eq(reactionChains.orgId, orgId), eq(reactionChains.name, def.name)))
         .limit(1);
 
       if (existing.length > 0) {
@@ -211,7 +211,8 @@ export async function seedReactionChains(): Promise<{ seeded: number; skipped: n
       }
 
       await db.insert(reactionChains).values({
-        chainId: uuidv4(),
+        chainId: randomUUID(),
+        orgId,
         name: def.name,
         description: def.description,
         triggerEventType: def.triggerEvent,

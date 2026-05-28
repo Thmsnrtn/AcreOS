@@ -159,7 +159,7 @@ function extractSignals(lead: any): LeadIntelligenceProfile["signals"] {
     : null;
 
   const touchCount = lead.touchCount ?? lead.contactAttempts ?? 0;
-  const hasResponded = lead.hasResponded ?? (lead.status === "responded") ?? false;
+  const hasResponded = lead.hasResponded ?? (lead.status === "responded");
 
   return {
     taxDelinquentYears,

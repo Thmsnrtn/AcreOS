@@ -176,9 +176,11 @@ async function hydrateUser(req: any, res: any, next: any) {
         const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
 
         // Verify signature with the public key
+        const clerkJwtKey = process.env.CLERK_JWT_KEY;
+        if (!clerkJwtKey) break;
         const verifier = crypto.createVerify("RSA-SHA256");
         verifier.update(headerB64 + "." + payloadB64);
-        const isValid = verifier.verify(process.env.CLERK_JWT_KEY, sigB64, "base64url");
+        const isValid = verifier.verify(clerkJwtKey, sigB64, "base64url");
 
         // Accept tokens up to 30 seconds past expiry to handle Clerk session refresh lag
         // SEC-005: reduced from 5 min — 30s is sufficient for normal clock skew

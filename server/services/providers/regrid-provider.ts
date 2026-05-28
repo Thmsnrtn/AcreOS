@@ -92,7 +92,10 @@ export const regridProvider: DataProvider = {
           confidence = result.found ? 85 : 20;
         } else if (input.type === "apn") {
           const { lookupParcelByAPN } = await import("../parcel");
-          const result = await lookupParcelByAPN(input.apn, input.state, input.county);
+          // lookupParcelByAPN takes a combined "state/county" path, not
+          // separate state/county arguments.
+          const stateCountyPath = [input.state, input.county].filter(Boolean).join("/");
+          const result = await lookupParcelByAPN(input.apn, stateCountyPath);
           data = result.parcel ?? null;
           confidence = result.found ? 90 : 20;
         } else {

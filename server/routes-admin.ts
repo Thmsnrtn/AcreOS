@@ -26,6 +26,8 @@ import {
   aiTelemetryEvents,
   subscriptionEvents,
 } from "@shared/schema";
+import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
+import type { LookupCategory } from "./services/data-source-broker";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -540,7 +542,13 @@ export function registerAdminRoutes(app: Express): void {
       
       const createdLeads = [];
       for (const lead of demoLeads) {
-        const created = await storage.createLead({ ...lead, organizationId: org.id });
+        // storage.createLead's declared signature omits organizationId (set
+        // server-side); the repo impl requires it. Merge via a typed
+        // intermediate so the org id reaches the DB write.
+        // TODO(tsc): storage.ts IStorage decl for createLead should be
+        // `InsertLead & { organizationId: number }` to match leadRepo impl.
+        const leadInput: InsertLead & { organizationId: number } = { ...lead, organizationId: org.id };
+        const created = await storage.createLead(leadInput);
         createdLeads.push(created);
       }
       
@@ -555,20 +563,27 @@ export function registerAdminRoutes(app: Express): void {
       
       const createdProperties = [];
       for (const prop of demoProperties) {
-        const created = await storage.createProperty({ ...prop, organizationId: org.id });
+        const propInput: InsertProperty & { organizationId: number } = { ...prop, organizationId: org.id };
+        const created = await storage.createProperty(propInput);
         createdProperties.push(created);
       }
       
       // Sample deals
+      // TODO(tsc): the deals table has no name/stage/salePrice/purchasePrice/
+      // leadId columns — those keys in the original seed were silently dropped
+      // at insert. Mapped to the real columns: stage→status, purchase/sale
+      // price→offerAmount (the amount the deal was struck at).
       const demoDeals = [
-        { name: "Cochise 5-Acre Purchase", type: "acquisition", stage: "closed", propertyId: createdProperties[0]?.id, leadId: createdLeads[0]?.id, purchasePrice: "8500", closingDate: new Date("2024-06-15") },
-        { name: "Mohave Lot Sale", type: "disposition", stage: "in_escrow", propertyId: createdProperties[1]?.id, leadId: createdLeads[2]?.id, salePrice: "7900", closingDate: new Date("2025-02-01") },
-        { name: "Luna County Acquisition", type: "acquisition", stage: "closed", propertyId: createdProperties[2]?.id, leadId: createdLeads[1]?.id, purchasePrice: "5000", closingDate: new Date("2024-09-20") },
-        { name: "Pinal Ranch Deal", type: "acquisition", stage: "offer_sent", propertyId: createdProperties[4]?.id, leadId: createdLeads[3]?.id, purchasePrice: "28000" },
+        { type: "acquisition", status: "closed", propertyId: createdProperties[0]?.id, offerAmount: "8500", closingDate: new Date("2024-06-15") },
+        { type: "disposition", status: "in_escrow", propertyId: createdProperties[1]?.id, offerAmount: "7900", closingDate: new Date("2025-02-01") },
+        { type: "acquisition", status: "closed", propertyId: createdProperties[2]?.id, offerAmount: "5000", closingDate: new Date("2024-09-20") },
+        { type: "acquisition", status: "offer_sent", propertyId: createdProperties[4]?.id, offerAmount: "28000" },
       ];
-      
+
       for (const deal of demoDeals) {
-        await storage.createDeal({ ...deal, organizationId: org.id });
+        if (deal.propertyId == null) continue;
+        const dealInput: InsertDeal & { organizationId: number } = { ...deal, propertyId: deal.propertyId, organizationId: org.id };
+        await storage.createDeal(dealInput);
       }
       
       // Sample notes (seller financing)
@@ -1055,8 +1070,6 @@ export function registerAdminRoutes(app: Express): void {
       
       // dataSources is a system-level shared table (GIS endpoints, public data sources);
       // org isolation is not applicable — all orgs reference the same shared catalogue.
-      let query = db.select().from(dataSources);
-      
       const conditions = [];
       if (category) {
         conditions.push(eq(dataSources.category, String(category)));
@@ -1072,11 +1085,10 @@ export function registerAdminRoutes(app: Express): void {
         conditions.push(sql`${dataSources.lastVerifiedAt} IS NULL`);
       }
       
-      if (conditions.length > 0) {
-        query = db.select().from(dataSources).where(and(...conditions));
-      }
-      
-      const sources = await query
+      const sources = await db
+        .select()
+        .from(dataSources)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(dataSources.lastVerifiedAt), dataSources.category)
         .limit(Number(limit))
         .offset(Number(offset));
@@ -2152,18 +2164,22 @@ export function registerAdminRoutes(app: Express): void {
           continue;
         }
         try {
+          // `s` carries .passthrough() fields typed as unknown; coerce each to
+          // the dataSources column types before insert.
+          const row = s as Record<string, unknown>;
+          const asStr = (v: unknown): string | null => (v == null ? null : String(v));
           await db.insert(dataSources).values({
-            key: String(s.key).toLowerCase().replace(/\s+/g, "_").slice(0, 100),
-            title: String(s.title).slice(0, 200),
-            category: String(s.category).toLowerCase().replace(/\s+/g, "_"),
-            subcategory: s.subcategory ?? null,
-            description: s.description ?? null,
-            portalUrl: s.portalUrl ?? null,
-            apiUrl: s.apiUrl ?? null,
-            coverage: s.coverage ?? null,
-            accessLevel: s.accessLevel ?? "free",
-            dataTypes: s.dataTypes ?? [],
-            endpointType: s.endpointType ?? null,
+            key: String(row.key).toLowerCase().replace(/\s+/g, "_").slice(0, 100),
+            title: String(row.title).slice(0, 200),
+            category: String(row.category).toLowerCase().replace(/\s+/g, "_"),
+            subcategory: asStr(row.subcategory),
+            description: asStr(row.description),
+            portalUrl: asStr(row.portalUrl),
+            apiUrl: asStr(row.apiUrl),
+            coverage: asStr(row.coverage),
+            accessLevel: typeof row.accessLevel === "string" ? row.accessLevel : "free",
+            dataTypes: Array.isArray(row.dataTypes) ? row.dataTypes.map(String) : [],
+            endpointType: asStr(row.endpointType),
             isEnabled: true,
             isVerified: false,
           }).onConflictDoNothing();
@@ -2256,7 +2272,9 @@ export function registerAdminRoutes(app: Express): void {
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
       const result = await propertyEnrichmentService.enrichByCoordinates(latitude, longitude, {
-        categories,
+        // The request schema accepts free-form category strings; the broker
+        // validates/ignores unknown categories at lookup time.
+        categories: categories as LookupCategory[] | undefined,
         state,
         county,
         apn,
@@ -2354,11 +2372,11 @@ export function registerAdminRoutes(app: Express): void {
 
   api.get("/api/map-layers/categories", isAuthenticated, async (req, res) => {
     try {
-      const categories = await db.selectDistinct({ 
-        category: sql`${sql.raw('category')}` 
-      }).from(sql`data_sources`).where(sql`is_enabled = true`);
-      
-      res.json(categories.map((c: any) => c.category).filter(Boolean));
+      const categories = await db.selectDistinct({
+        category: dataSources.category,
+      }).from(dataSources).where(eq(dataSources.isEnabled, true));
+
+      res.json(categories.map((c) => c.category).filter(Boolean));
     } catch (err: any) {
       logger.error("Get map layer categories error", err);
       Errors.internal(res, err);
@@ -2373,7 +2391,7 @@ export function registerAdminRoutes(app: Express): void {
       const { forceRefresh = false, orgId: targetOrgId } = parsedEnrich.data;
       const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
 
-      const rows: any[] = await db.execute(sql`
+      const result = await db.execute(sql`
         SELECT id, organization_id, latitude, longitude, state, county, apn
         FROM properties
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
@@ -2383,7 +2401,8 @@ export function registerAdminRoutes(app: Express): void {
         LIMIT 500
       `);
 
-      const eligible: any[] = rows;
+      // db.execute returns a node-postgres QueryResult; the row array lives on .rows.
+      const eligible: Record<string, unknown>[] = result.rows;
       res.json({ queued: eligible.length, forceRefresh, message: "Enrichment running in background" });
 
       // Serial background enrichment — rate-limited to respect upstream APIs
@@ -2396,10 +2415,10 @@ export function registerAdminRoutes(app: Express): void {
             const lng = parseFloat(String(prop.longitude));
             if (isNaN(lat) || isNaN(lng)) continue;
             await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
-              propertyId: prop.id,
-              state: prop.state || undefined,
-              county: prop.county || undefined,
-              apn: prop.apn || undefined,
+              propertyId: Number(prop.id),
+              state: prop.state ? String(prop.state) : undefined,
+              county: prop.county ? String(prop.county) : undefined,
+              apn: prop.apn ? String(prop.apn) : undefined,
               forceRefresh,
             });
             done++;
@@ -2570,12 +2589,13 @@ export function registerAdminRoutes(app: Express): void {
           const counts = await q.getJobCounts(
             "waiting", "active", "completed", "failed", "delayed", "paused"
           );
+          const emptyJobs: Awaited<ReturnType<typeof q.getJobs>> = [];
           const [waiting, active, completed, failed, delayed] = await Promise.all([
             q.getJobs(["waiting"], 0, 9),
             q.getJobs(["active"], 0, 9),
             q.getJobs(["failed"], 0, 9),
             q.getJobs(["delayed"], 0, 9),
-            Promise.resolve([]),
+            Promise.resolve(emptyJobs),
           ]);
           await q.close();
           return {
@@ -3762,7 +3782,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         }
       } else if (suggestedAction === "get_deals") {
         const { dealHunterService } = await import("./services/dealHunter");
-        dealHunterService.runForOrg(obs.orgId).catch(() => {});
+        // DealHunterService has no per-org runner; scrapeAllActiveSources is
+        // the actual hunt trigger (org-agnostic). TODO(tsc): add runForOrg if
+        // per-org scoping becomes necessary.
+        dealHunterService.scrapeAllActiveSources().catch(() => {});
         actionTaken = "deal_hunt_triggered";
       }
 

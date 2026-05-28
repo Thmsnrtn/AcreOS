@@ -268,8 +268,8 @@ export interface IStorage {
   // Leads
   getLeads(orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]>;
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
-  createLead(lead: InsertLead): Promise<Lead>;
-  createLeadsBatch(leadsData: InsertLead[]): Promise<Lead[]>;
+  createLead(lead: InsertLead & { organizationId: number }): Promise<Lead>;
+  createLeadsBatch(leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]>;
   updateLead(id: number, updates: Partial<InsertLead>, organizationId?: number): Promise<Lead>;
   deleteLead(id: number, organizationId?: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
@@ -305,7 +305,7 @@ export interface IStorage {
   // Properties
   getProperties(orgId: number): Promise<Property[]>;
   getProperty(orgId: number, id: number): Promise<Property | undefined>;
-  createProperty(property: InsertProperty): Promise<Property>;
+  createProperty(property: InsertProperty & { organizationId: number }): Promise<Property>;
   updateProperty(id: number, updates: Partial<InsertProperty>, organizationId?: number): Promise<Property>;
   deleteProperty(id: number, organizationId?: number): Promise<void>;
   getPropertyCount(orgId: number): Promise<number>;
@@ -319,7 +319,7 @@ export interface IStorage {
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
   getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
-  createDeal(deal: InsertDeal): Promise<Deal>;
+  createDeal(deal: InsertDeal & { organizationId: number }): Promise<Deal>;
   updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
@@ -1603,12 +1603,23 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (type === 'all' || type === 'deal') {
-      const dealRows = await db.select({ id: deals.id, name: deals.name, status: deals.status, dealValue: deals.dealValue })
+      // TODO(tsc): the `deals` table has no `name`/`dealValue` columns (schema is
+      // frozen). Search by `titleCompany` (closest text field) and derive value
+      // from acceptedAmount ?? offerAmount. The previous code referenced
+      // nonexistent columns and would have thrown at runtime.
+      const dealRows = await db.select({
+        id: deals.id,
+        titleCompany: deals.titleCompany,
+        status: deals.status,
+        acceptedAmount: deals.acceptedAmount,
+        offerAmount: deals.offerAmount,
+      })
         .from(deals)
-        .where(and(eq(deals.organizationId, orgId), ilike(deals.name, q)))
+        .where(and(eq(deals.organizationId, orgId), ilike(deals.titleCompany, q)))
         .limit(limit);
       for (const r of dealRows) {
-        results.push({ type: 'deal', id: r.id, name: r.name ?? `Deal #${r.id}`, preview: `$${r.dealValue?.toLocaleString() ?? '0'} · ${r.status ?? ''}` });
+        const dealValue = Number(r.acceptedAmount ?? r.offerAmount ?? 0);
+        results.push({ type: 'deal', id: r.id, name: r.titleCompany ?? `Deal #${r.id}`, preview: `$${dealValue.toLocaleString()} · ${r.status ?? ''}` });
       }
     }
 
@@ -4070,16 +4081,17 @@ export class DatabaseStorage implements IStorage {
 
   // Offer Letters
   async getOfferLetters(orgId: number, filters?: { status?: string; batchId?: string }) {
-    let query = db.select().from(offerLetters).where(eq(offerLetters.organizationId, orgId));
-    
+    const conditions = [eq(offerLetters.organizationId, orgId)];
     if (filters?.status) {
-      query = query.where(and(eq(offerLetters.organizationId, orgId), eq(offerLetters.status, filters.status))) as any;
+      conditions.push(eq(offerLetters.status, filters.status));
     }
     if (filters?.batchId) {
-      query = query.where(and(eq(offerLetters.organizationId, orgId), eq(offerLetters.batchId, filters.batchId))) as any;
+      conditions.push(eq(offerLetters.batchId, filters.batchId));
     }
-    
-    return query.orderBy(desc(offerLetters.createdAt));
+
+    return db.select().from(offerLetters)
+      .where(and(...conditions))
+      .orderBy(desc(offerLetters.createdAt));
   }
 
   async getOfferLetter(orgId: number, id: number) {
@@ -4224,14 +4236,16 @@ export class DatabaseStorage implements IStorage {
   async getSkipTrace(orgId: number, id: number) {
     const [trace] = await db.select().from(skipTraces)
       .where(and(eq(skipTraces.id, id), eq(skipTraces.organizationId, orgId)));
-    return decryptSkipTraceRow(trace);
+    // decryptSkipTraceRow widens to `| null`; `trace` is only ever undefined when
+    // absent, so normalize null→undefined to match the IStorage contract.
+    return decryptSkipTraceRow(trace) ?? undefined;
   }
 
   async getSkipTraceByLead(orgId: number, leadId: number) {
     const [trace] = await db.select().from(skipTraces)
       .where(and(eq(skipTraces.organizationId, orgId), eq(skipTraces.leadId, leadId)))
       .orderBy(desc(skipTraces.createdAt));
-    return decryptSkipTraceRow(trace);
+    return decryptSkipTraceRow(trace) ?? undefined;
   }
 
   async createSkipTrace(skipTrace: InsertSkipTrace) {

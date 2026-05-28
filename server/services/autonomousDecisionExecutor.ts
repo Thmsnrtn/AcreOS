@@ -330,7 +330,7 @@ TICKET SUBJECT: ${ticket?.subject ?? "Unknown"}
 TICKET STATUS: ${ticket?.status ?? "unknown"}
 
 CONVERSATION HISTORY:
-${messages.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n")}
+${messages.map(m => `[${m.agentName ?? m.role}]: ${m.content}`).join("\n\n")}
 
 Sophie's Draft Response (use as starting point or improve):
 ${item.recommendedAction}
@@ -371,9 +371,9 @@ async function buildAlertContext(item: any): Promise<string> {
   return `INBOX ITEM: Critical System Alert
 Item ID: ${item.id}
 Alert Title: ${alert?.title ?? item.sophieAnalysis}
-Alert Description: ${alert?.description ?? "No details"}
+Alert Description: ${alert?.message ?? "No details"}
 Alert Severity: ${alert?.severity ?? "critical"}
-Alert Category: ${alert?.category ?? "unknown"}
+Alert Category: ${alert?.alertType ?? "unknown"}
 Alert Created: ${alert?.createdAt ? format(new Date(alert.createdAt), "PPpp") : "unknown"}
 
 TASK: Evaluate this alert. If it's an automated false positive or informational, approve to acknowledge/close it.

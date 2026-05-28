@@ -37,6 +37,10 @@ const DEFAULT_PREFERENCES: Required<AppearancePreferences> = {
   // Server-side default is "full"; client-side detection of
   // prefers-reduced-motion still applies until the user explicitly chooses.
   motion: "full",
+  // Customization surfaces default to empty/disabled until the user opts in.
+  sidebarConfig: {},
+  listViews: {},
+  notificationQuietHours: { enabled: false },
 };
 
 const preferencesSchema = z.object({

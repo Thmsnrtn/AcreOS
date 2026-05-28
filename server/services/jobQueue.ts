@@ -5,7 +5,7 @@ import { backgroundJobs } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
-export type JobType = "email" | "webhook" | "payment_sync" | "notification";
+export type JobType = "email" | "webhook" | "payment_sync" | "notification" | "process-offer-batch" | "lead-score-decay";
 export type JobStatus = "pending" | "processing" | "completed" | "failed" | "retrying";
 
 export interface Job {
@@ -179,9 +179,10 @@ async function createBullMQService(): Promise<JobQueueService> {
           error: null,
           result: undefined,
         })
+        .returning({ id: backgroundJobs.id })
         .then(([row]) => {
           if (row) {
-            (job as any)._dbId = (row as any).id;
+            (job as any)._dbId = row.id;
           }
         })
         .catch((err: unknown) => {
@@ -226,7 +227,7 @@ async function createBullMQService(): Promise<JobQueueService> {
       bullWorker = new Worker(
         QUEUE_NAME,
         async (bullJob) => {
-          const data = bullJob.data;
+          const data = bullJob.data as Record<string, any>;
           const jobId: string = data._jobId;
 
           // Retrieve or reconstruct the in-memory job
@@ -485,9 +486,10 @@ class InMemoryJobQueueService implements JobQueueService {
         error: null,
         result: undefined,
       })
+      .returning({ id: backgroundJobs.id })
       .then(([row]) => {
         if (row) {
-          (job as any)._dbId = (row as any).id;
+          (job as any)._dbId = row.id;
         }
       })
       .catch((err: unknown) => {

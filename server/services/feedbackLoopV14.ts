@@ -55,9 +55,9 @@ interface ExtractedLearning {
 /** Summary of what was propagated to the V13 pillars */
 interface PropagationSummary {
   learningId: string;
-  memory: { applied: boolean; factId?: string };
-  strategy: { applied: boolean; details?: string };
-  governance: { applied: boolean; policyId?: string };
+  memory: { applied: boolean; factId?: string; verified?: boolean; error?: string };
+  strategy: { applied: boolean; details?: string; verified?: boolean; error?: string };
+  governance: { applied: boolean; policyId?: string; verified?: boolean; error?: string };
 }
 
 /** Impact assessment: what changed as a result of this learning */
@@ -286,11 +286,11 @@ class FeedbackLoopService {
           sourceEpisodes: (learning.sourceOverrideIds as string[]).slice(0, 5),
           confidence: Math.round(learning.confidence * 100), orgId: learning.orgId,
         });
-        // Verify the fact was actually stored by retrieving it
-        const verifyRecall = await cognitiveMemoryService.recall(
+        // Verify the fact was actually stored by retrieving it.
+        // CognitiveMemoryService has no recall(); query the semantic facts.
+        const verifyRecall = await cognitiveMemoryService.queryFacts(
           ruleConfig.agent_codename ?? "system",
-          learning.rule.slice(0, 50),
-          1
+          { category: "founder_feedback", limit: 1 },
         );
         const verified = verifyRecall && verifyRecall.length > 0;
         appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString(), verified });
@@ -314,8 +314,10 @@ class FeedbackLoopService {
           const [src] = await db.select().from(founderOverrides).where(eq(founderOverrides.overrideId, srcIds[0])).limit(1);
           if (src?.originalDecisionId) {
             await adaptiveStrategyService.recordOutcome(parseInt(src.originalDecisionId, 10) || 0, `Overridden by founder: ${learning.rule}`, 0);
-            // Verify the strategy's beta (failure count) actually increased
-            const strategies = await adaptiveStrategyService.listStrategies(ruleConfig.agent_codename ?? "system");
+            // Verify the strategy's beta (failure count) actually increased.
+            // AdaptiveStrategyService has no listStrategies(); use the
+            // performance query which returns the strategy rows.
+            const { strategies } = await adaptiveStrategyService.getStrategyPerformance(ruleConfig.agent_codename ?? "system");
             const verified = strategies.some((s: any) => s.beta > 0);
             appliedToStrategies.push({ assignmentId: src.originalDecisionId, appliedAt: new Date().toISOString(), verified });
             summary.strategy = { applied: true, details: `Recorded negative outcome for assignment ${src.originalDecisionId}`, verified };

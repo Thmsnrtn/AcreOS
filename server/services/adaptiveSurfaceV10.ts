@@ -115,7 +115,9 @@ const CONTEXT_MODE_CONFIGS: Record<string, {
       "health_grade", "approval_queue", "active_goals",
     ],
     suppressedLayers: [
-      "morning_briefing", "deep_work", "end_of_week",
+      // "deep_work"/"end_of_week" are not SurfaceLayer keys; use the
+      // representative layers from those groups.
+      "morning_briefing", "minimal_alerts", "weekly_chronicle",
     ],
   },
   default: {

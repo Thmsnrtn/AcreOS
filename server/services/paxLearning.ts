@@ -448,13 +448,13 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       try {
         switch (fixAction) {
           case "clear_cache":
-            const { contextAggregator } = await import("./aiContextAggregator");
-            contextAggregator.invalidateCache(orgId, "all");
+            const { invalidateContextCache } = await import("./aiContextAggregator");
+            invalidateContextCache(orgId);
             logger.info(`[pax-bulk-fix] Cleared cache for org ${orgId}`);
             break;
           case "resync_data":
             const { healthCheckService } = await import("./healthCheck");
-            await healthCheckService.runHealthCheck(orgId);
+            await healthCheckService.checkAll();
             logger.info(`[pax-bulk-fix] Resynced health data for org ${orgId}`);
             break;
           case "retry_failed_jobs":
@@ -629,8 +629,8 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     
     try {
       if (fixAction.includes("cache") || fixAction.includes("clear")) {
-        const { contextAggregator } = await import("./aiContextAggregator");
-        contextAggregator.invalidateCache(orgId, "all");
+        const { invalidateContextCache } = await import("./aiContextAggregator");
+        invalidateContextCache(orgId);
         result = "Cache cleared successfully";
         success = true;
         logger.info(`[pax-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
@@ -642,7 +642,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         logger.info(`[pax-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
       } else if (fixAction.includes("sync") || fixAction.includes("refresh")) {
         const { healthCheckService } = await import("./healthCheck");
-        await healthCheckService.runHealthCheck(orgId);
+        await healthCheckService.checkAll();
         result = "Data resynced via health check";
         success = true;
         logger.info(`[pax-self-heal] Resynced data for org ${orgId}`);

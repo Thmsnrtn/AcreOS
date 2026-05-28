@@ -118,7 +118,11 @@ async function saveHandoffsStore(
     )
     .limit(1);
 
-  const credentials = { handoffs };
+  // TODO(tsc): there is no deal_handoffs table — handoffs are stashed in the
+  // organization_integrations.credentials jsonb (a secrets column whose $type
+  // does not declare `handoffs`). Cast to the column type to persist; the
+  // matching reader uses the same convention (getHandoffsStore).
+  const credentials = { handoffs } as typeof organizationIntegrations.$inferInsert["credentials"];
 
   if (existing) {
     await db

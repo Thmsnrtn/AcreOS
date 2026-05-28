@@ -68,32 +68,45 @@ router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
+    const propertyId = parseInt(req.params.propertyId, 10);
+    if (Number.isNaN(propertyId)) {
+      return res.status(400).json({ error: 'Invalid property id' });
+    }
     const [property] = await db
       .select()
       .from(properties)
-      .where(and(eq(properties.id, req.params.propertyId), eq(properties.organizationId, org.id)));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
 
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
 
+    const enrichment = property.enrichmentData as
+      | { hazards?: { floodZone?: string } | null }
+      | null;
+    const utilities = property.utilities
+      ? Object.entries(property.utilities)
+          .filter(([, v]) => v === true)
+          .map(([k]) => k)
+      : undefined;
+
     const request = {
-      propertyId: property.id,
-      acres: property.acres || 0,
+      propertyId: property.id.toString(),
+      acres: property.sizeAcres ? parseFloat(property.sizeAcres) : 0,
       location: {
         state: property.state || '',
         county: property.county || '',
-        zipCode: property.zipCode || '',
+        zipCode: property.zip || '',
         latitude: property.latitude ? parseFloat(property.latitude) : 0,
         longitude: property.longitude ? parseFloat(property.longitude) : 0,
       },
       characteristics: {
         zoning: property.zoning || undefined,
-        waterRights: property.waterRights || undefined,
-        utilities: property.utilities || undefined,
+        waterRights: property.utilities?.water || undefined,
+        utilities,
         roadAccess: property.roadAccess || undefined,
-        topography: property.topography || undefined,
-        floodZone: property.floodZone || undefined,
+        topography: property.terrain || undefined,
+        floodZone: enrichment?.hazards?.floodZone || undefined,
       },
     };
 

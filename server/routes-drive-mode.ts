@@ -24,7 +24,7 @@
 import type { Express, Response } from "express";
 import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { leads, leadPhotos } from "@shared/schema";
+import { leads } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -209,53 +209,16 @@ export function registerDriveModeRoutes(app: Express): void {
           );
         }
 
-        // Shared fields apply to every file unless per-file metadata
-        // overrides. Drive Mode batches are usually one photo so this
-        // mostly just carries the GPS point of the capture.
-        const sharedLat =
-          req.body?.lat != null && Number.isFinite(Number(req.body.lat))
-            ? String(Number(req.body.lat))
-            : null;
-        const sharedLng =
-          req.body?.lng != null && Number.isFinite(Number(req.body.lng))
-            ? String(Number(req.body.lng))
-            : null;
-        const sharedCaption =
-          typeof req.body?.caption === "string" ? req.body.caption : null;
-
-        const inserted: typeof leadPhotos.$inferSelect[] = [];
-        for (const file of files) {
-          const ext = extensionFromMime(file.mimetype);
-          // DB-then-blob. A blob failure leaves a row we can retry against;
-          // a DB failure never leaks an orphaned blob.
-          const [row] = await db.insert(leadPhotos).values({
-            organizationId: orgId,
-            leadId,
-            s3Key: "pending",
-            caption: sharedCaption,
-            capturedBy: userId,
-            lat: sharedLat,
-            lng: sharedLng,
-          }).returning();
-
-          const key = `leads/${leadId}/${row.id}.${ext}`;
-          await persistToBlob(file.buffer, key);
-
-          const [updated] = await db
-            .update(leadPhotos)
-            .set({ s3Key: key })
-            .where(eq(leadPhotos.id, row.id))
-            .returning();
-
-          inserted.push(updated ?? row);
-        }
-
-        logger.info("[drive-mode] lead photos uploaded", {
+        // TODO(tsc): the lead_photos table referenced here does not exist in the
+        // schema (no exported `leadPhotos` with leadId/s3Key/capturedBy/lat/lng
+        // columns). This persistence path crashed at runtime (db.insert on an
+        // undefined table). Returning 501 until the lead_photos table is added.
+        logger.warn("[drive-mode] lead photo upload not implemented (missing lead_photos table)", {
           orgId,
           userId,
-          metadata: { leadId, count: inserted.length },
+          metadata: { leadId, count: files.length },
         });
-        return res.status(201).json({ photos: inserted });
+        return res.status(501).json({ error: "Lead photo storage not implemented" });
       } catch (err) {
         logger.error("[drive-mode] lead photo upload error", err as Error);
         return Errors.internal(res, err);

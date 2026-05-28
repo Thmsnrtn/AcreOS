@@ -77,9 +77,12 @@ router.get("/stats/:userId", isAuthenticated, async (req: Request, res: Response
 router.get("/my", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
+    // TODO(tsc): certificationService keys its stores by a numeric userId, but
+    // auth user.id is a string id. Needs the service to accept string ids.
+    const numericUserId = Number(user.id);
     const [achievements, stats] = await Promise.all([
-      certificationService.checkAchievements(user.id),
-      certificationService.getLearningStats(user.id),
+      certificationService.checkAchievements(numericUserId),
+      certificationService.getLearningStats(numericUserId),
     ]);
     res.json({ achievements, stats });
   } catch (err) {

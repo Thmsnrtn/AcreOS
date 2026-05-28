@@ -4,7 +4,7 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, and } from "drizzle-orm";
 
 // Item 201: Identify slow queries
 export async function getSlowQuerySuggestions(): Promise<Array<{ table: string; suggestion: string }>> {

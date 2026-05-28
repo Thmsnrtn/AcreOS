@@ -557,13 +557,15 @@ export function registerOrganizationRoutes(app: Express): void {
             entityId: org.id,
             changes: {
               fields: ["legalEntityName", "taxIdType", "ein", "taxAddress"],
-              taxIdType,
-              taxIdLast4: taxIdLast4(taxId),
-              legalEntityName,
-              taxAddress: {
-                city: taxAddress.city,
-                state: taxAddress.state,
-                zip: taxAddress.zip,
+              after: {
+                taxIdType,
+                taxIdLast4: taxIdLast4(taxId),
+                legalEntityName,
+                taxAddress: {
+                  city: taxAddress.city,
+                  state: taxAddress.state,
+                  zip: taxAddress.zip,
+                },
               },
             },
             ipAddress: req.ip || null,
@@ -640,7 +642,7 @@ export function registerOrganizationRoutes(app: Express): void {
             action: "skip",
             entityType: "organization_tax_identity",
             entityId: org.id,
-            changes: { skipped: true, skippedAt: now },
+            changes: { after: { skipped: true, skippedAt: now } },
             ipAddress: req.ip || null,
             userAgent: req.headers["user-agent"] || null,
             metadata: { source: "tax-identity-form" },
@@ -694,7 +696,7 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json({ success: true });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return Errors.validationFailed(res, error.errors);
+        return Errors.validationFailed(res, error.issues);
       }
       logger.error("Update AI settings error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
@@ -1105,7 +1107,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const { role } = parsed.data;
     const context = req.permissionContext as UserPermissionContext;
 
-    if (!ROLES.includes(role)) {
+    if (!(ROLES as readonly string[]).includes(role)) {
       return Errors.badRequest(res, `Invalid role. Must be one of: ${ROLES.join(", ")}`);
     }
 
@@ -1623,7 +1625,7 @@ export function registerOrganizationRoutes(app: Express): void {
       } else if (singleParsed.success) {
         invites = [singleParsed.data];
       } else {
-        return Errors.validationFailed(res, (bulkParsed.error ?? singleParsed.error).errors);
+        return Errors.validationFailed(res, (bulkParsed.error ?? singleParsed.error).issues);
       }
       // Phase 5 §5 (team readiness) — backend seat enforcement. If the
       // pending invite(s) would push (active members + pending invites)
@@ -2060,7 +2062,23 @@ export function registerOrganizationRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      await saveCommissionConfig(req.organization.id, parsed.data);
+      // Map the request shape (tiers: {name,minDealsClosed,commissionRate}) onto
+      // the service's CommissionConfig (tiers: {label,minDeals,ratePercent} +
+      // trackingPeriod). trackingPeriod defaults to monthly when not supplied.
+      const body = parsed.data as {
+        tiers?: { name: string; minDealsClosed: number; commissionRate: number }[];
+        trackingPeriod?: "monthly" | "quarterly" | "annual";
+        baseFlatAmount?: number;
+      };
+      await saveCommissionConfig(req.organization.id, {
+        tiers: (body.tiers ?? []).map((t) => ({
+          label: t.name,
+          minDeals: t.minDealsClosed,
+          ratePercent: t.commissionRate,
+        })),
+        trackingPeriod: body.trackingPeriod ?? "monthly",
+        baseFlatAmount: body.baseFlatAmount,
+      });
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);

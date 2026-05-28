@@ -233,7 +233,7 @@ async function scoreNewDealsForOrg(
 
     // Score with motivation engine
     const motivationInput = {
-      isTaxDelinquent: deal.isTaxDelinquent ?? false,
+      isTaxDelinquent: deal.distressFactors?.taxDelinquent ?? false,
       taxDelinquentYears: (deal as any).taxDelinquentYears || 0,
       taxDelinquentAmount: parseFloat(String((deal as any).taxDelinquentAmount || "0")),
       assessedValue: parseFloat(String(deal.assessedValue || "0")),
@@ -255,30 +255,36 @@ async function scoreNewDealsForOrg(
       // Auto-enroll in fast-track outreach campaign
       if (matchingRule) {
         try {
-          // First, create a lead from the scraped deal if it doesn't exist
+          // First, create a lead from the scraped deal if it doesn't exist.
+          // leads has no apn column; we dedup on sourceTrackingCode which we
+          // populate with the parcel APN so each scraped property maps to one lead.
+          const apnTrackingCode = deal.apn ? `apn:${deal.apn}` : "";
           const existingLead = await db
             .select({ id: leads.id })
             .from(leads)
             .where(
               and(
                 eq(leads.organizationId, organizationId),
-                eq(leads.apn as any, deal.apn || "")
+                eq(leads.sourceTrackingCode, apnTrackingCode)
               )
             )
             .limit(1);
 
           if (existingLead.length === 0 && deal.apn) {
+            const ownerName = deal.ownerName || "Unknown Owner";
+            const [firstName, ...rest] = ownerName.split(" ");
             await db.insert(leads).values({
               organizationId,
-              ownerName: (deal as any).ownerName || "Unknown Owner",
-              county: deal.county || "",
+              firstName: firstName || "Unknown",
+              lastName: rest.join(" ") || "Owner",
               state: deal.state || "",
-              apn: deal.apn,
+              sourceTrackingCode: apnTrackingCode,
               score: motivationResult.score,
               status: "active",
               source: "deal_hunter_auto",
-              notes: `Auto-created from Deal Hunter. Motivation: ${motivationResult.grade} (${motivationResult.score}). Top signal: ${motivationResult.topSignals[0] || "N/A"}`,
-            } as any);
+              // leads has no county/apn column; preserved in notes for traceability.
+              notes: `Auto-created from Deal Hunter. County: ${deal.county || "N/A"}, APN: ${deal.apn}. Motivation: ${motivationResult.grade} (${motivationResult.score}). Top signal: ${motivationResult.topSignals[0] || "N/A"}`,
+            });
             autoEnrolled++;
           }
         } catch (err: any) {
@@ -405,13 +411,13 @@ async function collectEnhancedBriefingData(
   );
   const closingThisWeek = activeDeals.filter(
     (d) =>
-      d.expectedCloseDate &&
-      new Date(d.expectedCloseDate) <= nextWeek &&
-      new Date(d.expectedCloseDate) >= now
+      d.closingDate &&
+      new Date(d.closingDate) <= nextWeek &&
+      new Date(d.closingDate) >= now
   );
 
   const totalPipelineValue = activeDeals.reduce(
-    (sum, d) => sum + parseFloat(d.purchasePrice || d.listPrice || "0"),
+    (sum, d) => sum + parseFloat(d.acceptedAmount || d.offerAmount || "0"),
     0
   );
 
@@ -441,8 +447,9 @@ async function collectEnhancedBriefingData(
     .filter((l) => (l.score || 0) >= 60)
     .slice(0, 5)
     .map((l) => ({
-      name: l.ownerName || "Unknown Owner",
-      county: l.county || "",
+      name: `${l.firstName || ""} ${l.lastName || ""}`.trim() || "Unknown Owner",
+      // leads has no county column.
+      county: "",
       state: l.state || "",
       score: l.score || 0,
       grade: (l.score || 0) >= 80 ? "A" : (l.score || 0) >= 65 ? "B+" : "B",
@@ -721,10 +728,10 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "autonomous_deal_machine",
+      type: "autonomous_deal_machine",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -769,7 +776,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt: new Date(),
+          completedAt: new Date(),
           result: {
             orgsProcessed: totalOrgsProcessed,
             ...aggregateActivity,
@@ -785,7 +792,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;
@@ -804,8 +811,8 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
   const [lastMachineRun] = await db
     .select()
     .from(backgroundJobs)
-    .where(eq(backgroundJobs.jobType, "autonomous_deal_machine"))
-    .orderBy(desc(backgroundJobs.startedAt as any))
+    .where(eq(backgroundJobs.type, "autonomous_deal_machine"))
+    .orderBy(desc(backgroundJobs.scheduledFor))
     .limit(1);
 
   const overnightActivity = {

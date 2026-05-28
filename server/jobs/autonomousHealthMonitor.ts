@@ -181,19 +181,19 @@ async function checkJobHealth(): Promise<HealthCheckResult[]> {
 
     // Clean up stuck/zombie jobs older than 2 hours in running state
     const stuckCutoff = subHours(new Date(), 2);
-    const stuck = await db.select({ id: backgroundJobs.id, jobType: backgroundJobs.jobType })
+    const stuck = await db.select({ id: backgroundJobs.id, jobType: backgroundJobs.type })
       .from(backgroundJobs)
       .where(and(
         eq(backgroundJobs.status, "running"),
-        lt(backgroundJobs.startedAt, stuckCutoff),
+        lt(backgroundJobs.scheduledFor, stuckCutoff),
       ));
 
     if (stuck.length > 0) {
       await db.update(backgroundJobs)
         .set({
           status: "failed",
-          finishedAt: new Date(),
-          errorMessage: "Auto-terminated by health monitor: job ran for >2 hours without completion",
+          completedAt: new Date(),
+          error: "Auto-terminated by health monitor: job ran for >2 hours without completion",
         })
         .where(sql`id IN (${stuck.map(j => j.id).join(",")})`);
 
@@ -406,7 +406,7 @@ async function checkPlatformHealth(): Promise<HealthCheckResult[]> {
       .from(backgroundJobs)
       .where(and(
         eq(backgroundJobs.status, "running"),
-        lt(backgroundJobs.startedAt, orphanCutoff),
+        lt(backgroundJobs.scheduledFor, orphanCutoff),
       ));
 
     const orphanCount = Number(orphanJobs[0]?.c || 0);

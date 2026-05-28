@@ -27,7 +27,11 @@ import { selfHealingMeshService } from "./selfHealingMeshV13";
 interface ChainStep {
   agentCodename: string;
   action: string;
-  inputMapping: Record<string, string>;
+  // Values are usually JSONPath strings ("$.payload.reason") resolved against
+  // the trigger event, but some seeded chains nest objects/arrays (e.g.
+  // { parameters: { leadId: "$.payload.leadId" } }). Non-string values are
+  // passed through literally — see the resolver in executeChain.
+  inputMapping: Record<string, unknown>;
   governanceCheck: boolean;
   timeoutMs: number;
 }
@@ -41,6 +45,7 @@ interface StepResult {
   output?: Record<string, any>;
   governanceResult?: string;
   haltReason?: string;
+  error?: string;
   durationMs: number;
   executedAt: string;
 }
@@ -329,7 +334,9 @@ class ReactiveOrchestrationService {
       // Build step input by mapping trigger event fields through inputMapping
       const stepInput: Record<string, any> = {};
       for (const [targetKey, sourcePath] of Object.entries(step.inputMapping)) {
-        stepInput[targetKey] = this.getNestedValue(triggerEvent.payload ?? triggerEvent, sourcePath);
+        stepInput[targetKey] = typeof sourcePath === "string"
+          ? this.getNestedValue(triggerEvent.payload ?? triggerEvent, sourcePath)
+          : sourcePath;
       }
 
       // Governance check if required
@@ -409,7 +416,7 @@ class ReactiveOrchestrationService {
       try {
         const { executionEngine } = await import("./executionEngine");
         const execResult = await executionEngine.execute({
-          orgId,
+          orgId: chain.orgId,
           agentCodename: step.agentCodename,
           action: step.action,
           input: stepInput,
@@ -432,7 +439,7 @@ class ReactiveOrchestrationService {
             agentCodename: step.agentCodename,
             action: step.action,
             input: stepInput,
-            status: "failed",
+            status: "error",
             output: stepOutput,
             durationMs: Date.now() - stepStart,
             executedAt: new Date().toISOString(),
@@ -453,7 +460,7 @@ class ReactiveOrchestrationService {
           agentCodename: step.agentCodename,
           action: step.action,
           input: stepInput,
-          status: "failed",
+          status: "error",
           output: stepOutput,
           durationMs: Date.now() - stepStart,
           executedAt: new Date().toISOString(),
@@ -602,7 +609,9 @@ class ReactiveOrchestrationService {
       const triggerEvent = existingRun.triggerEvent as Record<string, any>;
       const stepInput: Record<string, any> = {};
       for (const [targetKey, sourcePath] of Object.entries(step.inputMapping)) {
-        stepInput[targetKey] = this.getNestedValue(triggerEvent.payload ?? triggerEvent, sourcePath);
+        stepInput[targetKey] = typeof sourcePath === "string"
+          ? this.getNestedValue(triggerEvent.payload ?? triggerEvent, sourcePath)
+          : sourcePath;
       }
 
       // Governance check if required

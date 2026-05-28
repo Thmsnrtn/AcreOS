@@ -9,45 +9,32 @@ const router = Router();
 // STRATEGIES
 // =====================
 
+// TODO(tsc): taxOptimizationEngine exposes analyzePortfolio(orgId),
+// generateTaxScenario, rankStrategies, getMultiYearProjection,
+// computeDepreciationStrategy, and OZ benefit calculators — NOT the
+// listStrategies/getStrategy/listScenarios/createScenario/getScenario/
+// deleteScenario/getCostBasis/recordCostBasis/getOZHoldings/addOZHolding/
+// getDepreciationSchedule API these routes were written against. Those methods
+// do not exist on the service and crashed at runtime previously. The portfolio
+// analyze endpoint is wired to analyzePortfolio(org.id); the strategy CRUD,
+// scenario CRUD, cost-basis, OZ-holdings, and depreciation-schedule endpoints
+// return 501 until those service methods are built.
+
 // GET /tax-optimization/strategies — list recommended strategies for org
-router.get('/tax-optimization/strategies', async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const { type } = req.query;
-    const strategies = await taxOptimizationService.listStrategies({
-      organizationId: org.id,
-      type: type as string | undefined,
-    });
-    res.json({ strategies });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/strategies', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Strategies endpoint not implemented' });
 });
 
 // GET /tax-optimization/strategies/:id — single strategy detail
-router.get('/tax-optimization/strategies/:id', async (req: Request, res: Response) => {
-  try {
-    const strategy = await taxOptimizationService.getStrategy(req.params.id);
-    if (!strategy) {
-      return res.status(404).json({ error: 'Strategy not found' });
-    }
-    res.json({ strategy });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/strategies/:id', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Strategy detail endpoint not implemented' });
 });
 
 // POST /tax-optimization/analyze — run full portfolio tax analysis
 router.post('/tax-optimization/analyze', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { propertyIds, taxYear, includeProjections } = req.body;
-    const analysis = await taxOptimizationService.analyzePortfolio({
-      organizationId: org.id,
-      propertyIds: propertyIds ?? [],
-      taxYear: taxYear ?? new Date().getFullYear(),
-      includeProjections: includeProjections ?? true,
-    });
+    const analysis = await taxOptimizationService.analyzePortfolio(org.id);
     res.json({ analysis, success: true });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");
@@ -59,69 +46,23 @@ router.post('/tax-optimization/analyze', async (req: Request, res: Response) => 
 // =====================
 
 // GET /tax-optimization/scenarios — list tax forecast scenarios
-router.get('/tax-optimization/scenarios', async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const { propertyId } = req.query;
-    const scenarios = await taxOptimizationService.listScenarios({
-      organizationId: org.id,
-      propertyId: propertyId as string | undefined,
-    });
-    res.json({ scenarios });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/scenarios', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Scenarios list endpoint not implemented' });
 });
 
 // POST /tax-optimization/scenarios — create new tax scenario
-router.post('/tax-optimization/scenarios', async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const {
-      name,
-      scenarioType,
-      propertyId,
-      parameters,
-      notes,
-    } = req.body;
-    if (!name || !scenarioType) {
-      return res.status(400).json({ error: 'name and scenarioType are required' });
-    }
-    const scenario = await taxOptimizationService.createScenario({
-      organizationId: org.id,
-      name,
-      scenarioType,
-      propertyId: propertyId ?? null,
-      parameters: parameters ?? {},
-      notes: notes ?? '',
-    });
-    res.status(201).json({ scenario, success: true });
-  } catch (error: any) {
-    Errors.badRequest(res, error.message ?? "Bad request");
-  }
+router.post('/tax-optimization/scenarios', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Scenario create endpoint not implemented' });
 });
 
 // GET /tax-optimization/scenarios/:id — get scenario detail
-router.get('/tax-optimization/scenarios/:id', async (req: Request, res: Response) => {
-  try {
-    const scenario = await taxOptimizationService.getScenario(req.params.id);
-    if (!scenario) {
-      return res.status(404).json({ error: 'Scenario not found' });
-    }
-    res.json({ scenario });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/scenarios/:id', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Scenario detail endpoint not implemented' });
 });
 
 // DELETE /tax-optimization/scenarios/:id — delete scenario
-router.delete('/tax-optimization/scenarios/:id', async (req: Request, res: Response) => {
-  try {
-    await taxOptimizationService.deleteScenario(req.params.id);
-    res.json({ success: true });
-  } catch (error: any) {
-    Errors.badRequest(res, error.message ?? "Bad request");
-  }
+router.delete('/tax-optimization/scenarios/:id', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Scenario delete endpoint not implemented' });
 });
 
 // =====================
@@ -129,43 +70,13 @@ router.delete('/tax-optimization/scenarios/:id', async (req: Request, res: Respo
 // =====================
 
 // GET /tax-optimization/cost-basis/:propertyId — cost basis for property
-router.get('/tax-optimization/cost-basis/:propertyId', async (req: Request, res: Response) => {
-  try {
-    const costBasis = await taxOptimizationService.getCostBasis(req.params.propertyId);
-    res.json({ costBasis });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/cost-basis/:propertyId', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Cost-basis get endpoint not implemented' });
 });
 
 // POST /tax-optimization/cost-basis — record cost basis
-router.post('/tax-optimization/cost-basis', async (req: Request, res: Response) => {
-  try {
-    const {
-      propertyId,
-      purchasePrice,
-      closingCosts,
-      improvements,
-      depreciationTaken,
-      acquisitionDate,
-      notes,
-    } = req.body;
-    if (!propertyId || purchasePrice == null) {
-      return res.status(400).json({ error: 'propertyId and purchasePrice are required' });
-    }
-    const costBasis = await taxOptimizationService.recordCostBasis({
-      propertyId,
-      purchasePrice,
-      closingCosts: closingCosts ?? 0,
-      improvements: improvements ?? [],
-      depreciationTaken: depreciationTaken ?? 0,
-      acquisitionDate: acquisitionDate ?? new Date().toISOString(),
-      notes: notes ?? '',
-    });
-    res.status(201).json({ costBasis, success: true });
-  } catch (error: any) {
-    Errors.badRequest(res, error.message ?? "Bad request");
-  }
+router.post('/tax-optimization/cost-basis', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Cost-basis record endpoint not implemented' });
 });
 
 // =====================
@@ -173,44 +84,13 @@ router.post('/tax-optimization/cost-basis', async (req: Request, res: Response) 
 // =====================
 
 // GET /tax-optimization/oz-holdings — opportunity zone holdings
-router.get('/tax-optimization/oz-holdings', async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const holdings = await taxOptimizationService.getOZHoldings(org.id);
-    res.json({ holdings });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/oz-holdings', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'OZ-holdings list endpoint not implemented' });
 });
 
 // POST /tax-optimization/oz-holdings — add OZ holding
-router.post('/tax-optimization/oz-holdings', async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const {
-      propertyId,
-      censusTrackId,
-      investmentDate,
-      deferredGain,
-      fundName,
-      notes,
-    } = req.body;
-    if (!propertyId || !investmentDate) {
-      return res.status(400).json({ error: 'propertyId and investmentDate are required' });
-    }
-    const holding = await taxOptimizationService.addOZHolding({
-      organizationId: org.id,
-      propertyId,
-      censusTrackId: censusTrackId ?? null,
-      investmentDate,
-      deferredGain: deferredGain ?? 0,
-      fundName: fundName ?? null,
-      notes: notes ?? '',
-    });
-    res.status(201).json({ holding, success: true });
-  } catch (error: any) {
-    Errors.badRequest(res, error.message ?? "Bad request");
-  }
+router.post('/tax-optimization/oz-holdings', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'OZ-holding create endpoint not implemented' });
 });
 
 // =====================
@@ -218,17 +98,8 @@ router.post('/tax-optimization/oz-holdings', async (req: Request, res: Response)
 // =====================
 
 // GET /tax-optimization/depreciation/:propertyId — depreciation schedule
-router.get('/tax-optimization/depreciation/:propertyId', async (req: Request, res: Response) => {
-  try {
-    const { method } = req.query; // straight_line | accelerated | bonus
-    const schedule = await taxOptimizationService.getDepreciationSchedule(
-      req.params.propertyId,
-      (method as string) ?? 'straight_line'
-    );
-    res.json({ schedule });
-  } catch (error: any) {
-    Errors.internal(res, error);
-  }
+router.get('/tax-optimization/depreciation/:propertyId', async (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'Depreciation-schedule endpoint not implemented' });
 });
 
 export default router;

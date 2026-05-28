@@ -90,7 +90,7 @@ class OrgHeartbeatService {
       .where(
         and(
           gte(agentInitiatives.createdAt, sql`NOW() - INTERVAL '7 days'`),
-          eq(agentInitiatives.actionApprovalNeeded, true),
+          eq(agentInitiatives.status, "pending_approval"),
         )
       );
     const totalInit = Number(totalInitiatives[0]?.count || 0);
@@ -142,7 +142,7 @@ class OrgHeartbeatService {
 Coherence means: are the agents aligned with each other? Do their actions complement or contradict?
 
 Recent agent initiatives:
-${recentInitiatives.map(i => `- [${i.agentCodename}] ${i.summary} (priority: ${i.priority})`).join("\n")}
+${recentInitiatives.map(i => `- [${i.proposedBy}] ${i.title} (effort: ${i.estimatedEffort ?? "unknown"})`).join("\n")}
 
 Respond with just a number 0-100.`;
 

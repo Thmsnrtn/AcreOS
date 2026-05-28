@@ -72,7 +72,8 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
     res.json({
       leadId: lead.id,
       ownerName: (lead as any).ownerName,
-      county: lead.county,
+      // leads has no `county` column; field kept for response-shape stability.
+      county: null,
       state: lead.state,
       motivation: motivationResult,
       outreachTiming,

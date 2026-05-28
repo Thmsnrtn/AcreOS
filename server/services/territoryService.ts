@@ -41,7 +41,13 @@ async function getTerritoriesStore(organizationId: number): Promise<Territory[]>
     .limit(1);
 
   if (!integration?.credentials) return [];
-  const creds = integration.credentials as any;
+  const creds = integration.credentials as { encrypted?: string; territories?: Territory[] };
+  if (creds.encrypted) {
+    try {
+      const parsed = JSON.parse(creds.encrypted) as { territories?: Territory[] };
+      if (Array.isArray(parsed.territories)) return parsed.territories;
+    } catch { /* fall through to legacy */ }
+  }
   return Array.isArray(creds.territories) ? creds.territories : [];
 }
 
@@ -60,7 +66,8 @@ async function saveTerritoriesStore(
     )
     .limit(1);
 
-  const credentials = { territories };
+  // credentials is a typed secrets jsonb; store the territories as a JSON blob.
+  const credentials = { encrypted: JSON.stringify({ territories }) };
 
   if (existing) {
     await db
@@ -163,10 +170,22 @@ export async function autoAssignLeadToTerritory(
   const matched = matchTerritory(territories, leadState, leadCounty, leadZip);
   if (!matched) return null;
 
+  // leads.assignedTo is the numeric team member id; Territory stores the team
+  // member's (string) userId. Resolve userId -> teamMembers.id before assigning.
+  const [teamMember] = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(
+      eq(teamMembers.organizationId, organizationId),
+      eq(teamMembers.userId, matched.teamMemberId),
+    ))
+    .limit(1);
+  if (!teamMember) return null;
+
   // Update the lead's assignedTo field
   await db
     .update(leads)
-    .set({ assignedTo: matched.teamMemberId, updatedAt: new Date() })
+    .set({ assignedTo: teamMember.id, updatedAt: new Date() })
     .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
   logger.info(`[Territory] Lead ${leadId} auto-assigned to ${matched.teamMemberName || matched.teamMemberId} via territory "${matched.name}"`);

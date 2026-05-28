@@ -13,6 +13,13 @@ declare module "lob" {
   export default Lob;
 }
 
+// parquetjs-lite ships no type declarations (CommonJS, used via dynamic import
+// in server/jobs/archival.ts for cold-storage Parquet export).
+declare module "parquetjs-lite" {
+  const parquet: any;
+  export = parquet;
+}
+
 // GeoJSON namespace shim when types are not explicitly imported
 declare namespace GeoJSON {
   interface Geometry {}

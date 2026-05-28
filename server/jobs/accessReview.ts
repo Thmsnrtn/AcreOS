@@ -87,7 +87,10 @@ export async function runQuarterlyAccessReview(): Promise<{
       role: teamMembers.role,
       isActive: teamMembers.isActive,
       joinedAt: teamMembers.joinedAt,
-      lastActiveAt: users.lastActiveAt,
+      // users has no lastActiveAt column; updatedAt is the best available
+      // proxy for recent account activity. TODO(tsc): add a real
+      // last_active_at column to users if precise activity tracking is needed.
+      lastActiveAt: users.updatedAt,
     })
     .from(teamMembers)
     .leftJoin(organizations, eq(teamMembers.organizationId, organizations.id))

@@ -114,7 +114,7 @@ export abstract class BaseAgent {
   }
 
   // --- Helper: Check if email is configured ---
-  protected isEmailConfigured(): boolean {
+  protected isEmailConfigured(): Promise<boolean> {
     return emailService.isConfigured();
   }
 
@@ -125,7 +125,7 @@ export abstract class BaseAgent {
     html: string;
     organizationId?: number;
   }): Promise<boolean> {
-    if (!this.isEmailConfigured()) {
+    if (!(await this.isEmailConfigured())) {
       logger.info(`[${this.name}] Email not configured, skipping: ${options.subject}`);
       return false;
     }

@@ -512,8 +512,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       const result = await bookkeeping.syncPaymentsToQbo(org.id, {
         accessToken: creds.accessToken,
-        refreshToken: creds.refreshToken,
+        refreshToken: creds.refreshToken ?? "",
         realmId: creds.realmId,
+        expiresAt: creds.expiresAt ?? "",
       }, fromDate);
 
       res.json({ success: true, ...result });

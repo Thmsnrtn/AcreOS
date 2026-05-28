@@ -123,12 +123,17 @@ class IntegrationFrameworkService {
     let execError: string | null = null;
 
     try {
-      const baseUrl = (cred.config as Record<string, any>)?.baseUrl ?? "";
-      const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
+      // integration_credentials has no config/apiKey columns. The secret is
+      // stored (base64-encoded) in encryptedValue; there is no baseUrl/headers
+      // config blob, so callers must pass an absolute endpoint.
+      // TODO(tsc): add a config jsonb column for per-service baseUrl/headers.
+      const apiKey = cred.encryptedValue
+        ? Buffer.from(cred.encryptedValue, "base64").toString("utf8")
+        : "";
+      const fullUrl = endpoint;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...(cred.apiKey ? { Authorization: `Bearer ${cred.apiKey}` } : {}),
-        ...((cred.config as Record<string, any>)?.headers ?? {}),
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       };
 
       const fetchOptions: RequestInit = {

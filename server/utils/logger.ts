@@ -107,7 +107,11 @@ function formatLogEntry(entry: LogEntry): string {
   }
 
   if (entry.error) {
-    logLine += ` :: Error: ${entry.error.name}: ${entry.error.message}`;
+    if (typeof entry.error === "string") {
+      logLine += ` :: Error: ${entry.error}`;
+    } else {
+      logLine += ` :: Error: ${entry.error.name}: ${entry.error.message}`;
+    }
   }
 
   return logLine;
@@ -191,7 +195,7 @@ function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}):
   switch (level) {
     case "error":
       console.error(line);
-      if (!IS_PRODUCTION && options.error?.stack) {
+      if (!IS_PRODUCTION && typeof options.error === "object" && options.error !== null && "stack" in options.error && options.error.stack) {
         console.error(options.error.stack);
       }
       break;

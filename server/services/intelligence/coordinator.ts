@@ -92,7 +92,9 @@ async function ensureTable(): Promise<void> {
   }
 }
 
-interface JobRunRow {
+// Declared as a type alias (not an interface) so it satisfies the
+// `Record<string, unknown>` constraint on db.execute<T>().
+type JobRunRow = {
   name: string;
   last_ran_at: Date;
   last_fingerprint: string | null;
@@ -100,7 +102,7 @@ interface JobRunRow {
   last_skip_reason: string | null;
   total_runs: number;
   total_skips: number;
-}
+};
 
 async function getJobRunRow(name: string): Promise<JobRunRow | null> {
   await ensureTable();

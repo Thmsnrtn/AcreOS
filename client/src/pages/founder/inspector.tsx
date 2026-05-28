@@ -31,6 +31,7 @@ import {
   History,
   Tag as TagIcon,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -454,7 +455,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   );
 }
 
-function Stat({ label, value, icon: Icon }: { label: string; value: string; icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }> }) {
+function Stat({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
   return (
     <Card>
       <CardContent className="p-3 flex items-center gap-3">

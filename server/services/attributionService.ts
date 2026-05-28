@@ -15,6 +15,7 @@ import {
   sellerCommunications,
   leads,
   deals,
+  properties,
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, count, avg, sum } from "drizzle-orm";
 
@@ -74,7 +75,8 @@ export async function getAttributionReport(
       leadId: leadConversions.leadId,
       campaignId: leadConversions.campaignId,
       touchNumber: leadConversions.touchNumber,
-      channel: leadConversions.channel,
+      // lead_conversions has no `channel` column; campaignType is the channel.
+      channel: leadConversions.campaignType,
       convertedAt: leadConversions.convertedAt,
     })
     .from(leadConversions)
@@ -86,10 +88,13 @@ export async function getAttributionReport(
       )
     );
 
-  // Fetch associated deals for revenue
+  // Fetch associated deals for revenue. deals has no leadId/purchasePrice
+  // columns; the lead link is via the property (seller) and the deal value is
+  // the accepted offer amount.
   const dealsByLead = await db
-    .select({ leadId: deals.leadId, purchasePrice: deals.purchasePrice, status: deals.status })
+    .select({ leadId: properties.sellerId, purchasePrice: deals.acceptedAmount, status: deals.status })
     .from(deals)
+    .innerJoin(properties, eq(properties.id, deals.propertyId))
     .where(eq(deals.organizationId, orgId));
 
   const revenueByLead = new Map<number, number>();
@@ -101,7 +106,7 @@ export async function getAttributionReport(
 
   // Fetch campaign metadata
   const campaignList = await db
-    .select({ id: campaigns.id, name: campaigns.name, channel: campaigns.channel })
+    .select({ id: campaigns.id, name: campaigns.name, channel: campaigns.type })
     .from(campaigns)
     .where(eq(campaigns.organizationId, orgId));
 

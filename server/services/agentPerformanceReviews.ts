@@ -157,7 +157,7 @@ Respond in JSON:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.3,
       });
 

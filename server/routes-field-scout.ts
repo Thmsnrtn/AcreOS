@@ -258,21 +258,21 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
       return Errors.unauthorized(res);
     }
 
-    const { leadId, propertyId, latitude, longitude, duration, notes, photos, checklistResults } = req.body;
+    const org = req.organization;
+    const { leadId, propertyId, latitude, longitude, notes, photos } = req.body;
 
     if (!leadId || latitude == null || longitude == null) {
       return Errors.badRequest(res, 'leadId, latitude, and longitude are required');
     }
 
     const visit = await storage.createFieldScoutVisit({
+      organizationId: org.id,
       visitorId: user.id,
       leadId: parseInt(leadId),
       propertyId: propertyId ? parseInt(propertyId) : null,
-      latitude: String(latitude),
-      longitude: String(longitude),
-      duration: duration ? parseInt(duration) : null,
+      latitude: latitude != null ? Number(latitude) : null,
+      longitude: longitude != null ? Number(longitude) : null,
       notes: notes || null,
-      checklistResults: checklistResults || null,
     });
 
     // If photos metadata was included, link them to the visit. Image
@@ -280,7 +280,6 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
     // POST /leads/:id/photos — this path only records pointer metadata
     // for previously uploaded photos.
     if (Array.isArray(photos) && photos.length > 0) {
-      const org = req.organization;
       for (const photo of photos) {
         await storage.createFieldScoutPhoto({
           organizationId: org.id,
@@ -333,7 +332,9 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
 
       try {
         const org = req.organization;
-        lead = await storage.getLead(org.id, visit.leadId);
+        if (visit.leadId != null) {
+          lead = await storage.getLead(org.id, visit.leadId);
+        }
         if (visit.propertyId) {
           property = await storage.getProperty(org.id, visit.propertyId);
         }
@@ -407,7 +408,8 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
         v.propertyId || '',
         v.latitude,
         v.longitude,
-        v.duration || '',
+        // TODO(tsc): field_scout_visits has no duration column.
+        '',
         `"${(v.notes || '').replace(/"/g, '""')}"`,
         v.photos.length,
         v.createdAt ? new Date(v.createdAt).toISOString() : '',
@@ -463,10 +465,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
       }
       doc.text(`Location: ${visit.latitude}, ${visit.longitude}`, margin, y);
       y += lineHeight;
-      if (visit.duration) {
-        doc.text(`Duration: ${visit.duration} minutes`, margin, y);
-        y += lineHeight;
-      }
+      // TODO(tsc): field_scout_visits has no duration column to render here.
       doc.text(`Date: ${visit.createdAt ? new Date(visit.createdAt).toLocaleString() : 'N/A'}`, margin, y);
       y += lineHeight;
 
@@ -479,16 +478,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
         y += lineHeight * Math.min(splitNotes.length, 5);
       }
 
-      if (visit.checklistResults) {
-        doc.text('Checklist Results:', margin, y);
-        y += lineHeight;
-        const checklistStr = typeof visit.checklistResults === 'string'
-          ? visit.checklistResults
-          : JSON.stringify(visit.checklistResults, null, 2);
-        const splitChecklist = doc.splitTextToSize(checklistStr, 170);
-        doc.text(splitChecklist.slice(0, 10), margin + 5, y);
-        y += lineHeight * Math.min(splitChecklist.length, 10);
-      }
+      // TODO(tsc): field_scout_visits has no checklistResults column to render.
 
       doc.text(`Photos: ${visit.photos.length}`, margin, y);
       y += lineHeight;

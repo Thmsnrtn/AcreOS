@@ -609,10 +609,10 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "county_assessor_ingest",
+      type: "county_assessor_ingest",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id, countiesInBatch: TOP_LAND_COUNTIES.length },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id, countiesInBatch: TOP_LAND_COUNTIES.length },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -667,7 +667,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
       .update(backgroundJobs)
       .set({
         status: "completed",
-        finishedAt: new Date(),
+        completedAt: new Date(),
         result: summary,
       })
       .where(eq(backgroundJobs.id, bgJobId));
@@ -720,6 +720,3 @@ export function countyAssessorIngestJob(redisConnection: any): Worker {
 
   return worker;
 }
-
-// Re-export the motivation score for use by other services
-export { type MotivationFactors };

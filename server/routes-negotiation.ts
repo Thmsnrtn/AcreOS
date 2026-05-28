@@ -12,13 +12,13 @@ const router = Router();
 router.post('/sessions', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { dealId, leadId, propertyId, initialOffer, askingPrice } = req.body;
+    const { dealId, leadId, initialOffer, askingPrice } = req.body;
     const session = await negotiationCopilotService.startSession(
       org.id,
-      dealId,
-      leadId,
-      propertyId,
-      { initialOffer, askingPrice }
+      Number(dealId),
+      Number(leadId),
+      Number(initialOffer),
+      Number(askingPrice)
     );
     res.json({ session });
   } catch (error) {

@@ -110,7 +110,7 @@ class SpendAutonomyService {
 
     // Gather data from all monitored services
     for (const service of MONITORED_SERVICES) {
-      const data = await resolveAgentData(service.dataSource).catch(() => ({}));
+      const data = await resolveAgentData(service.dataSource).catch(() => ({} as Record<string, any>));
 
       // Get previous watcher data for trend comparison
       const previousWatcher = await db.query.spendWatchers.findFirst({
@@ -221,7 +221,7 @@ Respond in JSON:
 If no optimizations are found, return: { "optimizations": [] }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.3,
       });
 

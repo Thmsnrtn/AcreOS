@@ -9,7 +9,7 @@ import { clientLogger } from "@/lib/clientLogger";
 // the three places this fires (fetchJsonArray, apiRequest 401 retry,
 // query 401 retry). See client/src/lib/clerk-touch.ts.
 import { touchClerkSession as refreshSessionCookie } from "@/lib/clerk-touch";
-import { TIER_LIMITS, nextPaidTier as computeNextPaidTier, type SubscriptionTier } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, nextPaidTier as computeNextPaidTier, type SubscriptionTier, type TierLimits } from "@shared/billing/tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
 import { usd } from "@/lib/format";
 
@@ -133,8 +133,8 @@ function formatUpgradeUpsell(body: {
     details.nextTierLimit !== undefined
       ? details.nextTierLimit
       : resolvedNextTier && resourceType && resourceType in TIER_LIMITS.free
-        ? ((TIER_LIMITS[resolvedNextTier] as Record<string, unknown>)[
-            resourceType
+        ? (TIER_LIMITS[resolvedNextTier][
+            resourceType as keyof TierLimits
           ] as number | null)
         : null;
 

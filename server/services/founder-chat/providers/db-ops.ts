@@ -251,7 +251,7 @@ export async function runReadOnlyQuery(
     ? segment
     : appendLimit(segment, ROW_CAP);
 
-  logger.debug({ finalSql }, "db-ops runReadOnlyQuery");
+  logger.debug("db-ops runReadOnlyQuery", { finalSql });
 
   try {
     const result = await reader().execute(sql.raw(finalSql));
@@ -270,8 +270,8 @@ export async function runReadOnlyQuery(
     };
   } catch (err) {
     logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
       "db-ops query failed",
+      { err: err instanceof Error ? err.message : String(err) },
     );
     throw new DbOpsError(
       err instanceof Error ? err.message : String(err),
@@ -400,7 +400,12 @@ export async function getTableSchema(tableName: string): Promise<ColumnInfo[]> {
           WHERE table_schema = 'public' AND table_name = ${tableName}
           ORDER BY ordinal_position`,
     );
-    return (result as { rows?: ColumnInfo[] }).rows ?? [];
+    const rows = (result as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+    return rows.map((r) => ({
+      column_name: String(r.column_name),
+      data_type: String(r.data_type),
+      is_nullable: String(r.is_nullable),
+    }));
   } catch (err) {
     throw new DbOpsError(
       err instanceof Error ? err.message : String(err),
@@ -476,7 +481,7 @@ export async function getRecentRows(
     );
   }
 
-  logger.debug({ finalSql }, "db-ops getRecentRows");
+  logger.debug("db-ops getRecentRows", { finalSql });
   try {
     const result = await reader().execute(sql.raw(finalSql));
     const rows = (result as { rows?: Array<Record<string, unknown>> }).rows ?? [];

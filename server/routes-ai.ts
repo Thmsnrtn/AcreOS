@@ -233,10 +233,16 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (non-streaming)
+  // Constrain agentRole to the valid AgentRole keys so it satisfies
+  // processChat/processChatStream's typed `agentRole` option.
+  const agentRoleEnum = z.enum(
+    Object.keys(agentProfiles) as [keyof typeof agentProfiles, ...(keyof typeof agentProfiles)[]]
+  );
+
   const aiChatSchema = z.object({
     message: z.string().min(1, "Message is required"),
     conversationId: z.number().int().optional(),
-    agentRole: z.string().optional(),
+    agentRole: agentRoleEnum.optional(),
     propertyId: z.union([z.number(), z.string()]).optional(),
   });
 
@@ -348,7 +354,7 @@ export function registerAIRoutes(app: Express): void {
   const aiChatStreamSchema = z.object({
     message: z.string().min(1, "Message is required"),
     conversationId: z.number().int().optional(),
-    agentRole: z.string().optional(),
+    agentRole: agentRoleEnum.optional(),
     files: z.array(z.object({
       name: z.string(),
       content: z.string(),
@@ -381,6 +387,21 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
+
+      // Normalize request shapes into the ChatOptions contract: FileAttachment
+      // carries a numeric `size`, and mentionedEntities require numeric id +
+      // string name/preview.
+      const normalizedFiles = files?.map((f) => ({
+        name: f.name,
+        content: f.content,
+        size: f.content.length,
+      }));
+      const normalizedMentionedEntities = mentionedEntities?.map((m) => ({
+        type: m.type,
+        id: Number(m.id),
+        name: m.name ?? "",
+        preview: "",
+      }));
 
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
@@ -432,9 +453,9 @@ export function registerAIRoutes(app: Express): void {
       const stream = processChatStream(message, org, userId, {
         conversationId,
         agentRole,
-        files,
+        files: normalizedFiles,
         propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
-        mentionedEntities,
+        mentionedEntities: normalizedMentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
         modelOverride: modelOverride || undefined,
         paxPromptVersion: streamPaxPromptVersion,
@@ -592,7 +613,7 @@ export function registerAIRoutes(app: Express): void {
       const { isActive, description } = parsed.data;
       // F-D31 IDOR fix: thread org.id so the storage layer's WHERE clause
       // refuses to update a file owned by a different org.
-      await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description }, org.id);
+      await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description: description ?? undefined }, org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -657,7 +678,14 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { name, description, entityType, entityId } = parsed.data;
-      const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
+      const proj = await storage.createPaxProject({
+        organizationId: org.id,
+        userId,
+        name,
+        description,
+        entityType,
+        entityId: entityId != null ? Number(entityId) : undefined,
+      });
       res.json(proj);
     } catch (err: any) {
       Errors.internal(res, err);
@@ -679,7 +707,7 @@ export function registerAIRoutes(app: Express): void {
       }
       const { name, description, isActive } = parsed.data;
       // F-D31 IDOR fix.
-      await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive }, org.id);
+      await storage.updatePaxProject(parseInt(req.params.id), { name, description: description ?? undefined, isActive }, org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -930,7 +958,6 @@ export function registerAIRoutes(app: Express): void {
       ].join("\n");
 
       if (format === "pdf") {
-        // @ts-expect-error — pdfkit has no type declarations installed
         const PDFDocument = (await import("pdfkit")).default;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);
@@ -1707,9 +1734,20 @@ export function registerAIRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
+      // Map the request shape onto the va_calendar_events insert type:
+      // startTime/endTime are timestamps (Date), eventType is required.
+      // TODO(tsc): va_calendar_events uses relatedLeadId/relatedPropertyId/
+      // relatedActionId, not generic relatedEntityType/relatedEntityId, so those
+      // request fields are not persisted here.
+      const { title, description, startDate, endDate, eventType, allDay } = parsed.data;
       const event = await storage.createVaCalendarEvent({
-        ...parsed.data,
-        organizationId: org.id
+        organizationId: org.id,
+        title,
+        description,
+        eventType: eventType ?? "task",
+        startTime: new Date(startDate),
+        endTime: endDate ? new Date(endDate) : null,
+        allDay: allDay ?? false,
       });
       res.json(event);
     } catch (error: any) {

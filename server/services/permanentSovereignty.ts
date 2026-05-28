@@ -238,7 +238,7 @@ class PermanentSovereigntyEngine {
       : "none";
 
     const requiredActions: string[] = [];
-    if (impactLevel === "high" || impactLevel === "critical") {
+    if (impactLevel === "high") {
       requiredActions.push("Board review required");
       requiredActions.push("Update compliance policies");
     }

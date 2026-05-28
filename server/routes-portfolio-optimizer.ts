@@ -14,7 +14,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
     const org = req.organization;
     const { yearsForward = 5 } = req.body;
     const analysis = await portfolioOptimizer.runCompleteAnalysis(
-      org.id.toString(),
+      org.id,
       yearsForward
     );
     res.json({ analysis });
@@ -31,12 +31,12 @@ router.post('/simulate', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { yearsForward = 5, numSimulations = 10000 } = req.body;
-    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
+    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id);
     if (holdings.length === 0) {
       return Errors.badRequest(res, 'No owned properties found in portfolio');
     }
     const monteCarlo = await portfolioOptimizer.runMonteCarloSimulation(
-      org.id.toString(),
+      org.id,
       holdings,
       yearsForward,
       numSimulations
@@ -52,7 +52,7 @@ router.get('/simulations', async (req: Request, res: Response) => {
     const org = req.organization;
     const { limit = 10 } = req.query;
     const simulations = await portfolioOptimizer.getSimulations(
-      org.id.toString(),
+      org.id,
       parseInt(limit as string)
     );
     res.json({ simulations });
@@ -68,12 +68,12 @@ router.get('/simulations', async (req: Request, res: Response) => {
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
+    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id);
     if (holdings.length === 0) {
       return res.json({ metrics: null, holdings: [] });
     }
     const metrics = await portfolioOptimizer.calculatePortfolioMetrics(
-      org.id.toString(),
+      org.id,
       holdings
     );
     res.json({ metrics, holdings });
@@ -85,12 +85,12 @@ router.get('/metrics', async (req: Request, res: Response) => {
 router.get('/diversification', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
+    const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id);
     if (holdings.length === 0) {
       return res.json({ diversification: null });
     }
     const diversification = await portfolioOptimizer.analyzeDiversification(
-      org.id.toString(),
+      org.id,
       holdings
     );
     res.json({ diversification });
@@ -107,7 +107,7 @@ router.get('/recommendations', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const recommendations = await portfolioOptimizer.getPendingRecommendations(
-      org.id.toString()
+      org.id
     );
     res.json({ recommendations });
   } catch (error) {

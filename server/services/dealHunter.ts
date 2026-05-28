@@ -12,7 +12,6 @@ import {
   type InsertDealAlert,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
-import { browserAutomationService } from "./browserAutomation";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
 
@@ -97,7 +96,7 @@ export class DealHunterService {
         .where(eq(dealSources.id, sourceId))
         .limit(1);
       
-      if (updated[0] && updated[0].consecutiveFailures >= 5) {
+      if (updated[0] && (updated[0].consecutiveFailures ?? 0) >= 5) {
         await db.update(dealSources)
           .set({ isActive: false })
           .where(eq(dealSources.id, sourceId));
@@ -566,19 +565,25 @@ export class DealHunterService {
     // Create property
     const [property] = await db.insert(properties).values({
       organizationId,
-      apn: deal.apn,
+      // properties.apn is NOT NULL; scraped_deals.apn is nullable.
+      apn: deal.apn ?? `UNKNOWN-${deal.id}`,
+      // properties.county/state are NOT NULL; provide safe fallbacks.
+      county: deal.county ?? "",
+      state: deal.state ?? "",
       address: deal.address,
       city: deal.city,
-      county: deal.county,
-      state: deal.state,
       zip: deal.zip,
-      sizeAcres: deal.sizeAcres,
+      // properties.sizeAcres is NOT NULL; default to "0" when unknown.
+      sizeAcres: deal.sizeAcres ?? "0",
       zoning: deal.zoning,
       listPrice: deal.minimumBid,
       marketValue: deal.assessedValue,
       status: "prospect",
-      acquisitionPrice: deal.minimumBid,
-      notes: `From Deal Hunter: ${deal.sourceType}\nDistress Score: ${deal.distressScore}/100`,
+      // properties has no acquisitionPrice column — purchasePrice holds the
+      // acquisition cost (the minimum bid here).
+      purchasePrice: deal.minimumBid,
+      // properties has no `notes` column — provenance text lives in `description`.
+      description: `From Deal Hunter: ${deal.sourceType}\nDistress Score: ${deal.distressScore}/100`,
     }).returning();
     
     // Update deal status

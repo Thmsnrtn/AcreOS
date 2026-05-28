@@ -140,7 +140,7 @@ registerTool({
       : [];
     const orgMeta = new Map(orgRows.map((r) => [r.id, { name: r.name ?? "Unknown", tier: r.tier ?? "free" }]));
     let perOrg = orgRevenueRows
-      .filter((r): r is { orgId: number; total: number | null } => r.orgId != null)
+      .filter((r): r is { orgId: number; total: number } => r.orgId != null)
       .map((r) => {
         const mrrCents = r.total ?? 0;
         const opexSigned = opexByOrg.get(r.orgId) ?? 0;

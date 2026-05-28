@@ -119,11 +119,11 @@ function hashApiKey(key: string): string {
   return crypto.createHash("sha256").update(key).digest("hex");
 }
 
-interface PartnerAuthedRequest extends Request {
+type PartnerAuthedRequest = Request & {
   titlePartner?: typeof titlePartners.$inferSelect;
   titlePartnerSecret?: string; // decrypted HMAC secret, only set in webhook path
   rawBody?: Buffer;
-}
+};
 
 /**
  * Resolve a partner from the inbound `Authorization: Bearer <apiKey>` header.
@@ -352,7 +352,7 @@ export function registerTitlePartnerRoutes(app: Express) {
   app.post(
     "/api/webhooks/title-orders/:orderId/status",
     express.raw({ type: "application/json" }),
-    async (req: PartnerAuthedRequest, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
         const apiKey = extractBearer(req);
         if (!apiKey) return Errors.unauthorized(res);

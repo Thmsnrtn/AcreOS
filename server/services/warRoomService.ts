@@ -130,7 +130,7 @@ class WarRoomService {
 
     // Broadcast to UI
     try {
-      wsServer?.broadcast?.("war_room_opened", {
+      wsServer?.broadcast?.("war_room", "war_room_opened", {
         roomId: room.id,
         title,
         severity: rule.severity,
@@ -215,7 +215,7 @@ class WarRoomService {
 
     // Broadcast to UI
     try {
-      wsServer?.broadcast?.("war_room_message", {
+      wsServer?.broadcast?.("war_room", "war_room_message", {
         roomId,
         messageId: msg.id,
         fromAgent,
@@ -279,7 +279,7 @@ class WarRoomService {
     await this.addMessage(roomId, resolvedBy, "action_taken", `War room resolved: ${resolution}`);
 
     try {
-      wsServer?.broadcast?.("war_room_resolved", { roomId, resolution });
+      wsServer?.broadcast?.("war_room", "war_room_resolved", { roomId, resolution });
     } catch {}
   }
 

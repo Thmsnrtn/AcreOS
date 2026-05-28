@@ -58,14 +58,14 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
     // Anonymized aggregate benchmark data from transactionTraining
     const benchmarks = await db.select({
       avgPricePerAcre: avg(transactionTraining.pricePerAcre),
-      avgAcreage: avg(sql`CAST(${transactionTraining.acreage} AS float)`),
+      avgAcreage: avg(sql`CAST(${transactionTraining.sizeAcres} AS float)`),
       count: sql<number>`COUNT(*)`,
     })
       .from(transactionTraining)
       .where(and(
         eq(transactionTraining.state, state.toUpperCase()),
         eq(transactionTraining.propertyType, propertyType),
-        gte(transactionTraining.soldDate, since),
+        gte(transactionTraining.saleDate, since),
       ))
       .limit(1);
 
@@ -95,13 +95,14 @@ router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Res
     const { county } = req.params;
     const { state } = req.query;
 
+    // Column mapping: price_trends exposes periodStart and a single
+    // priceChange (%) column (no 30d/90d split).
     const trends = await db.select({
-      period: priceTrends.period,
+      period: priceTrends.periodStart,
       medianPricePerAcre: priceTrends.medianPricePerAcre,
       avgPricePerAcre: priceTrends.avgPricePerAcre,
       transactionCount: priceTrends.transactionCount,
-      priceChange30d: priceTrends.priceChange30d,
-      priceChange90d: priceTrends.priceChange90d,
+      priceChange: priceTrends.priceChange,
     })
       .from(priceTrends)
       .where(
@@ -109,7 +110,7 @@ router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Res
           ? and(eq(priceTrends.county, county), eq(priceTrends.state, state as string))
           : eq(priceTrends.county, county)
       )
-      .orderBy(desc(priceTrends.period))
+      .orderBy(desc(priceTrends.periodStart))
       .limit(24); // 24 months
 
     res.json({ county, state: state || "all", trends });
@@ -123,12 +124,15 @@ router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Res
 router.get("/demand/:state", requireApiKey, async (req: Request, res: Response) => {
   try {
     const { state } = req.params;
+    // Column mapping: demand_heatmaps tracks engagement counts, not buyer
+    // budgets. activeBuyers→inquiryCount (best proxy); no avgBudget column;
+    // freshness via createdAt.
     const demand = await db.select({
       county: demandHeatmaps.county,
       demandScore: demandHeatmaps.demandScore,
-      activeBuyers: demandHeatmaps.activeBuyers,
-      avgBudget: demandHeatmaps.avgBudget,
-      updatedAt: demandHeatmaps.updatedAt,
+      activeBuyers: demandHeatmaps.inquiryCount,
+      avgBudget: sql<null>`NULL`,
+      updatedAt: demandHeatmaps.createdAt,
     })
       .from(demandHeatmaps)
       .where(eq(demandHeatmaps.state, state.toUpperCase()))
@@ -265,7 +269,7 @@ router.get("/coverage", async (req: Request, res: Response) => {
     const stateCoverage = await db.select({
       state: transactionTraining.state,
       transactions: sql<number>`COUNT(*)`,
-      latestData: sql<string>`MAX(${transactionTraining.soldDate}::text)`,
+      latestData: sql<string>`MAX(${transactionTraining.saleDate}::text)`,
     })
       .from(transactionTraining)
       .groupBy(transactionTraining.state)

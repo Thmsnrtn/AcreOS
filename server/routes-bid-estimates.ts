@@ -74,7 +74,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       const matrix = categories.map((cat) => {
         const cellsByBid = bids.map((b) => ({
           bidId: b.id,
-          contractorName: nameById.get(b.contractorId) ?? "Unknown",
+          contractorName: nameById.get(b.contractorId ?? "") ?? "Unknown",
           cents: ((b.categoryBreakdown as any) ?? {})[cat] ?? null,
         }));
         const valued = cellsByBid.filter((c) => c.cents !== null) as Array<{ bidId: string; contractorName: string; cents: number }>;
@@ -90,7 +90,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       });
 
       return res.json({
-        bids: bids.map((b) => ({ ...b, contractorName: nameById.get(b.contractorId) ?? "Unknown" })),
+        bids: bids.map((b) => ({ ...b, contractorName: nameById.get(b.contractorId ?? "") ?? "Unknown" })),
         categories,
         matrix,
       });

@@ -5,7 +5,7 @@
  * Each defines a sequence of agent actions with compensation (rollback) steps.
  */
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger";
 
 export interface CompoundSagaDef {
@@ -84,7 +84,7 @@ export async function executeCompoundSaga(
       action: s.action,
       compensatingAction: s.compensatingAction || "",
     })),
-    idempotencyKey: `${def.name}_${uuidv4()}`,
+    idempotencyKey: `${def.name}_${randomUUID()}`,
     timeoutMs: def.timeoutMs,
     orgId: orgId || 0,
   });

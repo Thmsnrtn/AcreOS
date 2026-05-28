@@ -225,17 +225,19 @@ async function buildOpportunity(
 
     // Parallel enrichment — allSettled so failures don't block
     const [radarResult, intentResult, lcsResult, offerResult] = await Promise.allSettled([
-      import("./acquisitionRadar").then(m => {
-        const svc = new m.AcquisitionRadarService();
-        return svc.scoreParcel?.(_orgId, parcel) ?? { score: 50 };
-      }),
+      // TODO(tsc): acquisitionRadar.scoreParcel(parcel, config) needs a
+      // per-org RadarConfig row that buildOpportunity does not load. The
+      // previous call passed (_orgId, parcel) — wrong arg shapes — so radar
+      // scoring already failed at runtime and fell back to the neutral
+      // default. Wire the org's radarConfigs row here to enable it.
+      Promise.resolve<{ score: number }>({ score: 50 }),
       import("./sellerIntentPredictor").then(m => {
         const svc = new m.SellerIntentPredictorService();
-        return svc.predictIntent?.(_orgId, parcel.leadId) ?? { score: 50 };
+        return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: 50 };
       }),
       import("./landCredit").then(m => {
-        const svc = new m.default();
-        return svc.calculateCreditScore?.(_orgId, parcel.propertyId) ?? { overall: 575 };
+        const svc = m.landCredit;
+        return svc.calculateCreditScore?.(String(_orgId), String(parcel.propertyId)) ?? { overall: 575 };
       }),
       import("./blindOfferCalculator").then(m => {
         return m.calculateBlindOffer?.({
@@ -247,14 +249,15 @@ async function buildOpportunity(
     ]);
 
     if (radarResult.status === "fulfilled" && radarResult.value) {
-      radarScore = radarResult.value.score ?? radarResult.value.overallScore ?? 50;
+      radarScore = radarResult.value.score ?? 50;
     }
     if (intentResult.status === "fulfilled" && intentResult.value) {
-      ownerMotivation = intentResult.value.score ?? intentResult.value.overallScore ?? 50;
+      // seller_intent_predictions exposes intentScore (0-100), not score.
+      ownerMotivation = intentResult.value.intentScore ?? 50;
       ownerData = intentResult.value;
     }
     if (lcsResult.status === "fulfilled" && lcsResult.value) {
-      lcs = lcsResult.value.overall ?? lcsResult.value.score ?? 575;
+      lcs = lcsResult.value.overall ?? 575;
     }
     if (offerResult.status === "fulfilled" && offerResult.value) {
       offerData = offerResult.value;

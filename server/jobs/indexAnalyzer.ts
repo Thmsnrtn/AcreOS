@@ -193,11 +193,17 @@ function buildSuggestions(
 // ---------------------------------------------------------------------------
 
 async function saveReport(report: IndexAnalysisReport): Promise<void> {
+  // organizationIntegrations.credentials is a typed jsonb whose shape only
+  // models integration secrets; the index-analysis report has no dedicated
+  // column, so it is persisted as a JSON blob in the `encrypted` slot and
+  // round-tripped by getLastReport below.
   const credentials = {
-    report: {
-      ...report,
-      generatedAt: report.generatedAt.toISOString(),
-    },
+    encrypted: JSON.stringify({
+      report: {
+        ...report,
+        generatedAt: report.generatedAt.toISOString(),
+      },
+    }),
   };
 
   try {
@@ -244,12 +250,14 @@ export async function getLastReport(): Promise<IndexAnalysisReport | null> {
       )
       .limit(1);
 
-    if (!row?.credentials) return null;
-    const creds = row.credentials as any;
-    if (!creds.report) return null;
+    if (!row?.credentials?.encrypted) return null;
+    const parsed = JSON.parse(row.credentials.encrypted) as {
+      report?: Omit<IndexAnalysisReport, "generatedAt"> & { generatedAt: string };
+    };
+    if (!parsed.report) return null;
     return {
-      ...creds.report,
-      generatedAt: new Date(creds.report.generatedAt),
+      ...parsed.report,
+      generatedAt: new Date(parsed.report.generatedAt),
     };
   } catch {
     return null;

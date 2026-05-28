@@ -95,7 +95,15 @@ export async function getCommissionConfig(
     .limit(1);
 
   if (!row?.credentials) return DEFAULT_CONFIG;
-  const creds = row.credentials as any;
+  const creds = row.credentials as { encrypted?: string; config?: CommissionConfig };
+  // Stored as a JSON blob under `encrypted` (the credentials column is a typed
+  // secrets jsonb repurposed here); fall back to a legacy top-level `config`.
+  if (creds.encrypted) {
+    try {
+      const parsed = JSON.parse(creds.encrypted) as { config?: CommissionConfig };
+      if (parsed.config) return parsed.config;
+    } catch { /* fall through */ }
+  }
   return creds.config ?? DEFAULT_CONFIG;
 }
 
@@ -114,7 +122,9 @@ export async function saveCommissionConfig(
     )
     .limit(1);
 
-  const credentials = { config };
+  // The credentials column is a typed secrets jsonb; store the commission
+  // config as a JSON blob under `encrypted`.
+  const credentials = { encrypted: JSON.stringify({ config }) };
 
   if (existing) {
     await db
@@ -150,10 +160,15 @@ async function getCommissionRecordsStore(
     .limit(1);
 
   if (!row?.credentials) return [];
-  const creds = row.credentials as any;
-  const records: CommissionRecord[] = Array.isArray(creds.records)
-    ? creds.records
-    : [];
+  const creds = row.credentials as { encrypted?: string; records?: CommissionRecord[] };
+  let rawRecords: CommissionRecord[] = Array.isArray(creds.records) ? creds.records : [];
+  if (creds.encrypted) {
+    try {
+      const parsed = JSON.parse(creds.encrypted) as { records?: CommissionRecord[] };
+      if (Array.isArray(parsed.records)) rawRecords = parsed.records;
+    } catch { /* fall through to legacy */ }
+  }
+  const records: CommissionRecord[] = rawRecords;
   // Rehydrate dates
   return records.map((r) => ({
     ...r,
@@ -178,7 +193,7 @@ async function saveCommissionRecordsStore(
     )
     .limit(1);
 
-  const credentials = { records };
+  const credentials = { encrypted: JSON.stringify({ records }) };
 
   if (existing) {
     await db

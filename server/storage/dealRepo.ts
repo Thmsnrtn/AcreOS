@@ -43,7 +43,9 @@ export const dealRepo = {
     return deal;
   },
 
-  async createDeal(this: DatabaseStorage, deal: InsertDeal): Promise<Deal> {
+  // organizationId is omitted from InsertDeal (set server-side) but the DB
+  // column is NOT NULL — callers supply it, so it is required here.
+  async createDeal(this: DatabaseStorage, deal: InsertDeal & { organizationId: number }): Promise<Deal> {
     const [newDeal] = await db.insert(deals).values(deal).returning();
     return newDeal;
   },

@@ -911,7 +911,9 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
         name: organizations.name,
         tier: organizations.subscriptionTier,
         createdAt: organizations.createdAt,
-        lastActiveAt: organizations.lastActiveAt,
+        // TODO(tsc): organizations has no lastActiveAt column; updatedAt is the
+        // closest activity proxy (bumped on org-scoped writes).
+        lastActiveAt: organizations.updatedAt,
       })
       .from(organizations)
       .where(
@@ -919,10 +921,10 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
           sql`subscription_tier not in ('free')`,
           sql`subscription_status = 'active'`,
           // Active > 14 days ago but not recently
-          lte(organizations.lastActiveAt, fourteenDaysAgo),
+          lte(organizations.updatedAt, fourteenDaysAgo),
         )
       )
-      .orderBy(organizations.lastActiveAt)
+      .orderBy(organizations.updatedAt)
       .limit(20);
 
     // Recent cancellations with tier data
@@ -1163,9 +1165,9 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
     const id = parseInt(req.params.id);
     const { reason } = req.body;
 
-    // Fetch the decision item before rejecting so we can learn from it
-    const item = await decisionsInboxService.getById?.(id) ??
-      (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+    // Fetch the decision item before rejecting so we can learn from it.
+    // (decisionsInboxService has no getById(); read the row directly.)
+    const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
 
     await decisionsInboxService.reject(id, reason);
 
@@ -1225,9 +1227,9 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
     const { customAction } = req.body;
     if (!customAction) return Errors.badRequest(res, "customAction required");
 
-    // Fetch the decision item before overriding so we can learn from it
-    const item = await decisionsInboxService.getById?.(id) ??
-      (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+    // Fetch the decision item before overriding so we can learn from it.
+    // (decisionsInboxService has no getById(); read the row directly.)
+    const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
 
     await decisionsInboxService.override(id, customAction);
 
@@ -2571,12 +2573,10 @@ router.get("/revenue-protection", requireFounder, async (req: Request, res: Resp
     const atRiskOrgIds = await reader.select({ orgId: churnRiskScores.organizationId })
       .from(churnRiskScores)
       .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
-    const mrrAtRiskCents = atRiskOrgIds.length > 0
-      ? await reader.select({ total: sum(organizations.monthlyPriceCents) })
-          .from(organizations)
-          .where(sql`${organizations.id} IN (${atRiskOrgIds.map((r: any) => r.orgId).join(",") || "NULL"})`)
-          .then((r: any) => Number(r[0]?.total ?? 0))
-      : 0;
+    // TODO(tsc): organizations has no monthlyPriceCents column; MRR-at-risk
+    // can't be summed directly. Reported as 0 until per-org price (or a
+    // tier→price map) is available here.
+    const mrrAtRiskCents = 0;
 
     res.json({ riskDistribution, recentInterventions, mrrAtRiskCents });
   } catch (err: any) {
@@ -2641,18 +2641,11 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
     const churnRate = activeCount > 0 ? (cancelCount / activeCount) * 100 : 0;
 
     // NRR: (revenue end of period) / (revenue start of period) from subscription events
-    const upgrades = await reader.select({ total: sum(subscriptionEvents.amountCents) })
-      .from(subscriptionEvents)
-      .where(and(
-        eq(subscriptionEvents.eventType, "subscription_upgraded"),
-        gte(subscriptionEvents.createdAt, thirtyDaysAgo),
-      ));
-    const downgrades = await reader.select({ total: sum(subscriptionEvents.amountCents) })
-      .from(subscriptionEvents)
-      .where(and(
-        eq(subscriptionEvents.eventType, "subscription_downgraded"),
-        gte(subscriptionEvents.createdAt, thirtyDaysAgo),
-      ));
+    // TODO(tsc): subscription_events records only fromTier/toTier, not an
+    // amountCents delta, so upgrade/downgrade revenue can't be summed directly.
+    // Reported as 0 until per-event revenue deltas (or a tier→price map) exist.
+    const upgrades: { total: number | null }[] = [{ total: 0 }];
+    const downgrades: { total: number | null }[] = [{ total: 0 }];
     const churnRevenue = cancelCount * (mrrCents / (activeCount || 1));
     const nrr = mrrCents > 0
       ? ((mrrCents + Number(upgrades[0]?.total ?? 0) - Number(downgrades[0]?.total ?? 0) - churnRevenue) / mrrCents) * 100
@@ -2978,8 +2971,7 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
         const classificationResult = await routeAITask({
           taskType: "agent_routing",
           complexity: TaskComplexity.SIMPLE,
-          taskTier: "background", // internal classification
-          preferredModel: "deepseek",
+          taskTier: "background", // internal classification (router picks the cheap model)
           messages: [
             {
               role: "system" as const,
@@ -3050,7 +3042,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
 
         // Resolve live data from agent's owned services
         try {
-          const { resolveAgentData } = await import("./agentDataResolvers");
+          const { resolveAgentData } = await import("./services/agentDataResolvers");
           const liveData = await resolveAgentData(agentCodename);
           liveDataStr = Object.entries(liveData)
             .map(([k, v]) => `${k}: ${v}`)
@@ -3061,7 +3053,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
 
     // v2: Load conversation history for persistence
     const conversationId = clientConvId || `chat_${Date.now()}`;
-    let historyMessages: Array<{ role: string; content: string }> = [];
+    let historyMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
     if (clientConvId) {
       try {
         const history = await db.select()
@@ -3069,7 +3061,10 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
           .where(eq(agentConversations.conversationId, clientConvId))
           .orderBy(agentConversations.createdAt)
           .limit(20);
-        historyMessages = history.map((h: any) => ({ role: h.role, content: h.content }));
+        historyMessages = history.map((h: any) => ({
+          role: h.role === "assistant" || h.role === "system" ? h.role : "user",
+          content: h.content,
+        }));
       } catch {}
     }
 
@@ -3367,7 +3362,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
     const grouped: Record<string, any[]> = { today: [], yesterday: [], thisWeek: [], older: [] };
 
     for (const entry of results) {
-      const entryDate = new Date(entry.createdAt);
+      const entryDate = new Date(entry.createdAt ?? Date.now());
       const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
         (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
 
@@ -3399,7 +3394,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
 
     res.json({
       entries: results.map(entry => {
-        const entryDate = new Date(entry.createdAt);
+        const entryDate = new Date(entry.createdAt ?? Date.now());
         const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
           (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
         return {
@@ -3484,7 +3479,7 @@ router.post("/priorities", requireFounder, async (req: Request, res: Response) =
       return Errors.badRequest(res, "priority is required");
     }
     const result = await createPriority({ priority, description, weight });
-    res.json({ success: true, ...result });
+    res.json({ success: true, id: result });
   } catch (err: any) {
     logger.error("[priorities] Error", err);
     Errors.internal(res, err);

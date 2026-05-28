@@ -42,7 +42,7 @@ const formatPhoneNumber = (phone: string): string => {
 };
 
 // Client-side form schema with enhanced validation
-const leadFormSchema = insertLeadSchema.omit({ organizationId: true }).extend({
+const leadFormSchema = insertLeadSchema.extend({
   firstName: z.string().min(1, "First name is required").max(100, "First name is too long"),
   lastName: z.string().min(1, "Last name is required").max(100, "Last name is too long"),
   email: z.string()

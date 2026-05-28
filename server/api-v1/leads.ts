@@ -152,7 +152,7 @@ leadsV1Router.post(
         .returning();
 
       // Outbound webhook — best-effort, never blocks the API response.
-      dispatchWebhookEvent(orgId, "lead.created", serializeLead(created)).catch(
+      dispatchWebhookEvent(orgId, "lead.created", { ...serializeLead(created) }).catch(
         (err) =>
           logger.warn("lead.created webhook dispatch failed", {
             metadata: { err: err instanceof Error ? err.message : String(err) },
@@ -216,7 +216,7 @@ leadsV1Router.patch(
         .returning();
       if (!updated) return Errors.notFound(res, "Lead");
 
-      dispatchWebhookEvent(orgId, "lead.updated", serializeLead(updated)).catch(
+      dispatchWebhookEvent(orgId, "lead.updated", { ...serializeLead(updated) }).catch(
         (err) =>
           logger.warn("lead.updated webhook dispatch failed", {
             metadata: { err: err instanceof Error ? err.message : String(err) },

@@ -27,13 +27,19 @@ export async function generateDealFeedDigest(orgId: number): Promise<Array<{ tit
     .orderBy(desc(dailyDealFeed.generatedAt))
     .limit(3);
 
-  return feed.map(item => ({
-    title: `${item.opportunities?.[0]?.acreage || 0} acres in ${item.opportunities?.[0]?.county || "Unknown"}`,
-    score: item.opportunities?.[0]?.compositeScore || 0,
-    county: item.opportunities?.[0]?.county || "Unknown",
-    acreage: Number(item.opportunities?.[0]?.acreage) || 0,
-    pricePerAcre: Number(item.opportunities?.[0]?.estimatedPricePerAcre) || 0,
-  }));
+  return feed.map(item => {
+    const top = item.opportunities?.[0];
+    const acreage = top?.parcel?.acreage ?? 0;
+    const county = top?.parcel?.county ?? "Unknown";
+    const estimatedValue = top?.financials?.estimatedValue ?? 0;
+    return {
+      title: `${acreage || 0} acres in ${county}`,
+      score: top?.scores?.composite ?? 0,
+      county,
+      acreage: Number(acreage) || 0,
+      pricePerAcre: acreage > 0 ? Math.round(Number(estimatedValue) / Number(acreage)) : 0,
+    };
+  });
 }
 
 // Item 19: County comparison
@@ -42,7 +48,8 @@ export async function compareCounties(counties: string[]): Promise<Array<{ count
   for (const county of counties.slice(0, 5)) {
     const [countResult] = await db.select({ count: count() })
       .from(deals)
-      .where(sql`LOWER(${deals.county}) = LOWER(${county})`);
+      .innerJoin(properties, eq(deals.propertyId, properties.id))
+      .where(sql`LOWER(${properties.county}) = LOWER(${county})`);
     const [scoreResult] = await db.select({ avg: sql<number>`AVG(composite_score)` })
       .from(dailyDealFeed)
       .where(sql`LOWER(county) = LOWER(${county})`);
@@ -69,15 +76,16 @@ export interface SavedFilter {
 export async function getHotStreakCounties(days: number = 30): Promise<string[]> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const results = await db.select({
-    county: deals.county,
+    county: properties.county,
     count: count(),
   })
     .from(deals)
+    .innerJoin(properties, eq(deals.propertyId, properties.id))
     .where(and(
       gte(deals.createdAt, since),
       sql`${deals.status} = 'closed_won'`,
     ))
-    .groupBy(deals.county)
+    .groupBy(properties.county)
     .having(sql`COUNT(*) >= 3`);
 
   return results.map(r => r.county).filter(Boolean);
@@ -98,8 +106,9 @@ export async function flagStaleOpportunities(orgId: number): Promise<number> {
 // Item 27: Similar to wins filter
 export async function findSimilarToWins(orgId: number): Promise<any[]> {
   // Get closed deals to establish pattern
-  const wins = await db.select()
+  const wins = await db.select({ county: properties.county })
     .from(deals)
+    .innerJoin(properties, eq(deals.propertyId, properties.id))
     .where(and(
       eq(deals.organizationId, orgId),
       sql`${deals.status} = 'closed_won'`,

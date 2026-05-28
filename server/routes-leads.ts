@@ -23,7 +23,7 @@ import { assertUserIsOrgMember } from "./utils/orgScope";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 // Partial update schema for PUT endpoints
-const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
+const updateLeadSchema = insertLeadSchema.partial();
 
 // Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
 const bulkLeadIdsSchema = z.object({
@@ -292,7 +292,7 @@ export function registerLeadRoutes(app: Express): void {
           lastName: d.lastName,
           email: d.email,
           phone: d.phone,
-          mailingAddress: d.mailingAddress,
+          mailingAddress: d.address,
           status: d.status,
           createdAt: d.createdAt,
         })),
@@ -367,7 +367,8 @@ export function registerLeadRoutes(app: Express): void {
         } catch { /* non-fatal */ }
       }
 
-      const lead = await storage.createLead(input);
+      // insertLeadSchema strips organizationId; the repo write requires it.
+      const lead = await storage.createLead({ ...input, organizationId: org.id });
 
       const user = req.user as any;
       const userId = user?.id || user?.id;
@@ -580,14 +581,17 @@ export function registerLeadRoutes(app: Express): void {
       
       await storage.updateLeadScore(leadId, score, factors);
       
-      const { latitude, longitude } = validated;
+      // latitude/longitude are not lead columns; read them from the raw body
+      // (caller may supply coordinates for enrichment only).
+      const latitude = req.body?.latitude;
+      const longitude = req.body?.longitude;
       if (latitude && longitude) {
         Promise.resolve().then(async () => {
           try {
             await propertyEnrichmentService.enrichLead(
               org.id,
               leadId,
-              { latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
+              { latitude: parseFloat(String(latitude)), longitude: parseFloat(String(longitude)) }
             );
             logger.info("Lead enrichment completed", { leadId, organizationId: org.id });
           } catch (err) {
@@ -738,7 +742,7 @@ export function registerLeadRoutes(app: Express): void {
         action: "bulk_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: deletedCount },
+        metadata: { ids, count: deletedCount },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -769,7 +773,8 @@ export function registerLeadRoutes(app: Express): void {
         action: "bulk_update",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, updates, count: updatedCount },
+        changes: { after: updates },
+        metadata: { ids, count: updatedCount },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });

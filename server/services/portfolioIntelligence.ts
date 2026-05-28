@@ -100,8 +100,8 @@ async function getPropertyHealth(orgId: number): Promise<{ appreciation: number;
       county: properties.county,
       state: properties.state,
       purchasePrice: properties.purchasePrice,
-      currentValue: properties.currentValue,
-      propertyType: properties.propertyType,
+      currentValue: properties.marketValue,
+      propertyType: properties.landStatus,
     })
     .from(properties)
     .where(eq(properties.organizationId, orgId));
@@ -219,7 +219,7 @@ export async function getWealthSnapshot(orgId: number): Promise<WealthSnapshot> 
 
 async function getTotalPortfolioValue(orgId: number): Promise<number> {
   const result = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${properties.currentValue} AS numeric)), 0)` })
+    .select({ total: sql<number>`COALESCE(SUM(CAST(${properties.marketValue} AS numeric)), 0)` })
     .from(properties)
     .where(eq(properties.organizationId, orgId));
   return Number(result[0]?.total) || 0;
@@ -254,7 +254,7 @@ async function getYTDProfit(orgId: number): Promise<{ ytdProfit: number; unreali
   try {
     const result = await db
       .select({
-        gains: sql<number>`COALESCE(SUM(CAST(${properties.currentValue} AS numeric) - CAST(${properties.purchasePrice} AS numeric)), 0)`,
+        gains: sql<number>`COALESCE(SUM(CAST(${properties.marketValue} AS numeric) - CAST(${properties.purchasePrice} AS numeric)), 0)`,
       })
       .from(properties)
       .where(eq(properties.organizationId, orgId));
@@ -292,13 +292,13 @@ export async function getOptimizations(orgId: number): Promise<OptimizationRec[]
   // Tax loss harvesting opportunities
   const losers = props.filter((p) => {
     const cost = Number(p.purchasePrice) || 0;
-    const current = Number(p.currentValue) || cost;
+    const current = Number(p.marketValue) || cost;
     return current < cost && cost > 0;
   });
 
   if (losers.length > 0) {
     const totalLoss = losers.reduce((sum, p) => {
-      return sum + (Number(p.purchasePrice) - Number(p.currentValue || p.purchasePrice));
+      return sum + (Number(p.purchasePrice) - Number(p.marketValue || p.purchasePrice));
     }, 0);
     recs.push({
       type: "tax_harvest",
@@ -312,13 +312,13 @@ export async function getOptimizations(orgId: number): Promise<OptimizationRec[]
   // 1031 exchange opportunities
   const gains = props.filter((p) => {
     const cost = Number(p.purchasePrice) || 0;
-    const current = Number(p.currentValue) || cost;
+    const current = Number(p.marketValue) || cost;
     return current > cost * 1.5 && cost > 0;
   });
 
   if (gains.length > 0) {
     for (const p of gains.slice(0, 2)) {
-      const gain = Number(p.currentValue) - Number(p.purchasePrice);
+      const gain = Number(p.marketValue) - Number(p.purchasePrice);
       recs.push({
         type: "exchange_1031",
         title: `1031 exchange: sell Property #${p.id}, acquire within 180 days`,

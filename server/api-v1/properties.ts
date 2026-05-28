@@ -137,7 +137,7 @@ propertiesV1Router.post(
       dispatchWebhookEvent(
         orgId,
         "property.created",
-        serializeProperty(created),
+        { ...serializeProperty(created) },
       ).catch((err) =>
         logger.warn("property.created webhook dispatch failed", {
           metadata: { err: err instanceof Error ? err.message : String(err) },

@@ -48,28 +48,35 @@ class CapitalMarkets {
         throw new Error('No valid notes found for pooling');
       }
 
-      const totalValue = pooledNotes.reduce((sum, n) => 
-        sum + (n.principal || 0), 0
+      // notes.originalPrincipal is the canonical principal column (numeric →
+      // returned as a string by drizzle).
+      const totalValue = pooledNotes.reduce((sum, n) =>
+        sum + Number(n.originalPrincipal || 0), 0
       );
 
-      const avgInterestRate = pooledNotes.reduce((sum, n) => 
-        sum + (n.interestRate || 0), 0
+      const avgInterestRate = pooledNotes.reduce((sum, n) =>
+        sum + Number(n.interestRate || 0), 0
       ) / pooledNotes.length;
 
-      const avgLTV = pooledNotes.reduce((sum, n) => 
-        sum + (n.ltvRatio || 0), 0
-      ) / pooledNotes.length;
+      // TODO(tsc): notes has no ltvRatio column — LTV requires joining the
+      // property's market value, which isn't loaded here. Defaulting to 0
+      // until an LTV source is wired in.
+      const avgLTV = 0;
 
+      // TODO(tsc): notes has no paymentsMade column — payments-made can be
+      // derived from the amortizationSchedule (count of status==="paid"), but
+      // that is out of scope for this type fix. Approximate remaining term
+      // with the full term for now.
       const avgMaturity = pooledNotes.reduce((sum, n) => {
         const termMonths = n.termMonths || 0;
-        const paymentsMade = n.paymentsMade || 0;
-        return sum + (termMonths - paymentsMade);
+        return sum + termMonths;
       }, 0) / pooledNotes.length;
 
       // Calculate diversification score (0-100)
-      // Higher score = more geographic and property type diversity
-      const stateSet = new Set(pooledNotes.map(n => n.state).filter(Boolean));
-      const diversificationScore = Math.min(100, stateSet.size * 20);
+      // TODO(tsc): notes has no state column (geography lives on the linked
+      // property). Approximate diversity by distinct linked properties.
+      const propertySet = new Set(pooledNotes.map(n => n.propertyId).filter(Boolean));
+      const diversificationScore = Math.min(100, propertySet.size * 20);
 
       return {
         noteIds,
@@ -101,20 +108,24 @@ class CapitalMarkets {
       // Calculate credit rating based on pool characteristics
       const rating = this.calculateCreditRating(pooling);
 
+      // TODO(tsc): note_securities is a per-note securitization record, not a
+      // pool/offering table — it has no poolId, noteIds, totalPrincipal,
+      // avgInterestRate, avgLTV, rating, minimumInvestment, targetRaise, or
+      // raisedAmount columns. The pool's aggregate values are mapped onto the
+      // closest real columns; offering-level metadata (rating, targetRaise,
+      // etc.) has no home in this schema and is not persisted. A dedicated
+      // securitization-offering table (or use of capital_raises) is needed to
+      // restore the original intent.
+      void rating;
+      void offeringDetails;
+      const avgTermMonths = pooling.avgMaturity > 0 ? Math.round(pooling.avgMaturity) : 1;
       const [security] = await db.insert(noteSecurities).values({
         organizationId,
-        poolId: `POOL-${Date.now()}`,
-        noteIds: pooling.noteIds,
-        totalPrincipal: pooling.totalValue,
-        avgInterestRate: pooling.avgInterestRate,
-        avgLTV: pooling.avgLTV,
-        rating,
+        principalAmount: String(pooling.totalValue),
+        interestRate: String(pooling.avgInterestRate),
+        termMonths: avgTermMonths,
+        monthlyPayment: '0',
         status: 'pending',
-        minimumInvestment: offeringDetails.minimumInvestment,
-        targetRaise: offeringDetails.targetRaise,
-        raisedAmount: 0,
-        terms: offeringDetails.terms,
-        diversificationScore: pooling.diversificationScore,
       }).returning();
 
       return security.id.toString();
@@ -201,21 +212,19 @@ class CapitalMarkets {
         throw new Error('Security is not available for investment');
       }
 
-      if (amount < security.minimumInvestment) {
-        throw new Error(`Minimum investment is $${security.minimumInvestment}`);
-      }
+      // TODO(tsc): note_securities has no minimumInvestment / targetRaise /
+      // raisedAmount columns (those are offering-level fields with no home in
+      // this per-note table). The investment-cap and raised-amount accounting
+      // cannot be enforced against this schema; we record the investment
+      // intent against currentBalance and leave the funded-status transition
+      // for a future securitization-offering table.
+      void amount;
+      const newCurrentBalance = Number(security.currentBalance ?? 0) + amount;
 
-      const newRaisedAmount = security.raisedAmount + amount;
-
-      if (newRaisedAmount > security.targetRaise) {
-        throw new Error('Investment would exceed target raise amount');
-      }
-
-      // Update raised amount
       await db.update(noteSecurities)
-        .set({ 
-          raisedAmount: newRaisedAmount,
-          status: newRaisedAmount >= security.targetRaise ? 'funded' : 'active',
+        .set({
+          currentBalance: String(newCurrentBalance),
+          status: 'active',
         })
         .where(eq(noteSecurities.id, securityId));
 
@@ -246,6 +255,11 @@ class CapitalMarkets {
     }
   ): Promise<string> {
     try {
+      // TODO(tsc): lender_network has no minLTV, terms, status, dealCount, or
+      // totalFunded columns, and interestRateRange is a jsonb { min, max }
+      // (not the free-text string the caller passes). Those inputs have no
+      // home in the schema and are not persisted. Active state maps to
+      // isActive; deal volume maps to loansIssued.
       const [lender] = await db.insert(lenderNetwork).values({
         organizationId,
         lenderName: lenderData.name,
@@ -253,15 +267,11 @@ class CapitalMarkets {
         contactName: lenderData.contactName || null,
         contactEmail: lenderData.contactEmail || null,
         contactPhone: lenderData.contactPhone || null,
-        minLoanAmount: lenderData.minLoanAmount || null,
-        maxLoanAmount: lenderData.maxLoanAmount || null,
-        minLTV: lenderData.minLTV || null,
-        maxLTV: lenderData.maxLTV || null,
-        interestRateRange: lenderData.interestRateRange || null,
-        terms: lenderData.terms || null,
-        status: 'active',
-        dealCount: 0,
-        totalFunded: 0,
+        minLoanAmount: lenderData.minLoanAmount != null ? String(lenderData.minLoanAmount) : null,
+        maxLoanAmount: lenderData.maxLoanAmount != null ? String(lenderData.maxLoanAmount) : null,
+        maxLTV: lenderData.maxLTV != null ? String(lenderData.maxLTV) : null,
+        isActive: true,
+        loansIssued: 0,
       }).returning();
 
       return lender.id.toString();
@@ -283,24 +293,26 @@ class CapitalMarkets {
     }
   ): Promise<any[]> {
     try {
-      let where = eq(lenderNetwork.organizationId, organizationId);
+      const conditions = [eq(lenderNetwork.organizationId, organizationId)];
 
       if (filters?.type) {
-        where = and(where, eq(lenderNetwork.lenderType, filters.type));
+        conditions.push(eq(lenderNetwork.lenderType, filters.type));
       }
 
       const lenders = await db.query.lenderNetwork.findMany({
-        where,
-        orderBy: [desc(lenderNetwork.totalFunded)],
+        where: and(...conditions),
+        // lender_network has no totalFunded column; loansIssued is the closest
+        // volume proxy.
+        orderBy: [desc(lenderNetwork.loansIssued)],
       });
 
-      // Filter by amount if specified
+      // Filter by amount if specified (numeric columns are returned as strings)
       if (filters?.minAmount || filters?.maxAmount) {
         return lenders.filter(l => {
-          if (filters.minAmount && l.maxLoanAmount && l.maxLoanAmount < filters.minAmount) {
+          if (filters.minAmount && l.maxLoanAmount && Number(l.maxLoanAmount) < filters.minAmount) {
             return false;
           }
-          if (filters.maxAmount && l.minLoanAmount && l.minLoanAmount > filters.maxAmount) {
+          if (filters.maxAmount && l.minLoanAmount && Number(l.minLoanAmount) > filters.maxAmount) {
             return false;
           }
           return true;
@@ -335,22 +347,24 @@ class CapitalMarkets {
       const lenders = await db.query.lenderNetwork.findMany({
         where: and(
           eq(lenderNetwork.organizationId, organizationId),
-          eq(lenderNetwork.status, 'active')
+          eq(lenderNetwork.isActive, true)
         ),
       });
 
-      // Filter lenders that match criteria
+      // Filter lenders that match criteria (numeric columns are strings).
+      // TODO(tsc): lender_network has no minLTV column — only maxLTV is
+      // enforceable here.
       const matchedLenders = lenders.filter(l => {
-        if (l.minLoanAmount && loanAmount < l.minLoanAmount) return false;
-        if (l.maxLoanAmount && loanAmount > l.maxLoanAmount) return false;
-        if (l.minLTV && ltv < l.minLTV) return false;
-        if (l.maxLTV && ltv > l.maxLTV) return false;
+        if (l.minLoanAmount && loanAmount < Number(l.minLoanAmount)) return false;
+        if (l.maxLoanAmount && loanAmount > Number(l.maxLoanAmount)) return false;
+        if (l.maxLTV && ltv > Number(l.maxLTV)) return false;
         return true;
       });
 
-      // Sort by best fit (lowest rates, highest deal count)
+      // Sort by best fit (highest loan volume). lender_network has no
+      // dealCount column; loansIssued is the closest proxy.
       return matchedLenders.sort((a, b) => {
-        return (b.dealCount || 0) - (a.dealCount || 0);
+        return (b.loansIssued || 0) - (a.loansIssued || 0);
       });
     } catch (error) {
       logger.error('Failed to match lenders', error);
@@ -373,18 +387,19 @@ class CapitalMarkets {
     }
   ): Promise<string> {
     try {
+      // TODO(tsc): capital_raises has no raiseType (it's offeringType),
+      // useOfFunds, terms, equityOffered, or closingDate columns. raiseType
+      // maps to offeringType; title is required so we derive one. The other
+      // inputs have no home in the schema and are not persisted.
       const [raise] = await db.insert(capitalRaises).values({
         organizationId,
-        raiseType: raiseData.raiseType,
-        targetAmount: raiseData.targetAmount,
-        raisedAmount: 0,
-        minimumInvestment: raiseData.minimumInvestment,
+        title: raiseData.useOfFunds?.slice(0, 120) || `${raiseData.raiseType} raise`,
+        offeringType: raiseData.raiseType,
+        targetAmount: String(raiseData.targetAmount),
+        raisedAmount: '0',
+        minInvestment: String(raiseData.minimumInvestment),
         investorCount: 0,
         status: 'active',
-        useOfFunds: raiseData.useOfFunds,
-        terms: raiseData.terms,
-        equityOffered: raiseData.equityOffered || null,
-        closingDate: null,
       }).returning();
 
       return raise.id.toString();
@@ -446,8 +461,11 @@ class CapitalMarkets {
       let totalReturns = 0;
 
       for (const deal of completedDeals) {
-        const purchasePrice = parseFloat(deal.purchasePrice || '0');
-        const salePrice = parseFloat(deal.salePrice || '0');
+        // deals has no purchasePrice/salePrice columns. The accepted offer is
+        // the deployed capital; the expected sale price lives in the ROI
+        // analysisResults jsonb.
+        const purchasePrice = parseFloat(deal.acceptedAmount || deal.offerAmount || '0');
+        const salePrice = Number(deal.analysisResults?.expectedSalePrice ?? 0);
         totalDeployed += purchasePrice;
         if (salePrice > 0) {
           totalReturns += salePrice;

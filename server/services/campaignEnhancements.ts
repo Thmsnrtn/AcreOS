@@ -37,8 +37,8 @@ export async function cloneCampaign(campaignId: number, newName: string): Promis
   const original = await db.query.campaigns.findFirst({ where: eq(campaigns.id, campaignId) });
   if (!original) return null;
 
-  const clone = { ...original };
-  delete clone.id;
+  const { id: _omitId, ...rest } = original;
+  const clone = { ...rest };
   clone.name = newName;
   clone.status = "draft";
   clone.createdAt = new Date();

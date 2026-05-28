@@ -56,7 +56,7 @@ export async function generateDailyAutonomousSummary(): Promise<{
   // Top agents by action count
   const topAgentRows = await db
     .select({
-      agent: agentEvents.agentCodename,
+      agent: sql<string>`${agentEvents.payload}->>'agentCodename'`,
       count: sql<number>`count(*)::int`,
     })
     .from(agentEvents)
@@ -64,7 +64,7 @@ export async function generateDailyAutonomousSummary(): Promise<{
       gte(agentEvents.createdAt, dayAgo),
       eq(agentEvents.eventType, "action_succeeded"),
     ))
-    .groupBy(agentEvents.agentCodename)
+    .groupBy(sql`${agentEvents.payload}->>'agentCodename'`)
     .orderBy(sql`count(*) desc`)
     .limit(5);
 
@@ -140,7 +140,7 @@ export async function checkDelegationCompletions(): Promise<{ completed: number;
         .select({ count: sql<number>`count(*)::int` })
         .from(agentEvents)
         .where(and(
-          eq(agentEvents.agentCodename, delegation.toAgent),
+          sql`${agentEvents.payload}->>'agentCodename' = ${delegation.toAgent}`,
           eq(agentEvents.eventType, "action_succeeded"),
           gte(agentEvents.createdAt, delegation.createdAt),
         ));
@@ -151,7 +151,7 @@ export async function checkDelegationCompletions(): Promise<{ completed: number;
           await collaborationProtocolService.updateDelegation(delegation.delegationId, {
             status: "completed",
             qualityScore: 0.8,
-            notes: "Auto-completed: agent performed relevant actions",
+            result: { notes: "Auto-completed: agent performed relevant actions" },
           });
           completed++;
         } catch {}
@@ -165,17 +165,19 @@ export async function checkDelegationCompletions(): Promise<{ completed: number;
             delegationId: delegation.delegationId,
             fromAgent: delegation.fromAgent,
             toAgent: delegation.toAgent,
-            task: delegation.taskDescription,
+            task: delegation.task,
             deadline: delegation.slaDeadline,
           });
 
           // Also create an escalation event
           await db.insert(agentEvents).values({
-            agentCodename: delegation.toAgent,
+            organizationId: delegation.orgId ?? 0,
             eventType: "delegation_sla_breach",
+            eventSource: "autonomy_final_mile",
             payload: {
+              agentCodename: delegation.toAgent,
               delegationId: delegation.delegationId,
-              task: delegation.taskDescription,
+              task: delegation.task,
               deadline: delegation.slaDeadline,
             },
           });
@@ -228,7 +230,7 @@ export async function retryFailedActions(): Promise<{ retried: number; succeeded
         const { executionEngine } = await import("./executionEngine");
         const result = await executionEngine.execute({
           orgId: payload?.orgId ?? 0,
-          agentCodename: failedAction.agentCodename,
+          agentCodename: payload?.agentCodename,
           action,
           input: payload?.actionInput ?? payload?.input ?? {},
         });
@@ -238,9 +240,15 @@ export async function retryFailedActions(): Promise<{ retried: number; succeeded
           succeeded++;
           // Record retry success
           await db.insert(agentEvents).values({
-            agentCodename: failedAction.agentCodename,
+            organizationId: failedAction.organizationId,
             eventType: "action_retry_succeeded",
-            payload: { originalEventId: failedAction.id, action, retryCount: retryCount + 1 },
+            eventSource: "autonomy_final_mile",
+            payload: {
+              agentCodename: payload?.agentCodename,
+              originalEventId: failedAction.id,
+              action,
+              retryCount: retryCount + 1,
+            },
           });
         }
       } catch {}
@@ -264,18 +272,26 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
   try {
     const { agentDialogues } = await import("@shared/schema");
 
-    // Find dialogues with consensus reached but not yet executed
+    // TODO(tsc): agent_dialogues has no `metadata`/`consensus` jsonb columns in
+    // the frozen schema. The "not yet executed" gate previously relied on a
+    // metadata flag; we now gate on status === "consensus_reached" and flip the
+    // row to "closed" after execution. Consensus payload is stored as JSON text
+    // in the `resolution` column.
     const resolved = await db
       .select()
       .from(agentDialogues)
-      .where(and(
-        eq(agentDialogues.status, "consensus_reached"),
-        sql`NOT (${agentDialogues.metadata}->>'autoExecuted')::boolean`,
-      ))
+      .where(eq(agentDialogues.status, "consensus_reached"))
       .limit(10);
 
     for (const dialogue of resolved) {
-      const consensus = dialogue.consensus as Record<string, any>;
+      let consensus: Record<string, any> = {};
+      if (dialogue.resolution) {
+        try {
+          consensus = JSON.parse(dialogue.resolution) as Record<string, any>;
+        } catch {
+          consensus = {};
+        }
+      }
       const resolution = consensus?.resolution ?? consensus?.decision;
 
       if (resolution) {
@@ -289,11 +305,9 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
             input: resolution.input ?? { title: "Consensus Decision", message: `Consensus reached on: ${dialogue.topic}` },
           });
 
-          // Mark as auto-executed
+          // Mark as executed by closing the dialogue.
           await db.update(agentDialogues)
-            .set({
-              metadata: sql`COALESCE(${agentDialogues.metadata}, '{}'::jsonb) || '{"autoExecuted": true}'::jsonb`,
-            })
+            .set({ status: "closed", resolvedAt: new Date() })
             .where(eq(agentDialogues.id, dialogue.id));
 
           executed++;

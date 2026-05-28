@@ -216,10 +216,10 @@ async function processRegulatoryComplianceJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "regulatory_compliance_check",
+      type: "regulatory_compliance_check",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -273,7 +273,7 @@ async function processRegulatoryComplianceJob(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: { totalFeedsChecked, totalNewChanges, totalAlertsCreated, totalFailed },
         })
         .where(eq(backgroundJobs.id, bgJobId));
@@ -285,7 +285,7 @@ async function processRegulatoryComplianceJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;

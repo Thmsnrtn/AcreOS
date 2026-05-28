@@ -35,6 +35,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { Formatter, ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -365,6 +366,7 @@ function NeedsYouSection() {
       >
         {todoQuery.error ? (
           <QueryErrorState
+            error={todoQuery.error}
             title="Couldn't reach the decision queue"
             onRetry={() => todoQuery.refetch()}
           />
@@ -699,6 +701,7 @@ function PulseSection() {
       >
         {ue.error ? (
           <QueryErrorState
+            error={ue.error}
             title="Couldn't load the unit-economics trend"
             onRetry={() => ue.refetch()}
           />
@@ -722,7 +725,7 @@ function PulseSection() {
                       fontSize: 12,
                       borderRadius: 6,
                     }}
-                    formatter={(v: number) => usd(v)}
+                    formatter={((v) => usd(Number(v))) satisfies Formatter<ValueType, NameType>}
                   />
                   <Line
                     type="monotone"
@@ -873,6 +876,7 @@ function RecentActivitySection() {
       >
         {activity.error ? (
           <QueryErrorState
+            error={activity.error}
             title="Couldn't load recent activity"
             onRetry={() => activity.refetch()}
           />
@@ -1037,7 +1041,7 @@ function SystemHealthSection() {
             </CardHeader>
             <CardContent>
               {vendor.error ? (
-                <QueryErrorState onRetry={() => vendor.refetch()} />
+                <QueryErrorState error={vendor.error} onRetry={() => vendor.refetch()} />
               ) : (
                 <ul className="space-y-1.5 text-sm">
                   {(vendor.data?.vendors ?? []).slice(0, 6).map((v) => {
@@ -1070,7 +1074,7 @@ function SystemHealthSection() {
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {cost.error ? (
-                <QueryErrorState onRetry={() => cost.refetch()} />
+                <QueryErrorState error={cost.error} onRetry={() => cost.refetch()} />
               ) : !latestRun ? (
                 <p className="text-muted-foreground">
                   Optimiser hasn't run yet — first nightly run will land

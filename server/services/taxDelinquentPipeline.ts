@@ -22,6 +22,40 @@ import { db } from "../db";
 import { leads } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
+// ─── Tax-delinquent payload convention ──────────────────────────────────────
+// The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
+// propertyAddress columns. Tax-delinquent imports flag the lead with the
+// TAX_DELINQUENT_TAG in `tags` and stash the extra structured fields as JSON in
+// the `notes` column. TODO(tsc): promote these to real columns (or a dedicated
+// tax_delinquent_leads table) so we can query/dedup without JSON parsing.
+const TAX_DELINQUENT_TAG = "tax_delinquent";
+
+interface TaxDelinquentPayload {
+  apn?: string;
+  county?: string;
+  propertyAddress?: string;
+  delinquentAmount?: string;
+  delinquentYears?: number;
+  daysUntilTaxSale?: number;
+  propertyValueCents?: number;
+  acres?: number;
+  importedAt?: string;
+}
+
+function encodePayload(p: TaxDelinquentPayload): string {
+  return JSON.stringify(p);
+}
+
+function decodePayload(notes: string | null | undefined): TaxDelinquentPayload {
+  if (!notes) return {};
+  try {
+    const parsed = JSON.parse(notes);
+    return parsed && typeof parsed === "object" ? (parsed as TaxDelinquentPayload) : {};
+  } catch {
+    return {};
+  }
+}
+
 export interface RawDelinquentRecord {
   [key: string]: string;
 }
@@ -147,7 +181,7 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
   const yearsCol = findColumn(headers, YEAR_ALIASES);
 
   return raw
-    .map(row => {
+    .map((row): NormalizedDelinquentRecord | null => {
       const apn = apnCol ? row[apnCol]?.trim() : "";
       const ownerName = ownerCol ? row[ownerCol]?.trim() : "";
       if (!apn || !ownerName) return null;
@@ -163,7 +197,7 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
         delinquentYears: yearsCol ? parseInt(row[yearsCol]) || undefined : undefined,
         acres: acresCol ? parseAcres(row[acresCol]) : undefined,
         rawRow: row,
-      } satisfies NormalizedDelinquentRecord;
+      };
     })
     .filter((r): r is NormalizedDelinquentRecord => r !== null);
 }
@@ -203,13 +237,15 @@ export async function processTaxDelinquentImport(
   // 001-0001-001. The dedup check uses existingApnSet keyed by APN
   // alone — that'll silently merge or skip leads from different
   // counties." Fix: composite key.
+  // leads has no apn/county columns; apn/county live in the notes JSON payload
+  // on tax-delinquent leads. Pull existing flagged leads and decode the tuple.
   const existingTuples = await db
-    .select({ state: leads.state, county: leads.county, apn: leads.apn })
+    .select({ state: leads.state, notes: leads.notes })
     .from(leads)
     .where(
       and(
         eq(leads.organizationId, orgId),
-        sql`${leads.apn} is not null`,
+        sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
       )
     );
 
@@ -218,8 +254,9 @@ export async function processTaxDelinquentImport(
 
   const existingTupleSet = new Set(
     existingTuples
-      .filter((r): r is { state: string | null; county: string | null; apn: string } => Boolean(r.apn))
-      .map((r) => tupleKey(r.state, r.county, r.apn!))
+      .map((r) => ({ state: r.state, payload: decodePayload(r.notes) }))
+      .filter((r) => Boolean(r.payload.apn))
+      .map((r) => tupleKey(r.state, r.payload.county, r.payload.apn!))
   );
 
   const toInsert: typeof leads.$inferInsert[] = [];
@@ -244,17 +281,17 @@ export async function processTaxDelinquentImport(
     const lastName = nameParts[nameParts.length - 1] || rec.ownerName;
     const firstName = nameParts.slice(0, -1).join(" ") || "";
 
+    // leads has no createdBy/apn/propertyAddress/county/zipCode/taxDelinquent/
+    // delinquentAmount/metadata columns. Map to the real columns (address, zip)
+    // and stash the rest in the notes JSON payload, flagged via tags.
     toInsert.push({
       organizationId: orgId,
-      createdBy: userId,
       firstName,
       lastName,
-      apn: rec.apn,
-      propertyAddress: rec.propertyAddress,
+      address: rec.propertyAddress,
       city: rec.city,
       state: rec.state || options.state,
-      county: rec.county || options.county,
-      zipCode: rec.zipCode,
+      zip: rec.zipCode,
       source: options.defaultSource || "tax_delinquent",
       status: "new",
       // Multi-factor import-time score. Marcus: "Real scoring needs
@@ -263,14 +300,17 @@ export async function processTaxDelinquentImport(
       // We don't have all those at import; this captures what we do have
       // (years + acres + completeness). The full scorer picks up later.
       score: scoreImportRecord(rec),
-      taxDelinquent: true,
-      delinquentAmount: rec.delinquentAmount?.toString(),
+      tags: [TAX_DELINQUENT_TAG],
       campaignId: options.campaignId,
-      metadata: {
+      notes: encodePayload({
+        apn: rec.apn,
+        county: rec.county || options.county,
+        propertyAddress: rec.propertyAddress,
+        delinquentAmount: rec.delinquentAmount?.toString(),
         delinquentYears: rec.delinquentYears,
         acres: rec.acres,
         importedAt: new Date().toISOString(),
-      } as any,
+      }),
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -373,7 +413,7 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
   // state. Risk is a derived-server-side bucket so we filter post-derive.
   const conditions = [
     eq(leads.organizationId, organizationId),
-    eq(leads.taxDelinquent, true),
+    sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
   ];
   if (stateCode) {
     conditions.push(eq(leads.state, stateCode.toUpperCase()));
@@ -388,9 +428,9 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
     .offset(offset);
 
   const mapped: DelinquentLeadRow[] = rows.map((l) => {
-    const meta = (l.metadata as { delinquentYears?: number; daysUntilTaxSale?: number; propertyValueCents?: number } | null) ?? {};
+    const meta = decodePayload(l.notes);
     const ownerName = [l.firstName, l.lastName].filter(Boolean).join(" ").trim() || (l.email ?? "Unknown owner");
-    const taxOwedDollars = parseFloat(l.delinquentAmount ?? "0");
+    const taxOwedDollars = parseFloat(meta.delinquentAmount ?? "0");
     const taxOwedCents = Math.round(taxOwedDollars * 100);
     // Property value is best-effort: prefer metadata.propertyValueCents,
     // then taxOwedCents × 8 as a placeholder (industry-typical
@@ -407,8 +447,8 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
     return {
       id: l.id,
       ownerName,
-      propertyAddress: [l.propertyAddress, l.city, l.state].filter(Boolean).join(", "),
-      county: l.county ?? "",
+      propertyAddress: [meta.propertyAddress ?? l.address, l.city, l.state].filter(Boolean).join(", "),
+      county: meta.county ?? "",
       stateCode: l.state ?? "",
       yearsDelinquent,
       taxOwedCents,
@@ -434,7 +474,7 @@ async function getLead(id: number, orgId: number): Promise<DelinquentLeadRow | n
     .where(and(
       eq(leads.id, id),
       eq(leads.organizationId, orgId),
-      eq(leads.taxDelinquent, true),
+      sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
     ))
     .limit(1);
   if (!row) return null;
@@ -453,7 +493,7 @@ async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachRe
   const [row] = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), eq(leads.taxDelinquent, true)))
+    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`))
     .limit(1);
   if (!row) throw new Error("Lead not found");
 

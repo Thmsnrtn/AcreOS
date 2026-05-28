@@ -83,7 +83,7 @@ Create an improvement plan. Respond in JSON:
 Create 2-4 goals and 0-2 skill requests. Be specific with numbers.`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.3,
       });
 
@@ -149,7 +149,7 @@ Write a 1-2 sentence progress update and estimate current values for each goal m
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         maxTokens: 150,
         temperature: 0.2,
       });

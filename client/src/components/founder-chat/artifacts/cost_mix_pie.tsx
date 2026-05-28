@@ -3,6 +3,7 @@
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import type { Formatter, ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import type { CostMixSlice } from "@shared/founder-chat/artifacts";
 
 interface CostMixPieProps {
@@ -70,10 +71,10 @@ export function CostMixPieArtifact({ data, windowDays }: CostMixPieProps) {
                     borderRadius: 8,
                     fontSize: 12,
                   }}
-                  formatter={(value: number, _name, entry) => [
-                    fmt(value),
+                  formatter={((value, _name, entry) => [
+                    fmt(Number(value)),
                     (entry?.payload as { category?: string })?.category ?? "",
-                  ]}
+                  ]) satisfies Formatter<ValueType, NameType>}
                 />
               </PieChart>
             </ResponsiveContainer>

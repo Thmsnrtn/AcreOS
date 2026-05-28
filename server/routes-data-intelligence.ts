@@ -582,8 +582,17 @@ router.post("/lead-intelligence/score", async (req: Request, res: Response) => {
  */
 router.get("/lead-intelligence/focus", async (req: Request, res: Response) => {
   try {
-    const { getWeeklyFocus } = await import("./services/leadIntelligenceEngine");
-    res.json({ focus: getWeeklyFocus(), generatedAt: new Date().toISOString() });
+    // getWeeklyFocus is a private (non-exported) deterministic rotator in
+    // leadIntelligenceEngine; replicated here to avoid importing a non-export.
+    const focuses = [
+      "Focus: Mail your tax delinquent list for the county where you sent offers 30 days ago. These sellers have had time to sit with your offer.",
+      "Focus: Re-engage every lead that responded in the last 90 days but didn't close. Circumstances change — they may be ready now.",
+      "Focus: Skip trace and add phone numbers to your top 20 priority leads. A call after 3 letters dramatically increases close rate.",
+      "Focus: Review your note portfolio — any late payments? Address dunning before adding new deals.",
+      "Focus: Run the Blind Offer Wizard for any county you haven't analyzed this month. Fresh comps = accurate offers.",
+    ];
+    const focus = focuses[Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000)) % focuses.length];
+    res.json({ focus, generatedAt: new Date().toISOString() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -742,8 +751,9 @@ router.get("/freedom-number", async (req: Request, res: Response) => {
     const { eq, and, sum } = await import("drizzle-orm");
 
     const org = req.organization;
-    const monthlyExpenses = parseFloat(req.query.monthlyExpenses as string)
-      || (org.settings?.monthlyExpenses || org.freedomNumber || 5000);
+    // TODO(tsc): no organizations.settings.monthlyExpenses nor freedomNumber
+    // column; honor the query param, otherwise default the denominator.
+    const monthlyExpenses = parseFloat(req.query.monthlyExpenses as string) || 5000;
 
     const [incomeResult] = await db
       .select({ total: sum(payments.amount) })

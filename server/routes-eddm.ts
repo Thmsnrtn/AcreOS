@@ -200,7 +200,7 @@ export function registerEddmRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = routesQuerySchema.safeParse(req.query);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       try {
         const features = synthesizeRoutes(parsed.data.state, parsed.data.county);
@@ -226,7 +226,7 @@ export function registerEddmRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = parcelsQuerySchema.safeParse(req.query);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const bbox = parseBbox(parsed.data.bbox);
       if (!bbox) {
@@ -304,7 +304,7 @@ export function registerEddmRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const parsed = queueSchema.safeParse(req.body);
       if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
+        return Errors.validationFailed(res, parsed.error.issues);
       }
       const org = getOrganization(req);
       const userId = getUserId(req);

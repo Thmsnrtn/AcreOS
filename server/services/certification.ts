@@ -108,17 +108,14 @@ class CertificationService {
 
       const enrollment = await db.query.courseEnrollments.findFirst({
         where: and(
-          eq(courseEnrollments.userId, userId),
+          eq(courseEnrollments.userId, String(userId)),
           eq(courseEnrollments.courseId, courseId)
         ),
       });
 
       if (!enrollment) return false;
 
-      const progress: any[] = enrollment.progress || [];
-      const completedModuleIds = new Set(
-        progress.filter(p => p.completed).map(p => p.moduleId)
-      );
+      const completedModuleIds = new Set(enrollment.completedModules || []);
 
       return modules.every(m => completedModuleIds.has(m.id));
     } catch (_) {
@@ -135,19 +132,21 @@ class CertificationService {
     });
 
     const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
+      where: eq(users.id, String(userId)),
     });
 
     const enrollment = await db.query.courseEnrollments.findFirst({
       where: and(
-        eq(courseEnrollments.userId, userId),
+        eq(courseEnrollments.userId, String(userId)),
         eq(courseEnrollments.courseId, courseId)
       ),
     });
 
     // Calculate average quiz score
-    const progress: any[] = enrollment?.progress || [];
-    const quizScores = progress.filter(p => p.quizScore != null).map(p => p.quizScore);
+    // TODO(tsc): course_enrollments has no per-module progress/quizScore column
+    // (only completedModules: number[]). Quiz scores are not persisted, so avgScore is undefined.
+    const progress: { quizScore?: number }[] = [];
+    const quizScores = progress.filter(p => p.quizScore != null).map(p => p.quizScore!);
     const avgScore = quizScores.length > 0
       ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length)
       : undefined;
@@ -173,10 +172,10 @@ class CertificationService {
     try {
       await db
         .update(courseEnrollments)
-        .set({ completedAt: new Date(), certificateIssued: true } as any)
+        .set({ completedAt: new Date(), certificateIssued: true })
         .where(
           and(
-            eq(courseEnrollments.userId, userId),
+            eq(courseEnrollments.userId, String(userId)),
             eq(courseEnrollments.courseId, courseId)
           )
         );
@@ -269,12 +268,12 @@ class CertificationService {
   private async hasPerfectScore(userId: number): Promise<boolean> {
     try {
       const enrollments = await db.query.courseEnrollments.findMany({
-        where: eq(courseEnrollments.userId, userId),
+        where: eq(courseEnrollments.userId, String(userId)),
       });
 
-      for (const enrollment of enrollments) {
-        const progress: any[] = enrollment.progress || [];
-        const quizScores = progress.filter(p => p.quizScore != null).map(p => p.quizScore);
+      for (const _enrollment of enrollments) {
+        // TODO(tsc): no per-module quizScore column on course_enrollments.
+        const quizScores: number[] = [];
         if (quizScores.length > 0 && Math.max(...quizScores) === 100) {
           return true;
         }
@@ -303,29 +302,28 @@ class CertificationService {
 
     try {
       const enrollments = await db.query.courseEnrollments.findMany({
-        where: eq(courseEnrollments.userId, userId),
+        where: eq(courseEnrollments.userId, String(userId)),
       });
 
       coursesEnrolled = enrollments.length;
-      coursesCompleted = enrollments.filter(e => (e as any).completedAt != null).length;
+      coursesCompleted = enrollments.filter(e => e.completedAt != null).length;
 
       for (const enrollment of enrollments) {
-        const progress: any[] = enrollment.progress || [];
-        const scores = progress.filter(p => p.quizScore != null).map(p => p.quizScore);
-        allScores.push(...scores);
+        // TODO(tsc): no per-module quizScore column; quiz scores are not persisted.
+        const completedModuleIds = enrollment.completedModules || [];
 
         // Estimate hours from course duration
         try {
           const course = await db.query.courses.findFirst({
             where: eq(courses.id, enrollment.courseId),
           });
-          if (course?.duration) {
-            const completedModules = progress.filter(p => p.completed).length;
+          if (course?.totalDurationMinutes) {
+            const completedModules = completedModuleIds.length;
             const totalModules = await db.select({ count: count() })
               .from(courseModules)
               .where(eq(courseModules.courseId, enrollment.courseId));
             const total = Number(totalModules[0]?.count || 1);
-            totalHoursLearned += (course.duration / 60) * (completedModules / total);
+            totalHoursLearned += (course.totalDurationMinutes / 60) * (completedModules / total);
           }
         } catch (_) {}
       }

@@ -152,6 +152,7 @@ export function registerInboundEmailRoutes(app: Express): void {
         await sendEmail({
           to,
           subject,
+          html: body,
           text: body,
           replyTo,
         });

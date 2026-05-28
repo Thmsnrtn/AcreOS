@@ -134,7 +134,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
 
           for (const mention of mentions) {
             const member = members.find((m) => {
-              const name = `${m.firstName || ""} ${m.lastName || ""}`.toLowerCase().replace(/\s+/g, "-");
+              const name = `${m.displayName || ""}`.toLowerCase().trim().replace(/\s+/g, "-");
               const username = (m.email || "").split("@")[0].toLowerCase();
               return name.includes(mention.toLowerCase()) || username === mention.toLowerCase();
             });
@@ -146,7 +146,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
                 type: "mention",
                 title: `You were mentioned in a ${entityType} comment`,
                 message: content.length > 100 ? content.slice(0, 100) + "..." : content,
-                data: { entityType, entityId: entityIdNum, commentId: comment.id },
+                metadata: { entityType, entityId: entityIdNum, commentId: comment.id },
               }).catch(() => {});
             }
           }
@@ -160,13 +160,10 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
     try {
       const { wsServer } = await import("./websocket");
       if (wsServer) {
-        wsServer.broadcast(org.id, {
-          type: "entity_comment",
-          payload: {
-            entityType,
-            entityId: entityIdNum,
-            comment,
-          },
+        wsServer.broadcastToOrg(org.id, "entity_comment", {
+          entityType,
+          entityId: entityIdNum,
+          comment,
         });
       }
     } catch {

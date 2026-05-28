@@ -7,7 +7,6 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { getOrCreateOrg } from "./middleware/orgMiddleware";
 import { enrichLead, batchEnrichLeads, calculateContactCompleteness } from "./services/leadEnrichment";
 import { db } from "./db";
 import { leads } from "@shared/schema";
@@ -70,13 +69,15 @@ router.get("/:id/completeness", async (req: Request, res: Response) => {
 
     if (!lead) return Errors.notFound(res, "Lead");
 
+    // The leads table has a single `address` column (no separate mailing vs
+    // property address). TODO(tsc): add leads.propertyAddress (or a property
+    // join) to score property-address completeness independently.
     const score = calculateContactCompleteness({
       email: lead.email,
       phone: lead.phone,
       firstName: lead.firstName,
       lastName: lead.lastName,
-      address: (lead as any).mailingAddress ?? null,
-      propertyAddress: lead.propertyAddress ?? null,
+      address: lead.address,
     });
 
     res.json({ leadId, completenessScore: score });

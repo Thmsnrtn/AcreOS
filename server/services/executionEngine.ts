@@ -112,6 +112,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
       priority: priority ?? "medium",
       dueDate: dueDate ? new Date(dueDate) : undefined,
       organizationId: ctx.orgId,
+      createdBy: ctx.agentCodename,
     }).returning();
 
     await logAgentAction(ctx, "task_created", { taskId: task.id, title });
@@ -224,7 +225,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
     if (!modeName) return fail("modeName required");
 
     try {
-      const { selfHealingMesh } = await import("./selfHealingMeshV13");
+      const { selfHealingMeshService: selfHealingMesh } = await import("./selfHealingMeshV13");
       await selfHealingMesh.activateDegradationMode(modeName, reason ?? "auto-activated by self-healing");
       await logAgentAction(ctx, "degradation_mode_activated", { modeName, reason });
       return success({ modeName, activated: true }, [`Degradation mode ${modeName} activated`]);
@@ -238,7 +239,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
     if (!modeName) return fail("modeName required");
 
     try {
-      const { selfHealingMesh } = await import("./selfHealingMeshV13");
+      const { selfHealingMeshService: selfHealingMesh } = await import("./selfHealingMeshV13");
       await selfHealingMesh.deactivateDegradationMode(modeName);
       await logAgentAction(ctx, "degradation_mode_deactivated", { modeName });
       return success({ modeName, deactivated: true }, [`Degradation mode ${modeName} deactivated`]);
@@ -254,12 +255,14 @@ const actionRegistry: Record<string, ActionExecutor> = {
 
     try {
       const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-      await cognitiveMemoryService.store({
-        type: memoryType ?? "semantic",
-        agent: ctx.agentCodename,
-        content,
-        tags: tags ?? [],
-        strength: 0.8,
+      // CognitiveMemoryService has no generic store(); a learning is persisted
+      // as a semantic fact.
+      await cognitiveMemoryService.extractFact(ctx.agentCodename, {
+        fact: content,
+        category: memoryType ?? "semantic",
+        sourceEpisodes: Array.isArray(tags) ? tags : [],
+        confidence: 80,
+        orgId: ctx.orgId,
       });
       await logAgentAction(ctx, "learning_stored", { memoryType, tags });
       return success({ stored: true }, [`Memory stored: ${memoryType}`]);
@@ -282,9 +285,12 @@ function fail(error: string): ExecutionResult {
 async function logAgentAction(ctx: ExecutionContext, eventType: string, payload: Record<string, any>) {
   try {
     await db.insert(agentEvents).values({
-      agentCodename: ctx.agentCodename,
+      organizationId: ctx.orgId,
       eventType,
+      eventSource: "agent",
+      // agent_events has no agentCodename column; carry it in the payload.
       payload: {
+        agentCodename: ctx.agentCodename,
         ...payload,
         orgId: ctx.orgId,
         chainRunId: ctx.chainRunId,
@@ -393,7 +399,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
     try {
       const { delegationTokenService } = await import("./delegationTokensV11");
       const check = await delegationTokenService.checkDelegation(ctx.agentCodename, ctx.action);
-      if (!check?.allowed) {
+      if (!check?.hasDelegation) {
         violations.push(`No delegation token for ${ctx.agentCodename} to perform ${ctx.action}`);
         suggestedAlternatives.push("Request delegation token from founder");
       }
@@ -502,9 +508,11 @@ class AutonomousExecutionEngine {
     try {
       // Record in agent events for trust evolution to query
       await db.insert(agentEvents).values({
-        agentCodename: ctx.agentCodename,
+        organizationId: ctx.orgId,
         eventType: result.success ? "action_succeeded" : "action_failed",
+        eventSource: "agent",
         payload: {
+          agentCodename: ctx.agentCodename,
           action: ctx.action,
           orgId: ctx.orgId,
           success: result.success,

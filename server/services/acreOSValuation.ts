@@ -3,7 +3,6 @@ import {
   transactionTraining,
   valuationPredictions,
   properties,
-  transactions
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
@@ -175,24 +174,37 @@ class AcreOSValuationModel {
    * Record transaction for training data
    */
   async recordTransactionForTraining(
-    organizationId: string,
+    _organizationId: string,
     transactionData: TransactionDataPoint
   ): Promise<string> {
     try {
+      // transaction_training is intentionally anonymized — no organizationId,
+      // no propertyId, no nested location/characteristics objects. Map the
+      // incoming TransactionDataPoint onto the flat, anonymized columns.
+      const qualityScore = this.assessDataQuality(transactionData);
+      const dataQuality = qualityScore >= 75 ? "high" : qualityScore >= 50 ? "medium" : "low";
+      // transaction_hash is a required unique key; derive a stable hash from
+      // the anonymized fields so re-imports dedupe deterministically.
+      const transactionHash = `${transactionData.location.state}|${transactionData.location.county}|${transactionData.acres}|${transactionData.salePrice}|${transactionData.saleDate.toISOString()}`;
       const [record] = await db.insert(transactionTraining).values({
-        organizationId,
-        propertyId: transactionData.propertyId,
-        salePrice: transactionData.salePrice,
+        transactionHash,
+        state: transactionData.location.state,
+        county: transactionData.location.county,
+        propertyType: "land",
+        salePrice: String(transactionData.salePrice),
         saleDate: transactionData.saleDate,
-        acres: transactionData.acres,
-        pricePerAcre: transactionData.pricePerAcre,
-        location: transactionData.location,
-        characteristics: transactionData.characteristics,
-        marketConditions: transactionData.marketConditions,
-        dataQuality: this.assessDataQuality(transactionData),
+        sizeAcres: String(transactionData.acres),
+        pricePerAcre: String(transactionData.pricePerAcre),
+        zoning: transactionData.characteristics.zoning,
+        floodZone: transactionData.characteristics.floodZone,
+        hasRoadAccess: transactionData.characteristics.roadAccess
+          ? transactionData.characteristics.roadAccess !== "none"
+          : undefined,
+        hasWater: transactionData.characteristics.waterRights,
+        dataQuality,
       }).returning();
 
-      return record.id;
+      return String(record.id);
     } catch (error) {
       logger.error('Failed to record transaction for training', error);
       throw error;
@@ -298,15 +310,17 @@ class AcreOSValuationModel {
 
       // Save valuation prediction
       const [prediction] = await db.insert(valuationPredictions).values({
-        organizationId,
-        propertyId: request.propertyId,
-        estimatedValue: Math.round(finalValue),
-        pricePerAcre: Math.round(pricePerAcre),
-        confidence,
-        methodology: 'hybrid_comps_ml',
-        comparablesUsed: comparables.length,
-        adjustments,
-        confidenceInterval,
+        propertyId: Number(request.propertyId),
+        predictedValue: String(Math.round(finalValue)),
+        confidenceScore: String(confidence),
+        valueRange: {
+          low: Math.round(confidenceInterval.low),
+          high: Math.round(confidenceInterval.high),
+        },
+        modelVersion: 'hybrid_comps_ml',
+        featuresUsed: adjustments.map((a) => a.factor),
+        comparableCount: comparables.length,
+        validUntil: addMonths(new Date(), 3),
       }).returning();
 
       // Magnus §1 — capture AVM input + estimate as a training snapshot. The
@@ -378,7 +392,7 @@ class AcreOSValuationModel {
         request.acres,
         0, // no comps — will be improved when comps are available
         request.characteristics,
-        request.marketConditions ?? {}
+        {}
       );
       if (gbmResult) {
         pricePerAcreEstimate = gbmResult.pricePerAcre;
@@ -437,15 +451,17 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     // Save as a low-confidence prediction
     try {
       await db.insert(valuationPredictions).values({
-        organizationId,
-        propertyId: request.propertyId,
-        estimatedValue,
-        pricePerAcre: Math.round(pricePerAcreEstimate),
-        confidence,
-        methodology: estimateSource,
-        comparablesUsed: 0,
-        adjustments: [],
-        confidenceInterval,
+        propertyId: Number(request.propertyId),
+        predictedValue: String(estimatedValue),
+        confidenceScore: String(confidence),
+        valueRange: {
+          low: Math.round(confidenceInterval.low),
+          high: Math.round(confidenceInterval.high),
+        },
+        modelVersion: estimateSource,
+        featuresUsed: [],
+        comparableCount: 0,
+        validUntil: addMonths(new Date(), 3),
       });
     } catch {
       // Non-fatal — continue even if save fails
@@ -504,39 +520,38 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       // Get transactions within past 24 months
       const cutoffDate = addMonths(new Date(), -24);
 
+      // transaction_training is anonymized — no organizationId, no nested
+      // location, and acreage lives in the `size_acres` column (returned as a
+      // string by drizzle). It also carries no lat/long, so we scope comps by
+      // state/county and acreage band rather than by geographic radius.
       const transactions = await db.query.transactionTraining.findMany({
         where: and(
-          eq(transactionTraining.organizationId, organizationId),
+          eq(transactionTraining.state, location.state),
           gte(transactionTraining.saleDate, cutoffDate),
           // Filter by similar acreage (50% to 200% of target)
-          between(transactionTraining.acres, acres * 0.5, acres * 2.0)
+          between(transactionTraining.sizeAcres, String(acres * 0.5), String(acres * 2.0))
         ),
         orderBy: [desc(transactionTraining.saleDate)],
         limit: 100, // Get broader set for filtering
       });
 
-      // Calculate distance and similarity for each transaction
+      // Without geo coordinates we cannot compute haversine distance; comps are
+      // ranked purely on county/state + acreage similarity.
       const comparablesWithScores = transactions
         .map(t => {
-          const distance = this.calculateDistance(
-            location.latitude,
-            location.longitude,
-            (t.location as any).latitude,
-            (t.location as any).longitude
-          );
-
+          const compAcres = Number(t.sizeAcres);
           const similarity = this.calculateSimilarity(
             acres,
             location,
-            t.acres,
-            t.location as any
+            compAcres,
+            { state: t.state, county: t.county, zipCode: '' }
           );
 
           return {
-            propertyId: t.propertyId,
-            salePrice: t.salePrice,
-            pricePerAcre: t.pricePerAcre,
-            distance,
+            propertyId: t.transactionHash,
+            salePrice: Number(t.salePrice),
+            pricePerAcre: Number(t.pricePerAcre),
+            distance: 0,
             similarity,
           };
         })
@@ -842,15 +857,13 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
    * Get valuation history for property
    */
   async getValuationHistory(
-    organizationId: string,
+    _organizationId: string,
     propertyId: string
   ): Promise<any[]> {
     try {
+      // valuation_predictions has no organizationId column; scope by property.
       return await db.query.valuationPredictions.findMany({
-        where: and(
-          eq(valuationPredictions.organizationId, organizationId),
-          eq(valuationPredictions.propertyId, propertyId)
-        ),
+        where: eq(valuationPredictions.propertyId, Number(propertyId)),
         orderBy: [desc(valuationPredictions.createdAt)],
       });
     } catch (error) {
@@ -940,7 +953,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
   ): Promise<{ valuated: number; failed: number }> {
     try {
       const props = await db.query.properties.findMany({
-        where: eq(properties.organizationId, organizationId),
+        where: eq(properties.organizationId, Number(organizationId)),
       });
 
       let valuated = 0;
@@ -948,7 +961,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
       for (const prop of props) {
         try {
-          if (!prop.acres || !prop.state || !prop.county) {
+          if (!prop.sizeAcres || !prop.state || !prop.county) {
             failed++;
             continue;
           }
@@ -962,23 +975,25 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
           }
 
           const request: ValuationRequest = {
-            propertyId: prop.id,
-            acres: prop.acres,
+            propertyId: String(prop.id),
+            acres: Number(prop.sizeAcres),
             location: {
               state: prop.state,
               county: prop.county,
-              zipCode: prop.zipCode || '',
-              latitude: prop.latitude || 0,
-              longitude: prop.longitude || 0,
+              zipCode: prop.zip || '',
+              latitude: Number(prop.latitude) || 0,
+              longitude: Number(prop.longitude) || 0,
             },
             characteristics: {
-              zoning: prop.zoning,
-              waterRights: prop.waterRights,
+              zoning: prop.zoning ?? undefined,
+              // waterRights / floodZone are not columns on properties; they
+              // live in due-diligence data and aren't wired in for bulk runs.
+              waterRights: undefined,
               utilities: [], // Would come from property details
-              roadAccess: undefined,
+              roadAccess: prop.roadAccess ?? undefined,
               topography: undefined,
               soilType: undefined,
-              floodZone: prop.floodZone,
+              floodZone: undefined,
             },
           };
 

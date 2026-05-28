@@ -318,14 +318,15 @@ function validateSchemaBeforeImport(
   return { valid: errors.length === 0, errors };
 }
 
-const leadImportSchema = insertLeadSchema.omit({ organizationId: true }).extend({
+// insertLeadSchema/insertPropertySchema already omit organizationId.
+const leadImportSchema = insertLeadSchema.extend({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   tcpaConsent: z.boolean().optional().nullable(),
   doNotContact: z.boolean().optional().nullable(),
 });
 
-const propertyImportSchema = insertPropertySchema.omit({ organizationId: true }).extend({
+const propertyImportSchema = insertPropertySchema.extend({
   apn: z.string().min(1, "APN is required"),
   county: z.string().min(1, "County is required"),
   state: z.string().min(1, "State is required"),

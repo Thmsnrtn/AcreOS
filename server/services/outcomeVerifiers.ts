@@ -14,7 +14,7 @@ import {
   organizations, supportTickets, supportTicketMessages, jobHealthLogs,
   churnRiskScores, campaigns, agentActionLog, outcomeVerificationQueue,
 } from "@shared/schema";
-import { eq, and, gte, count, desc } from "drizzle-orm";
+import { eq, and, gte, lte, count, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 // Types
@@ -45,9 +45,15 @@ registerVerifier("sophie_csm", "send_retention_email", async (input) => {
   });
   if (!org) return { success: false, detail: "Organization not found" };
 
-  // Check if they logged in since the email was sent (within last 24h)
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const loggedInRecently = org.lastLoginAt && new Date(org.lastLoginAt) > oneDayAgo;
+  // Login recency: no org-level login timestamp exists; use the churn model's
+  // daysSinceLastActive as a proxy (active within the last day).
+  // TODO(tsc): add an org last-active timestamp for a direct signal.
+  const [risk] = await db.select({ daysSinceLastActive: churnRiskScores.daysSinceLastActive })
+    .from(churnRiskScores)
+    .where(eq(churnRiskScores.organizationId, orgId))
+    .orderBy(desc(churnRiskScores.createdAt))
+    .limit(1);
+  const loggedInRecently = typeof risk?.daysSinceLastActive === "number" && risk.daysSinceLastActive <= 1;
 
   return {
     success: !!loggedInRecently,
@@ -95,7 +101,7 @@ registerVerifier("sentinel_devops", "restart_failed_job", async (input) => {
   const latestLog = await db.select()
     .from(jobHealthLogs)
     .where(eq(jobHealthLogs.jobName, jobName))
-    .orderBy(desc(jobHealthLogs.lastRun))
+    .orderBy(desc(jobHealthLogs.runStartedAt))
     .limit(1);
 
   const log = latestLog[0];
@@ -127,16 +133,18 @@ registerVerifier("forge_revenue", "send_churn_rescue", async (input) => {
   // Check if risk score decreased
   const latestRisk = await db.select()
     .from(churnRiskScores)
-    .where(eq(churnRiskScores.orgId, orgId))
-    .orderBy(desc(churnRiskScores.calculatedAt))
+    .where(eq(churnRiskScores.organizationId, orgId))
+    .orderBy(desc(churnRiskScores.createdAt))
     .limit(1);
 
   const currentRisk = latestRisk[0]?.riskScore || originalRisk;
   const riskDecreased = Number(currentRisk) < Number(originalRisk);
 
-  // Also check login activity
-  const threeDaysAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
-  const loggedIn = org.lastLoginAt && new Date(org.lastLoginAt) > threeDaysAgo;
+  // Login recency: there is no org-level login timestamp in the schema; use the
+  // churn model's daysSinceLastActive as a proxy (active within last 3 days).
+  // TODO(tsc): add an org last-active timestamp for a direct signal.
+  const daysSinceActive = latestRisk[0]?.daysSinceLastActive;
+  const loggedIn = typeof daysSinceActive === "number" && daysSinceActive <= 3;
 
   const success = riskDecreased || !!loggedIn;
 
@@ -216,7 +224,7 @@ export async function processVerificationQueue(): Promise<{
     .from(outcomeVerificationQueue)
     .where(and(
       eq(outcomeVerificationQueue.status, "pending"),
-      gte(now, outcomeVerificationQueue.scheduledFor),
+      lte(outcomeVerificationQueue.scheduledFor, now),
     ))
     .limit(50);
 

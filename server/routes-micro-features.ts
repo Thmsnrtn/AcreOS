@@ -12,6 +12,7 @@ import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage } from "./storage";
+import type { InsertLead } from "@shared/schema";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
@@ -35,8 +36,11 @@ export function registerMicroFeatureRoutes(app: Express): void {
         const dataUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
         // Use extractText directly with a temp doc record
         const doc = await documentIntelligenceService.uploadDocument(org.id, {
-          documentType: "other",
-          name: "Quick Capture — Field Photo",
+          // TODO(tsc): DocumentType has no "other"/generic member; a field
+          // photo is a catch-all. Using "contract" (most generic parser) until
+          // documentIntelligence.ts DocumentType gains an "other" variant.
+          documentType: "contract",
+          documentName: "Quick Capture — Field Photo",
           fileUrl: dataUrl,
         });
         extractedText = await documentIntelligenceService.extractText(doc.id, dataUrl);
@@ -58,7 +62,9 @@ export function registerMicroFeatureRoutes(app: Express): void {
 
       // Create lead with whatever we captured
       const nameParts = (extracted.name || "Unknown").split(" ");
-      const lead = await storage.createLead({
+      // storage.createLead's declared signature omits organizationId; the repo
+      // impl requires it. Build a typed intermediate so org reaches the write.
+      const leadInput: InsertLead & { organizationId: number } = {
         organizationId: org.id,
         firstName: nameParts[0] || "Unknown",
         lastName: nameParts.slice(1).join(" ") || "",
@@ -68,7 +74,8 @@ export function registerMicroFeatureRoutes(app: Express): void {
         status: "new",
         type: "seller",
         notes: `Captured from field photo. OCR text: ${extractedText.substring(0, 500)}`,
-      });
+      };
+      const lead = await storage.createLead(leadInput);
 
       res.json({
         lead: { id: lead.id, firstName: lead.firstName, phone: lead.phone },
@@ -103,12 +110,19 @@ export function registerMicroFeatureRoutes(app: Express): void {
       }> = [];
 
       try {
-        // Search for nearby parcels within ~0.25 mile radius
-        const { lookupNearbyParcels } = await import("./services/parcel");
+        // Search for nearby parcels within ~0.25 mile radius.
+        // TODO(tsc): services/parcel has no `lookupNearbyParcels` export — the
+        // nearest is getNearbyParcelsFromCountyGIS(lat,lng,state,county,radius)
+        // with a different return shape. Guarded lookup falls through to the
+        // property-table fallback below until that wiring is built.
+        const parcelModule: Record<string, unknown> = await import("./services/parcel");
+        const lookupNearbyParcels = parcelModule["lookupNearbyParcels"] as
+          | ((lat: number, lng: number, radius: number, apn?: string) => Promise<typeof neighbors>)
+          | undefined;
         if (typeof lookupNearbyParcels === "function") {
           const nearby = await lookupNearbyParcels(
-            property.latitude,
-            property.longitude,
+            Number(property.latitude),
+            Number(property.longitude),
             0.25,
             property.apn || undefined
           );
@@ -121,8 +135,8 @@ export function registerMicroFeatureRoutes(app: Express): void {
           .filter((p) => {
             if (p.id === propertyId || !p.latitude || !p.longitude) return false;
             const dist = haversine(
-              property.latitude!, property.longitude!,
-              p.latitude, p.longitude
+              Number(property.latitude), Number(property.longitude),
+              Number(p.latitude), Number(p.longitude)
             );
             return dist <= 0.5; // within 0.5 miles
           })
@@ -131,7 +145,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
             owner: (p as any).parcelData?.owner,
             ownerAddress: (p as any).parcelData?.ownerAddress,
             acres: p.sizeAcres ? Number(p.sizeAcres) : undefined,
-            distance: haversine(property.latitude!, property.longitude!, p.latitude!, p.longitude!),
+            distance: haversine(Number(property.latitude), Number(property.longitude), Number(p.latitude), Number(p.longitude)),
           }))
           .sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99))
           .slice(0, 20);
@@ -200,7 +214,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
             eq(activityLog.entityId, id)
           )
         )
-        .orderBy(desc(activityLog.eventDate))
+        .orderBy(desc(activityLog.createdAt))
         .limit(100);
 
       res.json({ events });

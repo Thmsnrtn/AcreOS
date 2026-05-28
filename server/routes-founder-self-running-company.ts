@@ -182,7 +182,13 @@ export function registerFounderV14Routes(app: Express) {
   });
 
   app.get("/api/founder/v14/cascade/:orgId/efficiency", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getCascadeEfficiency(parseInt(req.params.orgId), req.query)); }
+    try {
+      const { from, to } = req.query;
+      const dateRange = from && to
+        ? { from: new Date(String(from)), to: new Date(String(to)) }
+        : undefined;
+      res.json(await confidenceCascadeService.getCascadeEfficiency(parseInt(req.params.orgId), dateRange));
+    }
     catch (err: any) { Errors.internal(res, err); }
   });
 

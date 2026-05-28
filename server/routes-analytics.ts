@@ -806,10 +806,12 @@ export function registerAnalyticsRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const { createOfferBatch } = await import("./services/offerBatchService");
-      const batch = await createOfferBatch({
-        ...req.body,
+      const { parcels = [], ...configBody } = req.body ?? {};
+      const userIdNum = parseInt(String(user.id), 10);
+      const batch = await createOfferBatch(parcels, {
+        ...configBody,
         orgId: org.id,
-        userId: user.id,
+        userId: Number.isNaN(userIdNum) ? 0 : userIdNum,
       });
       res.json(batch);
     } catch (err: any) {

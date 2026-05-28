@@ -166,7 +166,7 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
   },
 
   // ─── Credit weights — 1 credit ≈ 1¢ of cost-to-us ─────────────────────
-  ...["sms_outbound", "email_outbound", "postcard_eddm", "postcard_postgrid", "postcard_lob", "letter_presort", "letter_lob", "skip_trace", "ai_turn_avg"].map((action) => ({
+  ...["sms_outbound", "email_outbound", "postcard_eddm", "postcard_postgrid", "postcard_lob", "letter_presort", "letter_lob", "skip_trace", "ai_turn_avg"].map((action): SeedSettingArgs => ({
     key: `credits.weight.${action}`,
     category: "cost" as const,
     description: `Credit weight for ${action} action (1 credit ≈ 1¢ of platform cost). Tunable in /founder/studio/credits.`,
@@ -233,7 +233,7 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
   },
 
   // ─── BYOK minimum tier per channel ────────────────────────────────────
-  ...["twilio", "telnyx", "sendgrid", "ses", "lob", "postgrid", "openrouter", "anthropic", "openai", "batch_skiptracing", "mapbox", "s3"].map((channel) => ({
+  ...["twilio", "telnyx", "sendgrid", "ses", "lob", "postgrid", "openrouter", "anthropic", "openai", "batch_skiptracing", "mapbox", "s3"].map((channel): SeedSettingArgs => ({
     key: `byok.minTier.${channel}`,
     category: "cost" as const,
     description: `Minimum tier that can BYOK for ${channel}. Defaults to "pro".`,

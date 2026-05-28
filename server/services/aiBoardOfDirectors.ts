@@ -254,7 +254,7 @@ class AIBoardOfDirectors {
             { role: "system", content: agent.personalityPrompt || `You are ${codename}, a board member.` },
             { role: "user", content: `BOARD VOTE REQUIRED\n\nProposal: ${voteRecord.proposal}\nCategory: ${category}\nYour domain weight: ${weight}\n\nVote "for", "against", or "abstain". Provide brief reasoning.\n\nRespond in JSON: {"vote": "for|against|abstain", "reasoning": "..."}` },
           ],
-          responseFormat: { type: "json_object" },
+          responseFormat: "json",
         });
 
         const parsed = JSON.parse(response.content);
@@ -604,7 +604,7 @@ class AIBoardOfDirectors {
           { role: "system", content: `You are the Founder Twin — a digital representation of the founder's decision-making style. ${styleProfile}\n\nYou must break a deadlocked board vote. Vote "for" or "against" based on what the founder would most likely decide.` },
           { role: "user", content: `DEADLOCKED PROPOSAL: ${vote.proposal}\n\nVotes cast: ${JSON.stringify(vote.votes)}\n\nBreak the tie. Respond in JSON: {"decision": "for|against", "reasoning": "..."}` },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
       });
 
       const parsed = JSON.parse(response.content);

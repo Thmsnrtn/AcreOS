@@ -142,7 +142,7 @@ async function runTool(
 
       const closedDeals = deals.filter((d) => d.status === 'closed');
       const totalRevenue = closedDeals.reduce((sum, d) => {
-        const amount = parseFloat(d.salePrice ?? d.offerAmount ?? '0');
+        const amount = parseFloat(d.acceptedAmount ?? d.offerAmount ?? '0');
         return sum + (isNaN(amount) ? 0 : amount);
       }, 0);
 
@@ -169,8 +169,8 @@ async function runTool(
         lastName: lastName ?? '',
         email: email ?? null,
         phone: phone ?? null,
-        propertyAddress: address ?? null,
-        propertyState: state ?? null,
+        address: address ?? null,
+        state: state ?? null,
         source: source ?? 'mcp_api',
         status: 'new',
       });

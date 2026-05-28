@@ -83,11 +83,14 @@ router.post("/deal", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
 router.post("/:id/payment", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const commissionId = parseInt(req.params.id);
-    if (isNaN(commissionId)) return Errors.badRequest(res, "Invalid commission ID");
-    const { amount, method, notes } = req.body;
+    // Commission records are keyed by string id in the service store.
+    const commissionId = req.params.id;
+    if (!commissionId) return Errors.badRequest(res, "Invalid commission ID");
+    const { amount } = req.body;
     if (!amount) return Errors.badRequest(res, "amount is required");
-    const record = await recordCommissionPayment(org.id, commissionId, amount, method, notes);
+    // TODO(tsc): recordCommissionPayment only persists paid cents; the route's
+    // method/notes fields are not yet tracked by the service store.
+    const record = await recordCommissionPayment(org.id, commissionId, Number(amount));
     res.json({ record });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
@@ -109,10 +112,17 @@ router.get("/agents", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 router.get("/statement/:agentId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { agentId } = req.params;
-    const from = req.query.from ? new Date(req.query.from as string) : undefined;
-    const to = req.query.to ? new Date(req.query.to as string) : undefined;
-    const statement = await generateCommissionStatement(org.id, agentId, from, to);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (Number.isNaN(agentId)) return Errors.badRequest(res, "Invalid agent ID");
+    // TODO(tsc): the service computes statements per calendar year, not an
+    // arbitrary from/to range; honoring `from` for the year selection only.
+    const year = req.query.from
+      ? new Date(req.query.from as string).getFullYear()
+      : new Date().getFullYear();
+    const summaries = await getAgentCommissionSummaries(org.id, year);
+    const summary = summaries.find((s) => s.teamMemberId === agentId);
+    if (!summary) return Errors.notFound(res, "Agent commission summary");
+    const statement = generateCommissionStatement(summary, org.name, year);
     res.json({ statement });
   } catch (err) {
     Errors.internal(res, err);

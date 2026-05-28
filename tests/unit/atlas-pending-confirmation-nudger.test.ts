@@ -71,12 +71,15 @@ describe("atlasPendingConfirmationNudger", () => {
     expect(pushed).toBe(2);
     expect(sendPushSpy).toHaveBeenCalledTimes(2);
 
+    // sendPushToUser(organizationId, userId, payload) — the nudger passes the
+    // platform org (0) as organizationId; userId is the second arg, payload third.
     const firstCall = sendPushSpy.mock.calls[0];
-    expect(firstCall[0]).toBe("u_test_1");
-    expect(firstCall[1].title).toMatch(/approval/i);
-    expect(firstCall[1].body).toContain("approve_trigger");
-    expect(firstCall[1].url).toContain("confirm=abc123");
-    expect(firstCall[1].tag).toBe("atlas-confirm-abc123");
+    expect(firstCall[0]).toBe(0);
+    expect(firstCall[1]).toBe("u_test_1");
+    expect(firstCall[2].title).toMatch(/approval/i);
+    expect(firstCall[2].body).toContain("approve_trigger");
+    expect(firstCall[2].url).toContain("confirm=abc123");
+    expect(firstCall[2].tag).toBe("atlas-confirm-abc123");
 
     // Should have stamped pushedAt — once per row.
     expect(dbUpdateSpy).toHaveBeenCalledTimes(2);

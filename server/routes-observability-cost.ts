@@ -203,7 +203,7 @@ export function registerObservabilityCostRoutes(app: Express): void {
               live = totals;
             }
           } catch (err) {
-            logger.warn({ err }, "[observability-cost] Sentry stats API failed; using projection only");
+            logger.warn("[observability-cost] Sentry stats API failed; using projection only", err);
           }
         }
 

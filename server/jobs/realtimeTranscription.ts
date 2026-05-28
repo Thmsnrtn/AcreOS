@@ -139,10 +139,10 @@ async function processTranscriptionJob(job: Job): Promise<void> {
   const jobRecord = await db
     .insert(backgroundJobs)
     .values({
-      jobType: "realtime_transcription",
+      type: "realtime_transcription",
       status: "running",
-      startedAt,
-      metadata: { bullmqJobId: job.id, recordingId },
+      scheduledFor: startedAt,
+      payload: { bullmqJobId: job.id, recordingId },
     })
     .returning({ id: backgroundJobs.id });
 
@@ -235,7 +235,7 @@ async function processTranscriptionJob(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          finishedAt,
+          completedAt: finishedAt,
           result: {
             recordingId,
             voiceCallId: recording.voiceCallId,
@@ -260,7 +260,7 @@ async function processTranscriptionJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
+        .set({ status: "failed", completedAt: new Date(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
 

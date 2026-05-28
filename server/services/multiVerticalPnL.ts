@@ -70,21 +70,23 @@ export async function aggregateMultiVerticalPnL(orgId: number): Promise<MultiVer
 
   const verticals: VerticalPnL[] = [];
 
-  // Land vertical (always-on per current product shape) — revenue from
-  // deals.cashOffer (acquisitions are NEGATIVE) + deals.assignmentFee
-  // (wholesale revenue is POSITIVE).
+  // Land vertical (always-on per current product shape).
+  // TODO(tsc): deals has no assignmentFee or cashOffer columns (cashOffer
+  // lives on the `offers` table; there is no assignmentFee column anywhere).
+  // The accepted deal amount is the closest available figure: dispositions
+  // are revenue, acquisitions are cost.
   try {
     const [landAgg] = await db
       .select({
-        rev: sql<string>`COALESCE(SUM(CASE WHEN ${deals.assignmentFee} IS NOT NULL THEN ${deals.assignmentFee}::numeric * 100 ELSE 0 END), 0)`,
-        cost: sql<string>`COALESCE(SUM(CASE WHEN ${deals.cashOffer} IS NOT NULL THEN ${deals.cashOffer}::numeric * 100 ELSE 0 END), 0)`,
+        rev: sql<string>`COALESCE(SUM(CASE WHEN ${deals.type} = 'disposition' AND ${deals.acceptedAmount} IS NOT NULL THEN ${deals.acceptedAmount}::numeric * 100 ELSE 0 END), 0)`,
+        cost: sql<string>`COALESCE(SUM(CASE WHEN ${deals.type} = 'acquisition' AND ${deals.acceptedAmount} IS NOT NULL THEN ${deals.acceptedAmount}::numeric * 100 ELSE 0 END), 0)`,
       })
       .from(deals)
       .where(eq(deals.organizationId, orgId));
     const [landRecent] = await db
       .select({
-        rev: sql<string>`COALESCE(SUM(CASE WHEN ${deals.assignmentFee} IS NOT NULL THEN ${deals.assignmentFee}::numeric * 100 ELSE 0 END), 0)`,
-        cost: sql<string>`COALESCE(SUM(CASE WHEN ${deals.cashOffer} IS NOT NULL THEN ${deals.cashOffer}::numeric * 100 ELSE 0 END), 0)`,
+        rev: sql<string>`COALESCE(SUM(CASE WHEN ${deals.type} = 'disposition' AND ${deals.acceptedAmount} IS NOT NULL THEN ${deals.acceptedAmount}::numeric * 100 ELSE 0 END), 0)`,
+        cost: sql<string>`COALESCE(SUM(CASE WHEN ${deals.type} = 'acquisition' AND ${deals.acceptedAmount} IS NOT NULL THEN ${deals.acceptedAmount}::numeric * 100 ELSE 0 END), 0)`,
       })
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), gte(deals.createdAt, thirtyDaysAgo)));
@@ -105,7 +107,7 @@ export async function aggregateMultiVerticalPnL(orgId: number): Promise<MultiVer
     try {
       const [noteAgg] = await db
         .select({
-          rev: sql<string>`COALESCE(SUM(${notesTable.amountFinanced}::numeric * 100), 0)`,
+          rev: sql<string>`COALESCE(SUM(${notesTable.originalPrincipal}::numeric * 100), 0)`,
         })
         .from(notesTable)
         .where(eq(notesTable.organizationId, orgId));
@@ -135,7 +137,7 @@ export async function aggregateMultiVerticalPnL(orgId: number): Promise<MultiVer
         })
         .from(rentPayments)
         .innerJoin(rentalLeases, eq(rentalLeases.id, rentPayments.leaseId))
-        .where(and(eq(rentalLeases.organizationId, orgId), gte(rentPayments.paidAt, thirtyDaysAgo)));
+        .where(and(eq(rentalLeases.organizationId, orgId), gte(rentPayments.receivedAt, thirtyDaysAgo.toISOString().slice(0, 10))));
       verticals.push({
         vertical: "buy_and_hold",
         revenueCents: Math.round(Number(bhAgg?.rev ?? 0)),

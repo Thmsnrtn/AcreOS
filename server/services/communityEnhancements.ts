@@ -76,8 +76,8 @@ export function getChangelog(): Array<{ week: string; entries: Array<{ title: st
 
 // Item 294: Public roadmap
 export async function getPublicRoadmap(): Promise<Array<{ title: string; description: string; votes: number; status: string }>> {
-  const requests = await db.select().from(featureRequests).orderBy(desc(sql`COALESCE(${featureRequests.votes}, 0)`)).limit(20);
-  return requests.map(r => ({ title: r.title || "", description: r.description || "", votes: Number(r.votes || 0), status: r.status || "planned" }));
+  const requests = await db.select().from(featureRequests).orderBy(desc(sql`COALESCE(${featureRequests.upvotes}, 0)`)).limit(20);
+  return requests.map(r => ({ title: r.title || "", description: r.description || "", votes: Number(r.upvotes || 0), status: r.status || "planned" }));
 }
 
 // Item 291: Page feedback
@@ -88,8 +88,17 @@ export async function submitPageFeedback(orgId: number, page: string, helpful: b
 
 // Item 298: Case study data
 export async function gatherCaseStudyData(dealId: number, orgId: number) {
-  const { deals } = await import("@shared/schema");
+  const { deals, properties } = await import("@shared/schema");
   const deal = await db.query.deals.findFirst({ where: and(eq(deals.id, dealId), eq(deals.organizationId, orgId)) });
   if (!deal) return null;
-  return { county: deal.county, state: deal.state, acreage: deal.acreage, strategy: deal.status === "closed_won" ? "successful acquisition" : "in progress" };
+  // deals carries no location/acreage columns; those live on the linked property.
+  const property = deal.propertyId
+    ? await db.query.properties.findFirst({ where: eq(properties.id, deal.propertyId) })
+    : null;
+  return {
+    county: property?.county ?? null,
+    state: property?.state ?? null,
+    acreage: property?.sizeAcres ?? null,
+    strategy: deal.status === "closed_won" ? "successful acquisition" : "in progress",
+  };
 }

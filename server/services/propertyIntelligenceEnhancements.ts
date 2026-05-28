@@ -47,7 +47,7 @@ export async function getPropertyTimeline(propertyId: number): Promise<Array<{ d
   return events.map(e => ({
     date: e.createdAt?.toISOString() || "",
     event: e.action || "",
-    detail: typeof e.details === "object" ? JSON.stringify(e.details) : String(e.details || ""),
+    detail: typeof e.metadata === "object" && e.metadata !== null ? JSON.stringify(e.metadata) : String(e.metadata ?? e.description ?? ""),
   }));
 }
 

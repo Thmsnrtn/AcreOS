@@ -175,7 +175,11 @@ async function handleImageProcess(payload: Record<string, unknown>): Promise<Rec
   // aerial-images helper if that's all that's available. This keeps the
   // worker decoupled from in-flight wave restructuring.
   try {
-    const mod = (await import("./services/imageProcessing")) as Record<string, unknown>;
+    // Optional, wave-dependent module that may not exist yet — resolved through
+    // a non-literal specifier so its absence is a runtime (caught) condition
+    // rather than a compile-time module-resolution error.
+    const imageProcessingModule = "./services/imageProcessing";
+    const mod = (await import(imageProcessingModule)) as Record<string, unknown>;
     const fn = mod.processImageJob as ((p: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
     if (typeof fn === "function") {
       const result = await fn(payload);

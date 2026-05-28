@@ -388,7 +388,6 @@ export class EmailService {
         error: `Invalid email address(es): ${invalidAddresses.join(', ')}`,
         errorType: 'recipient_rejected',
         attempts: 0,
-        durationMs: Date.now() - startTime,
       };
     }
 

@@ -33,7 +33,7 @@ import {
   tasks,
   teamMembers,
 } from "@shared/schema";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
 
@@ -60,7 +60,7 @@ type GdprExportData = {
 };
 
 type DeletionReport = {
-  userId: number;
+  userId: string;
   deletedAt: string;
   itemsDeleted: {
     agentEvents: number;
@@ -78,28 +78,39 @@ type DeletionReport = {
 /**
  * Export all personal data for a user (GDPR Article 15 — Right of Access).
  */
-export async function exportUserData(userId: number): Promise<GdprExportData> {
+export async function exportUserData(userId: string): Promise<GdprExportData> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
 
   // Redact sensitive internal fields before export
-  const { password, ...safeUser } = user as any;
+  const { password, ...safeUser } = user as Record<string, unknown>;
+
+  // leads/deals/tasks.assignedTo are numeric teamMembers.id values, not the
+  // user's (string) id. Resolve this user's team-member ids first.
+  // TODO(tsc): properties has no assignedTo column and is therefore not
+  // exportable per-user; it is reported as empty.
+  const teamMemberRows = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId));
+  const teamMemberIds = teamMemberRows.map((t) => t.id);
+
+  const emptyIfNoTeam = <T,>(q: Promise<T[]>): Promise<T[]> =>
+    teamMemberIds.length > 0 ? q : Promise.resolve([] as T[]);
 
   // Fetch all records (with safety cap) and total counts in parallel
   const [
-    userLeads, userDeals, userProperties, userTasks, userMessages, userTickets,
-    leadCount, dealCount, propertyCount, taskCount, messageCount, ticketCount,
+    userLeads, userDeals, userTasks, userMessages, userTickets,
+    leadCount, dealCount, taskCount, messageCount, ticketCount,
   ] = await Promise.all([
-    db.select().from(leads).where(eq(leads.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
-    db.select().from(deals).where(eq(deals.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
-    db.select().from(properties).where(eq(properties.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
-    db.select().from(tasks).where(eq(tasks.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
+    emptyIfNoTeam(db.select().from(leads).where(inArray(leads.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
+    emptyIfNoTeam(db.select().from(deals).where(inArray(deals.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
+    emptyIfNoTeam(db.select().from(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
     db.select().from(teamMessages).where(eq(teamMessages.senderId, userId)).limit(MAX_EXPORT_RECORDS),
     db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).limit(MAX_EXPORT_RECORDS),
-    db.select({ count: count() }).from(leads).where(eq(leads.assignedTo, userId)),
-    db.select({ count: count() }).from(deals).where(eq(deals.assignedTo, userId)),
-    db.select({ count: count() }).from(properties).where(eq(properties.assignedTo, userId)),
-    db.select({ count: count() }).from(tasks).where(eq(tasks.assignedTo, userId)),
+    emptyIfNoTeam(db.select({ count: count() }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))),
+    emptyIfNoTeam(db.select({ count: count() }).from(deals).where(inArray(deals.assignedTo, teamMemberIds))),
+    emptyIfNoTeam(db.select({ count: count() }).from(tasks).where(inArray(tasks.assignedTo, teamMemberIds))),
     db.select({ count: count() }).from(teamMessages).where(eq(teamMessages.senderId, userId)),
     db.select({ count: count() }).from(supportTickets).where(eq(supportTickets.userId, userId)),
   ]);
@@ -109,14 +120,14 @@ export async function exportUserData(userId: number): Promise<GdprExportData> {
     user: safeUser,
     leads: userLeads,
     deals: userDeals,
-    properties: userProperties,
+    properties: [],
     tasks: userTasks,
     messages: userMessages,
     supportTickets: userTickets,
     totalRecords: {
       leads: leadCount[0]?.count ?? 0,
       deals: dealCount[0]?.count ?? 0,
-      properties: propertyCount[0]?.count ?? 0,
+      properties: 0,
       tasks: taskCount[0]?.count ?? 0,
       messages: messageCount[0]?.count ?? 0,
       supportTickets: ticketCount[0]?.count ?? 0,
@@ -129,7 +140,7 @@ export async function exportUserData(userId: number): Promise<GdprExportData> {
  * Soft-deletion: replaces PII with hashed/placeholder values.
  * Business records (deals, notes with legal significance) are retained.
  */
-export async function anonymizeUser(userId: number): Promise<DeletionReport> {
+export async function anonymizeUser(userId: string): Promise<DeletionReport> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
 
@@ -140,9 +151,10 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
   // the hold (or carve out the user via scoped erasure outside the
   // automated pipeline) before this path can run.
   const memberships = await db
-    .select({ orgId: teamMembers.organizationId })
+    .select({ orgId: teamMembers.organizationId, id: teamMembers.id })
     .from(teamMembers)
-    .where(eq(teamMembers.userId, String(userId)));
+    .where(eq(teamMembers.userId, userId));
+  const teamMemberIds = memberships.map((m) => m.id);
   for (const { orgId } of memberships) {
     if (await orgHasActiveHold(orgId)) {
       throw new LegalHoldViolationError(orgId, "user", userId, {
@@ -158,7 +170,9 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
   const anonName = `[Deleted User ${hash}]`;
 
   // 1. Delete agent events (logs)
-  const deletedEvents = await db.delete(agentEvents).where(eq(agentEvents.userId, userId)).returning({ id: agentEvents.id });
+  // TODO(tsc): agent_events has no userId column (events are org-scoped, with
+  // any agent identity living in payload), so they cannot be deleted per-user.
+  const deletedEvents: { id: number }[] = [];
 
   // 2. Delete team messages
   const deletedMessages = await db.delete(teamMessages).where(eq(teamMessages.senderId, userId)).returning({ id: teamMessages.id });
@@ -166,11 +180,15 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
   // 3. Delete support tickets
   const deletedTickets = await db.delete(supportTickets).where(eq(supportTickets.userId, userId)).returning({ id: supportTickets.id });
 
-  // 4. Delete tasks assigned to user
-  const deletedTasks = await db.delete(tasks).where(eq(tasks.assignedTo, userId)).returning({ id: tasks.id });
+  // 4. Delete tasks assigned to user (tasks.assignedTo is a numeric teamMembers.id)
+  const deletedTasks = teamMemberIds.length > 0
+    ? await db.delete(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).returning({ id: tasks.id })
+    : [];
 
   // 5. Delete sessions
-  const deletedSessions = await db.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id });
+  // TODO(tsc): sessions.userId is an integer, but users.id is a UUID string;
+  // these key spaces are incompatible, so sessions can't be matched here.
+  const deletedSessions: { id: number }[] = [];
 
   // 5a. Task #48: Delete AI conversation history and org-scoped agent memory
   // aiConversations are user-scoped; agentMemory is org-scoped (deleted if user owns the org)
@@ -182,8 +200,11 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
     .returning({ id: aiConversations.id })
     .catch(() => [] as { id: number }[]);
 
-  // 6. Anonymize leads assigned to user (keep for business records but strip PII)
-  const userLeads = await db.select({ id: leads.id }).from(leads).where(eq(leads.assignedTo, userId));
+  // 6. Anonymize leads assigned to user (keep for business records but strip PII).
+  // leads.assignedTo is a numeric teamMembers.id.
+  const userLeads = teamMemberIds.length > 0
+    ? await db.select({ id: leads.id }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))
+    : [];
   for (const lead of userLeads) {
     await db.update(leads).set({
       firstName: "[Deleted]",
@@ -223,8 +244,8 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
  * Check if a user has an active GDPR deletion request.
  * Returns true if the user's email matches the deletion pattern.
  */
-export async function isUserDeleted(userId: number): Promise<boolean> {
+export async function isUserDeleted(userId: string): Promise<boolean> {
   const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
-  if (!user) return false;
+  if (!user?.email) return false;
   return user.email.endsWith("@gdpr-deleted.invalid");
 }

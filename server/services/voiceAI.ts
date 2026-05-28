@@ -23,16 +23,19 @@ class VoiceAI {
     propertyId?: number
   ): Promise<string> {
     try {
+      // voiceCalls stores fromNumber/toNumber (not a single phoneNumber),
+      // callStatus (not status), durationSeconds (not duration); there is no
+      // intent column. agentType is notNull.
       const [call] = await db.insert(voiceCalls).values({
         organizationId,
-        phoneNumber,
+        fromNumber: direction === 'inbound' ? phoneNumber : null,
+        toNumber: direction === 'outbound' ? phoneNumber : null,
         direction,
         leadId: leadId || null,
         propertyId: propertyId || null,
-        status: 'initiated',
-        duration: 0,
-        sentiment: null,
-        intent: null,
+        callStatus: 'initiated',
+        durationSeconds: 0,
+        agentType: 'pax',
       }).returning();
 
       // In production, would initialize Twilio call here
@@ -102,12 +105,20 @@ class VoiceAI {
 
       const transcriptText = transcription.text;
 
+      // call_transcripts requires organizationId + leadId (notNull) and stores
+      // the text under transcriptRaw; callId is an external text id.
+      if (!call.leadId) {
+        throw new Error('Cannot store transcript: call has no associated lead');
+      }
       const [transcript] = await db.insert(callTranscripts).values({
-        callId,
-        fullTranscript: transcriptText,
-        segments: [],
-        language: 'en',
-        confidence: 0.95,
+        organizationId: call.organizationId,
+        leadId: call.leadId,
+        callId: callId.toString(),
+        direction: call.direction,
+        callType: 'follow_up',
+        transcriptRaw: transcriptText,
+        transcriptionProvider: 'whisper',
+        transcriptionConfidence: '0.95',
       }).returning();
 
       return transcript.id.toString();
@@ -215,7 +226,7 @@ Format:
   ): Promise<string> {
     try {
       const transcript = await db.query.callTranscripts.findFirst({
-        where: eq(callTranscripts.callId, callId),
+        where: eq(callTranscripts.callId, callId.toString()),
       });
 
       if (!transcript) {
@@ -225,7 +236,7 @@ Format:
       const prompt = `Summarize this phone call transcript in 2-3 concise sentences, focusing on key points and action items.
 
 Transcript:
-${transcript.fullTranscript}`;
+${transcript.transcriptRaw ?? ""}`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4o',
@@ -249,13 +260,13 @@ ${transcript.fullTranscript}`;
     recordingUrl?: string
   ): Promise<void> {
     try {
-      // Update call status
+      // Update call status. voiceCalls uses callStatus/durationSeconds; it has
+      // no endedAt column.
       await db.update(voiceCalls)
         .set({
-          status: 'completed',
-          duration,
+          callStatus: 'completed',
+          durationSeconds: duration,
           recordingUrl: recordingUrl || null,
-          endedAt: new Date(),
         })
         .where(eq(voiceCalls.id, callId));
 
@@ -265,27 +276,36 @@ ${transcript.fullTranscript}`;
 
         // Get transcript and analyze
         const transcript = await db.query.callTranscripts.findFirst({
-          where: eq(callTranscripts.callId, callId),
+          where: eq(callTranscripts.callId, callId.toString()),
         });
 
         if (transcript) {
           // Analyze intent
-          const intent = await this.analyzeIntent(callId, transcript.fullTranscript);
+          const intent = await this.analyzeIntent(callId, transcript.transcriptRaw ?? "");
 
           // Analyze sentiment
-          const sentiment = await this.analyzeSentiment(transcript.fullTranscript);
+          const sentiment = await this.analyzeSentiment(transcript.transcriptRaw ?? "");
 
           // Generate summary
           const summary = await this.generateCallSummary(callId);
 
-          // Update call with analysis
+          // voiceCalls only stores a numeric sentimentScore; the sentiment
+          // label, summary, and intent are persisted on the transcript record
+          // (intent has no dedicated column, so it is omitted from storage).
+          void intent;
           await db.update(voiceCalls)
             .set({
-              sentiment: sentiment.label,
-              intent: intent.type,
-              summary,
+              sentimentScore: sentiment.score.toString(),
             })
             .where(eq(voiceCalls.id, callId));
+
+          await db.update(callTranscripts)
+            .set({
+              sentiment: sentiment.label,
+              sentimentScore: sentiment.score.toString(),
+              summary,
+            })
+            .where(eq(callTranscripts.id, transcript.id));
 
           // Auto-sync insights back to the associated lead
           await this.updateLeadFromCall(callId);
@@ -330,7 +350,7 @@ ${transcript.fullTranscript}`;
       }
 
       const transcript = await db.query.callTranscripts.findFirst({
-        where: eq(callTranscripts.callId, callId),
+        where: eq(callTranscripts.callId, callId.toString()),
       });
 
       return {
@@ -381,10 +401,11 @@ ${transcript.fullTranscript}`;
       const totalCalls = calls.length;
 
       const avgDuration = calls.length > 0
-        ? calls.reduce((sum, c) => sum + (c.duration || 0), 0) / calls.length
+        ? calls.reduce((sum, c) => sum + (c.durationSeconds || 0), 0) / calls.length
         : 0;
 
-      // Sentiment breakdown
+      // Sentiment breakdown — derived from the numeric sentimentScore (-1..1),
+      // since voiceCalls has no sentiment label column.
       const sentimentBreakdown: Record<string, number> = {
         positive: 0,
         neutral: 0,
@@ -392,18 +413,15 @@ ${transcript.fullTranscript}`;
       };
 
       for (const call of calls) {
-        if (call.sentiment) {
-          sentimentBreakdown[call.sentiment]++;
+        if (call.sentimentScore != null) {
+          const score = Number(call.sentimentScore);
+          const label = score > 0.2 ? 'positive' : score < -0.2 ? 'negative' : 'neutral';
+          sentimentBreakdown[label]++;
         }
       }
 
-      // Intent breakdown
+      // Intent breakdown — voiceCalls has no intent column, so this stays empty.
       const intentBreakdown: Record<string, number> = {};
-      for (const call of calls) {
-        if (call.intent) {
-          intentBreakdown[call.intent] = (intentBreakdown[call.intent] || 0) + 1;
-        }
-      }
 
       // Direction breakdown
       const inbound = calls.filter(c => c.direction === 'inbound').length;
@@ -441,7 +459,7 @@ ${transcript.fullTranscript}`;
       if (!call?.leadId) return;
 
       const transcript = await db.query.callTranscripts?.findFirst({
-        where: eq(callTranscripts.callId, callId),
+        where: eq(callTranscripts.callId, callId.toString()),
       });
       if (!transcript) return;
 
@@ -450,11 +468,12 @@ ${transcript.fullTranscript}`;
 
       // Build a note summarising the call for the lead record
       const callDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      // Summary/sentiment live on the transcript record (voiceCalls has no such
+      // columns); intent is not persisted anywhere in the schema.
       const noteContent = [
         `📞 Call on ${callDate}`,
-        call.summary ? `Summary: ${call.summary}` : null,
-        call.sentiment ? `Sentiment: ${call.sentiment}` : null,
-        call.intent ? `Intent: ${call.intent}` : null,
+        transcript.summary ? `Summary: ${transcript.summary}` : null,
+        transcript.sentiment ? `Sentiment: ${transcript.sentiment}` : null,
         actionItems.length ? `Action items:\n${actionItems.map((a: string) => `  • ${a}`).join('\n')}` : null,
       ]
         .filter(Boolean)
@@ -466,8 +485,8 @@ ${transcript.fullTranscript}`;
         .set({
           lastContactedAt: new Date(),
           notes: sql`COALESCE(${leads.notes}, '') || ${'\n\n' + noteContent}`,
-          // Bump engagement if call had positive sentiment
-          ...(call.sentiment === 'positive' ? { leadScore: sql`LEAST(100, COALESCE(${leads.leadScore}, 50) + 10)` } : {}),
+          // Bump engagement if call had positive sentiment (leads.score).
+          ...(transcript.sentiment === 'positive' ? { score: sql`LEAST(100, COALESCE(${leads.score}, 50) + 10)` } : {}),
           updatedAt: new Date(),
         })
         .where(eq(leads.id, call.leadId));
@@ -492,7 +511,7 @@ ${transcript.fullTranscript}`;
   async extractActionItems(callId: number): Promise<string[]> {
     try {
       const transcript = await db.query.callTranscripts.findFirst({
-        where: eq(callTranscripts.callId, callId),
+        where: eq(callTranscripts.callId, callId.toString()),
       });
 
       if (!transcript) {
@@ -502,7 +521,7 @@ ${transcript.fullTranscript}`;
       const prompt = `Extract action items from this call transcript. Return as a JSON array of strings.
 
 Transcript:
-${transcript.fullTranscript}
+${transcript.transcriptRaw ?? ""}
 
 Format: ["Action item 1", "Action item 2", ...]`;
 

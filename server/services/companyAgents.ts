@@ -446,7 +446,7 @@ Respond in JSON format:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
       });
 
       const parsed = JSON.parse(aiResponse.content);

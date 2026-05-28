@@ -271,7 +271,8 @@ export async function calibrateRadar(orgId?: number): Promise<RadarCalibration> 
   // Get opportunity scores and match against deal outcomes
   const scores = await db.select({
     propertyId: opportunityScores.propertyId,
-    totalScore: opportunityScores.totalScore,
+    // opportunity_scores exposes `score`, not totalScore.
+    totalScore: opportunityScores.score,
   }).from(opportunityScores)
     .where(gte(opportunityScores.createdAt, ninetyDaysAgo))
     .limit(500);

@@ -141,7 +141,7 @@ class AlertPolicyService {
         const { smsService } = await import("./smsService");
         await smsService.sendSMS({
           to: this.config.founderPhone,
-          body: `[AcreOS P0] ${alert.title}: ${alert.message.substring(0, 120)}`,
+          message: `[AcreOS P0] ${alert.title}: ${alert.message.substring(0, 120)}`,
         });
       } catch (err) {
         logger.error("[AlertPolicy] Failed to send P0 SMS", err);

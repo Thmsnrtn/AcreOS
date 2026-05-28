@@ -35,7 +35,8 @@ router.get('/alerts', async (req: Request, res: Response) => {
 // GET /properties/:id/alerts — compliance alerts for a specific property
 router.get('/properties/:id/alerts', async (req: Request, res: Response) => {
   try {
-    const alerts = await complianceAI.getAlertsForProperty(parseInt(req.params.id));
+    const org = req.organization;
+    const alerts = await complianceAI.getAlertsForProperty(org.id, parseInt(req.params.id));
     res.json({ alerts });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -57,7 +58,9 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const alertId = parseInt(req.params.id);
-    await complianceAI.acknowledgeAlert(alertId);
+    // acknowledgeAlert(organizationId, alertId, userId) — all align with the
+    // service: org id (number), alert id (string), user id (string).
+    await complianceAI.acknowledgeAlert(org.id, req.params.id, req.user.id);
 
     try {
       const user = req.user;
@@ -114,7 +117,7 @@ router.post('/disclosures', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { propertyId, disclosureType } = req.body;
-    const disclosure = await complianceAI.generateDisclosure(org.id, parseInt(propertyId), disclosureType);
+    const disclosure = await complianceAI.generateDisclosure(parseInt(propertyId), disclosureType);
 
     try {
       const user = req.user;
@@ -142,7 +145,7 @@ router.post('/monitor', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { state, county } = req.body;
-    await complianceAI.monitorJurisdiction(org.id, state, county);
+    await complianceAI.monitorJurisdiction(state, county);
 
     try {
       const user = req.user;
@@ -237,13 +240,10 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
           .orderBy(desc(auditEvents.createdAt))
       : [];
 
-    const leadEvents = deal.leadId
-      ? await db
-          .select()
-          .from(auditEvents)
-          .where(and(eq(auditEvents.targetType, 'lead'), eq(auditEvents.targetId, String(deal.leadId))))
-          .orderBy(desc(auditEvents.createdAt))
-      : [];
+    // TODO(tsc): deals has no leadId column, so deal-linked lead audit events
+    // cannot be resolved here. Preserves prior runtime behavior (deal.leadId
+    // was always undefined → empty result). Needs a deals.leadId schema link.
+    const leadEvents: typeof dealEvents = [];
 
     const allEvents = [...dealEvents, ...propertyEvents, ...leadEvents].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),

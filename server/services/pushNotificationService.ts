@@ -45,7 +45,11 @@ let vapidConfigured = false;
 async function getWebPush(): Promise<any> {
   if (webPush) return webPush;
   try {
-    webPush = await import("web-push");
+    // TODO(tsc): `web-push` is an optional runtime dependency not present in the build's
+    // type graph. Use an indirected specifier so tsc doesn't statically require it; the
+    // try/catch already degrades gracefully when the package is absent.
+    const webPushModule = "web-push";
+    webPush = await import(webPushModule);
     const subject = process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || "noreply@acreos.com"}`;
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;

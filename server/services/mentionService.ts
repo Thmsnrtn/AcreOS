@@ -47,7 +47,7 @@ export function extractMentionHandles(body: string): string[] {
 async function resolveMentions(
   organizationId: number,
   handles: string[]
-): Promise<Array<{ id: number; userId: string; displayName: string; email: string }>> {
+): Promise<Array<{ id: number; userId: string; displayName: string | null; email: string | null }>> {
   if (handles.length === 0) return [];
 
   const members = await db

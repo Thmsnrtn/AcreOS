@@ -115,8 +115,8 @@ export interface AutomationTemplate {
   category: string;
   targetDomain: string | null;
   steps: AutomationStep[];
-  inputSchema: { name: string; type: string; required: boolean; description: string }[];
-  outputSchema: { name: string; type: string; description: string }[];
+  inputSchema: { name: string; type: "string" | "number" | "boolean"; required: boolean; description: string }[];
+  outputSchema: { name: string; type: "string" | "number" | "boolean" | "array" | "object"; description: string }[];
   requiresAuth: boolean | null;
   estimatedDurationMs: number | null;
   isPublic: boolean | null;

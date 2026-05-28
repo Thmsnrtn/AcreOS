@@ -211,15 +211,16 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         return Errors.badRequest(res, "toAgent and task required");
       }
 
-      // Create delegation message
+      // Create delegation message. agent_messages columns: fromAgent,
+      // toChannel, subject, body, priority, data — there is no toAgent/content/
+      // messageType/isRead column.
       const [message] = await db.insert(agentMessages).values({
         fromAgent: fromAgent ?? "founder",
-        toAgent,
+        toChannel: toAgent,
         subject: `Delegated: ${task}`,
-        content: JSON.stringify({ task, context: context ?? {} }),
-        messageType: "delegation",
+        body: JSON.stringify({ task, context: context ?? {} }),
+        data: { messageType: "delegation" },
         priority: "high",
-        isRead: false,
       }).returning();
 
       // Also log as event — agent_events requires organizationId + eventSource.
@@ -281,12 +282,11 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       for (const agent of participants) {
         await db.insert(agentMessages).values({
           fromAgent: "system",
-          toAgent: agent,
+          toChannel: agent,
           subject: `Vote requested: ${topic}`,
-          content: JSON.stringify({ consensusId: event.id, topic, options }),
-          messageType: "consensus_request",
+          body: JSON.stringify({ consensusId: event.id, topic, options }),
+          data: { messageType: "consensus_request" },
           priority: "high",
-          isRead: false,
         });
       }
 

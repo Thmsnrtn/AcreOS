@@ -59,7 +59,7 @@ function computeCentroidFromBoundary(boundary: { type: string; coordinates: numb
 }
 
 // Client-side form schema with enhanced validation
-const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).extend({
+const propertyFormSchema = insertPropertySchema.extend({
   apn: z.string()
     .min(1, "APN (Assessor Parcel Number) is required")
     .refine(
@@ -1207,8 +1207,8 @@ function PropertyForm({
   const isLandType = !businessType || LAND_INVESTOR_TYPES.includes(businessType);
   const [showLandDetails, setShowLandDetails] = useState(isLandType);
 
-  const form = useForm<z.infer<typeof propertyFormSchema>>({
-    resolver: zodResolver(propertyFormSchema) as any,
+  const form = useForm<z.input<typeof propertyFormSchema>, unknown, z.output<typeof propertyFormSchema>>({
+    resolver: zodResolver(propertyFormSchema),
     defaultValues: {
       apn: isLandType ? "" : "N/A",
       sizeAcres: "",

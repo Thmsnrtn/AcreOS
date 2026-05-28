@@ -123,13 +123,10 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Aut
     // Analyze all 4 images in parallel via Vision AI
     const analysisPromises = images.map(async (base64Image: string, i: number) => {
       try {
-        const { default: VisualIntelligenceModule } = await import("./services/visionAI");
-        const vi = new VisualIntelligenceModule();
-        // Each service has different APIs — try available methods
-        if (typeof vi.analyzeBase64 === "function") {
-          return await vi.analyzeBase64(base64Image);
-        }
-        // Fallback: create a data URL and use existing analyzePhoto
+        // visionAI is exported as a singleton; it exposes analyzePhoto(orgId,
+        // photoId, url) but no base64 entrypoint. TODO(tsc): add a base64 vision
+        // analysis method; for now this records no landscape detail.
+        void base64Image;
         return { landscapeType: "unknown", detectedFeatures: [] };
       } catch {
         return null;
@@ -142,16 +139,15 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Aut
     // Extract structured observations
     const observations = extractObservationsFromAnalysis(analyses);
 
-    // Store as fieldScanData on the property
-    await db
-      .update(properties)
-      .set({ fieldScanData: observations as any, updatedAt: new Date() })
-      .where(eq(properties.id, propertyId));
+    // TODO(tsc): the properties table has no fieldScanData column, so scan
+    // observations are returned to the caller but not persisted. A
+    // properties.fieldScanData (jsonb) column is needed to store them.
 
-    // Recalculate LCS with field data (non-blocking)
-    import("./services/landCredit").then(({ LandCreditScoring }) => {
-      const lcs = new LandCreditScoring();
-      lcs.calculateCreditScore(propertyId, org.id).catch(() => {});
+    // Recalculate LCS with field data (non-blocking). landCredit is exported
+    // as a singleton; calculateCreditScore(organizationId, propertyId).
+    import("./services/landCredit").then(({ landCredit }) => {
+      // calculateCreditScore takes string ids (it coerces with Number()).
+      landCredit.calculateCreditScore(String(org.id), String(propertyId)).catch(() => {});
     }).catch(() => {});
 
     res.json({ observations, analyzed: analyses.filter(Boolean).length });
@@ -189,17 +185,12 @@ router.post("/:id/voice-memo", isAuthenticated, getOrCreateOrg, async (req: Auth
       // Whisper unavailable — store with pending transcription
     }
 
-    // Store as property note
-    const { propertyNotes } = await import("@shared/schema");
-    await db.insert(propertyNotes).values({
-      organizationId: org.id,
-      propertyId,
-      content: `[Voice Memo - ${direction || "field"}] ${transcript}`,
-      type: "voice_memo",
-      createdAt: new Date(),
-    });
-
-    res.json({ transcript, stored: true });
+    // TODO(tsc): there is no property_notes table (content/type/propertyId) to
+    // persist the voice memo. Transcription is returned but not stored until a
+    // freeform property-notes table is added. (Previously crashed at runtime —
+    // db.insert on an undefined table.)
+    void org;
+    res.json({ transcript, stored: false });
   } catch (err) {
     logger.error("voice memo failed", err instanceof Error ? err : undefined);
     res.status(500).json({ error: "voice memo failed" });

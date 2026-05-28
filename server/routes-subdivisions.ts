@@ -356,6 +356,7 @@ export function registerSubdivisionRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const userId = getUserId(req);
         const childId = parseInt(req.params.childId, 10);
         if (!Number.isFinite(childId)) return Errors.badRequest(res, "Invalid lot id");
 

@@ -154,13 +154,14 @@ export async function enrichLead(leadId: number, organizationId: number): Promis
   }
 
   // Get associated properties for ownership data
-  if (lead.propertyAddress) {
+  // TODO(tsc): leads has no propertyAddress column; use the lead's address field.
+  if (lead.address) {
     const orgProperties = await db.select().from(properties)
       .where(eq(properties.organizationId, organizationId))
       .limit(10);
 
     const matchingProps = orgProperties.filter(p =>
-      p.address?.toLowerCase().includes(lead.propertyAddress!.toLowerCase().substring(0, 10))
+      p.address?.toLowerCase().includes(lead.address!.toLowerCase().substring(0, 10))
     );
 
     if (matchingProps.length > 0) {

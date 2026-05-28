@@ -57,7 +57,7 @@ Extract patterns. Respond in JSON:
 Look for: sentence length preference, formality level, specific vocabulary, priorities mentioned, decision speed, level of detail expected.`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         maxTokens: 200,
         temperature: 0.2,
       });

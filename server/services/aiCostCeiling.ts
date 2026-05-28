@@ -69,7 +69,7 @@ async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number
   const since = new Date(Date.now() - sinceMs);
   const [row] = await db
     .select({
-      sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.costCents}), 0)`,
+      sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
     })
     .from(aiTelemetryEvents)
     .where(and(

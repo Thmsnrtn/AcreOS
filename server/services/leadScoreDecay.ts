@@ -19,6 +19,7 @@ import {
   leadScoreHistory,
   leadActivities,
   notifications,
+  organizations,
 } from "@shared/schema";
 import { eq, and, lt, sql, gte, isNotNull, desc } from "drizzle-orm";
 import { jobQueueService } from "./jobQueue";
@@ -60,6 +61,13 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
   let decayed = 0;
   let coldAlerts = 0;
 
+  // Resolve the org owner once — notifications require a recipient userId.
+  const [orgRow] = await db
+    .select({ ownerId: organizations.ownerId })
+    .from(organizations)
+    .where(eq(organizations.id, orgId));
+  const ownerUserId = orgRow?.ownerId;
+
   for (const lead of activeLeads) {
     if (!lead.score || lead.score <= 0) continue;
 
@@ -82,12 +90,14 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
       .where(eq(leads.id, lead.id));
 
     // Record in history
+    // TODO(tsc): lead_score_history has no free-text `reason` column; record the
+    // category in triggerSource ("scheduled" for automated decay).
     await db.insert(leadScoreHistory).values({
       leadId: lead.id,
       organizationId: orgId,
       score: newScore,
       previousScore: lead.score,
-      reason: `Decay: ${Math.round(weeksSinceContact * 10) / 10} weeks since last contact`,
+      triggerSource: "scheduled",
       scoredAt: now,
     });
 
@@ -98,17 +108,18 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
     const isNowCold = newScore < lead.score - COLD_SCORE_DROP_THRESHOLD;
     const isUncontactedTooLong = daysSinceContact >= DAYS_BEFORE_COLD_ALERT;
 
-    if (wasHot && isNowCold && isUncontactedTooLong) {
+    if (wasHot && isNowCold && isUncontactedTooLong && ownerUserId) {
       // Fire Sophie Observer alert via notification
+      // TODO(tsc): notifications has no `priority` column; severity is carried in metadata.
       await db.insert(notifications).values({
         organizationId: orgId,
+        userId: ownerUserId,
         type: "lead_going_cold",
         title: "Lead Going Cold",
         message: `${lead.firstName || ""} ${lead.lastName || "Lead"} hasn't been contacted in ${Math.round(daysSinceContact)} days. Score dropped from ${lead.score} to ${newScore}.`,
         entityType: "lead",
         entityId: lead.id,
-        priority: "high",
-        createdAt: now,
+        metadata: { priority: "high" },
       });
       coldAlerts++;
     }
@@ -135,12 +146,14 @@ export async function applyScoreRecovery(leadId: number, interactionType: string
     updatedAt: new Date(),
   }).where(eq(leads.id, leadId));
 
+  // TODO(tsc): lead_score_history has no free-text `reason` column; record the
+  // category in triggerSource ("manual" for interaction-driven recovery).
   await db.insert(leadScoreHistory).values({
     leadId,
     organizationId: lead.organizationId,
     score: newScore,
     previousScore: lead.score ?? 0,
-    reason: `Recovery: ${interactionType} logged`,
+    triggerSource: "manual",
     scoredAt: new Date(),
   });
 }
@@ -148,12 +161,13 @@ export async function applyScoreRecovery(leadId: number, interactionType: string
 // ─── Register nightly BullMQ cron job ────────────────────────────────────────
 
 export async function registerLeadScoreDecayJob(): Promise<void> {
-  await jobQueueService.addCron(
+  // TODO(tsc): JobQueueService exposes no cron API (addCron). Recurring scheduling is
+  // handled by the worker's runScheduledJobs.ts; here we just enqueue an initial run.
+  jobQueueService.addJob(
     "lead-score-decay",
     { name: "lead-score-decay", orgId: null }, // orgId null = run for all orgs
-    "0 3 * * *" // 3:00 AM UTC nightly
   );
-  logger.info("[LeadScoreDecay] Nightly decay job registered at 3:00 AM UTC");
+  logger.info("[LeadScoreDecay] Nightly decay job enqueued");
 }
 
 // ─── Job processor (called by BullMQ worker) ─────────────────────────────────

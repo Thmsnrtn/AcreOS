@@ -27,12 +27,12 @@ export async function getFreedomSnapshot(orgId: number): Promise<FreedomSnapshot
   const freedomGoal = await db.query.goals.findFirst({
     where: and(
       eq(goals.organizationId, orgId),
-      eq(goals.type, "revenue_earned"),
+      eq(goals.goalType, "revenue_earned"),
     ),
     orderBy: desc(goals.createdAt),
   });
 
-  const freedomTarget = freedomGoal?.target ? Number(freedomGoal.target) : 0;
+  const freedomTarget = freedomGoal?.targetValue ? Number(freedomGoal.targetValue) : 0;
 
   // Calculate monthly passive income from note payments this month
   const now = new Date();

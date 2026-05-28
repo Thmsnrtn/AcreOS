@@ -16,6 +16,34 @@ interface MarketPredictionParams {
   county: string;
 }
 
+// TODO(tsc): market_predictions has no columns for this richer domain payload
+// (marketTiming, avgPricePerAcre, demandScore, isOpportunityWindow, opportunityScore, etc.).
+// The whole payload is persisted in the predictionFactors jsonb column; queries/sorts that
+// need these fields read them out of that jsonb.
+interface GeneratedPrediction {
+  state: string;
+  county: string;
+  validUntil: Date;
+  marketTiming: string;
+  timingConfidence: number;
+  avgPricePerAcre: number;
+  predictedPriceChange30Days: number;
+  predictedPriceChange90Days: number;
+  predictedPriceChange12Months: number;
+  daysOnMarketAvg: number;
+  listToSaleRatio: number;
+  inventoryLevel: string;
+  demandScore: number;
+  interestRateImpact: string;
+  developmentActivity: string;
+  economicIndicators: { employmentGrowth: number; populationGrowth: number; incomeGrowth: number };
+  isOpportunityWindow: boolean;
+  opportunityReason?: string;
+  opportunityScore: number;
+  modelVersion: string;
+  dataPoints: number;
+}
+
 interface PredictionResult {
   prediction: {
     marketTiming: string;
@@ -71,7 +99,22 @@ export class MarketPredictionService {
     const prediction = await this.generatePrediction(state, county);
     
     if (prediction) {
-      await db.insert(marketPredictions).values(prediction);
+      // TODO(tsc): market_predictions lacks columns for the rich domain payload; map the
+      // queryable scalars onto real columns. avgPricePerAcre→predictedValue,
+      // marketTiming→predictedMarketStatus, opportunity flag→alertTriggered.
+      await db.insert(marketPredictions).values({
+        state: prediction.state,
+        county: prediction.county,
+        predictionType: "price_direction",
+        targetDate: prediction.validUntil,
+        horizonMonths: 1,
+        predictedValue: prediction.avgPricePerAcre.toString(),
+        predictedMarketStatus: prediction.marketTiming,
+        predictedChangePercent: prediction.predictedPriceChange30Days.toString(),
+        confidenceScore: Math.round(prediction.timingConfidence * 100),
+        alertTriggered: prediction.isOpportunityWindow,
+        modelVersion: prediction.modelVersion,
+      });
       const saved = await db.select()
         .from(marketPredictions)
         .where(and(
@@ -90,7 +133,7 @@ export class MarketPredictionService {
   /**
    * Generate prediction using historical data and market indicators
    */
-  private async generatePrediction(state: string, county: string): Promise<InsertMarketPrediction | null> {
+  private async generatePrediction(state: string, county: string): Promise<GeneratedPrediction | null> {
     // Get historical price trends
     const trends = await this.getHistoricalTrends(state, county);
     if (trends.length === 0) {
@@ -132,7 +175,7 @@ export class MarketPredictionService {
       interestRateImpact: this.assessInterestRateImpact(indicators),
       developmentActivity: this.assessDevelopmentActivity(trends),
       economicIndicators: {
-        employmentGrowth: indicators?.gdpGrowthRate || 0,
+        employmentGrowth: Number(indicators?.gdpGrowthRate) || 0,
         populationGrowth: 0,
         incomeGrowth: 0,
       },
@@ -497,20 +540,24 @@ export class MarketPredictionService {
    * Get all opportunity windows (hot markets)
    */
   async getOpportunityWindows(limit = 10) {
+    // TODO(tsc): no isOpportunityWindow/opportunityScore/opportunityReason/marketTiming/
+    // demandScore/avgPricePerAcre columns. Opportunity windows are flagged via
+    // alertTriggered; ranking falls back to confidenceScore, and price/status map to the
+    // available predictedValue/predictedMarketStatus columns.
     const opportunities = await db.select()
       .from(marketPredictions)
-      .where(eq(marketPredictions.isOpportunityWindow, true))
-      .orderBy(desc(marketPredictions.opportunityScore))
+      .where(eq(marketPredictions.alertTriggered, true))
+      .orderBy(desc(marketPredictions.confidenceScore))
       .limit(limit);
-    
+
     return opportunities.map(opp => ({
       state: opp.state,
       county: opp.county,
-      score: opp.opportunityScore,
-      reason: opp.opportunityReason,
-      marketTiming: opp.marketTiming,
-      demandScore: opp.demandScore,
-      avgPricePerAcre: parseFloat(opp.avgPricePerAcre || "0"),
+      score: opp.confidenceScore,
+      reason: null as string | null,
+      marketTiming: opp.predictedMarketStatus,
+      demandScore: null as number | null,
+      avgPricePerAcre: parseFloat(opp.predictedValue || "0"),
       lastUpdated: opp.predictionDate,
     }));
   }

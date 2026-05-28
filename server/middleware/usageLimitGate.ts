@@ -58,7 +58,7 @@ export interface LimitExceededDetails {
 export function usageLimitGate(resourceType: ResourceType) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.organizationId ?? req.user?.organizationId;
+      const organizationId = req.organizationId;
 
       if (!organizationId) {
         return Errors.unauthorized(res);

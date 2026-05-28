@@ -1,13 +1,35 @@
 import { db } from "../db";
 import {
   organizations, activityLog, supportTickets, churnRiskScores,
-  revenueProtectionInterventions,
+  revenueProtectionInterventions, users,
 } from "@shared/schema";
-import { eq, and, desc, gte, count, sql } from "drizzle-orm";
+import { eq, and, desc, gte, count, sql, max } from "drizzle-orm";
 import { emailService } from "./emailService";
 import { decisionsInboxService } from "./decisionsInbox";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { logger } from "../utils/logger";
+
+/**
+ * Resolve a contact email for an organization. organizations has no email
+ * column — the canonical address is settings.companyEmail, falling back to the
+ * owner user's email (same convention as dunning.ts).
+ */
+async function resolveOrgEmail(org: typeof organizations.$inferSelect): Promise<string> {
+  const settings = org.settings as Record<string, unknown> | null;
+  if (settings?.companyEmail && typeof settings.companyEmail === "string") {
+    return settings.companyEmail;
+  }
+  try {
+    const [owner] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.clerkUserId, org.ownerId))
+      .limit(1);
+    return owner?.email ?? "";
+  } catch {
+    return "";
+  }
+}
 
 /** Compute a 0-100 churn risk score for a single org. Returns score + component breakdown. */
 async function scoreOrganization(orgId: number) {
@@ -63,7 +85,14 @@ async function scoreOrganization(orgId: number) {
   const dunningStage = org.dunningStage ?? "none";
 
   // 5. Days since last active (0-10)
-  const lastActive = org.lastActiveAt ? new Date(org.lastActiveAt) : null;
+  // organizations has no lastActiveAt column; derive it from the most recent
+  // activity-log entry for the org.
+  const lastActiveRow = await db
+    .select({ lastActiveAt: max(activityLog.createdAt) })
+    .from(activityLog)
+    .where(eq(activityLog.organizationId, orgId));
+  const lastActiveAt = lastActiveRow[0]?.lastActiveAt ?? null;
+  const lastActive = lastActiveAt ? new Date(lastActiveAt) : null;
   const daysSinceLastActive = lastActive
     ? Math.floor((now.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24))
     : 999;
@@ -187,7 +216,7 @@ async function processOrganization(orgId: number): Promise<void> {
         html: `<p>Hi ${org.name} team,</p><p>Your AcreOS account has been temporarily restricted due to a payment issue. Please update your payment method to restore full access.</p><p><a href="${stripePortalUrl}">Update Payment Method →</a></p><p>If you have any questions, reply to this email.</p>`,
       };
       const emailResult = await emailService.sendEmail({
-        to: org.email ?? "",
+        to: await resolveOrgEmail(org),
         subject: emailContent.subject,
         html: emailContent.html,
         organizationId: undefined, // platform-level SES credentials
@@ -224,7 +253,7 @@ async function processOrganization(orgId: number): Promise<void> {
         ticketsLast30d: scored.ticketsLast30d,
       }, orgId);
       const emailResult = await emailService.sendEmail({
-        to: org.email ?? "",
+        to: await resolveOrgEmail(org),
         subject: emailContent.subject,
         html: emailContent.html,
         organizationId: undefined,
@@ -263,7 +292,7 @@ async function processOrganization(orgId: number): Promise<void> {
         ticketsLast30d: scored.ticketsLast30d,
       }, orgId);
       const emailResult = await emailService.sendEmail({
-        to: org.email ?? "",
+        to: await resolveOrgEmail(org),
         subject: emailContent.subject,
         html: emailContent.html,
         organizationId: undefined,

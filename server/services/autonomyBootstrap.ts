@@ -18,6 +18,10 @@ import { agentEvents } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
+// Platform-level seeds belong to the system org (convention shared with
+// agentPromotionGate / rosyRiver).
+const SYSTEM_ORG_ID = 1;
+
 // ─── 1. Default Reaction Chains ──────────────────────────────────────────────
 
 const DEFAULT_CHAINS = [
@@ -297,13 +301,21 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
     const { reactiveOrchestrationService } = await import("./reactiveOrchestrationV14");
     for (const chain of DEFAULT_CHAINS) {
       try {
-        await reactiveOrchestrationService.createChain({
+        // Map the bootstrap chain shape onto CreateChainData (triggerEventType,
+        // enabled, maxConcurrentRuns) and ChainStep (governanceCheck).
+        await reactiveOrchestrationService.createChain(SYSTEM_ORG_ID, {
           name: chain.name,
-          eventType: chain.eventType,
+          triggerEventType: chain.eventType,
           triggerConditions: chain.triggerConditions,
-          steps: chain.steps,
-          isEnabled: true,
-          maxConcurrency: 1,
+          steps: chain.steps.map((s) => ({
+            agentCodename: s.agentCodename,
+            action: s.action,
+            inputMapping: s.inputMapping,
+            governanceCheck: s.governanceGate,
+            timeoutMs: s.timeoutMs,
+          })),
+          enabled: true,
+          maxConcurrentRuns: 1,
           cooldownMs: 60000,
         });
         chains++;
@@ -318,15 +330,19 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
 
   // 2. Seed incident playbooks
   try {
-    const { selfHealingMesh } = await import("./selfHealingMeshV13");
+    const { selfHealingMeshService } = await import("./selfHealingMeshV13");
     for (const playbook of DEFAULT_PLAYBOOKS) {
       try {
-        await selfHealingMesh.createPlaybook({
+        await selfHealingMeshService.createPlaybook({
           name: playbook.name,
           triggerPattern: playbook.triggerPattern,
-          actions: playbook.actions,
+          // PlaybookInput actions require a `target`; default to "system".
+          actions: playbook.actions.map((a) => ({
+            type: a.type,
+            target: "system",
+            params: a.params,
+          })),
           cooldownMinutes: playbook.cooldownMinutes,
-          isEnabled: true,
         });
         playbooks++;
       } catch {
@@ -340,10 +356,18 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
 
   // 3. Seed degradation modes
   try {
-    const { selfHealingMesh } = await import("./selfHealingMeshV13");
+    const { selfHealingMeshService } = await import("./selfHealingMeshV13");
     for (const mode of DEFAULT_DEGRADATION_MODES) {
       try {
-        await selfHealingMesh.registerDegradationMode(mode);
+        // registerDegradationMode(agentCodename, data). These are platform-wide
+        // modes; register under the "system" agent. Map name→modeName and
+        // disabledCapabilities→capabilitiesDisabled.
+        await selfHealingMeshService.registerDegradationMode("system", {
+          modeName: mode.name,
+          capabilitiesAvailable: [],
+          capabilitiesDisabled: mode.disabledCapabilities,
+          triggerConditions: {},
+        });
         modes++;
       } catch {
         // Mode may already exist
@@ -359,12 +383,13 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
     const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
     for (const memory of DEFAULT_MEMORIES) {
       try {
-        await cognitiveMemoryService.store({
-          type: memory.type,
-          agent: memory.agent,
-          content: memory.content,
-          tags: memory.tags,
-          strength: 0.9,
+        // CognitiveMemoryService has no generic store(); seed as semantic facts.
+        // Map agent→agentCodename, content→fact, type→category.
+        await cognitiveMemoryService.extractFact(memory.agent, {
+          fact: memory.content,
+          category: memory.type,
+          sourceEpisodes: [],
+          orgId: SYSTEM_ORG_ID,
         });
         memories++;
       } catch {
@@ -381,7 +406,14 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
     const { adaptiveStrategyService } = await import("./adaptiveStrategyV13");
     for (const strategy of DEFAULT_STRATEGIES) {
       try {
-        await adaptiveStrategyService.createStrategy(strategy);
+        // createStrategy(agentCodename, data). Seed under the first adopting
+        // agent; carry confidence/status into the config blob.
+        await adaptiveStrategyService.createStrategy(strategy.adoptedBy[0] ?? "oracle", {
+          name: strategy.name,
+          description: strategy.description,
+          config: { confidence: strategy.confidence, status: strategy.status, adoptedBy: strategy.adoptedBy },
+          orgId: SYSTEM_ORG_ID,
+        });
         strategies++;
       } catch {
         // Strategy may already exist

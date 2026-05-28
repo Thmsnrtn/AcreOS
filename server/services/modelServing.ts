@@ -92,7 +92,8 @@ export class ModelServingService {
     switch (modelType) {
       case "valuation": {
         const acres = features.sizeAcres || 10;
-        const stateMultiplier = { TX: 3200, CA: 8000, FL: 4500, GA: 2800 }[features.state] || 3000;
+        const stateMultipliers: Record<string, number> = { TX: 3200, CA: 8000, FL: 4500, GA: 2800 };
+        const stateMultiplier = stateMultipliers[features.state as string] || 3000;
         const value = acres * stateMultiplier * (1 + (features.roadFrontage ? 0.15 : 0));
         return { value: Math.round(value), confidence: 0.78 };
       }

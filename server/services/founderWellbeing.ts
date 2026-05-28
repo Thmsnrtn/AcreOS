@@ -118,8 +118,8 @@ class FounderWellbeingService {
   }
 
   /** Generate AI insights from metrics */
-  private async generateInsights(metrics: any): Promise<Array<{ type: string; message: string; severity?: string }>> {
-    const insights: Array<{ type: string; message: string; severity?: string }> = [];
+  private async generateInsights(metrics: any): Promise<Array<{ type: "warning" | "celebration" | "nudge" | "milestone"; message: string; severity?: "low" | "medium" | "high" }>> {
+    const insights: Array<{ type: "warning" | "celebration" | "nudge" | "milestone"; message: string; severity?: "low" | "medium" | "high" }> = [];
 
     // Rule-based insights
     if (metrics.overrideCount > metrics.overrideAvgWeekly * 2 && metrics.overrideAvgWeekly > 0) {

@@ -4,7 +4,7 @@
  */
 
 import { db } from "../db";
-import { deals, offers } from "@shared/schema";
+import { deals, offers, leads } from "@shared/schema";
 import { eq, and, sql, count, avg, desc } from "drizzle-orm";
 
 // Item 71: Counter-offer templates
@@ -97,11 +97,14 @@ export async function quickOfferData(leadId: number, orgId: number): Promise<any
   });
   if (!lead) return null;
 
+  // TODO(tsc): leads table has no estimatedValue/county/acreage columns —
+  // these are property attributes. Until leads are linked to a property here,
+  // only the fields that exist on the lead row are returned.
   return {
     lead,
-    suggestedOffer: lead.estimatedValue ? Math.round(Number(lead.estimatedValue) * 0.3) : null,
-    county: lead.county,
+    suggestedOffer: null,
+    county: null,
     state: lead.state,
-    acreage: lead.acreage,
+    acreage: null,
   };
 }

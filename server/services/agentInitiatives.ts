@@ -108,7 +108,7 @@ Respond in JSON:
 If you don't see a clear opportunity worth proposing, respond: {"skip": true}`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.4,
       });
 

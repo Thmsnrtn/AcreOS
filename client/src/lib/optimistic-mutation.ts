@@ -212,12 +212,13 @@ export function useOptimisticUpdate<
         variant: "destructive",
       });
     },
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, onMutateResult, context) => {
       if (config.successToast !== false && config.successToast) {
         toast(config.successToast);
       }
       // Let callers pass an onSuccess via extraOptions and still chain.
-      extraOptions?.onSuccess?.(data, variables, context);
+      // react-query v5 signature: (data, variables, onMutateResult, context).
+      extraOptions?.onSuccess?.(data, variables, onMutateResult, context);
     },
     onSettled: (_data, _error, variables) => {
       const listKeys = resolveListKeys(variables);

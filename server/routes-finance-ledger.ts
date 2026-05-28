@@ -296,17 +296,18 @@ router.get("/contribution-margin", async (_req: AuthenticatedRequest, res: Respo
     }
 
     const perOrg = orgRevenueRows
-      .filter((r): r is { orgId: number; total: number | null } => r.orgId != null)
+      .filter((r) => r.orgId != null)
       .map((r) => {
+        const orgId = r.orgId as number;
         const mrrCents = r.total ?? 0;
-        const opexSigned = opexByOrg.get(r.orgId) ?? 0;
+        const opexSigned = opexByOrg.get(orgId) ?? 0;
         const variableCostCents = -opexSigned;
         const marginCents = mrrCents + opexSigned;
         const marginPct = mrrCents > 0 ? (marginCents / mrrCents) * 100 : 0;
-        const meta = orgMeta.get(r.orgId);
+        const meta = orgMeta.get(orgId);
         return {
-          orgId: r.orgId,
-          orgName: meta?.name ?? `Org ${r.orgId}`,
+          orgId,
+          orgName: meta?.name ?? `Org ${orgId}`,
           tier: meta?.tier ?? "free",
           mrrCents,
           variableCostCents,
@@ -497,7 +498,7 @@ router.post("/triggers/:thresholdId/approve", async (req: AuthenticatedRequest, 
   try {
     const parsed = approveSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const thresholdId = req.params.thresholdId;
     const trigger = REVENUE_TRIGGER_LADDER.find((t) => t.thresholdId === thresholdId);
@@ -558,7 +559,7 @@ router.post("/recovery-transfer", async (req: AuthenticatedRequest, res: Respons
   try {
     const parsed = transferSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.errors);
+      return Errors.validationFailed(res, parsed.error.issues);
     }
     const { fromBucket, toBucket, amountCents, note } = parsed.data;
     if (fromBucket === toBucket) {

@@ -255,7 +255,7 @@ function ChatView({
   teamMembers: { userId: string; displayName: string | null }[];
 }) {
   const [messageInput, setMessageInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLLIElement>(null);
   const queryClient = useQueryClient();
 
   const { data: messagesData, isLoading: isLoadingMessages } = useQuery<MessagesResponse>({

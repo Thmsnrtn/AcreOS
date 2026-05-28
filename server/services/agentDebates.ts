@@ -184,7 +184,7 @@ Respond in JSON:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.4,
       });
 
@@ -231,7 +231,7 @@ Cast your vote. JSON:
 { "vote": "for|against|abstain", "confidence": 0-100, "reasoning": "one sentence" }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         maxTokens: 80,
         temperature: 0.2,
       });
@@ -369,6 +369,7 @@ Cast your vote. JSON:
         await cognitiveMemoryService.recordEpisode(agent, {
           action: "disagreement_resolution",
           outcome: resolution,
+          outcomeSuccess: true,
           context: { debateId, agents, topic, resolution },
           tags: ["disagreement", "precedent"],
         });

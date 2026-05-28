@@ -58,7 +58,7 @@ async function collectBriefingData(orgId: number): Promise<BriefingData | null> 
     .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.role, 'owner')))
     .limit(1);
 
-  const recipientEmail = owner?.email || org.contactEmail;
+  const recipientEmail = owner?.email || org.settings?.companyEmail;
   if (!recipientEmail) return null;
 
   const now = new Date();
@@ -72,7 +72,7 @@ async function collectBriefingData(orgId: number): Promise<BriefingData | null> 
 
   const activeDeals = allDeals.filter(d => !['closed', 'dead', 'cancelled'].includes(d.status || ''));
   const closingThisWeek = activeDeals.filter(d =>
-    d.expectedCloseDate && new Date(d.expectedCloseDate) <= nextWeek && new Date(d.expectedCloseDate) >= now
+    d.closingDate && new Date(d.closingDate) <= nextWeek && new Date(d.closingDate) >= now
   );
 
   // Lead stats

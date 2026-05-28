@@ -175,7 +175,8 @@ router.get('/stats', async (req: Request, res: Response) => {
 router.get('/certifications/stats', async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const stats = await certificationService.getLearningStats(user.id);
+    // certificationService keys learning data by numeric user id.
+    const stats = await certificationService.getLearningStats(parseInt(String(user.id), 10));
     res.json({ stats });
   } catch (err) {
     Errors.internal(res, err);
@@ -196,7 +197,7 @@ router.post('/certifications/check', async (req: Request, res: Response) => {
       return Errors.badRequest(res, 'courseId is required');
     }
 
-    const result = await certificationService.checkAndAward(user.id, parseInt(courseId));
+    const result = await certificationService.checkAndAward(parseInt(String(user.id), 10), parseInt(courseId));
 
     // If new certificate issued, push a real-time notification
     if (result.certificate) {

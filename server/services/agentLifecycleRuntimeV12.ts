@@ -48,7 +48,7 @@ class AgentLifecycleRuntimeService {
    * Skips agents that already have a runtime entry.
    */
   async initializeAll(): Promise<{ initialized: number; skipped: number }> {
-    const agents = await companyAgentService.getAllAgents();
+    const agents = await companyAgentService.getAllIncludingPaused();
     let initialized = 0;
     let skipped = 0;
 

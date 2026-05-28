@@ -79,7 +79,15 @@ router.post("/escrow/:noteId/pay", async (req: Request, res: Response) => {
       return Errors.badRequest(res, "amountCents and taxYear are required");
     }
 
-    const result = await recordTaxPaymentFromEscrow(noteId, org.id, { amountCents, taxYear, notes });
+    // recordTaxPaymentFromEscrow(orgId, RecordTaxPaymentInput). The input
+    // carries noteId; amountPaid is in dollars (body sends amountCents).
+    const result = await recordTaxPaymentFromEscrow(org.id, {
+      noteId,
+      taxYear,
+      amountPaid: Number(amountCents) / 100,
+      paymentDate: new Date(),
+      notes,
+    });
     res.json(result);
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");

@@ -706,27 +706,18 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         return Errors.badRequest(res, "Invalid service");
       }
 
-      // Save the integration
+      // Save the integration. upsertOrganizationIntegration handles both the
+      // create and update paths internally (keyed on organizationId+provider).
       const existing = await storage.getOrganizationIntegration(org.id, service);
-      
-      if (existing) {
-        await storage.updateOrganizationIntegration(existing.id, {
-          credentials: {
-            ...existing.credentials,
-            apiKey,
-          },
-          lastValidatedAt: new Date(),
-          validationError: null,
-        });
-      } else {
-        await storage.createOrganizationIntegration({
-          organizationId: org.id,
-          provider: service,
-          isEnabled: true,
-          credentials: { apiKey },
-          lastValidatedAt: new Date(),
-        });
-      }
+
+      await storage.upsertOrganizationIntegration({
+        organizationId: org.id,
+        provider: service,
+        isEnabled: true,
+        credentials: existing ? { ...existing.credentials, apiKey } : { apiKey },
+        lastValidatedAt: new Date(),
+        validationError: null,
+      });
 
       res.json({ success: true, message: `${service} API key saved successfully` });
     } catch (error: any) {
@@ -1034,20 +1025,16 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { investorProfiles } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
 
-      // Simple self-attestation verification (production would integrate with Stripe Identity or Persona)
-      const verificationData = {
-        verificationType: verificationType || "self_attestation",
-        submittedAt: new Date().toISOString(),
-        documentUrl: documentUrl || null,
-        selfAttestation: selfAttestation || null,
-        reviewStatus: selfAttestation ? "approved" : "pending_review",
-      };
-
+      // Simple self-attestation verification (production would integrate with Stripe Identity or Persona).
+      // TODO(tsc): investor_profiles has no verificationStatus/verificationData
+      // columns. Mapping status to the boolean isVerified column and storing the
+      // document URL in verificationDocuments. A richer verification-metadata
+      // column is needed to persist verificationType/reviewStatus.
       const [updated] = await database
         .update(investorProfiles)
         .set({
-          verificationStatus: selfAttestation ? "verified" : "pending",
-          verificationData,
+          isVerified: Boolean(selfAttestation),
+          verificationDocuments: documentUrl ? [documentUrl] : [],
           verifiedAt: selfAttestation ? new Date() : null,
           updatedAt: new Date(),
         })
@@ -1075,7 +1062,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const profiles = await database
         .select()
         .from(investorProfiles)
-        .where(eq(investorProfiles.verificationStatus, "verified"))
+        .where(eq(investorProfiles.isVerified, true))
         .limit(50);
       res.json({ profiles, count: profiles.length });
     } catch (err: any) {

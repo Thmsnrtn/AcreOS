@@ -235,7 +235,7 @@ async function writeAudit(args: {
   }
 }
 
-function sumAllocation(a: typeof DEFAULT_ALLOCATION): number {
+function sumAllocation(a: { [K in keyof typeof DEFAULT_ALLOCATION]: number }): number {
   return a.taxReserve + a.refundReserve + a.profitReserve + a.ownerDraw + a.opexAvailable;
 }
 

@@ -38,7 +38,8 @@ import { DealCalculator, type AnalysisResults } from "@/components/deal-calculat
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const dealFormSchema = insertDealSchema.omit({ organizationId: true });
+// insertDealSchema already omits organizationId (set server-side), so we use it directly.
+const dealFormSchema = insertDealSchema;
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -1211,7 +1212,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   const { data: properties, isLoading: propertiesLoading } = useProperties();
 
-  const form = useForm<z.infer<typeof dealFormSchema>>({
+  const form = useForm<z.infer<typeof dealFormSchema>, unknown, z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
     defaultValues: {
       status: "negotiating",

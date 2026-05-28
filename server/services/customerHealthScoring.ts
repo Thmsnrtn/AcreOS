@@ -54,7 +54,9 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
   const now = new Date();
 
   // Activity Score (0-100): based on login recency
-  const lastLogin = org.lastLoginAt ? new Date(org.lastLoginAt) : null;
+  // TODO(tsc): organizations has no lastLoginAt column, so login recency is unknown here
+  // (was always undefined at runtime). Treated as "no recent login" until a column exists.
+  const lastLogin = null as Date | null;
   const daysSinceLogin = lastLogin
     ? Math.floor((now.getTime() - lastLogin.getTime()) / (1000 * 60 * 60 * 24))
     : 999;
@@ -68,7 +70,7 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
 
   // Payment Health (0-100): based on plan and status
   let paymentHealth = 50;
-  const plan = org.plan || "free";
+  const plan = org.subscriptionTier || "free";
   if (plan === "free" || plan === "") paymentHealth = 20;
   else if (plan.includes("annual") || plan.includes("pro")) paymentHealth = 95;
   else if (plan.includes("starter") || plan.includes("basic")) paymentHealth = 60;
@@ -101,8 +103,8 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
   // Churn risk from existing engine
   const riskData = await db.select()
     .from(churnRiskScores)
-    .where(eq(churnRiskScores.orgId, orgId))
-    .orderBy(desc(churnRiskScores.calculatedAt))
+    .where(eq(churnRiskScores.organizationId, orgId))
+    .orderBy(desc(churnRiskScores.scoredAt))
     .limit(1);
   const churnRisk = riskData[0]?.riskScore || 50;
 
@@ -154,7 +156,7 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
 export async function getAllCustomerHealth(limit = 20): Promise<CustomerHealth[]> {
   const orgs = await db.select({ id: organizations.id })
     .from(organizations)
-    .where(sql`${organizations.plan} IS NOT NULL AND ${organizations.plan} != 'free' AND ${organizations.plan} != ''`)
+    .where(sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`)
     .limit(limit);
 
   const results: CustomerHealth[] = [];

@@ -113,8 +113,9 @@ export async function runTrustEvolution(): Promise<{
     // Decision accuracy component. Thresholds read from settings:
     //   trust.promotion_accuracy_gate (default 0.9) — at or above grants +1
     //   below 60% is treated as a reliability concern → -1
+    // Hoisted so the metrics update / evolution-log writes below can reference it.
+    const accuracyRate = totalDecisions > 0 ? (approvedDecisions / totalDecisions) * 100 : 0;
     if (totalDecisions > 0) {
-      const accuracyRate = (approvedDecisions / totalDecisions) * 100;
       if (accuracyRate >= accuracyPct) {
         delta += 1;
         reasons.push(`${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions`);

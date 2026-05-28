@@ -323,14 +323,17 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
         if (!org) return `Organization #${reminder.entityId}: not found`;
         const name = org.name ?? `Org #${reminder.entityId}`;
         const parts = [name];
-        if (org.churnRisk !== undefined && org.churnRisk !== null) {
-          parts.push(`Churn risk ${org.churnRisk}/100`);
+        // organizations stores the churn score as churnRiskScore.
+        if (org.churnRiskScore !== undefined && org.churnRiskScore !== null) {
+          parts.push(`Churn risk ${org.churnRiskScore}/100`);
         }
-        if (org.lastLoginAt) {
+        // TODO(tsc): organizations has no lastLoginAt column; using updatedAt
+        // as a recent-activity proxy until a login timestamp is added.
+        if (org.updatedAt) {
           const days = Math.floor(
-            (Date.now() - new Date(org.lastLoginAt).getTime()) / (24 * 60 * 60 * 1000),
+            (Date.now() - new Date(org.updatedAt).getTime()) / (24 * 60 * 60 * 1000),
           );
-          parts.push(`last login ${days} day${days !== 1 ? "s" : ""} ago`);
+          parts.push(`last activity ${days} day${days !== 1 ? "s" : ""} ago`);
         }
         return parts.join(": ");
       }
@@ -341,10 +344,12 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
           where: eq(deals.id, reminder.entityId),
         });
         if (!deal) return `Deal #${reminder.entityId}: not found`;
-        const title = deal.title ?? deal.name ?? `Deal #${reminder.entityId}`;
+        // deals has no title/name/stage/value columns; status is the lifecycle
+        // field and acceptedAmount the agreed value.
+        const title = `Deal #${reminder.entityId}`;
         const parts = [title];
-        if (deal.stage) parts.push(`stage: ${deal.stage}`);
-        if (deal.value !== undefined && deal.value !== null) parts.push(`value: $${deal.value}`);
+        if (deal.status) parts.push(`stage: ${deal.status}`);
+        if (deal.acceptedAmount !== undefined && deal.acceptedAmount !== null) parts.push(`value: $${deal.acceptedAmount}`);
         return parts.join(", ");
       }
 
@@ -354,7 +359,9 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
           where: eq(leads.id, reminder.entityId),
         });
         if (!lead) return `Lead #${reminder.entityId}: not found`;
-        const name = lead.name ?? lead.email ?? `Lead #${reminder.entityId}`;
+        // leads has no `name` column; compose from firstName/lastName.
+        const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
+        const name = (fullName || lead.email) ?? `Lead #${reminder.entityId}`;
         const parts = [name];
         if (lead.status) parts.push(`status: ${lead.status}`);
         if (lead.score !== undefined && lead.score !== null) parts.push(`score: ${lead.score}`);
@@ -367,7 +374,8 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
           where: eq(properties.id, reminder.entityId),
         });
         if (!prop) return `Property #${reminder.entityId}: not found`;
-        const label = prop.name ?? prop.address ?? `Property #${reminder.entityId}`;
+        // properties has no `name` column; use address/apn as the label.
+        const label = prop.address ?? prop.apn ?? `Property #${reminder.entityId}`;
         const parts = [label];
         if (prop.status) parts.push(`status: ${prop.status}`);
         return parts.join(", ");

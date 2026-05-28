@@ -28,6 +28,7 @@ import {
   buyerProfiles,
   buyerPropertyMatches,
   properties,
+  leads,
   BUYER_BLAST_RECIPIENT_STATUSES,
 } from "@shared/schema";
 import { inArray } from "drizzle-orm";
@@ -80,12 +81,14 @@ export function registerBuyerBlastRoutes(app: Express): void {
           .select({
             buyerId: buyerPropertyMatches.buyerProfileId,
             matchScore: buyerPropertyMatches.matchScore,
-            buyerName: buyerProfiles.name,
-            buyerEmail: buyerProfiles.email,
+            buyerFirstName: leads.firstName,
+            buyerLastName: leads.lastName,
+            buyerEmail: leads.email,
             financialInfo: buyerProfiles.financialInfo,
           })
           .from(buyerPropertyMatches)
           .innerJoin(buyerProfiles, eq(buyerProfiles.id, buyerPropertyMatches.buyerProfileId))
+          .innerJoin(leads, eq(leads.id, buyerProfiles.leadId))
           .where(and(
             eq(buyerPropertyMatches.organizationId, orgId),
             eq(buyerPropertyMatches.propertyId, propertyId),
@@ -154,14 +157,14 @@ export function registerBuyerBlastRoutes(app: Express): void {
               : null,
             recipients: sendable.map((m) => ({
               buyerProfileId: m.buyerId,
-              name: m.buyerName,
+              name: `${m.buyerFirstName} ${m.buyerLastName}`.trim(),
               email: m.buyerEmail,
               matchScore: m.matchScore,
               financingType: (m.financialInfo as any)?.financingType ?? null,
             })),
             suppressed: suppressed.map((m) => ({
               buyerProfileId: m.buyerId,
-              name: m.buyerName,
+              name: `${m.buyerFirstName} ${m.buyerLastName}`.trim(),
               email: m.buyerEmail,
               recentBlastCount: cadenceMap.get(m.buyerId) ?? 0,
             })),
@@ -221,7 +224,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
                 html: body,
                 organizationId: orgId,
               } as any);
-              if (result?.ok || result?.success || result === undefined) {
+              if (result?.success || result === undefined) {
                 sentCount++;
                 await db
                   .update(buyerBlastRecipients)
@@ -338,10 +341,12 @@ export function registerBuyerBlastRoutes(app: Express): void {
             respondedAt: buyerBlastRecipients.respondedAt,
             responseNotes: buyerBlastRecipients.responseNotes,
             failureReason: buyerBlastRecipients.failureReason,
-            buyerName: buyerProfiles.name,
+            buyerFirstName: leads.firstName,
+            buyerLastName: leads.lastName,
           })
           .from(buyerBlastRecipients)
           .innerJoin(buyerProfiles, eq(buyerProfiles.id, buyerBlastRecipients.buyerProfileId))
+          .innerJoin(leads, eq(leads.id, buyerProfiles.leadId))
           .where(eq(buyerBlastRecipients.blastId, blast.id))
           .orderBy(asc(buyerBlastRecipients.sentAt));
 

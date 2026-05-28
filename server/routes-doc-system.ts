@@ -1456,7 +1456,8 @@ export function registerDocSystemRoutes(app: Express): void {
           const deal = await storage.getDeal(org.id, pkg.dealId);
           if (deal) {
             Object.assign(mergedVars, {
-              deal_name: deal.name,
+              // deals has no `name` column; compose a stable label from type+id.
+              deal_name: `${deal.type ?? "Deal"} #${deal.id}`,
               offer_amount: deal.offerAmount,
               accepted_amount: deal.acceptedAmount,
             });
@@ -1470,9 +1471,9 @@ export function registerDocSystemRoutes(app: Express): void {
               property_address: property.address,
               property_city: property.city,
               property_state: property.state,
-              property_zip: property.zipCode,
-              parcel_number: property.parcelNumber,
-              acreage: property.acreage,
+              property_zip: property.zip,
+              parcel_number: property.apn,
+              acreage: property.sizeAcres,
             });
           }
         }

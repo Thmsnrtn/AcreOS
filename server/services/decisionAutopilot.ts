@@ -27,7 +27,7 @@ function generatePatternKey(agentCodename: string, category: string, context?: R
   let key = `${agentCodename}:${category}`;
   if (context?.amount && context.amount < 5000) key += "_under_5k";
   else if (context?.amount && context.amount >= 5000) key += "_over_5k";
-  if (riskLevel || context?.riskLevel) key += `:${riskLevel || context.riskLevel}`;
+  if (riskLevel || context?.riskLevel) key += `:${riskLevel || context?.riskLevel}`;
   if (context?.orgPlan) key += `:${context.orgPlan}`;
   return key;
 }
@@ -163,7 +163,10 @@ class DecisionAutopilotService {
     if (recentDecisions.length > 0) {
       const lastDecision = recentDecisions[recentDecisions.length - 1];
       lastDecision.wouldHaveAutoed = predictedAction;
-      lastDecision.autopilotCorrect = (predictedAction === input.action);
+      // predictedAction uses approve/reject vocabulary; input.action uses approved/rejected.
+      lastDecision.autopilotCorrect =
+        (predictedAction === "approve" && input.action === "approved") ||
+        (predictedAction === "reject" && input.action === "rejected");
     }
 
     await db.update(decisionPatterns)

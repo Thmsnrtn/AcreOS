@@ -22,7 +22,8 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
     const propertyId = parseInt(req.params.id);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
 
-    const result = await propertyEnrichmentService.enrichProperty(propertyId, org.id);
+    // enrichProperty(organizationId, propertyId) — args were previously swapped.
+    const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -39,12 +40,16 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "propertyIds must be an array" });
     }
 
-    const result = await propertyEnrichmentService.batchEnrich(
-      propertyIds ?? null,
-      org.id,
-      Math.min(limit, 50)
-    );
-    res.json(result);
+    // TODO(tsc): propertyEnrichmentService has no batchEnrich method. Enrich
+    // each property individually via the existing enrichProperty(orgId, id).
+    const ids: number[] = Array.isArray(propertyIds)
+      ? propertyIds.map((p: any) => Number(p)).filter((n) => Number.isFinite(n)).slice(0, Math.min(limit, 50))
+      : [];
+    const results = [];
+    for (const id of ids) {
+      results.push(await propertyEnrichmentService.enrichProperty(org.id, id));
+    }
+    res.json({ results, count: results.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -65,7 +70,9 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
 
     if (!property) return res.status(404).json({ error: "Property not found" });
 
-    const enrichmentData = await propertyEnrichmentService.getEnrichmentData(propertyId, org.id);
+    // TODO(tsc): propertyEnrichmentService has no getEnrichmentData method;
+    // re-running enrichProperty returns the latest enrichment result.
+    const enrichmentData = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json({ propertyId, enrichment: enrichmentData });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

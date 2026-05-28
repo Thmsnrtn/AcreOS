@@ -63,7 +63,7 @@ export async function lookupCustomer(query: string): Promise<StripeCustomerSumma
       if (c.deleted) return [];
       return [summarizeCustomer(c)];
     } catch (err) {
-      logger.info({ err: err instanceof Error ? err.message : String(err) }, "stripe customer retrieve miss");
+      logger.info("stripe customer retrieve miss", { err: err instanceof Error ? err.message : String(err) });
       return [];
     }
   }
@@ -83,7 +83,7 @@ export async function lookupCustomer(query: string): Promise<StripeCustomerSumma
     });
     return search.data.map(summarizeCustomer);
   } catch (err) {
-    logger.info({ err: err instanceof Error ? err.message : String(err) }, "stripe search unavailable; falling back to list");
+    logger.info("stripe search unavailable; falling back to list", { err: err instanceof Error ? err.message : String(err) });
     const list = await stripe.customers.list({ limit: 100 });
     const q = trimmed.toLowerCase();
     return list.data

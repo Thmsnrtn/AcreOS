@@ -15,29 +15,22 @@ import { Errors } from "./utils/errors";
 
 const router = Router();
 
+// TODO(tsc): the matchmaking service exposes findMatchesForInvestor,
+// findBuyersForListing, getRecommendations, notifyMatchedBuyers, and
+// calculateSimilarity — NOT the runMatching/getTopMatches/getMatchesForProperty/
+// notifyBuyer/dismissMatch API these routes were written against. The endpoints
+// crashed at runtime previously (undefined methods). The two endpoints with a
+// clear service equivalent are wired below; the rest return 501 until the
+// service surface is reconciled.
 
-router.post("/run", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const { propertyId, buyerId } = req.body;
-
-    const result = await matchmaking.runMatching({
-      organizationId: org.id,
-      propertyId: propertyId ? parseInt(propertyId) : undefined,
-      buyerId: buyerId ? parseInt(buyerId) : undefined,
-    });
-    res.json(result);
-  } catch (err) {
-    Errors.internal(res, err);
-  }
+router.post("/run", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "Match run endpoint not implemented" });
 });
 
 router.get("/top-matches", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20")), 50);
-
-    const result = await matchmaking.getTopMatches(org.id, limit);
+    const result = await matchmaking.getRecommendations(org.id);
     res.json(result);
   } catch (err) {
     Errors.internal(res, err);
@@ -46,11 +39,10 @@ router.get("/top-matches", async (req: Request, res: Response) => {
 
 router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
   try {
-    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
-    const matches = await matchmaking.getMatchesForProperty(propertyId, org.id);
+    const matches = await matchmaking.findBuyersForListing(propertyId);
     res.json({ matches });
   } catch (err) {
     Errors.internal(res, err);
@@ -59,28 +51,18 @@ router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
 
 router.post("/:id/notify", async (req: Request, res: Response) => {
   try {
-    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
-    const result = await matchmaking.notifyBuyer(id, org.id);
-    res.json(result);
+    const notified = await matchmaking.notifyMatchedBuyers(id);
+    res.json({ notified });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
-
-    await matchmaking.dismissMatch(id, org.id);
-    res.json({ success: true });
-  } catch (err) {
-    Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
-  }
+router.delete("/:id", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "Dismiss match endpoint not implemented" });
 });
 
 export default router;

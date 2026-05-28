@@ -98,13 +98,14 @@ router.post('/enrollments', async (req: Request, res: Response) => {
 // PATCH /enrollments/:courseId/progress — update module progress
 router.patch('/enrollments/:courseId/progress', async (req: Request, res: Response) => {
   try {
-    const user = getUser(req);
-    const { moduleId, completed, quizScore } = req.body;
+    getUser(req);
+    const { moduleId } = req.body;
+    // updateProgress(enrollmentId, moduleId). TODO(tsc): the route exposes a
+    // :courseId path param but the service identifies progress by enrollmentId;
+    // the completed/quizScore body fields are not accepted by the service.
     await education.updateProgress(
-      user.id,
       parseInt(req.params.courseId),
-      parseInt(moduleId),
-      { completed, quizScore }
+      parseInt(moduleId)
     );
     res.json({ success: true });
   } catch (err) {
@@ -116,8 +117,9 @@ router.patch('/enrollments/:courseId/progress', async (req: Request, res: Respon
 router.post('/courses/:id/rate', async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const { rating, review } = req.body;
-    await education.rateCourse(user.id, parseInt(req.params.id), rating, review);
+    const { rating } = req.body;
+    // rateCourse(userId, courseId, rating) — review text is not accepted.
+    await education.rateCourse(user.id, parseInt(req.params.id), rating);
     res.json({ success: true });
   } catch (err) {
     Errors.internal(res, err);

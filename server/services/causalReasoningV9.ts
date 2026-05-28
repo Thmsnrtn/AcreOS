@@ -119,7 +119,7 @@ class CausalReasoningService {
 
     for (const action of significantActions) {
       events.push({
-        timestamp: action.createdAt.toISOString(),
+        timestamp: (action.createdAt ?? new Date()).toISOString(),
         source: action.agentCodename,
         eventType: action.actionType || "action",
         description: `${action.agentCodename}: ${action.actionName} — ${action.reasoning || "no reasoning recorded"}`,
@@ -226,7 +226,7 @@ Produce your causal analysis. Respond in JSON:
 }`,
           },
         ],
-        responseFormat: { type: "json_object" },
+        responseFormat: "json",
         temperature: 0.3,
       });
 

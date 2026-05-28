@@ -163,7 +163,7 @@ export function registerReferralRoutes(app: Express): void {
       const creditAmount = 100; // $1.00 credit (or 1 month free depending on plan)
       await db
         .update(referrals)
-        .set({ status: "converted", creditAmount, convertedAt: new Date() })
+        .set({ status: "converted", creditAmount, creditedAt: new Date() })
         .where(eq(referrals.id, referral.id));
 
       // Credit the referrer's org

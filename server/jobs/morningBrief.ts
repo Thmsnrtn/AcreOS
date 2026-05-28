@@ -351,7 +351,7 @@ async function computePerOrgMargin(
       : [];
     const nameMap = new Map(orgNames.map((r) => [r.id, r.name ?? `Org ${r.id}`]));
     return revenueRows
-      .filter((r): r is { orgId: number; total: number | null } => r.orgId != null)
+      .filter((r): r is typeof r & { orgId: number } => r.orgId != null)
       .map((r) => {
         const mrrCents = r.total ?? 0;
         const opexCents = opexByOrg.get(r.orgId) ?? 0;

@@ -83,8 +83,8 @@ async function sentryFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
     const text = await res.text();
     if (!res.ok) {
       logger.warn(
-        { url, status: res.status, body: text.slice(0, 200) },
         "sentry api non-ok",
+        { metadata: { url, status: res.status, body: text.slice(0, 200) } },
       );
       throw new SentryClientError(
         `Sentry API ${res.status} on ${path}`,

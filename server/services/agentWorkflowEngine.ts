@@ -314,7 +314,7 @@ class WorkflowEngine {
 
       // Broadcast progress via WebSocket
       try {
-        wsServer?.broadcast?.("workflow_progress", {
+        wsServer?.broadcast?.("founder:activity", "workflow_progress", {
           runId,
           workflowName: workflow.name,
           step: i,
@@ -458,7 +458,7 @@ class WorkflowEngine {
 
     // Broadcast completion
     try {
-      wsServer?.broadcast?.("workflow_complete", { runId, status, durationMs });
+      wsServer?.broadcast?.("founder:activity", "workflow_complete", { runId, status, durationMs });
     } catch {}
   }
 }
