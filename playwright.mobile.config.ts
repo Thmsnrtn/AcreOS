@@ -17,7 +17,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  timeout: 60_000,
+  // CI runners vary wildly (seen 1–7 min total); the bottom-nav test does
+  // several sequential navigations, so give each test generous headroom.
+  timeout: 120_000,
   reporter: process.env.CI
     ? [["github"], ["list"], ["html", { open: "never" }]]
     : [["list"]],

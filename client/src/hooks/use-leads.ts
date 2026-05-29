@@ -51,8 +51,18 @@ export function useLeads() {
     queryFn: async () => {
       const res = await fetch(`${api.leads.list.path}?page=1&pageSize=100`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
-      const json = await res.json();
-      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      return res.json();
+    },
+    // The queryKey "/api/leads" is shared with other consumers (command-palette,
+    // UniversalTabs) whose queryFns cache different shapes — sometimes the raw
+    // paginated `{ data: [...] }` object, sometimes a bare array. react-query
+    // shares cached data by key, so normalize here to ALWAYS return an array.
+    // Without this, MobileLeadList saw the object, `Array.isArray` was false,
+    // and the page showed "No leads yet" despite the API returning leads.
+    select: (json: unknown): any[] => {
+      if (Array.isArray(json)) return json;
+      const data = (json as { data?: unknown })?.data;
+      return Array.isArray(data) ? data : [];
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
