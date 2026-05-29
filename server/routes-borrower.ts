@@ -8,6 +8,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { splitPaymentCents } from "./services/notePaymentMath";
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
 // portal endpoints carry it as a URL param) and fall back to IP. Pure IP
@@ -513,27 +514,30 @@ export function registerBorrowerRoutes(app: Express): void {
       }
       
       const paymentAmount = session.amount_total ? session.amount_total / 100 : Number(note.monthlyPayment);
-      
-      // Calculate principal/interest split from amortization schedule
+
+      // Integer-cent principal/interest split. The legacy path did float
+      // math on the amortization-schedule entries and rounded with
+      // .toFixed(2); we now read currentBalance + interestRate and do the
+      // split in cents. Storage still takes decimal strings (legacy
+      // `notes`/`payments` schema) — we only stringify at the writer
+      // boundary so the math stays drift-free up to that point.
+      const paymentAmountCents = Math.round(paymentAmount * 100);
+      const currentBalanceCents = Math.round(Number(note.currentBalance || 0) * 100);
+      const annualRateBps = Math.round(Number(note.interestRate || 0) * 100);
+      const split = splitPaymentCents({
+        paymentAmountCents,
+        currentBalanceCents,
+        annualRateBps,
+      });
+      const principalAmount = split.principalCents / 100;
+      const interestAmount = split.interestCents / 100;
+
+      // Schedule mark-paid still uses the schedule index as before — the
+      // legacy borrower portal surfaces the schedule for visual progress,
+      // not for split math.
       const schedule = note.amortizationSchedule || [];
       const nextPendingPayment = schedule.find(s => s.status === 'pending');
-      
-      let principalAmount = 0;
-      let interestAmount = 0;
-      
-      if (nextPendingPayment) {
-        // Use amortization schedule for split
-        const ratio = paymentAmount / nextPendingPayment.payment;
-        principalAmount = Number((nextPendingPayment.principal * ratio).toFixed(2));
-        interestAmount = Number((nextPendingPayment.interest * ratio).toFixed(2));
-      } else {
-        // Calculate split based on current balance and rate
-        const monthlyRate = Number(note.interestRate) / 100 / 12;
-        interestAmount = Number((Number(note.currentBalance) * monthlyRate).toFixed(2));
-        principalAmount = Number((paymentAmount - interestAmount).toFixed(2));
-        if (principalAmount < 0) principalAmount = 0;
-      }
-      
+
       // Create payment record — balance update happens inside the transaction
       // with optimistic locking (see storage.createPayment)
       const payment = await storage.createPayment({
@@ -551,7 +555,7 @@ export function registerBorrowerRoutes(app: Express): void {
         status: 'completed',
       });
 
-      const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
+      const newBalance = Math.max(0, (currentBalanceCents - split.principalCents)) / 100;
 
       // Update schedule and next payment date (non-financial, safe outside payment tx)
       let updatedSchedule = schedule;
@@ -613,21 +617,22 @@ export function registerBorrowerRoutes(app: Express): void {
         ? stripeSession.amount_total / 100
         : Number(note.monthlyPayment);
 
+      // Integer-cent split — see deprecated /api/portal/.../verify-payment
+      // writer above. The schedule-based split it replaces used .toFixed(2)
+      // and produced .01 drift on long-running notes.
+      const paymentAmountCents = Math.round(paymentAmount * 100);
+      const currentBalanceCents = Math.round(Number(note.currentBalance || 0) * 100);
+      const annualRateBps = Math.round(Number(note.interestRate || 0) * 100);
+      const split = splitPaymentCents({
+        paymentAmountCents,
+        currentBalanceCents,
+        annualRateBps,
+      });
+      const principalAmount = split.principalCents / 100;
+      const interestAmount = split.interestCents / 100;
+
       const schedule = note.amortizationSchedule || [];
       const nextPendingPayment = schedule.find((s) => s.status === "pending");
-
-      let principalAmount = 0;
-      let interestAmount = 0;
-      if (nextPendingPayment) {
-        const ratio = paymentAmount / nextPendingPayment.payment;
-        principalAmount = Number((nextPendingPayment.principal * ratio).toFixed(2));
-        interestAmount = Number((nextPendingPayment.interest * ratio).toFixed(2));
-      } else {
-        const monthlyRate = Number(note.interestRate) / 100 / 12;
-        interestAmount = Number((Number(note.currentBalance) * monthlyRate).toFixed(2));
-        principalAmount = Number((paymentAmount - interestAmount).toFixed(2));
-        if (principalAmount < 0) principalAmount = 0;
-      }
 
       const payment = await storage.createPayment({
         organizationId: note.organizationId,
@@ -644,7 +649,7 @@ export function registerBorrowerRoutes(app: Express): void {
         status: "completed",
       });
 
-      const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
+      const newBalance = Math.max(0, (currentBalanceCents - split.principalCents)) / 100;
       let updatedSchedule = schedule;
       if (nextPendingPayment) {
         updatedSchedule = schedule.map((s) =>

@@ -158,7 +158,8 @@ describe("Workstream B — payoff math (live ledger, not schedule replay)", () =
         balanceCents * (annualRateBps / 10_000 / 365) * daysSincePosting,
     );
 
-    // ── Helper-level assertion: the new live-ledger helper must agree. ──
+    // ── Helper-level assertion: the new live-ledger helper must agree
+    //    with the hand-computed payoff. (Pure-helper sanity check.)
     const helperPayoff = computePayoffCents({
       currentBalanceCents: balanceCents,
       annualRateBps,
@@ -167,25 +168,20 @@ describe("Workstream B — payoff math (live ledger, not schedule replay)", () =
     });
     expect(helperPayoff).toBe(expectedPayoffCents);
 
-    // ── Current-code assertion: financialOSService.calculateNotePayoff
-    //    indexes the schedule by paymentsReceived - 1. With our partial,
-    //    curtailment, and late posting, the schedule's index-7 balance
-    //    differs from the live ledger by more than $1 — proving the bug.
-    const buggyPayoff = calculateNotePayoff({
-      originalPrincipal: principalCents / 100,
+    // ── End-to-end assertion: calculateNotePayoff must be called with
+    //    the LIVE balance + lastPaymentDate (the live-ledger contract)
+    //    and must return the expected payoff value. Until commit 4 lands,
+    //    calculateNotePayoff still indexes a replayed schedule and will
+    //    disagree — that's the failing-first signal.
+    const livePayoff = calculateNotePayoff({
+      currentBalanceCents: balanceCents,
       annualInterestRate: annualRateBps / 10_000,
-      termMonths,
-      firstPaymentDate,
+      lastPaymentDate: month8Posted,
       payoffDate,
-      paymentsReceived: 8, // 8 scheduled receipts (excluding partial + curtailment)
     });
 
-    const buggyPayoffCents = Math.round(buggyPayoff.totalPayoff * 100);
-    const driftCents = Math.abs(buggyPayoffCents - expectedPayoffCents);
-    // The bug: schedule-replay diverges from the live ledger by at least
-    // $1 (much more in this scenario — the $500 curtailment alone moves
-    // the balance independently of the schedule).
-    expect(driftCents).toBeGreaterThan(100); // > $1.00 drift
+    const livePayoffCents = Math.round(livePayoff.totalPayoff * 100);
+    expect(livePayoffCents).toBe(expectedPayoffCents);
   });
 });
 
