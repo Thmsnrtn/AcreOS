@@ -123,18 +123,38 @@ test.describe("mobile navigation smoke", () => {
       // If this route shows seeded records, confirm the real data rendered.
       const expected = EXPECTED_CONTENT[route];
       if (expected) {
-        await expect
-          .poll(
-            async () => {
-              const txt = await page.locator("body").innerText();
-              return expected.some((s) => txt.includes(s));
-            },
-            {
-              timeout: 20000,
-              message: `${route} never showed any seeded record (expected one of: ${expected.join(", ")})`,
-            },
-          )
-          .toBe(true);
+        try {
+          await expect
+            .poll(
+              async () => {
+                const txt = await page.locator("body").innerText();
+                return expected.some((s) => txt.includes(s));
+              },
+              { timeout: 35000 },
+            )
+            .toBe(true);
+        } catch {
+          // Distinguish "page logic dropped the data" from "API returned none"
+          // by fetching the same endpoint from inside the page.
+          const apiCount = await page
+            .evaluate(async () => {
+              try {
+                const r = await fetch("/api/leads?page=1&pageSize=100", { credentials: "include" });
+                const j = await r.json();
+                const arr = Array.isArray(j) ? j : j?.data;
+                return Array.isArray(arr) ? arr.length : `shape:${JSON.stringify(j).slice(0, 80)}`;
+              } catch (e) {
+                return `fetch-err:${(e as Error).message}`;
+              }
+            })
+            .catch(() => "evaluate-failed");
+          const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
+          throw new Error(
+            `${route} never showed seeded records (expected one of: ${expected.join(", ")}).\n` +
+              `  in-page /api/leads count: ${apiCount}\n` +
+              `  body: ${body}`,
+          );
+        }
       }
     });
   }

@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_SIDEBAR_ITEMS,
   DEFAULT_MOBILE_ITEMS,
   ALL_NAV_ITEMS,
-  defaultMobileItemsFor,
 } from "@/lib/nav-items";
 import { clientLogger } from "@/lib/clientLogger";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
-import { useContextProfile } from "@/hooks/use-context-profile";
 
 /**
  * Sidebar + mobile-nav preferences.
@@ -143,23 +141,16 @@ export function useNavPreferences() {
     update(DEFAULTS);
   }, [update]);
 
-  // 2026-05-26: persona-aware default mobile bottom-nav. When the user
-  // has NOT customized their mobile nav (saved prefs match the generic
-  // DEFAULT_MOBILE_ITEMS), substitute the persona-specific default so a
-  // Wholesaler doesn't open the app and see a Land-Flipper-shaped set.
-  // Saved customizations still win — only the unset case is overridden.
-  const { investorType } = useContextProfile();
-  const effectiveMobileItems = useMemo(() => {
-    const personaDefault = defaultMobileItemsFor(investorType);
-    const isStillGenericDefault =
-      prefs.mobileItems.length === DEFAULT_MOBILE_ITEMS.length &&
-      prefs.mobileItems.every((id, idx) => id === DEFAULT_MOBILE_ITEMS[idx]);
-    return isStillGenericDefault ? personaDefault : prefs.mobileItems;
-  }, [prefs.mobileItems, investorType]);
-
+  // 2026-05-29: the mobile bottom-nav is a fixed, predictable set
+  // (DEFAULT_MOBILE_ITEMS = Today / Inbox / Pipeline / Portfolio) unless the
+  // user explicitly customizes it. We previously substituted a server-inferred
+  // persona default here, but that made the nav swap unpredictably (a Land
+  // Investor could open the app and see a Wholesaler-shaped set when the
+  // inference misfired). Land Investors are the launch vertical; per-persona
+  // nav can return once those verticals ship and the inference is reliable.
   return {
     sidebarItems: prefs.sidebarItems,
-    mobileItems: effectiveMobileItems,
+    mobileItems: prefs.mobileItems,
     setSidebarItems,
     setMobileItems,
     reset,
