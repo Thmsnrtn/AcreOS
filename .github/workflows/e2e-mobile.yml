@@ -40,6 +40,8 @@ jobs:
       APP_URL: http://localhost:5000
       PORT: "5000"
       CI: "true"
+      # No Sentry source-map upload for the E2E build — not needed here.
+      SENTRY_SOURCEMAPS: skip
 
     steps:
       - uses: actions/checkout@v6
