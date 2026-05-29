@@ -300,7 +300,7 @@ export interface IStorage {
   updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead>;
   
   // Paginated Leads
-  getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null }): Promise<PaginatedResult<Lead>>;
+  getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null; q?: string }): Promise<PaginatedResult<Lead>>;
 
   // Properties
   getProperties(orgId: number): Promise<Property[]>;

@@ -30,7 +30,7 @@ export interface PaginatedLeadsResponse {
  * Fetch leads with server-side pagination.
  * Returns { data, total, page, pageSize, totalPages }.
  */
-export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string }) {
+export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string; q?: string }) {
   const queryParams = new URLSearchParams();
   queryParams.set("page", String(params.page));
   queryParams.set("pageSize", String(params.pageSize));
@@ -38,10 +38,11 @@ export function useLeadsPaginated(params: { page: number; pageSize: number; sort
   if (params.sortOrder) queryParams.set("sortOrder", params.sortOrder);
   if (params.stage) queryParams.set("stage", params.stage);
   if (params.assignedTo) queryParams.set("assignedTo", params.assignedTo);
+  if (params.q && params.q.trim()) queryParams.set("q", params.q.trim());
   const url = `${api.leads.list.path}?${queryParams.toString()}`;
 
   return useQuery<PaginatedLeadsResponse>({
-    queryKey: [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo],
+    queryKey: [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo, params.q],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");

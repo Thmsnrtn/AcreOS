@@ -26,12 +26,43 @@ export const leadRepo = {
       .limit(5000);
   },
 
-  async getLeadsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null }): Promise<PaginatedResult<Lead>> {
+  async getLeadsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null; q?: string }): Promise<PaginatedResult<Lead>> {
     const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
     if (filters?.assignedTo === null) {
       conditions.push(sql`${leads.assignedTo} IS NULL`);
     } else if (filters?.assignedTo !== undefined) {
       conditions.push(eq(leads.assignedTo, filters.assignedTo));
+    }
+    // Server-side search across the same fields the previous client-side
+    // filters covered (name, email, phone, address+city+state). Without
+    // this a user typing "Smith" while standing on /leads page 1 of 7
+    // could not find their Smith on page 7 — the search was scoped to
+    // the current page only. ILIKE is fine for the org-scoped row counts
+    // we typically deal with (≤ low six figures); the index on email
+    // helps the email path. Phone is matched against phoneNormalized
+    // (digits-only generated column) so "(602) 555-1212" finds "6025551212".
+    const q = filters?.q?.trim();
+    if (q) {
+      const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+      const phoneDigits = q.replace(/\D/g, "");
+      const phoneLike = phoneDigits.length >= 3 ? `%${phoneDigits}%` : null;
+      const ors: any[] = [
+        ilike(leads.firstName, like),
+        ilike(leads.lastName, like),
+        ilike(leads.email, like),
+        ilike(leads.address, like),
+        ilike(leads.city, like),
+        ilike(leads.state, like),
+        ilike(leads.zip, like),
+        // Concatenated "First Last" match so "John Smith" hits a row
+        // where first=John, last=Smith — neither column alone contains
+        // the space.
+        sql`(${leads.firstName} || ' ' || ${leads.lastName}) ILIKE ${like}`,
+      ];
+      if (phoneLike) {
+        ors.push(ilike(leads.phoneNormalized, phoneLike));
+      }
+      conditions.push(or(...ors)!);
     }
     const whereClause = and(...conditions);
     const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);

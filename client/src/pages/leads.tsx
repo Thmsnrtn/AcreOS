@@ -666,10 +666,6 @@ function LeadsPageDesktop() {
   useDocumentTitle(`${leadsLabel} — AcreOS`);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({ page: currentPage, pageSize });
-  const leads = leadsResponse?.data;
-  const serverTotal = leadsResponse?.total ?? 0;
-  const serverTotalPages = leadsResponse?.totalPages ?? 1;
   const { data: propertiesRaw } = useProperties();
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   const [, setLocation] = useLocation();
@@ -1001,28 +997,46 @@ function LeadsPageDesktop() {
   // while the (potentially expensive) re-filter happens at a lower priority.
   // On large lead lists the filter ran inline on every keystroke and pushed
   // INP > 200ms; deferring it keeps typing responsive without changing UX.
+  //
+  // Day-365 reliability (Workstream C): `deferredSearch` is now also the
+  // server-side `?q=` we ship to /api/leads. Previously the filter ran
+  // over `leads` — which was only the CURRENT page — so a user typing
+  // "Smith" expecting their Smith from page 7 got nothing. Now the
+  // server runs an ILIKE across name, email, phone, address, and the
+  // result spans every lead in the org, not just page 1.
   const deferredSearch = useDeferredValue(search);
+
+  // When the search query changes, snap back to page 1 — otherwise a
+  // user on page 5 of /leads who types a search would see "page 5 of
+  // <new total>" and possibly an empty page.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deferredSearch]);
+
+  const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({
+    page: currentPage,
+    pageSize,
+    q: deferredSearch || undefined,
+  });
+  const leads = leadsResponse?.data;
+  const serverTotal = leadsResponse?.total ?? 0;
+  const serverTotalPages = leadsResponse?.totalPages ?? 1;
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
 
     let result = leads as LeadWithScore[];
 
-    // Apply search filter (uses deferredSearch — see useDeferredValue above)
-    if (deferredSearch) {
-      const searchLower = deferredSearch.toLowerCase();
-      result = result.filter(l =>
-        l.lastName.toLowerCase().includes(searchLower) ||
-        l.firstName.toLowerCase().includes(searchLower) ||
-        l.email?.toLowerCase().includes(searchLower)
-      );
-    }
-    
+    // Name/email/phone/address search runs server-side now (see
+    // useLeadsPaginated above) so the user can find a Smith on page 7
+    // of an 8-page list. Client-side filtering is reserved for facets
+    // that aren't yet plumbed through the API (stage, assignee, GIS).
+
     // Apply stage filter
     if (stageFilter && stageFilter !== "all") {
       result = result.filter(l => l.nurturingStage === stageFilter);
     }
-    
+
     // Apply assignee filter (client-side, for admins who can see all leads)
     if (assigneeFilter && assigneeFilter !== "all") {
       if (assigneeFilter === "unassigned") {
@@ -1031,17 +1045,17 @@ function LeadsPageDesktop() {
         result = result.filter(l => String(l.assignedTo) === assigneeFilter);
       }
     }
-    
+
     // Apply GIS-based filters
-    const hasActiveGisFilters = gisFilters.excludeFloodZones || 
-      gisFilters.nearInfrastructure || 
-      gisFilters.lowHazardRiskOnly || 
+    const hasActiveGisFilters = gisFilters.excludeFloodZones ||
+      gisFilters.nearInfrastructure ||
+      gisFilters.lowHazardRiskOnly ||
       gisFilters.minimumInvestmentScore > 0;
-    
+
     if (hasActiveGisFilters) {
       result = result.filter(lead => applyGisFiltersToLead(lead, gisFilters));
     }
-    
+
     // Apply score sorting
     if (sortOrder) {
       result = [...result].sort((a, b) => {
@@ -1050,9 +1064,9 @@ function LeadsPageDesktop() {
         return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
       });
     }
-    
+
     return result;
-  }, [leads, deferredSearch, stageFilter, assigneeFilter, gisFilters, sortOrder]);
+  }, [leads, stageFilter, assigneeFilter, gisFilters, sortOrder]);
 
   // Server-side pagination: the data returned is already one page
   // Client-side filtering (search, GIS) is applied on the current page

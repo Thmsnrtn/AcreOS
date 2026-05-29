@@ -65,6 +65,11 @@ const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   sortBy: z.string().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  // Server-side search. Matches across name, email, phone, address,
+  // city, state, zip via ILIKE. Empty string ignored. Capped at 100
+  // chars to keep planner cost bounded (and to make obvious abuse
+  // visible at request validation time).
+  q: z.string().max(100).optional(),
 });
 
 export function registerLeadRoutes(app: Express): void {
@@ -84,7 +89,7 @@ export function registerLeadRoutes(app: Express): void {
     if (!pagination.success) {
       return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
-    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+    const { page, pageSize, sortBy, sortOrder, q } = pagination.data;
 
     // Build SQL-level assignedTo filter to avoid full-table scan
     let sqlAssignedTo: number | null | undefined;
@@ -99,17 +104,36 @@ export function registerLeadRoutes(app: Express): void {
       }
     }
 
-    const filters = sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined;
+    const trimmedQ = q?.trim() || undefined;
+    const filters: { assignedTo?: number | null; q?: string } | undefined =
+      sqlAssignedTo !== undefined || trimmedQ
+        ? { ...(sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : {}), ...(trimmedQ ? { q: trimmedQ } : {}) }
+        : undefined;
 
     // If stage filter is present, we must compute scores on all leads before filtering (no SQL-level stage)
     if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      const allLeads = await storage.getLeads(org.id, filters);
+      // getLeads only takes assignedTo — pass that subset of filters here.
+      const allLeads = await storage.getLeads(org.id, filters?.assignedTo !== undefined ? { assignedTo: filters.assignedTo } : undefined);
       const leadsWithScores = allLeads.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
         return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
       });
-      const filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+      let filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+      if (trimmedQ) {
+        const ql = trimmedQ.toLowerCase();
+        const phoneDigits = trimmedQ.replace(/\D/g, "");
+        filteredLeads = filteredLeads.filter((l) => {
+          const haystack = [l.firstName, l.lastName, l.email, l.address, l.city, l.state, l.zip]
+            .filter(Boolean).join(" ").toLowerCase();
+          if (haystack.includes(ql)) return true;
+          if (phoneDigits.length >= 3) {
+            const pn = (l.phoneNormalized || (l.phone || "").replace(/\D/g, ""));
+            if (pn.includes(phoneDigits)) return true;
+          }
+          return false;
+        });
+      }
       const total = filteredLeads.length;
       const totalPages = Math.max(1, Math.ceil(total / pageSize));
       const start = (page - 1) * pageSize;
