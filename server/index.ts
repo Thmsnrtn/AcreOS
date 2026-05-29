@@ -26,7 +26,7 @@ validateEnv();
 
 // Defense in depth: hard-exit if the E2E test-auth flag is ever present on a
 // Fly machine. The bypass must never run on a deployed instance.
-import { assertTestAuthSafe } from "./auth/testAuth";
+import { assertTestAuthSafe, e2eTestAuthEnabled } from "./auth/testAuth";
 assertTestAuthSafe();
 
 // Initialize Sentry ASAP — must run before any other code
@@ -314,6 +314,7 @@ const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => (req as any).auth?.userId || req.ip || "unknown",
+  skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
   message: { message: "AI request limit reached. Please wait a moment." },
 });
 app.use("/api/ai", aiLimiter);
@@ -384,6 +385,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => (req as any).auth?.userId || req.ip || 'unknown',
   skip: (req) =>
+    e2eTestAuthEnabled() || // E2E suite hammers many routes as one user; never on Fly
     req.originalUrl.startsWith("/api/auth/user") ||
     req.originalUrl.startsWith("/__clerk/"),
   message: { message: "Too many requests. Please slow down and try again shortly." },
