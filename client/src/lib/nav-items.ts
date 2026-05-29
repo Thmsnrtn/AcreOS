@@ -37,6 +37,7 @@ import {
   Building2,
   TrendingUp,
 } from "lucide-react";
+import type { Persona } from "@shared/models/auth";
 
 export interface MasterNavItem {
   id: string;
@@ -113,52 +114,46 @@ export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "
 export const DEFAULT_MOBILE_ITEMS  = ["today", "inbox", "pipeline", "portfolio"];
 
 /**
- * Persona-aware default mobile bottom-nav.
+ * Persona-aware default mobile bottom-nav, keyed on the user's RELIABLE
+ * `persona` field (shared/models/auth.ts Persona) — the same explicit value
+ * the desktop sidebar trusts — NOT a behavioral inference.
  *
- * The 4-tab default above is a Land-Flipper-shaped set; a Note Investor
- * shouldn't open the app and see a Deals tab as their primary action.
- * This returns the right 4 IDs per persona so brand-new users land on
- * tabs that match their workflow. User-customized prefs (saved in
- * `useNavPreferences`) still override.
+ * AcreOS serves a handful of distinct investor types; each should open the app
+ * to the four surfaces that match their daily loop. A note servicer should not
+ * land on a Deals tab, and a wholesaler should not have to dig for buyer
+ * blasts. User-customized prefs (saved in useNavPreferences) still override.
  *
- * Persona inputs come from `useContextProfile()`'s `investorType` —
- * see client/src/hooks/use-context-profile.ts.
+ * 4 ids = the bottom-nav tabs; the 5th slot is always the More drawer.
  */
-export function defaultMobileItemsFor(
-  investorType:
-    | "wholesaler"
-    | "note_investor"
-    | "fix_and_flip"
-    | "portfolio_builder"
-    | "auction_hunter"
-    | "developer"
-    | "new_investor"
-    | undefined,
-): string[] {
-  switch (investorType) {
+export function mobileItemsForPersona(persona: Persona | undefined): string[] {
+  switch (persona) {
     case "wholesaler":
-      // Wholesalers' day is contracts + EMD timer + buyer blasts.
-      return ["today", "deals", "campaigns", "money"];
+      // Contracts + buyer blasts + reply triage.
+      return ["today", "deals", "campaigns", "inbox"];
     case "note_investor":
-      // Note investors monitor payments, manage delinquencies, prep taxes.
-      // No native "notes" id in nav (yet); finance is the canonical hub.
-      return ["today", "finance", "money", "ai-hub"];
-    case "fix_and_flip":
-      // Rehab projects + properties + deals dominate their day.
-      return ["today", "properties", "deals", "money"];
-    case "portfolio_builder":
-      // Buy-and-hold landlords — rent collection + maintenance.
-      // "finance" surfaces rent roll + cash flow until we ship persona-specific tabs.
-      return ["today", "properties", "finance", "money"];
-    case "auction_hunter":
-      // Tax-delinquent auction buyers — counties, properties, deals.
-      return ["today", "properties", "deals", "money"];
-    case "developer":
-      // Subdividers — properties + listings + deals.
+      // Owns notes — monitors payments, delinquencies, portfolio value.
+      return ["today", "finance", "money", "inbox"];
+    case "note_originator":
+      // Originates seller-financed notes — deals close into the note book.
+      return ["today", "deals", "finance", "money"];
+    case "note_servicer":
+      // Services notes for others — payments ledger + borrower comms.
+      return ["today", "finance", "money", "inbox"];
+    case "tax_delinquent":
+      // Auction/tax-lien buyers — county research + property pipeline.
+      return ["today", "properties", "counties", "money"];
+    case "subdivider":
+      // Splits parcels and lists the children.
       return ["today", "properties", "listings", "money"];
-    case "new_investor":
+    case "fix_flipper":
+      // Rehab projects on owned properties through to disposition.
+      return ["today", "properties", "deals", "money"];
+    case "landlord":
+      // Buy-and-hold — rent roll + portfolio (finance surfaces cash flow).
+      return ["today", "properties", "finance", "money"];
+    case "land_investor":
     default:
-      // Land Flipper / unknown — the launch vertical default.
+      // Land flipper / unknown — the launch-vertical default.
       return DEFAULT_MOBILE_ITEMS;
   }
 }

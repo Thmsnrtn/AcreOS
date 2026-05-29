@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_SIDEBAR_ITEMS,
   DEFAULT_MOBILE_ITEMS,
   ALL_NAV_ITEMS,
+  mobileItemsForPersona,
 } from "@/lib/nav-items";
 import { clientLogger } from "@/lib/clientLogger";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { useAuth } from "@/hooks/use-auth";
 
 /**
  * Sidebar + mobile-nav preferences.
@@ -141,16 +143,26 @@ export function useNavPreferences() {
     update(DEFAULTS);
   }, [update]);
 
-  // 2026-05-29: the mobile bottom-nav is a fixed, predictable set
-  // (DEFAULT_MOBILE_ITEMS = Today / Inbox / Pipeline / Portfolio) unless the
-  // user explicitly customizes it. We previously substituted a server-inferred
-  // persona default here, but that made the nav swap unpredictably (a Land
-  // Investor could open the app and see a Wholesaler-shaped set when the
-  // inference misfired). Land Investors are the launch vertical; per-persona
-  // nav can return once those verticals ship and the inference is reliable.
+  // Persona-aware mobile bottom-nav. AcreOS serves several investor types, so
+  // an uncustomized user opens the app to the four surfaces that match their
+  // workflow. Critically this keys off the RELIABLE `user.persona` field (the
+  // same explicit value the desktop sidebar trusts) — NOT a behavioral
+  // inference, which previously misfired and showed a Land Investor a
+  // Wholesaler-shaped nav. Saved customizations still win.
+  const { user } = useAuth();
+  const persona = user?.persona as
+    | import("@shared/models/auth").Persona
+    | undefined;
+  const effectiveMobileItems = useMemo(() => {
+    const isStillGenericDefault =
+      prefs.mobileItems.length === DEFAULT_MOBILE_ITEMS.length &&
+      prefs.mobileItems.every((id, idx) => id === DEFAULT_MOBILE_ITEMS[idx]);
+    return isStillGenericDefault ? mobileItemsForPersona(persona) : prefs.mobileItems;
+  }, [prefs.mobileItems, persona]);
+
   return {
     sidebarItems: prefs.sidebarItems,
-    mobileItems: prefs.mobileItems,
+    mobileItems: effectiveMobileItems,
     setSidebarItems,
     setMobileItems,
     reset,
