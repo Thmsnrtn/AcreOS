@@ -14,7 +14,7 @@
  * uses, so caches stay shared.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Search,
@@ -25,11 +25,11 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useLeads } from "@/hooks/use-leads";
 import { cn } from "@/lib/utils";
+import { VirtualList } from "@/components/virtual-list";
 
 type FilterKey = "all" | "hot" | "new" | "responded";
 
@@ -74,6 +74,128 @@ function daysSince(iso?: string | null): number | null {
   return Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000));
 }
 
+// Card render for one lead. Pulled out of MobileLeadList so the
+// virtualized list can call it as a stable per-row renderer.
+function MobileLeadRow({
+  lead: l,
+  onOpen,
+}: {
+  lead: MobileLead;
+  onOpen: () => void;
+}) {
+  const fullName =
+    [l.firstName, l.lastName].filter(Boolean).join(" ").trim() ||
+    `Lead #${l.id}`;
+  const where = [l.city, l.state].filter(Boolean).join(", ");
+  const d = daysSince(l.lastContactedAt);
+  return (
+    <div className="pb-2">
+      <Card className="p-3 active:bg-muted/50">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
+          aria-label={`Open lead ${fullName}`}
+          className="flex items-start justify-between gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-medium truncate">{fullName}</span>
+              <StatusPill status={l.status} />
+            </div>
+            <div className="text-xs text-muted-foreground truncate mt-0.5">
+              {[l.address, where].filter(Boolean).join(" · ") || "—"}
+            </div>
+            {d != null && (
+              <div
+                className={cn(
+                  "text-micro mt-1 inline-block px-1.5 py-0.5 rounded",
+                  d >= 21
+                    ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                    : d >= 7
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {d === 0 ? "Contacted today" : `${d}d since contact`}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-xl font-semibold tabular-nums">
+              {l.score ?? 0}
+            </div>
+            <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
+              score
+            </div>
+          </div>
+        </div>
+        {l.phone && (
+          <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-border/60">
+            <a
+              href={`tel:${l.phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
+              data-testid={`mobile-lead-call-${l.id}`}
+            >
+              <Phone className="h-3.5 w-3.5" /> Call
+            </a>
+            <a
+              href={`sms:${l.phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
+              data-testid={`mobile-lead-sms-${l.id}`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" /> Text
+            </a>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// Row height for the virtualized list. Phone cards have an extra
+// Call/Text button row (taller); name-only cards are shorter. We size
+// to the worst case so the windowing math is stable — at 1,000 leads
+// the visible window is ~5 cards, so a few px of bottom whitespace on
+// short cards is invisible noise. The previous `slice(0, 200)` cap
+// silently hid leads #201+; the virtualized list renders every lead
+// the legacy useLeads() hook returns.
+const ROW_HEIGHT = 156;
+// Reserve space for the in-page chrome above the list (search bar,
+// filter chips, page padding, bottom nav). Tuned by eye on a 14-Pro;
+// the exact value isn't critical — there's pad room in both directions.
+const VIEWPORT_CHROME_OFFSET = 260;
+
+function useMobileListHeight(): number {
+  // Window-relative height that re-measures on rotate/resize. Default
+  // for SSR is a safe phone-ish 600 — VirtualList tolerates that and
+  // re-renders on the effect's first paint.
+  const [h, setH] = useState<number>(() =>
+    typeof window === "undefined" ? 600 : Math.max(320, window.innerHeight - VIEWPORT_CHROME_OFFSET)
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const measure = () =>
+      setH(Math.max(320, window.innerHeight - VIEWPORT_CHROME_OFFSET));
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, []);
+  return h;
+}
+
 export function MobileLeadList() {
   const [, setLocation] = useLocation();
   const { data, isLoading, error, refetch } = useLeads();
@@ -81,6 +203,7 @@ export function MobileLeadList() {
 
   const [filter, setFilter] = useState<FilterKey>("all");
   const [q, setQ] = useState("");
+  const listHeight = useMobileListHeight();
 
   const filtered = useMemo(() => {
     let xs = leads;
@@ -220,89 +343,19 @@ export function MobileLeadList() {
           )}
         </Card>
       ) : (
-        <div className="space-y-2">
-          {filtered.slice(0, 200).map((l) => {
-            const fullName =
-              [l.firstName, l.lastName].filter(Boolean).join(" ").trim() ||
-              `Lead #${l.id}`;
-            const where = [l.city, l.state].filter(Boolean).join(", ");
-            const d = daysSince(l.lastContactedAt);
-            return (
-              <Card key={l.id} className="p-3 active:bg-muted/50">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setLocation(`/leads/${l.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setLocation(`/leads/${l.id}`);
-                    }
-                  }}
-                  aria-label={`Open lead ${fullName}`}
-                  className="flex items-start justify-between gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{fullName}</span>
-                      <StatusPill status={l.status} />
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
-                      {[l.address, where].filter(Boolean).join(" · ") || "—"}
-                    </div>
-                    {d != null && (
-                      <div
-                        className={cn(
-                          "text-micro mt-1 inline-block px-1.5 py-0.5 rounded",
-                          d >= 21
-                            ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
-                            : d >= 7
-                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {d === 0 ? "Contacted today" : `${d}d since contact`}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-xl font-semibold tabular-nums">
-                      {l.score ?? 0}
-                    </div>
-                    <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                      score
-                    </div>
-                  </div>
-                </div>
-                {l.phone && (
-                  <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-border/60">
-                    <a
-                      href={`tel:${l.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
-                      data-testid={`mobile-lead-call-${l.id}`}
-                    >
-                      <Phone className="h-3.5 w-3.5" /> Call
-                    </a>
-                    <a
-                      href={`sms:${l.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
-                      data-testid={`mobile-lead-sms-${l.id}`}
-                    >
-                      <MessageSquare className="h-3.5 w-3.5" /> Text
-                    </a>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-          {filtered.length > 200 && (
-            <Badge variant="secondary" className="block text-center w-full py-2">
-              Showing first 200 — open desktop for the full list
-            </Badge>
+        <VirtualList
+          items={filtered}
+          itemHeight={ROW_HEIGHT}
+          containerHeight={listHeight}
+          overscan={6}
+          className="-mx-1 px-1"
+          renderItem={(l) => (
+            <MobileLeadRow
+              lead={l}
+              onOpen={() => setLocation(`/leads/${l.id}`)}
+            />
           )}
-        </div>
+        />
       )}
 
     </div>
