@@ -64,7 +64,8 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   // mobile drawer, and existing nav-preferences continue to resolve.
   // Not part of the default sidebar.
   { id: "pipeline",      label: "Pipeline",        icon: GitBranch,   href: "/pipeline",       description: "Leads, deals, and properties hub" },
-  { id: "ai-hub",      label: "AI Hub",        icon: Sparkles,    href: "/ai",           description: "AI assistant, agents, and automation" },
+  { id: "map",           label: "Map",             icon: MapIcon,     href: "/maps",           description: "Interactive parcel map — discovery & comps" },
+  { id: "ai-hub",        label: "Pax",             icon: Sparkles,    href: "/ai",             description: "Pax — your AI assistant" },
   { id: "campaigns",     label: "Campaigns",       icon: Mail,        href: "/campaigns",      description: "Email, SMS, and direct mail" },
   { id: "tasks",         label: "Tasks",           icon: ListTodo,    href: "/tasks",          description: "Your action items" },
   { id: "inbox",         label: "Inbox",           icon: Inbox,       href: "/inbox",          description: "Messages and communications" },
@@ -112,6 +113,14 @@ export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "
 // under the consolidated Deals/Money tabs. Everything else lives in the More
 // drawer. The 5th slot is the More button (see MobileBottomNav).
 export const DEFAULT_MOBILE_ITEMS  = ["today", "inbox", "pipeline", "portfolio"];
+
+// The five canonical "doors" — the same for every persona on every device
+// (design-review decision 2026-05-29). Persona changes the CONTENT behind each
+// door (persona-gated sections, vocabulary, Finance tabs), never the doors
+// themselves. The mobile bottom nav renders exactly these; Inbox/Settings and
+// the long tail are reached from the top bar (Search/⌘K) + the More drawer.
+//   Today · Map · Deals · Finance(money) · Pax(ai-hub)
+export const MOBILE_DOORS = ["today", "map", "deals", "money", "ai-hub"];
 
 /**
  * Persona-aware default mobile bottom-nav, keyed on the user's RELIABLE

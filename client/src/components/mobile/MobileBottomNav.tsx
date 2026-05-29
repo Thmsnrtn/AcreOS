@@ -4,17 +4,17 @@ import { MoreHorizontal } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useState } from "react";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
-import { useNavPreferences } from "@/hooks/use-nav-preferences";
-import { NAV_ITEM_MAP, type MasterNavItem } from "@/lib/nav-items";
+import { NAV_ITEM_MAP, MOBILE_DOORS, type MasterNavItem } from "@/lib/nav-items";
 
 export function MobileBottomNav() {
   const [location] = useLocation();
   const { isMobile, isKeyboardOpen } = useIsMobile();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const { mobileItems } = useNavPreferences();
 
-  const navItems: MasterNavItem[] = mobileItems
-    .slice(0, 4)
+  // The five canonical doors — the SAME for every persona (persona changes the
+  // content behind them, not the doors). Inbox/Settings/long-tail live behind
+  // the More drawer + top-bar Search. See MOBILE_DOORS in lib/nav-items.
+  const navItems: MasterNavItem[] = MOBILE_DOORS
     .map((id) => NAV_ITEM_MAP.get(id))
     .filter((item): item is MasterNavItem => item != null);
 
@@ -42,7 +42,7 @@ export function MobileBottomNav() {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex flex-col items-center justify-center gap-1 min-w-[48px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive
                     ? "text-primary"
                     : "text-muted-foreground active:bg-muted/50"
@@ -72,7 +72,7 @@ export function MobileBottomNav() {
             aria-haspopup="dialog"
             onClick={() => setIsDrawerOpen(true)}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "flex flex-col items-center justify-center gap-1 min-w-[48px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isDrawerOpen
                 ? "text-primary"
                 : "text-muted-foreground active:bg-muted/50"
