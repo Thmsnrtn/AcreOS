@@ -36,6 +36,11 @@ const agentAutonomySchema = z.object({
   level: autonomyLevelSchema.optional(),
   perAction: z.record(z.string().max(64), autonomyLevelSchema).optional(),
   thresholdsCents: z.record(z.string().max(64), z.number().int().min(0).max(1_000_000_000)).optional(),
+  // Workstream A (Honesty) — kill switch. ISO-8601 datetime. While in the
+  // future, downstream executors MUST skip auto-execution for this agent
+  // (only ask / draft, never execute). Wired progressively — schema accepts
+  // it now so the /settings/pax surface can persist it.
+  pausedUntil: z.string().datetime().optional(),
 }).strict();
 
 const autonomySchema = z.object({

@@ -51,6 +51,15 @@ export interface AgentAutonomy {
   perAction?: Record<string, AutonomyLevel>;
   /** Monetary thresholds (cents) — keys are action IDs that gate on $$$. */
   thresholdsCents?: Record<string, number>;
+  /**
+   * Workstream A (Honesty) — kill switch.
+   * ISO-8601 timestamp. While in the future, all autonomous action for this
+   * agent MUST be skipped (only asked / drafted, never executed). Downstream
+   * executors (e.g. server/services/autonomousDecisionExecutor.ts) must
+   * respect this when wired. Cleared by the "reset to manual-only" or by
+   * the timestamp passing.
+   */
+  pausedUntil?: string;
 }
 
 /**

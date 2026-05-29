@@ -428,6 +428,15 @@ export default function TodayPage() {
                 <span>Ask more (50%)</span>
                 <span>Auto more (100%)</span>
               </div>
+              <div className="mt-2">
+                <Link
+                  href="/settings/pax"
+                  className="text-xs text-acr-brand hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  data-testid="link-pax-controls"
+                >
+                  Pax controls (pause / replay / reset) →
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>
