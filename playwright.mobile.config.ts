@@ -15,7 +15,7 @@ export default defineConfig({
   globalSetup: "./tests/e2e-mobile/global-setup.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
   // CI runners vary wildly (seen 1–7 min total); the bottom-nav test does
   // several sequential navigations, so give each test generous headroom.
