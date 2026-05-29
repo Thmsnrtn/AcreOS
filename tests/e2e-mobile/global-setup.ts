@@ -21,14 +21,33 @@ export default async function globalSetup() {
     throw new Error("[e2e] DATABASE_URL is required for the mobile E2E suite");
   }
 
-  // 1. Push the full schema (creates every table). --force skips prompts.
+  // 1. Enable pgvector — the schema has a vector(1536) column, and
+  // `drizzle-kit push` will fail with `type "vector" does not exist` unless
+  // the extension is created first. The CI Postgres image ships pgvector;
+  // this just enables it in the target database.
+  {
+    const ext = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await ext.connect();
+    try {
+      await ext.query("CREATE EXTENSION IF NOT EXISTS vector");
+    } catch (err) {
+      console.warn(
+        "[e2e] could not create pgvector extension (continuing): " +
+          (err as Error).message,
+      );
+    } finally {
+      await ext.end();
+    }
+  }
+
+  // 2. Push the full schema (creates every table). --force skips prompts.
   console.log("[e2e] pushing schema to test DB…");
   execSync("npx drizzle-kit push --force", {
     stdio: "inherit",
     env: process.env,
   });
 
-  // 2. Seed an onboarded user + org + active membership.
+  // 3. Seed an onboarded user + org + active membership.
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
