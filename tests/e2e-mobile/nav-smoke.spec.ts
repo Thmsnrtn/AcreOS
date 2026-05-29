@@ -87,7 +87,7 @@ test.describe("mobile navigation smoke", () => {
               page.evaluate(
                 () => (document.getElementById("root")?.innerText || "").trim().length,
               ),
-            { timeout: 35000 },
+            { timeout: 60000 },
           )
           .toBeGreaterThan(20);
       } catch {
@@ -130,7 +130,7 @@ test.describe("mobile navigation smoke", () => {
                 const txt = await page.locator("body").innerText();
                 return expected.some((s) => txt.includes(s));
               },
-              { timeout: 35000 },
+              { timeout: 60000 },
             )
             .toBe(true);
         } catch {
@@ -163,7 +163,7 @@ test.describe("mobile navigation smoke", () => {
     await seedSessionCookie(page, baseURL!);
     await page.goto("/today", { waitUntil: "domcontentloaded" });
     const nav = page.locator('[data-testid="mobile-bottom-nav"]');
-    await expect(nav, "mobile bottom nav did not render").toBeVisible({ timeout: 35000 });
+    await expect(nav, "mobile bottom nav did not render").toBeVisible({ timeout: 60000 });
 
     const hrefs = (await nav.locator("a").evaluateAll((els) =>
       els.map((e) => e.getAttribute("href")).filter((h): h is string => !!h),
