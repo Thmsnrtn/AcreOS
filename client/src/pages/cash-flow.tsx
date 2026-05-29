@@ -376,18 +376,7 @@ export default function CashFlowPage() {
                     aria-label={`24-month income projection across ${portfolioTimelineData.timeline.length} months. Balloon-payment months are highlighted; band represents ±25% uncertainty.`}
                   >
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={portfolioTimelineData.timeline}>
-                      <defs>
-                        <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-                        </linearGradient>
-                        <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" />
+                    <AreaChart data={portfolioTimelineData.timeline} accessibilityLayer>
                       <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
                       <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                       <Tooltip
@@ -398,44 +387,75 @@ export default function CashFlowPage() {
                         ]) as any}
                         labelFormatter={((label: string) => {
                           const row = portfolioTimelineData.timeline.find((r: any) => r.month === label);
-                          return row?.isBalloon ? `${label} 🎈 Balloon payment due` : label;
+                          return row?.isBalloon ? `${label} — balloon payment due` : label;
                         }) as any}
                       />
+                      {/* Flat 5%-opacity band between low + high — no gradient. */}
                       <Area
                         type="monotone"
                         dataKey="incomeHigh"
                         stroke="none"
-                        fill="url(#bandGrad)"
+                        fill="var(--acr-brand)"
+                        fillOpacity={0.05}
                         legendType="none"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="income"
-                        stroke={chartColor(0)}
-                        strokeWidth={2}
-                        fill="url(#incomeGrad)"
-                        name="Expected income"
-                        dot={(props: any) => {
-                          const { cx, cy, payload } = props;
-                          if (!payload.isBalloon) return <g key={`dot-${cx}-${cy}`} />;
-                          return (
-                            <circle key={`balloon-${cx}-${cy}`} cx={cx} cy={cy} r={6}
-                              fill={chartColor(1)} stroke={chartColor(2)} strokeWidth={2} />
-                          );
-                        }}
+                        isAnimationActive={false}
                       />
                       <Area
                         type="monotone"
                         dataKey="incomeLow"
                         stroke="none"
-                        fill="white"
+                        fill="var(--acr-bg, white)"
+                        fillOpacity={1}
                         legendType="none"
+                        isAnimationActive={false}
+                      />
+                      {/* 1px solid stroke for income — no fill. */}
+                      <Area
+                        type="monotone"
+                        dataKey="income"
+                        stroke="var(--acr-brand)"
+                        strokeWidth={1}
+                        fill="none"
+                        name="Expected income"
+                        dot={false}
+                        activeDot={{ r: 3, fill: 'var(--acr-brand)' }}
+                        isAnimationActive={false}
+                      />
+                      {/* Balloon months — single small triangle below the x-axis.
+                          Recharts renders dots in the chart plane, so we paint a
+                          ▲ glyph just under each balloon month using the active
+                          x-coordinate; the tooltip already names the amount. */}
+                      <Area
+                        type="monotone"
+                        dataKey="incomeLow"
+                        stroke="none"
+                        fill="none"
+                        legendType="none"
+                        isAnimationActive={false}
+                        dot={(props: any) => {
+                          const { cx, payload, key } = props;
+                          if (!payload?.isBalloon) return <g key={key} />;
+                          const ax: number = typeof cx === 'number' ? cx : 0;
+                          return (
+                            <g
+                              key={key}
+                              role="img"
+                              aria-label={`Balloon payment month ${payload.month}`}
+                            >
+                              <polygon
+                                points={`${ax - 4},290 ${ax + 4},290 ${ax},283`}
+                                fill="var(--acr-warn)"
+                              />
+                            </g>
+                          );
+                        }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Yellow dots indicate balloon payment months. Band represents ±25% uncertainty.
+                    <span aria-hidden="true">▲</span>
+                    <span className="ml-1">Triangles below the axis mark balloon-payment months. Band represents ±25% uncertainty.</span>
                   </p>
                 </CardContent>
               </Card>
