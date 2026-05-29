@@ -26,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail, Link2, Copy, ExternalLink, Settings } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
@@ -36,6 +36,8 @@ import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
+import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
+import { usePersona, useTerm } from "@/hooks/use-persona";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -52,6 +54,15 @@ type NoteWithDetails = Note & {
 
 export default function FinancePage() {
   useDocumentTitle("Finance");
+  // Persona controls hero variant + which chart shows. The default
+  // land_investor view keeps the existing 12-month area chart (now
+  // de-chartjunked); note-investor and project personas get a
+  // persona-shaped hero in front and the area chart suppressed in
+  // favor of the small-multiple or P&L tile, which speaks to them.
+  const persona = usePersona();
+  const propertyPluralLabel = useTerm("entity.property.plural");
+  const isLandInvestorPersona = persona === "land_investor" || persona === "tax_delinquent";
+  void propertyPluralLabel; // reserved for future per-persona vocabulary swaps in this page
   const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
@@ -173,11 +184,31 @@ export default function FinancePage() {
     }
   };
 
+  // Tufte de-chartjunk: when the existing area chart renders, use it
+  // to mark the prior-year mean as a horizontal reference line so the
+  // chart actually answers "is this month above or below the run-rate"
+  // instead of inviting eyeball-integration of an opaque gradient.
+  const cashFlowPriorYearMean =
+    portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.length > 0
+      ? portfolioSummary.monthlyCashFlow.reduce((s, m) => s + Number(m.amount || 0), 0) /
+        portfolioSummary.monthlyCashFlow.length
+      : 0;
+
   return (
     <PageShell label="Finance">
-          
-          {/* Portfolio Cash Flow Chart */}
-          {portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
+          {/* Persona-shaped hero — renders nothing for default
+              land_investor persona, so the existing chart below stays
+              the entry point. For note_investor / wholesaler / flipper
+              the hero is the entry point and the area chart is
+              suppressed in favor of the persona-shaped representation. */}
+          <PersonaFinanceHero />
+
+          {/* Portfolio Cash Flow Chart — kept for the default
+              land_investor persona only. Note-investor sees the
+              twelve small-multiple panels in the hero above, which
+              is the Tufte-recommended substitute for an area chart
+              when you want per-month decomposition. */}
+          {isLandInvestorPersona && portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
             <Card className="mb-6">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -192,17 +223,41 @@ export default function FinancePage() {
                   aria-label={`Monthly cash flow over ${portfolioSummary.monthlyCashFlow.length} months: ${portfolioSummary.monthlyCashFlow.map(m => `${m.month} ${usd(m.amount, { noCents: true })}`).join(", ")}`}
                 >
                   <ResponsiveContainer width="100%" height="100%">
+                    {/*
+                      Tufte de-chartjunk (Beautiful Evidence, ch.4): the
+                      original gradient fading-to-zero shaded a region
+                      whose visual weight varied inversely with the
+                      quantity it depicted. Replaced with a 1px solid
+                      brand stroke + zero-axis tick + prior-year-mean
+                      reference line so the chart answers a question
+                      ("above run-rate?") rather than illustrating one.
+                    */}
                     <AreaChart data={portfolioSummary.monthlyCashFlow}>
-                      <defs>
-                        <linearGradient id="cashFlowGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => usd(v, { noCents: true })} />
+                      <XAxis dataKey="month" fontSize={10} tickLine={true} axisLine={true} />
+                      <YAxis fontSize={10} tickLine={true} axisLine={true} tickFormatter={(v: number) => usd(v, { noCents: true })} />
                       <Tooltip formatter={((value: number) => [usd(value), "Cash flow"]) as any} />
-                      <Area type="monotone" dataKey="amount" stroke="hsl(var(--primary))" fill="url(#cashFlowGrad)" strokeWidth={2} />
+                      {cashFlowPriorYearMean > 0 && (
+                        <ReferenceLine
+                          y={cashFlowPriorYearMean}
+                          stroke="currentColor"
+                          strokeDasharray="3 3"
+                          strokeOpacity={0.3}
+                          label={{
+                            value: `Mean ${usd(cashFlowPriorYearMean, { noCents: true })}`,
+                            position: "right",
+                            fontSize: 10,
+                            opacity: 0.6,
+                          }}
+                        />
+                      )}
+                      <Area
+                        type="monotone"
+                        dataKey="amount"
+                        stroke="var(--acr-brand)"
+                        fill="transparent"
+                        strokeWidth={1}
+                        dot={{ r: 2, fill: "var(--acr-brand)", strokeWidth: 0 }}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>

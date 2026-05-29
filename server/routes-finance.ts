@@ -685,8 +685,12 @@ export function registerFinanceRoutes(app: Express): void {
         { status: 'pending', count: pendingNotes.length, value: pendingNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
       ];
 
-      // Monthly cash flow for last 12 months
+      // Monthly cash flow for last 12 months — plus principal/interest/late-fee
+      // splits per month for Tufte small-multiple display on the note-investor
+      // persona hero. Backwards-compatible: monthlyCashFlow stays the same
+      // shape, the new monthlyBreakdownByType field is additive.
       const monthlyCashFlow: { month: string; amount: number }[] = [];
+      const monthlyBreakdownByType: { month: string; principal: number; interest: number; lateFees: number; total: number }[] = [];
       const now = new Date();
       for (let i = 11; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -694,10 +698,105 @@ export function registerFinanceRoutes(app: Express): void {
         const monthLabel = monthStart.toISOString().slice(0, 7); // YYYY-MM
         const monthPayments = allPayments.filter(p => {
           const d = p.paymentDate ? new Date(p.paymentDate) : null;
-          return d && d >= monthStart && d <= monthEnd;
+          return d && d >= monthStart && d <= monthEnd && p.status === 'completed';
         });
         const amount = monthPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const principal = monthPayments.reduce((s, p) => s + Number(p.principalAmount || 0), 0);
+        const interest = monthPayments.reduce((s, p) => s + Number(p.interestAmount || 0), 0);
+        const lateFees = monthPayments.reduce((s, p) => s + Number((p as any).lateFeeAmount || 0), 0);
         monthlyCashFlow.push({ month: monthLabel, amount: Math.round(amount * 100) / 100 });
+        monthlyBreakdownByType.push({
+          month: monthLabel,
+          principal: Math.round(principal * 100) / 100,
+          interest: Math.round(interest * 100) / 100,
+          lateFees: Math.round(lateFees * 100) / 100,
+          total: Math.round(amount * 100) / 100,
+        });
+      }
+
+      // Persona-shaped derivations. Backwards-compatible — existing payload
+      // shape stays untouched and these fields are additive.
+
+      // Note-investor: delinquency snapshot.
+      let delinquentCount = 0;
+      let delinquencyRate = 0;
+      const today = now;
+      activeNotes.forEach(n => {
+        if (!n.nextPaymentDate) return;
+        const days = Math.floor((today.getTime() - new Date(n.nextPaymentDate).getTime()) / (1000 * 60 * 60 * 24));
+        if (days > 0) delinquentCount += 1;
+      });
+      if (activeNotes.length > 0) {
+        delinquencyRate = (delinquentCount / activeNotes.length) * 100;
+      }
+
+      // Net inflow MTD — sum of completed payments this calendar month.
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const netInflowMtd = allPayments
+        .filter(p => p.status === 'completed' && p.paymentDate && new Date(p.paymentDate) >= monthStart)
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+      // Wholesaler: assignment fee summary (derived from deals — acceptedAmount
+      // on closed deals = realized fee; pending = active deals).
+      let assignmentFees = { mtdCollected: 0, pendingCount: 0, pendingValue: 0, avgPerClose: 0, closedCount: 0 };
+      try {
+        const deals = await storage.getDeals(org.id);
+        const closed = deals.filter(d => d.status === 'closed' && d.acceptedAmount);
+        const closedMtd = closed.filter(d => d.updatedAt && new Date(d.updatedAt) >= monthStart);
+        const active = deals.filter(d => !['closed', 'cancelled', 'dead'].includes(d.status));
+        const mtdSum = closedMtd.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
+        const closedSum = closed.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
+        const pendingSum = active.reduce((s, d) => s + Number(d.acceptedAmount || d.offerAmount || 0), 0);
+        assignmentFees = {
+          mtdCollected: Math.round(mtdSum * 100) / 100,
+          pendingCount: active.length,
+          pendingValue: Math.round(pendingSum * 100) / 100,
+          avgPerClose: closed.length > 0 ? Math.round((closedSum / closed.length) * 100) / 100 : 0,
+          closedCount: closed.length,
+        };
+      } catch {
+        // storage.getDeals not available or threw — leave defaults.
+      }
+
+      // Flipper / subdivider / landlord: project P&L summary. Compute net
+      // (listPrice or salePrice − purchasePrice) per property and surface
+      // the three with the largest realized/projected net.
+      let projects = { netMtd: 0, grossMarginPct: 0, top: [] as Array<{ id: number; label: string; net: number; status: string }> };
+      try {
+        const properties = await storage.getProperties(org.id);
+        const projectRows = properties
+          .filter((p: any) => p.purchasePrice || p.listPrice)
+          .map((p: any) => {
+            const buy = Number(p.purchasePrice || 0);
+            const sell = Number(p.soldPrice || p.listPrice || 0);
+            const net = sell - buy;
+            return {
+              id: p.id,
+              label: [p.county, p.state].filter(Boolean).join(', ') || `Project #${p.id}`,
+              net: Math.round(net * 100) / 100,
+              status: p.status || 'unknown',
+              buy,
+              sell,
+              soldAt: p.soldDate || p.updatedAt,
+            };
+          });
+        const soldThisMonth = projectRows.filter(p => p.status === 'sold' && p.soldAt && new Date(p.soldAt) >= monthStart);
+        const netMtd = soldThisMonth.reduce((s, p) => s + p.net, 0);
+        const totalBuy = projectRows.reduce((s, p) => s + p.buy, 0);
+        const totalSell = projectRows.reduce((s, p) => s + p.sell, 0);
+        const grossMarginPct = totalSell > 0 ? ((totalSell - totalBuy) / totalSell) * 100 : 0;
+        const active = projectRows.filter(p => p.status !== 'sold');
+        const top = active
+          .sort((a, b) => b.net - a.net)
+          .slice(0, 3)
+          .map(p => ({ id: p.id, label: p.label, net: p.net, status: p.status }));
+        projects = {
+          netMtd: Math.round(netMtd * 100) / 100,
+          grossMarginPct: Math.round(grossMarginPct * 10) / 10,
+          top,
+        };
+      } catch {
+        // ignore
       }
 
       res.json({
@@ -709,6 +808,14 @@ export function registerFinanceRoutes(app: Express): void {
         averageInterestRate: avgInterestRate,
         statusBreakdown,
         monthlyCashFlow,
+        // Persona-typed additive fields — clients that don't read them keep
+        // working unchanged.
+        monthlyBreakdownByType,
+        delinquentCount,
+        delinquencyRate: Math.round(delinquencyRate * 10) / 10,
+        netInflowMtd: Math.round(netInflowMtd * 100) / 100,
+        assignmentFees,
+        projects,
       });
     } catch (err: any) {
       logger.error("Error getting portfolio summary", err instanceof Error ? err : undefined);
