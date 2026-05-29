@@ -7,6 +7,7 @@ import { usd } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Button } from "@/components/ui/button";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -176,7 +177,7 @@ function formatPercent(value: number): string {
 export default function PortfolioPage() {
   useDocumentTitle("Portfolio analytics");
   const [pendingDismiss, setPendingDismiss] = useState<PortfolioAlert | null>(null);
-  const { data: summary, isLoading: summaryLoading } = useQuery<PortfolioSummary>({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErrorObj, isFetching: summaryFetching, refetch: refetchSummary } = useQuery<PortfolioSummary>({
     queryKey: ["/api/finance/portfolio-summary"],
     queryFn: async () => {
       const res = await fetch("/api/finance/portfolio-summary", { credentials: "include" });
@@ -185,7 +186,7 @@ export default function PortfolioPage() {
     },
   });
 
-  const { data: delinquency, isLoading: delinquencyLoading } = useQuery<DelinquencyData>({
+  const { data: delinquency, isLoading: delinquencyLoading, isError: delinquencyError, error: delinquencyErrorObj, isFetching: delinquencyFetching, refetch: refetchDelinquency } = useQuery<DelinquencyData>({
     queryKey: ["/api/finance/delinquency"],
     queryFn: async () => {
       const res = await fetch("/api/finance/delinquency", { credentials: "include" });
@@ -194,7 +195,7 @@ export default function PortfolioPage() {
     },
   });
 
-  const { data: projections, isLoading: projectionsLoading } = useQuery<ProjectionsData>({
+  const { data: projections, isLoading: projectionsLoading, isError: projectionsError, error: projectionsErrorObj, isFetching: projectionsFetching, refetch: refetchProjections } = useQuery<ProjectionsData>({
     queryKey: ["/api/finance/projections"],
     queryFn: async () => {
       const res = await fetch("/api/finance/projections", { credentials: "include" });
@@ -203,7 +204,7 @@ export default function PortfolioPage() {
     },
   });
 
-  const { data: alerts, isLoading: alertsLoading } = useQuery<PortfolioAlert[]>({
+  const { data: alerts, isLoading: alertsLoading, isError: alertsError, error: alertsErrorObj, isFetching: alertsFetching, refetch: refetchAlerts } = useQuery<PortfolioAlert[]>({
     queryKey: ["/api/ai/portfolio/alerts"],
     queryFn: async () => {
       const res = await fetch("/api/ai/portfolio/alerts?status=active", { credentials: "include" });
@@ -212,7 +213,7 @@ export default function PortfolioPage() {
     },
   });
 
-  const { data: complianceRules, isLoading: rulesLoading } = useQuery<ComplianceRule[]>({
+  const { data: complianceRules, isLoading: rulesLoading, isError: rulesError, error: rulesErrorObj, isFetching: rulesFetching, refetch: refetchRules } = useQuery<ComplianceRule[]>({
     queryKey: ["/api/ai/compliance/rules"],
     queryFn: async () => {
       const res = await fetch("/api/ai/compliance/rules", { credentials: "include" });
@@ -267,6 +268,18 @@ export default function PortfolioPage() {
   });
 
   const isLoading = summaryLoading || delinquencyLoading || projectionsLoading;
+  // The summary, delinquency, and projections queries collectively drive the
+  // KPI cards and every financial chart on this page. If any of them fail,
+  // surface one recoverable error in place of the financial sections rather
+  // than rendering empty/zeroed cards that look like real data.
+  const financialsError = summaryError || delinquencyError || projectionsError;
+  const financialsErrorObj = (summaryErrorObj || delinquencyErrorObj || projectionsErrorObj) as Error | null;
+  const financialsFetching = summaryFetching || delinquencyFetching || projectionsFetching;
+  const refetchFinancials = () => {
+    refetchSummary();
+    refetchDelinquency();
+    refetchProjections();
+  };
 
   const activeAlerts = alerts?.filter(a => a.status === "active") || [];
   const criticalAlerts = activeAlerts.filter(a => a.severity === "critical").length;
@@ -299,6 +312,16 @@ export default function PortfolioPage() {
 
           <section aria-labelledby="portfolio-overview-heading">
             <h2 id="portfolio-overview-heading" className="text-xl font-semibold mb-4">Portfolio overview</h2>
+            {financialsError ? (
+              <QueryErrorState
+                error={financialsErrorObj}
+                onRetry={refetchFinancials}
+                isRetrying={financialsFetching}
+                title="Couldn't load portfolio analytics"
+                description="Your notes and payment records are unchanged. Retry to load the financial overview, charts, and projections."
+                testId="portfolio-financials-error"
+              />
+            ) : (
             <dl className="grid grid-cols-1 md:grid-cols-4 gap-4 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">
@@ -380,6 +403,7 @@ export default function PortfolioPage() {
                 </CardContent>
               </Card>
             </dl>
+            )}
           </section>
 
           <section data-testid="section-portfolio-alerts">
@@ -414,6 +438,16 @@ export default function PortfolioPage() {
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-24 w-full" />
                   </div>
+                ) : alertsError ? (
+                  <QueryErrorState
+                    error={alertsErrorObj as Error}
+                    onRetry={() => refetchAlerts()}
+                    isRetrying={alertsFetching}
+                    compact
+                    title="Couldn't load alerts"
+                    description="Your portfolio alerts couldn't be loaded. Try again."
+                    testId="portfolio-alerts-error"
+                  />
                 ) : activeAlerts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground" role="status">
                     <CheckCircle className="w-12 h-12 mb-3 text-acr-pos" aria-hidden="true" />
@@ -531,6 +565,16 @@ export default function PortfolioPage() {
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-24 w-full" />
                   </div>
+                ) : rulesError ? (
+                  <QueryErrorState
+                    error={rulesErrorObj as Error}
+                    onRetry={() => refetchRules()}
+                    isRetrying={rulesFetching}
+                    compact
+                    title="Couldn't load compliance rules"
+                    description="The compliance dashboard couldn't load. Try again."
+                    testId="portfolio-compliance-error"
+                  />
                 ) : (
                   <>
                     <dl className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 m-0">

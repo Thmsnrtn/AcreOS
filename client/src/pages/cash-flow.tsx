@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { QueryErrorState } from '@/components/query-error-state';
 import { useToast } from '@/hooks/use-toast';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { usd } from '@/lib/format';
@@ -78,7 +80,7 @@ export default function CashFlowPage() {
   const [forecastId, setForecastId] = useState<number | null>(null);
 
   // Portfolio summary
-  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError, error: summaryErrorObj, isFetching: summaryFetching, refetch: refetchSummary } = useQuery({
     queryKey: ['cash-flow', 'portfolio', 'summary'],
     queryFn: async () => {
       const res = await fetch('/api/cash-flow/portfolio/summary', { credentials: 'include' });
@@ -311,14 +313,33 @@ export default function CashFlowPage() {
             </CardContent>
           </Card>
         </dl>
+      ) : summaryLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" aria-busy="true">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-4 space-y-2">
+                <Skeleton className="h-4 w-28" announce={i === 0} announceText="Loading cash flow forecast" />
+                <Skeleton className="h-8 w-24" announce={false} />
+                <Skeleton className="h-3 w-20" announce={false} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : summaryError ? (
+        <QueryErrorState
+          error={summaryErrorObj as Error}
+          onRetry={() => refetchSummary()}
+          isRetrying={summaryFetching}
+          title="Couldn't load cash flow forecast"
+          description="Your forecast data is unchanged. Retry, or generate a new forecast above."
+          testId="cash-flow-summary-error"
+        />
       ) : (
-        !summaryLoading && (
-          <div className="text-center py-16 text-muted-foreground">
-            <Activity className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
-            <p className="text-lg font-medium">No forecast data yet.</p>
-            <p className="text-sm mt-1">Click "Generate forecast" to create your first cash flow projection.</p>
-          </div>
-        )
+        <div className="text-center py-16 text-muted-foreground">
+          <Activity className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
+          <p className="text-lg font-medium">No forecast data yet.</p>
+          <p className="text-sm mt-1">Click "Generate forecast" to create your first cash flow projection.</p>
+        </div>
       )}
 
       {summary && (

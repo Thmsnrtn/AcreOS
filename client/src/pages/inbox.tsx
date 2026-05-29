@@ -24,6 +24,8 @@ import { EmptyState } from "@/components/empty-state";
 import { ClearedEmpty, EmptyFilter } from "@/components/empty-states";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { ContentReveal } from "@/components/ContentReveal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Search,
   Mail,
@@ -660,7 +662,7 @@ function SMSConversationDetail({
   const { toast } = useToast();
   const [newMessage, setNewMessage] = useState("");
 
-  const { data: messages = [], isLoading: isLoadingMessages, isError: isMessagesError } = useQuery<Message[]>({
+  const { data: messages = [], isLoading: isLoadingMessages, isError: isMessagesError, error: messagesError, isFetching: isMessagesFetching, refetch: refetchMessages } = useQuery<Message[]>({
     queryKey: ["/api/conversations", conversation.id, "messages"],
   });
 
@@ -756,10 +758,27 @@ function SMSConversationDetail({
 
       <ScrollArea className="flex-1 p-4">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading messages…</span>
+          <div className="space-y-4" aria-busy="true">
+            <div className="flex justify-start">
+              <Skeleton className="h-12 w-[60%] rounded-card" announceText="Loading messages" />
+            </div>
+            <div className="flex justify-end">
+              <Skeleton className="h-10 w-[50%] rounded-card" announce={false} />
+            </div>
+            <div className="flex justify-start">
+              <Skeleton className="h-14 w-[65%] rounded-card" announce={false} />
+            </div>
           </div>
+        ) : isMessagesError ? (
+          <QueryErrorState
+            error={messagesError as Error}
+            onRetry={() => refetchMessages()}
+            isRetrying={isMessagesFetching}
+            compact
+            title="Couldn't load messages"
+            description="This conversation couldn't be loaded. Try again."
+            testId="sms-messages-error"
+          />
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-center">
             <MessageSquare className="h-12 w-12 mb-2 opacity-50" aria-hidden="true" />
@@ -865,7 +884,14 @@ export default function InboxPage() {
   // Provide explicit queryFns that build the URL from the params object
   // via URLSearchParams. The object stays in the queryKey for cache
   // discrimination; only the URL build path needs to change.
-  const { data: emailMessages = [], isLoading: isLoadingEmail } = useQuery<InboxMessage[]>({
+  const {
+    data: emailMessages = [],
+    isLoading: isLoadingEmail,
+    isError: isEmailError,
+    error: emailError,
+    isFetching: isEmailFetching,
+    refetch: refetchEmail,
+  } = useQuery<InboxMessage[]>({
     queryKey: ["/api/inbox", emailQueryParams],
     queryFn: async () => {
       const qs = new URLSearchParams(emailQueryParams).toString();
@@ -876,7 +902,14 @@ export default function InboxPage() {
     enabled: channelFilter === "all" || channelFilter === "email",
   });
 
-  const { data: smsConversations = [], isLoading: isLoadingSms } = useQuery<Conversation[]>({
+  const {
+    data: smsConversations = [],
+    isLoading: isLoadingSms,
+    isError: isSmsError,
+    error: smsError,
+    isFetching: isSmsFetching,
+    refetch: refetchSms,
+  } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations", { channel: "sms" }],
     queryFn: async () => {
       const res = await fetch("/api/conversations?channel=sms", { credentials: "include" });
@@ -898,6 +931,20 @@ export default function InboxPage() {
   const { toast } = useToast();
   const unreadCount = unreadCountData?.count ?? 0;
   const isLoading = isLoadingEmail || isLoadingSms;
+
+  // Surface a recoverable error only when a query that actually feeds the
+  // current channel view fails — so an SMS-only failure doesn't blank the
+  // Email tab, and vice versa.
+  const showEmail = channelFilter === "all" || channelFilter === "email";
+  const showSms = channelFilter === "all" || channelFilter === "sms";
+  const isListError = (showEmail && isEmailError) || (showSms && isSmsError);
+  const listError = ((showEmail && isEmailError ? emailError : null) ||
+    (showSms && isSmsError ? smsError : null)) as Error | null;
+  const isListRetrying = isEmailFetching || isSmsFetching;
+  const refetchList = () => {
+    if (showEmail) refetchEmail();
+    if (showSms) refetchSms();
+  };
 
   const leadsMap = useMemo(() => {
     const map = new Map<number, Lead>();
@@ -1164,7 +1211,18 @@ export default function InboxPage() {
               ready={!isLoading}
               skeleton={<ListSkeleton count={5} />}
             >
-            {filteredItems.length === 0 ? (
+            {isListError ? (
+              <div className="flex-1 flex items-center justify-center p-4 w-full">
+                <QueryErrorState
+                  error={listError}
+                  onRetry={refetchList}
+                  isRetrying={isListRetrying}
+                  title="Couldn't load your messages"
+                  description="Your inbox couldn't be reached. Your messages are safe — try again."
+                  testId="inbox-list-error"
+                />
+              </div>
+            ) : filteredItems.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-4 w-full">
                 {/* Filter/search returned nothing but there ARE messages → EmptyFilter */}
                 {searchQuery.trim() && unifiedItems.length > 0 ? (

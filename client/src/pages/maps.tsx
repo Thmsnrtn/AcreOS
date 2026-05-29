@@ -14,6 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search,
   Filter,
@@ -1179,11 +1180,14 @@ export default function MapsPage() {
         <div className="flex" style={{ height: "calc(100vh - 125px)" }}>
           <div className="flex-1 relative min-w-0">
             {isLoading ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground" role="status" aria-live="polite">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                  <p className="text-sm">Loading property intelligence…</p>
-                </div>
+              <div className="h-full w-full p-3" aria-busy="true">
+                {/* Shape-matched map skeleton: full-bleed basemap area with a
+                    pin cluster + a side strip standing in for the legend. */}
+                <Skeleton className="h-full w-full rounded-lg relative overflow-hidden" announceText="Loading property intelligence map">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <MapPin className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
+                  </div>
+                </Skeleton>
               </div>
             ) : filteredProperties.length === 0 ? (
               // r6 Tasha WF-R6-001 + STR-R6-001: even with zero parcels

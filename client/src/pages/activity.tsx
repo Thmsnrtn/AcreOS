@@ -4,10 +4,12 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Mail, MessageSquare, Phone, FileText, DollarSign,
-  GitBranch, Plus, AlertCircle, Loader2,
+  GitBranch, Plus,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { relative } from "@/lib/format";
@@ -86,7 +88,7 @@ export default function ActivityPage() {
     ? `&eventTypes=${filterConfig.eventTypes.join(",")}`
     : "";
 
-  const { data, isLoading, isError, refetch } = useQuery<ActivityResponse>({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery<ActivityResponse>({
     queryKey: ["/api/activity", activeFilter, offset],
     queryFn: () =>
       fetch(`/api/activity?limit=${PAGE_SIZE}&offset=${offset}${eventTypesParam}`)
@@ -125,29 +127,30 @@ export default function ActivityPage() {
         </div>
 
         {isLoading && (
-          <div
-            className="flex items-center justify-center py-16 text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" />
-            Loading activity…
+          <div className="space-y-2" aria-busy="true">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="border-l-4 border-border">
+                <CardContent className="py-3 px-4 flex items-start gap-3">
+                  <Skeleton className="h-4 w-4 rounded-full mt-0.5" announce={i === 0} announceText="Loading activity" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" announce={false} />
+                    <Skeleton className="h-3 w-1/3" announce={false} />
+                  </div>
+                  <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
 
         {isError && (
-          <div className="flex items-center gap-2 text-destructive py-8" role="alert">
-            <AlertCircle className="w-4 h-4" aria-hidden="true" />
-            <span>Couldn't load the activity feed. The records themselves are unchanged —{" "}
-              <button
-                type="button"
-                className="underline hover:no-underline"
-                onClick={() => refetch()}
-              >
-                try again
-              </button>.
-            </span>
-          </div>
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            isRetrying={isFetching}
+            title="Couldn't load the activity feed"
+            description="The records themselves are unchanged. Try again, or reload if this keeps happening."
+          />
         )}
 
         {!isLoading && !isError && groups.length === 0 && (
