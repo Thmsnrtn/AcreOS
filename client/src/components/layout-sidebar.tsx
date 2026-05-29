@@ -405,8 +405,13 @@ const NAV_MODULES: NavModule[] = [
     icon: Map,
     href: "/properties",
     description: "Property inventory",
+    // Map-first parcel discovery is a core daily surface for land investors
+    // (tap a parcel → owner → offer), so it's a visible child rather than
+    // buried under "Show more". Promoted out of overflow 2026-05-29.
+    children: [
+      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive parcel map — discovery & comps" },
+    ],
     overflow: [
-      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
       { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
       { label: "Listings", icon: Store, href: "/listings", description: "Properties for sale" },
     ],

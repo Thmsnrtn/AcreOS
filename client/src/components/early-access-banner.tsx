@@ -29,11 +29,11 @@ export function EarlyAccessBanner() {
 
   return (
     <>
-      <div className="mx-4 mb-2 rounded-card border border-primary/20 bg-primary/5 dark:border-primary/15 dark:bg-primary/5 p-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm min-w-0">
+      <div className="mx-4 mb-2 rounded-card border border-primary/20 bg-primary/5 dark:border-primary/15 dark:bg-primary/5 py-2 pl-3 pr-1 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0">
           <Sparkles className="h-4 w-4 shrink-0 text-primary/70" aria-hidden="true" />
-          <span className="text-foreground/80">
-            AcreOS is in early access — your feedback helps us build the right thing.
+          <span className="text-foreground/80 truncate sm:whitespace-normal">
+            Early access — your feedback shapes AcreOS.
           </span>
           <button
             type="button"
@@ -43,14 +43,15 @@ export function EarlyAccessBanner() {
             Send Feedback
           </button>
         </div>
+        {/* 44px touch target (a11y) with a small visible glyph. */}
         <Button
           size="icon"
           variant="ghost"
-          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+          className="h-11 w-11 shrink-0 text-muted-foreground hover:text-foreground"
           onClick={handleDismiss}
           aria-label="Dismiss early access banner"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </Button>
       </div>
 
