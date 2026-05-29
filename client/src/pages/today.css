@@ -19,6 +19,36 @@
  * needed.
  */
 
+/* ─────────────────────────────────────────────────────── pax heartbeat
+ * 6px brand-dot pulse, 2.4s period — ported from .lp-hero-pulse on the
+ * landing page so Today shares the same visual identity for Pax. Render
+ * ONLY beside the first appearance of "Pax" on the page (MorningBrief).
+ *
+ * Honors data-motion="reduced" (and prefers-reduced-motion) by collapsing
+ * to a static dot — the eyebrow text is still informative without motion.
+ */
+.acr-pax-heartbeat {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acr-brand);
+  animation: acr-pax-pulse 2.4s ease-out infinite;
+}
+@keyframes acr-pax-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(194, 83, 28, 0.4); }
+  70%  { box-shadow: 0 0 0 8px rgba(194, 83, 28, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(194, 83, 28, 0); }
+}
+[data-motion="reduced"] .acr-pax-heartbeat {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .acr-pax-heartbeat {
+    animation: none;
+  }
+}
+
 /* ─────────────────────────────────────────────────────── shell + hero */
 
 .acr-cc {

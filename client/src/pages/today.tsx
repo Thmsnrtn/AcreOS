@@ -12,7 +12,6 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
 import { QueryErrorState } from "@/components/query-error-state";
 import {
   Users,
@@ -23,7 +22,6 @@ import {
   Target,
   Sparkles,
   RefreshCw,
-  Gauge,
 } from "lucide-react";
 import { format } from "date-fns";
 import { plural } from "@/lib/format";
@@ -34,11 +32,13 @@ import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem } from "@/components/today/DecisionQueue";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
+import { MorningBrief } from "@/components/today/MorningBrief";
 import "./today.css";
 
 // Consolidated /api/today payload (server/routes-today.ts).
 interface TodayPayload {
   queue: DecisionItem[];
+  brief: string | null;
   cash: {
     cashOnHand: number;
     openDealsValue: number;
@@ -54,11 +54,12 @@ interface TodayPayload {
   };
 }
 
-// Autonomy preferences shape (subset of /api/me/autonomy we read/write).
-// We persist the Today autonomy threshold inside the existing
-// `pax.thresholdsCents` map under a reserved key so we reuse the existing
-// jsonb column + PATCH endpoint without a schema change. The value is a
-// confidence percentage (50–100), not cents — the key name disambiguates it.
+// Autonomy preferences shape (subset of /api/me/autonomy we read).
+// The Today autonomy threshold lives in `pax.thresholdsCents` under a
+// reserved key (value is a confidence pct, not cents — the key name
+// disambiguates it). The slider that EDITS this value moved to
+// /settings/pax — Today just reads the saved threshold to pass into the
+// Decision Queue for the "Pax would handle" visual treatment.
 const AUTONOMY_THRESHOLD_KEY = "confidenceAutoPct";
 const AUTONOMY_DEFAULT_PCT = 90;
 
@@ -109,14 +110,11 @@ export default function TodayPage() {
   const decisionQueueLoading = todayLoading;
   const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
 
-  // ── Pax autonomy threshold ─────────────────────────────────────────────
-  // Reuses the existing per-user autonomy column via /api/me/autonomy. We
-  // read the saved "auto above" confidence threshold (stored in
-  // pax.thresholdsCents[confidenceAutoPct]) and let the user adjust it with a
-  // slider. Persistence is real (PATCH /api/me/autonomy). What is UI-only:
-  // the *visual* "Pax will handle" treatment in the queue. Server-side
-  // auto-execution (Pax actually acting above the threshold without asking)
-  // is NOT wired here — that engine lands separately.
+  // ── Pax autonomy threshold (read-only on Today) ────────────────────────
+  // Today only READS the saved threshold to inform the "Pax would handle"
+  // visual in the Decision Queue. The slider that edits this value moved
+  // to /settings/pax — autonomy is a monthly-tune control, not a daily
+  // one, so it shouldn't compete with decisions for screen real estate.
   const { data: autonomyPrefs } = useQuery<AutonomyPrefs>({
     queryKey: ["/api/me/autonomy"],
     staleTime: 10 * 60 * 1000,
@@ -125,52 +123,9 @@ export default function TodayPage() {
   const savedThresholdPct =
     autonomyPrefs?.pax?.thresholdsCents?.[AUTONOMY_THRESHOLD_KEY] ?? AUTONOMY_DEFAULT_PCT;
 
-  const [thresholdPct, setThresholdPct] = React.useState<number>(AUTONOMY_DEFAULT_PCT);
-  const thresholdHydrated = React.useRef(false);
-  React.useEffect(() => {
-    // Hydrate local slider state from the server value once it loads.
-    if (!thresholdHydrated.current && autonomyPrefs !== undefined) {
-      setThresholdPct(savedThresholdPct);
-      thresholdHydrated.current = true;
-    }
-  }, [autonomyPrefs, savedThresholdPct]);
-
-  const autonomyMutation = useMutation({
-    mutationFn: async (pct: number) => {
-      const prevThresholds = autonomyPrefs?.pax?.thresholdsCents ?? {};
-      const res = await apiRequest("PATCH", "/api/me/autonomy", {
-        pax: {
-          ...(autonomyPrefs?.pax ?? {}),
-          thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: pct },
-        },
-      });
-      if (!res.ok) throw new Error("Failed to save autonomy preference");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/me/autonomy"], data);
-    },
-    onError: (error) => {
-      toast({
-        title: getErrorTitle(error),
-        description: getErrorMessage(error),
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Persist on commit (slider release), not on every drag tick.
-  const commitThreshold = React.useCallback(
-    (pct: number) => {
-      setThresholdPct(pct);
-      autonomyMutation.mutate(pct);
-    },
-    [autonomyMutation],
-  );
-
   // Confidence fraction (0..1) at/above which a Pax item is treated as
   // "Pax will handle" rather than needing a decision.
-  const autoThreshold = thresholdPct / 100;
+  const autoThreshold = savedThresholdPct / 100;
 
   // Dismiss mutation retained for /alerts surface; no longer wired into
   // /today JSX (decision queue handles the high-level fan-out). Keeping
@@ -389,58 +344,11 @@ export default function TodayPage() {
         />
       )}
 
-      {/* ── Pax autonomy threshold ───────────────────────────────────── */}
-      {!showEmptyState && !todayError && (
-        <Card className="rounded-card" data-testid="card-pax-autonomy">
-          <CardContent className="p-4 md:p-3.5">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 rounded-card bg-acr-brand-soft shrink-0">
-                  <Gauge className="w-4 h-4 text-acr-brand" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="acr-section-h2">Pax autonomy</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Preview — your threshold is saved but Pax still asks you first. We'll email you the day auto-execution turns on.
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant="secondary"
-                className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums shrink-0"
-                aria-live="polite"
-              >
-                Auto above {thresholdPct}%
-              </Badge>
-            </div>
-            <div className="mt-4 px-1">
-              <Slider
-                value={[thresholdPct]}
-                min={50}
-                max={100}
-                step={5}
-                onValueChange={(v) => setThresholdPct(v[0] ?? AUTONOMY_DEFAULT_PCT)}
-                onValueCommit={(v) => commitThreshold(v[0] ?? AUTONOMY_DEFAULT_PCT)}
-                aria-label={`Pax auto-handle confidence threshold: ${thresholdPct} percent`}
-                data-testid="slider-pax-autonomy"
-              />
-              <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground tabular-nums">
-                <span>Ask more (50%)</span>
-                <span>Auto more (100%)</span>
-              </div>
-              <div className="mt-2">
-                <Link
-                  href="/settings/pax"
-                  className="text-xs text-acr-brand hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                  data-testid="link-pax-controls"
-                >
-                  Pax controls (pause / replay / reset) →
-                </Link>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* ── Morning brief (Chesky) ───────────────────────────────────── */}
+      {/* Replaces the autonomy slider in this slot. The slider was a
+          monthly-tune control; this is a daily one-paragraph read-out of
+          what happened overnight. The slider now lives at /settings/pax. */}
+      {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
 
       {/* ── Section 2: Decision queue (merged) ───────────────────────── */}
       {!showEmptyState && !todayError && (

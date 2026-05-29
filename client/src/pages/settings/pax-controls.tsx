@@ -18,23 +18,26 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { PauseCircle, RotateCcw, History, AlertTriangle, ShieldOff, Clock, FileCode } from "lucide-react";
+import { PauseCircle, RotateCcw, History, AlertTriangle, ShieldOff, Clock, FileCode, Gauge } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-// Sentinel threshold — when the Today autonomy slider hits this value the
+// Sentinel threshold — when the autonomy slider hits this value the
 // "auto above" gate can never trip (confidences are 0..1, ours are .50–1.00).
 const NEVER_AUTO_PCT = 101;
 const AUTONOMY_THRESHOLD_KEY = "confidenceAutoPct";
+const AUTONOMY_DEFAULT_PCT = 90;
 const REPLAY_LIMIT = 10;
 
 interface AgentAutonomyShape {
@@ -194,6 +197,55 @@ export default function PaxControlsPage() {
 
   const observations = observationsResp?.observations ?? [];
 
+  // ── Pax autonomy slider ────────────────────────────────────────────────
+  // Moved here from Today (Chesky / Wave 2). The slider edits the saved
+  // "auto above" confidence threshold; persistence reuses the existing
+  // pax.thresholdsCents[confidenceAutoPct] key so no schema change.
+  // Honest preview disclosure copy travels with the control.
+  const savedThresholdPct =
+    autonomy?.pax?.thresholdsCents?.[AUTONOMY_THRESHOLD_KEY] ?? AUTONOMY_DEFAULT_PCT;
+
+  const [thresholdPct, setThresholdPct] = React.useState<number>(AUTONOMY_DEFAULT_PCT);
+  const thresholdHydrated = React.useRef(false);
+  React.useEffect(() => {
+    if (!thresholdHydrated.current && autonomy !== undefined) {
+      setThresholdPct(savedThresholdPct);
+      thresholdHydrated.current = true;
+    }
+  }, [autonomy, savedThresholdPct]);
+
+  const thresholdMutation = useMutation({
+    mutationFn: async (pct: number) => {
+      const prevThresholds = autonomy?.pax?.thresholdsCents ?? {};
+      const res = await apiRequest("PATCH", "/api/me/autonomy", {
+        pax: {
+          ...(autonomy?.pax ?? {}),
+          thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: pct },
+        },
+      });
+      if (!res.ok) throw new Error("Failed to save autonomy preference");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/me/autonomy"], data);
+    },
+    onError: (error) => {
+      toast({
+        title: getErrorTitle(error),
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const commitThreshold = React.useCallback(
+    (pct: number) => {
+      setThresholdPct(pct);
+      thresholdMutation.mutate(pct);
+    },
+    [thresholdMutation],
+  );
+
   return (
     <PageShell label="Pax controls">
       <div className="mb-6">
@@ -246,6 +298,51 @@ export default function PaxControlsPage() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Pax autonomy threshold (moved from Today) ────────────────── */}
+      <Card className="rounded-card mb-4" data-testid="card-pax-autonomy">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Gauge className="w-5 h-5 text-acr-brand" aria-hidden="true" />
+            Pax autonomy
+          </CardTitle>
+          <CardDescription>
+            Preview — your threshold is saved but Pax still asks you first.
+            We'll email you the day auto-execution turns on. This is a
+            monthly-tune control; it used to live on Today and now lives here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <span className="text-xs text-muted-foreground">
+              Pax-sourced rows above the threshold are flagged "Pax would handle".
+            </span>
+            <Badge
+              variant="secondary"
+              className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums shrink-0"
+              aria-live="polite"
+            >
+              Auto above {thresholdPct}%
+            </Badge>
+          </div>
+          <div className="px-1">
+            <Slider
+              value={[thresholdPct]}
+              min={50}
+              max={100}
+              step={5}
+              onValueChange={(v) => setThresholdPct(v[0] ?? AUTONOMY_DEFAULT_PCT)}
+              onValueCommit={(v) => commitThreshold(v[0] ?? AUTONOMY_DEFAULT_PCT)}
+              aria-label={`Pax auto-handle confidence threshold: ${thresholdPct} percent`}
+              data-testid="slider-pax-autonomy"
+            />
+            <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground tabular-nums">
+              <span>Ask more (50%)</span>
+              <span>Auto more (100%)</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
