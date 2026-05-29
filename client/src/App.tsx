@@ -269,6 +269,7 @@ const FounderTitlePartnersPage = React.lazy(() => import("@/pages/founder/title-
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
+const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
 // /founder/bridge. The page file lives on disk pending extraction sweep.
 // /founder is the Atlas chat shell; /founder/bridge is the fused
@@ -1008,6 +1009,9 @@ function Router() {
       </Route>
       <Route path="/founder/telemetry">
         {() => <FounderProtectedRoute component={FounderTelemetryPage} />}
+      </Route>
+      <Route path="/founder/pax-traces">
+        {() => <FounderProtectedRoute component={FounderPaxTracesPage} />}
       </Route>
       <Route path="/founder/integrations">
         {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}

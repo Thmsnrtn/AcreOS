@@ -199,6 +199,7 @@ import { registerCohortRetentionRoutes } from "./routes-cohort-retention";
 import { registerCustomerHealthRoutes } from "./routes-customer-health";
 import { registerCohortLtvRoutes } from "./routes-cohort-ltv";
 import { registerPaxQualityRoutes } from "./routes-pax-quality";
+import { registerPaxTracesRoutes } from "./routes-pax-traces";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -2106,6 +2107,9 @@ export async function registerRoutes(
   registerCohortLtvRoutes(app);
   // 2026-05-13 — Pillar F / F2 Pax quality (CSAT + resolution + cost).
   registerPaxQualityRoutes(app);
+  // Workstream A (Honesty) — founder-only Pax trace viewer at
+  // /api/founder/pax-traces. Read-only audit of every Pax LLM call.
+  registerPaxTracesRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
