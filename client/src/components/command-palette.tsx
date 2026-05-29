@@ -293,9 +293,38 @@ export function CommandPalette() {
   // .filter / .find call (matchingLeads, selectedLead etc.) crashed
   // when the founder typed in the command palette. Normalize via
   // fetchJsonArray so the data is always an array. (2026-05-26)
+  //
+  // Day-365 reliability (Workstream C): walk the cursor endpoint instead
+  // of the 100-row /api/leads page so cmdK can find a Smith on lead
+  // #1,500 — that was the visible day-365 ceiling. The bare ["/api/leads"]
+  // cache key is intentional (every leads-list invalidate still hits us),
+  // and the queryFn normalizes to a flat array so the cache shape stays
+  // consistent with the other consumers that share the key.
   const { data: leadsData = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"], enabled: open,
-    queryFn: () => fetchJsonArray<Lead>("/api/leads?pageSize=100"),
+    queryFn: async () => {
+      // Walk the cursor endpoint until exhausted (or hits the safety
+      // cap). Same hard ceiling useLeads() enforces; consumers beyond
+      // that should drive their own pagination.
+      const PAGE_LIMIT = 250;
+      const MAX_PAGES = 40;
+      const acc: Lead[] = [];
+      let cursor: string | undefined = undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const url = new URL("/api/leads/paginated", window.location.origin);
+        url.searchParams.set("limit", String(PAGE_LIMIT));
+        if (cursor) url.searchParams.set("cursor", cursor);
+        const res = await fetch(url.toString(), { credentials: "include" });
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          data?: Lead[]; nextCursor?: string | null; hasMore?: boolean;
+        };
+        if (Array.isArray(json.data)) acc.push(...json.data);
+        if (!json.hasMore || !json.nextCursor) break;
+        cursor = json.nextCursor;
+      }
+      return acc;
+    },
   });
   const { data: propertiesData = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"], enabled: open,
