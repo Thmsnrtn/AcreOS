@@ -1,30 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContentReveal } from "@/components/ContentReveal";
 import { ClearedEmpty } from "@/components/empty-states";
+import { ConfidenceBar } from "@/components/today/ConfidenceBar";
+import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
+import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
-  CheckCircle2,
   Sparkles,
   Zap,
   AlertTriangle,
-  Bell,
   GitBranch,
   ArrowRight,
   EyeOff,
   RotateCcw,
   type LucideIcon,
 } from "lucide-react";
-
-// Priority → semantic --acr-* tone (carried from today.tsx).
-const priorityColors: Record<string, string> = {
-  high: "bg-acr-neg-soft text-acr-neg border-transparent",
-  medium: "bg-acr-warn-soft text-acr-warn border-transparent",
-  low: "bg-acr-brand-soft text-acr-brand border-transparent",
-};
 
 export type DecisionSource =
   | "pax-priority"
@@ -42,9 +37,9 @@ const sourcePillStyles: Record<DecisionSource, string> = {
 };
 
 const sourcePillLabel: Record<DecisionSource, string> = {
-  "pax-priority": "Pax priority",
-  "pax-suggests": "Pax suggests",
-  "pax-noticed": "Pax noticed",
+  "pax-priority": "Pax",
+  "pax-suggests": "Pax",
+  "pax-noticed": "Pax",
   "ai-queue": "AI queue",
   "portfolio-alert": "Alert",
 };
@@ -57,6 +52,14 @@ const sourceIcon: Record<DecisionSource, LucideIcon> = {
   "portfolio-alert": AlertTriangle,
 };
 
+// Priority → left-border tone color (CSS var). Encoded as a single 2px
+// left border on the Card, replacing the old standalone priority Badge.
+const priorityBorderColor: Record<DecisionItem["priority"], string> = {
+  high: "var(--acr-neg)",
+  medium: "var(--acr-warn)",
+  low: "var(--acr-brand-soft)",
+};
+
 export interface DecisionItem {
   id: string;
   source: DecisionSource;
@@ -67,10 +70,13 @@ export interface DecisionItem {
   actionUrl: string;
   rank: number; // for sort; lower = higher priority
   // Optional Pax model-confidence (0..1). Only set for Pax-sourced rows;
-  // rendered as a 4th chip on the row when present so the founder can
-  // see how strongly Pax stands behind the suggestion (restored after
-  // d21c5fc8 collapsed the per-section view into the unified queue).
+  // surfaces in the merged left-edge pill ("Pax · 87%") and drives the
+  // ConfidenceBar + ConfidenceSparkline directly under the title.
   confidence?: number | null;
+  // Optional chronological history of confidences (oldest first) for this
+  // item's class — fed into the sparkline. The server `/api/today` does
+  // not populate this yet; Sparkline gracefully renders a flat baseline.
+  confidenceHistory?: number[];
 }
 
 interface DecisionQueueProps {
@@ -227,87 +233,116 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
             }
           />
         ) : (
-          <ul role="list" className="space-y-2">
-            {visible.map((item, idx) => {
+          <motion.ul
+            role="list"
+            className="space-y-2"
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+          >
+            {visible.map((item) => {
               const SourceIcon = sourceIcon[item.source];
               const auto = isAutoHandled(item);
+              const isPax = item.source.startsWith("pax-");
+              const hasConfidence = isPax && typeof item.confidence === "number";
+              const confidencePct = hasConfidence
+                ? Math.round((item.confidence as number) * 100)
+                : null;
+              const thresholdPct = Math.round(autoThreshold * 100);
+              // Auto-handled rows replace the priority left-border with a
+              // hairline --acr-pos signal; other rows take priority tone.
+              const borderColor = auto
+                ? "var(--acr-pos)"
+                : priorityBorderColor[item.priority];
               return (
-                <li key={item.id} role="listitem">
+                <motion.li key={item.id} role="listitem" variants={staggerItem}>
                   <Card
-                    className={`rounded-card hover:shadow-md transition-shadow ${
-                      auto
-                        ? "border-[color:var(--acr-pos)]/30 bg-acr-pos-soft/30"
-                        : idx === 0
-                        ? "border-[color:var(--acr-brand)]/30"
-                        : ""
-                    }`}
+                    className="rounded-card hover:shadow-md transition-shadow border-l-2"
+                    style={{ borderLeftColor: borderColor }}
                     data-auto-handled={auto ? "true" : undefined}
+                    data-priority={item.priority}
                     data-testid={`decision-item-${item.id}`}
                   >
-                    <CardContent className="flex items-center gap-4 p-4">
-                      <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          auto
-                            ? "bg-acr-pos text-white"
-                            : idx === 0
-                            ? "bg-acr-brand text-acr-brand-ink"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {auto ? <Zap className="w-3.5 h-3.5" aria-hidden="true" /> : idx + 1}
-                      </div>
+                    <CardContent className="flex items-start gap-4 p-4">
+                      {auto && (
+                        <div
+                          className="shrink-0 mt-1.5 w-2 h-2 rounded-full ring-1"
+                          style={{
+                            background: "transparent",
+                            // The ring is the only color signal on auto rows.
+                            // Using inline style keeps us on tokens without
+                            // adding a new Tailwind utility class.
+                            boxShadow: "inset 0 0 0 1px var(--acr-pos)",
+                          }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <span className="font-medium text-sm truncate">{item.title}</span>
-                          {auto ? (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs border-transparent bg-acr-pos-soft text-acr-pos inline-flex items-center gap-1"
-                            >
-                              <Zap className="w-3 h-3" aria-hidden="true" />
-                              Pax would handle
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className={priorityColors[item.priority]}>
-                              {item.priority}
-                            </Badge>
-                          )}
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          {/* Merged source + confidence pill (one Badge). */}
                           <Badge
                             variant="secondary"
                             className={`text-xs border-transparent inline-flex items-center gap-1 ${sourcePillStyles[item.source]}`}
+                            aria-label={
+                              hasConfidence
+                                ? `${sourcePillLabel[item.source]}, confidence ${confidencePct}%`
+                                : sourcePillLabel[item.source]
+                            }
                           >
                             <SourceIcon className="w-3 h-3" aria-hidden={true} />
-                            {sourcePillLabel[item.source]}
-                          </Badge>
-                          {item.source.startsWith("pax-") &&
-                            typeof item.confidence === "number" && (
-                              <Badge
-                                variant="secondary"
-                                className="text-xs border-transparent bg-acr-pos-soft text-acr-pos tabular-nums"
-                                aria-label={`Pax confidence: ${Math.round(item.confidence * 100)} percent`}
-                              >
-                                {Math.round(item.confidence * 100)}% confidence
-                              </Badge>
+                            <span>{sourcePillLabel[item.source]}</span>
+                            {hasConfidence && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="tabular-nums">{confidencePct}%</span>
+                              </>
                             )}
+                          </Badge>
+                          {auto && (
+                            <span className="text-xs text-acr-pos inline-flex items-center gap-1">
+                              <Zap className="w-3 h-3" aria-hidden="true" />
+                              Pax would handle
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {auto ? "Preview — Pax will still ask you. You'll see this row in your queue." : item.description}
+                        <div className="text-[15px] font-medium leading-snug text-foreground">
+                          {item.title}
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                          {auto
+                            ? "Preview — Pax will still ask you. You'll see this row in your queue."
+                            : item.description}
                         </p>
+                        {isPax && hasConfidence && (
+                          <div
+                            className="flex items-center justify-between gap-3 mt-2"
+                            aria-label={`Pax confidence ${confidencePct}% (auto-handle threshold ${thresholdPct}%)`}
+                          >
+                            <ConfidenceBar
+                              value={item.confidence as number}
+                              threshold={autoThreshold}
+                            />
+                            <ConfidenceSparkline
+                              history={item.confidenceHistory ?? []}
+                              current={item.confidence as number}
+                            />
+                          </div>
+                        )}
                       </div>
                       <Button
                         asChild
                         size="sm"
-                        variant={auto ? "outline" : idx === 0 ? "default" : "outline"}
+                        variant={auto ? "outline" : "default"}
                         className="shrink-0 text-xs"
                       >
                         <Link href={item.actionUrl}>{auto ? "Override" : item.actionLabel}</Link>
                       </Button>
                     </CardContent>
                   </Card>
-                </li>
+                </motion.li>
               );
             })}
-          </ul>
+          </motion.ul>
         )}
       </ContentReveal>
     </div>
