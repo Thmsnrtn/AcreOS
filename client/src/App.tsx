@@ -49,11 +49,6 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
-// Mobile shell spike — persona-aware 4-tab IA. Gated by founder_settings
-// `mobile.new_shell_enabled` (surfaced via /api/config/features) and
-// useIsMobile. Suppressed on /founder/* routes (founder keeps its own nav).
-import { MobileShell } from "@/components/mobile/MobileShell";
-import { renderPersonaTab } from "@/components/mobile/persona-tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
 // so non-founder users never download the chat bundle.
@@ -1495,7 +1490,6 @@ function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [location] = useLocation();
-  const { mobileShellEnabled } = useFeatureFlags();
   const { isMobile } = useIsMobile();
   useSwipeNavigation();
   useWhiteLabel();
@@ -1577,35 +1571,10 @@ function AppContent() {
     }
   }
 
-  // Mobile shell — owns only the four "home base" routes. Previously
-  // it intercepted every non-founder route, so tapping into /settings,
-  // /leads/:id, /parcels/:id, /money, etc. would change the URL but
-  // leave the shell rendering its 4 tabs — which felt like nothing was
-  // clickable. Now the shell renders ONLY when the user is on a
-  // shell-owned path, and Router handles the rest (mobile-shaped
-  // detail pages live there, branched via useIsMobile inside each).
-  // The shell is the "home base" — only /today and / use it. Other
-  // shell tabs (Inbox/Pipeline/Portfolio) switch via internal state
-  // inside the shell, so they share the /today URL. Leaving /inbox
-  // etc. in the set means a direct URL hit still lands the user on
-  // the shell rather than 404, even though the shell will then default
-  // to Today.
-  const SHELL_PATHS = new Set(["/", "/today", "/inbox", "/pipeline", "/portfolio"]);
-  if (
-    user &&
-    isMobile &&
-    mobileShellEnabled &&
-    !location.startsWith("/founder") &&
-    SHELL_PATHS.has(location)
-  ) {
-    const persona = (user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor";
-    return (
-      <MobileShell
-        persona={persona}
-        renderTab={(tab) => renderPersonaTab(tab, persona)}
-      />
-    );
-  }
+  // Mobile uses the standard Router + MobileBottomNav (below). The earlier
+  // experimental "MobileShell" (a parallel persona-tab layout behind the
+  // mobile.new_shell_enabled flag) was removed 2026-05-29 — it was never
+  // enabled in production and duplicated the live navigation.
 
   return (
     <>

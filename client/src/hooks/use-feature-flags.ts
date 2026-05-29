@@ -4,9 +4,6 @@ import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 interface FeatureFlagsResponse {
   enabledKeys: string[];
   enabledRoutes: string[];
-  // Mobile shell spike — sourced from founder_settings `mobile.new_shell_enabled`.
-  // Optional so older server responses (without this field) still parse.
-  mobileShellEnabled?: boolean;
 }
 
 export function useFeatureFlags() {
@@ -26,7 +23,6 @@ export function useFeatureFlags() {
   return {
     enabledKeys: data?.enabledKeys ?? [],
     enabledRoutes: data?.enabledRoutes ?? [],
-    mobileShellEnabled: data?.mobileShellEnabled ?? false,
     isLoading: hasSession ? isLoading : false,
     isRouteEnabled: (route: string) => {
       if (!data) return true; // While loading (or unauthenticated), show everything

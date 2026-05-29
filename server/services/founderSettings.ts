@@ -162,18 +162,6 @@ export const KNOBS: KnobDefinition[] = [
     max: 1_000_000,     // $10k/day absolute ceiling
     units: "cents",
   },
-  // Mobile shell spike — 4-tab persona-aware mobile layout. When ON,
-  // mobile users (viewport < 768px) get the new shell at the App.tsx
-  // routing level INSTEAD of the current per-page layout. Default OFF;
-  // flip ON in staging to dogfood the IA before promoting.
-  {
-    key: "mobile.new_shell_enabled",
-    valueType: "boolean",
-    defaultValue: "false",
-    description:
-      "Enables the new persona-aware mobile shell (4-tab bottom bar: Today / Inbox / Pipeline / Portfolio). Default OFF. Flip ON to evaluate the new mobile IA on staging before launch.",
-    category: "general",
-  },
   {
     key: "archival.horizon_days",
     valueType: "number",

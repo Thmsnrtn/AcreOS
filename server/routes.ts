@@ -429,20 +429,10 @@ export async function registerRoutes(
       const flags = await storage.getEnabledFeatureFlags();
       const enabledKeys = flags.map((f: any) => f.key);
       const enabledRoutes = flags.flatMap((f: any) => (f.controlledRoutes || []) as string[]);
-      // Mobile shell spike — knob lives in founder_settings (KNOBS catalog).
-      // Surfaced here so the client can read it without needing founder
-      // privileges; the value itself is a boolean, not sensitive.
-      let mobileShellEnabled = false;
-      try {
-        const { getSetting } = await import("./services/founderSettings");
-        mobileShellEnabled = (await getSetting("mobile.new_shell_enabled")) === "true";
-      } catch {
-        mobileShellEnabled = false;
-      }
-      res.json({ enabledKeys, enabledRoutes, mobileShellEnabled });
+      res.json({ enabledKeys, enabledRoutes });
     } catch {
       // On error, return all routes enabled so sidebar shows everything
-      res.json({ enabledKeys: [], enabledRoutes: [], mobileShellEnabled: false });
+      res.json({ enabledKeys: [], enabledRoutes: [] });
     }
   });
 
