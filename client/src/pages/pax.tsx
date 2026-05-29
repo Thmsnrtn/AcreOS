@@ -1,19 +1,14 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
-  MessageSquare,
-  Activity,
   Bot,
-  Zap,
   Sparkles,
   X,
   AlertCircle,
@@ -24,28 +19,15 @@ import {
   ArrowRight,
   CheckCircle2,
   Flame,
-  Settings,
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
-// All embedded tab content is lazy. Opening /pax used to ship
-// CommandCenterPage (~2,264 LOC) in the parent's chunk; now loads on
-// click via Suspense fallback alongside the other tabs.
+import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
+// The conversation is the primary surface. CommandCenterPage (~2,264 LOC) is
+// lazy so opening /pax doesn't ship it in the parent chunk; it loads behind a
+// Suspense fallback.
 const CommandCenterPage = lazy(() => import("@/pages/command-center"));
-const ActivityPage = lazy(() => import("@/pages/activity"));
-const AutomationPage = lazy(() => import("@/pages/automation"));
-const AgentCommandCenterPage = lazy(() => import("@/pages/agent-command-center"));
 
-type TabValue = "insights" | "chat" | "activity" | "agents" | "automation";
-
-function getTabFromHash(): TabValue {
-  const hash = window.location.hash.replace("#", "") as TabValue;
-  if (["insights", "chat", "activity", "agents", "automation"].includes(hash)) {
-    return hash;
-  }
-  return "chat";
-}
-
-function TabFallback() {
+function ChatFallback() {
   return (
     <div className="flex items-center justify-center py-20" role="status" aria-live="polite">
       <div className="animate-pulse text-muted-foreground text-sm">Waking Pax…</div>
@@ -171,9 +153,9 @@ function revenueImpact(severity: string, type?: string): string | null {
   return null;
 }
 
-// ─── Insights Tab Content ─────────────────────────────────────────────────────
+// ─── Insights Panel (rendered in the overflow drawer) ──────────────────────────
 
-function InsightsTabContent() {
+function InsightsPanel() {
   const [, setLocation] = useLocation();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<InsightsData>({
     queryKey: ["/api/pax/insights"],
@@ -667,112 +649,40 @@ function SuggestedPrompts() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PaxPage() {
-  useDocumentTitle("Pax — AI hub");
-  // Founder-only tabs are gated behind isFounder. Customers see only Pax —
-  // the full agent roster (Atlas/Sophie/Forge/Shield) is internal-codename
-  // territory exposed via /api/autonomous/agents which the Agents tab
-  // surfaces. Per persona-architecture rule, customers see Pax, not the
-  // dozen-agent roster underneath.
-  const { isFounder } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
-
-  // If a customer hash-lands on a founder-only tab (#agents), redirect to
-  // the default chat tab so they don't see a missing-tab gap.
-  useEffect(() => {
-    if (!isFounder && activeTab === "agents") {
-      setActiveTab("chat");
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, [isFounder, activeTab]);
-
-  useEffect(() => {
-    const handleHashChange = () => setActiveTab(getTabFromHash());
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  const handleTabChange = (value: string) => {
-    const tab = value as TabValue;
-    setActiveTab(tab);
-    if (tab === "chat") {
-      window.history.replaceState(null, "", window.location.pathname);
-    } else {
-      window.history.replaceState(null, "", `#${tab}`);
-    }
-  };
-
+  useDocumentTitle("Pax");
+  // Pax is ONE conversation. The chat is the primary, full-screen surface.
+  // Everything that used to be a peer tab — Insights, Activity ("What Pax
+  // did"), Agents (founder-only), Automation — is re-homed into the header
+  // overflow menu, reachable FROM the conversation without competing with it.
+  // The agent roster (Atlas/Sophie/Forge/Shield) remains founder-only per the
+  // persona-architecture rule; PaxOverflowMenu gates the Agents entry behind
+  // isFounder. Customers see Pax, not the dozen-agent roster underneath.
   return (
-    <PageShell label="Pax AI hub">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-ai-hub-title">
-          AI hub
-        </h1>
-        <p className="text-muted-foreground text-sm md:text-base">
-          AI assistant, agents, and automation for your land business.
-        </p>
+    <PageShell label="Pax">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-ai-hub-title">
+            Pax
+          </h1>
+          <p className="text-muted-foreground text-sm md:text-base">
+            Your AI assistant — ask anything, and watch what Pax does.
+          </p>
+        </div>
+        <div className="shrink-0">
+          <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+        </div>
       </div>
 
       <GreetingBanner />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-ai-hub">
-        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-ai-hub">
-          <TabsTrigger value="insights" className="flex items-center gap-2 min-w-max" data-testid="tab-insights">
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            <span>Insights</span>
-          </TabsTrigger>
-          <TabsTrigger value="chat" className="flex items-center gap-2 min-w-max" data-testid="tab-chat">
-            <MessageSquare className="h-4 w-4" aria-hidden="true" />
-            <span>Chat</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="flex items-center gap-2 min-w-max" data-testid="tab-activity">
-            <Activity className="h-4 w-4" aria-hidden="true" />
-            <span>Activity</span>
-          </TabsTrigger>
-          {isFounder && (
-            <TabsTrigger value="agents" className="flex items-center gap-2 min-w-max" data-testid="tab-agents">
-              <Bot className="h-4 w-4" aria-hidden="true" />
-              <span>Agents</span>
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="automation" className="flex items-center gap-2 min-w-max" data-testid="tab-automation">
-            <Zap className="h-4 w-4" aria-hidden="true" />
-            <span>Automation</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="insights" data-testid="tab-content-insights">
-          <InsightsTabContent />
-        </TabsContent>
-
-        <TabsContent value="chat" data-testid="tab-content-chat">
-          <AiChatGuard>
-            <SuggestedPrompts />
-            <Suspense fallback={<TabFallback />}>
-              <CommandCenterPage />
-            </Suspense>
-          </AiChatGuard>
-        </TabsContent>
-
-        <TabsContent value="activity" data-testid="tab-content-activity">
-          <Suspense fallback={<TabFallback />}>
-            <ActivityPage />
+      <div data-testid="pax-conversation">
+        <AiChatGuard>
+          <SuggestedPrompts />
+          <Suspense fallback={<ChatFallback />}>
+            <CommandCenterPage />
           </Suspense>
-        </TabsContent>
-
-        {isFounder && (
-          <TabsContent value="agents" data-testid="tab-content-agents">
-            <Suspense fallback={<TabFallback />}>
-              <AgentCommandCenterPage />
-            </Suspense>
-          </TabsContent>
-        )}
-
-        <TabsContent value="automation" data-testid="tab-content-automation">
-          <Suspense fallback={<TabFallback />}>
-            <AutomationPage />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
+        </AiChatGuard>
+      </div>
     </PageShell>
   );
 }

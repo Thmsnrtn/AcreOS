@@ -34,6 +34,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { Persona } from "@shared/models/auth";
 import "./onboarding.css";
 
 type BusinessType =
@@ -110,32 +111,47 @@ const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_INVESTOR_TYPES.
  * from them. Server-side mirror lives in `routes-onboarding.ts`
  * /complete so the persona is always set even if this PUT fails.
  */
+/**
+ * Explicit businessType → canonical `Persona` map.
+ *
+ * The onboarding wizard captures a granular 15-value `businessType`
+ * taxonomy, but every persona-specific surface (mobile tabs, sidebar
+ * modules, copy vocabulary) keys off `users.persona`, which is the
+ * 9-value union in `@shared/models/auth`. This map is the single
+ * source of truth for collapsing the former into the latter. Every
+ * BusinessType is covered explicitly via the Record type, and anything
+ * land/flip-ish or otherwise unmapped resolves to "land_investor".
+ */
+const BUSINESS_TYPE_TO_PERSONA: Record<BusinessType, Persona> = {
+  note_investor: "note_investor",
+  residential_wholesaler: "wholesaler",
+  fix_and_flip: "fix_flipper",
+  buy_and_hold: "landlord",
+  short_term_rental: "landlord",
+  multifamily: "landlord",
+  mobile_home: "landlord",
+  subdivider: "subdivider",
+  developer: "subdivider",
+  tax_lien_deed: "tax_delinquent",
+  land_flipper: "land_investor",
+  hybrid: "land_investor",
+  commercial: "land_investor",
+  creative_finance: "land_investor",
+  agent_investor: "land_investor",
+};
+
+export function businessTypeToPersona(bt: BusinessType): Persona {
+  return BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
+}
+
 function derivePersona(
   businessType: BusinessType,
   investorType: InvestorTypeChoice,
-): "land_investor" | "note_investor" | "note_originator" | "note_servicer" | "tax_delinquent" | "wholesaler" | "subdivider" | "fix_flipper" | "landlord" {
+): Persona {
   // Note vertical first — investorType is the authoritative fork for
   // 1099-INT batches and the lender/servicer modules.
   if (investorType === "notes" && businessType === "note_investor") return "note_investor";
-
-  switch (businessType) {
-    case "note_investor":        return "note_investor";
-    case "residential_wholesaler": return "wholesaler";
-    case "fix_and_flip":         return "fix_flipper";
-    case "buy_and_hold":
-    case "short_term_rental":
-    case "multifamily":
-    case "mobile_home":          return "landlord";
-    case "subdivider":
-    case "developer":            return "subdivider";
-    case "tax_lien_deed":        return "tax_delinquent";
-    case "land_flipper":
-    case "hybrid":
-    case "commercial":
-    case "creative_finance":
-    case "agent_investor":
-    default:                     return "land_investor";
-  }
+  return businessTypeToPersona(businessType);
 }
 
 type OnboardingStatus = {

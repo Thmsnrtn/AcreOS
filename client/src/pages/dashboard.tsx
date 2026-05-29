@@ -16,13 +16,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OnboardingWizard, OnboardingProgress } from "@/components/onboarding";
+import { OnboardingProgress } from "@/components/onboarding";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { ActivityFeed } from "@/components/activity-feed";
 import { DashboardSettings, loadSettings, type DashboardWidgetSettings } from "@/components/dashboard-settings";
 import { AnomalyAlerts, PredictiveInsights, NextBestActions, TasksDueWidget } from "@/components/dashboard";
 import { PlaybookCard } from "@/components/playbooks/PlaybookCard";
-import { Link } from "wouter";
+import { Link, Redirect } from "wouter";
 import { WorkspaceManager } from "@/components/workspace/WorkspaceManager";
 import { DailyDealFeed } from "@/components/deal-feed/daily-deal-feed";
 import { usd, dollarsCompact } from "@/lib/format";
@@ -94,7 +94,19 @@ export default function Dashboard() {
   const { data: properties = [] } = useProperties();
   const { data: agingLeads = [], isLoading: agingLoading } = useAgingLeads();
   const { data: playbooksData, isLoading: playbooksLoading } = usePlaybooks();
-  
+
+  // Onboarding consolidation: the full wizard presents ONLY at the
+  // canonical full-screen route (/onboarding-v2). If a not-yet-onboarded
+  // user still lands here, we show a single compact "Finish setup" card
+  // that links there — never the wizard embedded inline below the
+  // dashboard content. Server is the source of truth via the same
+  // boolean the /today OnboardingGate reads.
+  const { data: onboardingNeed } = useQuery<{ needsOnboarding: boolean }>({
+    queryKey: ["/api/me/needs-onboarding"],
+    staleTime: 60_000,
+  });
+  const needsOnboarding = onboardingNeed?.needsOnboarding === true;
+
   const { data: intelligence, isLoading: intelligenceLoading } = useQuery<DashboardIntelligence>({
     queryKey: ["/api/dashboard/intelligence"],
     staleTime: 5 * 60 * 1000,
@@ -648,9 +660,17 @@ export default function Dashboard() {
     );
   }
 
+  // A not-yet-onboarded user should never see the dashboard with the
+  // wizard shoved inline below it (the old broken presentation). Route
+  // them to the canonical full-screen wizard instead — this mirrors the
+  // /today OnboardingGate so onboarding is a single full-screen
+  // experience everywhere. Onboarded users fall straight through.
+  if (needsOnboarding) {
+    return <Redirect to="/onboarding-v2" />;
+  }
+
   return (
     <PageShell label="Dashboard">
-      <OnboardingWizard />
       <PullToRefresh onRefresh={handleRefresh}>
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">

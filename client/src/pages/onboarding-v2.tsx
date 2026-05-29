@@ -1113,16 +1113,21 @@ export default function OnboardingV2() {
   // land_investor for ambiguous strategies.
   function mapBusinessTypeToPersona(bt: string): string | null {
     switch (bt) {
-      case "land_flipper":          return "land_investor";
-      case "note_investor":         return "note_investor";
+      case "land_flipper":           return "land_investor";
+      case "note_investor":          return "note_investor";
       case "residential_wholesaler": return "wholesaler";
-      case "fix_and_flip":          return "fix_flipper";
-      case "buy_and_hold":          return "landlord";
-      case "tax_lien_deed":         return "tax_delinquent";
-      case "developer":             return "subdivider";
-      // hybrid / commercial / multifamily / mobile_home / creative_finance /
-      // agent_investor / short_term_rental — no persona-specific surface
-      // yet, default to land_investor copy.
+      case "fix_and_flip":           return "fix_flipper";
+      // Buy-and-hold + every rental-shaped strategy is a landlord workflow
+      // (rent roll, leases, maintenance) — not the generic land flipper set.
+      case "buy_and_hold":
+      case "short_term_rental":
+      case "multifamily":
+      case "mobile_home":            return "landlord";
+      case "tax_lien_deed":          return "tax_delinquent";
+      case "developer":
+      case "subdivider":             return "subdivider";
+      // hybrid / commercial / creative_finance / agent_investor — no
+      // persona-specific surface yet; default to the land-investor copy.
       default: return "land_investor";
     }
   }
