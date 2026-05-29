@@ -53,25 +53,48 @@ test.describe("mobile navigation smoke", () => {
   for (const route of ROUTES) {
     test(`renders ${route}`, async ({ page, baseURL }) => {
       const pageErrors: string[] = [];
+      const consoleErrors: string[] = [];
       page.on("pageerror", (e) => {
         const msg = e.message || String(e);
         if (!IGNORED_PAGE_ERRORS.some((re) => re.test(msg))) pageErrors.push(msg);
+      });
+      page.on("console", (m) => {
+        if (m.type() === "error") consoleErrors.push(m.text());
       });
 
       await seedSessionCookie(page, baseURL!);
       await page.goto(route, { waitUntil: "domcontentloaded" });
 
       // The app boots, resolves auth via the API, then renders. Wait for the
-      // React root to have real content rather than the empty shell.
-      await expect
-        .poll(
-          async () =>
-            page.evaluate(
-              () => (document.getElementById("root")?.innerText || "").trim().length,
-            ),
-          { timeout: 20000, message: `#root never rendered content for ${route}` },
-        )
-        .toBeGreaterThan(20);
+      // React root to have real content rather than the empty shell. On
+      // failure, dump diagnostics so CI tells us *why* it stayed blank.
+      try {
+        await expect
+          .poll(
+            async () =>
+              page.evaluate(
+                () => (document.getElementById("root")?.innerText || "").trim().length,
+              ),
+            { timeout: 20000 },
+          )
+          .toBeGreaterThan(20);
+      } catch {
+        const diag = await page.evaluate(() => ({
+          url: location.href,
+          cookie: document.cookie,
+          rootHtml: (document.getElementById("root")?.innerHTML || "").slice(0, 400),
+          bodyText: (document.body?.innerText || "").slice(0, 200),
+        }));
+        throw new Error(
+          `#root never rendered for ${route}\n` +
+            `  final url: ${diag.url}\n` +
+            `  cookie: ${diag.cookie}\n` +
+            `  console errors: ${consoleErrors.slice(0, 6).join(" || ")}\n` +
+            `  page errors: ${pageErrors.slice(0, 6).join(" || ")}\n` +
+            `  root html: ${diag.rootHtml}\n` +
+            `  body text: ${diag.bodyText}`,
+        );
+      }
 
       // Auth must have resolved — we should not be bounced to the sign-in page.
       expect(page.url(), `${route} redirected to /auth`).not.toMatch(/\/auth(\b|$)/);
