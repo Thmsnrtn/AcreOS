@@ -56,6 +56,8 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Property } from "@shared/schema";
+import { PersonaMapStrip } from "@/components/maps/PersonaMapStrip";
+import { usePersona } from "@/hooks/use-persona";
 import {
   AreaChart,
   Area,
@@ -769,13 +771,21 @@ export default function MapsPage() {
   useDocumentTitle("Map");
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  // Persona controls the strip's variant + the default mapMode.
+  // The dock label "Map" stays the same (five fixed doors); only
+  // the content behind the door changes.
+  const persona = usePersona();
+  const personaDefaultMode: "properties" | "deals" =
+    persona === "note_investor" || persona === "note_servicer" || persona === "fix_flipper" || persona === "subdivider"
+      ? "deals"
+      : "properties";
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [minAcres, setMinAcres] = useState(0);
   const [maxAcres, setMaxAcres] = useState(10000);
-  const [mapMode, setMapMode] = useState<"properties" | "deals">("properties");
+  const [mapMode, setMapMode] = useState<"properties" | "deals">(personaDefaultMode);
   const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
   const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
   const headerSearchId = useId();
@@ -1175,6 +1185,15 @@ export default function MapsPage() {
             </SheetContent>
           </Sheet>
         </div>
+
+        {/* Persona-shaped overlay strip — re-flavors the same map
+            canvas for who's using it. Renders nothing for the
+            default land_investor persona so the existing parcel
+            discovery UI stays the home page. */}
+        <PersonaMapStrip
+          properties={properties}
+          hasAnyProperties={properties.length > 0}
+        />
 
         {/* Map + side panel */}
         <div className="flex" style={{ height: "calc(100vh - 125px)" }}>
