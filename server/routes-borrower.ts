@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { storage, db } from "./storage";
+import { withTransaction } from "./db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { notes, payments } from "@shared/schema";
 import { isAuthenticated } from "./auth";
@@ -623,13 +624,6 @@ export function registerBorrowerRoutes(app: Express): void {
         return res.status(400).json({ message: "Payment not completed" });
       }
 
-      // Idempotency — don't double-record the same Stripe session.
-      const existingPayments = await storage.getPayments(note.organizationId, note.id);
-      const alreadyRecorded = existingPayments.some((p) => p.transactionId === sessionId);
-      if (alreadyRecorded) {
-        return res.json({ success: true, message: "Payment already recorded" });
-      }
-
       const paymentAmount = stripeSession.amount_total
         ? stripeSession.amount_total / 100
         : Number(note.monthlyPayment);
@@ -664,20 +658,87 @@ export function registerBorrowerRoutes(app: Express): void {
       const schedule = note.amortizationSchedule || [];
       const nextPendingPayment = schedule.find((s) => s.status === "pending");
 
-      const payment = await storage.createPayment({
-        organizationId: note.organizationId,
-        noteId: note.id,
-        amount: paymentAmount.toString(),
-        principalAmount: principalAmount.toString(),
-        interestAmount: interestAmount.toString(),
-        feeAmount: "0",
-        lateFeeAmount: lateFeeAmount.toString(),
-        paymentDate,
-        dueDate,
-        paymentMethod: "card",
-        transactionId: sessionId,
-        status: "completed",
+      // Idempotent payment write — replaces the prior read-then-write
+      // (storage.getPayments → .some(...).transactionId === sessionId →
+      // storage.createPayment). That pattern races on concurrent Stripe
+      // webhook redelivery: two coroutines both see "no existing row" and
+      // both insert. The payments.transactionId unique constraint catches
+      // the second one with a DB error, but only after the balance had
+      // already been mutated in one of the racing transactions.
+      //
+      // The new path uses INSERT … ON CONFLICT (transaction_id) DO NOTHING
+      // RETURNING * inside a single transaction. If the conflict fires
+      // (returned []), we know the other coroutine already posted the
+      // payment and we return 200 with the existing row — no second
+      // balance mutation, no error to the borrower.
+      const idempotentResult = await withTransaction(async (tx) => {
+        const inserted = await tx
+          .insert(payments)
+          .values({
+            organizationId: note.organizationId,
+            noteId: note.id,
+            amount: paymentAmount.toString(),
+            principalAmount: principalAmount.toString(),
+            interestAmount: interestAmount.toString(),
+            feeAmount: "0",
+            lateFeeAmount: lateFeeAmount.toString(),
+            paymentDate,
+            dueDate,
+            paymentMethod: "card",
+            transactionId: sessionId,
+            status: "completed",
+          })
+          .onConflictDoNothing({ target: payments.transactionId })
+          .returning();
+
+        if (inserted.length === 0) {
+          // Conflict — another coroutine inserted this transactionId
+          // first. Fetch and return without touching the balance.
+          const [existing] = await tx
+            .select()
+            .from(payments)
+            .where(eq(payments.transactionId, sessionId));
+          return { row: existing, created: false } as const;
+        }
+
+        const [row] = inserted;
+
+        // We won the race — update the note balance + version inside the
+        // same transaction with optimistic locking (matches the contract
+        // storage.createPayment provided).
+        const [lockedNote] = await tx
+          .select()
+          .from(notes)
+          .where(eq(notes.id, note.id))
+          .for("update");
+        if (lockedNote) {
+          const newBalanceCents = Math.max(0, Math.round(Number(lockedNote.currentBalance) * 100) - split.principalCents);
+          const updated = await tx
+            .update(notes)
+            .set({
+              currentBalance: (newBalanceCents / 100).toString(),
+              status: newBalanceCents <= 0 ? "paid_off" : "active",
+              version: (lockedNote.version ?? 1) + 1,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(notes.id, note.id), eq(notes.version, lockedNote.version ?? 1)))
+            .returning();
+          if (updated.length === 0) {
+            throw new Error(`Optimistic lock conflict on note ${note.id} — concurrent update detected`);
+          }
+        }
+
+        return { row, created: true } as const;
       });
+
+      const payment = idempotentResult.row;
+
+      if (!idempotentResult.created) {
+        // Conflict path — the row already existed. Return 200 with the
+        // existing payment so the client treats this as success (the
+        // Stripe webhook will redeliver until we 200).
+        return res.json({ success: true, payment, message: "Payment already recorded" });
+      }
 
       const newBalance = Math.max(0, (currentBalanceCents - split.principalCents)) / 100;
       let updatedSchedule = schedule;
