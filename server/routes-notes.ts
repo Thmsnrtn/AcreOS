@@ -805,6 +805,94 @@ export function registerNoteRoutes(app: Express): void {
     },
   );
 
+  // ── Reconciliation (drift indicator) ─────────────────────────────────────
+  // The Collison trust upgrade. Two SUM() queries against notePayments
+  // plus a single read of acquiredNotes give us a numeric drift between
+  // the ledger and the running balance. drift = 0 on a clean book; any
+  // non-zero value means a writer skipped the ledger, fat-fingered a
+  // split, or a backfill drifted. Surfacing this on every note detail
+  // page is the single biggest trust upgrade in the plan.
+  app.get(
+    "/api/notes/:id/reconciliation",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const id = req.params.id;
+
+        // Note row — opening principal, live current balance.
+        const [note] = await db
+          .select({
+            id: acquiredNotes.id,
+            originalPrincipalCents: acquiredNotes.originalPrincipalCents,
+            currentBalanceCents: acquiredNotes.currentBalanceCents,
+          })
+          .from(acquiredNotes)
+          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+          .limit(1);
+        if (!note) return Errors.notFound(res, "Note");
+
+        // SUM() across the payment ledger. Use COALESCE to default to 0
+        // on a fresh note with no payments yet. Pulling all four buckets
+        // in one query keeps the read cheap.
+        const [sums] = await db
+          .select({
+            sumOfPrincipalPostedCents: sql<number>`COALESCE(SUM(${notePayments.principalCents}), 0)::bigint`,
+            sumOfInterestPostedCents: sql<number>`COALESCE(SUM(${notePayments.interestCents}), 0)::bigint`,
+            sumOfLateFeesPostedCents: sql<number>`COALESCE(SUM(${notePayments.lateFeeCents}), 0)::bigint`,
+            sumOfEscrowPostedCents: sql<number>`COALESCE(SUM(${notePayments.escrowCents}), 0)::bigint`,
+          })
+          .from(notePayments)
+          .where(eq(notePayments.noteId, id));
+
+        // Last posting — drives "asOf"-like indicators on the UI so the
+        // drift display can be honest about the freshness of the data.
+        const [lastPosting] = await db
+          .select({
+            id: notePayments.id,
+            paymentDate: notePayments.paymentDate,
+          })
+          .from(notePayments)
+          .where(eq(notePayments.noteId, id))
+          .orderBy(desc(notePayments.paymentDate), desc(notePayments.createdAt))
+          .limit(1);
+
+        // What the SCHEDULE says principal should be (opening principal
+        // minus the sum of principal we posted). When drift is non-zero,
+        // this is the "what should it be" anchor.
+        const openingPrincipalCents = note.originalPrincipalCents;
+        const sumOfPrincipalPostedCents = Number(sums?.sumOfPrincipalPostedCents ?? 0);
+        const sumOfInterestPostedCents = Number(sums?.sumOfInterestPostedCents ?? 0);
+        const sumOfLateFeesPostedCents = Number(sums?.sumOfLateFeesPostedCents ?? 0);
+        const sumOfEscrowPostedCents = Number(sums?.sumOfEscrowPostedCents ?? 0);
+        const scheduleSaysPrincipalCents =
+          openingPrincipalCents - sumOfPrincipalPostedCents;
+        const drift = note.currentBalanceCents - scheduleSaysPrincipalCents;
+
+        return res.json({
+          openingPrincipalCents,
+          sumOfPrincipalPostedCents,
+          sumOfInterestPostedCents,
+          sumOfLateFeesPostedCents,
+          sumOfEscrowPostedCents,
+          currentPrincipalCents: note.currentBalanceCents,
+          scheduleSaysPrincipalCents,
+          drift,
+          lastPostingId: lastPosting?.id ?? null,
+          asOf: new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.error(
+          "notes.reconciliation failed",
+          err instanceof Error ? err : undefined,
+        );
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Basis schedule (Pub 1212 market-discount accretion) ──────────────────
   app.get(
     "/api/notes/:id/basis",

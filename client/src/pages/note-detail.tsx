@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FileText, AlertCircle, MapPin, Plus } from "lucide-react";
+import { ArrowLeft, FileText, AlertCircle, MapPin, Plus, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -168,6 +168,126 @@ function computeDiscount(note: AcquiredNote): { absCents: number; pct: number } 
     ? (abs / note.originalPrincipalCents) * 100
     : 0;
   return { absCents: abs, pct };
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation card — drift indicator.
+//
+// Renders the drift between the live ledger and the schedule-derived
+// principal. Green check on zero (the clean book; what every note SHOULD
+// look like). When non-zero, expands to show the four SUM buckets and
+// the live balance so the operator can see exactly where the drift is.
+// ---------------------------------------------------------------------------
+
+interface ReconciliationResponse {
+  openingPrincipalCents: number;
+  sumOfPrincipalPostedCents: number;
+  sumOfInterestPostedCents: number;
+  sumOfLateFeesPostedCents: number;
+  sumOfEscrowPostedCents: number;
+  currentPrincipalCents: number;
+  scheduleSaysPrincipalCents: number;
+  drift: number;
+  lastPostingId: string | null;
+  asOf: string;
+}
+
+function ReconciliationCard({ noteId }: { noteId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading } = useQuery<ReconciliationResponse>({
+    queryKey: ["/api/notes", noteId, "reconciliation"],
+    queryFn: async () => {
+      const res = await fetch(`/api/notes/${noteId}/reconciliation`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load reconciliation (${res.status})`);
+      return res.json();
+    },
+    enabled: !!noteId,
+  });
+
+  if (isLoading || !data) {
+    return (
+      <Card className="mb-6" aria-busy="true" aria-label="Loading reconciliation">
+        <div className="p-5">
+          <Skeleton className="h-5 w-40 mb-3" />
+          <Skeleton className="h-8 w-64" />
+        </div>
+      </Card>
+    );
+  }
+
+  const driftIsZero = data.drift === 0;
+  // Auto-expand when there's drift — the operator needs the detail at a
+  // glance, no second click.
+  const shouldShowDetail = expanded || !driftIsZero;
+
+  return (
+    <Card className={`mb-6 ${driftIsZero ? "" : "border-acr-warning/40 bg-acr-warning/5"}`}>
+      <div className="p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {driftIsZero ? (
+              <CheckCircle2 className="w-5 h-5 text-acr-success" aria-hidden="true" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-acr-warning" aria-hidden="true" />
+            )}
+            <h2 className="text-sm font-semibold">
+              {driftIsZero ? "Ledger reconciled" : "Ledger drift detected"}
+            </h2>
+            <span
+              className="text-xs text-muted-foreground"
+              data-testid="reconciliation-drift"
+            >
+              drift = {fmtUsd(data.drift)}
+            </span>
+          </div>
+          {driftIsZero && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setExpanded((v) => !v)}
+              aria-label={expanded ? "Hide reconciliation entries" : "Show reconciliation entries"}
+            >
+              {expanded ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                  Hide entries
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                  Show entries
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+
+        {shouldShowDetail && (
+          <>
+            <Separator className="my-3" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <KV label="Opening principal" value={fmtUsd(data.openingPrincipalCents)} />
+              <KV label="Principal posted" value={fmtUsd(data.sumOfPrincipalPostedCents)} />
+              <KV label="Interest posted" value={fmtUsd(data.sumOfInterestPostedCents)} />
+              <KV label="Late fees posted" value={fmtUsd(data.sumOfLateFeesPostedCents)} />
+              <KV label="Escrow posted" value={fmtUsd(data.sumOfEscrowPostedCents)} />
+              <KV label="Live balance" value={fmtUsd(data.currentPrincipalCents)} />
+              <KV label="Schedule says" value={fmtUsd(data.scheduleSaysPrincipalCents)} />
+              <KV
+                label="Drift"
+                value={fmtUsd(data.drift)}
+                sub={driftIsZero ? "Clean — no action needed" : "Investigate before posting more"}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              As of {new Date(data.asOf).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+              {data.lastPostingId ? ` · last posting ${data.lastPostingId.slice(0, 8)}` : ""}
+            </p>
+          </>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 export default function NoteDetailPage() {
@@ -366,6 +486,11 @@ export default function NoteDetailPage() {
           </div>
         </div>
       </Card>
+
+      {/* Reconciliation — drift between live ledger and schedule-derived
+          principal. Green check on zero; auto-expanded with the SUM
+          breakdown when non-zero. Single biggest trust upgrade. */}
+      <ReconciliationCard noteId={note.id} />
 
       {/* Unapplied funds banner — Linnea: "If a borrower sends $400 against
           an $812 payment, that money should sit in unapplied until either
