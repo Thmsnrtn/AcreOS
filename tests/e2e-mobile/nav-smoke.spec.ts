@@ -19,6 +19,10 @@ import { test, expect, type Page } from "@playwright/test";
 
 // Core customer-facing routes. Bottom-nav targets first, then the primary
 // CRUD surfaces reachable from the "More" drawer.
+// NOTE: /settings is intentionally excluded — it renders Clerk's <UserProfile>
+// which requires ClerkProvider, and ClerkProvider is skipped in E2E test mode
+// (its dev-instance handshake can't complete in CI). Settings is a Clerk
+// account surface, not core navigation.
 const ROUTES = [
   "/today",
   "/deals",
@@ -30,7 +34,6 @@ const ROUTES = [
   "/pipeline",
   "/portfolio",
   "/inbox",
-  "/settings",
 ];
 
 // Client-side noise that is not an app bug (e.g. Clerk-JS is intentionally

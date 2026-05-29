@@ -65,11 +65,21 @@ async function fetchAppUser(): Promise<AuthUser | null> {
   return response.json();
 }
 
+// E2E test-auth: ClerkProvider is not mounted in this mode (see main.tsx), so
+// useClerk() would throw. Stable per-session constant → consistent hook order.
+const IS_E2E_TEST_AUTH =
+  typeof window !== "undefined" &&
+  (window as unknown as { __ENV__?: { E2E_TEST_AUTH?: string } }).__ENV__
+    ?.E2E_TEST_AUTH === "1";
+
 export function useAuth() {
-  const { signOut } = useClerk();
+  const { signOut } = IS_E2E_TEST_AUTH
+    ? { signOut: async () => {} }
+    : useClerk();
   const queryClient = useQueryClient();
 
-  const cookiePresent = hasAnyClerkSession();
+  // In E2E the API-based session is authoritative; force the query on.
+  const cookiePresent = IS_E2E_TEST_AUTH || hasAnyClerkSession();
 
   const { data: user, isLoading: userLoading, isFetched } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],

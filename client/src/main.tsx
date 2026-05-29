@@ -103,27 +103,39 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 // where VITE_* vars aren't available at Docker build time)
 const runtimeEnv = (window as any).__ENV__ || {};
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || runtimeEnv.VITE_CLERK_PUBLISHABLE_KEY;
-if (!publishableKey) {
+
+// E2E test-auth: the Playwright suite runs against a dev-instance Clerk key
+// whose dev-browser handshake can't complete in CI (it would redirect the top
+// frame to a domain CI can't resolve). In that mode we skip ClerkProvider
+// entirely and let the API-based useAuth carry the session. Set only by the
+// server when E2E_TEST_AUTH is active off-Fly (server/auth/testAuth.ts).
+const isE2ETestAuth = runtimeEnv.E2E_TEST_AUTH === "1";
+
+if (!publishableKey && !isE2ETestAuth) {
   throw new Error("VITE_CLERK_PUBLISHABLE_KEY is not set");
 }
 
 createRoot(document.getElementById("root")!).render(
-  <ClerkProvider
-    publishableKey={publishableKey}
-    proxyUrl="/__clerk"
-    signInFallbackRedirectUrl="/today"
-    signUpFallbackRedirectUrl="/onboarding-v2"
-    appearance={{
-      // Clerk's default brand color is purple (#6c47ff). Override to our
-      // terracotta primary so the Sign In / Sign Up widgets match the
-      // rest of AcreOS. Hex mirrors hsl(18 48% 52%) = terracotta.
-      variables: {
-        colorPrimary: "#c17a4c",
-        borderRadius: "0.625rem",
-        fontFamily: "inherit",
-      },
-    }}
-  >
+  isE2ETestAuth ? (
     <App />
-  </ClerkProvider>
+  ) : (
+    <ClerkProvider
+      publishableKey={publishableKey}
+      proxyUrl="/__clerk"
+      signInFallbackRedirectUrl="/today"
+      signUpFallbackRedirectUrl="/onboarding-v2"
+      appearance={{
+        // Clerk's default brand color is purple (#6c47ff). Override to our
+        // terracotta primary so the Sign In / Sign Up widgets match the
+        // rest of AcreOS. Hex mirrors hsl(18 48% 52%) = terracotta.
+        variables: {
+          colorPrimary: "#c17a4c",
+          borderRadius: "0.625rem",
+          fontFamily: "inherit",
+        },
+      }}
+    >
+      <App />
+    </ClerkProvider>
+  )
 );

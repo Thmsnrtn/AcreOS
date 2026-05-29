@@ -86,6 +86,12 @@ function buildRuntimeEnvPayload(): string {
   // Without a real SHA here, installVersionCheck() no-ops and stale tabs
   // never auto-reload (the cache-clearing pain users hit).
   if (process.env.VITE_GIT_SHA) cfg.VITE_GIT_SHA = process.env.VITE_GIT_SHA;
+  // E2E test-auth — tells the client to skip the real ClerkProvider (which
+  // would do a dev-instance handshake redirect CI can't complete) and rely on
+  // the API-based useAuth. Mirrors server/auth/testAuth.ts; never set on Fly.
+  if (process.env.E2E_TEST_AUTH === "1" && !process.env.FLY_APP_NAME) {
+    cfg.E2E_TEST_AUTH = "1";
+  }
   if (Object.keys(cfg).length === 0) return "";
   return JSON.stringify(cfg).replace(/</g, "\\u003c");
 }
