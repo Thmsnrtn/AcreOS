@@ -234,42 +234,60 @@ export function generateAmortizationSchedule(params: {
   return schedule;
 }
 
+/**
+ * Live-ledger payoff. Replaces the prior schedule-replay implementation
+ * (which indexed generateAmortizationSchedule at paymentsReceived - 1)
+ * because that branch diverged from reality the moment a borrower paid
+ * early, late, partial, or curtailed principal. The acquired-notes ledger
+ * carries currentBalanceCents on every row; this function consumes that
+ * truth and adds per-diem interest since lastPaymentDate.
+ *
+ * Convention: daily rate = APR / 365 (matches routes-borrower
+ * /api/borrower/payoff-quote and the prior /365 here).
+ *
+ * Inputs:
+ *   currentBalanceCents — the live principal balance in integer cents.
+ *   annualInterestRate  — APR as a decimal (e.g. 0.099 for 9.9%).
+ *   lastPaymentDate     — the payment_date of the most recent posting.
+ *   payoffDate          — the requested payoff date.
+ */
 export function calculateNotePayoff(params: {
-  originalPrincipal: number;
+  currentBalanceCents: number;
   annualInterestRate: number;
-  termMonths: number;
-  firstPaymentDate: Date;
+  lastPaymentDate: Date;
   payoffDate: Date;
-  paymentsReceived: number;
 }): {
   principalBalance: number;
   accruedInterest: number;
   totalPayoff: number;
   payoffDateStr: string;
 } {
-  const schedule = generateAmortizationSchedule({
-    principal: params.originalPrincipal,
-    annualInterestRate: params.annualInterestRate,
-    termMonths: params.termMonths,
-    firstPaymentDate: params.firstPaymentDate,
-  });
+  const { currentBalanceCents, annualInterestRate, lastPaymentDate, payoffDate } = params;
 
-  const lastPayment = schedule[params.paymentsReceived - 1];
-  const principalBalance = lastPayment?.remainingBalance || params.originalPrincipal;
-
-  // Accrued interest from last payment date to payoff date
-  const daysSinceLastPayment = differenceInDays(
-    params.payoffDate,
-    lastPayment?.dueDate || params.firstPaymentDate
+  const daysSinceLastPayment = Math.max(
+    0,
+    differenceInDays(payoffDate, lastPaymentDate),
   );
-  const dailyRate = params.annualInterestRate / 365;
-  const accruedInterest = principalBalance * dailyRate * Math.max(0, daysSinceLastPayment);
+
+  // Integer-cent per-diem accrual to avoid float drift. Compute in cents
+  // and convert to dollars at the response boundary. Daily rate is
+  // APR / 365 (matches the prior convention here and in the borrower
+  // portal's /api/borrower/payoff-quote endpoint).
+  const annualRateBps = Math.round(annualInterestRate * 10_000);
+  const accruedCents = Math.round(
+    (currentBalanceCents * annualRateBps * daysSinceLastPayment) /
+      (10_000 * 365),
+  );
+
+  const principalBalance = currentBalanceCents / 100;
+  const accruedInterest = accruedCents / 100;
+  const totalPayoff = (currentBalanceCents + accruedCents) / 100;
 
   return {
-    principalBalance: Math.round(principalBalance * 100) / 100,
-    accruedInterest: Math.round(accruedInterest * 100) / 100,
-    totalPayoff: Math.round((principalBalance + accruedInterest) * 100) / 100,
-    payoffDateStr: format(params.payoffDate, "MMMM d, yyyy"),
+    principalBalance,
+    accruedInterest,
+    totalPayoff,
+    payoffDateStr: format(payoffDate, "MMMM d, yyyy"),
   };
 }
 

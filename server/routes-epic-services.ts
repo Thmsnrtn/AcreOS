@@ -306,10 +306,26 @@ router.post("/financial/note-amortization", async (req: Request, res: Response) 
 router.post("/financial/note-payoff", async (req: Request, res: Response) => {
   try {
     const { calculateNotePayoff } = await import("./services/financialOSService");
+    // calculateNotePayoff was migrated from a schedule-replay signature
+    // (originalPrincipal/termMonths/paymentsReceived) to a live-ledger
+    // signature (currentBalanceCents/lastPaymentDate). Accept both shapes
+    // here to keep the public /financial/note-payoff API compatible:
+    // when callers pass currentBalanceCents we use it directly; when they
+    // pass the legacy originalPrincipal we fall back to passing through
+    // the principal as the live balance (best available signal absent a
+    // ledger).
+    const body = req.body || {};
+    const currentBalanceCents = typeof body.currentBalanceCents === "number"
+      ? body.currentBalanceCents
+      : Math.round(Number(body.currentBalance ?? body.originalPrincipal ?? 0) * 100);
+    const lastPaymentDate = body.lastPaymentDate
+      ? new Date(body.lastPaymentDate)
+      : new Date(body.firstPaymentDate);
     const result = calculateNotePayoff({
-      ...req.body,
-      firstPaymentDate: new Date(req.body.firstPaymentDate),
-      payoffDate: new Date(req.body.payoffDate),
+      currentBalanceCents,
+      annualInterestRate: Number(body.annualInterestRate),
+      lastPaymentDate,
+      payoffDate: new Date(body.payoffDate),
     });
     res.json(result);
   } catch (err: any) {
