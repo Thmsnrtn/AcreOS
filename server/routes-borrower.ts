@@ -8,7 +8,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
-import { splitPaymentCents } from "./services/notePaymentMath";
+import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
 // portal endpoints carry it as a URL param) and fall back to IP. Pure IP
@@ -532,6 +532,22 @@ export function registerBorrowerRoutes(app: Express): void {
       const principalAmount = split.principalCents / 100;
       const interestAmount = split.interestCents / 100;
 
+      // Late fee — assessed when payment posts past gracePeriodDays of
+      // the next-payment due date. Configured per-note via note.lateFee
+      // ($) + note.gracePeriodDays. Always 0 when the borrower paid
+      // inside grace.
+      const paymentDate = new Date();
+      const dueDate = note.nextPaymentDate || new Date();
+      const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
+      const gracePeriodDays = note.gracePeriodDays ?? 10;
+      const lateFeeAppliedCents = computeAppliedLateFeeCents({
+        dueDate,
+        paymentDate,
+        gracePeriodDays,
+        configuredLateFeeCents,
+      });
+      const lateFeeAmount = lateFeeAppliedCents / 100;
+
       // Schedule mark-paid still uses the schedule index as before — the
       // legacy borrower portal surfaces the schedule for visual progress,
       // not for split math.
@@ -547,9 +563,9 @@ export function registerBorrowerRoutes(app: Express): void {
         principalAmount: principalAmount.toString(),
         interestAmount: interestAmount.toString(),
         feeAmount: "0",
-        lateFeeAmount: "0",
-        paymentDate: new Date(),
-        dueDate: note.nextPaymentDate || new Date(),
+        lateFeeAmount: lateFeeAmount.toString(),
+        paymentDate,
+        dueDate,
         paymentMethod: 'card',
         transactionId: sessionId,
         status: 'completed',
@@ -578,13 +594,14 @@ export function registerBorrowerRoutes(app: Express): void {
         success: true,
         payment,
         newBalance,
+        lateFeeApplied: lateFeeAmount,
       });
     } catch (err: any) {
       logger.error("Payment verification error", err);
       res.status(500).json({ message: err.message });
     }
   });
-  
+
   // Session-based payment verification — borrower has already verified
   // via /api/borrower/verify, so the session tells us which note. No
   // accessToken in the URL → safer against log/referrer leakage.
@@ -631,6 +648,19 @@ export function registerBorrowerRoutes(app: Express): void {
       const principalAmount = split.principalCents / 100;
       const interestAmount = split.interestCents / 100;
 
+      // Late fee — see deprecated writer above for the same logic.
+      const paymentDate = new Date();
+      const dueDate = note.nextPaymentDate || new Date();
+      const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
+      const gracePeriodDays = note.gracePeriodDays ?? 10;
+      const lateFeeAppliedCents = computeAppliedLateFeeCents({
+        dueDate,
+        paymentDate,
+        gracePeriodDays,
+        configuredLateFeeCents,
+      });
+      const lateFeeAmount = lateFeeAppliedCents / 100;
+
       const schedule = note.amortizationSchedule || [];
       const nextPendingPayment = schedule.find((s) => s.status === "pending");
 
@@ -641,9 +671,9 @@ export function registerBorrowerRoutes(app: Express): void {
         principalAmount: principalAmount.toString(),
         interestAmount: interestAmount.toString(),
         feeAmount: "0",
-        lateFeeAmount: "0",
-        paymentDate: new Date(),
-        dueDate: note.nextPaymentDate || new Date(),
+        lateFeeAmount: lateFeeAmount.toString(),
+        paymentDate,
+        dueDate,
         paymentMethod: "card",
         transactionId: sessionId,
         status: "completed",
@@ -675,7 +705,7 @@ export function registerBorrowerRoutes(app: Express): void {
         });
       } catch { /* non-fatal */ }
 
-      res.json({ success: true, payment, newBalance });
+      res.json({ success: true, payment, newBalance, lateFeeApplied: lateFeeAmount });
     } catch (err: any) {
       logger.error("Payment verification error (session)", err);
       res.status(500).json({ message: err.message });
