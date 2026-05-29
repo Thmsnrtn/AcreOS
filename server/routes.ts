@@ -638,6 +638,12 @@ export async function registerRoutes(
   // so any auth-parse failure leaves req.auth undefined and downstream
   // handlers cleanly return 401 via the normal path.
   app.use((req: Request, res: Response, next: NextFunction) => {
+    // E2E test-auth: skip Clerk entirely. clerk-express auto-issues a
+    // dev-browser handshake redirect (307 → /__clerk/v1/client/handshake) for
+    // dev-instance keys when no session is found, which CI can't complete and
+    // which blanks the page. The isAuthenticated bypass populates req.auth
+    // itself. Never active on Fly — see server/auth/testAuth.ts.
+    if (e2eTestAuthEnabled()) return next();
     try {
       clerkMw(req, res, (err?: unknown) => {
         if (err) {
