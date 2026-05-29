@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+import { e2eTestAuthEnabled } from "../auth/testAuth";
 
 // ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
 // In production, generate a unique nonce per response and embed it in the CSP.
@@ -65,8 +66,13 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "frame-ancestors 'none'",
   ];
 
-  // Only upgrade to HTTPS in production
-  if (process.env.NODE_ENV === "production") {
+  // Only upgrade to HTTPS in production — but NOT under E2E test-auth, where
+  // the suite runs the production build over plain HTTP on localhost. HSTS /
+  // upgrade-insecure-requests would make WebKit force HTTPS on localhost and
+  // fail every resource load with a TLS error. e2eTestAuthEnabled() is false
+  // on Fly, so real production HSTS is unaffected.
+  const isProd = process.env.NODE_ENV === "production" && !e2eTestAuthEnabled();
+  if (isProd) {
     cspDirectives.push("upgrade-insecure-requests");
     // Task #F-A05-2: CSP violation reporting endpoint
     cspDirectives.push("report-uri /api/csp-report");
@@ -74,7 +80,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
 
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
 
-  if (process.env.NODE_ENV === "production") {
+  if (isProd) {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
 
