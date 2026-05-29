@@ -60,6 +60,7 @@ import { DynamicIsland } from "@/components/dynamic-island";
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
+import { NotificationStack } from "@/components/notification-stack";
 import { NotificationBanner } from "@/components/notification-banner";
 const NpsDialog = React.lazy(() => import("@/components/nps-dialog").then(m => ({ default: m.NpsDialog })));
 
@@ -1581,8 +1582,13 @@ function AppContent() {
       <a href="#main-content" className="skip-to-content" aria-label="Skip to main content">
         Skip to content
       </a>
-      {user && <EarlyAccessBanner />}
-      {user && <TrialBanner />}
+      {user && (
+        <NotificationStack>
+          {/* most-urgent first; only the top active one shows */}
+          <TrialBanner />
+          <EarlyAccessBanner />
+        </NotificationStack>
+      )}
       <PageWrapper>
         <Router />
       </PageWrapper>
