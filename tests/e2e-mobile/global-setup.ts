@@ -78,7 +78,49 @@ export default async function globalSetup() {
       [orgId, userId],
     );
 
-    console.log(`[e2e] seeded user=${userId} org=${orgId}`);
+    // 4. Seed realistic, assertable data so pages render real content (not
+    // just empty states). Distinctive values let the spec assert on them.
+    // Idempotent: clear this org's demo rows first, then insert.
+    await client.query(`DELETE FROM deals WHERE organization_id = $1`, [orgId]);
+    await client.query(`DELETE FROM notes WHERE organization_id = $1`, [orgId]);
+    await client.query(`DELETE FROM properties WHERE organization_id = $1`, [orgId]);
+    await client.query(`DELETE FROM leads WHERE organization_id = $1`, [orgId]);
+
+    await client.query(
+      `INSERT INTO leads (organization_id, first_name, last_name, status, score, state, city)
+       VALUES
+         ($1, 'Marina', 'Hollowell', 'new', 88, 'AZ', 'Buckeye'),
+         ($1, 'Desmond', 'Trujillo', 'contacted', 72, 'TX', 'Marfa'),
+         ($1, 'Priya', 'Vanterpool', 'negotiating', 64, 'CO', 'Alamosa')`,
+      [orgId],
+    );
+
+    const { rows: propRows } = await client.query(
+      `INSERT INTO properties (organization_id, apn, county, state, size_acres, status, city, address)
+       VALUES
+         ($1, 'E2E-APN-7781', 'Maricopa', 'AZ', '40', 'owned', 'Buckeye', '0 W Vista Rd'),
+         ($1, 'E2E-APN-3322', 'Presidio', 'TX', '160', 'prospect', 'Marfa', 'TBD Ranch Rd')
+       RETURNING id`,
+      [orgId],
+    );
+    const propertyId: number = propRows[0].id;
+
+    await client.query(
+      `INSERT INTO deals (organization_id, property_id, type, status, offer_amount)
+       VALUES ($1, $2, 'acquisition', 'negotiating', '32000')`,
+      [orgId, propertyId],
+    );
+
+    await client.query(
+      `INSERT INTO notes
+         (organization_id, property_id, original_principal, current_balance,
+          interest_rate, term_months, monthly_payment, start_date, first_payment_date, status)
+       VALUES
+         ($1, $2, '40000', '38200', '9.5', 120, '517.42', now(), now() + interval '1 month', 'active')`,
+      [orgId, propertyId],
+    );
+
+    console.log(`[e2e] seeded user=${userId} org=${orgId} + demo data`);
   } finally {
     await client.end();
   }

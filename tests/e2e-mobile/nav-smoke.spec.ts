@@ -36,6 +36,15 @@ const ROUTES = [
   "/inbox",
 ];
 
+// Per-route content the page MUST surface from the seeded data (see
+// tests/e2e-mobile/global-setup.ts). Proves the page renders real records,
+// not just a non-blank shell. Any one of the alternatives is acceptable
+// (pages may summarize vs. list).
+const EXPECTED_CONTENT: Record<string, string[]> = {
+  "/leads": ["Hollowell", "Trujillo", "Vanterpool", "Marina"],
+  "/properties": ["Maricopa", "Buckeye", "E2E-APN-7781", "Presidio"],
+};
+
 // Client-side noise that is not an app bug (e.g. Clerk-JS is intentionally
 // blocked in test mode so it fails to load — see testAuth.ts).
 const IGNORED_PAGE_ERRORS = [
@@ -110,6 +119,23 @@ test.describe("mobile navigation smoke", () => {
 
       // No uncaught runtime errors (Clerk noise filtered above).
       expect(pageErrors, `${route} threw: ${pageErrors.join(" | ")}`).toEqual([]);
+
+      // If this route shows seeded records, confirm the real data rendered.
+      const expected = EXPECTED_CONTENT[route];
+      if (expected) {
+        await expect
+          .poll(
+            async () => {
+              const txt = await page.locator("body").innerText();
+              return expected.some((s) => txt.includes(s));
+            },
+            {
+              timeout: 20000,
+              message: `${route} never showed any seeded record (expected one of: ${expected.join(", ")})`,
+            },
+          )
+          .toBe(true);
+      }
     });
   }
 

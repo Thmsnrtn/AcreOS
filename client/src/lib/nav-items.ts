@@ -105,9 +105,12 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
 );
 
 // 2026-05-11 audit — customer sidebar trimmed to 7 canonical entries.
-// AI Hub stays on mobile bottom-nav (Today/Deals/Money/AI Hub + More).
 export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "outreach", "money", "settings"];
-export const DEFAULT_MOBILE_ITEMS  = ["today", "deals", "money", "ai-hub"];
+// 2026-05-29 — restored the mobile bottom nav to the surfaces founders expect
+// (Today / Inbox / Pipeline / Portfolio), reachable directly instead of nested
+// under the consolidated Deals/Money tabs. Everything else lives in the More
+// drawer. The 5th slot is the More button (see MobileBottomNav).
+export const DEFAULT_MOBILE_ITEMS  = ["today", "inbox", "pipeline", "portfolio"];
 
 /**
  * Persona-aware default mobile bottom-nav.
