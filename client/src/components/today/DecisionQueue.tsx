@@ -265,7 +265,7 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
                               className="text-xs border-transparent bg-acr-pos-soft text-acr-pos inline-flex items-center gap-1"
                             >
                               <Zap className="w-3 h-3" aria-hidden="true" />
-                              Pax will handle
+                              Pax would handle
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className={priorityColors[item.priority]}>
@@ -291,7 +291,7 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
                             )}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-1">
-                          {auto ? "Pax will handle this automatically — tap to override." : item.description}
+                          {auto ? "Preview — Pax will still ask you. You'll see this row in your queue." : item.description}
                         </p>
                       </div>
                       <Button

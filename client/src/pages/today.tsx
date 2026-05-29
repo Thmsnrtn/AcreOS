@@ -401,7 +401,7 @@ export default function TodayPage() {
                 <div className="min-w-0">
                   <h2 className="acr-section-h2">Pax autonomy</h2>
                   <p className="text-xs text-muted-foreground">
-                    Below your threshold, Pax asks — items land in the queue. At or above it, Pax handles it and just reports.
+                    Preview — your threshold is saved but Pax still asks you first. We'll email you the day auto-execution turns on.
                   </p>
                 </div>
               </div>
