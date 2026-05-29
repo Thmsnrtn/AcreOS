@@ -23,26 +23,34 @@ const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
 const CapitalMarketsPage = lazy(() => import("@/pages/capital-markets"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 
-type TabValue = "notes" | "finance" | "portfolio" | "forecast" | "capital";
+// Tab values now MATCH their labels (and their mounted content). Previously
+// the labels were swapped to match content while the values were left stale,
+// so a deep link to #portfolio opened the Optimizer. Old hashes are migrated
+// in getTabFromHash so existing links/bookmarks still land correctly.
+type TabValue = "notes" | "portfolio" | "optimizer" | "forecast" | "capital";
+
+const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast", "capital"];
+
+// Legacy hash → current value. The old "finance" value rendered the Portfolio
+// page; map it forward so bookmarks don't break.
+const LEGACY_HASH: Record<string, TabValue> = { finance: "portfolio" };
 
 function getTabFromHash(): TabValue {
-  const hash = window.location.hash.replace("#", "") as TabValue;
-  if (["notes", "finance", "portfolio", "forecast", "capital"].includes(hash)) {
-    return hash;
-  }
-  return "notes";
+  const raw = window.location.hash.replace("#", "");
+  const migrated = LEGACY_HASH[raw] ?? raw;
+  return (TAB_VALUES as string[]).includes(migrated) ? (migrated as TabValue) : "notes";
 }
 
 function TabFallback() {
   return (
     <div className="flex items-center justify-center py-20" role="status" aria-live="polite">
-      <div className="animate-pulse text-muted-foreground text-sm">Loading money view…</div>
+      <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
     </div>
   );
 }
 
-export default function MoneyPage() {
-  useDocumentTitle("Money");
+export default function FinancePageShell() {
+  useDocumentTitle("Finance");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -67,7 +75,7 @@ export default function MoneyPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-money-title">
-            Money
+            Finance
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
             Notes, portfolio, cash flow, and capital markets.
@@ -88,16 +96,11 @@ export default function MoneyPage() {
             <Banknote className="h-4 w-4" aria-hidden="true" />
             <span>Notes</span>
           </TabsTrigger>
-          {/* Tab labels were swapped against their mounted content — the
-              "Finance" tab actually mounted PortfolioPage, and "Portfolio"
-              mounted PortfolioOptimizerPage. Tab values stay (URL persistence
-              + localStorage compat) but labels now match the actual
-              surface that appears. */}
-          <TabsTrigger value="finance" className="flex items-center gap-2 min-w-max" data-testid="tab-finance">
+          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
             <PieChart className="h-4 w-4" aria-hidden="true" />
             <span>Portfolio</span>
           </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
+          <TabsTrigger value="optimizer" className="flex items-center gap-2 min-w-max" data-testid="tab-optimizer">
             <BarChart3 className="h-4 w-4" aria-hidden="true" />
             <span>Optimizer</span>
           </TabsTrigger>
@@ -117,13 +120,13 @@ export default function MoneyPage() {
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="finance" data-testid="tab-content-finance">
+        <TabsContent value="portfolio" data-testid="tab-content-portfolio">
           <Suspense fallback={<TabFallback />}>
             <PortfolioPage />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="portfolio" data-testid="tab-content-portfolio">
+        <TabsContent value="optimizer" data-testid="tab-content-optimizer">
           <Suspense fallback={<TabFallback />}>
             <PortfolioOptimizerPage />
           </Suspense>

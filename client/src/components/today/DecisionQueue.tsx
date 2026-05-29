@@ -234,7 +234,7 @@ export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
                             <SourceIcon className="w-3 h-3" aria-hidden={true} />
                             {sourcePillLabel[item.source]}
                           </Badge>
-                          {item.source === "pax-suggests" &&
+                          {item.source.startsWith("pax-") &&
                             typeof item.confidence === "number" && (
                               <Badge
                                 variant="secondary"
