@@ -93,14 +93,35 @@ describe("day-365 reliability probes", () => {
       // Bump the version while the store is small. Once customer-installed
       // SWs hold queued entries, schema changes need a real migration path
       // and an unmigrated version-1 DB will throw on open.
+      //
+      // The version arg accepts either a numeric literal OR a constant
+      // identifier (the post-fix code introduces an OFFLINE_DB_VERSION
+      // const so future bumps live in one place). If the call uses an
+      // identifier, resolve it to its const declaration.
       const openMatch = swSrc.match(
-        /indexedDB\.open\(\s*OFFLINE_DB_NAME\s*,\s*(\d+)\s*\)/
+        /indexedDB\.open\(\s*OFFLINE_DB_NAME\s*,\s*([A-Za-z0-9_]+)\s*\)/
       );
       expect(
         openMatch,
         "expected an indexedDB.open(OFFLINE_DB_NAME, <version>) call in sw.js"
       ).not.toBeNull();
-      const version = Number(openMatch![1]);
+      const versionToken = openMatch![1];
+
+      let version: number;
+      if (/^\d+$/.test(versionToken)) {
+        version = Number(versionToken);
+      } else {
+        // Resolve the const declaration. e.g. `const FOO = 2;`
+        const constMatch = swSrc.match(
+          new RegExp(`const\\s+${versionToken}\\s*=\\s*(\\d+)\\s*;`)
+        );
+        expect(
+          constMatch,
+          `expected a numeric \`const ${versionToken} = N;\` declaration ` +
+            "so we can verify the schema version"
+        ).not.toBeNull();
+        version = Number(constMatch![1]);
+      }
 
       expect(
         version,

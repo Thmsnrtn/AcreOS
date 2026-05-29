@@ -1,15 +1,23 @@
-// Bumped to v13 for the auth-loop hotfix (2026-05-27): W5-7's OnboardingGate
-// was redirecting legacy users to /onboarding-v2 on every page load because
-// it only checked the new `onboardingCompleted` column and not the legacy
-// signals. Force-evict v12 caches so every client picks up the patched
-// App.tsx with the four-signal legacy-completion bypass.
-const CACHE_NAME = 'acreos-v13';
+// Bumped to v14 for the day-365 reliability pass (2026-05-29): adds
+// /api/field-scout/quick-add to the offline-queueable allowlist (a
+// DriveMode save in a cellular dead zone was silently dropped), and
+// bumps the IndexedDB version to 2 so we have an exercised migration
+// path before the store fills up in customer-installed SWs.
+const CACHE_NAME = 'acreos-v14';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
 // IndexedDB key for the offline queue
 const OFFLINE_DB_NAME = 'acreos-offline';
 const OFFLINE_STORE = 'pending-requests';
+// IndexedDB schema version. v1 had no onupgradeneeded migration logic
+// beyond initial store creation — a future schema change would have
+// landed on an opaque VersionError in every customer SW. v2 introduces
+// an explicit `upgrade(oldVersion, db)` migration ladder so the next
+// shape change has a real path, and so we exercise the upgrade path
+// once while the store is empty enough to recover if anything goes
+// wrong.
+const OFFLINE_DB_VERSION = 2;
 
 const STATIC_ASSETS = [
   '/',
@@ -30,28 +38,74 @@ const CACHEABLE_API_ROUTES = [
 // log. Tax-Delinquent auctions happen in courthouses with no WiFi, so
 // log-bid POSTs MUST be queueable — without this the indicator's
 // "we'll sync when online" promise was theatre.
+// Added 2026-05-29 (Workstream C): /api/field-scout/quick-add is the
+// DriveMode "save current location as a lead" endpoint. Field scouts
+// drive rural cellular dead zones — without queueing, every
+// dead-zone save was a silent ghost: the toast said "saved", the
+// row was gone the moment the truck rolled out of signal.
 const OFFLINE_QUEUEABLE_ROUTES = [
   '/api/leads',
   '/api/activity-feed',
   '/api/auction-listings',
   '/api/conversations', // Inbox triage swipes — same use case
+  '/api/field-scout/quick-add', // DriveMode quick-save (rural/dead-zone)
 ];
 
 // ---------------------------------------------------------------------------
 // IndexedDB helpers for offline queue
 // ---------------------------------------------------------------------------
 
+// Schema migration ladder, run inside onupgradeneeded. Each step is
+// idempotent and only applies between its source and current version,
+// so a fresh install at v2 runs the same path as a v1 → v2 upgrade.
+// When we bump OFFLINE_DB_VERSION to 3, add a `if (oldVersion < 3)`
+// block here — DO NOT mutate the v1/v2 blocks (clients have already
+// applied them).
+function migrateOfflineDb(oldVersion, db, transaction) {
+  if (oldVersion < 1) {
+    // Initial schema. Auto-increment keys for FIFO replay order — the
+    // replay loop opens a cursor and walks forward.
+    if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
+      db.createObjectStore(OFFLINE_STORE, { autoIncrement: true });
+    }
+  }
+  if (oldVersion < 2) {
+    // v2 is the scaffolded-migration commit. The store shape did not
+    // change — every queued entry from v1 (CourthouseMode bids made
+    // since 2026-05-26) keeps replaying without rewrite. We do exercise
+    // the ladder so the first real schema change has a tested path.
+    // No-op intentional: do not touch existing entries.
+    void transaction; // no-op marker; reserved for future migrations
+  }
+}
+
 function openOfflineDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(OFFLINE_DB_NAME, 1);
+    const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
     req.onupgradeneeded = (event) => {
       const db = event.target.result;
-      if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
-        db.createObjectStore(OFFLINE_STORE, { autoIncrement: true });
+      // event.target.transaction is the version-change transaction —
+      // the only transaction inside which we can create/modify stores.
+      const transaction = event.target.transaction;
+      try {
+        migrateOfflineDb(event.oldVersion || 0, db, transaction);
+      } catch (err) {
+        console.error('[SW] IndexedDB migration failed:', err);
+        // Abort the version-change transaction so the DB stays at the
+        // pre-upgrade version rather than half-migrating.
+        if (transaction && typeof transaction.abort === 'function') {
+          transaction.abort();
+        }
       }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+    // A blocked upgrade means another tab still holds the v1 connection
+    // open. Log so we can see this in the wild rather than silently
+    // hanging the SW.
+    req.onblocked = () => {
+      console.warn('[SW] IndexedDB upgrade blocked — another tab is holding the previous version open');
+    };
   });
 }
 
