@@ -20,7 +20,6 @@ import {
   Clock, 
   CheckCircle,
   BarChart3,
-  PieChart as PieChartIcon,
   Calendar,
   Bell,
   Shield,
@@ -35,9 +34,6 @@ import {
   Receipt
 } from "lucide-react";
 import {
-  PieChart,
-  Pie,
-  Cell,
   BarChart,
   Bar,
   XAxis,
@@ -638,42 +634,64 @@ export default function PortfolioPage() {
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <BarChart3 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   <CardTitle>Portfolio by status</CardTitle>
                 </div>
-                <CardDescription>Distribution of notes by current status.</CardDescription>
+                <CardDescription>Sorted by count, largest first.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
                   <div className="h-64 flex items-center justify-center" role="status" aria-label="Loading status chart">
-                    <Skeleton className="h-48 w-48 rounded-full" />
+                    <div className="w-full space-y-2 px-2">
+                      <Skeleton className="h-5 w-3/4" />
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-5 w-1/2" />
+                      <Skeleton className="h-5 w-1/3" />
+                    </div>
                   </div>
                 ) : pieChartData.length > 0 ? (
                   <div
                     className="h-64"
                     data-testid="chart-status-pie"
                     role="img"
-                    aria-label={`Notes by status: ${pieChartData.map(d => `${d.name} ${d.value}`).join(", ")}`}
+                    aria-label={`Notes by status, sorted by count descending: ${[...pieChartData].sort((a,b) => b.value - a.value).map(d => `${d.name} ${d.value}`).join(", ")}`}
                   >
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={90}
-                          paddingAngle={2}
+                      <BarChart
+                        data={[...pieChartData].sort((a, b) => b.value - a.value)}
+                        layout="vertical"
+                        margin={{ top: 4, right: 36, bottom: 4, left: 8 }}
+                        accessibilityLayer
+                      >
+                        <XAxis
+                          type="number"
+                          hide
+                          domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.1)]}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={96}
+                          tick={{ fontSize: 12, fill: 'var(--acr-ink-2)' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'var(--acr-line-soft)' }}
+                          formatter={(value: any) => [value, 'Notes']}
+                        />
+                        <Bar
                           dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}`}
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => [value, "Notes"]} />
-                        <Legend />
-                      </PieChart>
+                          fill="var(--acr-brand)"
+                          radius={[0, 2, 2, 0]}
+                          label={{
+                            position: 'right',
+                            fill: 'var(--acr-ink-2)',
+                            fontSize: 12,
+                            className: 'tabular-nums',
+                          }}
+                        />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
