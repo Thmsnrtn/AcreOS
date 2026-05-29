@@ -104,7 +104,7 @@ export function getErrorMessage(error: unknown): string {
     case "rate_limited":
       return "You're moving too fast. Try again in a moment.";
     case "server":
-      return "Something on our end. Refresh; if it persists, /security has our incident channel.";
+      return "That one's on us — give it a second and try again. Still stuck? We're already looking.";
     case "network":
       return "Connection issue. Check your internet.";
     case "timeout":
@@ -136,7 +136,7 @@ export function getErrorTitle(error: unknown): string {
     case "rate_limited":
       return "Slow down";
     case "server":
-      return "Our end";
+      return "That's on us";
     case "network":
       return "Connection issue";
     case "timeout":
