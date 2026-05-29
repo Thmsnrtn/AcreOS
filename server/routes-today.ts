@@ -30,7 +30,8 @@
 
 import { Router, type Response } from "express";
 import { and, desc, eq, gte, gt, sql } from "drizzle-orm";
-import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
+import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable } from "@shared/schema";
+import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
 import type { AuthenticatedRequest } from "./types/request";
@@ -536,6 +537,69 @@ async function gatherAiQueue(
   }));
 }
 
+// ── MorningBrief composer (Chesky) ──────────────────────────────────────────
+// One-sentence persona-typed brief rendered above the Decision Queue.
+//
+// Today this is a static template per persona, fed by counts the route is
+// already gathering (queue items, alerts, late notes, cash position). The
+// surface is intentionally a single paragraph so we can swap the composer
+// for an LLM call later without touching the client.
+//
+// TODO(pax-composed): once Pax composer infra ships, replace the template
+// dispatch with a Pax-generated one-liner per persona using the same inputs.
+// TODO(first-close-prefix): if agentMemory grows a clean "first close"
+// surface (org first-close timestamp + deal name), prefix with
+// "Since {dealName} —". Generic key/value lookup isn't reliable enough today.
+interface BriefInputs {
+  paxReplies: number;       // pax-noticed/suggests count (proxy for "sellers replied")
+  topCounter: string | null; // best Pax-priority headline if present
+  curbSaves: number;         // portfolio alerts touched today
+  lateNotes: number;
+  netInflow30: number;       // projected 30-day net (from cash strip)
+  staleLeads: number;
+  pipelineValue: number;
+}
+
+function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string {
+  const {
+    paxReplies,
+    topCounter,
+    curbSaves,
+    lateNotes,
+    netInflow30,
+    staleLeads,
+    pipelineValue,
+  } = inputs;
+  const money = (n: number) =>
+    `$${Math.round(n).toLocaleString("en-US")}`;
+  const counterClause = topCounter ? ` ${topCounter}.` : "";
+
+  switch (persona) {
+    case "wholesaler":
+      return `${paxReplies} seller${paxReplies === 1 ? "" : "s"} replied overnight.${counterClause} ${curbSaves} curb-save${curbSaves === 1 ? "" : "s"} from yesterday.`;
+    case "note_investor":
+    case "note_originator":
+    case "note_servicer":
+      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} wobbled overnight.${counterClause} Net inflow on pace for ${money(netInflow30)}.`;
+    case "land_investor":
+      return `${paxReplies} new signal${paxReplies === 1 ? "" : "s"} from Pax overnight.${counterClause} ${staleLeads} lead${staleLeads === 1 ? "" : "s"} cooled past three weeks.`;
+    case "fix_flipper":
+      return `${paxReplies} update${paxReplies === 1 ? "" : "s"} on active projects.${counterClause} Open pipeline at ${money(pipelineValue)}.`;
+    case "landlord":
+      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} late or pending.${counterClause} Net inflow on pace for ${money(netInflow30)}.`;
+    case "subdivider":
+      return `${paxReplies} parcel signal${paxReplies === 1 ? "" : "s"} from Pax overnight.${counterClause} ${curbSaves} alert${curbSaves === 1 ? "" : "s"} touched yesterday.`;
+    case "tax_delinquent":
+      return `${paxReplies} delinquency signal${paxReplies === 1 ? "" : "s"} overnight.${counterClause} ${staleLeads} lead${staleLeads === 1 ? "" : "s"} cooled past three weeks.`;
+    default:
+      // Neutral fallback if persona is missing or unrecognized.
+      if (paxReplies + curbSaves + lateNotes === 0) {
+        return "Quiet morning — nothing urgent from Pax. Good time to plan the next move.";
+      }
+      return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight.${counterClause} ${curbSaves} alert${curbSaves === 1 ? "" : "s"} touched yesterday.`;
+  }
+}
+
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
@@ -642,6 +706,82 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const projected30 = sumPayments(within(30));
     const projected90 = sumPayments(within(90));
 
+    // ── Honest 90-day histories for KPI sparklines ─────────────────────────
+    // We bucket by ~7-day windows over the last 90 days (≈ 13 buckets).
+    // For history we can derive from existing tables without snapshots:
+    //   • cashHistory          ← sum of completed payments per week
+    //   • openDealsValueHistory ← cumulative active-deal value as of each bucket
+    //                              (deals created on/before bucket, not yet closed)
+    // For the other two we don't have a snapshot table, so we honestly return
+    // []. The client falls through to "no sparkline" rather than fake data.
+    const SPARK_BUCKETS = 13;
+    const BUCKET_DAYS = 7;
+    const bucketStart = (i: number) =>
+      new Date(now.getTime() - (SPARK_BUCKETS - i) * BUCKET_DAYS * DAY_MS);
+    const bucketEnd = (i: number) =>
+      new Date(now.getTime() - (SPARK_BUCKETS - 1 - i) * BUCKET_DAYS * DAY_MS);
+
+    let cashHistory: number[] = [];
+    try {
+      const since = bucketStart(0);
+      const rows = await db
+        .select({
+          processedAt: paymentsTable.processedAt,
+          paymentDate: paymentsTable.paymentDate,
+          amount: paymentsTable.amount,
+        })
+        .from(paymentsTable)
+        .where(
+          and(
+            eq(paymentsTable.organizationId, orgId),
+            eq(paymentsTable.status, "completed"),
+            gte(paymentsTable.paymentDate, since),
+          ),
+        );
+      const buckets = new Array<number>(SPARK_BUCKETS).fill(0);
+      for (const r of rows) {
+        const ts = r.processedAt ?? r.paymentDate;
+        if (!ts) continue;
+        const d = new Date(ts).getTime();
+        const idx = Math.floor((d - since.getTime()) / (BUCKET_DAYS * DAY_MS));
+        if (idx < 0 || idx >= SPARK_BUCKETS) continue;
+        buckets[idx] += parseFloat(String(r.amount ?? "0") || "0");
+      }
+      cashHistory = buckets;
+    } catch (e) {
+      logger.warn("Today: cashHistory derivation failed", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      cashHistory = [];
+    }
+
+    const openDealsValueHistory: number[] = (() => {
+      try {
+        return Array.from({ length: SPARK_BUCKETS }, (_, i) => {
+          const end = bucketEnd(i);
+          return allDeals.reduce((sum, d: any) => {
+            const created = d.createdAt ? new Date(d.createdAt) : null;
+            if (!created || created > end) return sum;
+            // Treat the deal as "active as of bucket end" if it wasn't already
+            // closed/cancelled by then. We don't have a status-history table,
+            // so we use updatedAt as a proxy: if updatedAt <= bucket end and
+            // it's now closed/cancelled, exclude. Otherwise include.
+            const terminal = ["closed", "cancelled"].includes(d.status);
+            if (terminal) {
+              const updated = d.updatedAt ? new Date(d.updatedAt) : null;
+              if (updated && updated <= end) return sum;
+            }
+            const value = parseFloat(
+              String(d.purchasePrice ?? d.offerAmount ?? "0") || "0",
+            );
+            return sum + value;
+          }, 0);
+        });
+      } catch {
+        return [];
+      }
+    })();
+
     // pendingDecisionCount feeds the hero badge (mirrors today.tsx).
     const stalledLeads = allLeads.filter((l) => {
       if (["closed", "dead", "converted"].includes(l.status)) return false;
@@ -662,14 +802,40 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 
     const hasAnyData = allLeads.length > 0 || allProperties.length > 0 || allDeals.length > 0;
 
+    // ── MorningBrief: persona-typed one-liner above the queue ──────────────
+    // Inputs come from the same gather we just did — no extra round-trips.
+    const paxReplies = queue.filter((q) => q.source.startsWith("pax-")).length;
+    const curbSaves = alertItems.length;
+    const topCounter =
+      paxPriorities.length > 0 ? paxPriorities[0].title : null;
+    const netInflow30 = projected30; // 30-day projected note income
+    const brief: string | null = hasAnyData
+      ? composeBrief(req.user?.persona as Persona | undefined, {
+          paxReplies,
+          topCounter,
+          curbSaves,
+          lateNotes: lateCount,
+          netInflow30,
+          staleLeads: stalledLeads,
+          pipelineValue,
+        })
+      : null;
+
     res.json({
       queue,
+      brief,
       cash: {
         cashOnHand: projected90,
         openDealsValue: pipelineValue,
         openDealsCount: activeDeals.length,
         pendingPayments30: projected30,
         lateCount,
+        // 90-day weekly history. Empty arrays where we can't derive honestly
+        // (no snapshot table for pending-payments / late-count over time).
+        cashHistory,
+        openDealsValueHistory,
+        pendingPayments30History: [] as number[],
+        lateCountHistory: [] as number[],
       },
       // Activity intentionally not merged (see file header) — kept for shape parity.
       activity: [],
