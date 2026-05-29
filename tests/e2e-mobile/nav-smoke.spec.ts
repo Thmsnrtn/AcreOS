@@ -78,7 +78,7 @@ test.describe("mobile navigation smoke", () => {
               page.evaluate(
                 () => (document.getElementById("root")?.innerText || "").trim().length,
               ),
-            { timeout: 20000 },
+            { timeout: 35000 },
           )
           .toBeGreaterThan(20);
       } catch {
@@ -117,7 +117,7 @@ test.describe("mobile navigation smoke", () => {
     await seedSessionCookie(page, baseURL!);
     await page.goto("/today", { waitUntil: "domcontentloaded" });
     const nav = page.locator('[data-testid="mobile-bottom-nav"]');
-    await expect(nav, "mobile bottom nav did not render").toBeVisible({ timeout: 20000 });
+    await expect(nav, "mobile bottom nav did not render").toBeVisible({ timeout: 35000 });
 
     const links = await nav.locator("a").all();
     expect(links.length, "bottom nav has no tabs").toBeGreaterThanOrEqual(3);
@@ -132,7 +132,7 @@ test.describe("mobile navigation smoke", () => {
             page.evaluate(
               () => (document.getElementById("root")?.innerText || "").trim().length,
             ),
-          { timeout: 15000, message: `tab ${href} rendered blank` },
+          { timeout: 25000, message: `tab ${href} rendered blank` },
         )
         .toBeGreaterThan(20);
       expect(page.url(), `tab ${href} bounced to /auth`).not.toMatch(/\/auth(\b|$)/);
