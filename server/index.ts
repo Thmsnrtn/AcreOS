@@ -24,6 +24,11 @@ import { validateEnv } from "./utils/validateEnv";
 // Validate required env vars before anything else — exits with clear error if misconfigured
 validateEnv();
 
+// Defense in depth: hard-exit if the E2E test-auth flag is ever present on a
+// Fly machine. The bypass must never run on a deployed instance.
+import { assertTestAuthSafe } from "./auth/testAuth";
+assertTestAuthSafe();
+
 // Initialize Sentry ASAP — must run before any other code
 initSentry();
 

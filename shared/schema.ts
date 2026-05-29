@@ -15734,7 +15734,7 @@ export const scpProcedures = pgTable("scp_procedures", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
-  index("sp_agent_idx").on(table.agentCodename),
+  index("scp_agent_idx").on(table.agentCodename),
   index("sp_name_idx").on(table.name),
   index("sp_confidence_idx").on(table.confidence),
 ]);

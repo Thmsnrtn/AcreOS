@@ -5,6 +5,7 @@ import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
+import { e2eTestAuthEnabled, E2E_TEST_USER_ID } from "./testAuth";
 
 export { clerkMiddleware };
 
@@ -278,6 +279,14 @@ async function hydrateUser(req: any, res: any, next: any) {
  * routes — never redirects.
  */
 export const isAuthenticated: RequestHandler = (req: any, res, next) => {
+  // E2E test-auth — inject a fixed test user so the Playwright suite can
+  // exercise the authenticated app in CI. Hard-gated: never active on Fly.
+  // See server/auth/testAuth.ts.
+  if (e2eTestAuthEnabled()) {
+    req.auth = { userId: E2E_TEST_USER_ID };
+    return hydrateUser(req, res, next);
+  }
+
   // clerkMiddleware already ran globally and populated req.auth
   // Check if it found a valid session
   if (req.auth?.userId) {

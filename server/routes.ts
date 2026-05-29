@@ -7,6 +7,7 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes, requireFounder } from "./auth";
+import { e2eTestAuthEnabled } from "./auth/testAuth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -311,6 +312,12 @@ export async function registerRoutes(
 
   // Clerk proxy — Cloudflare blocks clerk.acreos.io (Error 1000)
   app.use("/__clerk", express.urlencoded({ extended: false }), express.json(), async (req, res) => {
+    // E2E test-auth: block the Clerk proxy so Clerk-JS fails to load and the
+    // SPA renders via the API-based useAuth (no FAPI redirect to a domain CI
+    // can't resolve). Hard-gated; never active on Fly. See server/auth/testAuth.ts.
+    if (e2eTestAuthEnabled()) {
+      return res.status(404).end();
+    }
     try {
       const clerkPath = req.originalUrl.replace(/^\/__clerk/, "") || "/";
 
