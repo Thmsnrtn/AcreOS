@@ -106,8 +106,11 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
   ALL_NAV_ITEMS.map((item) => [item.id, item])
 );
 
-// 2026-05-11 audit — customer sidebar trimmed to 7 canonical entries.
-export const DEFAULT_SIDEBAR_ITEMS = ["today", "leads", "properties", "deals", "outreach", "money", "settings"];
+// 2026-05-29 — customer sidebar aligned to the five fixed doors
+// (Today · Map · Deals · Finance · Pax) + Inbox + Settings. "money" is the
+// Finance door; "ai-hub" is the Pax door. Persona changes only the content
+// behind each door, never the doors themselves (see MOBILE_DOORS).
+export const DEFAULT_SIDEBAR_ITEMS = ["today", "map", "deals", "money", "ai-hub", "inbox", "settings"];
 // 2026-05-29 — restored the mobile bottom nav to the surfaces founders expect
 // (Today / Inbox / Pipeline / Portfolio), reachable directly instead of nested
 // under the consolidated Deals/Money tabs. Everything else lives in the More

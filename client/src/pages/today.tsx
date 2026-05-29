@@ -12,6 +12,8 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Users,
   Map,
@@ -21,8 +23,9 @@ import {
   Target,
   Sparkles,
   RefreshCw,
+  Gauge,
 } from "lucide-react";
-import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
+import { format } from "date-fns";
 import { plural } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -33,121 +36,40 @@ import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import "./today.css";
 
-interface NextBestAction {
-  id: string;
-  type: string;
-  priority: "high" | "medium" | "low";
-  title: string;
-  description: string;
-  actionLabel: string;
-  actionUrl: string;
+// Consolidated /api/today payload (server/routes-today.ts).
+interface TodayPayload {
+  queue: DecisionItem[];
+  cash: {
+    cashOnHand: number;
+    openDealsValue: number;
+    openDealsCount: number;
+    pendingPayments30: number;
+    lateCount: number;
+  };
+  activity: unknown[];
+  meta: {
+    pendingDecisionCount: number;
+    hasAnyData: boolean;
+    generatedAt: string;
+  };
 }
 
-interface TodayPriority {
-  id: string;
-  type: string;
-  priority: "high" | "medium" | "low";
-  title: string;
-  description: string;
-  actionLabel: string;
-  actionUrl: string;
-  count?: number;
+// Autonomy preferences shape (subset of /api/me/autonomy we read/write).
+// We persist the Today autonomy threshold inside the existing
+// `pax.thresholdsCents` map under a reserved key so we reuse the existing
+// jsonb column + PATCH endpoint without a schema change. The value is a
+// confidence percentage (50–100), not cents — the key name disambiguates it.
+const AUTONOMY_THRESHOLD_KEY = "confidenceAutoPct";
+const AUTONOMY_DEFAULT_PCT = 90;
+
+interface AutonomyPrefs {
+  pax?: {
+    level?: number;
+    perAction?: Record<string, number>;
+    thresholdsCents?: Record<string, number>;
+  };
+  [k: string]: unknown;
 }
-
-interface TodayPrioritiesData {
-  priorities: TodayPriority[];
-  generatedAt: string;
-  meta: { unscoredLeads: number; staleFollowUps: number; lastCampaignDaysAgo: number };
-}
-
-interface DashboardIntelligence {
-  actions: NextBestAction[];
-}
-
-interface Task {
-  id: number;
-  title: string;
-  description?: string;
-  priority: string;
-  status: string;
-  dueDate?: string;
-  entityType?: string;
-  entityId?: number;
-}
-
-interface SystemAlert {
-  id: number;
-  type: string;
-  severity: string; // info | warning | critical
-  title: string;
-  message: string;
-  status: string;
-  createdAt: string;
-}
-
-interface PaxObservation {
-  id: number;
-  type: string;
-  severity: string;
-  title: string;
-  description: string;
-  metadata: Record<string, any> | null;
-  createdAt: string | null;
-}
-
-interface PaxStaleLead {
-  id: number;
-  firstName: string;
-  lastName: string;
-  daysSinceContact: number;
-}
-
-interface PaxExpiringOffer {
-  id: number;
-  title: string;
-  offerExpiresAt: string | null;
-  leadName: string;
-}
-
-interface PaxInsights {
-  observations: PaxObservation[];
-  staleLeads: PaxStaleLead[];
-  expiringOffers: PaxExpiringOffer[];
-  generatedAt: string;
-}
-
-interface PaxSuggestion {
-  id: string;
-  suggestion: string;
-  rationale: string;
-  action: string;
-  actionLabel: string;
-  actionUrl: string;
-  entityId?: number;
-  entityType?: string;
-  confidence: number;
-}
-
-interface PaxSuggestionsResponse {
-  suggestions: PaxSuggestion[];
-  generatedAt: string;
-}
-
-const alertHrefByType: Record<string, string> = {
-  note_overdue: "/money",
-  stale_leads: "/pipeline#leads",
-  stuck_deals: "/pipeline#board",
-  stale_avm: "/pipeline#properties",
-};
-
-const alertLinkLabelByType: Record<string, string> = {
-  note_overdue: "View notes",
-  stale_leads: "View leads",
-  stuck_deals: "View deals",
-  stale_avm: "View properties",
-};
-
-const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 const LAST_VISIT_KEY = "acreos_last_visit_ts";
 const WELCOME_BACK_THRESHOLD_DAYS = 7;
@@ -164,67 +86,91 @@ export default function TodayPage() {
   const { data: propertiesRaw = [] } = useProperties();
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
 
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
-    queryKey: ["/api/tasks"],
+  // ── Consolidated Today payload — one round-trip ────────────────────────
+  // Replaces the former ~6 parallel fetches (today-priorities, tasks,
+  // alerts/active, dashboard/intelligence, pax/insights, pax/pax-suggestions)
+  // plus the deals/notes pulls used for the cash strip. The server now merges
+  // + ranks all of those (server/routes-today.ts) so the screen paints from a
+  // single query. The Activity feed stays a separate component (it owns its
+  // own infinite-scroll pagination) — see TodayActivityFeed below.
+  const {
+    data: today,
+    isLoading: todayLoading,
+    isError: todayError,
+    error: todayErrorObj,
+    refetch: refetchToday,
+    isRefetching: todayRefetching,
+  } = useQuery<TodayPayload>({
+    queryKey: ["/api/today"],
     staleTime: 2 * 60 * 1000,
   });
-  const { data: systemAlerts = [], isLoading: alertsLoading } = useQuery<SystemAlert[]>({
-    queryKey: ["/api/alerts/active"],
-    staleTime: 5 * 60 * 1000,
+
+  const decisionItems: DecisionItem[] = today?.queue ?? [];
+  const decisionQueueLoading = todayLoading;
+  const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
+
+  // ── Pax autonomy threshold ─────────────────────────────────────────────
+  // Reuses the existing per-user autonomy column via /api/me/autonomy. We
+  // read the saved "auto above" confidence threshold (stored in
+  // pax.thresholdsCents[confidenceAutoPct]) and let the user adjust it with a
+  // slider. Persistence is real (PATCH /api/me/autonomy). What is UI-only:
+  // the *visual* "Pax will handle" treatment in the queue. Server-side
+  // auto-execution (Pax actually acting above the threshold without asking)
+  // is NOT wired here — that engine lands separately.
+  const { data: autonomyPrefs } = useQuery<AutonomyPrefs>({
+    queryKey: ["/api/me/autonomy"],
+    staleTime: 10 * 60 * 1000,
   });
 
-  const { data: intelligence, isLoading: intelligenceLoading } =
-    useQuery<DashboardIntelligence>({
-      queryKey: ["/api/dashboard/intelligence"],
-      staleTime: 5 * 60 * 1000,
-    });
+  const savedThresholdPct =
+    autonomyPrefs?.pax?.thresholdsCents?.[AUTONOMY_THRESHOLD_KEY] ?? AUTONOMY_DEFAULT_PCT;
 
-  const { data: paxInsights, isLoading: paxLoading } =
-    useQuery<PaxInsights>({
-      queryKey: ["/api/pax/insights"],
-      staleTime: 5 * 60 * 1000,
-    });
+  const [thresholdPct, setThresholdPct] = React.useState<number>(AUTONOMY_DEFAULT_PCT);
+  const thresholdHydrated = React.useRef(false);
+  React.useEffect(() => {
+    // Hydrate local slider state from the server value once it loads.
+    if (!thresholdHydrated.current && autonomyPrefs !== undefined) {
+      setThresholdPct(savedThresholdPct);
+      thresholdHydrated.current = true;
+    }
+  }, [autonomyPrefs, savedThresholdPct]);
 
-  const { data: paxSuggestionsData, isLoading: paxSuggestionsLoading } =
-    useQuery<PaxSuggestionsResponse>({
-      queryKey: ["/api/pax/pax-suggestions"],
-      staleTime: 5 * 60 * 1000,
-    });
-
-  const { data: allDealsRaw = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string; purchasePrice?: string; offerAmount?: string }[]>({
-    queryKey: ["/api/deals"],
-    staleTime: 5 * 60 * 1000,
+  const autonomyMutation = useMutation({
+    mutationFn: async (pct: number) => {
+      const prevThresholds = autonomyPrefs?.pax?.thresholdsCents ?? {};
+      const res = await apiRequest("PATCH", "/api/me/autonomy", {
+        pax: {
+          ...(autonomyPrefs?.pax ?? {}),
+          thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: pct },
+        },
+      });
+      if (!res.ok) throw new Error("Failed to save autonomy preference");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/me/autonomy"], data);
+    },
+    onError: (error) => {
+      toast({
+        title: getErrorTitle(error),
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
   });
-  const allDeals = Array.isArray(allDealsRaw) ? allDealsRaw : [];
 
-  const { data: allNotesRaw = [], isLoading: notesLoading } = useQuery<{
-    id: number; status: string; currentBalance: string; monthlyPayment: string;
-    nextPaymentDate?: string; borrowerName?: string;
-  }[]>({
-    queryKey: ["/api/notes"],
-    staleTime: 5 * 60 * 1000,
-  });
-  const allNotes = Array.isArray(allNotesRaw) ? allNotesRaw : [];
+  // Persist on commit (slider release), not on every drag tick.
+  const commitThreshold = React.useCallback(
+    (pct: number) => {
+      setThresholdPct(pct);
+      autonomyMutation.mutate(pct);
+    },
+    [autonomyMutation],
+  );
 
-  const pendingDecisionCount = (() => {
-    const nowTs = new Date();
-    const stalledLeads = leads.filter((l: any) => {
-      if (["closed", "dead", "converted"].includes(l.status)) return false;
-      if (!l.lastContactedAt) return true;
-      return new Date(l.lastContactedAt) < subDays(nowTs, 14);
-    }).length;
-    const waitingCounters = allDeals.filter((d) => {
-      if (d.status !== "offer_sent") return false;
-      if (!d.offerDate) return false;
-      return new Date(d.offerDate) < subDays(nowTs, 7);
-    }).length;
-    const stuckDeals = allDeals.filter((d) => {
-      if (["closed", "cancelled", "offer_sent"].includes(d.status)) return false;
-      if (!d.updatedAt) return false;
-      return new Date(d.updatedAt) < subDays(nowTs, 14);
-    }).length;
-    return stalledLeads + waitingCounters + stuckDeals;
-  })();
+  // Confidence fraction (0..1) at/above which a Pax item is treated as
+  // "Pax will handle" rather than needing a decision.
+  const autoThreshold = thresholdPct / 100;
 
   // Dismiss mutation retained for /alerts surface; no longer wired into
   // /today JSX (decision queue handles the high-level fan-out). Keeping
@@ -250,195 +196,14 @@ export default function TodayPage() {
     return "Good evening";
   };
 
-  const todayActions = tasks.filter((t) => {
-    if (t.status === "completed" || t.status === "done") return false;
-    if (!t.dueDate) return false;
-    const due = new Date(t.dueDate);
-    return isToday(due) || isBefore(due, startOfDay(new Date()));
-  });
-
-  const { data: todayPriorities, isLoading: prioritiesLoading } =
-    useQuery<TodayPrioritiesData>({
-      queryKey: ["/api/dashboard/today-priorities"],
-      staleTime: 5 * 60 * 1000,
-    });
-
-  // ── Decision queue merge ───────────────────────────────────────────────
-  // Pulse, Start-here, Today's actions, Pax suggests, Pax noticed,
-  // Portfolio alerts, AI action queue → one prioritized list. Provenance
-  // pill (source) tells the user which surface noticed each item.
-  const decisionItems: DecisionItem[] = React.useMemo(() => {
-    const items: DecisionItem[] = [];
-
-    // Pax priorities (AI-prioritized 1/2/3) — top rank.
-    (todayPriorities?.priorities ?? []).forEach((p, idx) => {
-      items.push({
-        id: `priority-${p.id}`,
-        source: "pax-priority",
-        priority: p.priority,
-        title: p.title,
-        description: p.description,
-        actionLabel: p.actionLabel,
-        actionUrl: p.actionUrl,
-        rank: idx, // already pre-sorted by the backend
-      });
-    });
-
-    // Today's actions (tasks due today/overdue).
-    todayActions.forEach((t) => {
-      const isOverdue = t.dueDate && isBefore(new Date(t.dueDate), startOfDay(new Date()));
-      items.push({
-        id: `task-${t.id}`,
-        source: "ai-queue",
-        priority: (t.priority as "high" | "medium" | "low") ?? "medium",
-        title: t.title,
-        description: t.dueDate
-          ? `${isOverdue ? "Overdue · " : ""}Due ${format(new Date(t.dueDate), "MMM d")}`
-          : (t.description ?? ""),
-        actionLabel: "Open task",
-        actionUrl: "/pipeline",
-        rank: 100 + (isOverdue ? 0 : 10) + (priorityRank[t.priority] ?? 1),
-      });
-    });
-
-    // Portfolio alerts.
-    systemAlerts.forEach((a) => {
-      const sev: "high" | "medium" | "low" =
-        a.severity === "critical" ? "high" : a.severity === "warning" ? "medium" : "low";
-      items.push({
-        id: `alert-${a.id}`,
-        source: "portfolio-alert",
-        priority: sev,
-        title: a.title,
-        description: a.message,
-        actionLabel: alertLinkLabelByType[a.type] ?? "View",
-        actionUrl: alertHrefByType[a.type] ?? "/",
-        rank: 200 + priorityRank[sev],
-      });
-    });
-
-    // Pax noticed — observations, stale leads, expiring offers.
-    (paxInsights?.observations ?? []).forEach((obs) => {
-      const sev: "high" | "medium" | "low" =
-        obs.severity === "high" ? "high" : obs.severity === "medium" ? "medium" : "low";
-      items.push({
-        id: `obs-${obs.id}`,
-        source: "pax-noticed",
-        priority: sev,
-        title: obs.title,
-        description: obs.description,
-        actionLabel: "Review",
-        actionUrl: "/pax#insights",
-        rank: 300 + priorityRank[sev],
-      });
-    });
-    (paxInsights?.staleLeads ?? []).forEach((lead) => {
-      items.push({
-        id: `stale-lead-${lead.id}`,
-        source: "pax-noticed",
-        priority: "medium",
-        title: `${lead.firstName} ${lead.lastName} hasn't been contacted`,
-        description: lead.daysSinceContact >= 999
-          ? "Never contacted"
-          : `${lead.daysSinceContact} days since last contact`,
-        actionLabel: "Follow up",
-        actionUrl: "/leads",
-        rank: 310,
-      });
-    });
-    (paxInsights?.expiringOffers ?? []).forEach((offer) => {
-      items.push({
-        id: `expiring-offer-${offer.id}`,
-        source: "pax-noticed",
-        priority: "high",
-        title: offer.title,
-        description: `Offer expires ${offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}`,
-        actionLabel: "View deal",
-        actionUrl: "/deals",
-        rank: 250,
-      });
-    });
-
-    // Pax suggests.
-    (paxSuggestionsData?.suggestions ?? []).forEach((s) => {
-      items.push({
-        id: `suggest-${s.id}`,
-        source: "pax-suggests",
-        priority: s.confidence >= 0.85 ? "high" : s.confidence >= 0.7 ? "medium" : "low",
-        title: s.suggestion,
-        description: s.rationale,
-        actionLabel: s.actionLabel,
-        actionUrl: s.actionUrl,
-        rank: 400 + (1 - s.confidence) * 10,
-        confidence: s.confidence,
-      });
-    });
-
-    // AI action queue (dashboard intelligence).
-    (intelligence?.actions ?? []).slice(0, 5).forEach((a) => {
-      items.push({
-        id: `ai-${a.id}`,
-        source: "ai-queue",
-        priority: a.priority,
-        title: a.title,
-        description: a.description,
-        actionLabel: a.actionLabel,
-        actionUrl: a.actionUrl,
-        rank: 500 + priorityRank[a.priority],
-      });
-    });
-
-    return items;
-  }, [
-    todayPriorities,
-    todayActions,
-    systemAlerts,
-    paxInsights,
-    paxSuggestionsData,
-    intelligence,
-  ]);
-
-  const decisionQueueLoading =
-    prioritiesLoading || tasksLoading || alertsLoading ||
-    paxLoading || paxSuggestionsLoading || intelligenceLoading;
-
-  // ── Cash strip aggregates ──────────────────────────────────────────────
-  const activeDeals = allDeals.filter(
-    (d) => !["closed", "cancelled"].includes(d.status)
-  );
-  const pipelineValue = activeDeals.reduce(
-    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
-    0
-  );
-
-  const cashAggregates = React.useMemo(() => {
-    const now = new Date();
-    const activeNotes = allNotes.filter(
-      (n) => n.status === "active" || n.status === "late" || n.status === "delinquent"
-    );
-    const lateCount = allNotes.filter(
-      (n) => n.status === "late" || n.status === "delinquent"
-    ).length;
-    const within = (days: number) =>
-      activeNotes.filter((n) => {
-        if (!n.nextPaymentDate) return false;
-        const diff = (new Date(n.nextPaymentDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-        return diff >= 0 && diff <= days;
-      });
-    const sum = (arr: typeof activeNotes) =>
-      arr.reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
-    return {
-      projected30: sum(within(30)),
-      projected90: sum(within(90)),
-      lateCount,
-    };
-  }, [allNotes]);
+  // Cash strip + pipeline aggregates now arrive pre-computed from /api/today.
+  const cash = today?.cash;
 
   // ── Empty-state / welcome-back state machine (single pathway) ──────────
   const hasAnyData =
     (stats?.activeLeads ?? leads.length) > 0 ||
     (stats?.activeProperties ?? properties.length) > 0 ||
-    allDeals.length > 0;
+    (today?.meta?.hasAnyData ?? false);
 
   const [welcomeBackDismissed, setWelcomeBackDismissed] = React.useState(false);
   const lastVisitTs = React.useMemo(() => {
@@ -611,25 +376,88 @@ export default function TodayPage() {
         </Card>
       )}
 
+      {/* ── /api/today error: one merged fetch, one retry surface ────── */}
+      {!showEmptyState && todayError && (
+        <QueryErrorState
+          error={todayErrorObj instanceof Error ? todayErrorObj : null}
+          onRetry={() => refetchToday()}
+          isRetrying={todayRefetching}
+          compact
+          title="Couldn't load Today"
+          description="We hit a snag pulling your decision queue. Your data is safe — try again."
+          testId="today-query-error"
+        />
+      )}
+
+      {/* ── Pax autonomy threshold ───────────────────────────────────── */}
+      {!showEmptyState && !todayError && (
+        <Card className="rounded-card" data-testid="card-pax-autonomy">
+          <CardContent className="p-4 md:p-3.5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-card bg-acr-brand-soft shrink-0">
+                  <Gauge className="w-4 h-4 text-acr-brand" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="acr-section-h2">Pax autonomy</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Below your threshold, Pax asks — items land in the queue. At or above it, Pax handles it and just reports.
+                  </p>
+                </div>
+              </div>
+              <Badge
+                variant="secondary"
+                className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums shrink-0"
+                aria-live="polite"
+              >
+                Auto above {thresholdPct}%
+              </Badge>
+            </div>
+            <div className="mt-4 px-1">
+              <Slider
+                value={[thresholdPct]}
+                min={50}
+                max={100}
+                step={5}
+                onValueChange={(v) => setThresholdPct(v[0] ?? AUTONOMY_DEFAULT_PCT)}
+                onValueCommit={(v) => commitThreshold(v[0] ?? AUTONOMY_DEFAULT_PCT)}
+                aria-label={`Pax auto-handle confidence threshold: ${thresholdPct} percent`}
+                data-testid="slider-pax-autonomy"
+              />
+              <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground tabular-nums">
+                <span>Ask more (50%)</span>
+                <span>Auto more (100%)</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Section 2: Decision queue (merged) ───────────────────────── */}
-      {!showEmptyState && (
-        <DecisionQueue items={decisionItems} isLoading={decisionQueueLoading} />
+      {!showEmptyState && !todayError && (
+        <DecisionQueue
+          items={decisionItems}
+          isLoading={decisionQueueLoading}
+          autoThreshold={autoThreshold}
+        />
       )}
 
       {/* ── Section 3: Cash strip ────────────────────────────────────── */}
-      {!showEmptyState && (
+      {!showEmptyState && !todayError && (
         <CashStrip
-          isLoading={notesLoading}
-          cashOnHand={cashAggregates.projected90}
-          openDealsValue={pipelineValue}
-          openDealsCount={activeDeals.length}
-          pendingPayments30={cashAggregates.projected30}
-          lateCount={cashAggregates.lateCount}
+          isLoading={todayLoading}
+          cashOnHand={cash?.cashOnHand ?? 0}
+          openDealsValue={cash?.openDealsValue ?? 0}
+          openDealsCount={cash?.openDealsCount ?? 0}
+          pendingPayments30={cash?.pendingPayments30 ?? 0}
+          lateCount={cash?.lateCount ?? 0}
         />
       )}
 
       {/* ── Section 4: Activity feed ─────────────────────────────────── */}
-      {!showEmptyState && <TodayActivityFeed />}
+      {/* Kept as a standalone component — it owns its own infinite-scroll
+          pagination, so it is intentionally not merged into /api/today. */}
+      {!showEmptyState && !todayError && <TodayActivityFeed />}
     </PageShell>
   );
 }

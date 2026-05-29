@@ -76,6 +76,17 @@ export interface DecisionItem {
 interface DecisionQueueProps {
   items: DecisionItem[];
   isLoading: boolean;
+  /**
+   * Pax autonomy threshold (0..1). Pax-sourced items whose confidence is at
+   * or above this value are rendered as "Pax will handle — tap to override"
+   * instead of as a decision the user must make.
+   *
+   * NOTE: this is a *visual* treatment only. It reflects the user's persisted
+   * autonomy preference but does NOT itself execute anything — server-side
+   * auto-execution above the threshold is a separate, not-yet-wired engine.
+   * Default 1.01 means "never auto" until a threshold is supplied.
+   */
+  autoThreshold?: number;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -114,8 +125,15 @@ function persistSnoozed(map: Record<string, number>) {
 // Provenance-pill decision list. Replaces the old Start-here / Today's
 // actions / Pax suggests / Pax noticed / AI action queue / Portfolio
 // alerts stack — one prioritized list, source on a pill.
-export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
+export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
+
+  // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
+  // user's autonomy threshold. Visual-only treatment (see prop doc).
+  const isAutoHandled = (item: DecisionItem) =>
+    item.source.startsWith("pax-") &&
+    typeof item.confidence === "number" &&
+    item.confidence >= autoThreshold;
 
   useEffect(() => {
     persistSnoozed(snoozed);
@@ -212,21 +230,48 @@ export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
           <ul role="list" className="space-y-2">
             {visible.map((item, idx) => {
               const SourceIcon = sourceIcon[item.source];
+              const auto = isAutoHandled(item);
               return (
                 <li key={item.id} role="listitem">
                   <Card
-                    className={`rounded-card hover:shadow-md transition-shadow ${idx === 0 ? "border-[color:var(--acr-brand)]/30" : ""}`}
+                    className={`rounded-card hover:shadow-md transition-shadow ${
+                      auto
+                        ? "border-[color:var(--acr-pos)]/30 bg-acr-pos-soft/30"
+                        : idx === 0
+                        ? "border-[color:var(--acr-brand)]/30"
+                        : ""
+                    }`}
+                    data-auto-handled={auto ? "true" : undefined}
+                    data-testid={`decision-item-${item.id}`}
                   >
                     <CardContent className="flex items-center gap-4 p-4">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-acr-brand text-acr-brand-ink" : "bg-muted text-muted-foreground"}`}>
-                        {idx + 1}
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          auto
+                            ? "bg-acr-pos text-white"
+                            : idx === 0
+                            ? "bg-acr-brand text-acr-brand-ink"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {auto ? <Zap className="w-3.5 h-3.5" aria-hidden="true" /> : idx + 1}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                           <span className="font-medium text-sm truncate">{item.title}</span>
-                          <Badge variant="secondary" className={priorityColors[item.priority]}>
-                            {item.priority}
-                          </Badge>
+                          {auto ? (
+                            <Badge
+                              variant="secondary"
+                              className="text-xs border-transparent bg-acr-pos-soft text-acr-pos inline-flex items-center gap-1"
+                            >
+                              <Zap className="w-3 h-3" aria-hidden="true" />
+                              Pax will handle
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className={priorityColors[item.priority]}>
+                              {item.priority}
+                            </Badge>
+                          )}
                           <Badge
                             variant="secondary"
                             className={`text-xs border-transparent inline-flex items-center gap-1 ${sourcePillStyles[item.source]}`}
@@ -245,15 +290,17 @@ export function DecisionQueue({ items, isLoading }: DecisionQueueProps) {
                               </Badge>
                             )}
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">
+                          {auto ? "Pax will handle this automatically — tap to override." : item.description}
+                        </p>
                       </div>
                       <Button
                         asChild
                         size="sm"
-                        variant={idx === 0 ? "default" : "outline"}
+                        variant={auto ? "outline" : idx === 0 ? "default" : "outline"}
                         className="shrink-0 text-xs"
                       >
-                        <Link href={item.actionUrl}>{item.actionLabel}</Link>
+                        <Link href={item.actionUrl}>{auto ? "Override" : item.actionLabel}</Link>
                       </Button>
                     </CardContent>
                   </Card>

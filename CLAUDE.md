@@ -61,3 +61,11 @@ Providers are registered by category and priority. The registry handles:
 - `npm test` — run all tests
 - `npm run check` — TypeScript type checking
 - `npm run dev` — start development server
+
+## Customer navigation — five fixed doors
+
+The customer-facing nav is exactly five doors, identical for every persona and on every device:
+
+**Today · Map · Deals · Finance · Pax** — plus **Inbox** and **Settings**, reachable from the top bar.
+
+Persona changes only the CONTENT behind each door (persona-gated sections, vocabulary, Finance tabs, the `businessTypeOnly` verticals), never the doors themselves. Any new customer surface must live behind one of these doors as a child/section/tab — never as a new top-level nav entry. The desktop sidebar (`NAV_MODULES` in `client/src/components/layout-sidebar.tsx`), the mobile bottom nav (`MOBILE_DOORS`), and `DEFAULT_SIDEBAR_ITEMS` in `client/src/lib/nav-items.ts` must all reflect this model. Founder-only and `businessTypeOnly` modules are the only exceptions, and they remain gated.

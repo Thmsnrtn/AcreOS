@@ -378,7 +378,14 @@ interface NavModule {
 // linked from. Customers never see them.
 // ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
-  // ── Core 7 ────────────────────────────────────────────────────────
+  // ── Five fixed doors (+ Inbox, Settings) ──────────────────────────
+  // Customer nav = exactly five doors, identical for every persona:
+  //   Today · Map · Deals · Finance · Pax  (+ Inbox, Settings).
+  // Persona changes only the CONTENT behind each door (children /
+  // overflow / persona verticals below), never the doors themselves.
+  // The mobile bottom nav renders the same five. Any new surface lives
+  // behind one of these doors as a child/section — never as a new
+  // top-level nav entry. (See CLAUDE.md "Customer navigation".)
   {
     id: "today",
     label: "Today",
@@ -386,34 +393,24 @@ const NAV_MODULES: NavModule[] = [
     href: "/today",
     description: "Daily briefing and action queue",
   },
+  // ── Map (promoted to a top-level door 2026-05-29) ─────────────────
+  // Map-first parcel discovery is the core daily land-investor surface
+  // (tap a parcel → owner → offer), so /maps is now its own door rather
+  // than a child of Properties. The former "Properties" module is folded
+  // in as Map's content: /properties is the "Inventory" child, and the
+  // listings / documents surfaces live under it.
   {
-    id: "leads",
-    label: "Leads",
-    icon: ContactRound,
-    href: "/leads",
-    description: "Land seller leads CRM",
-    overflow: [
-      { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
-      { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
-      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
-      { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers" },
-    ],
-  },
-  {
-    id: "properties",
-    label: "Properties",
+    id: "map",
+    label: "Map",
     icon: Map,
-    href: "/properties",
-    description: "Property inventory",
-    // Map-first parcel discovery is a core daily surface for land investors
-    // (tap a parcel → owner → offer), so it's a visible child rather than
-    // buried under "Show more". Promoted out of overflow 2026-05-29.
+    href: "/maps",
+    description: "Interactive parcel map — discovery, inventory & comps",
     children: [
-      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive parcel map — discovery & comps" },
+      { label: "Inventory", icon: Package, href: "/properties", description: "Property inventory" },
     ],
     overflow: [
-      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
       { label: "Listings", icon: Store, href: "/listings", description: "Properties for sale" },
+      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
     ],
   },
   {
@@ -421,15 +418,30 @@ const NAV_MODULES: NavModule[] = [
     label: "Deals",
     icon: GitBranch,
     href: "/deals",
-    description: "Deal pipeline + discovery",
+    description: "Deal pipeline, leads + discovery",
     children: [
       { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Kanban view of active deals" },
       { label: "Discover", icon: Target, href: "/deals/discover", description: "Scored deal opportunities + hunter + feed + patterns" },
+      // Leads folded in from the former top-level Leads door (2026-05-29):
+      // leads feed the pipeline, so they live behind the Deals door.
+      { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },
     ],
     overflow: [
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
+      // Leads sub-surfaces (folded in with Leads, 2026-05-29).
+      { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
+      { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
+      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
+      { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers" },
+      // Outreach folded in from the former top-level Outreach door
+      // (marketing lives behind Deals, 2026-05-29). Channel-tabs live
+      // inside /campaigns.
+      { label: "Outreach", icon: Mail, href: "/campaigns", description: "Email, SMS, direct mail, sequences, buyer blasts" },
+      { label: "Direct Mail", icon: Newspaper, href: "/campaigns?channel=direct-mail", description: "Direct mail campaign automation" },
+      { label: "Mail (new)", icon: Newspaper, href: "/outreach/mail", description: "Composer + live in-flight tracker with router-priced sends" },
+      { label: "Sequences", icon: Zap, href: "/campaigns?channel=sequences", description: "Automated follow-up sequences" },
     ],
   },
 
@@ -553,34 +565,15 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
-  // ── Outreach (consolidated 2026-05-11) ────────────────────────────
-  // Combines campaigns / direct-mail / sequences / buyer-blasts into
-  // one customer entry. Channel-tabs live inside /campaigns.
-  {
-    id: "outreach",
-    label: "Outreach",
-    icon: Mail,
-    href: "/campaigns",
-    description: "Email, SMS, direct mail, sequences, buyer blasts",
-    children: [
-      { label: "Email & SMS", icon: Mail, href: "/campaigns", description: "Campaign builder" },
-      { label: "Direct Mail", icon: Newspaper, href: "/campaigns?channel=direct-mail", description: "Direct mail campaign automation" },
-      // Pillar 3 — new customer-facing mail surface (Compose + In-Flight tabs).
-      { label: "Mail (new)", icon: Newspaper, href: "/outreach/mail", description: "Composer + live in-flight tracker with router-priced sends" },
-      { label: "Sequences", icon: Zap, href: "/campaigns?channel=sequences", description: "Automated follow-up sequences" },
-    ],
-    overflow: [
-      { label: "Inbox", icon: Inbox, href: "/inbox", description: "Messages and communications" },
-    ],
-  },
-
-  // ── Money (consolidated) ──────────────────────────────────────────
-  // Money is the canonical customer surface for finance/portfolio/cash-flow.
-  // The legacy /finance + /portfolio + /analytics surfaces are still reachable
-  // from inside /money's tabs and from the command palette.
+  // ── Finance (door 4 — the module formerly id "money") ─────────────
+  // Finance is the canonical customer surface for finance/portfolio/
+  // cash-flow. The legacy /finance + /portfolio + /analytics surfaces are
+  // still reachable from inside /money's tabs and from the command palette.
+  // Outreach was demoted to a child/overflow under the Deals door
+  // (marketing lives behind Deals, 2026-05-29).
   {
     id: "money",
-    label: "Money",
+    label: "Finance",
     icon: DollarSign,
     href: "/money",
     description: "Notes, portfolio, and cash flow",
@@ -590,6 +583,28 @@ const NAV_MODULES: NavModule[] = [
       { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
+  },
+
+  // ── Pax (door 5 — the AI assistant) ───────────────────────────────
+  // Promoted to a top-level door 2026-05-29 to match the unified five-door
+  // model. Pax is the customer-facing AI persona (founders see the agent
+  // codename surfaces only under the founder-only module).
+  {
+    id: "ai-hub",
+    label: "Pax",
+    icon: Sparkles,
+    href: "/ai",
+    description: "Pax — your AI assistant",
+  },
+
+  // ── Inbox (communications, reachable from the top bar too) ─────────
+  {
+    id: "inbox",
+    label: "Inbox",
+    icon: Inbox,
+    href: "/inbox",
+    description: "Messages and communications",
+    showUnreadBadge: true,
   },
 
   // ── Founder business ──────────────────────────────────────────────
@@ -695,8 +710,8 @@ const NAV_MODULES: NavModule[] = [
 ];
 
 // Default expanded modules (open by default).
-// 2026-05-11 audit — IDs aligned to the new 7-entry customer surface.
-const DEFAULT_EXPANDED = new Set<string>(["deals", "outreach", "founder-business"]);
+// 2026-05-29 — IDs aligned to the five-door customer surface.
+const DEFAULT_EXPANDED = new Set<string>(["map", "deals", "founder-business"]);
 
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";

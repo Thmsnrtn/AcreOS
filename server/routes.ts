@@ -35,6 +35,7 @@ import voiceLearningRouter from "./routes-voice-learning";
 import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
+import todayRouter from "./routes-today";
 import voiceRouter from "./routes-voice";
 import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
@@ -1269,6 +1270,9 @@ export async function registerRoutes(
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
+  // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
+  // replacing the ~6 parallel fetches the Today page used to fan out.
+  app.use('/api/today', isAuthenticated, getOrCreateOrg, todayRouter);
   app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
 
   // Voice pipeline: webhook callbacks (no auth, signature-verified) + authenticated API routes
