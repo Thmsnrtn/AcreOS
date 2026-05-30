@@ -13,7 +13,7 @@
 
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Users, TrendingUp, AlertTriangle, Compass } from "lucide-react";
+import { Users, TrendingUp, AlertTriangle, Compass, type LucideIcon } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +80,7 @@ function CountCard({
 }: {
   label: string;
   value: number;
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: LucideIcon;
   tone: "brand" | "warn" | "ok";
   testId: string;
 }) {
