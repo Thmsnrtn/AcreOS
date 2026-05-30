@@ -1636,9 +1636,19 @@
 .lp-positioning-roadmap {
   font-family: var(--font-sans, system-ui);
   font-size: 15px;
-  color: var(--acr-ink-2, rgba(36, 22, 7, 0.72));
+  font-weight: 450;
+  /* Was --acr-ink-2 (rgba 0.72) — perceptually low-contrast on the
+     --acr-surface-1 cream band even though it cleared AA on paper. Bumped
+     to --acr-ink direct (full strength brown) at 90% so the paragraph
+     reads at arm's length on mobile in bright light. */
+  color: color-mix(in srgb, var(--acr-ink, #241607) 90%, transparent);
   max-width: 720px;
-  line-height: 1.5;
+  line-height: 1.55;
+}
+.lp-positioning-roadmap-chip {
+  /* Was --acr-ink-3 (rgba 0.55) on near-white — too faded to scan. Bump
+     to --acr-ink-2 at full strength so the chip labels carry. */
+  color: var(--acr-ink-2, #4a3520) !important;
 }
 .lp-positioning-roadmap-list {
   list-style: none;

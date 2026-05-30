@@ -48,7 +48,7 @@ export const LANDING_COPY = {
   positioning: {
     primary: "Built for Land Investors.",
     roadmap:
-      "Coming soon for note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Each vertical gets its own vocabulary, workflows, and compliance — shipped one at a time, not bundled into a generic suite.",
+      "Note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords land next — each built around how that operator actually works. Land investors first, because that's where the receipts are.",
   },
   how: {
     eyebrow: "How it works",
