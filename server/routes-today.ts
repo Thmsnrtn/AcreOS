@@ -545,11 +545,11 @@ async function gatherAiQueue(
 // surface is intentionally a single paragraph so we can swap the composer
 // for an LLM call later without touching the client.
 //
-// TODO(pax-composed): once Pax composer infra ships, replace the template
-// dispatch with a Pax-generated one-liner per persona using the same inputs.
-// TODO(first-close-prefix): if agentMemory grows a clean "first close"
-// surface (org first-close timestamp + deal name), prefix with
-// "Since {dealName} —". Generic key/value lookup isn't reliable enough today.
+// First-close prefix: when the org has at least one closed deal, prefix the
+// brief with "Since the {address-short} deal — " (Chesky's compounding-empathy
+// move). Source: the earliest deal with status === "closed" (or "won"), joined
+// in-memory to its property's address. No extra round-trip; the caller already
+// has allDeals + allProperties loaded.
 interface BriefInputs {
   paxReplies: number;       // pax-noticed/suggests count (proxy for "sellers replied")
   topCounter: string | null; // best Pax-priority headline if present
@@ -558,6 +558,57 @@ interface BriefInputs {
   netInflow30: number;       // projected 30-day net (from cash strip)
   staleLeads: number;
   pipelineValue: number;
+  firstClosePrefix?: string | null; // e.g. "Since the 4218 Cactus deal — "
+}
+
+// Strip an address down to a memorable short form: number + street name.
+// "4218 W Cactus Rd, Phoenix, AZ 85021" → "4218 W Cactus". Conservative —
+// returns the full first comma-segment when parsing is uncertain.
+function shortAddressLabel(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const head = address.split(",")[0]?.trim();
+  if (!head) return null;
+  // Drop a trailing street-type suffix (Rd / Ave / St / Blvd / Ln / Dr / Way / Ct / Pl).
+  const suffixRe = /\s+(rd|road|ave|avenue|st|street|blvd|boulevard|ln|lane|dr|drive|way|ct|court|pl|place|hwy|highway|pkwy|parkway|ter|terrace|cir|circle)\.?$/i;
+  return head.replace(suffixRe, "").trim() || head;
+}
+
+interface FirstCloseDealLike {
+  status?: string | null;
+  propertyId?: number | null;
+  closingDate?: Date | string | null;
+  updatedAt?: Date | string | null;
+}
+interface FirstClosePropertyLike {
+  id: number;
+  address?: string | null;
+}
+
+// Return the earliest closed deal's short property label, or null if none.
+// Prefers closingDate; falls back to updatedAt when closingDate is missing.
+function deriveFirstClosePrefix(
+  deals: FirstCloseDealLike[],
+  properties: FirstClosePropertyLike[],
+): string | null {
+  const closed = deals.filter(
+    (d) => d.status === "closed" || d.status === "won",
+  );
+  if (closed.length === 0) return null;
+
+  const sortKey = (d: FirstCloseDealLike): number => {
+    const ts = d.closingDate ?? d.updatedAt;
+    if (!ts) return Number.POSITIVE_INFINITY;
+    const t = new Date(ts).getTime();
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
+  closed.sort((a, b) => sortKey(a) - sortKey(b));
+  const first = closed[0];
+  if (!first.propertyId) return null;
+
+  const prop = properties.find((p) => p.id === first.propertyId);
+  const label = shortAddressLabel(prop?.address ?? null);
+  if (!label) return null;
+  return `Since the ${label} deal — `;
 }
 
 function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string {
@@ -569,11 +620,14 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
     netInflow30,
     staleLeads,
     pipelineValue,
+    firstClosePrefix,
   } = inputs;
   const money = (n: number) =>
     `$${Math.round(n).toLocaleString("en-US")}`;
   const counterClause = topCounter ? ` ${topCounter}.` : "";
+  const prefix = firstClosePrefix ?? "";
 
+  const body = (() => {
   switch (persona) {
     case "wholesaler":
       return `${paxReplies} seller${paxReplies === 1 ? "" : "s"} replied overnight.${counterClause} ${curbSaves} curb-save${curbSaves === 1 ? "" : "s"} from yesterday.`;
@@ -598,6 +652,9 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
       }
       return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight.${counterClause} ${curbSaves} alert${curbSaves === 1 ? "" : "s"} touched yesterday.`;
   }
+  })();
+
+  return `${prefix}${body}`;
 }
 
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
@@ -809,6 +866,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const topCounter =
       paxPriorities.length > 0 ? paxPriorities[0].title : null;
     const netInflow30 = projected30; // 30-day projected note income
+    const firstClosePrefix = deriveFirstClosePrefix(allDeals, allProperties);
     const brief: string | null = hasAnyData
       ? composeBrief(req.user?.persona as Persona | undefined, {
           paxReplies,
@@ -817,6 +875,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
           lateNotes: lateCount,
           netInflow30,
           staleLeads: stalledLeads,
+          firstClosePrefix,
           pipelineValue,
         })
       : null;
