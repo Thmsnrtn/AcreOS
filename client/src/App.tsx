@@ -11,6 +11,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
+import { identifyUser, trackEvent } from "@/lib/analytics";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { AccessibilityProvider } from "@/contexts/accessibility-context";
@@ -1542,10 +1543,32 @@ function AppContent() {
       // Tag Sentry events with the authenticated user so error reports
       // are searchable by id/email. Cleared on logout via the else branch.
       setSentryUser({ id: user.id, email: user.email ?? undefined });
+      // Wave 3 Workstream E — distribution telemetry. Tag every
+      // PostHog event with the server-confirmed user id + persona so
+      // the founder can answer "who signed up?" not just "how many."
+      // No-op when VITE_POSTHOG_KEY is unset (see lib/analytics.ts).
+      identifyUser(String(user.id), {
+        persona: user.persona ?? "land_investor",
+        email: user.email ?? undefined,
+      });
     } else {
       setSentryUser(null);
     }
   }, [user]);
+
+  // Single first-mount pageview. SPA route changes are NOT captured
+  // (we disabled capture_pageview in analytics.ts); instead, deliberate
+  // events are emitted at meaningful boundaries (signup_completed, etc.).
+  // The app_open event is the substrate for "is the app being opened
+  // at all?" — useful even before any other instrumentation lands.
+  const appOpenSentRef = React.useRef(false);
+  React.useEffect(() => {
+    if (appOpenSentRef.current) return;
+    appOpenSentRef.current = true;
+    trackEvent("app_open", {
+      path: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+  }, []);
 
   // Cmd+; (Ctrl+; on Windows/Linux) — toggle persona mode. Solves Tom's
   // #1 nav pain (founder dashboard → had to hit Back repeatedly).

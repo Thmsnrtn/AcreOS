@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { touchClerkSession } from "@/lib/clerk-touch";
+import { resetAnalytics } from "@/lib/analytics";
 
 export type AuthUser = User & { isFounder?: boolean };
 
@@ -112,6 +113,10 @@ export function useAuth() {
     authFailCount = 0;
     queryClient.setQueryData(["/api/auth/user"], null);
     queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
+    // Wave 3 Workstream E — drop the PostHog identity so subsequent
+    // events on this browser aren't attributed to the previous user.
+    // No-op when VITE_POSTHOG_KEY is unset (see lib/analytics.ts).
+    resetAnalytics();
     try {
       sessionStorage.setItem("acreos:just-logged-out", String(Date.now()));
       // Clear the divergence-guard one-tab cap so AuthPage will run a fresh

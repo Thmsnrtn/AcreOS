@@ -9,6 +9,7 @@ import "./index.css";
 // AcreOS is English-only today; see docs/i18n-guide.md for adding locales.
 import "@/lib/i18n/config";
 import { initClientSentry } from "./lib/sentry";
+import { initAnalytics } from "./lib/analytics";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
 import { installVersionCheck } from "./lib/version-check";
@@ -44,6 +45,12 @@ if (typeof window !== "undefined") {
 
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();
+
+// Initialize PostHog before rendering (no-op if VITE_POSTHOG_KEY is unset).
+// Wave 3 Workstream E — distribution telemetry foundation. Pre-this, the
+// codebase had a TODO comment referencing PostHog/Mixpanel but neither
+// was installed. We had no way to answer "did anyone sign up today?"
+initAnalytics();
 
 // Stale-build self-heal — independent of the SW path so it still works
 // for users whose service worker (or Cloudflare edge, or HTTP cache) is
