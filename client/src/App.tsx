@@ -20,7 +20,6 @@ import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 import { variantPageFadeMobile } from "@/lib/motion-tokens";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
 import { SidebarProvider } from "@/components/layout-sidebar";

@@ -77,7 +77,12 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
   // min-h-[100dvh] (not min-h-screen / 100vh) so iOS Safari's dynamic
   // address bar doesn't cause content to overflow the visible viewport.
   return (
-    <div className="flex min-h-[100dvh] desert-gradient isolate">
+    <div
+      className="flex min-h-[100dvh] desert-gradient isolate"
+      // env(safe-area-inset-top) keeps the top bar clear of the iOS dynamic
+      // island / notch in standalone PWA mode. Desktop reads it as 0.
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-background focus:text-foreground focus:shadow-md focus:ring-2 focus:ring-ring"

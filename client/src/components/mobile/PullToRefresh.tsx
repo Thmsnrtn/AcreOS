@@ -201,13 +201,20 @@ export function PullToRefresh({
         </div>
       </div>
 
-      {/* Content with pull offset */}
+      {/* Content with pull offset.
+          IMPORTANT: do NOT add a `transition-transform duration-200` Tailwind
+          class here — its specificity wins over inline `transitionDuration`,
+          which caused content to lag the finger by ~quarter-second during
+          active drag. The inline `transition` + `transitionDuration` style
+          below is the single source of truth: 0ms while pulling (track the
+          finger), 200ms when settling back / sliding under the refresh
+          indicator. */}
       <div
-        className="transition-transform duration-200"
         style={{
-          transform: pullState === "refreshing" 
-            ? "translateY(48px)" 
+          transform: pullState === "refreshing"
+            ? "translateY(48px)"
             : `translateY(${pullDistance}px)`,
+          transitionProperty: "transform",
           transitionDuration: pullState === "idle" || pullState === "refreshing" ? "200ms" : "0ms",
         }}
         data-testid="pull-to-refresh-content"
