@@ -168,6 +168,20 @@ export const users = pgTable("users", {
   // column is the canonical per-user acquisition surface the founder
   // /customers viewer reads.
   acquisitionUtm: jsonb("acquisition_utm").$type<AcquisitionUtm>(),
+  // E-SIGN Act §101(c)(1)(B) consumer-consent timestamp (Workstream A).
+  // Captures the moment the user affirmed the five required pre-consent
+  // disclosures (hardware requirements, paper-copy right + fees, withdrawal
+  // right + consequences, contact-info update procedures, scope statement).
+  // Null until consent is captured; once set, the dialog is suppressed for
+  // future signing sessions by this user. The full disclosure version + audit
+  // row lives in the signing_consent_audit table.
+  esignConsentedAt: timestamp("esign_consented_at"),
+  // Disclosure version string for the consent currently on file. Format is
+  // 'YYYY-MM-DD' matching ESIGN_DISCLOSURE_VERSION pinned in schema.ts. When
+  // we materially change the disclosure text, the version bumps and the
+  // dialog re-fires; the prior consent row remains in audit for evidentiary
+  // value.
+  esignConsentVersion: varchar("esign_consent_version", { length: 32 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

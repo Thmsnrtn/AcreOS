@@ -28,6 +28,10 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { SkipToContent } from "@/components/skip-to-content";
 import { shortDateTime } from "@/lib/format";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
+import {
+  EsignConsentDialog,
+  type EsignConsentValue,
+} from "@/components/sign/EsignConsentDialog";
 
 type Signer = {
   id: string;
@@ -72,6 +76,22 @@ export default function SignDocumentPage() {
   const [allSigned, setAllSigned] = useState(false);
   const confirmationRef = useRef<HTMLDivElement>(null);
 
+  // E-SIGN Act §101(c)(1)(B) pre-consent gate (Workstream A).
+  //
+  // We must NOT show the signature capture surface until the signer has
+  // affirmed the five disclosures (hardware, paper-copy, withdrawal,
+  // contact-update, scope). For external signers we key the consent by
+  // signer email + document id; the server returns `esignConsentRequired:
+  // true` until a row lands in signing_consent_audit for that pair.
+  //
+  // `consentResolved` flips true once we've finished the lookup (so we
+  // don't briefly render the signature pad before the dialog opens).
+  const [consentRequired, setConsentRequired] = useState(true);
+  const [consentResolved, setConsentResolved] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const [consentDeclined, setConsentDeclined] = useState(false);
+
   useEffect(() => {
     if (!Number.isFinite(docId) || !signerId || !token) {
       setLoadError("This signing link is missing required information. Please re-open the link from your email exactly as received.");
@@ -112,6 +132,84 @@ export default function SignDocumentPage() {
       confirmationRef.current.focus();
     }
   }, [signed]);
+
+  // After the document loads, check whether the signer already has E-SIGN
+  // consent on file. For external signers (HMAC token path), we key by
+  // signer email + document id; the server returns required=false if a
+  // prior consent row exists at the current disclosure version. This
+  // endpoint never reveals other-org data — it only answers a boolean.
+  useEffect(() => {
+    if (!data) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          docId: String(docId),
+          s: signerId,
+          t: token,
+        });
+        const res = await fetch(`/api/public/sign/consent/status?${params.toString()}`);
+        if (!res.ok) {
+          // Fail-closed: if status lookup errors, we still require consent
+          // for the current session. A regulator preferred-extra-consent
+          // beats accidentally skipping the dialog.
+          if (!cancelled) {
+            setConsentRequired(true);
+            setConsentResolved(true);
+          }
+          return;
+        }
+        const body = (await res.json()) as { required: boolean };
+        if (!cancelled) {
+          setConsentRequired(body.required !== false);
+          setConsentResolved(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setConsentRequired(true);
+          setConsentResolved(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data, docId, signerId, token]);
+
+  async function handleConsentAccept(value: EsignConsentValue) {
+    if (!data) return;
+    setConsentBusy(true);
+    setConsentError(null);
+    try {
+      const res = await fetch(`/api/public/sign/consent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docId,
+          s: signerId,
+          t: token,
+          ...value,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || body.error || "Could not record your consent.");
+      }
+      setConsentRequired(false);
+    } catch (err: any) {
+      setConsentError(err?.message || "Could not record your consent. Please try again.");
+    } finally {
+      setConsentBusy(false);
+    }
+  }
+
+  function handleConsentDecline() {
+    // A signer who declines cannot proceed — we leave the dialog open via
+    // the consentDeclined flag and offer a clear "Decline" terminal screen
+    // so they know what happened and how to contact the sender.
+    setConsentDeclined(true);
+    setConsentRequired(true);
+  }
 
   async function handleSubmit(capture: { data: string; type: "drawn" | "typed"; signerName: string }) {
     if (!data) return;
@@ -276,6 +374,47 @@ export default function SignDocumentPage() {
                   </p>
                 </CardContent>
               </Card>
+            ) : consentDeclined ? (
+              <Card data-testid="esign-declined">
+                <CardContent
+                  tabIndex={-1}
+                  role="status"
+                  aria-live="polite"
+                  className="p-8 text-center space-y-3 outline-none"
+                >
+                  <AlertTriangle className="h-10 w-10 text-acr-warn mx-auto" aria-hidden="true" />
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Electronic signing not consented
+                  </h2>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    You declined the E-SIGN consent disclosures, so we can't
+                    record an electronic signature for this document. Please
+                    contact {data.organization.name} to arrange a paper copy or
+                    to revisit consent.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : !consentResolved || consentRequired ? (
+              // Block the signature pad behind the consent gate. The dialog
+              // (rendered below the main signing UI) is the only path
+              // forward; we show a skeleton + a brief note in case a
+              // screen-reader user lands here without the dialog open.
+              <Card data-testid="esign-pending-consent">
+                <CardContent className="p-8 space-y-4">
+                  <Skeleton className="h-6 w-2/3" aria-hidden="true" />
+                  <Skeleton className="h-40 w-full" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground" aria-live="polite">
+                    {consentResolved
+                      ? "Please review and accept the electronic-signature consent disclosures to continue."
+                      : "Loading consent disclosures…"}
+                  </p>
+                  {consentError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {consentError}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             ) : (
               <>
                 {submitError && (
@@ -303,10 +442,26 @@ export default function SignDocumentPage() {
             )}
 
             <p className="text-xs text-muted-foreground text-center max-w-md mx-auto leading-relaxed">
-              By signing, you agree this electronic signature is legally binding and has the same effect as a handwritten one. We log your IP address and browser as part of the signing audit trail.
+              By signing, you affirm the E-SIGN Act §101(c) consent on file (you
+              acknowledged the hardware, paper-copy, withdrawal, contact-update,
+              and scope disclosures before this step) and agree this electronic
+              signature is legally binding and has the same effect as a
+              handwritten one. We log your IP address and browser as part of
+              the signing audit trail.
             </p>
           </>
         ) : null}
+
+        {/* E-SIGN consent dialog — must precede the signature capture surface. */}
+        {data && !signed && consentResolved && consentRequired && !consentDeclined && (
+          <EsignConsentDialog
+            open={consentRequired && !consentDeclined}
+            organizationName={data.organization.name}
+            busy={consentBusy}
+            onAccept={(v) => void handleConsentAccept(v)}
+            onDecline={handleConsentDecline}
+          />
+        )}
       </main>
     </div>
   );
