@@ -253,6 +253,26 @@ export const variantPageFade: Variants = {
   },
 };
 
+/**
+ * Mobile page transition — pure opacity cross-fade, no spatial translate.
+ *
+ * On a router with a persistent bottom-nav, the user's mental model is
+ * "tab switch", not forward navigation. The desktop x-slide reads as
+ * drift on mobile, not motion. This variant strips the x-translate
+ * entirely and runs in DURATIONS.fast so taps land without lag.
+ */
+export const variantPageFadeMobile: Variants = {
+  initial: { opacity: 0 },
+  animate: {
+    opacity: 1,
+    transition: { duration: DURATIONS.fast, ease: EASINGS.linearExpo },
+  },
+  exit: {
+    opacity: 0,
+    transition: { duration: DURATIONS.fast, ease: EASINGS.linearExpo },
+  },
+};
+
 export const variantModalContent: Variants = {
   hidden: { opacity: 0, scale: SCALES.modalEnter, y: 8 },
   visible: {

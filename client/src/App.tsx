@@ -19,6 +19,8 @@ import { AccessibilityProvider } from "@/contexts/accessibility-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
+import { variantPageFadeMobile } from "@/lib/motion-tokens";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
 import { SidebarProvider } from "@/components/layout-sidebar";
@@ -1471,12 +1473,17 @@ function Router() {
 
 function PageWrapper({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const { isMobile } = useIsMobile();
+  // Mobile: opacity cross-fade only — the persistent bottom-nav makes
+  // route changes feel like tab switches, not forward navigation, so
+  // the x-translate reads as drift. Desktop keeps the existing fade+x.
+  const variants = isMobile ? variantPageFadeMobile : pageTransition;
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
         key={location}
-        variants={pageTransition}
+        variants={variants}
         initial="initial"
         animate="animate"
         exit="exit"
