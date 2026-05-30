@@ -625,33 +625,52 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
   } = inputs;
   const money = (n: number) =>
     `$${Math.round(n).toLocaleString("en-US")}`;
-  const counterClause = topCounter ? ` ${topCounter}.` : "";
+  // Loss-frame templates: every persona gets at least one verb that's only
+  // theirs (Chesky), and the second clause names what would have been LOST
+  // (Joanna's loss-frame) instead of a flat count. The topCounter, when
+  // present, is inlined as the deal headline rather than appended as a
+  // separate sentence, so the brief reads like one operator talking to
+  // another.
+  const counterInline = topCounter ? ` — ${topCounter}` : "";
   const prefix = firstClosePrefix ?? "";
 
   const body = (() => {
   switch (persona) {
     case "wholesaler":
-      return `${paxReplies} seller${paxReplies === 1 ? "" : "s"} replied overnight.${counterClause} ${curbSaves} curb-save${curbSaves === 1 ? "" : "s"} from yesterday.`;
+      // Wholesalers don't have leads, they have a phone that won't stop ringing.
+      // Verbs: "wrote back", "almost lost", "saved".
+      return `${paxReplies} seller${paxReplies === 1 ? "" : "s"} wrote back overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
     case "note_investor":
+      // Note investors have a tape that hits Tuesday morning.
+      // Verbs: "wobbled", "tape clears".
+      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} wobbled overnight${counterInline} — the tape still clears ${money(netInflow30)} this month.`;
     case "note_originator":
+      // Originators draw new paper; their verb is "underwrote / funded".
+      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} slipped overnight${counterInline} — funded paper still pencils ${money(netInflow30)} this month.`;
     case "note_servicer":
-      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} wobbled overnight.${counterClause} Net inflow on pace for ${money(netInflow30)}.`;
+      // Servicers process payments; their verb is "posted".
+      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — Pax posted the rest, ${money(netInflow30)} cleared this month.`;
     case "land_investor":
-      return `${paxReplies} new signal${paxReplies === 1 ? "" : "s"} from Pax overnight.${counterClause} ${staleLeads} lead${staleLeads === 1 ? "" : "s"} cooled past three weeks.`;
+      // Land investors hunt parcels; their verb is "surfaced".
+      return `Pax surfaced ${paxReplies} parcel${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${staleLeads} you'd otherwise lose to the 21-day silence, still warm.`;
     case "fix_flipper":
-      return `${paxReplies} update${paxReplies === 1 ? "" : "s"} on active projects.${counterClause} Open pipeline at ${money(pipelineValue)}.`;
+      // Flippers run jobs; their verb is "swung" (as in swinging hammers / jobs in flight).
+      return `${paxReplies} project update${paxReplies === 1 ? "" : "s"} swung in overnight${counterInline} — ${money(pipelineValue)} on the table this week.`;
     case "landlord":
-      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} late or pending.${counterClause} Net inflow on pace for ${money(netInflow30)}.`;
+      // Landlords collect rent; verb is "landed".
+      return `${lateNotes} rent${lateNotes === 1 ? "" : "s"} hadn't landed by 6am${counterInline} — ${money(netInflow30)} still pacing for the month.`;
     case "subdivider":
-      return `${paxReplies} parcel signal${paxReplies === 1 ? "" : "s"} from Pax overnight.${counterClause} ${curbSaves} alert${curbSaves === 1 ? "" : "s"} touched yesterday.`;
+      // Subdividers split parcels; verb is "splits".
+      return `${paxReplies} new split candidate${paxReplies === 1 ? "" : "s"} from Pax overnight${counterInline}. ${curbSaves} parcel${curbSaves === 1 ? "" : "s"} you almost let cool, kept warm.`;
     case "tax_delinquent":
-      return `${paxReplies} delinquency signal${paxReplies === 1 ? "" : "s"} overnight.${counterClause} ${staleLeads} lead${staleLeads === 1 ? "" : "s"} cooled past three weeks.`;
+      // Tax-delinquent buyers chase the auction calendar; verb is "ticked over".
+      return `${paxReplies} delinquency${paxReplies === 1 ? "" : "s"} ticked over overnight${counterInline} — ${staleLeads} you'd lose to the redemption window, still in reach.`;
     default:
       // Neutral fallback if persona is missing or unrecognized.
       if (paxReplies + curbSaves + lateNotes === 0) {
         return "Quiet morning — nothing urgent from Pax. Good time to plan the next move.";
       }
-      return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight.${counterClause} ${curbSaves} alert${curbSaves === 1 ? "" : "s"} touched yesterday.`;
+      return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
   }
   })();
 
