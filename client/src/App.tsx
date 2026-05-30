@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackEvent } from "@/lib/analytics";
+import { flushPendingUtm, hasSignupIntent } from "@/lib/acquisition-utm";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { AccessibilityProvider } from "@/contexts/accessibility-context";
@@ -1554,6 +1555,32 @@ function AppContent() {
     } else {
       setSentryUser(null);
     }
+  }, [user]);
+
+  // Wave 3 Workstream E — flush captured UTM on the first authenticated
+  // render after sign-up. AuthPage planted `acreos-pending-signup` when
+  // it mounted in sign-up mode; we read it here and, if present, POST
+  // the sessionStorage UTM snapshot to /api/me/acquisition-utm and emit
+  // `signup_completed` with the same attribution attached. The server
+  // endpoint is idempotent so a duplicate fire on rerender is harmless,
+  // but the ref ensures we only attempt the flush once per session.
+  const signupFlushedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!user || signupFlushedRef.current) return;
+    if (!hasSignupIntent()) return;
+    signupFlushedRef.current = true;
+    void (async () => {
+      const snap = await flushPendingUtm();
+      trackEvent("signup_completed", {
+        persona: user.persona ?? "land_investor",
+        utm_source: snap?.utm_source ?? null,
+        utm_medium: snap?.utm_medium ?? null,
+        utm_campaign: snap?.utm_campaign ?? null,
+        utm_content: snap?.utm_content ?? null,
+        utm_term: snap?.utm_term ?? null,
+        referrer: snap?.referrer ?? null,
+      });
+    })();
   }, [user]);
 
   // Single first-mount pageview. SPA route changes are NOT captured

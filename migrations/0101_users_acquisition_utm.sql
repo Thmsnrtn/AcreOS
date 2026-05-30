@@ -1,0 +1,26 @@
+-- 0099_users_acquisition_utm.sql — per-user acquisition UTM capture.
+--
+-- Wave 3 Workstream E (distribution telemetry foundation). Pre-this,
+-- AcreOS captured UTM only at the organization level (organizations.
+-- utm_source / utm_medium / utm_campaign / utm_content). That column
+-- set was never wired to a signup-side write path, so every row is
+-- NULL and the founder cannot answer "where did this customer come
+-- from?"
+--
+-- This migration adds a single jsonb column on users to hold the full
+-- attribution snapshot captured at sign-up:
+--
+--   { utm_source?, utm_medium?, utm_campaign?, utm_term?, utm_content?,
+--     referrer?, landedAt? }
+--
+-- Write semantics (server/routes-acquisition-utm.ts):
+--   - Idempotent. The endpoint only writes when users.acquisition_utm
+--     IS NULL. Subsequent calls (e.g. user re-runs the signup flow in a
+--     second tab) are no-ops, so attribution stays anchored to the
+--     first-touch session.
+--   - Per-user, not per-org. The same user signing up for a second org
+--     would not over-write their original attribution.
+--
+-- Idempotent migration: column is added with IF NOT EXISTS.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS acquisition_utm jsonb;

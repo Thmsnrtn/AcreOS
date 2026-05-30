@@ -159,9 +159,34 @@ export const users = pgTable("users", {
   // Shape matches UserNotificationPreferences in
   // server/services/notificationPreferences.ts.
   notificationPrefs: jsonb("notification_prefs").$type<UserNotificationPrefsShape>(),
+  // Wave 3 Workstream E — distribution telemetry.
+  // Acquisition UTM captured at signup. Written exactly once via the
+  // idempotent /api/me/acquisition-utm endpoint on the first authenticated
+  // request after sign-up. Null for legacy users and for direct loads with
+  // no UTM params + no cross-origin referrer. The org-level utm_* columns
+  // (organizations.utm_source etc.) are legacy and remain in place; this
+  // column is the canonical per-user acquisition surface the founder
+  // /customers viewer reads.
+  acquisitionUtm: jsonb("acquisition_utm").$type<AcquisitionUtm>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+/**
+ * Per-user acquisition attribution snapshot. Captured client-side on the
+ * pre-signup landing visit (window.location.search + document.referrer)
+ * and persisted on the user row exactly once at signup. Read by the
+ * founder /customers viewer and by downstream cohort analyses.
+ */
+export interface AcquisitionUtm {
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  referrer?: string;
+  landedAt?: string;
+}
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;

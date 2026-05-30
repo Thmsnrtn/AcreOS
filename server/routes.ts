@@ -81,6 +81,7 @@ import byokRouter from "./routes-byok";
 import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
+import acquisitionUtmRouter from "./routes-acquisition-utm";
 import featureFlagsRouter from "./routes-feature-flags";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
@@ -1342,6 +1343,10 @@ export async function registerRoutes(
   // Canonical "should this user be force-routed through onboarding?"
   // endpoint. Replaces the prior client-side multi-signal OR.
   app.use('/api/me/needs-onboarding', isAuthenticated, getOrCreateOrg, needsOnboardingRouter);
+  // Wave 3 Workstream E (distribution telemetry). One-shot idempotent
+  // sink for the UTM snapshot the browser captured pre-signup. User-
+  // scoped, no org context needed — attribution is per-user.
+  app.use('/api/me/acquisition-utm', isAuthenticated, acquisitionUtmRouter);
   // Feature flags — read endpoint accessible to authenticated users (returns
   // their resolved view); admin endpoints inside the router enforce founder.
   app.use('/api/feature-flags', isAuthenticated, getOrCreateOrg, featureFlagsRouter);

@@ -10,6 +10,7 @@ import "./index.css";
 import "@/lib/i18n/config";
 import { initClientSentry } from "./lib/sentry";
 import { initAnalytics } from "./lib/analytics";
+import { capturePendingUtm } from "./lib/acquisition-utm";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
 import { installVersionCheck } from "./lib/version-check";
@@ -51,6 +52,12 @@ initClientSentry();
 // codebase had a TODO comment referencing PostHog/Mixpanel but neither
 // was installed. We had no way to answer "did anyone sign up today?"
 initAnalytics();
+
+// Wave 3 Workstream E — capture acquisition UTM + cross-origin referrer
+// from THIS load into sessionStorage. Runs before any React mount so the
+// snapshot is anchored to the actual landing event, not whatever URL the
+// SPA has navigated to by the time the auth page renders. Idempotent.
+capturePendingUtm();
 
 // Stale-build self-heal — independent of the SW path so it still works
 // for users whose service worker (or Cloudflare edge, or HTTP cache) is

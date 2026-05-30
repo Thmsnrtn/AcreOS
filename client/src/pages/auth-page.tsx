@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { hasAnyClerkCookie } from "@/lib/clerk-session-detect";
+import { markSignupIntent } from "@/lib/acquisition-utm";
 
 export default function AuthPage() {
   usePageMeta(
@@ -145,6 +146,16 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     params.get("mode") === "register" ? "sign-up" : "sign-in"
   );
+  // Wave 3 Workstream E — distribution telemetry. When the user enters
+  // sign-up mode (via ?mode=register OR by toggling once on the form),
+  // plant a sessionStorage flag so App.tsx can distinguish "first
+  // authenticated render after sign-up" from "first authenticated render
+  // after sign-in." Only the former flushes pending UTM to the server.
+  useEffect(() => {
+    if (mode === "sign-up") {
+      markSignupIntent();
+    }
+  }, [mode]);
   const inviteToken = params.get("invite");
   const inviteAcceptedRef = useRef(false);
   const [inviteState, setInviteState] = useState<"idle" | "accepting" | "done">(

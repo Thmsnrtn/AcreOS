@@ -1,0 +1,208 @@
+/**
+ * Acquisition UTM capture — pre-signup pickup, post-signup persist.
+ *
+ * Wave 3 Workstream E (distribution telemetry foundation).
+ *
+ * Flow:
+ *   1. On FIRST app load (any URL — landing, /auth, deep-link), call
+ *      capturePendingUtm(). It reads window.location.search and
+ *      document.referrer. If any UTM param OR a non-empty cross-origin
+ *      referrer is present, the snapshot is written to sessionStorage
+ *      under PENDING_UTM_KEY. Idempotent — re-reading the same load is
+ *      fine.
+ *   2. When the AuthPage mounts in sign-up mode (?mode=register), it
+ *      calls markSignupIntent() to remember "this browser is mid-signup."
+ *   3. After the server confirms the authenticated user post-signup,
+ *      App.tsx calls flushPendingUtm() which POSTs the snapshot to
+ *      /api/me/acquisition-utm and clears sessionStorage. The server
+ *      endpoint is idempotent (only writes if users.acquisition_utm
+ *      IS NULL), so re-firing on a confused client is harmless.
+ *
+ * Why sessionStorage (not localStorage): a UTM-tagged landing should
+ * attribute the signup that happens in the same tab session. A user who
+ * comes back two weeks later through a different channel should get
+ * the NEW attribution, not the old one. sessionStorage gives us that
+ * window-scoped lifetime for free.
+ */
+
+const PENDING_UTM_KEY = "acreos-pending-utm";
+const SIGNUP_INTENT_KEY = "acreos-pending-signup";
+
+const UTM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+] as const;
+
+type UtmKey = (typeof UTM_KEYS)[number];
+
+export interface PendingUtm {
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  referrer?: string;
+  landedAt?: string;
+}
+
+/**
+ * Truthy when the referrer is from a different origin than the current
+ * page. A same-origin referrer (e.g. the user navigated from /pricing
+ * to /auth) is signal-free for acquisition attribution and we drop it
+ * to keep the captured snapshot focused on first-touch attribution.
+ */
+function isCrossOriginReferrer(referrer: string): boolean {
+  if (!referrer) return false;
+  try {
+    const refOrigin = new URL(referrer).origin;
+    return refOrigin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build the pending-UTM snapshot from the current location + referrer.
+ * Returns null if nothing acquisition-relevant is present (no UTM
+ * params and no cross-origin referrer).
+ */
+function buildSnapshot(): PendingUtm | null {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const snap: PendingUtm = {};
+
+  let hasUtm = false;
+  for (const k of UTM_KEYS) {
+    const v = params.get(k);
+    if (v && v.length > 0 && v.length <= 256) {
+      snap[k as UtmKey] = v;
+      hasUtm = true;
+    }
+  }
+
+  const referrer = typeof document !== "undefined" ? document.referrer : "";
+  const crossOrigin = isCrossOriginReferrer(referrer);
+  if (crossOrigin) {
+    snap.referrer = referrer.slice(0, 1024);
+  }
+
+  if (!hasUtm && !crossOrigin) return null;
+
+  snap.landedAt = new Date().toISOString();
+  return snap;
+}
+
+/**
+ * Capture the current load's UTM + referrer into sessionStorage if
+ * anything acquisition-relevant is present and we haven't already
+ * captured something this session. Idempotent.
+ *
+ * Call from a side-effect import or once-per-mount effect early in the
+ * app's lifecycle — BEFORE the user signs in is fine; we only need it
+ * captured by the time flushPendingUtm() runs post-signup.
+ */
+export function capturePendingUtm(): void {
+  if (typeof window === "undefined") return;
+  try {
+    // Don't over-write an existing pending snapshot — the FIRST touch in
+    // this session is the canonical one. A user who lands on
+    // /?utm_source=meta and then clicks an in-app link to /auth would
+    // otherwise lose the meta attribution.
+    if (sessionStorage.getItem(PENDING_UTM_KEY)) return;
+    const snap = buildSnapshot();
+    if (!snap) return;
+    sessionStorage.setItem(PENDING_UTM_KEY, JSON.stringify(snap));
+  } catch {
+    /* sessionStorage unavailable (private mode etc.) — silent no-op. */
+  }
+}
+
+/**
+ * Mark the current session as mid-signup so flushPendingUtm() knows to
+ * fire on the first authenticated render. Called from AuthPage when it
+ * mounts in sign-up mode (?mode=register).
+ */
+export function markSignupIntent(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(SIGNUP_INTENT_KEY, String(Date.now()));
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
+
+/**
+ * Return the captured pending UTM snapshot, or null if there is none.
+ */
+export function readPendingUtm(): PendingUtm | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PENDING_UTM_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PendingUtm;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Truthy when AuthPage left a signup-intent flag — i.e. the
+ * authenticated render that follows should treat this as a sign-up,
+ * not a sign-in.
+ */
+export function hasSignupIntent(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(SIGNUP_INTENT_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Clear any lingering signup-intent + pending-UTM flags. Idempotent.
+ */
+export function clearPendingUtm(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(PENDING_UTM_KEY);
+    sessionStorage.removeItem(SIGNUP_INTENT_KEY);
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
+
+/**
+ * POST the captured UTM snapshot to /api/me/acquisition-utm. The server
+ * is idempotent (writes only if users.acquisition_utm IS NULL), so
+ * re-firing is safe. Always clears sessionStorage on completion (success
+ * or failure) — a failed POST during a flaky network shouldn't lock the
+ * user into retrying forever on every render.
+ *
+ * Returns the snapshot that was posted (or null if nothing to post), so
+ * callers can fold the values into a companion analytics event.
+ */
+export async function flushPendingUtm(): Promise<PendingUtm | null> {
+  const snap = readPendingUtm();
+  if (!snap) {
+    clearPendingUtm();
+    return null;
+  }
+  try {
+    await fetch("/api/me/acquisition-utm", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snap),
+    });
+  } catch {
+    /* best-effort — don't block the UI on a failed analytics POST */
+  } finally {
+    clearPendingUtm();
+  }
+  return snap;
+}
