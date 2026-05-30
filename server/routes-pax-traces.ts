@@ -19,8 +19,10 @@ import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { storage } from "./storage";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -42,7 +44,63 @@ export function registerPaxTracesRoutes(app: Express) {
         const beforeRaw = req.query.before ? parseInt(String(req.query.before), 10) : null;
         const before = beforeRaw !== null && Number.isFinite(beforeRaw) ? beforeRaw : null;
 
-        const filters = [eq(agentLlmTraces.agentCodename, PAX_CODENAME)];
+        // SECURITY / GLBA §501(b) + GDPR controller-processor scope:
+        // `requireFounder` gates AcreOS staff identity, but founder-of-org-A
+        // must never see borrower PII from org B by default. We always scope
+        // to req.organizationId. A staff super-admin may opt in to a specific
+        // foreign org by passing ?orgId=<n>; that path is audit-logged.
+        const callerOrgId = getOrganizationId(req);
+        const callerUserId = getUserId(req);
+
+        const explicitOrgIdRaw = req.query.orgId
+          ? parseInt(String(req.query.orgId), 10)
+          : null;
+        const explicitOrgId =
+          explicitOrgIdRaw !== null && Number.isFinite(explicitOrgIdRaw) && explicitOrgIdRaw > 0
+            ? explicitOrgIdRaw
+            : null;
+
+        const scopedOrgId = explicitOrgId ?? callerOrgId;
+
+        // Cross-tenant explicit access — audit the read so the chain shows
+        // who looked at which org's prompts and when.
+        if (explicitOrgId !== null && explicitOrgId !== callerOrgId) {
+          try {
+            await storage.createAuditLogEntry({
+              organizationId: explicitOrgId,
+              userId: callerUserId,
+              action: "cross_tenant_read",
+              entityType: "agent_llm_trace",
+              entityId: null,
+              changes: null,
+              ipAddress: req.ip || null,
+              userAgent: (req.headers["user-agent"] as string) || null,
+              metadata: {
+                surface: "/api/founder/pax-traces",
+                callerOrgId,
+                targetOrgId: explicitOrgId,
+                agentCodename: PAX_CODENAME,
+                limit,
+                before,
+              },
+            });
+          } catch (auditErr) {
+            // Audit-log failure is fatal here — we must not leak cross-tenant
+            // PII without a successful audit row landing first.
+            logger.error("[pax-traces] cross-tenant audit log write failed; refusing read", {
+              error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+              callerUserId,
+              callerOrgId,
+              explicitOrgId,
+            });
+            return Errors.internal(res, auditErr);
+          }
+        }
+
+        const filters = [
+          eq(agentLlmTraces.agentCodename, PAX_CODENAME),
+          eq(agentLlmTraces.organizationId, scopedOrgId),
+        ];
         if (before !== null) filters.push(lt(agentLlmTraces.id, before));
 
         // Left-join on decisions_inbox_items so the founder can see how each
@@ -92,7 +150,12 @@ export function registerPaxTracesRoutes(app: Express) {
             errors: sql<number>`count(*) filter (where ${agentLlmTraces.error} is not null)::int`,
           })
           .from(agentLlmTraces)
-          .where(eq(agentLlmTraces.agentCodename, PAX_CODENAME));
+          .where(
+            and(
+              eq(agentLlmTraces.agentCodename, PAX_CODENAME),
+              eq(agentLlmTraces.organizationId, scopedOrgId),
+            ),
+          );
 
         const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
 
