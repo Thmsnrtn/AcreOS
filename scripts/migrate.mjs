@@ -107,6 +107,34 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "signing_consent_audit_user_idx" ON "signing_consent_audit" ("user_id")',
   'CREATE INDEX IF NOT EXISTS "signing_consent_audit_email_doc_idx" ON "signing_consent_audit" ("signer_email", "document_id")',
 
+  // 2026-05-29 — Wave-3 missing-from-deploy columns. The .sql files in
+  // migrations/ (0099, 0101, 0102, 0103) were NOT mirrored here, so prod
+  // never got the new columns and Drizzle's SELECT-* started 500-ing on
+  // every touch of users (acquisition_utm), notes (atr_exemption_code),
+  // organizations (underwriting_defaults), and leads (apn). Idempotent.
+  //
+  // Reg-Z §1026.43 ATR hard-gate exemption code (migrations/0099):
+  //   raw_land | business_purpose | commercial_borrower | legacy (existing
+  //   active rows are grandfathered). Status='active' now enforced via the
+  //   noteRepo app-layer guard plus a CHECK constraint defined in 0099.
+  `ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "atr_exemption_code" text`,
+
+  // Per-user acquisition UTM jsonb (migrations/0101). users.acquisition_utm
+  // is the load-bearing one — login 500'd until this column existed.
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "acquisition_utm" jsonb`,
+
+  // Per-org underwriting defaults (migrations/0102). Null = legacy
+  // hardcoded 9%/84mo behavior; populated rows opt in to per-org config
+  // via Settings → Underwriting (Texas standard 9.9%/120mo/20%/no balloon).
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "underwriting_defaults" jsonb`,
+
+  // APN on leads for the CSV importer's dedupe path (migrations/0103).
+  // Nullable — manual-add + legacy imports don't carry APN. Indexed
+  // per-org because the importer's dedupe queries `WHERE org=$1 AND apn=$2`.
+  // Not UNIQUE — multiple orgs may legitimately have the same APN.
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "apn" text`,
+  `CREATE INDEX IF NOT EXISTS "leads_org_apn_idx" ON "leads" ("organization_id", "apn") WHERE "apn" IS NOT NULL`,
+
   // 2026-05-08 — Note Investor servicing-ledger discipline (PR-2 of the
   // vertical completion sweep). Adds the columns the partial / unapplied /
   // extra-principal / payoff / NSF-reversal flow needs to record correctly
