@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button";
 import { useLeads } from "@/hooks/use-leads";
 import { cn } from "@/lib/utils";
 import { VirtualList } from "@/components/virtual-list";
+import { apiRequest } from "@/lib/queryClient";
+import PostCallSheet, { setPendingContactEvent } from "@/components/mobile/PostCallSheet";
 
 type FilterKey = "all" | "hot" | "new" | "responded";
 
@@ -65,6 +67,20 @@ function StatusPill({ status }: { status?: string | null }) {
       {s.replace(/_/g, " ")}
     </span>
   );
+}
+
+/**
+ * Fire-and-forget POST for tap-to-call/text. Returns immediately so
+ * the dialer hand-off feels native; on failure we keep a console.warn
+ * (server-side logger.warn is also emitted) and do NOT block the call.
+ */
+function logContactEvent(leadId: number, channel: "phone" | "sms"): void {
+  apiRequest("POST", `/api/leads/${leadId}/contact-event`, {
+    channel,
+    method: "tap",
+  }).catch(() => {
+    // Best-effort. Don't surface a toast — the user is mid-dial.
+  });
 }
 
 function daysSince(iso?: string | null): number | null {
@@ -140,7 +156,23 @@ function MobileLeadRow({
           <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-border/60">
             <a
               href={`tel:${l.phone}`}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Optimistic, fire-and-forget. Do NOT await — the dial
+                // must feel instant. The server bumps lastContactedAt
+                // + appends a leadActivities row before we ever come
+                // back to the app. The post-call sheet enriches with
+                // an outcome on return.
+                logContactEvent(l.id, "phone");
+                setPendingContactEvent({
+                  leadId: l.id,
+                  leadName:
+                    [l.firstName, l.lastName].filter(Boolean).join(" ").trim() ||
+                    `Lead #${l.id}`,
+                  channel: "phone",
+                  startedAt: Date.now(),
+                });
+              }}
               className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
               data-testid={`mobile-lead-call-${l.id}`}
             >
@@ -148,7 +180,18 @@ function MobileLeadRow({
             </a>
             <a
               href={`sms:${l.phone}`}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                logContactEvent(l.id, "sms");
+                setPendingContactEvent({
+                  leadId: l.id,
+                  leadName:
+                    [l.firstName, l.lastName].filter(Boolean).join(" ").trim() ||
+                    `Lead #${l.id}`,
+                  channel: "sms",
+                  startedAt: Date.now(),
+                });
+              }}
               className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
               data-testid={`mobile-lead-sms-${l.id}`}
             >
@@ -358,6 +401,9 @@ export function MobileLeadList() {
         />
       )}
 
+      {/* Post-call follow-up sheet — listens for visibilitychange + a
+          pending event flag and pops the outcome picker once. */}
+      <PostCallSheet />
     </div>
   );
 }

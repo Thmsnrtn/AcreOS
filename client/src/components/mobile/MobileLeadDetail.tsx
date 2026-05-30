@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLead, useUpdateLead } from "@/hooks/use-leads";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import PostCallSheet, { setPendingContactEvent } from "@/components/mobile/PostCallSheet";
 
 /** Tiny one-shot speech-to-text. Same pattern as QuickAddSheet. */
 function useDictate(onResult: (text: string) => void) {
@@ -285,6 +286,22 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
             href={phone ? `tel:${phone}` : undefined}
             disabled={!phone}
             testId="mobile-lead-call"
+            onTap={() => {
+              // Optimistic — bump lastContactedAt + log the attempt
+              // BEFORE the dialer hand-off so the data layer never
+              // misses the call. PostCallSheet picks up the pending
+              // flag on return-to-app and asks for the outcome.
+              apiRequest("POST", `/api/leads/${lead.id}/contact-event`, {
+                channel: "phone",
+                method: "tap",
+              }).catch(() => { /* fire-and-forget */ });
+              setPendingContactEvent({
+                leadId: lead.id,
+                leadName: fullName,
+                channel: "phone",
+                startedAt: Date.now(),
+              });
+            }}
           />
           <ActionTile
             label="Text"
@@ -292,6 +309,18 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
             href={phone ? `sms:${phone}` : undefined}
             disabled={!phone}
             testId="mobile-lead-sms"
+            onTap={() => {
+              apiRequest("POST", `/api/leads/${lead.id}/contact-event`, {
+                channel: "sms",
+                method: "tap",
+              }).catch(() => { /* fire-and-forget */ });
+              setPendingContactEvent({
+                leadId: lead.id,
+                leadName: fullName,
+                channel: "sms",
+                startedAt: Date.now(),
+              });
+            }}
           />
           <ActionTile
             label="Email"
@@ -407,6 +436,10 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
           </Button>
         </section>
       </div>
+
+      {/* Return-from-call outcome picker. Triggered by visibilitychange
+          once a tap-to-call/text pending event is in sessionStorage. */}
+      <PostCallSheet />
     </div>
   );
 }
@@ -418,6 +451,7 @@ function ActionTile({
   disabled,
   external,
   testId,
+  onTap,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -425,6 +459,8 @@ function ActionTile({
   disabled?: boolean;
   external?: boolean;
   testId?: string;
+  /** Fire-and-forget side effect BEFORE the href is followed. */
+  onTap?: () => void;
 }) {
   const base =
     "flex flex-col items-center justify-center gap-1 h-16 rounded-xl text-xs font-medium transition-colors";
@@ -445,6 +481,7 @@ function ActionTile({
       href={href}
       target={external ? "_blank" : undefined}
       rel={external ? "noreferrer" : undefined}
+      onClick={onTap}
       className={`${base} bg-primary/10 text-primary active:bg-primary/20`}
       data-testid={testId}
     >

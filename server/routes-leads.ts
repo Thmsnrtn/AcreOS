@@ -821,6 +821,107 @@ export function registerLeadRoutes(app: Express): void {
     res.json(activities);
   });
 
+  // POST /api/leads/:id/contact-event — Hank fix.
+  // Tap-to-call/text was a raw `tel:`/`sms:` href, so MorningBrief's
+  // "Nd since contact" chip, the stale-lead signal, and the lead-score
+  // sort were all fed by a `lastContactedAt` that never moved when the
+  // user touched the dialer chip. This endpoint is fired BEFORE the
+  // tel: link opens so the data layer sees the call happen even if the
+  // user never returns to the app.
+  const contactEventSchema = z.object({
+    channel: z.enum(["phone", "sms"]),
+    method: z.enum(["tap", "manual"]).default("tap"),
+    outcome: z
+      .enum(["hot", "warm", "cold", "no_answer", "wrong_number"])
+      .optional(),
+  });
+  api.post(
+    "/api/leads/:id/contact-event",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      try {
+        const org = (req as AuthenticatedRequest).organization;
+        const userId = (req.user as any)?.id ?? null;
+        const leadId = Number(req.params.id);
+        if (!Number.isFinite(leadId)) {
+          return Errors.badRequest(res, "Invalid lead id");
+        }
+        const existing = await storage.getLead(org.id, leadId);
+        if (!existing) return Errors.notFound(res, "Lead");
+        const parsed = contactEventSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return Errors.badRequest(
+            res,
+            "Validation failed",
+            parsed.error.issues.map((e) => ({
+              field: e.path.join("."),
+              message: e.message,
+            })),
+          );
+        }
+        const { channel, method, outcome } = parsed.data;
+        const now = new Date();
+
+        // 1) Bump lastContactedAt on the lead row. We do this even for
+        //    outcome-only follow-ups (so the post-call "wrong number"
+        //    tap still confirms the data point we already wrote in the
+        //    no-outcome path).
+        const updated = await storage.updateLead(
+          leadId,
+          { lastContactedAt: now } as any,
+          org.id,
+        );
+
+        // 2) Append a leadActivities row. Type is the channel-specific
+        //    attempt; when an outcome is provided we widen the type so
+        //    the timeline shows "phone_outcome: hot" etc.
+        const activityType = outcome
+          ? `${channel}_outcome`
+          : `${channel}_attempt`;
+        await storage.createLeadActivity({
+          leadId,
+          organizationId: org.id,
+          type: activityType,
+          description: outcome
+            ? `Tap-to-${channel === "phone" ? "call" : "text"} outcome: ${outcome}`
+            : `Tap-to-${channel === "phone" ? "call" : "text"}`,
+          metadata: {
+            channel,
+            method,
+            source: "tap-to-call",
+            outcome: outcome ?? null,
+            at: now.toISOString(),
+          },
+          performedBy: userId ? Number(userId) || null : null,
+        } as any);
+
+        logger.info("Lead contact event logged", {
+          leadId,
+          orgId: org.id,
+          channel,
+          method,
+          outcome: outcome ?? null,
+        });
+
+        res.json({
+          ok: true,
+          leadId,
+          lastContactedAt: updated.lastContactedAt,
+          channel,
+          method,
+          outcome: outcome ?? null,
+        });
+      } catch (err) {
+        logger.warn("Contact event log failed", {
+          leadId: req.params.id,
+          error: (err as Error)?.message,
+        });
+        return Errors.internal(res, err as Error);
+      }
+    },
+  );
+
   api.get("/api/leads/:id/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
