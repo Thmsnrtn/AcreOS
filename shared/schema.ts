@@ -219,6 +219,20 @@ export const organizations = pgTable("organizations", {
   // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
   // one-inbox.md for the rationale.
   founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
+  // ─── Underwriting defaults (Hank fix) ──────────────────────────────
+  // Per-org owner-finance defaults used by blindOfferCalculator. The
+  // hardcode was 9% APR / 84 months — Texas land standard is ~9.9%
+  // APR / 120 months / 20% down / no balloon. Persisted as a single
+  // jsonb so we can extend with cash-flip multipliers, hybrid splits,
+  // etc. without another migration.
+  underwritingDefaults: jsonb("underwriting_defaults").$type<{
+    ownerFinance?: {
+      apr: number; // annual percentage rate, e.g. 9.9
+      termMonths: number; // amortization term, e.g. 120
+      downPaymentPct: number; // 0-100, e.g. 20
+      balloon: boolean; // true if a balloon payment is required at term end
+    };
+  }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -64,6 +64,16 @@ export interface BlindOfferInput {
   };
   ownerFinanceGoal?: boolean; // True = optimize for note income
   preferredDownPayment?: number; // Override default (default = acquisition cost)
+  // Per-org owner-finance underwriting defaults (Hank fix). When
+  // provided, replaces the legacy 9% / 84 months hardcode in
+  // buildOwnerFinanceScenario. Caller threads these in from
+  // organizations.underwritingDefaults.ownerFinance.
+  ownerFinanceDefaults?: {
+    apr: number;
+    termMonths: number;
+    downPaymentPct: number;
+    balloon: boolean;
+  };
 }
 
 export interface CompAnalysis {
@@ -216,7 +226,12 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
   // Exit scenarios
   const acquisition = recommendedOfferTotal;
   const cashFlipScenario = buildCashFlipScenario(acquisition, compAnalysis.medianSalePerAcre, targetAcres);
-  const ownerFinanceScenario = buildOwnerFinanceScenario(acquisition, compAnalysis.medianSalePerAcre, targetAcres);
+  const ownerFinanceScenario = buildOwnerFinanceScenario(
+    acquisition,
+    compAnalysis.medianSalePerAcre,
+    targetAcres,
+    input.ownerFinanceDefaults,
+  );
 
   // Hybrid recommendation
   const hybridRecommendation = buildHybridRecommendation(cashFlipScenario, ownerFinanceScenario, ownerFinanceGoal);
@@ -496,51 +511,80 @@ function buildCashFlipScenario(
   };
 }
 
+// Legacy hardcode preserved as fallback for orgs that haven't set their
+// underwriting defaults yet. Texas standard (and Hank's book of 70 notes
+// across $4M GMV) is 9.9% / 120mo / 20% down / no balloon — see Settings
+// → Underwriting for the per-org override.
+const LEGACY_OWNER_FINANCE_DEFAULTS = {
+  apr: 9,
+  termMonths: 84,
+  downPaymentPct: 0, // 0 means "downpayment = acquisition cost" (legacy behavior)
+  balloon: false,
+};
+
 function buildOwnerFinanceScenario(
   acquisition: number,
   medianMarketPerAcre: number,
-  acres: number
+  acres: number,
+  defaults?: { apr: number; termMonths: number; downPaymentPct: number; balloon: boolean },
 ): OwnerFinanceScenario {
+  const cfg = defaults ?? LEGACY_OWNER_FINANCE_DEFAULTS;
   // Industry standard: list at 2-3x acquisition price; down = acquisition cost
   const salePrice = Math.max(medianMarketPerAcre * acres * 1.1, acquisition * 3);
-  const downPayment = acquisition; // Down payment recovers acquisition cost day 1
-  const loanAmount = salePrice - downPayment;
+  // Down payment: when downPaymentPct > 0 (explicit org default), use a
+  // percentage of sale price. When 0 (legacy fallback), recover the full
+  // acquisition cost at closing — that's the original behavior.
+  const downPayment = cfg.downPaymentPct > 0
+    ? salePrice * (cfg.downPaymentPct / 100)
+    : acquisition;
+  const loanAmount = Math.max(0, salePrice - downPayment);
 
-  const r = 0.09 / 12; // 9% / 12 months
-  const n = 84; // 7 years
+  const r = (cfg.apr / 100) / 12;
+  const n = cfg.termMonths;
   const monthlyPayment = loanAmount > 0
     ? loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
     : 0;
 
-  const totalCollected = downPayment + (monthlyPayment * n);
+  // With a balloon, the borrower pays interest-only (approx) for n months
+  // and the principal balloons at term end. We still credit the full
+  // collected amount but flag the structure via the regNotes string.
+  const totalCollected = downPayment + (monthlyPayment * n) + (cfg.balloon ? loanAmount : 0);
   const netProfit = totalCollected - acquisition;
   const roi = acquisition > 0 ? (netProfit / acquisition) * 100 : 800;
 
-  // Break-even: when cumulative payments cover acquisition cost
-  // Since down = acquisition, break-even is month 1 (capital fully recovered)
-  const breakEvenMonth = 0; // Capital recovered at closing via down payment!
+  // Break-even: when cumulative payments cover acquisition cost.
+  // If down payment >= acquisition we recover capital at closing.
+  const breakEvenMonth = downPayment >= acquisition
+    ? 0
+    : monthlyPayment > 0
+      ? Math.ceil((acquisition - downPayment) / monthlyPayment)
+      : 0;
 
   // Note market value: typical note buyers pay 70-85 cents on the dollar
   const noteValue = loanAmount * 0.75;
 
   const cashFlowYear1 = monthlyPayment * 12;
 
+  const balloonNote = cfg.balloon
+    ? " A balloon payment for the remaining principal is due at term end."
+    : "";
+
   return {
     salePrice: Math.round(salePrice),
     downPayment: Math.round(downPayment),
     loanAmount: Math.round(loanAmount),
-    interestRate: 9,
-    termMonths: 84,
+    interestRate: cfg.apr,
+    termMonths: cfg.termMonths,
     monthlyPayment: Math.round(monthlyPayment),
     totalCollected: Math.round(totalCollected),
     netProfit: Math.round(netProfit),
     roi: Math.round(roi),
-    passiveIncomeYears: 7,
+    passiveIncomeYears: Math.round(cfg.termMonths / 12),
     breakEvenMonth,
     noteValue: Math.round(noteValue),
     cashFlowYear1: Math.round(cashFlowYear1),
     doddFrankExempt: true, // Raw land seller financing exempt from Dodd-Frank/RESPA
-    regNotes: "Raw land seller financing is exempt from Dodd-Frank, RESPA, and SAFE Act requirements that apply to residential mortgages. No mortgage license required. Standard land contract or deed of trust with installment sale note.",
+    regNotes: "Raw land seller financing is exempt from Dodd-Frank, RESPA, and SAFE Act requirements that apply to residential mortgages. No mortgage license required. Standard land contract or deed of trust with installment sale note." + balloonNote,
   };
 }
 

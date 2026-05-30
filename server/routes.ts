@@ -149,6 +149,7 @@ import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
 import { registerOrganizationRoutes } from "./routes-organization";
 import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
+import { registerUnderwritingDefaultsRoutes } from "./routes-underwriting-defaults";
 import { registerPropertyRoutes } from "./routes-properties";
 import { registerDealRoutes } from "./routes-deals";
 import { registerFinanceRoutes } from "./routes-finance";
@@ -2011,6 +2012,7 @@ export async function registerRoutes(
   // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).
   registerTeamReadinessRoutes(app);
   registerLeadRoutes(app);
+  registerUnderwritingDefaultsRoutes(app);
   registerPropertyRoutes(app);
   registerDealRoutes(app);
   registerFinanceRoutes(app);

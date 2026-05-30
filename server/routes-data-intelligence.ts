@@ -217,6 +217,16 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
       }
     }
 
+    // Pull per-org owner-finance underwriting defaults so the calculator
+    // builds the scenario against the org's actual book (Hank's Texas
+    // standard: 9.9% / 120mo / 20% down / no balloon) instead of the
+    // legacy 9%/84mo hardcode. Org settings live on
+    // organizations.underwritingDefaults; falls back gracefully when
+    // unset.
+    const orgForUnderwriting = (req as AuthenticatedRequest).organization;
+    const ownerFinanceDefaults =
+      (orgForUnderwriting?.underwritingDefaults as any)?.ownerFinance ?? undefined;
+
     const report = await calculateBlindOffer({
       state,
       county,
@@ -225,6 +235,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
       sellerProfile,
       marketCondition,
       ownerFinanceGoal: ownerFinanceGoal || false,
+      ownerFinanceDefaults,
     });
 
     res.json(report);

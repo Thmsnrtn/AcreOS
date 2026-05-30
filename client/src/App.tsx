@@ -208,6 +208,7 @@ const TeamLeaderboardPage = React.lazy(() => import("@/pages/team-leaderboard"))
 const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
 const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-approvals"));
 const LeadAssignmentSettingsPage = React.lazy(() => import("@/pages/settings/lead-assignment"));
+const UnderwritingSettingsPage = React.lazy(() => import("@/pages/settings/underwriting"));
 const IntegrationsSettingsPage = React.lazy(() => import("@/pages/settings/integrations"));
 
 // Analytics / Reporting
@@ -741,6 +742,9 @@ function Router() {
       </Route>
       <Route path="/settings/lead-assignment">
         {() => <ProtectedRoute component={LeadAssignmentSettingsPage} />}
+      </Route>
+      <Route path="/settings/underwriting">
+        {() => <ProtectedRoute component={UnderwritingSettingsPage} />}
       </Route>
       <Route path="/settings/integrations">
         {() => <ProtectedRoute component={IntegrationsSettingsPage} />}
