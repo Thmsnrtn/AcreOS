@@ -26,7 +26,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useMotionValue, useTransform, type PanInfo, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRespectfulTransition } from "@/lib/motion-tokens";
 import { useLocation } from "wouter";
 import {
@@ -41,6 +41,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { relative } from "@/lib/format";
@@ -82,9 +83,6 @@ function ChannelIcon({ channel }: { channel: string }) {
   }
 }
 
-const SWIPE_THRESHOLD = 120; // px — distance past which we commit the action
-const SWIPE_VELOCITY_THRESHOLD = 500; // px/s — fast flick also commits
-
 interface InboxCardProps {
   conversation: Conversation;
   onAction: (action: "contacted" | "dismissed") => void;
@@ -92,90 +90,59 @@ interface InboxCardProps {
 }
 
 function InboxCard({ conversation: c, onAction, onOpen }: InboxCardProps) {
-  const x = useMotionValue(0);
-  const opacity = useTransform(x, [-200, 0, 200], [0.3, 1, 0.3]);
-  // Background reveal — green from the left (contacted), red from the right (dismiss).
-  const bgRightOpacity = useTransform(x, [0, 80, 200], [0, 0.6, 1]); // swipe right → contacted background
-  const bgLeftOpacity = useTransform(x, [-200, -80, 0], [1, 0.6, 0]);  // swipe left → dismiss background
-
-  const handleDragEnd = (_e: unknown, info: PanInfo) => {
-    const passed =
-      Math.abs(info.offset.x) > SWIPE_THRESHOLD ||
-      Math.abs(info.velocity.x) > SWIPE_VELOCITY_THRESHOLD;
-    if (passed) {
-      onAction(info.offset.x > 0 ? "contacted" : "dismissed");
-    }
-  };
-
   return (
-    <div className="relative overflow-hidden rounded-2xl">
-      {/* Action backgrounds — only visible during a swipe. */}
-      <motion.div
-        aria-hidden
-        className="absolute inset-0 flex items-center justify-start pl-6 rounded-2xl bg-emerald-500/90 text-white"
-        style={{ opacity: bgRightOpacity }}
+    <SwipeableCard
+      leftAction={{
+        icon: Check,
+        label: "Contacted",
+        tone: "pos",
+        onAction: () => onAction("contacted"),
+      }}
+      rightAction={{
+        icon: X,
+        label: "Snooze 24h",
+        tone: "neg",
+        onAction: () => onAction("dismissed"),
+      }}
+    >
+      <Card
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        className="bg-card border-border p-4 active:bg-muted/50 cursor-pointer"
       >
-        <Check className="h-6 w-6" />
-        <span className="ml-2 text-sm font-medium">Contacted</span>
-      </motion.div>
-      <motion.div
-        aria-hidden
-        className="absolute inset-0 flex items-center justify-end pr-6 rounded-2xl bg-rose-500/90 text-white"
-        style={{ opacity: bgLeftOpacity }}
-      >
-        <span className="mr-2 text-sm font-medium">Snooze 24h</span>
-        <X className="h-6 w-6" />
-      </motion.div>
-
-      {/* The card itself — drag horizontally. */}
-      <motion.div
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.5}
-        onDragEnd={handleDragEnd}
-        style={{ x, opacity }}
-        whileTap={{ scale: 0.98 }}
-        className="relative"
-      >
-        <Card
-          role="button"
-          tabIndex={0}
-          onClick={onOpen}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpen();
-            }
-          }}
-          className="bg-card border-border p-4 active:bg-muted/50 cursor-pointer"
-        >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-full bg-muted p-2 text-foreground/80">
-              <ChannelIcon channel={c.channel} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="font-medium text-foreground truncate">
-                  {c.leadName ?? `Lead #${c.leadId}`}
-                </p>
-                <span className="text-caption tabular-nums text-muted-foreground shrink-0">
-                  {c.lastMessageAt ? relative(c.lastMessageAt) : "—"}
-                </span>
-              </div>
-              {c.lastMessagePreview ? (
-                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                  {c.lastMessagePreview}
-                </p>
-              ) : (
-                <p className="mt-1 text-sm text-muted-foreground italic">
-                  {c.channel} conversation · tap to view
-                </p>
-              )}
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 rounded-full bg-muted p-2 text-foreground/80">
+            <ChannelIcon channel={c.channel} />
           </div>
-        </Card>
-      </motion.div>
-    </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="font-medium text-foreground truncate">
+                {c.leadName ?? `Lead #${c.leadId}`}
+              </p>
+              <span className="text-caption tabular-nums text-muted-foreground shrink-0">
+                {c.lastMessageAt ? relative(c.lastMessageAt) : "—"}
+              </span>
+            </div>
+            {c.lastMessagePreview ? (
+              <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                {c.lastMessagePreview}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground italic">
+                {c.channel} conversation · tap to view
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+    </SwipeableCard>
   );
 }
 
