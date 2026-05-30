@@ -1,0 +1,88 @@
+name: Migrate Mirror Check
+
+# Guardrail: if a PR / push adds or modifies a migrations/*.sql file,
+# scripts/migrate.mjs MUST also be touched in the same change. The Fly
+# release_command runs migrate.mjs and does NOT auto-apply .sql files —
+# every time we've forgotten to mirror, prod has 500'd on a missing column
+# the next time Drizzle SELECT-* touched the table. This check makes that
+# class of bug structurally impossible.
+#
+# False-positive escape hatch: include the magic phrase
+# "[no-migrate-mirror]" in the commit message of the latest commit on the
+# branch. Use sparingly — it should only be for migrations that are
+# explicitly handled by a different mechanism (e.g. a one-shot data
+# backfill that the application is not expected to depend on for reads).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  check-mirror:
+    name: Ensure migrate.mjs is updated when migrations/*.sql changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute base ref
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            # On push to main, compare against the previous commit.
+            echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect drift between migrations/*.sql and scripts/migrate.mjs
+        run: |
+          set -euo pipefail
+          BASE="${{ steps.base.outputs.ref }}"
+          # Guard against shallow clones / the initial commit on a new branch.
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::notice::base ref ${BASE} not reachable; skipping mirror check"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "${BASE}" HEAD)
+          SQL_TOUCHED=$(echo "${CHANGED}" | grep -E '^migrations/.*\.sql$' || true)
+          MJS_TOUCHED=$(echo "${CHANGED}" | grep -E '^scripts/migrate\.mjs$' || true)
+
+          if [ -z "${SQL_TOUCHED}" ]; then
+            echo "No migrations/*.sql files changed in this range. ✓"
+            exit 0
+          fi
+
+          echo "Touched SQL migrations:"
+          echo "${SQL_TOUCHED}" | sed 's/^/  - /'
+
+          if [ -n "${MJS_TOUCHED}" ]; then
+            echo "scripts/migrate.mjs was also updated. ✓"
+            exit 0
+          fi
+
+          # Escape hatch: explicit waiver in the latest commit message.
+          if git log -1 --pretty=%B HEAD | grep -q "\[no-migrate-mirror\]"; then
+            echo "::warning::migrations/*.sql changed without scripts/migrate.mjs, but commit message includes [no-migrate-mirror] — allowing"
+            exit 0
+          fi
+
+          cat <<EOF
+          ::error::A migrations/*.sql file changed but scripts/migrate.mjs was NOT updated.
+
+          The Fly release_command runs scripts/migrate.mjs — not the .sql files in
+          migrations/. If the new schema isn't mirrored there, prod will 500 the
+          first time Drizzle SELECT-* touches the affected table.
+
+          Fix: add the equivalent idempotent ALTER TABLE … IF NOT EXISTS /
+          CREATE INDEX … IF NOT EXISTS statements to scripts/migrate.mjs, then
+          push again.
+
+          Escape hatch (use sparingly): include [no-migrate-mirror] in your
+          commit message if the change is genuinely handled by a different path.
+          EOF
+          exit 1
