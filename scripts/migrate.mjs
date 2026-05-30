@@ -135,6 +135,103 @@ const STATEMENTS = [
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "apn" text`,
   `CREATE INDEX IF NOT EXISTS "leads_org_apn_idx" ON "leads" ("organization_id", "apn") WHERE "apn" IS NOT NULL`,
 
+  // 2026-05-30 — DRIFT SWEEP. Production /api/today started 500-ing on
+  // `select … "requires_lead_paint_disclosure" … from "properties"` because
+  // migration 0085 (and several others) were committed as .sql files but
+  // never mirrored here, so the Fly release_command never added the column
+  // and Drizzle's SELECT-* blew up the moment a real-user request touched
+  // the table. Same root-cause shape as the wave-3 block above. This sweep
+  // back-fills every migrations/*.sql that wasn't yet in migrate.mjs.
+  // All statements are idempotent.
+  //
+  // ── 0080 audit_log hash chain (Kareem §1 — SOC 2 CC7.2/CC7.3) ──────────────
+  // Tamper-evident audit_log via SHA-256 chain. The trigger function is
+  // installed via CREATE OR REPLACE so a re-run is a no-op.
+  `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
+  `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "row_hash" text`,
+  `CREATE INDEX IF NOT EXISTS "audit_log_org_id_idx" ON "audit_log" ("organization_id", "id")`,
+  `CREATE INDEX IF NOT EXISTS "audit_log_org_chain_idx" ON "audit_log" ("organization_id", "id" DESC) WHERE "row_hash" IS NOT NULL`,
+  // Trigger function — block UPDATE/DELETE on chained rows. Idempotent via
+  // CREATE OR REPLACE; the trigger itself is DROP-then-CREATE.
+  `CREATE OR REPLACE FUNCTION audit_log_chain_block() RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF OLD.row_hash IS NOT NULL THEN
+         RAISE EXCEPTION 'audit_log row % is chained and cannot be deleted', OLD.id
+           USING ERRCODE = 'check_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     IF TG_OP = 'UPDATE' THEN
+       IF OLD.row_hash IS NOT NULL THEN
+         RAISE EXCEPTION 'audit_log row % is chained and cannot be modified', OLD.id
+           USING ERRCODE = 'check_violation';
+       END IF;
+       IF (NEW.organization_id, NEW.user_id, NEW.action, NEW.entity_type,
+           NEW.entity_id, NEW.changes, NEW.ip_address, NEW.user_agent,
+           NEW.metadata, NEW.created_at)
+          IS DISTINCT FROM
+          (OLD.organization_id, OLD.user_id, OLD.action, OLD.entity_type,
+           OLD.entity_id, OLD.changes, OLD.ip_address, OLD.user_agent,
+           OLD.metadata, OLD.created_at) THEN
+         RAISE EXCEPTION 'audit_log row % business columns are immutable', OLD.id
+           USING ERRCODE = 'check_violation';
+       END IF;
+       RETURN NEW;
+     END IF;
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS audit_log_chain_block_trg ON audit_log`,
+  `CREATE TRIGGER audit_log_chain_block_trg
+     BEFORE UPDATE OR DELETE ON audit_log
+     FOR EACH ROW EXECUTE FUNCTION audit_log_chain_block()`,
+
+  // ── 0082 subdivision_plans carrying costs (Brigid §3, Lens 19) ────────────
+  `ALTER TABLE "subdivision_plans" ADD COLUMN IF NOT EXISTS "engineering_cost_cents" bigint`,
+  `ALTER TABLE "subdivision_plans" ADD COLUMN IF NOT EXISTS "survey_cost_cents" bigint`,
+  `ALTER TABLE "subdivision_plans" ADD COLUMN IF NOT EXISTS "road_construction_cost_bond_cents" bigint`,
+
+  // ── 0084 note_acquisitions funding pool (Rachel LP-fund §1) ───────────────
+  `ALTER TABLE "note_acquisitions" ADD COLUMN IF NOT EXISTS "funding_pool_id" text`,
+  `CREATE INDEX IF NOT EXISTS "note_acquisitions_org_pool_idx" ON "note_acquisitions" ("organization_id", "funding_pool_id") WHERE "funding_pool_id" IS NOT NULL`,
+
+  // ── 0085 landlord-tenant compliance (Glenn Okonkwo audit) ─────────────────
+  // THIS is the one that just took /api/today down — properties.requires_
+  // lead_paint_disclosure was selected by storage.getProperties() but didn't
+  // exist on prod, so Drizzle's SELECT-* blew up every Today render.
+  `ALTER TABLE "lease_tenants" ADD COLUMN IF NOT EXISTS "holds_joint_and_several" boolean NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE "lease_tenants" ADD COLUMN IF NOT EXISTS "joint_and_several_acknowledged_at" timestamptz`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "requires_lead_paint_disclosure" boolean`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "lead_paint_disclosure_attached_at" timestamptz`,
+  `ALTER TABLE "move_inspections" ADD COLUMN IF NOT EXISTS "photo_count" integer NOT NULL DEFAULT 0`,
+  `CREATE INDEX IF NOT EXISTS "lease_tenants_jointly_liable_idx" ON "lease_tenants" ("lease_id") WHERE "holds_joint_and_several" = TRUE`,
+  `CREATE INDEX IF NOT EXISTS "properties_lead_paint_idx" ON "properties" ("organization_id") WHERE "requires_lead_paint_disclosure" = TRUE`,
+
+  // ── 0087 earnest_money_holds IOLTA compliance (Mae Vasquez audit) ─────────
+  `ALTER TABLE "earnest_money_holds" ADD COLUMN IF NOT EXISTS "iolta_status" text NOT NULL DEFAULT 'unverified' CHECK ("iolta_status" IN ('verified','self_attested','unverified'))`,
+  `ALTER TABLE "earnest_money_holds" ADD COLUMN IF NOT EXISTS "iolta_verified_at" timestamptz`,
+  `ALTER TABLE "earnest_money_holds" ADD COLUMN IF NOT EXISTS "iolta_verification_source" text`,
+  `CREATE INDEX IF NOT EXISTS "emd_iolta_status_idx" ON "earnest_money_holds" ("organization_id", "iolta_status") WHERE "iolta_status" != 'verified'`,
+
+  // ── 0091 AI autonomy trust-loop legibility (Lens 46) ──────────────────────
+  // agent_action_log + pax_observations + decisions_inbox_items get the
+  // reasoning / alternatives / inputs / model_used / correlation columns so
+  // a "Why Pax did this" view can reconstruct the full decision record.
+  `ALTER TABLE "agent_action_log" ADD COLUMN IF NOT EXISTS "alternatives_considered" jsonb`,
+  `ALTER TABLE "agent_action_log" ADD COLUMN IF NOT EXISTS "triggered_by_observation_id" integer`,
+  `ALTER TABLE "agent_action_log" ADD COLUMN IF NOT EXISTS "tiers_tried" jsonb`,
+  `ALTER TABLE "agent_action_log" ADD COLUMN IF NOT EXISTS "model_used" text`,
+  `ALTER TABLE "agent_action_log" ADD COLUMN IF NOT EXISTS "correlation_id" text`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_obs_idx" ON "agent_action_log" ("triggered_by_observation_id") WHERE "triggered_by_observation_id" IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_correlation_idx" ON "agent_action_log" ("correlation_id") WHERE "correlation_id" IS NOT NULL`,
+  `ALTER TABLE "pax_observations" ADD COLUMN IF NOT EXISTS "reasoning" text`,
+  `ALTER TABLE "pax_observations" ADD COLUMN IF NOT EXISTS "inputs" jsonb`,
+  `ALTER TABLE "pax_observations" ADD COLUMN IF NOT EXISTS "alternatives_considered" jsonb`,
+  `ALTER TABLE "pax_observations" ADD COLUMN IF NOT EXISTS "model_used" text`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "resolved_by_action_log_id" integer`,
+  `CREATE INDEX IF NOT EXISTS "decisions_inbox_resolved_action_idx" ON "decisions_inbox_items" ("resolved_by_action_log_id") WHERE "resolved_by_action_log_id" IS NOT NULL`,
+
   // 2026-05-08 — Note Investor servicing-ledger discipline (PR-2 of the
   // vertical completion sweep). Adds the columns the partial / unapplied /
   // extra-principal / payoff / NSF-reversal flow needs to record correctly
