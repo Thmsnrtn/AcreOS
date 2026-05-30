@@ -309,8 +309,8 @@ export default function PaxControlsPage() {
             Pax autonomy
           </CardTitle>
           <CardDescription>
-            Preview — your threshold is saved but Pax still asks you first.
-            We'll email you the day auto-execution turns on. This is a
+            Pax is still asking before every move. Your threshold is saved for
+            the day we flip the switch — you'll get the email first. This is a
             monthly-tune control; it used to live on Today and now lives here.
           </CardDescription>
         </CardHeader>
