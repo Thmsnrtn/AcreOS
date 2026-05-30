@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { ContentReveal } from "@/components/ContentReveal";
 import { ClearedEmpty } from "@/components/empty-states";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
 import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
+import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   Sparkles,
@@ -18,6 +19,8 @@ import {
   ArrowRight,
   EyeOff,
   RotateCcw,
+  ArrowRightCircle,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -133,6 +136,7 @@ function persistSnoozed(map: Record<string, number>) {
 // alerts stack — one prioritized list, source on a pill.
 export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
+  const [, setLocation] = useLocation();
 
   // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
   // user's autonomy threshold. Visual-only treatment (see prop doc).
@@ -254,8 +258,29 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
               const borderColor = auto
                 ? "var(--acr-pos)"
                 : priorityBorderColor[item.priority];
+              // Swipe right (left action) — fire the primary CTA. For auto-handled
+              // Pax rows that becomes "Override"; otherwise it's the regular open/act
+              // path (e.g. "Open lead", "Send reminder"). We navigate via wouter so
+              // the gesture matches the on-screen Button's Link target exactly.
+              // Swipe left (right action) — snooze, mirroring InboxTab's vocabulary.
+              const swipeLeftLabel = auto ? "Override" : item.actionLabel;
+              const swipeLeftTone = auto ? "pos" : "brand";
               return (
                 <motion.li key={item.id} role="listitem" variants={staggerItem}>
+                  <SwipeableCard
+                    leftAction={{
+                      icon: ArrowRightCircle,
+                      label: swipeLeftLabel,
+                      tone: swipeLeftTone,
+                      onAction: () => setLocation(item.actionUrl),
+                    }}
+                    rightAction={{
+                      icon: Clock,
+                      label: "Snooze 24h",
+                      tone: "warn",
+                      onAction: () => snoozeItem(item.id),
+                    }}
+                  >
                   <Card
                     className="rounded-card hover:shadow-md transition-shadow border-l-2"
                     style={{ borderLeftColor: borderColor }}
@@ -339,6 +364,7 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
                       </Button>
                     </CardContent>
                   </Card>
+                  </SwipeableCard>
                 </motion.li>
               );
             })}
