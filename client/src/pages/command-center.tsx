@@ -1855,27 +1855,32 @@ export default function CommandCenterPage() {
                   "Backgrou…" and "AI Ops" fell off the right edge. Use a
                   horizontal-scroll bar on mobile so the user can swipe to
                   all tabs; desktop keeps the inline-flex default. */}
-              <div className="overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
-                <TabsList className="w-max md:w-auto">
-                  <TabsTrigger value="chat" data-testid="tab-chat">
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Assistant
+              {/* Mobile: icon-only tabs (all 5 fit on a 390px viewport,
+                  no horizontal scroll, no clipped last tab next to the
+                  settings gear). Desktop: icon + label as before.
+                  aria-label on each trigger keeps screen readers honest
+                  about the hidden text. */}
+              <div className="md:overflow-visible md:mx-0 md:px-0">
+                <TabsList className="w-full md:w-auto">
+                  <TabsTrigger value="chat" data-testid="tab-chat" aria-label="Assistant">
+                    <MessageSquare className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Assistant</span>
                   </TabsTrigger>
-                  <TabsTrigger value="team" data-testid="tab-team">
-                    <Users className="w-4 h-4 mr-2" />
-                    Team
+                  <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
+                    <Users className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Team</span>
                   </TabsTrigger>
-                  <TabsTrigger value="tasks" data-testid="tab-tasks">
-                    <ListTodo className="w-4 h-4 mr-2" />
-                    Tasks
+                  <TabsTrigger value="tasks" data-testid="tab-tasks" aria-label="Tasks">
+                    <ListTodo className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Tasks</span>
                   </TabsTrigger>
-                  <TabsTrigger value="agents" data-testid="tab-agents">
-                    <Bot className="w-4 h-4 mr-2" />
-                    Background
+                  <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
+                    <Bot className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Background</span>
                   </TabsTrigger>
-                  <TabsTrigger value="ai-ops" data-testid="tab-ai-ops">
-                    <Brain className="w-4 h-4 mr-2" />
-                    AI Ops
+                  <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
+                    <Brain className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">AI Ops</span>
                   </TabsTrigger>
                 </TabsList>
               </div>

@@ -317,6 +317,16 @@ export async function seedSetting(args: SeedSettingArgs): Promise<void> {
     return;
   }
 
+  // platform_settings.value + .default_value are jsonb NOT NULL on prod.
+  // Override-style entries (e.g. infra.override.fly.autoStop) declare
+  // `defaultValue: null` in the catalog — those rows are meant to be ABSENT
+  // until a founder explicitly overrides them, not inserted with SQL NULL.
+  // Skip the INSERT entirely for those: getSetting() handles a missing row
+  // by returning null. Eliminates ~6 boot-time warnings per process start.
+  if (args.defaultValue === null || args.defaultValue === undefined) {
+    return;
+  }
+
   await db.insert(platformSettings).values({
     key: args.key,
     scope: "global",

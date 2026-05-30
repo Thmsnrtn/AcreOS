@@ -112,14 +112,19 @@ async function createAlert(
 
     if (existing.length > 0) return; // already alerted recently
 
+    // The systemAlerts schema requires `type` (NOT NULL legacy discriminator)
+    // and `message` (NOT NULL); it has no `description/category/source`
+    // columns. The earlier shape (hidden behind `as any`) was 500-ing every
+    // HealthMonitor tick. Map: description → message, category → alertType,
+    // source dropped (autonomous_health_monitor is implicit from call site).
     await db.insert(systemAlerts).values({
+      type: `health.${category}`,
+      alertType: category,
       title,
-      description,
+      message: description,
       severity,
       status: "open",
-      category,
-      source: "autonomous_health_monitor",
-    } as any);
+    });
   } catch (err: any) {
     logger.warn("[HealthMonitor] Failed to create alert", { metadata: { detail: err.message } });
   }
