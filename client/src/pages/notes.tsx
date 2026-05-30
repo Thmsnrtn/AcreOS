@@ -276,14 +276,14 @@ export default function NotesPage() {
       ) : notes.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="No notes yet"
-          description="Acquired notes you import or add will appear here. Track payer, balance, status, and next-payment in one place."
+          title="No notes serviced yet"
+          description="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
           actionLabel="Import notes"
           onAction={() => setIsImportOpen(true)}
           actionIcon={Upload}
           tips={[
-            "Import an existing portfolio via CSV — column-mapped to acquired_notes.",
-            "Each payment recorded feeds your annual 1099-INT batch automatically.",
+            "Import an existing portfolio via CSV — Pax column-maps it to acquired_notes inside 90 seconds.",
+            "Pax feeds each payment into the annual 1099-INT batch the moment it posts.",
           ]}
           testId="notes-empty-state"
         />

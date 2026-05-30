@@ -168,11 +168,11 @@ export default function DripSequencesPage() {
       ) : sequences.length === 0 ? (
         <EmptyState
           icon={Mail}
-          title={search ? "No matching sequences" : "No drip sequences yet"}
+          title={search ? "No matching sequences" : "Warm cold leads on a cadence"}
           description={
             search
               ? "No sequences match your search. Try a broader term, or clear the filter."
-              : "Drip sequences send a series of emails, texts, or call tasks on a schedule — perfect for warming cold leads or onboarding new buyers."
+              : "Wire up a sequence — Pax fires the next email, SMS, or call task the moment the prior touch goes 5 days silent, and stops the moment the seller replies."
           }
           actionLabel={search ? undefined : "Create your first sequence"}
           onAction={search ? undefined : () => { window.location.assign("/drip-sequences/new"); }}

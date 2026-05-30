@@ -232,8 +232,8 @@ export default function GoalsPage() {
       ) : goals.length === 0 ? (
         <EmptyState
           icon={Target}
-          title="No goals yet"
-          description="Set revenue targets, deal counts, and other KPIs to track your progress over time."
+          title="Set a target — Pax tracks the pace"
+          description="Wire up a revenue target, deal count, or offer-sent number — Pax recalculates your weekly pace overnight and flags the morning you fall off track."
           actionLabel="Create your first goal"
           onAction={() => setCreateOpen(true)}
           tips={[

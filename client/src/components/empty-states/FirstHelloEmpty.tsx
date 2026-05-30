@@ -53,40 +53,44 @@ interface SurfaceContent {
   testIdSuffix: string;
 }
 
+// Agency-frame archetype copy (Joanna): name what the user hasn't
+// done, name what Pax does the moment they do it, name when. Avoid
+// the absence-frame default ("No X yet — add some.") that signals
+// the system is idle until the user moves.
 const SURFACE_CONTENT: Record<FirstHelloSurface, SurfaceContent> = {
   leads: {
     icon: Users,
-    headline: "Welcome — let's bring in your first leads",
+    headline: "Tell Pax which counties to watch",
     subtitle:
-      "Import a CSV, paste records, or sync from a list provider. AcreOS scores every lead the moment it lands.",
+      "You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am.",
     testIdSuffix: "leads",
   },
   properties: {
     icon: Map,
-    headline: "Your inventory starts here",
+    headline: "No properties in inventory",
     subtitle:
-      "Add the parcels you're tracking — prospects, owned land, and active listings all live together.",
+      "Add your first parcel — Pax pulls comps and a flood-zone read inside 90 seconds.",
     testIdSuffix: "properties",
   },
   deals: {
     icon: Handshake,
-    headline: "Ready to track your first deal",
+    headline: "No open deals",
     subtitle:
-      "Deals connect leads, parcels, and finances. Move them through your pipeline as you negotiate.",
+      "The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet.",
     testIdSuffix: "deals",
   },
   campaigns: {
     icon: Megaphone,
     headline: "Reach motivated sellers",
     subtitle:
-      "Send your first letter, email, or SMS campaign. AcreOS handles the addresses, mail merge, and tracking.",
+      "Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and flags every reply against the right lead.",
     testIdSuffix: "campaigns",
   },
   inbox: {
     icon: Inbox,
-    headline: "Your inbox is ready",
+    headline: "Wire up an inbox",
     subtitle:
-      "Connect a mailbox or phone number and replies show up here, threaded against the right lead.",
+      "Connect a mailbox or phone number — Pax threads every reply against the right lead and drafts the response by the time you read it.",
     testIdSuffix: "inbox",
   },
 };

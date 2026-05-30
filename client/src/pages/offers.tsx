@@ -838,8 +838,8 @@ export default function OffersPage() {
               ) : !templates || templates.length === 0 ? (
                 <EmptyState
                   icon={FileText}
-                  title="No templates yet"
-                  description="Create your first offer letter template to get started."
+                  title="No offer templates"
+                  description="Save your first offer-letter template — Pax merges parcel data, owner name, and offer amount into it on every send."
                   actionLabel="Create template"
                   onAction={() => {
                     setEditingTemplate(null);

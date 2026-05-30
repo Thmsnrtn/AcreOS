@@ -33,14 +33,14 @@ export function LeadsEmptyState({
     <div className="space-y-2">
       <EmptyState
         icon={Users}
-        title="No leads yet"
-        description={`Import your first leads to start building your pipeline. ${brandName} scores and prioritizes every lead automatically.`}
+        title="Tell Pax which counties to watch"
+        description={`You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am. (${brandName})`}
         actionLabel="Add a Lead"
         onAction={onAddLead}
         tips={[
-          "Import a CSV of county tax-delinquent records",
-          "Manually add leads you've sourced yourself",
-          "The Deal Hunter can find leads for you automatically",
+          "Paste a CSV of county tax-delinquent records — Pax tags motivation signals overnight",
+          "Add a lead manually — Pax pulls comps and owner history inside 90 seconds",
+          "Point Pax at a county — it returns the first list before tomorrow morning",
         ]}
         testId="empty-state-leads"
       />
@@ -76,14 +76,14 @@ export function PropertiesEmptyState({
     <div className="space-y-2">
       <EmptyState
         icon={Map}
-        title="No properties yet"
-        description="Add properties to track your inventory — from prospect parcels to owned land and active listings."
+        title="No properties in inventory"
+        description="Add your first parcel — Pax pulls 14 comps and a flood-zone read inside 90 seconds, and re-runs the valuation the moment a comparable sale hits."
         actionLabel="Add a Property"
         onAction={onAddProperty}
         tips={[
-          "Track parcels through your entire pipeline",
-          "Import from a CSV or add individually",
-          `${brandName} auto-values every property with comps`,
+          "Add a parcel — Pax returns 14 comps and a flood-zone read in 90 seconds",
+          "Paste a CSV — Pax auto-values your inventory with 14 comps per parcel",
+          `${brandName} re-runs the valuation the moment a comparable sale lands`,
         ]}
         testId="empty-state-properties"
       />
@@ -111,14 +111,14 @@ export function DealsEmptyState({ onAddDeal }: { onAddDeal?: () => void }) {
   return (
     <EmptyState
       icon={Handshake}
-      title="No deals yet"
-      description="Create your first deal to start tracking acquisitions and dispositions through your pipeline."
+      title="No open deals"
+      description="The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet."
       actionLabel="Create a Deal"
       onAction={onAddDeal}
       tips={[
-        "Deals connect leads, properties, and finances in one view",
+        "Wire a deal to a lead and a parcel — Pax keeps the offer, counter, and reply window in one thread",
         "Track offer price, closing date, and profit projections",
-        "Move deals through stages with drag-and-drop on the Pipeline board",
+        "Move deals through stages on the Pipeline board — Pax flags the ones aging past 5 days",
       ]}
       testId="empty-state-deals"
     />
@@ -133,14 +133,14 @@ export function TasksEmptyState({ onAddTask }: { onAddTask?: () => void }) {
   return (
     <EmptyState
       icon={CheckSquare}
-      title="No tasks yet"
-      description="Create tasks to track your to-dos, follow-ups, and deadlines across all your deals."
+      title="Nothing on your list yet"
+      description="Add a task and link it to a lead, deal, or parcel — Pax slides follow-ups in automatically as deals age past 5 days."
       actionLabel="Add a Task"
       onAction={onAddTask}
       tips={[
-        "Tasks can be linked to leads, deals, or properties",
-        "Set due dates to get reminders before deadlines",
-        "Pax suggests follow-up tasks automatically",
+        "Wire a task to a lead, deal, or parcel — Pax surfaces it on Today the morning it's due",
+        "Set a due date — Pax pings you the day before, not the day of",
+        "Pax adds follow-up tasks on its own when a seller goes quiet past 5 days",
       ]}
       testId="empty-state-tasks"
     />
@@ -155,14 +155,14 @@ export function CampaignsEmptyState({ onCreateCampaign }: { onCreateCampaign?: (
   return (
     <EmptyState
       icon={Megaphone}
-      title="No campaigns yet"
-      description="Launch your first outreach campaign to connect with motivated sellers via mail, email, or SMS."
+      title="Reach motivated sellers"
+      description="Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and threads every reply back against the right lead."
       actionLabel="Create a Campaign"
       onAction={onCreateCampaign}
       tips={[
-        "Send direct mail, email, or SMS to targeted lead lists",
-        "Use drip sequences for automated multi-touch follow-ups",
-        "Track response rates and ROI per campaign",
+        "Send direct mail, email, or SMS to a targeted lead list — Pax handles the merge and the tracking pixel",
+        "Wire up a drip sequence — Pax fires the next touch the moment the prior one goes 5 days silent",
+        "Track response rates and ROI per campaign as replies land",
       ]}
       testId="empty-state-campaigns"
     />
@@ -177,14 +177,14 @@ export function FinanceEmptyState({ onAddNote }: { onAddNote?: () => void }) {
   return (
     <EmptyState
       icon={Banknote}
-      title="No promissory notes yet"
-      description="Create your first seller-financed note to start tracking payments, amortization, and portfolio value."
+      title="No notes serviced yet"
+      description="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
       actionLabel="Create a Note"
       onAction={onAddNote}
       tips={[
-        "Automatically generate amortization schedules",
-        "Track payments, delinquencies, and payoff balances",
-        "Send payment reminders via the Borrower Portal",
+        "Pax generates the amortization schedule the moment you wire the terms",
+        "Track payments, delinquencies, and payoff balances — Pax dunns on day 11, you get the email first",
+        "Pax sends payment reminders through the Borrower Portal three days before each due date",
       ]}
       testId="empty-state-finance"
     />
@@ -199,11 +199,11 @@ export function PipelineEmptyState() {
   return (
     <EmptyState
       icon={Target}
-      title="Your pipeline is empty"
-      description="Add leads and deals to see them flow through your pipeline stages."
+      title="Nothing in the pipeline"
+      description="Wire a lead to a deal — Pax tracks the offer, the reply window, and the cool-off, and pings you the day a deal needs a nudge."
       tips={[
-        "Start by adding leads — they become deals as you negotiate",
-        "Drag and drop deals between stages on the board view",
+        "Add a lead — Pax promotes it to the pipeline the moment you send an offer",
+        "Drag deals between stages on the board view — Pax flags the ones aging past 5 days",
       ]}
       testId="empty-state-pipeline"
     />

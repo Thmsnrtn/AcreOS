@@ -40,9 +40,10 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
         transition={{ delay: 0.2 }}
         className="text-center max-w-md"
       >
-        <h3 className="text-xl font-semibold mb-2">No tasks yet</h3>
+        <h3 className="text-xl font-semibold mb-2">Nothing on your list yet</h3>
         <p className="text-muted-foreground mb-6">
-          Create tasks to track follow-ups, document requests, and action items across your deals and leads.
+          Add a task and link it to a lead, deal, or parcel — Pax slides
+          follow-ups in automatically as deals age past 5 days.
         </p>
 
         {onAddTask && (
@@ -63,7 +64,9 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                Pax AI can generate suggested follow-up tasks automatically when you close conversations with leads.
+                Pax adds a follow-up task the moment a seller goes 5
+                days silent — you don't have to remember the cool-off
+                window.
               </p>
             </div>
           </div>

@@ -420,8 +420,8 @@ export default function FinancePage() {
               ) : !enrichedNotes || enrichedNotes.length === 0 ? (
                 <EmptyState
                   icon={FileText}
-                  title="No promissory notes yet"
-                  description="Create a note to track financing. Manage seller financing, track payments, and generate amortization schedules."
+                  title="No notes serviced yet"
+                  description="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then dunns on day 11 and emits the 1099-NEC at year-end."
                   actionLabel="Create Your First Note"
                   onAction={() => setIsCreateOpen(true)}
                 />

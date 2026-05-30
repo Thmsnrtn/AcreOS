@@ -1284,7 +1284,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                       ))
                     ) : (
                       <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                        {propertiesLoading ? "Loading properties…" : "No properties yet — add one first."}
+                        {propertiesLoading ? "Loading properties…" : "Add a parcel first — Pax pulls comps inside 90 seconds."}
                       </div>
                     )}
                   </SelectContent>

@@ -782,8 +782,8 @@ function SMSConversationDetail({
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-center">
             <MessageSquare className="h-12 w-12 mb-2 opacity-50" aria-hidden="true" />
-            <p>No messages yet</p>
-            <p className="text-sm">Send a message to start the conversation.</p>
+            <p>Thread starts the moment you hit send</p>
+            <p className="text-sm">Pax threads every reply against this lead and pings you if the seller goes 5 days quiet.</p>
           </div>
         ) : (
           <div

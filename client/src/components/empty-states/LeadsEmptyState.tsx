@@ -52,11 +52,12 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          Your lead pipeline starts here
+          Tell Pax which counties to watch
         </h3>
         <p className="text-muted-foreground mb-6">
-          Import your first batch of leads or add them one by one. AcreOS will help you track 
-          every conversation and close more deals.
+          You haven't told Pax which counties to watch yet. Paste a county
+          list or upload a CSV — Pax scores every new record within 90
+          seconds and surfaces the top three on Today by 6am.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -85,8 +86,9 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                AcreOS can score your leads automatically based on motivation signals, 
-                helping you focus on the sellers most likely to close.
+                Pax scores every new lead within 90 seconds against the
+                motivation signals it tracks — tax delinquency, vacancy,
+                inherited deed — so the top three are on Today by 6am.
               </p>
             </div>
           </div>

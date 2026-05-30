@@ -40,9 +40,11 @@ export function CampaignsEmptyState({ onCreateCampaign }: CampaignsEmptyStatePro
         transition={{ delay: 0.2 }}
         className="text-center max-w-md"
       >
-        <h3 className="text-xl font-semibold mb-2">No campaigns yet</h3>
+        <h3 className="text-xl font-semibold mb-2">Reach motivated sellers</h3>
         <p className="text-muted-foreground mb-6">
-          Launch direct mail, SMS, or email campaigns to reach motivated sellers at scale.
+          Pick a list and a letter — Pax handles addresses, mail merge,
+          and tracking, and threads every reply back against the right
+          lead.
         </p>
 
         {onCreateCampaign && (
@@ -63,7 +65,9 @@ export function CampaignsEmptyState({ onCreateCampaign }: CampaignsEmptyStatePro
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                AcreOS can auto-generate personalized outreach sequences for each lead based on their property profile.
+                Pax drafts a personalized outreach sequence for each
+                lead based on the parcel profile — you approve the
+                copy, Pax handles the cadence.
               </p>
             </div>
           </div>

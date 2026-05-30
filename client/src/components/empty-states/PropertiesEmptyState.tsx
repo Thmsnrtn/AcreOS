@@ -52,11 +52,12 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          Build your property portfolio
+          No properties in inventory
         </h3>
         <p className="text-muted-foreground mb-6">
-          Add properties you're evaluating or already own. Get instant valuations, track due 
-          diligence, and manage your entire inventory.
+          Add your first parcel — Pax pulls 14 comps and a flood-zone read
+          inside 90 seconds, and re-runs the valuation the moment a
+          comparable sale hits.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -85,8 +86,8 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                Enter the APN (Assessor Parcel Number) to automatically pull county 
-                records, GIS data, and comparable sales.
+                Drop in the APN — Pax pulls county records, GIS, and 14
+                comparable sales inside 90 seconds.
               </p>
             </div>
           </div>

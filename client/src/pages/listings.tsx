@@ -622,8 +622,8 @@ export default function ListingsPage() {
         ) : !listings || listings.length === 0 ? (
           <EmptyState
             icon={Building}
-            title="No listings yet"
-            description="Create your first property listing to start marketing."
+            title="No listings live"
+            description="Publish your first listing — Pax syndicates it to your active channels within 90 seconds and threads every inquiry back to the parcel."
             actionLabel="Create listing"
             onAction={() => setIsCreateOpen(true)}
           />

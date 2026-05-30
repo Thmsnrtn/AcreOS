@@ -141,8 +141,8 @@ function BlastIndex() {
       ) : blasts.length === 0 ? (
         <EmptyState
           icon={Send}
-          title="No buyer blasts yet"
-          description="When you lock up a subject property, blast your matched cash buyers in one click. AcreOS sends the emails + tracks each recipient's status."
+          title="Lock up a subject — blast your cash buyer list"
+          description="The moment you lock up a subject property, Pax matches it against your cash buyer list, fires the email, and tracks opens + replies per recipient."
           actionLabel="Blast a property"
           actionIcon={Plus}
           onAction={() => setComposerOpen(true)}

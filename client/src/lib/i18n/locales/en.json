@@ -51,24 +51,24 @@
   },
   "emptyState": {
     "leads": {
-      "title": "Welcome — let's bring in your first leads",
-      "description": "Import a CSV, paste records, or sync from a list provider. AcreOS scores every lead the moment it lands."
+      "title": "Tell Pax which counties to watch",
+      "description": "You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am."
     },
     "properties": {
-      "title": "Your inventory starts here",
-      "description": "Add the parcels you're tracking — prospects, owned land, and active listings all live together."
+      "title": "No properties in inventory",
+      "description": "Add your first parcel — Pax pulls 14 comps and a flood-zone read inside 90 seconds."
     },
     "deals": {
-      "title": "Ready to track your first deal",
-      "description": "Deals connect leads, parcels, and finances. Move them through your pipeline as you negotiate."
+      "title": "No open deals",
+      "description": "The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet."
     },
     "campaigns": {
       "title": "Reach motivated sellers",
-      "description": "Send your first letter, email, or SMS campaign. AcreOS handles the addresses, mail merge, and tracking."
+      "description": "Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and threads every reply back against the right lead."
     },
     "inbox": {
-      "title": "Your inbox is ready",
-      "description": "Connect a mailbox or phone number and replies show up here, threaded against the right lead."
+      "title": "Wire up an inbox",
+      "description": "Connect a mailbox or phone number — Pax threads every reply against the right lead and drafts the response by the time you read it."
     }
   },
   "landing": {

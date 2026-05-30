@@ -51,11 +51,11 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          Your deal pipeline awaits
+          No open deals
         </h3>
         <p className="text-muted-foreground mb-6">
-          Create deals to track acquisitions and dispositions from first contact to closing. 
-          Never lose track of an opportunity again.
+          The moment you send an offer, Pax tracks the reply window and
+          pings you on day 5 if the seller goes quiet.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -78,8 +78,9 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                Link deals to properties and leads to get a complete picture of
-                your land-investing pipeline from lead to profit.
+                Wire deals to parcels and leads — Pax keeps the offer,
+                counter, reply window, and cool-off in one thread, and
+                pings you the day a deal aged past 5 days.
               </p>
             </div>
           </div>
