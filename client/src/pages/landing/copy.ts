@@ -40,9 +40,9 @@ export const LANDING_COPY = {
       "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
     sub:
       "AcreOS pulls lists, runs comps, sends direct mail, drafts seller replies, and tracks every parcel from cold lead through closed note. The operator handles judgment calls; the system handles the busy work.",
-    cta1: "Start free trial",
-    cta2: "See how it works",
-    ctaSub: "14 days free. No credit card required.",
+    cta1: "See Pax run on your county — free for 14 days",
+    cta2: "Watch a 90-second demo first",
+    ctaSub: "Pax pulls your first list inside 10 minutes.",
     proof: "",
   },
   positioning: {
