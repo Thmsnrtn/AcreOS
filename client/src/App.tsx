@@ -274,6 +274,9 @@ const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-que
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
 const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-calibration"));
+// Wave 3 Workstream E — distribution truth surface. Paid / trial /
+// churned counts + UTM sources + recent signups by name.
+const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
 // /founder/bridge. The page file lives on disk pending extraction sweep.
 // /founder is the Atlas chat shell; /founder/bridge is the fused
@@ -1019,6 +1022,10 @@ function Router() {
       </Route>
       <Route path="/founder/pax-calibration">
         {() => <FounderProtectedRoute component={FounderPaxCalibrationPage} />}
+      </Route>
+      {/* Wave 3 Workstream E (distribution telemetry) — acquisition truth */}
+      <Route path="/founder/customers">
+        {() => <FounderProtectedRoute component={FounderCustomersPage} />}
       </Route>
       <Route path="/founder/integrations">
         {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}

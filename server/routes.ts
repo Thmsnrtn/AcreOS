@@ -202,6 +202,7 @@ import { registerCohortLtvRoutes } from "./routes-cohort-ltv";
 import { registerPaxQualityRoutes } from "./routes-pax-quality";
 import { registerPaxTracesRoutes } from "./routes-pax-traces";
 import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
+import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -2119,6 +2120,11 @@ export async function registerRoutes(
   // Workstream A (Honesty) wave 2 — founder-only Pax calibration plot at
   // /api/founder/pax-calibration. Bucketed predicted-vs-realized accept-rate.
   registerPaxCalibrationRoutes(app);
+  // Wave 3 Workstream E (distribution telemetry) — founder-only
+  // acquisition truth surface at /api/founder/customers. Paid / trial /
+  // churned counts + top UTM sources + recent signup names. Companion to
+  // the qualitative customers.md tracker at the repo root.
+  registerFounderCustomersRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
