@@ -39,7 +39,7 @@ export const LANDING_COPY = {
     wedge:
       "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
     sub:
-      "AcreOS pulls lists, runs comps, sends direct mail, drafts seller replies, and tracks every parcel from cold lead through closed note. The operator handles judgment calls; the system handles the busy work.",
+      "AcreOS pulls lists, runs comps with 14 per parcel, sends direct mail, drafts seller replies, and tracks parcels from cold lead through closed note in one thread. The operator handles judgment calls; the system handles the busy work.",
     cta1: "See Pax run on your county — free for 14 days",
     cta2: "Watch a 90-second demo first",
     ctaSub: "Pax pulls your first list inside 10 minutes.",
@@ -57,7 +57,7 @@ export const LANDING_COPY = {
       {
         n: 1,
         t: "Define the buy-box",
-        b: "Counties, acreage, price band, owner profile. AcreOS filters every new lead against it.",
+        b: "Counties, acreage, price band, owner profile. AcreOS filters new leads against it within 90 seconds of ingest.",
       },
       {
         n: 2,
@@ -96,7 +96,7 @@ export const LANDING_COPY = {
     eyebrow: "Pricing",
     title: "Transparent pricing.",
     sub:
-      "Numbers on the page. No \"contact us\" wall. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the data costs every operator already pays.",
+      "Numbers on the page. No \"contact us\" wall. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay.",
   },
   faq: {
     eyebrow: "Common questions",

@@ -126,10 +126,10 @@ export default function GlossaryPage() {
           </div>
           <h1 className="text-4xl font-bold">Land Investor glossary</h1>
           <p className="text-muted-foreground max-w-2xl leading-relaxed">
-            Land investing has dense vocabulary. Here's plain-English
-            definitions for every term you'll see across AcreOS — and a few
-            you'll see on a closing statement, in a title commitment, or in
-            your county appraisal portal.
+            Land investing has dense vocabulary. Plain-English
+            definitions for the {entries.length} terms you'll see across
+            AcreOS — and a handful you'll see on a closing statement, in
+            a title commitment, or in your county appraisal portal.
           </p>
         </header>
 

@@ -18,12 +18,12 @@ type GlyphKind =
   | "doc" | "pen" | "ledger" | "flow" | "audit" | "team";
 
 const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
-  { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS watches every listing, parcel, note, distressed lien, or off-market lead that matches — forever.", i: "box" },
-  { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Ready every Monday morning.", i: "list" },
+  { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS scans listings, parcels, notes, distressed liens, and off-market leads against it within 90 seconds of ingest — forever.", i: "box" },
+  { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Pax ships the week's list on Monday at 6am.", i: "list" },
   { cat: "Analyze", t: "Comp engine", d: "Real comparable sales, not Zillow guesses. With confidence scores.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },
   { cat: "Reach", t: "Mail platform", d: "Multi-touch campaigns. Tracked. A/B tested. Full creative control.", i: "mail" },
-  { cat: "Reach", t: "Pax Inbox", d: "SMS, email, voicemail in one thread. Drafts ready for every reply.", i: "inbox" },
+  { cat: "Reach", t: "Pax Inbox", d: "SMS, email, voicemail in one thread. Pax drafts a reply within 90 seconds of the inbound.", i: "inbox" },
   { cat: "Close", t: "Offer composer", d: "Generate written offers in 30 seconds. Pax defends the price.", i: "doc" },
   { cat: "Close", t: "E-sign + escrow", d: "Send contracts, track signatures, hand off to title — without leaving the app.", i: "pen" },
   { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices, 1098s. Seller-finance back office.", i: "ledger" },
