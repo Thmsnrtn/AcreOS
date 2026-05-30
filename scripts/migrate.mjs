@@ -80,6 +80,33 @@ const STATEMENTS = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "persona" text NOT NULL DEFAULT 'land_investor'`,
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notification_prefs" jsonb',
 
+  // 2026-05-29 — E-SIGN Act §101(c)(1)(B) consumer-consent capture.
+  // Mirrors migrations/0100_esign_consumer_consent.sql. The previous
+  // /sign/:docId surface showed only a single "legally binding" line —
+  // missing all five required pre-consent disclosures. Adds per-user
+  // consent timestamp + version so the dialog suppresses itself once
+  // consent is on file (and re-fires when the disclosure version bumps).
+  'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "esign_consented_at" timestamp',
+  'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "esign_consent_version" varchar(32)',
+  `CREATE TABLE IF NOT EXISTS "signing_consent_audit" (
+     "id" serial PRIMARY KEY,
+     "user_id" varchar,
+     "organization_id" integer REFERENCES "organizations"("id"),
+     "signer_email" text,
+     "document_id" integer REFERENCES "generated_documents"("id"),
+     "disclosure_version" varchar(32) NOT NULL,
+     "consented_hardware_requirements" boolean NOT NULL DEFAULT false,
+     "consented_paper_copy_right" boolean NOT NULL DEFAULT false,
+     "consented_withdrawal_right" boolean NOT NULL DEFAULT false,
+     "consented_contact_update" boolean NOT NULL DEFAULT false,
+     "consented_scope" boolean NOT NULL DEFAULT false,
+     "ip_address" text,
+     "user_agent" text,
+     "consented_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "signing_consent_audit_user_idx" ON "signing_consent_audit" ("user_id")',
+  'CREATE INDEX IF NOT EXISTS "signing_consent_audit_email_doc_idx" ON "signing_consent_audit" ("signer_email", "document_id")',
+
   // 2026-05-08 — Note Investor servicing-ledger discipline (PR-2 of the
   // vertical completion sweep). Adds the columns the partial / unapplied /
   // extra-principal / payoff / NSF-reversal flow needs to record correctly

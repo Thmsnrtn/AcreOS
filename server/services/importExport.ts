@@ -1303,6 +1303,11 @@ export async function importNotesFromCSV(
         paymentMethod: "manual",
         autoPayEnabled: false,
         internalNotes: row.internalNotes || null,
+        // Reg-Z §1026.43 hard gate (Workstream A). Imported notes were
+        // originated before they entered AcreOS — flagged 'legacy' so the
+        // ATR origination gate accepts them. Servicing surfaces flag
+        // 'legacy' rows for retroactive review.
+        atrExemptionCode: "legacy",
       } as any);
 
       result.successCount++;

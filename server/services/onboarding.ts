@@ -1324,6 +1324,11 @@ Generate 3 helpful tips for this step.`,
         downPayment: "1990",
         downPaymentReceived: true,
         notes_text: "Sample seller-financed note. Buyer is paying on time.",
+        // Reg-Z §1026.43 hard gate (Workstream A). Sample onboarding data is
+        // synthetic / non-consumer — flagged exempt so the gate constraint
+        // doesn't reject the seed insert. Real consumer originations must
+        // go through POST /api/notes/:id/originate with a full ATR.
+        atrExemptionCode: "business_purpose",
       };
 
       await storage.createNote(sampleNote as any);

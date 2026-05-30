@@ -1251,6 +1251,173 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
+  // CSV importer with column auto-mapping + APN dedupe (Hank fix).
+  // Accepts pre-mapped rows from the client (the parsed + user-confirmed
+  // header → field mapping happens in CsvImportSheet). Runs the insert
+  // in a transactional batch and reports per-row outcomes so the user
+  // can see exactly which rows were skipped (existing APN) vs invalid.
+  const csvImportRowSchema = z.object({
+    firstName: z.string().min(1).optional(),
+    lastName: z.string().min(1).optional(),
+    ownerName: z.string().optional(),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zip: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().optional(),
+    apn: z.string().optional(),
+  });
+  const csvImportBodySchema = z.object({
+    rows: z.array(csvImportRowSchema).min(1).max(MAX_CSV_IMPORT_ROWS),
+  });
+  api.post(
+    "/api/leads/csv-import",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireScope("deal_write"),
+    usageLimitGate("leads"),
+    async (req, res) => {
+      try {
+        const org = (req as AuthenticatedRequest).organization;
+        const parsed = csvImportBodySchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return Errors.badRequest(
+            res,
+            "Validation failed",
+            parsed.error.issues.map((e) => ({
+              field: e.path.join("."),
+              message: e.message,
+            })),
+          );
+        }
+        const { rows } = parsed.data;
+
+        // 1) Collect APNs for dedupe lookup.
+        const incomingApns = Array.from(
+          new Set(
+            rows
+              .map((r) => (r.apn ?? "").trim())
+              .filter((a) => a.length > 0),
+          ),
+        );
+
+        // 2) Existing-APN lookup. Org-scoped — different orgs may
+        //    legitimately have the same APN as a lead.
+        let existingApns = new Set<string>();
+        if (incomingApns.length > 0) {
+          const existing = await db
+            .select({ apn: leads.apn })
+            .from(leads)
+            .where(
+              and(
+                eq(leads.organizationId, org.id),
+                inArray(leads.apn, incomingApns),
+              ),
+            );
+          existingApns = new Set(
+            existing
+              .map((r) => (r.apn ?? "").trim())
+              .filter((a) => a.length > 0),
+          );
+        }
+
+        // 3) Within-file APN dedupe — keep first occurrence.
+        const seenApnInFile = new Set<string>();
+
+        const errors: Array<{ row: number; message: string }> = [];
+        let imported = 0;
+        let skippedExisting = 0;
+        let skippedInvalid = 0;
+        let skippedDuplicateInFile = 0;
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const apn = (row.apn ?? "").trim();
+
+          // First/last name fallback: when CSV only has an "Owner Name"
+          // column (common on county lists), split on the first space.
+          let firstName = row.firstName?.trim() ?? "";
+          let lastName = row.lastName?.trim() ?? "";
+          if ((!firstName || !lastName) && row.ownerName) {
+            const parts = row.ownerName.trim().split(/\s+/);
+            firstName = firstName || parts[0] || "";
+            lastName = lastName || parts.slice(1).join(" ") || parts[0] || "";
+          }
+
+          if (!firstName || !lastName) {
+            skippedInvalid++;
+            errors.push({
+              row: i + 1,
+              message: "Missing required firstName/lastName (and no usable ownerName).",
+            });
+            continue;
+          }
+
+          if (apn) {
+            if (existingApns.has(apn)) {
+              skippedExisting++;
+              continue;
+            }
+            if (seenApnInFile.has(apn)) {
+              skippedDuplicateInFile++;
+              continue;
+            }
+            seenApnInFile.add(apn);
+          }
+
+          try {
+            await db.insert(leads).values({
+              organizationId: org.id,
+              type: "seller",
+              firstName,
+              lastName,
+              email: row.email?.trim() || null,
+              phone: row.phone?.trim() || null,
+              address: row.address?.trim() || null,
+              city: row.city?.trim() || null,
+              state: row.state?.trim() || null,
+              zip: row.zip?.trim() || null,
+              apn: apn || null,
+              source: "csv_import",
+              status: "new",
+            } as any);
+            imported++;
+          } catch (insertErr) {
+            skippedInvalid++;
+            errors.push({
+              row: i + 1,
+              message: (insertErr as Error)?.message ?? "Insert failed",
+            });
+          }
+        }
+
+        logger.info("CSV import completed", {
+          orgId: org.id,
+          total: rows.length,
+          imported,
+          skippedExisting,
+          skippedInvalid,
+          skippedDuplicateInFile,
+        });
+
+        res.json({
+          imported,
+          skippedExisting,
+          skippedInvalid,
+          skippedDuplicateInFile,
+          errors: errors.slice(0, 50), // cap to keep payload bounded
+        });
+      } catch (err) {
+        logger.error(
+          "CSV import failed",
+          err instanceof Error ? err : undefined,
+        );
+        Errors.internal(res, err as Error);
+      }
+    },
+  );
+
   // Tax Delinquent List Import (Phase 2.5)
   api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

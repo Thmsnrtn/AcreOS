@@ -26,6 +26,7 @@ import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileLeadList } from "@/components/mobile/MobileLeadList";
+import { CsvImportSheet } from "@/components/leads/CsvImportSheet";
 
 // Module-level hook removed — use inside component instead
 
@@ -696,6 +697,9 @@ function LeadsPageDesktop() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(actionFromUrl === "import");
   const [isTaxDelinquentImportOpen, setIsTaxDelinquentImportOpen] = useState(false);
+  // Hank fix — column auto-mapping + APN dedupe importer. Distinct from
+  // the legacy `isImportOpen` dialog, which expects fixed AcreOS headers.
+  const [isSmartCsvOpen, setIsSmartCsvOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{
     totalRows: number;
@@ -1569,7 +1573,7 @@ function LeadsPageDesktop() {
                                   surface="leads"
                                   cta={{
                                     primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
-                                    secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                                    secondary: { label: "Import from CSV", onClick: () => setIsSmartCsvOpen(true) },
                                   }}
                                 />
                               </TableCell>
@@ -1745,7 +1749,7 @@ function LeadsPageDesktop() {
                           surface="leads"
                           cta={{
                             primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
-                            secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                            secondary: { label: "Import from CSV", onClick: () => setIsSmartCsvOpen(true) },
                           }}
                         />
                       )}
@@ -2166,10 +2170,14 @@ function LeadsPageDesktop() {
         </ResponsiveModalContent>
       </ResponsiveModal>
 
-      <TaxDelinquentImporter 
-        open={isTaxDelinquentImportOpen} 
-        onOpenChange={setIsTaxDelinquentImportOpen} 
+      <TaxDelinquentImporter
+        open={isTaxDelinquentImportOpen}
+        onOpenChange={setIsTaxDelinquentImportOpen}
       />
+
+      {/* Hank fix — column auto-mapping + APN dedupe importer. Launched
+          from the leads empty-state secondary CTA. */}
+      <CsvImportSheet open={isSmartCsvOpen} onOpenChange={setIsSmartCsvOpen} />
     </PageShell>
   );
 }

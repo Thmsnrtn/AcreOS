@@ -486,6 +486,13 @@ export function registerSubdivisionRoutes(app: Express): void {
                   const startDate = new Date(sf.startDate);
                   const firstPaymentDate = new Date(sf.firstPaymentDate);
 
+                  // Reg-Z §1026.43 hard gate (Workstream A): subdivision
+                  // bridge lands the note in 'pending' — the operator must
+                  // call POST /api/notes/:id/originate with either an ATR
+                  // determination (improved land = consumer dwelling) or the
+                  // `raw_land` exemption (most subdivision lots) before the
+                  // note can transition to 'active'. The DB CHECK constraint
+                  // (notes_atr_origination_gate) backstops both layers.
                   const [newNote] = await db.insert(notes).values({
                     organizationId: orgId,
                     propertyId: updated.id,
@@ -500,9 +507,9 @@ export function registerSubdivisionRoutes(app: Express): void {
                     startDate,
                     firstPaymentDate,
                     nextPaymentDate: firstPaymentDate,
-                    status: "active",
+                    status: "pending",
                     paymentMethod: sf.paymentMethod ?? null,
-                    notes: sf.notes ?? `Originated from child lot ${updated.childLotNumber ?? updated.apn}`,
+                    notes: sf.notes ?? `Originated from child lot ${updated.childLotNumber ?? updated.apn} — pending ATR determination or exemption code`,
                     accessToken: `note_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
                   }).returning({ id: notes.id });
 

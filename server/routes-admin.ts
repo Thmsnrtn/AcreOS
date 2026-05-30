@@ -628,7 +628,15 @@ export function registerAdminRoutes(app: Express): void {
       ];
       
       for (const note of demoNotes) {
-        await storage.createNote({ ...note, organizationId: org.id });
+        // Reg-Z §1026.43 hard gate (Workstream A). Demo data is synthetic /
+        // non-consumer — flagged exempt so the gate constraint doesn't reject
+        // the seed insert. Real consumer originations must go through
+        // POST /api/notes/:id/originate with a full ATR determination.
+        await storage.createNote({
+          ...note,
+          organizationId: org.id,
+          atrExemptionCode: "business_purpose",
+        } as any);
       }
       
       res.json({ 

@@ -38,6 +38,8 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { usePersona, useTerm } from "@/hooks/use-persona";
+import { AtrGate } from "@/components/AtrGate";
+import { useAuth } from "@/hooks/use-auth";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -590,6 +592,25 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   onClose: () => void;
   onDelete: () => void;
 }) {
+  const { user: authedUser } = useAuth();
+  // Build the attestor payload for the ATR gate (Reg-Z §1026.43). Only the
+  // current authenticated user can attest — we drop a render of AtrGate
+  // entirely if useAuth hasn't resolved.
+  const atrAttestor =
+    authedUser && (authedUser as { id?: string }).id
+      ? {
+          id: String((authedUser as { id: string }).id),
+          name: [
+            (authedUser as { firstName?: string }).firstName,
+            (authedUser as { lastName?: string }).lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim() ||
+            (authedUser as { email?: string }).email ||
+            "Authorized signer",
+        }
+      : null;
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [showAcceptPayment, setShowAcceptPayment] = useState(false);
@@ -848,6 +869,17 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Reg-Z §1026.43 origination gate (Workstream A). Renders only
+              when the note hasn't been originated yet — operator must either
+              record an ATR determination or claim a statutory exemption
+              before the note transitions to 'active'. */}
+          {note.status === "pending" && atrAttestor ? (
+            <AtrGate
+              noteId={note.id}
+              attestor={atrAttestor}
+              onActivated={onClose}
+            />
+          ) : null}
           <div className="grid grid-cols-2 gap-4">
             <Card className="glass-panel">
               <CardContent className="p-4">

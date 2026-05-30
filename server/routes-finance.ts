@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
-import { insertNoteSchema, insertPaymentSchema, paymentReminders } from "@shared/schema";
+import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
@@ -14,6 +14,13 @@ import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import {
+  persistAtrDetermination,
+  AtrIncompleteError,
+  type AtrDeterminationInput,
+} from "./services/atrSafeHarbor";
+import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 
 // Zod schema for note updates — only user-editable fields are allowed.
 // Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
@@ -188,6 +195,19 @@ export function registerFinanceRoutes(app: Express): void {
       const maturityDate = req.body.maturityDate ? new Date(req.body.maturityDate) : undefined;
       const nextPaymentDate = req.body.nextPaymentDate ? new Date(req.body.nextPaymentDate) : firstPaymentDate;
 
+      // Reg-Z §1026.43 hard gate (Workstream A): new notes default to
+      // status='pending' so origination is forced through the gated
+      // POST /api/notes/:id/originate route. If the caller explicitly
+      // supplied status='active' WITH an ATR completion or exemption code,
+      // we honor that; otherwise we downgrade to 'pending' to keep the
+      // consummation path through the audited chokepoint.
+      const callerSuppliedActiveWithAtr =
+        req.body.status === "active" &&
+        (req.body.atrDeterminationCompleted === true ||
+          (typeof req.body.atrExemptionCode === "string" &&
+            ["raw_land", "business_purpose", "commercial_borrower"].includes(req.body.atrExemptionCode)));
+      const resolvedStatus = callerSuppliedActiveWithAtr ? "active" : "pending";
+
       const input = insertNoteSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -197,9 +217,27 @@ export function registerFinanceRoutes(app: Express): void {
         firstPaymentDate,
         maturityDate,
         nextPaymentDate,
+        status: resolvedStatus,
       });
-      const note = await storage.createNote(input);
-      
+      let note;
+      try {
+        note = await storage.createNote(input);
+      } catch (e: any) {
+        if (e?.code === "ATR_DETERMINATION_REQUIRED") {
+          return res.status(422).json({
+            error: "ATR_DETERMINATION_REQUIRED",
+            message: e.message,
+            details: {
+              regulatoryCite: "12 CFR §1026.43(c)",
+              acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
+              useEndpoint: "POST /api/notes/:id/originate",
+            },
+            statusCode: 422,
+          });
+        }
+        throw e;
+      }
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
@@ -212,7 +250,7 @@ export function registerFinanceRoutes(app: Express): void {
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
       res.status(201).json(note);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -261,7 +299,24 @@ export function registerFinanceRoutes(app: Express): void {
       }
     }
 
-    const note = await storage.updateNote(noteId, validated, org.id);
+    let note;
+    try {
+      note = await storage.updateNote(noteId, validated, org.id);
+    } catch (e: any) {
+      if (e?.code === "ATR_DETERMINATION_REQUIRED") {
+        return res.status(422).json({
+          error: "ATR_DETERMINATION_REQUIRED",
+          message: e.message,
+          details: {
+            regulatoryCite: "12 CFR §1026.43(c)",
+            acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
+            useEndpoint: "POST /api/notes/:id/originate",
+          },
+          statusCode: 422,
+        });
+      }
+      throw e;
+    }
 
     const user = req.user as any;
     const userId = user?.id || user?.id;
@@ -278,7 +333,176 @@ export function registerFinanceRoutes(app: Express): void {
 
     res.json(note);
   });
-  
+
+  // ── POST /api/notes/:id/originate ─────────────────────────────────────────
+  //
+  // The Reg-Z §1026.43 consummation chokepoint. Accepts either:
+  //   { atrDetermination: <eight-factor payload> } — runs
+  //     persistAtrDetermination() (which validates + writes the attestation
+  //     row + sets atrDeterminationCompleted=true), then flips status to
+  //     'active'.
+  //   { atrExemptionCode: "raw_land" | "business_purpose" | "commercial_borrower" }
+  //     — the loan is statutorily out of scope; record the code and flip
+  //     status to 'active'.
+  //
+  // The DB CHECK constraint notes_atr_origination_gate is the second line
+  // of defense: if any code path forgets to call this route and tries to
+  // flip status='active' raw, Postgres rejects it.
+  const atrExemptionSchema = z.enum(["raw_land", "business_purpose", "commercial_borrower"]);
+  const atrVerificationDocumentSchema = z.object({
+    factor: z.string().min(1),
+    documentType: z.enum([
+      "w2",
+      "tax_return",
+      "bank_statement",
+      "pay_stub",
+      "voe",
+      "credit_report",
+      "other",
+    ]),
+    receivedDate: z.string().min(1),
+    storedAt: z.string().optional(),
+  });
+  const atrDeterminationPayloadSchema = z.object({
+    currentOrReasonablyExpectedIncomeCents: z.number().int(),
+    currentEmploymentStatus: z.string().min(1),
+    monthlyMortgagePaymentCents: z.number().int(),
+    monthlyPaymentSimultaneousLoansCents: z.number().int(),
+    monthlyPaymentMortgageRelatedObligationsCents: z.number().int(),
+    currentDebtObligationsAlimonyChildSupportCents: z.number().int(),
+    monthlyDtiOrResidualIncomeCents: z.number().int(),
+    creditHistorySummary: z.string().min(1),
+    verificationDocuments: z.array(atrVerificationDocumentSchema),
+    qmClassification: z
+      .enum(["general_qm", "small_creditor_qm", "seasoned_qm", "non_qm"])
+      .nullable(),
+    attestedBy: z.string().min(1),
+    attestedByUserId: z.number().int(),
+    attestationText: z.string().min(1),
+  });
+  const originateBodySchema = z
+    .object({
+      atrDetermination: atrDeterminationPayloadSchema.optional(),
+      atrExemptionCode: atrExemptionSchema.optional(),
+    })
+    .refine(
+      (v) => !!v.atrDetermination !== !!v.atrExemptionCode,
+      "Provide exactly one of atrDetermination or atrExemptionCode",
+    );
+
+  api.post(
+    "/api/notes/:id/originate",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      const authedReq = req as AuthenticatedRequest;
+      try {
+        const orgId = getOrganizationId(authedReq);
+        const userId = getUserId(authedReq);
+        const noteId = Number(req.params.id);
+        if (!Number.isFinite(noteId) || noteId <= 0) {
+          return Errors.badRequest(res, "Invalid note ID");
+        }
+
+        const existing = await storage.getNote(orgId, noteId);
+        if (!existing) return Errors.notFound(res, "Note");
+        if (existing.status === "active") {
+          return res.status(409).json({
+            error: "ALREADY_ACTIVE",
+            message: "Note has already been originated; status is 'active'.",
+            statusCode: 409,
+          });
+        }
+
+        const parsed = originateBodySchema.safeParse(req.body);
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.issues);
+        }
+
+        if (parsed.data.atrDetermination) {
+          try {
+            const atrInput: AtrDeterminationInput = {
+              ...parsed.data.atrDetermination,
+              noteId,
+              organizationId: orgId,
+            };
+            await persistAtrDetermination(atrInput);
+          } catch (atrErr) {
+            if (atrErr instanceof AtrIncompleteError) {
+              return res.status(422).json({
+                error: "ATR_INCOMPLETE",
+                message: atrErr.message,
+                details: { code: atrErr.code, missing: atrErr.missing },
+                statusCode: 422,
+              });
+            }
+            throw atrErr;
+          }
+        } else if (parsed.data.atrExemptionCode) {
+          // Statutory exemption — record the code, no eight-factor data
+          // required. updateNote() backstops this with its own validation.
+          await db
+            .update(notesTable)
+            .set({
+              atrExemptionCode: parsed.data.atrExemptionCode,
+              updatedAt: new Date(),
+            })
+            .where(eq(notesTable.id, noteId));
+        }
+
+        // Flip status to active. updateNote enforces the gate (in addition
+        // to the DB CHECK constraint).
+        let activated;
+        try {
+          activated = await storage.updateNote(noteId, { status: "active" }, orgId);
+        } catch (e: any) {
+          if (e?.code === "ATR_DETERMINATION_REQUIRED") {
+            return res.status(422).json({
+              error: "ATR_DETERMINATION_REQUIRED",
+              message: e.message,
+              statusCode: 422,
+            });
+          }
+          throw e;
+        }
+
+        await storage.createAuditLogEntry({
+          organizationId: orgId,
+          userId,
+          action: "originate",
+          entityType: "note",
+          entityId: noteId,
+          changes: {
+            before: { status: existing.status },
+            after: { status: "active" },
+            fields: ["status"],
+          },
+          ipAddress: req.ip || req.socket?.remoteAddress || null,
+          userAgent: (req.headers["user-agent"] as string) || null,
+          metadata: {
+            regulatoryCite: "12 CFR §1026.43(c)",
+            mode: parsed.data.atrDetermination ? "atr_determination" : "exemption",
+            exemptionCode: parsed.data.atrExemptionCode ?? null,
+          },
+        });
+
+        logger.info("notes.originated", {
+          noteId,
+          organizationId: orgId,
+          mode: parsed.data.atrDetermination ? "atr_determination" : "exemption",
+          exemptionCode: parsed.data.atrExemptionCode ?? null,
+        });
+
+        res.json(activated);
+      } catch (error) {
+        logger.error("notes.originate.failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        Errors.internal(res, error);
+      }
+    },
+  );
+
   api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const noteId = Number(req.params.id);

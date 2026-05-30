@@ -684,6 +684,13 @@ export const leads = pgTable("leads", {
   tags: jsonb("tags").$type<string[]>(),
   assignedTo: integer("assigned_to"), // team member ID
   lastContactedAt: timestamp("last_contacted_at"),
+  // Assessor's Parcel Number — captured by the CSV importer for tax-
+  // delinquent / county lists where APN is the canonical de-dup key.
+  // Nullable because the manual-add path doesn't require it; APN
+  // uniqueness is enforced PER ORG inside the importer (not via a DB
+  // unique index — multiple orgs may legitimately import the same
+  // parcel as a lead).
+  apn: text("apn"),
   
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
@@ -1320,6 +1327,21 @@ export const notes = pgTable("notes", {
   // entered the book without one.
   atrDeterminationCompleted: boolean("atr_determination_completed").default(false),
   atrDeterminationCompletedAt: timestamp("atr_determination_completed_at"),
+
+  // Exemption from §1026.43 — populated INSTEAD OF atrDetermination when the
+  // note is statutorily out of scope:
+  //   raw_land             — non-dwelling collateral; §1026.43 doesn't attach
+  //   business_purpose     — non-consumer-purpose credit (§1026.43(a)(1)(i))
+  //   commercial_borrower  — borrower is an entity (LLC, trust, corp), not a natural person
+  //   legacy               — grandfather marker for pre-AcreOS originated notes (CSV import / migration)
+  // NULL means no exemption claimed — origination then requires a full ATR
+  // determination before the note can transition to 'active'. The DB-level
+  // CHECK constraint added in 0099_notes_atr_origination_gate.sql enforces
+  // that status='active' is impossible without one of these or
+  // atr_determination_completed=true.
+  atrExemptionCode: text("atr_exemption_code").$type<
+    "raw_land" | "business_purpose" | "commercial_borrower" | "legacy" | null
+  >(),
 
   // Optimistic locking — incremented on every balance-changing write
   version: integer("version").notNull().default(1),
@@ -6202,6 +6224,70 @@ export const insertSignatureSchema = createInsertSchema(signatures).omit({
 });
 export type InsertSignature = z.infer<typeof insertSignatureSchema>;
 export type Signature = typeof signatures.$inferSelect;
+
+// ── E-SIGN Act §101(c)(1)(B) consumer-consent audit ──────────────────────
+//
+// E-SIGN requires that, BEFORE an electronic signature is used on a consumer
+// transaction, the consumer affirmatively consent after being given five
+// disclosures: (i) hardware/software requirements, (ii) right to receive
+// paper copies and any fee, (iii) right to withdraw consent and any
+// consequences, (iv) procedures for updating contact information, (v) scope
+// statement (which records are covered). Without that capture, the electronic
+// signature is arguably unenforceable in the originating state.
+//
+// This table records the consent event itself (separate from `signatures`
+// because consent is per-user, not per-document, and we need an immutable
+// evidentiary row even if the user later signs nothing). The user's row also
+// carries esign_consented_at + esign_consent_version for fast lookup.
+//
+// External signers (no users row — HMAC-tokened signing) produce rows here
+// keyed by signer_email + document_id so a regulator can trace the consent
+// for a borrower we don't have a user account for.
+export const signingConsentAudit = pgTable("signing_consent_audit", {
+  id: serial("id").primaryKey(),
+  // FK to users.id when the consenting party is an authenticated AcreOS
+  // user. Null for external signers (HMAC-tokened signing flow); in that
+  // case signer_email + document_id is the lookup key.
+  userId: varchar("user_id"),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  // External-signer fields — populated only when userId is null.
+  signerEmail: text("signer_email"),
+  documentId: integer("document_id").references(() => generatedDocuments.id),
+  // Disclosure version pinned to the dialog text the user saw. Format
+  // 'YYYY-MM-DD'; bumped when the disclosure copy materially changes.
+  disclosureVersion: varchar("disclosure_version", { length: 32 }).notNull(),
+  // The five §101(c) disclosure flags — TRUE on all five is the legal
+  // minimum. We record them individually so a regulator can verify each
+  // box was rendered + acknowledged, not just that "I consented" landed.
+  consentedHardwareRequirements: boolean("consented_hardware_requirements").notNull().default(false),
+  consentedPaperCopyRight: boolean("consented_paper_copy_right").notNull().default(false),
+  consentedWithdrawalRight: boolean("consented_withdrawal_right").notNull().default(false),
+  consentedContactUpdate: boolean("consented_contact_update").notNull().default(false),
+  consentedScope: boolean("consented_scope").notNull().default(false),
+  // IP + user-agent of the consent capture itself. Required for the
+  // tamper-evidence chain — a regulator may compare this with the
+  // signatures.ip_address row to verify the consent and the signature came
+  // from the same device session.
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  consentedAt: timestamp("consented_at").notNull().defaultNow(),
+}, (table) => [
+  index("signing_consent_audit_user_idx").on(table.userId),
+  index("signing_consent_audit_email_doc_idx").on(table.signerEmail, table.documentId),
+]);
+export const insertSigningConsentAuditSchema = createInsertSchema(signingConsentAudit).omit({
+  id: true,
+  consentedAt: true,
+});
+export type InsertSigningConsentAudit = z.infer<typeof insertSigningConsentAuditSchema>;
+export type SigningConsentAudit = typeof signingConsentAudit.$inferSelect;
+
+/**
+ * Current version of the E-SIGN §101(c)(1)(B) disclosure text. Bump when
+ * the dialog copy materially changes — the dialog re-fires for users whose
+ * stored version is older than this. Format 'YYYY-MM-DD'.
+ */
+export const ESIGN_DISCLOSURE_VERSION = "2026-05-29";
 
 // ============================================
 // DOCUMENT VERSION HISTORY

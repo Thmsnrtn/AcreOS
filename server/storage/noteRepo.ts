@@ -77,6 +77,42 @@ export const noteRepo = {
   },
 
   async createNote(this: DatabaseStorage, noteData: InsertNote): Promise<Note> {
+    // Reg-Z §1026.43 hard gate (Workstream A).
+    //
+    // A note row may not be inserted with status='active' unless either
+    //   (a) atrDeterminationCompleted=true (ATR determination on file), or
+    //   (b) atrExemptionCode is one of the recognized exemption codes.
+    //
+    // The DB CHECK constraint (notes_atr_origination_gate, migration 0099)
+    // backstops this at the data layer — this app-layer guard exists so the
+    // failure surfaces as an actionable error before the round-trip and so
+    // any new insert path inherits the same gate without needing the DB error.
+    //
+    // 'legacy' is permitted on create so CSV / spreadsheet imports of
+    // pre-AcreOS originated notes can land — the ATR analysis happened
+    // before the loan tape ever reached us. Servicing surfaces still flag
+    // 'legacy' for retroactive review; it is not evidence of compliance.
+    const hasAtr = noteData.atrDeterminationCompleted === true;
+    // drizzle-zod widens the `$type<...>` enum-or-null column to unknown in
+    // InsertNote (same gap that requires the cast in `insertValues` below).
+    // Narrow to string before the membership check.
+    const exemptionCode =
+      typeof noteData.atrExemptionCode === "string" ? noteData.atrExemptionCode : null;
+    const hasExemption =
+      exemptionCode !== null &&
+      ["raw_land", "business_purpose", "commercial_borrower", "legacy"].includes(exemptionCode);
+    const requestedStatus = noteData.status ?? "active";
+    if (requestedStatus === "active" && !hasAtr && !hasExemption) {
+      const err: Error & { code?: string } = new Error(
+        "Cannot create note with status='active' without an ATR determination or exemption code. " +
+          "Per Reg Z §1026.43(c), creditors must make an ATR determination at or before consummation. " +
+          "Either pass atrDeterminationCompleted=true (after calling persistAtrDetermination) or " +
+          "set atrExemptionCode to one of: raw_land, business_purpose, commercial_borrower.",
+      );
+      err.code = "ATR_DETERMINATION_REQUIRED";
+      throw err;
+    }
+
     // Calculate amortization if not provided
     let amortization: typeof notes.$inferInsert["amortizationSchedule"] = noteData.amortizationSchedule;
     if (!amortization && noteData.originalPrincipal && noteData.interestRate && noteData.termMonths) {
@@ -105,6 +141,10 @@ export const noteRepo = {
     const insertValues: typeof notes.$inferInsert = {
       ...noteData,
       atrDetermination: noteData.atrDetermination as typeof notes.$inferInsert["atrDetermination"],
+      // Same drizzle-zod inference gap as atrDetermination — narrow back to
+      // the column's typed enum-or-null. Runtime values are validated by the
+      // route-layer Zod schema before reaching the repo.
+      atrExemptionCode: noteData.atrExemptionCode as typeof notes.$inferInsert["atrExemptionCode"],
       currentBalance: noteData.currentBalance || noteData.originalPrincipal,
       amortizationSchedule: amortization,
       maturityDate: maturityDate,
@@ -128,12 +168,56 @@ export const noteRepo = {
   async updateNote(this: DatabaseStorage, id: number, updates: Partial<InsertNote>, organizationId?: number): Promise<Note> {
     const conditions = [eq(notes.id, id)];
     if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
+
+    // Reg-Z §1026.43 hard gate on status transitions to 'active' (Workstream A).
+    //
+    // If the caller is moving status -> 'active', verify the row has an ATR
+    // determination on file (or has a valid exemption code) BEFORE we hit the
+    // DB CHECK constraint. This produces a clean, actionable error instead of
+    // a Postgres 23514 violation.
+    if (updates.status === "active") {
+      const [existing] = await db
+        .select({
+          atrDeterminationCompleted: notes.atrDeterminationCompleted,
+          atrExemptionCode: notes.atrExemptionCode,
+        })
+        .from(notes)
+        .where(and(...conditions))
+        .limit(1);
+      const willHaveAtr =
+        updates.atrDeterminationCompleted === true ||
+        (updates.atrDeterminationCompleted === undefined && existing?.atrDeterminationCompleted === true);
+      // drizzle-zod widens `updates.atrExemptionCode` to unknown (same gap
+      // that requires the cast in setValues below). Narrow to string before
+      // the membership check.
+      const proposedExemptionRaw =
+        updates.atrExemptionCode ?? existing?.atrExemptionCode ?? null;
+      const proposedExemption =
+        typeof proposedExemptionRaw === "string" ? proposedExemptionRaw : null;
+      const willHaveExemption =
+        proposedExemption !== null &&
+        ["raw_land", "business_purpose", "commercial_borrower", "legacy"].includes(proposedExemption);
+      if (!willHaveAtr && !willHaveExemption) {
+        const err: Error & { code?: string } = new Error(
+          "Cannot transition note.status to 'active' without an ATR determination or exemption code. " +
+            "Per Reg Z §1026.43(c), creditors must make an ATR determination at or before consummation. " +
+            "Call persistAtrDetermination first, or set atrExemptionCode to one of: " +
+            "raw_land, business_purpose, commercial_borrower.",
+        );
+        err.code = "ATR_DETERMINATION_REQUIRED";
+        throw err;
+      }
+    }
+
     // Type the payload as drizzle's own update-set source. atrDetermination is
     // narrowed back to the column's type — see TODO(tsc) in createNote: a
     // drizzle-zod inference gap widens InsertNote['atrDetermination'] to `Json`.
     const setValues: PgUpdateSetSource<typeof notes> = {
       ...updates,
       atrDetermination: updates.atrDetermination as typeof notes.$inferInsert["atrDetermination"],
+      // Same drizzle-zod inference workaround as createNote — narrow to the
+      // column's typed enum-or-null. Route-layer Zod validates before this.
+      atrExemptionCode: updates.atrExemptionCode as typeof notes.$inferInsert["atrExemptionCode"],
       updatedAt: new Date(),
     };
     const [updated] = await db.update(notes)
