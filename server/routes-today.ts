@@ -34,6 +34,7 @@ import { paxObservations, leads as leadsTable, deals as dealsTable, properties a
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
+import { routeAITask, TaskComplexity } from "./services/aiRouter";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
@@ -657,6 +658,89 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
   return `${prefix}${body}`;
 }
 
+// ── Pax-composed brief (Karpathy + Chesky upgrade) ──────────────────────────
+// Feature-flagged. When PAX_COMPOSED_BRIEF is "1"/"true", routes the brief
+// through Pax via aiRouter (MODEL_SIMPLE / deepseek by default — cheap).
+// Falls back to the static template on quota exceeded, network/parse error,
+// empty response, or when the flag is off. Never throws to the caller.
+//
+// Cost envelope at deepseek pricing: ~$0.001–0.003 per generation, capped
+// by the per-org daily AI quota the aiRouter already enforces.
+// Caching: aiRouter's content-hash cache catches re-renders when inputs
+// haven't moved, so the typical Today re-fetch is free.
+const PAX_COMPOSED_BRIEF_ENABLED = (() => {
+  const v = process.env.PAX_COMPOSED_BRIEF;
+  return v === "1" || v === "true";
+})();
+
+const PERSONA_LABELS: Record<string, string> = {
+  wholesaler: "a land wholesaler",
+  note_investor: "a note investor",
+  note_originator: "a note originator",
+  note_servicer: "a note servicer",
+  land_investor: "a land flipper",
+  fix_flipper: "a fix-and-flip investor",
+  landlord: "a buy-and-hold landlord",
+  subdivider: "a parcel subdivider",
+  tax_delinquent: "a tax-delinquent auction buyer",
+};
+
+async function composeBriefWithPax(
+  persona: Persona | undefined,
+  inputs: BriefInputs,
+  orgId: number,
+): Promise<string | null> {
+  if (!PAX_COMPOSED_BRIEF_ENABLED) return null;
+
+  const personaLabel = (persona && PERSONA_LABELS[persona]) ?? "a property investor";
+  const prefix = inputs.firstClosePrefix ?? "";
+
+  const system =
+    `You are Pax, the AcreOS assistant. Write a single-sentence morning brief for ${personaLabel}. ` +
+    `Use only the numbers given — do not invent. Calm, specific, no exclamation marks, no emoji, no greeting. ` +
+    `Max 25 words. Tone: warm but exacting. ` +
+    (prefix
+      ? `Your sentence MUST start with this exact prefix verbatim: "${prefix}".`
+      : `No prefix — start with the most material number.`);
+
+  const user = JSON.stringify({
+    paxReplies: inputs.paxReplies,
+    topCounter: inputs.topCounter,
+    curbSaves: inputs.curbSaves,
+    lateNotes: inputs.lateNotes,
+    netInflow30: inputs.netInflow30,
+    staleLeads: inputs.staleLeads,
+    pipelineValue: inputs.pipelineValue,
+  });
+
+  try {
+    const response = await routeAITask(
+      {
+        taskType: "morning_brief",
+        complexity: TaskComplexity.SIMPLE,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        maxTokens: 80,
+        temperature: 0.3,
+      },
+      { orgId },
+    );
+    const raw = (response?.content ?? "").trim();
+    if (!raw) return null;
+    // Hard cap — strip anything after the first newline; Pax sometimes adds
+    // explanatory follow-on lines we don't want surfaced on Today.
+    const firstLine = raw.split("\n")[0].trim();
+    return firstLine || null;
+  } catch (err) {
+    logger.warn("Today: Pax brief composition failed — falling back to template", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
@@ -867,17 +951,25 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       paxPriorities.length > 0 ? paxPriorities[0].title : null;
     const netInflow30 = projected30; // 30-day projected note income
     const firstClosePrefix = deriveFirstClosePrefix(allDeals, allProperties);
+    const persona = req.user?.persona as Persona | undefined;
+    const briefInputs: BriefInputs = {
+      paxReplies,
+      topCounter,
+      curbSaves,
+      lateNotes: lateCount,
+      netInflow30,
+      staleLeads: stalledLeads,
+      firstClosePrefix,
+      pipelineValue,
+    };
+    // Try Pax-composed first (feature-flagged); fall back to the static template.
+    // composeBriefWithPax returns null when the flag is off, on error, or on
+    // empty response — never throws, so the route is unconditionally safe.
+    const composed = hasAnyData
+      ? await composeBriefWithPax(persona, briefInputs, orgId)
+      : null;
     const brief: string | null = hasAnyData
-      ? composeBrief(req.user?.persona as Persona | undefined, {
-          paxReplies,
-          topCounter,
-          curbSaves,
-          lateNotes: lateCount,
-          netInflow30,
-          staleLeads: stalledLeads,
-          firstClosePrefix,
-          pipelineValue,
-        })
+      ? (composed ?? composeBrief(persona, briefInputs))
       : null;
 
     res.json({
