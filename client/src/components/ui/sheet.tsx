@@ -3,9 +3,11 @@
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cva, type VariantProps } from "class-variance-authority"
+import { motion, type PanInfo } from "framer-motion"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useReducedMotionPreference } from "@/lib/motion-tokens"
 
 const Sheet = SheetPrimitive.Root
 
@@ -58,22 +60,74 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+>(({ side = "right", className, children, ...props }, ref) => {
+  // Bottom-side sheets get iOS-style swipe-to-dismiss + a grabber pill.
+  // Top/left/right keep the original behavior — bottom sheets are the
+  // surface where the gesture matches user expectation (share sheet,
+  // quick-add). The drag wrapper fires a Radix close on commit by
+  // clicking the hidden SheetPrimitive.Close button — that keeps the
+  // open-state owner unchanged regardless of whether the consumer uses
+  // controlled or uncontrolled <Sheet>.
+  const isBottom = side === "bottom";
+  const reduced = useReducedMotionPreference();
+  const reducedByAttr =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-motion") === "reduced";
+  const skipDrag = !isBottom || reduced || reducedByAttr;
+  const closeButtonRef = React.useRef<HTMLButtonElement | null>(null);
+
+  const handleDragEnd = (_e: unknown, info: PanInfo) => {
+    if (info.offset.y > 100 || info.velocity.y > 500) {
+      // Defer to the Radix Close button — it owns the open-state mutation,
+      // matching both controlled and uncontrolled <Sheet> consumers.
+      closeButtonRef.current?.click();
+    }
+  };
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+      >
+        {isBottom && !skipDrag ? (
+          <motion.div
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={handleDragEnd}
+            className="h-full w-full"
+          >
+            <div
+              aria-hidden
+              className="mx-auto mt-2 h-1 w-9 rounded-full bg-acr-line"
+            />
+            {children}
+          </motion.div>
+        ) : (
+          <>
+            {isBottom && (
+              <div
+                aria-hidden
+                className="mx-auto mt-2 h-1 w-9 rounded-full bg-acr-line"
+              />
+            )}
+            {children}
+          </>
+        )}
+        <SheetPrimitive.Close
+          ref={closeButtonRef}
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({
