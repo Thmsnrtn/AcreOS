@@ -22,6 +22,8 @@ import {
   Target,
   Sparkles,
   RefreshCw,
+  Car,
+  X as XIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { plural } from "@/lib/format";
@@ -74,6 +76,53 @@ interface AutonomyPrefs {
 
 const LAST_VISIT_KEY = "acreos_last_visit_ts";
 const WELCOME_BACK_THRESHOLD_DAYS = 7;
+
+// ── "Heading out?" affordance (Hank) ─────────────────────────────────────
+// The two days a week the operator is driving Bastrop and Caldwell, Today
+// already has the data to know it. This affordance surfaces Drive Mode at
+// the moment of need rather than waiting for the operator to remember the
+// feature exists. Triggers when:
+//   (a) at least one DriveMode capture lives in /api/leads from the last
+//       14 days (source === "driving_for_dollars"), AND
+//   (b) it's currently a weekday morning (local time 6am–11am).
+// Dismissible per-day via the localStorage key below — the prefix is
+// stable, the suffix is YYYY-MM-DD so a new day un-dismisses it.
+const HEADING_OUT_DISMISS_KEY_PREFIX = "acreos-today-heading-out-dismissed-";
+const HEADING_OUT_LOOKBACK_DAYS = 14;
+const HEADING_OUT_MORNING_START_HOUR = 6;
+const HEADING_OUT_MORNING_END_HOUR = 11; // exclusive
+const DRIVE_MODE_LEAD_SOURCE = "driving_for_dollars";
+const DRIVE_MODE_ROUTE = "/drivemode";
+
+function isHeadingOutMorning(now: Date): boolean {
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const hour = now.getHours();
+  return hour >= HEADING_OUT_MORNING_START_HOUR && hour < HEADING_OUT_MORNING_END_HOUR;
+}
+
+function headingOutDismissKey(now: Date): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${HEADING_OUT_DISMISS_KEY_PREFIX}${y}-${m}-${d}`;
+}
+
+// A DriveMode capture is "recent" if its createdAt is within the lookback
+// window. We use the leads cache the page already has — no extra fetch.
+function hasRecentDriveModeCapture(
+  leads: ReadonlyArray<{ source?: string | null; createdAt?: string | Date | null }>,
+  now: Date,
+  lookbackDays: number = HEADING_OUT_LOOKBACK_DAYS,
+): boolean {
+  const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
+  for (const l of leads) {
+    if (l.source !== DRIVE_MODE_LEAD_SOURCE) continue;
+    const created = l.createdAt ? new Date(l.createdAt).getTime() : NaN;
+    if (Number.isFinite(created) && created >= cutoff) return true;
+  }
+  return false;
+}
 
 export default function TodayPage() {
   useDocumentTitle("Today — AcreOS");
@@ -194,6 +243,33 @@ export default function TodayPage() {
       // ignore
     }
   }, []);
+
+  // ── "Heading out?" affordance state (Hank) ───────────────────────────
+  // Surfaces Drive Mode at the moment of need: weekday morning AND the
+  // org has captured at least one drive-mode lead in the last 14 days.
+  // Re-computed every render off the same `leads` cache the page already
+  // holds — no extra fetch, no extra round-trip.
+  const now = React.useMemo(() => new Date(), []);
+  const headingOutDismissKey_ = React.useMemo(() => headingOutDismissKey(now), [now]);
+  const [headingOutDismissed, setHeadingOutDismissed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem(headingOutDismissKey_) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissHeadingOut = React.useCallback(() => {
+    setHeadingOutDismissed(true);
+    try {
+      localStorage.setItem(headingOutDismissKey_, "1");
+    } catch {
+      // ignore — best-effort dismiss persistence
+    }
+  }, [headingOutDismissKey_]);
+  const showHeadingOut =
+    !headingOutDismissed &&
+    isHeadingOutMorning(now) &&
+    hasRecentDriveModeCapture(leads, now);
 
   // Sample-data CTA: seed a realistic dataset directly from /today's
   // empty state without forcing the user into the onboarding wizard.
@@ -342,6 +418,55 @@ export default function TodayPage() {
           description="We hit a snag pulling your decision queue. Your data is safe — try again."
           testId="today-query-error"
         />
+      )}
+
+      {/* ── "Heading out?" affordance (Hank) ──────────────────────────
+          Surfaces Drive Mode at the moment of need rather than waiting
+          for the operator to remember the feature exists. Renders ABOVE
+          the morning brief because it's about the *next two hours*, not
+          the *last twelve*. Conditions: weekday 6am–11am local AND at
+          least one drive-mode lead captured in the last 14 days. */}
+      {!showEmptyState && !todayError && showHeadingOut && (
+        <Card
+          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft mb-4"
+          data-testid="card-heading-out"
+        >
+          <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 md:gap-2.5 min-w-0">
+              <div className="p-2 rounded-card bg-background/60 shrink-0">
+                <Car className="w-5 h-5 md:w-4 md:h-4 text-acr-brand" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-sm md:text-[13px] leading-snug">
+                  Heading out?
+                </h3>
+                <p className="text-xs md:text-[11px] text-muted-foreground leading-snug">
+                  Open Drive Mode — Pax saves curbside leads to the county
+                  the moment you tap the wheel.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                asChild
+                size="sm"
+                className="h-8"
+                data-testid="button-heading-out-open"
+              >
+                <Link href={DRIVE_MODE_ROUTE}>Open Drive Mode</Link>
+              </Button>
+              <button
+                type="button"
+                onClick={dismissHeadingOut}
+                aria-label="Dismiss Heading out card for today"
+                className="h-8 w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid="button-heading-out-dismiss"
+              >
+                <XIcon className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Morning brief (Chesky) ───────────────────────────────────── */}
