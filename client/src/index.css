@@ -41,6 +41,13 @@
 
   /* Card radius — locked at 14px per design-system §0.2 */
   --radius: 1rem;
+
+  /* Component border tokens — Button outline + Badge outline.
+     Both reference --acr-line so they respond to theme + dark mode.
+     Defined here so the CSS var resolves to a value even before a
+     per-theme block overrides --acr-line. */
+  --button-outline: var(--border);
+  --badge-outline:  var(--border);
 }
 
 /* ─────────────── Motion preference ─────────────── */
@@ -1123,17 +1130,18 @@
   transform: translateY(-1px);
 }
 
-/* Sidebar surface — homestead palette behind Apple-vibrancy blur.
-   Preserves the elite-refinement glass effect (blur + saturation) while
-   landing the prototype's literal sidebar color (acreos/theme.jsx
-   --sidebar-bg). Light: #F1E7D0 @ 0.82 opacity. Dark: #130C05 @ 0.86. */
+/* Sidebar surface — consolidated alias for .sidebar-vibrancy (Phase 9 block below).
+   Both classes apply the same blur/saturation/background. Only one definition
+   drives the values; this alias keeps existing .vibrancy-sidebar call sites working
+   without a JSX diff. Do not add independent background overrides here —
+   edit .sidebar-vibrancy instead. */
 .vibrancy-sidebar {
   backdrop-filter: blur(28px) saturate(185%);
   -webkit-backdrop-filter: blur(28px) saturate(185%);
-  background: rgba(241, 231, 208, 0.82);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 82%, transparent);
 }
 .dark .vibrancy-sidebar {
-  background: rgba(19, 12, 5, 0.86);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 86%, transparent);
 }
 
 /* Animation utilities */
@@ -1298,16 +1306,18 @@ body[data-offline-banner="true"] [data-page-topbar] {
    PHASE 9: macOS TAHOE-GRADE UI POLISH
 ═══════════════════════════════════════════════════════════════════ */
 
-/* Enhanced sidebar vibrancy — Tahoe Liquid Glass */
+/* Enhanced sidebar vibrancy — Tahoe Liquid Glass.
+   Background is derived from --acr-sidebar-bg so all themes respond correctly.
+   The .vibrancy-sidebar alias above uses the same token for consistency. */
 .sidebar-vibrancy {
   backdrop-filter: blur(28px) saturate(185%);
   -webkit-backdrop-filter: blur(28px) saturate(185%);
-  background: rgba(245, 240, 233, 0.82);
-  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 82%, transparent);
+  border-right: 1px solid var(--acr-line-soft);
 }
 .dark .sidebar-vibrancy {
-  background: rgba(22, 16, 10, 0.86);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 86%, transparent);
+  border-right: 1px solid var(--acr-line-soft);
 }
 
 /* Active nav item — homestead treatment per acreos/shell.jsx:195-203
