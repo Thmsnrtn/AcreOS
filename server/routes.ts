@@ -82,6 +82,7 @@ import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
+import aiDisclosureRouter from "./routes-ai-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
@@ -204,6 +205,7 @@ import { registerPaxQualityRoutes } from "./routes-pax-quality";
 import { registerPaxTracesRoutes } from "./routes-pax-traces";
 import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
+import { registerFounderPulseRoutes } from "./routes-founder-pulse";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -1349,6 +1351,9 @@ export async function registerRoutes(
   // sink for the UTM snapshot the browser captured pre-signup. User-
   // scoped, no org context needed — attribution is per-user.
   app.use('/api/me/acquisition-utm', isAuthenticated, acquisitionUtmRouter);
+  // Constitution §7 + Colorado SB 24-205 — auditable AI-disclosure consent.
+  // No org context needed (disclosure is per-user, not per-org).
+  app.use('/api/me/ai-disclosure', isAuthenticated, aiDisclosureRouter);
   // Feature flags — read endpoint accessible to authenticated users (returns
   // their resolved view); admin endpoints inside the router enforce founder.
   app.use('/api/feature-flags', isAuthenticated, getOrCreateOrg, featureFlagsRouter);
@@ -2127,6 +2132,9 @@ export async function registerRoutes(
   // churned counts + top UTM sources + recent signup names. Companion to
   // the qualitative customers.md tracker at the repo root.
   registerFounderCustomersRoutes(app);
+  // Pulse home — /api/founder/pulse. Solene's daily one-line as structured
+  // data: SHA, health, commits, Autonomy Horizon, capital, phase, decisions.
+  registerFounderPulseRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.

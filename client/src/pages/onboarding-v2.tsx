@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { AiDisclosureDialog, AI_DISCLOSURE_VERSION } from "@/components/onboarding/AiDisclosureDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
@@ -10,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   MapPin,
   TrendingUp,
@@ -1009,6 +1011,35 @@ export default function OnboardingV2() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // ── Constitution §7 + Colorado SB 24-205 AI-disclosure gate ─────────────
+  // Query runs on mount. While loading we show a skeleton so the page
+  // doesn't flicker. disclosed===false blocks all interaction until the
+  // customer clicks "I understand — continue" in AiDisclosureDialog.
+  const {
+    data: disclosureStatus,
+    isLoading: disclosureLoading,
+    refetch: refetchDisclosure,
+  } = useQuery<{ disclosed: boolean; version: string | null; at: string | null }>({
+    queryKey: ["/api/me/ai-disclosure/status"],
+    queryFn: async () => {
+      const resp = await apiRequest("GET", "/api/me/ai-disclosure/status");
+      return resp.json();
+    },
+    staleTime: 5 * 60 * 1000, // 5 min — won't re-fire mid-session
+  });
+
+  // The dialog should show when: (a) status loaded and disclosed===false, OR
+  // (b) the stored version differs from the current disclosure version (wording
+  // changed — re-consent required).
+  const disclosureRequired =
+    !disclosureLoading &&
+    disclosureStatus !== undefined &&
+    (
+      !disclosureStatus.disclosed ||
+      disclosureStatus.version !== AI_DISCLOSURE_VERSION
+    );
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Pull real checklist truthiness for the "All Set!" panel — replaces the
   // hardcoded `done: true` lie that claimed every signup had imported leads.
   // Only enabled on the final step to avoid noisy polling earlier in the
@@ -1131,6 +1162,55 @@ export default function OnboardingV2() {
       default: return "land_investor";
     }
   }
+
+  // ── AI-disclosure gate — must clear before any product surface renders ──
+  // Show a content-shaped skeleton while the status check is in flight.
+  if (disclosureLoading) {
+    return (
+      <div className="min-h-screen bg-acr-bg-sunken flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full space-y-8">
+          <div className="text-center space-y-3">
+            <Skeleton className="h-10 w-64 mx-auto" />
+            <Skeleton className="h-6 w-80 mx-auto" />
+          </div>
+          <div className="grid gap-4">
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Disclosure required — render the full page skeleton (behind the dialog
+  // so the layout doesn't jump when the dialog closes) plus the blocking dialog.
+  if (disclosureRequired) {
+    return (
+      <div className="min-h-screen bg-acr-bg-sunken flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full space-y-8">
+          <div className="text-center space-y-3">
+            <Skeleton className="h-10 w-64 mx-auto" />
+            <Skeleton className="h-6 w-80 mx-auto" />
+          </div>
+          <div className="grid gap-4">
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+          </div>
+        </div>
+        <AiDisclosureDialog
+          open={true}
+          onAccepted={() => {
+            // Invalidate the cached status so the gate re-evaluates to
+            // disclosed===true and lets the path-selection screen render.
+            refetchDisclosure();
+          }}
+        />
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // PATH SELECTION screen (before step flow starts)
   if (!selectedPath) {

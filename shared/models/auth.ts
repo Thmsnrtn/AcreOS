@@ -182,6 +182,14 @@ export const users = pgTable("users", {
   // dialog re-fires; the prior consent row remains in audit for evidentiary
   // value.
   esignConsentVersion: varchar("esign_consent_version", { length: 32 }),
+  // Constitution §7 + Colorado SB 24-205 AI-disclosure consent.
+  // Null until the customer clicks "I understand — continue" in the
+  // AiDisclosureDialog at onboarding entry. Idempotent writes only (once
+  // set, not overwritten). When AI_DISCLOSURE_VERSION bumps (wording change),
+  // aiDisclosureVersion diverges from the current constant and the dialog
+  // re-fires, preserving the original consent row for evidentiary value.
+  aiDisclosedAt: timestamp("ai_disclosed_at"),
+  aiDisclosureVersion: varchar("ai_disclosure_version", { length: 32 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

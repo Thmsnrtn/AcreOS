@@ -4364,6 +4364,17 @@ const STATEMENTS = [
   // Partial UNIQUE: at most one active (non-revoked) credential per
   // (org, channel) pair. Revoking the prior row releases the slot.
   `CREATE UNIQUE INDEX IF NOT EXISTS "byok_credentials_active_uidx" ON "byok_credentials" ("organization_id", "channel") WHERE "revoked_at" IS NULL`,
+
+  // 2026-06-01 — Constitution §7 + Colorado SB 24-205 AI-disclosure consent
+  // capture. Mirrors migrations/0104_users_ai_disclosure.sql. Both rules
+  // require AUDITABLE consent (localStorage is not auditable). The
+  // AiDisclosureDialog in onboarding-v2 gates further interaction until
+  // the customer clicks "I understand — continue"; the server writes these
+  // columns idempotently via /api/me/ai-disclosure/accept. When
+  // AI_DISCLOSURE_VERSION bumps, the version diverges from the stored value
+  // and the dialog re-fires so re-consent is recorded.
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosed_at" timestamp`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosure_version" varchar(32)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
