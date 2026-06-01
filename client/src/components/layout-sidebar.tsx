@@ -618,59 +618,63 @@ const NAV_MODULES: NavModule[] = [
     href: "/founder",
     description: "Autonomous-operation command center",
     founderOnly: true,
+    // ── Three primary screens (Phase Zero-Zero 3-screen model) ────────
+    // Tom's daily 15-minute check: Pulse → Cost → Customers.
+    // Everything else lives in the "Deep Tools" overflow below.
     children: [
-      // ── Pulse (CEO pull surface — Solene's daily one-line as live UI) ──
-      // First entry so Tom lands here immediately. Autonomy Horizon +
-      // capital + phase + team activity + decisions waiting.
       { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
-      // ── Canonical surfaces (founder redesign) ──────────────────────────
-      // The four-surface IA from /Users/user/.claude/plans/.
-      { label: "Now", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge — previously /founder canonical" },
+      { label: "Cost", icon: DollarSign, href: "/founder/cost", description: "AI spend, infra cost, vendor lines, per-org breakdown — one scroll" },
+      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+    ],
+    // ── Deep Tools ────────────────────────────────────────────────────
+    // Every founder surface that's not load-bearing for the daily check.
+    // Expanded on demand; collapsed by default. Includes: chat bridge,
+    // steering, studio, inspector, CMO, all extracted sub-routes, agent
+    // surfaces, and the legacy dashboard (redirect only).
+    overflow: [
+      // ── Daily-adjacent (weekly touch) ─────────────────────────────
+      { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge" },
       { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
       { label: "Inspector", icon: Search, href: "/founder/inspector/audit", description: "Provenance lens — per-agent, per-decision, founder audit feed" },
       { label: "CMO", icon: Megaphone, href: "/founder/cmo", description: "Native ad generation, approval, broadcast to Meta + TikTok" },
-      // ── Legacy daily-loop surfaces (60-day deprecation per MIGRATION-MAP.md) ──
-      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "[legacy] Unified ranked feed — see /founder for new canonical" },
-      { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
-      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
-      { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
-      { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
-    ],
-    overflow: [
-      // Periodic / specialized surfaces — accessible from sidebar but not
-      // crowding the daily list. Founder hits these weekly or less.
-      // F-D #1..#5 extractions — focused routes carved out of the legacy
-      // operations console. Every entry below points at a self-contained
-      // page that previously lived in /founder-dashboard.tsx.
-      { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
-      { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
+      // ── Cost deep-tools ────────────────────────────────────────────
+      { label: "AI telemetry", icon: Activity, href: "/founder/ai-costs", description: "Per-call AI cost breakdown — model, feature, top spenders" },
+      { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", description: "Nightly optimizer runs, recommendations, auto-applied actions" },
+      { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", description: "Per-customer gross margin and COGS" },
+      { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", description: "Sampling rate projections and free-tier headroom" },
+      // ── Customer health ────────────────────────────────────────────
       { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
-      { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", description: "Meta ads, AI campaign wizard, attribution" },
-      { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
-      { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
-      { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
-      { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
-      { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
-      { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
-      { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
-      { label: "Agent traces", icon: FileCode, href: "/founder/traces", description: "Raw LLM prompt + response for every agent call" },
+      // ── Pax traces / calibration ───────────────────────────────────
       { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", description: "Read-only Pax LLM trace viewer — prompts, tool calls, guardrails, dispositions" },
       { label: "Pax calibration", icon: Target, href: "/founder/pax-calibration", description: "Reliability diagram — Pax stated confidence vs. realized accept-rate" },
-      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
-      { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
+      // ── Agent / AI tooling ─────────────────────────────────────────
+      { label: "Agent traces", icon: FileCode, href: "/founder/traces", description: "Raw LLM prompt + response for every agent call" },
+      { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
+      { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
+      { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
+      // ── Decisions / strategy ───────────────────────────────────────
+      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
+      { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
+      { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
+      { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
+      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "[legacy] Unified ranked feed — see /founder for new canonical" },
+      // ── Ops / admin ────────────────────────────────────────────────
+      { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
+      { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
+      { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
       { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
       { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", description: "Public support/feedback/question submissions from landing pages" },
-      { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Founder feed", icon: Activity, href: "/founder/feed", description: "Unified timeline — feedback + agent events + code proposals in one view" },
-      // ── Sovereign Protocol / Visibility Layer (Lens 4 Fix 4 surface) ──
-      // Founder-only surfaces previously registered in App.tsx but
-      // unreachable from any nav. Each has a real UI and surfaces
-      // founder data, so they're linked here instead of being deleted.
-      // Grouped so it's clear they're the "look at how the org is
-      // running" surfaces, not the daily-decision ones above.
+      { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", description: "Meta ads, AI campaign wizard, attribution" },
+      { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
+      { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
+      { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
+      { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
+      { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
+      // ── Sovereignty / experimental surfaces ────────────────────────
       { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", description: "Sovereign Protocol — top-level visibility into the autonomous org" },
       { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", description: "Sovereign Protocol v13 — latest experimental surface" },
       { label: "Board of directors", icon: Shield, href: "/board-of-directors", description: "AI board — strategic-review members + cadence" },
@@ -681,22 +685,14 @@ const NAV_MODULES: NavModule[] = [
       { label: "Memory browser", icon: Database, href: "/memory-browser", description: "Per-agent semantic + episodic memory inspector" },
       { label: "Event log", icon: FileCode, href: "/event-log", description: "Agent-event firehose — every decision and side effect" },
       { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
-      // ── Founder business surfaces ─────────────────────────────────────
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },
       { label: "Executive dashboard", icon: LayoutDashboard, href: "/executive-dashboard", description: "Cross-org executive KPI roll-up" },
-      // Sigfried §1: legacy operational dashboard (~7,400 lines) is being
-      // extracted into the focused /founder/* surfaces above. Founder
-      // still needs access during the extraction window — flagged with
-      // a Legacy badge so it's clearly the old path. Customers never
-      // see this entry because the entire founder-business module is
-      // `founderOnly: true`.
-      // IA consolidation (Lens 4 Fix 1): /founder-dashboard now redirects
-      // to /founder/bridge; the actual legacy page lives on disk but is
-      // no longer route-mounted. Entry left in place so the sidebar
-      // continues to land the founder on bridge until the dedicated
-      // extraction sweep finishes.
-      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — redirects to /founder/bridge until extraction completes", legacy: true },
+      // ── Legacy (redirect only) ─────────────────────────────────────
+      // founder-dashboard.tsx is being extracted per Sigfried §1 / Phase
+      // Zero-Zero. The route redirects to /founder/bridge. Flagged legacy
+      // so Tom knows it's the old path.
+      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — redirects to /founder/bridge", legacy: true },
     ],
   },
 

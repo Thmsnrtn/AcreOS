@@ -206,6 +206,7 @@ import { registerPaxTracesRoutes } from "./routes-pax-traces";
 import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerFounderPulseRoutes } from "./routes-founder-pulse";
+import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -2135,6 +2136,9 @@ export async function registerRoutes(
   // Pulse home — /api/founder/pulse. Solene's daily one-line as structured
   // data: SHA, health, commits, Autonomy Horizon, capital, phase, decisions.
   registerFounderPulseRoutes(app);
+  // Cost summary — /api/founder/cost-summary. Consolidated cost view for
+  // the /founder/cost screen (AI spend + infra + per-org breakdown).
+  registerFounderCostRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
