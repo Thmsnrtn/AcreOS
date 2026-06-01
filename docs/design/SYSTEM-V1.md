@@ -247,6 +247,35 @@ for every theme × mode combination.
 | `--acr-glow`      | Brand glow (used in ::after glows)    | Brand glow (intensified)             | Focus halos, spotlight effects            |
 | `--acr-bridge-accent` | #FFB547 (constant)               | #FFB547 (constant)                   | Bridge "live/active/now" indicator only   |
 
+### 3.2.1 Heat semantic tier (Kai's finding #1 — closed 2026-06-01)
+
+Heat tokens encode **activity / demand intensity** — not outcome sentiment. This
+is why they are a separate tier from `--acr-neg/warn/pos`. A "hot" market is
+desirable; a "hot" error state is bad. Conflating them (the old hardcoded-hex
+approach) made the distinction invisible.
+
+| Token                    | Semantic meaning                                 | Usage sites                              |
+|--------------------------|--------------------------------------------------|------------------------------------------|
+| `--acr-heat-cold`        | Quiet / zero activity / cold signal              | Score bars ≤39, cold county demand       |
+| `--acr-heat-warm`        | Building / medium activity / warm signal         | Score bars 40–79, warm county demand     |
+| `--acr-heat-hot`         | High / active / hot signal (positive intensity)  | Score bars ≥80, hot county demand        |
+| `--acr-heat-cold-soft`   | Tinted fill for cold regions / bars              | Recharts `Cell` fill, badge backgrounds  |
+| `--acr-heat-warm-soft`   | Tinted fill for warm regions / bars              | Recharts `Cell` fill, badge backgrounds  |
+| `--acr-heat-hot-soft`    | Tinted fill for hot regions / bars               | Recharts `Cell` fill, badge backgrounds  |
+
+**Theme mapping strategy:** Each theme maps heat tokens to its own `warn` /
+`neg` / `ink-3` values so the hot-warm-cold gradient always coheres with the
+brand palette. Homestead orange-red carries the gradient; Slate blue carries
+a blue-amber-red gradient; Meadow green uses an amber/terracotta gradient. The
+semantic meaning (intensity) is preserved; only the hue varies by theme.
+
+Tailwind utilities: `text-acr-heat-cold`, `bg-acr-heat-warm`, etc. via the
+`acr.heat-*` map in `tailwind.config.ts`.
+
+**Rule:** Any component encoding demand/activity intensity (buyer heat maps,
+acquisition radar scores, deal temperature) MUST use `--acr-heat-*` tokens.
+Never use raw hex for this semantic category.
+
 ### 3.3 Theme palette summary
 
 Five themes × 2 modes = 10 palette blocks. Each is visually coherent:
@@ -284,15 +313,15 @@ These pages use raw hex instead of `--acr-*` tokens:
 | File                      | Violation                                      | Correct token              |
 |---------------------------|------------------------------------------------|----------------------------|
 | `land-credit.tsx`         | Score color (#10b981, #22c55e, #f59e0b, etc.)  | `var(--acr-pos)`, `var(--acr-warn)`, `var(--acr-neg)` |
-| `buyer-network.tsx`       | Heat-map colors (#ef4444 etc.)                 | `var(--acr-neg)`, `var(--acr-warn)`, `var(--acr-pos)` |
+| `buyer-network.tsx`       | ~~Heat-map colors~~ **✓ CLOSED 2026-06-01**    | `var(--acr-heat-hot/warm/cold)` — migrated  |
 | `founder-trends.tsx`      | Chart series colors array                      | `var(--acr-chart-a/b/c/d)` |
 | `voice-analytics.tsx`     | Sentiment colors                               | `var(--acr-pos/warn/neg)`  |
 | `negotiation-copilot.tsx` | Pressure color (#22c55e etc.)                  | `var(--acr-pos)`           |
 | `portfolio-optimizer.tsx` | Pie colors + risk colors                       | `var(--acr-chart-a/b/c/d)` |
-| `acquisition-radar.tsx`   | Heat scores                                    | `var(--acr-neg/warn/pos)`  |
+| `acquisition-radar.tsx`   | ~~Heat scores~~ **✓ CLOSED 2026-06-01**        | `var(--acr-heat-hot/warm/cold)` — migrated  |
 | `avm.tsx`                 | Chart gradient stopColor                       | `var(--acr-brand)`         |
 | `borrower-portal.tsx`     | 3× background gradients (#F5E6D3, etc.)        | `var(--acr-bg-raised)`, `var(--acr-bg-sunken)` |
-| `maps.tsx`                | Map pin colors (#f59e0b, #3b82f6)              | `var(--acr-warn)`, `var(--acr-brand)` |
+| `maps.tsx`                | ~~Map pin / score colors~~ **✓ CLOSED 2026-06-01** | `var(--acr-heat-*)`, `var(--acr-pos/warn/neg)` — migrated |
 | `index.css` (`.traffic-light-close`) | `background: #FF5F57`             | Intentional macOS chrome. Add `/* macOS system red — intentional */` comment. |
 
 **Most critical** for brand consistency: `borrower-portal.tsx` (3 separate
@@ -502,12 +531,11 @@ The three issues that will have the highest visual impact when fixed:
 `today.css` retains the original declarations for backward compat with existing
 page imports, but `index.css` is now the canonical source.
 
-**2. Hardcoded chart colors on customer-facing pages.**
-`buyer-network.tsx`, `acquisition-radar.tsx`, and `maps.tsx` use raw hex for
-color-semantic data (hot/warm/cold, interested/not-interested). When a customer
-switches from Bedrock to Slate (blue brand), the semantic colors stay orange/red/green
-from their hardcoded values rather than adapting via `--acr-neg/warn/pos`. This is
-the most visible cross-theme consistency failure in customer-facing surfaces.
+**2. Hardcoded chart colors on customer-facing pages. ✓ CLOSED 2026-06-01.**
+`buyer-network.tsx`, `acquisition-radar.tsx`, and `maps.tsx` previously used raw
+hex for color-semantic data (hot/warm/cold, interested/not-interested). Migrated
+to the new `--acr-heat-*` semantic token family. See §3.2.1. Ten hardcoded hex
+sites replaced across three files.
 
 **3. EmptyState consolidation.**
 Three import paths for EmptyState create inconsistent CTA patterns across surfaces.

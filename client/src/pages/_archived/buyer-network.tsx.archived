@@ -137,12 +137,15 @@ function NotificationPrefsSection() {
   );
 }
 
+// Demand color now resolves from --acr-heat-* tokens so it stays theme-aware.
+// Very low (< 20) maps to cold-soft visible hue; low uses the cold token.
 function demandColor(score: number) {
-  if (score >= 80) return "#ef4444";
-  if (score >= 60) return "#f97316";
-  if (score >= 40) return "#eab308";
-  if (score >= 20) return "#60a5fa";
-  return "#9ca3af";
+  const style = getComputedStyle(document.documentElement);
+  if (score >= 80) return style.getPropertyValue("--acr-heat-hot").trim();
+  if (score >= 60) return style.getPropertyValue("--acr-heat-warm").trim();
+  if (score >= 40) return style.getPropertyValue("--acr-warn").trim();
+  if (score >= 20) return style.getPropertyValue("--acr-heat-cold").trim();
+  return style.getPropertyValue("--acr-ink-4").trim();
 }
 
 export default function BuyerNetwork() {
@@ -278,11 +281,11 @@ export default function BuyerNetwork() {
             <CardContent>
               <ul className="flex gap-3 flex-wrap text-xs mb-3" aria-label="Demand score legend">
                 {[
-                  { label: "Very high (80+)", color: "#ef4444" },
-                  { label: "High (60–79)", color: "#f97316" },
-                  { label: "Medium (40–59)", color: "#eab308" },
-                  { label: "Low (20–39)", color: "#60a5fa" },
-                  { label: "Very low (<20)", color: "#9ca3af" },
+                  { label: "Very high (80+)", color: "var(--acr-heat-hot)" },
+                  { label: "High (60–79)", color: "var(--acr-heat-warm)" },
+                  { label: "Medium (40–59)", color: "var(--acr-warn)" },
+                  { label: "Low (20–39)", color: "var(--acr-heat-cold)" },
+                  { label: "Very low (<20)", color: "var(--acr-ink-4)" },
                 ].map(item => (
                   <li key={item.label} className="flex items-center gap-1.5">
                     <span className="inline-block w-3 h-3 rounded-sm" style={{ background: item.color }} aria-hidden="true" />

@@ -138,11 +138,12 @@ function CollateralStrip({ propertyLabel }: { propertyLabel: string }) {
   return (
     <div className="flex items-center gap-3 px-4 md:px-6 py-2.5 border-b bg-acr-brand-soft/15">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Badge variant="secondary" className="text-micro shrink-0">
-          Collateral geography
+        <span className="text-section-h2 shrink-0 hidden sm:block">Collateral geography</span>
+        <Badge variant="secondary" className="text-micro shrink-0 sm:hidden">
+          Collateral
         </Badge>
         <span className="text-sm text-muted-foreground hidden md:inline">
-          {activeNotes.length} active · outstanding{" "}
+          <span className="tabular-nums">{activeNotes.length}</span> active · outstanding{" "}
           <span className="font-mono tabular-nums text-foreground font-medium">
             {usd(totalOutstanding, { noCents: true })}
           </span>
@@ -229,12 +230,13 @@ function CurbCaptureStrip({
   return (
     <div className="flex items-center gap-3 px-4 md:px-6 py-2.5 border-b bg-acr-brand-soft/15">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Badge variant="secondary" className="text-micro shrink-0">
-          Curb capture
+        <span className="text-section-h2 shrink-0 hidden sm:block">Curb capture</span>
+        <Badge variant="secondary" className="text-micro shrink-0 sm:hidden">
+          Curb
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {motivated.length} {leadLabel.toLowerCase()}
-          {motivated.length === 1 ? "" : "s"} pinned
+          <span className="tabular-nums">{motivated.length}</span>{" "}
+          {leadLabel.toLowerCase()}{motivated.length === 1 ? "" : "s"} pinned
         </span>
       </div>
       <Button asChild size="sm" className="h-7 text-xs shrink-0">
@@ -306,8 +308,9 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
   return (
     <div className="flex items-center gap-3 px-4 md:px-6 py-2.5 border-b bg-acr-brand-soft/15">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Badge variant="secondary" className="text-micro shrink-0">
-          Inventory + projects
+        <span className="text-section-h2 shrink-0 hidden sm:block">Inventory + projects</span>
+        <Badge variant="secondary" className="text-micro shrink-0 sm:hidden">
+          Inventory
         </Badge>
         <span className="text-sm text-muted-foreground flex items-center gap-1.5">
           <StatusPip label="Acquisition" count={counts.acquisition} color="text-acr-warn" />

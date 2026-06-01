@@ -139,16 +139,24 @@ function syntheticBoundary(lat: number, lng: number) {
   };
 }
 
-const DEAL_STATUS_COLORS: Record<string, string> = {
-  negotiating: "#f59e0b",
-  offer_sent: "#3b82f6",
-  countered: "#8b5cf6",
-  accepted: "#10b981",
-  in_escrow: "#06b6d4",
-  closed: "#22c55e",
-  cancelled: "#6b7280",
-  dead: "#ef4444",
-};
+// Deal-status colors — now resolved at render time from CSS vars so they
+// respond to theme + dark-mode switches. Cannot use Tailwind here because
+// PropertyMap consumes these as inline style / SVG fill strings.
+function getDealStatusColor(status: string): string {
+  const style = getComputedStyle(document.documentElement);
+  const get = (v: string) => style.getPropertyValue(v).trim();
+  const map: Record<string, string> = {
+    negotiating: get("--acr-heat-warm"),   // building negotiation = warm heat
+    offer_sent:  get("--acr-brand"),        // brand accent — active outreach
+    countered:   get("--acr-accent"),       // secondary accent
+    accepted:    get("--acr-pos"),          // positive outcome
+    in_escrow:   get("--acr-pos"),          // positive outcome (in progress)
+    closed:      get("--acr-pos"),          // positive final
+    cancelled:   get("--acr-heat-cold"),   // cold/quiet — deal gone cold
+    dead:        get("--acr-heat-hot"),    // hot-neg — dead = high-signal loss
+  };
+  return map[status] ?? get("--acr-ink-3");
+}
 
 interface DealWithProperty {
   id: number;
@@ -392,18 +400,24 @@ function PropertyIntelligencePanel({
             <ScoreRing
               score={intel.solarScore ?? 0}
               label="Solar"
-              color="#f59e0b"
+              color="var(--acr-heat-warm)"
             />
             <ScoreRing
               score={intel.soilQuality ?? 0}
               label="Soil"
-              color="#22c55e"
+              color="var(--acr-pos)"
             />
             {intel.floodRisk && (
               <ScoreRing
                 score={intel.floodRisk === "minimal" ? 90 : intel.floodRisk === "moderate" ? 50 : 20}
                 label="Flood Safe"
-                color={intel.floodRisk === "minimal" ? "#22c55e" : intel.floodRisk === "moderate" ? "#f59e0b" : "#ef4444"}
+                color={
+                  intel.floodRisk === "minimal"
+                    ? "var(--acr-pos)"
+                    : intel.floodRisk === "moderate"
+                    ? "var(--acr-heat-warm)"
+                    : "var(--acr-heat-hot)"
+                }
               />
             )}
           </div>
@@ -434,8 +448,12 @@ function PropertyIntelligencePanel({
                 intel.marketTrendPct ?? 0
               );
               if (data.length < 2) return null;
-              const color = intel.marketTrend === "up" ? "#22c55e" :
-                            intel.marketTrend === "down" ? "#ef4444" : "#6366f1";
+              const style = getComputedStyle(document.documentElement);
+              const color = intel.marketTrend === "up"
+                ? style.getPropertyValue("--acr-pos").trim()
+                : intel.marketTrend === "down"
+                ? style.getPropertyValue("--acr-heat-hot").trim()
+                : style.getPropertyValue("--acr-accent").trim();
               return (
                 <div role="img" aria-label={`Price-per-acre sparkline trending ${intel.marketTrend ?? "flat"} ${intel.marketTrendPct ?? 0}% over ${data.length} months`}>
                 <ResponsiveContainer width="100%" height={52}>
@@ -900,7 +918,7 @@ export default function MapsPage() {
         <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-background/90 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-            <h1 className="text-base font-semibold truncate">
+            <h1 className="text-section-h2 truncate">
               {mapMode === "deals" ? "Portfolio map" : "Property intelligence map"}
             </h1>
             <Badge variant="secondary" className="text-micro shrink-0 tabular-nums" aria-label={`${filteredProperties.length} of ${propertiesWithCoords} property pins shown`}>
@@ -939,24 +957,28 @@ export default function MapsPage() {
             )}
           </div>
 
-          {/* Mode toggle */}
+          {/* Mode toggle — shadcn Button group, design system §4.1 */}
           <div className="flex items-center rounded-md border overflow-hidden shrink-0" role="group" aria-label="Map mode">
-            <button
+            <Button
               type="button"
-              className={`px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${mapMode === "properties" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              size="sm"
+              variant={mapMode === "properties" ? "default" : "ghost"}
+              className="rounded-none h-7 text-xs px-2.5 border-0 focus-visible:ring-inset"
               onClick={() => setMapMode("properties")}
               aria-pressed={mapMode === "properties"}
             >
               Properties
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className={`px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${mapMode === "deals" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              size="sm"
+              variant={mapMode === "deals" ? "default" : "ghost"}
+              className="rounded-none h-7 text-xs px-2.5 border-0 border-l focus-visible:ring-inset"
               onClick={() => setMapMode("deals")}
               aria-pressed={mapMode === "deals"}
             >
               Deals
-            </button>
+            </Button>
           </div>
 
           {/* r6 Tasha WF-R6-001 mobile capture MVP: geolocate + reverse

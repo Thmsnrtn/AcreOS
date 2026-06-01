@@ -144,6 +144,15 @@ export default {
           // Defined as a CSS var in index.css so it can theoretically
           // theme without touching component code.
           "bridge-accent": "var(--acr-bridge-accent)",
+          // Heat tokens — activity/demand intensity (Kai finding #1, 2026-06-01).
+          // Distinct from neg/warn/pos which encode outcome sentiment.
+          // cold = quiet/low, warm = building/medium, hot = high/active.
+          "heat-cold":      "var(--acr-heat-cold)",
+          "heat-warm":      "var(--acr-heat-warm)",
+          "heat-hot":       "var(--acr-heat-hot)",
+          "heat-cold-soft": "var(--acr-heat-cold-soft)",
+          "heat-warm-soft": "var(--acr-heat-warm-soft)",
+          "heat-hot-soft":  "var(--acr-heat-hot-soft)",
         },
       },
       fontFamily: {

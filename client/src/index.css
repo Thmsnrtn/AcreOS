@@ -88,6 +88,23 @@
      on the founder Bridge surface. Mode-only so a per-theme block can
      theoretically override it later without code change. */
   --acr-bridge-accent: #FFB547;
+
+  /* ── Semantic heat tokens (Kai's finding #1 — 2026-06-01) ────────────
+     Heat encodes activity / demand intensity (cold → warm → hot).
+     Distinct from --acr-neg/warn/pos which encode outcome sentiment.
+     Map components, buyer-demand heatmaps, and acquisition radar scores
+     MUST use these; never raw hex.
+
+     Default values match BEDROCK light. Per-theme blocks below override.
+
+     Stripe: cold (quiet/low) · warm (building/medium) · hot (high/active)
+     *-soft variants: tinted fills for bars, badge backgrounds, sparkline areas. */
+  --acr-heat-cold:      #6B7280;  /* slate-500 neutral — quiet/zero activity  */
+  --acr-heat-warm:      #B97A1E;  /* Bedrock --acr-warn  — building signal     */
+  --acr-heat-hot:       #8E2B16;  /* Bedrock --acr-neg   — high/active signal  */
+  --acr-heat-cold-soft: rgba(107,114,128,0.14);
+  --acr-heat-warm-soft: rgba(185,122,30,0.14);
+  --acr-heat-hot-soft:  rgba(142,43,22,0.14);
 }
 .dark {
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
@@ -105,6 +122,15 @@
   /* Bridge accent — held constant across light/dark by default; tinted
      per-theme later if/when the Bridge theming work lands. */
   --acr-bridge-accent: #FFB547;
+
+  /* Heat tokens — dark-mode global override (BEDROCK dark baseline).
+     Per-theme dark blocks below refine these further. */
+  --acr-heat-cold:      #9C8E72;  /* Bedrock dark --acr-ink-3 — muted neutral   */
+  --acr-heat-warm:      #D9A24A;  /* Bedrock dark --acr-warn  — amber building  */
+  --acr-heat-hot:       #BF4C2E;  /* Bedrock dark --acr-neg   — active signal   */
+  --acr-heat-cold-soft: rgba(156,142,114,0.16);
+  --acr-heat-warm-soft: rgba(217,162,74,0.16);
+  --acr-heat-hot-soft:  rgba(191,76,46,0.18);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -190,6 +216,18 @@
   --sidebar-ring:                14 60% 39%;
 }
 
+/* ─────────────── BEDROCK · light — heat token override ─────────────── */
+/* (global :root block already carries the BEDROCK light defaults above) */
+:root,
+[data-theme="bedrock"]:root {
+  --acr-heat-cold:      #6B5C42;  /* --acr-ink-3 — quiet/zero signal          */
+  --acr-heat-warm:      #B97A1E;  /* --acr-warn  — building signal             */
+  --acr-heat-hot:       #8E2B16;  /* --acr-neg   — high/active signal          */
+  --acr-heat-cold-soft: rgba(107,92,66,0.14);
+  --acr-heat-warm-soft: rgba(185,122,30,0.14);
+  --acr-heat-hot-soft:  rgba(142,43,22,0.14);
+}
+
 /* ─────────────── BEDROCK · dark ─────────────── */
 .dark,
 [data-theme="bedrock"].dark {
@@ -257,6 +295,13 @@
   --sidebar-accent-foreground:   39 50% 84%;
   --sidebar-border:              36 26% 18%;
   --sidebar-ring:                11 49% 53%;
+  /* Heat tokens — BEDROCK dark */
+  --acr-heat-cold:      #9C8E72;  /* --acr-ink-3 */
+  --acr-heat-warm:      #D9A24A;  /* --acr-warn  */
+  --acr-heat-hot:       #BF4C2E;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(156,142,114,0.16);
+  --acr-heat-warm-soft: rgba(217,162,74,0.16);
+  --acr-heat-hot-soft:  rgba(191,76,46,0.18);
 }
 
 /* ─────────────── Homestead · light ─────────────── */
@@ -329,6 +374,13 @@
   --sidebar-accent-foreground:   31 67.4% 8.4%;
   --sidebar-border:              37 33.3% 78.2%;
   --sidebar-ring:                20 74.8% 43.5%;
+  /* Heat tokens — Homestead light */
+  --acr-heat-cold:      #786644;  /* --acr-ink-3 */
+  --acr-heat-warm:      #C48A1E;  /* --acr-warn  */
+  --acr-heat-hot:       #B33419;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(120,102,68,0.14);
+  --acr-heat-warm-soft: rgba(196,138,30,0.14);
+  --acr-heat-hot-soft:  rgba(179,52,25,0.14);
 }
 
 /* ─────────────── Homestead · dark ─────────────── */
@@ -400,6 +452,13 @@
   --sidebar-accent-foreground:   38 73.1% 89.8%;
   --sidebar-border:              32 28.4% 13.1%;
   --sidebar-ring:                21 81.2% 62.5%;
+  /* Heat tokens — Homestead dark */
+  --acr-heat-cold:      #8F7E62;  /* --acr-ink-3 */
+  --acr-heat-warm:      #F0BC58;  /* --acr-warn  */
+  --acr-heat-hot:       #EE8063;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(143,126,98,0.16);
+  --acr-heat-warm-soft: rgba(240,188,88,0.16);
+  --acr-heat-hot-soft:  rgba(238,128,99,0.16);
 }
 
 /* ─────────────── Quarry · light ─────────────── */
@@ -472,6 +531,13 @@
   --sidebar-accent-foreground:   60 9.1% 4.3%;
   --sidebar-border:              42 8.1% 75.7%;
   --sidebar-ring:                3 75.4% 44.7%;
+  /* Heat tokens — Quarry light */
+  --acr-heat-cold:      #6A6A62;  /* --acr-ink-3 */
+  --acr-heat-warm:      #8F6A00;  /* --acr-warn  */
+  --acr-heat-hot:       #9E1E17;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(106,106,98,0.10);
+  --acr-heat-warm-soft: rgba(143,106,0,0.10);
+  --acr-heat-hot-soft:  rgba(158,30,23,0.10);
 }
 
 /* ─────────────── Quarry · dark ─────────────── */
@@ -544,6 +610,13 @@
   --sidebar-accent-foreground:   46 33.3% 92.4%;
   --sidebar-border:              60 3.4% 17.5%;
   --sidebar-ring:                5 78.3% 58.4%;
+  /* Heat tokens — Quarry dark */
+  --acr-heat-cold:      #87847A;  /* --acr-ink-3 */
+  --acr-heat-warm:      #E4B14A;  /* --acr-warn  */
+  --acr-heat-hot:       #E85142;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(135,132,122,0.14);
+  --acr-heat-warm-soft: rgba(228,177,74,0.14);
+  --acr-heat-hot-soft:  rgba(232,81,66,0.14);
 }
 
 /* ─────────────── Nocturne · light ─────────────── */
@@ -616,6 +689,13 @@
   --sidebar-accent-foreground:   0 0% 3.9%;
   --sidebar-border:              60 2.9% 86.3%;
   --sidebar-ring:                5 67.3% 50.8%;
+  /* Heat tokens — Nocturne light */
+  --acr-heat-cold:      #6D6D6D;  /* --acr-ink-3 */
+  --acr-heat-warm:      #B8820E;  /* --acr-warn  */
+  --acr-heat-hot:       #B02B20;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(109,109,109,0.10);
+  --acr-heat-warm-soft: rgba(184,130,14,0.10);
+  --acr-heat-hot-soft:  rgba(176,43,32,0.10);
 }
 
 /* ─────────────── Nocturne · dark ─────────────── */
@@ -687,6 +767,13 @@
   --sidebar-accent-foreground:   0 0% 95.7%;
   --sidebar-border:              0 0% 9.8%;
   --sidebar-ring:                5 100% 61%;
+  /* Heat tokens — Nocturne dark */
+  --acr-heat-cold:      #7A7A7A;  /* --acr-ink-3 */
+  --acr-heat-warm:      #FAC84D;  /* --acr-warn  */
+  --acr-heat-hot:       #FF4A38;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(122,122,122,0.12);
+  --acr-heat-warm-soft: rgba(250,200,77,0.12);
+  --acr-heat-hot-soft:  rgba(255,74,56,0.12);
 }
 
 /* ─────────────── Meadow · light ─────────────── */
@@ -760,6 +847,13 @@
   --sidebar-accent-foreground:   109 33.3% 9.4%;
   --sidebar-border:              79 18.4% 79.8%;
   --sidebar-ring:                106 39% 30.2%;
+  /* Heat tokens — Meadow light */
+  --acr-heat-cold:      #676E5E;  /* --acr-ink-3 */
+  --acr-heat-warm:      #D89528;  /* --acr-warn  */
+  --acr-heat-hot:       #C85632;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(103,110,94,0.14);
+  --acr-heat-warm-soft: rgba(216,149,40,0.16);
+  --acr-heat-hot-soft:  rgba(200,86,50,0.14);
 }
 
 /* ─────────────── Meadow · dark ─────────────── */
@@ -831,6 +925,13 @@
   --sidebar-accent-foreground:   73 40.9% 91.4%;
   --sidebar-border:              95 17.1% 13.7%;
   --sidebar-ring:                99 45.4% 59.8%;
+  /* Heat tokens — Meadow dark */
+  --acr-heat-cold:      #838B72;  /* --acr-ink-3 */
+  --acr-heat-warm:      #F2BF55;  /* --acr-warn  */
+  --acr-heat-hot:       #EA8460;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(131,139,114,0.18);
+  --acr-heat-warm-soft: rgba(242,191,85,0.18);
+  --acr-heat-hot-soft:  rgba(234,132,96,0.18);
 }
 
 /* ─────────────── Slate · light ─────────────── */
@@ -903,6 +1004,13 @@
   --sidebar-accent-foreground:   220 48.8% 8.4%;
   --sidebar-border:              214 14.3% 80.8%;
   --sidebar-ring:                223 74.4% 45.9%;
+  /* Heat tokens — Slate light */
+  --acr-heat-cold:      #5F6B80;  /* --acr-ink-3 */
+  --acr-heat-warm:      #B5720A;  /* --acr-warn  */
+  --acr-heat-hot:       #B8213B;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(95,107,128,0.12);
+  --acr-heat-warm-soft: rgba(181,114,10,0.12);
+  --acr-heat-hot-soft:  rgba(184,33,59,0.12);
 }
 
 /* ─────────────── Slate · dark ─────────────── */
@@ -974,6 +1082,13 @@
   --sidebar-accent-foreground:   217 56.3% 93.7%;
   --sidebar-border:              214 31.3% 13.1%;
   --sidebar-ring:                222 100% 67.8%;
+  /* Heat tokens — Slate dark */
+  --acr-heat-cold:      #778294;  /* --acr-ink-3 */
+  --acr-heat-warm:      #EAB14A;  /* --acr-warn  */
+  --acr-heat-hot:       #F1536E;  /* --acr-neg   */
+  --acr-heat-cold-soft: rgba(119,130,148,0.18);
+  --acr-heat-warm-soft: rgba(234,177,74,0.18);
+  --acr-heat-hot-soft:  rgba(241,83,110,0.18);
 }
 
 @layer base {

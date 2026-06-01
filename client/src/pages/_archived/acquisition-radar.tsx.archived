@@ -46,11 +46,15 @@ const OPPORTUNITY_LABELS: Record<string, { label: string; color: string }> = {
   off_market: { label: 'Off market', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' },
 };
 
+// Score colors — resolved from --acr-heat-* tokens so they respond to
+// theme + dark-mode switches. "hot" = high-signal opportunity (acr-heat-hot),
+// "warm" = building signal, "moderate" = acr-warn, "cold" = quiet/no signal.
 const SCORE_COLOR = (score: number) => {
-  if (score >= 80) return '#ef4444'; // hot
-  if (score >= 60) return '#f97316'; // warm
-  if (score >= 40) return '#eab308'; // moderate
-  return '#6b7280'; // cold
+  const style = getComputedStyle(document.documentElement);
+  if (score >= 80) return style.getPropertyValue('--acr-heat-hot').trim();  // hot
+  if (score >= 60) return style.getPropertyValue('--acr-heat-warm').trim(); // warm
+  if (score >= 40) return style.getPropertyValue('--acr-warn').trim();      // moderate
+  return style.getPropertyValue('--acr-heat-cold').trim();                  // cold
 };
 
 function ScoreBadge({ score }: { score: number }) {
