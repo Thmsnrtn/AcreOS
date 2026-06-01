@@ -1,0 +1,80 @@
+name: Daily Pulse
+
+# Fires the daily one-line truth and pushes it to Tom's phone via ntfy.
+# Runs on GitHub Actions infrastructure, so it's genuinely independent of
+# any Claude Code session being open. Free at this usage volume.
+#
+# 11:00 UTC = 7:00am EDT (Tom's local Eastern time during DST).
+# In standard time (EST), this lands at 6am — Solene proposes a switch
+# to "0 12 * * *" at the next DST shift.
+#
+# Secrets required (Tom sets these once in the GitHub repo settings):
+#   NTFY_TOPIC — the ntfy.sh topic Tom's iOS device is subscribed to.
+#
+# Optional secrets for richer narration (Phase 1+ when AI budget allows):
+#   ANTHROPIC_API_KEY — Solene composes the line in her voice via Haiku.
+#                       At ~$0.001 per call, ~$0.03/month. Not needed Day 1.
+
+on:
+  schedule:
+    - cron: '7 11 * * *'   # 11:07 UTC daily — off-the-minute on purpose
+  workflow_dispatch:        # allow manual trigger from the Actions tab
+
+jobs:
+  pulse:
+    name: Compose and push the daily one-line
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 50  # enough to count commits in last 24h
+
+      - name: Gather live state
+        id: gather
+        run: |
+          set -uo pipefail
+
+          # Live production state
+          SHA_RAW=$(curl -sS --max-time 10 https://acreos.io/api/version 2>/dev/null | jq -r '.sha // "unknown"' 2>/dev/null || echo "unknown")
+          SHA="${SHA_RAW:0:8}"
+          HEALTH=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" https://acreos.io/api/health 2>/dev/null || echo "??? ")
+
+          # Recent activity
+          COMMITS_24H=$(git log --oneline --since="24 hours ago" 2>/dev/null | wc -l | tr -d ' ')
+          LAST_COMMIT_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null | head -c 60)
+
+          # Date in Tom's local
+          DATE_LINE=$(TZ="America/New_York" date "+%a %b %d")
+
+          # Build the one-line
+          ONE_LINE="${DATE_LINE} · acreos@${SHA} · health ${HEALTH} · ${COMMITS_24H} commits 24h · Phase Zero-Zero · MRR \$0"
+
+          # Last commit subject as a second-line detail
+          DETAIL="last shipped: ${LAST_COMMIT_SUBJECT}"
+
+          echo "ONE_LINE=${ONE_LINE}" >> $GITHUB_OUTPUT
+          echo "DETAIL=${DETAIL}" >> $GITHUB_OUTPUT
+          echo "---"
+          echo "Computed: ${ONE_LINE}"
+          echo "Detail: ${DETAIL}"
+
+      - name: Push to ntfy (if topic configured)
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          if [ -z "${NTFY_TOPIC:-}" ]; then
+            echo "NTFY_TOPIC not set; skipping push. Set it in repo secrets to enable."
+            exit 0
+          fi
+
+          curl -sS -X POST \
+            -H "Title: AcreOS daily pulse" \
+            -H "Priority: default" \
+            -H "Tags: bar_chart,sunrise" \
+            -d "${{ steps.gather.outputs.ONE_LINE }}
+
+${{ steps.gather.outputs.DETAIL }}" \
+            "https://ntfy.sh/${NTFY_TOPIC}"
+
+          echo "✓ Pushed to ntfy topic"
