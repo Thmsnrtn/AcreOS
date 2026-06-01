@@ -221,20 +221,22 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
   const shouldShowDetail = expanded || !driftIsZero;
 
   return (
-    <Card className={`mb-6 ${driftIsZero ? "" : "border-acr-warning/40 bg-acr-warning/5"}`}>
+    <Card className={`mb-6 ${driftIsZero ? "" : "border-acr-warn/40 bg-acr-warn-soft/30"}`}>
       <div className="p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {driftIsZero ? (
-              <CheckCircle2 className="w-5 h-5 text-acr-success" aria-hidden="true" />
+              /* --acr-pos = semantic positive / clean state */
+              <CheckCircle2 className="w-5 h-5 text-acr-pos" aria-hidden="true" />
             ) : (
-              <AlertCircle className="w-5 h-5 text-acr-warning" aria-hidden="true" />
+              /* --acr-warn = semantic caution / drift state */
+              <AlertCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             )}
             <h2 className="text-sm font-semibold">
               {driftIsZero ? "Ledger reconciled" : "Ledger drift detected"}
             </h2>
             <span
-              className="text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground tabular-nums"
               data-testid="reconciliation-drift"
             >
               drift = {fmtUsd(data.drift)}
@@ -502,12 +504,12 @@ export default function NoteDetailPage() {
           an $812 payment, that money should sit in unapplied until either
           the next deposit makes it whole or it ages past a threshold." */}
       {note.unappliedBalanceCents > 0 && (
-        <Card className="mb-6 border-acr-warning/30 bg-acr-warning/5">
+        <Card className="mb-6 border-acr-warn/30 bg-acr-warn-soft/30">
           <div className="p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-acr-warning shrink-0 mt-0.5" aria-hidden="true" />
+            <AlertCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
             <div className="flex-1">
               <p className="text-sm font-semibold">
-                {fmtUsd(note.unappliedBalanceCents)} held in unapplied funds
+                <span className="tabular-nums">{fmtUsd(note.unappliedBalanceCents)}</span> held in unapplied funds
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Borrower has sent partial payments that haven't been applied to a period.
@@ -608,7 +610,8 @@ function StatCard({ label, value, sub, testid }: { label: string; value: string;
   return (
     <Card className="p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold tracking-tight mt-1" data-testid={testid}>{value}</div>
+      {/* Fraunces (display font) for hero metric; tabular-nums for alignment. */}
+      <div className="text-2xl font-semibold tracking-tight mt-1 font-mono tabular-nums" data-testid={testid}>{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </Card>
   );
@@ -618,7 +621,7 @@ function KV({ label, value, sub }: { label: string; value: string; sub?: string 
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium mt-0.5">{value}</div>
+      <div className="text-sm font-medium mt-0.5 tabular-nums">{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
@@ -635,7 +638,7 @@ const PAYMENT_TYPE_LABEL: Record<NotePaymentType, string> = {
 
 const PAYMENT_TYPE_TONE: Record<NotePaymentType, string> = {
   regular: "bg-acr-pos/10 text-acr-pos",
-  partial: "bg-acr-warning/10 text-acr-warning",
+  partial: "bg-acr-warn/10 text-acr-warn",
   extra_principal: "bg-acr-brand/10 text-acr-brand",
   payoff: "bg-primary/10 text-primary",
   nsf_reversal: "bg-acr-neg/10 text-acr-neg",
@@ -696,12 +699,12 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
                     {PAYMENT_TYPE_LABEL[p.paymentType]}
                   </span>
                 </td>
-                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.principalCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.interestCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.escrowCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.lateFeeCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs">{fmtCents(p.unappliedCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs font-semibold">{fmtCents(total)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.principalCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.interestCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.escrowCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.lateFeeCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.unappliedCents)}</td>
+                <td className="px-2 py-2 text-right font-mono text-xs font-semibold tabular-nums">{fmtCents(total)}</td>
                 <td className="px-2 py-2 text-right text-xs uppercase">{p.paymentMethod}</td>
               </tr>
             );
@@ -715,12 +718,12 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
             <td className="px-2 py-2 font-semibold" colSpan={2}>
               Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}
             </td>
-            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.principal)}</td>
-            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.interest)}</td>
-            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.escrow)}</td>
-            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.lateFee)}</td>
-            <td className="px-2 py-2 text-right font-mono">{fmtCents(totals.unapplied)}</td>
-            <td className="px-2 py-2 text-right font-mono font-semibold">{fmtCents(grandTotal)}</td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.principal)}</td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.interest)}</td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.escrow)}</td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.lateFee)}</td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.unapplied)}</td>
+            <td className="px-2 py-2 text-right font-mono font-semibold tabular-nums">{fmtCents(grandTotal)}</td>
             <td className="px-2 py-2" />
           </tr>
         </tfoot>

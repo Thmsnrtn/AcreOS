@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail, Link2, Copy, ExternalLink, Settings } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -213,7 +214,8 @@ export default function FinancePage() {
           {isLandInvestorPersona && portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
             <Card className="mb-6">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
+                {/* §1.3: section-level head — dual class + utility. */}
+                <CardTitle className="acr-section-h2 text-section-h2 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-primary" />
                   Monthly Cash Flow (Last 12 Months)
                 </CardTitle>
@@ -271,7 +273,8 @@ export default function FinancePage() {
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Finance</div>
-                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                {/* §1.3: dual class + Tailwind utility. */}
+                <h1 className="acr-cc-greeting text-hero" data-testid="text-page-title">
                   The paper side.
                   <span className="acr-cc-greeting-soft">
                     {" "}Notes, payments, and statements — kept straight.
@@ -341,7 +344,7 @@ export default function FinancePage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Active Notes</p>
-                    <p className="text-2xl font-bold" data-testid="text-active-notes">{activeNotes.length}</p>
+                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-active-notes">{activeNotes.length}</p>
                   </div>
                 </div>
               </CardContent>
@@ -407,7 +410,8 @@ export default function FinancePage() {
 
           <Card className="floating-window overflow-hidden">
             <CardHeader className="pb-4">
-              <CardTitle>Loan Portfolio</CardTitle>
+              {/* §1.3: section h2 uses dual CSS class + Tailwind utility. */}
+              <CardTitle className="acr-section-h2 text-section-h2">Loan Portfolio</CardTitle>
               <CardDescription>Tap a note to view details, payment history, and amortization schedule</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -415,9 +419,17 @@ export default function FinancePage() {
                   container so their content doesn't get clipped by the
                   horizontal-overflow behavior used for the desktop table. */}
               {isLoading ? (
-                <div className="flex items-center justify-center gap-2 h-24 text-sm">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  Loading notes…
+                <div className="space-y-2 p-4" aria-busy="true" aria-label="Loading notes">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-full" announce={i === 0} announceText="Loading your notes" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-40" announce={false} />
+                        <Skeleton className="h-3 w-24" announce={false} />
+                      </div>
+                      <Skeleton className="h-5 w-20" announce={false} />
+                    </div>
+                  ))}
                 </div>
               ) : !enrichedNotes || enrichedNotes.length === 0 ? (
                 <EmptyState

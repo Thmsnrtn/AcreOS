@@ -25,6 +25,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { chartColor } from "@/lib/chartPalette";
+import { EmptyState } from "@/components/empty-state";
 import {
   DollarSign,
   TrendingUp,
@@ -195,12 +196,13 @@ export default function CashFlowPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          {/* §1.3: section H1 — dual class + Tailwind utility. */}
+          <h1 className="acr-cc-greeting text-hero flex items-center gap-2">
             <Activity className="w-8 h-8 text-primary" aria-hidden="true" />
             Cash flow forecaster
           </h1>
           <p className="text-muted-foreground mt-1">
-            12-month income and expense projections with payment health analysis and AI insights.
+            How much cash is coming in, when it arrives, and where the risk is — projected 12 months out.
           </p>
         </div>
         <Button
@@ -335,11 +337,17 @@ export default function CashFlowPage() {
           testId="cash-flow-summary-error"
         />
       ) : (
-        <div className="text-center py-16 text-muted-foreground">
-          <Activity className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
-          <p className="text-lg font-medium">No forecast data yet.</p>
-          <p className="text-sm mt-1">Click "Generate forecast" to create your first cash flow projection.</p>
-        </div>
+        /* Canonical EmptyState — no bespoke centred-div. */
+        <EmptyState
+          icon={Activity}
+          headline="No forecast data yet"
+          subtitle="Generate a forecast to see your 12-month cash flow projection with payment health analysis."
+          cta={{
+            label: "Generate forecast",
+            onClick: () => generateMutation.mutate(),
+          }}
+          actionIcon={null}
+        />
       )}
 
       {summary && (
@@ -364,7 +372,7 @@ export default function CashFlowPage() {
             {portfolioTimelineData?.timeline && portfolioTimelineData.timeline.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>24-month income projection</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">24-month income projection</CardTitle>
                   <CardDescription>
                     Expected monthly income across all active notes and owned properties.
                     Shaded band shows uncertainty range. Balloon payments are highlighted.
@@ -463,7 +471,7 @@ export default function CashFlowPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Monthly cash flow projection</CardTitle>
+                <CardTitle className="acr-section-h2 text-section-h2">Monthly cash flow projection</CardTitle>
                 <CardDescription>Projected income, expenses, and net cash flow over the next 12 months.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -517,7 +525,7 @@ export default function CashFlowPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Income by source</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Income by source</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <ul className="space-y-3" aria-label="Income by source">
@@ -548,7 +556,7 @@ export default function CashFlowPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Expenses by category</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Expenses by category</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <ul className="space-y-3" aria-label="Expenses by category">
@@ -582,10 +590,15 @@ export default function CashFlowPage() {
           {/* ── HIGH-RISK NOTES ── */}
           <TabsContent value="risk" className="space-y-4">
             {highRisk.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground" role="status">
-                <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
-                <p>No high-risk notes detected. Portfolio looks healthy.</p>
-              </div>
+              /* Canonical EmptyState — _noOp: true because this is a good-news zero-state; no CTA needed. */
+              // TODO(cta): when note filtering ships, add "View all notes" CTA here.
+              <EmptyState
+                icon={Shield}
+                headline="No high-risk notes"
+                subtitle="Portfolio looks healthy — no notes have triggered the risk threshold."
+                cta={{ label: "", _noOp: true }}
+                actionIcon={null}
+              />
             ) : (
               <ul className="space-y-4" aria-label="High-risk notes">
                 {highRisk.map(({ note, riskScore, riskFactors }: any) => (
@@ -679,7 +692,7 @@ export default function CashFlowPage() {
             <TabsContent value="accuracy" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Forecast accuracy — last 6 months</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Forecast accuracy — last 6 months</CardTitle>
                   <CardDescription>
                     Overall accuracy: <span className="tabular-nums">{(accuracy.overallAccuracy * 100).toFixed(1)}%</span>
                   </CardDescription>

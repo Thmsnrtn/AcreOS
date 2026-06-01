@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Button } from "@/components/ui/button";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { 
   DollarSign, 
@@ -302,12 +303,13 @@ export default function PortfolioPage() {
     <PageShell label="Portfolio">
         
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-portfolio-title">Portfolio analytics</h1>
-            <p className="text-muted-foreground">Financial performance metrics and projections for your note portfolio.</p>
+            {/* §1.3: page H1 — dual class + Tailwind utility. */}
+            <h1 className="acr-cc-greeting text-hero" data-testid="text-portfolio-title">Portfolio analytics</h1>
+            <p className="text-muted-foreground">Performance metrics and projections for your note portfolio — at a glance.</p>
           </div>
 
           <section aria-labelledby="portfolio-overview-heading">
-            <h2 id="portfolio-overview-heading" className="text-xl font-semibold mb-4">Portfolio overview</h2>
+            <h2 id="portfolio-overview-heading" className="acr-section-h2 text-section-h2 mb-4">Portfolio overview</h2>
             {financialsError ? (
               <QueryErrorState
                 error={financialsErrorObj}
@@ -370,7 +372,7 @@ export default function PortfolioPage() {
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-avg-interest-rate">
+                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-avg-interest-rate">
                           {formatPercent(summary?.averageInterestRate || 0)}
                         </dd>
                       )}
@@ -390,7 +392,7 @@ export default function PortfolioPage() {
                       {isLoading ? (
                         <Skeleton className="h-8 w-16" />
                       ) : (
-                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-active-notes-count">
+                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-active-notes-count">
                           {summary?.activeNotes || 0}
                         </dd>
                       )}
@@ -408,7 +410,7 @@ export default function PortfolioPage() {
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <Bell className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                    <CardTitle>Portfolio alerts</CardTitle>
+                    <CardTitle className="acr-section-h2 text-section-h2">Portfolio alerts</CardTitle>
                     {!alertsLoading && activeAlerts.length > 0 && (
                       <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg" aria-live="polite" aria-label={`${activeAlerts.length} active alert${activeAlerts.length === 1 ? "" : "s"}`}>
                         <span className="tabular-nums">{activeAlerts.length}</span> active
@@ -445,11 +447,16 @@ export default function PortfolioPage() {
                     testId="portfolio-alerts-error"
                   />
                 ) : activeAlerts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground" role="status">
-                    <CheckCircle className="w-12 h-12 mb-3 text-acr-pos" aria-hidden="true" />
-                    <p className="text-lg font-medium">No active alerts</p>
-                    <p className="text-sm">Your portfolio is looking healthy. Run a scan to check for new issues.</p>
-                  </div>
+                  /* Canonical EmptyState — celebratory tone for a healthy zero state. */
+                  // TODO(cta): "View dismissed alerts" filter could go here when dismissal history ships.
+                  <EmptyState
+                    icon={CheckCircle}
+                    headline="No active alerts"
+                    subtitle="Your portfolio is looking healthy. Run a portfolio scan above to check for new issues."
+                    tone="celebratory"
+                    cta={{ label: "", _noOp: true }}
+                    actionIcon={null}
+                  />
                 ) : (
                   <div className="space-y-3">
                     <ul className="flex flex-wrap gap-2 mb-4 list-none p-0 m-0" aria-label="Alerts by severity">
@@ -550,7 +557,7 @@ export default function PortfolioPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Shield className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle>Compliance dashboard</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Compliance dashboard</CardTitle>
                 </div>
                 <CardDescription>Overview of compliance rules and property compliance status.</CardDescription>
               </CardHeader>
@@ -635,7 +642,7 @@ export default function PortfolioPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle>Portfolio by status</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Portfolio by status</CardTitle>
                 </div>
                 <CardDescription>Sorted by count, largest first.</CardDescription>
               </CardHeader>
@@ -706,7 +713,7 @@ export default function PortfolioPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle>Delinquency metrics</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Delinquency metrics</CardTitle>
                 </div>
                 <CardDescription>Payment status and risk analysis.</CardDescription>
               </CardHeader>
@@ -722,7 +729,7 @@ export default function PortfolioPage() {
                     <dl className="grid grid-cols-2 gap-4 m-0">
                       <div className="p-4 rounded-card bg-muted/50">
                         <dt className="text-sm text-muted-foreground">Delinquency rate</dt>
-                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-delinquency-rate">
+                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-delinquency-rate">
                           {formatPercent(delinquency?.delinquencyRate || 0)}
                         </dd>
                       </div>
@@ -777,12 +784,12 @@ export default function PortfolioPage() {
           </div>
 
           <section aria-labelledby="principal-interest-heading">
-            <h2 id="principal-interest-heading" className="text-xl font-semibold mb-4">Principal vs interest breakdown</h2>
+            <h2 id="principal-interest-heading" className="acr-section-h2 text-section-h2 mb-4">Principal vs interest breakdown</h2>
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle>Monthly collections (last 12 months)</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Monthly collections (last 12 months)</CardTitle>
                 </div>
                 <CardDescription>Breakdown of principal and interest payments received.</CardDescription>
               </CardHeader>
@@ -828,7 +835,7 @@ export default function PortfolioPage() {
           </section>
 
           <section aria-labelledby="cash-on-cash-heading">
-            <h2 id="cash-on-cash-heading" className="text-xl font-semibold mb-4">Cash-on-cash & ROI</h2>
+            <h2 id="cash-on-cash-heading" className="acr-section-h2 text-section-h2 mb-4">Cash-on-cash & ROI</h2>
             <dl className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">
@@ -913,12 +920,12 @@ export default function PortfolioPage() {
           </section>
 
           <section aria-labelledby="projected-income-heading">
-            <h2 id="projected-income-heading" className="text-xl font-semibold mb-4">Projected income (next 12 months)</h2>
+            <h2 id="projected-income-heading" className="acr-section-h2 text-section-h2 mb-4">Projected income (next 12 months)</h2>
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle>Income projections</CardTitle>
+                  <CardTitle className="acr-section-h2 text-section-h2">Income projections</CardTitle>
                 </div>
                 <CardDescription>Expected principal and interest payments based on current active notes.</CardDescription>
               </CardHeader>
@@ -966,7 +973,7 @@ export default function PortfolioPage() {
           </section>
 
           <section aria-labelledby="amortization-summary-heading">
-            <h2 id="amortization-summary-heading" className="text-xl font-semibold mb-4">Amortization summary</h2>
+            <h2 id="amortization-summary-heading" className="acr-section-h2 text-section-h2 mb-4">Amortization summary</h2>
             <dl className="grid grid-cols-1 md:grid-cols-3 gap-4 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">

@@ -43,8 +43,14 @@ function getTabFromHash(): TabValue {
 
 function TabFallback() {
   return (
-    <div className="flex items-center justify-center py-20" role="status" aria-live="polite">
-      <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
+    <div className="space-y-4 py-4" role="status" aria-live="polite">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-24 rounded-card bg-muted/40 animate-pulse" />
+        ))}
+      </div>
+      <div className="h-40 rounded-card bg-muted/30 animate-pulse" />
+      <span className="sr-only">Loading Finance…</span>
     </div>
   );
 }
@@ -74,11 +80,12 @@ export default function FinancePageShell() {
     <PageShell>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-money-title">
+          {/* §1.3: dual class + Tailwind utility for the page H1. */}
+          <h1 className="acr-cc-greeting text-hero" data-testid="text-money-title">
             Finance
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Notes, portfolio, cash flow, and capital markets.
+            Your notes, portfolio health, and forward cash flow — in one place.
           </p>
         </div>
         {activeTab === "notes" && (
