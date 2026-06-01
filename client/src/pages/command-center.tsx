@@ -82,6 +82,7 @@ import { relative, usd } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Agent {
   name: string;
@@ -1516,7 +1517,18 @@ export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const { isMobile } = useIsMobile();
   const { toast } = useToast();
+  const { isFounder } = useAuth();
   const [mainTab, setMainTab] = useState<string>("chat");
+
+  // Constitution guard: if a non-founder somehow lands on a founder-only tab
+  // (e.g. via a saved URL hash), redirect them silently to the Chat tab.
+  // This runs on mount and whenever mainTab or isFounder changes.
+  const FOUNDER_ONLY_TABS = ["team", "agents", "ai-ops"] as const;
+  useEffect(() => {
+    if (!isFounder && FOUNDER_ONLY_TABS.includes(mainTab as (typeof FOUNDER_ONLY_TABS)[number])) {
+      setMainTab("chat");
+    }
+  }, [isFounder, mainTab]);
   const [input, setInput] = useState("");
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
@@ -1865,22 +1877,28 @@ export default function CommandCenterPage() {
                     <MessageSquare className="w-4 h-4 md:mr-2" />
                     <span className="hidden md:inline">Assistant</span>
                   </TabsTrigger>
-                  <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
-                    <Users className="w-4 h-4 md:mr-2" />
-                    <span className="hidden md:inline">Team</span>
-                  </TabsTrigger>
+                  {isFounder && (
+                    <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
+                      <Users className="w-4 h-4 md:mr-2" />
+                      <span className="hidden md:inline">Team</span>
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="tasks" data-testid="tab-tasks" aria-label="Tasks">
                     <ListTodo className="w-4 h-4 md:mr-2" />
                     <span className="hidden md:inline">Tasks</span>
                   </TabsTrigger>
-                  <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
-                    <Bot className="w-4 h-4 md:mr-2" />
-                    <span className="hidden md:inline">Background</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
-                    <Brain className="w-4 h-4 md:mr-2" />
-                    <span className="hidden md:inline">AI Ops</span>
-                  </TabsTrigger>
+                  {isFounder && (
+                    <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
+                      <Bot className="w-4 h-4 md:mr-2" />
+                      <span className="hidden md:inline">Background</span>
+                    </TabsTrigger>
+                  )}
+                  {isFounder && (
+                    <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
+                      <Brain className="w-4 h-4 md:mr-2" />
+                      <span className="hidden md:inline">AI Ops</span>
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </div>
             </Tabs>
@@ -2281,7 +2299,7 @@ export default function CommandCenterPage() {
             </div>
           )}
 
-          {mainTab === "team" && (
+          {mainTab === "team" && isFounder && (
             <TeamTabContent />
           )}
 
@@ -2289,11 +2307,11 @@ export default function CommandCenterPage() {
             <TasksTabContent />
           )}
 
-          {mainTab === "agents" && (
+          {mainTab === "agents" && isFounder && (
             <AgentsTabContent />
           )}
 
-          {mainTab === "ai-ops" && (
+          {mainTab === "ai-ops" && isFounder && (
             <AIOperationsTabContent />
           )}
         </div>
