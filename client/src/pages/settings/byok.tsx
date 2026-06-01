@@ -127,7 +127,7 @@ export default function ByokSettingsPage() {
   return (
     <PageShell label="Your provider keys">
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Your provider keys</h1>
+        <h1 className="text-hero">Your provider keys</h1>
         <p className="text-sm text-muted-foreground">
           Use your own API keys for any channel — your spend goes straight to the provider, not through AcreOS credits.
         </p>

@@ -1203,9 +1203,9 @@ export default function Settings() {
 
               <div className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Coins className="w-5 h-5" />
-                    Usage & Credits
+                    Usage &amp; Credits
                   </h2>
                   <p className="text-muted-foreground text-sm">
                     Track your credit balance, usage history, and purchase more credits.
@@ -1216,7 +1216,7 @@ export default function Settings() {
 
               <div className="space-y-4" data-testid="section-pricing-guide">
                 <div>
-                  <h2 className="text-xl font-semibold">Pricing Guide</h2>
+                  <h2 className="text-section-h2">Pricing Guide</h2>
                   <p className="text-muted-foreground text-sm">
                     View pricing details for all billable actions before you use them.
                   </p>
@@ -1310,7 +1310,7 @@ export default function Settings() {
               </Card>
 
               <div id="pricing-section" className="space-y-4">
-                <h2 className="text-xl font-semibold">Available Plans</h2>
+                <h2 className="text-section-h2">Available Plans</h2>
                 
                 {productsLoading ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1752,6 +1752,12 @@ export default function Settings() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Business goals — previously orphaned in a second
+                  TabsContent value="organization" that Radix never rendered. */}
+              <div className="pt-4 border-t" data-testid="tab-content-organization-goals">
+                <GoalsSettings />
+              </div>
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-8 mt-6" data-testid="tab-content-billing">
@@ -1761,7 +1767,7 @@ export default function Settings() {
             <TabsContent value="notifications" className="space-y-8 mt-6" data-testid="tab-content-notifications-comms">
               <div className="space-y-4" data-testid="section-email-settings">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Mail className="w-5 h-5" />
                     Email Settings
                   </h2>
@@ -1774,7 +1780,7 @@ export default function Settings() {
 
               <div className="space-y-4" data-testid="section-mail-settings">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Mail className="w-5 h-5" />
                     Mail Settings
                   </h2>
@@ -1787,7 +1793,7 @@ export default function Settings() {
 
               <div className="space-y-4" data-testid="section-phone-settings">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Phone className="w-5 h-5" />
                     Phone Numbers
                   </h2>
@@ -1800,7 +1806,7 @@ export default function Settings() {
 
               <div className="space-y-4" data-testid="section-integrations">
                 <div>
-                  <h2 className="text-xl font-semibold">Communication Integrations</h2>
+                  <h2 className="text-section-h2">Communication Integrations</h2>
                   <p className="text-muted-foreground text-sm">
                     Connect your own email, SMS, and direct mail providers for branded communications.
                   </p>
@@ -1808,78 +1814,25 @@ export default function Settings() {
                 <IntegrationsSettings />
                 <EmailDomainsSettings />
               </div>
-            </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-6 mt-6" data-testid="tab-content-notifications">
+              {/* Notification preferences — quiet hours + channel matrix */}
               <NotificationQuietHours />
               <NotificationPreferences />
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-ai">
+              {/* AI cost, settings, provider config */}
               <AICostDashboard />
               <AISettings />
               <div className="pt-4 border-t">
-                <h3 className="text-lg font-semibold mb-4">Service Providers</h3>
+                <h3 className="text-section-h2 mb-4">Service Providers</h3>
                 <ProviderSettings />
               </div>
-            </TabsContent>
 
-            <TabsContent value="tax-compliance" className="space-y-8 mt-6" data-testid="tab-content-tax-compliance">
-              {/* Tax identity link card — surfaces /settings/tax-identity
-                  (shipped during the onboarding-tax-identity merge but
-                  never discoverably wired from this bucket). Reyna §2 gap.
-                  Distinct testid from the legacy card under the Account
-                  bucket so both can coexist while we sunset the old home. */}
-              <Card data-testid="card-tax-compliance-identity">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" aria-hidden="true" />
-                    Tax identity (W-9)
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your W-9 tax identity and TIN for 1099 reporting. Required
-                    for borrowers and any seller you pay {">"} $600 in a tax year.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button aria-label="File text"
-                    variant="outline"
-                    onClick={() => setLocation("/settings/tax-identity")}
-                    data-testid="button-tax-compliance-open-tax-identity"
-                  >
-                    <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Open tax identity settings
-                    <ExternalLink className="w-3 h-3 ml-2" aria-hidden="true" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <div className="space-y-4">
+              {/* BYOK */}
+              <div className="space-y-6 pt-4 border-t">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    Custom Fields
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Define custom fields for leads, properties, and deals.
-                  </p>
-                </div>
-                <CustomFieldsManager />
-              </div>
-
-              <div className="space-y-4">
-                <ImportExportManager />
-              </div>
-
-              <div className="space-y-4">
-                <ComplianceSettings />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations">
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Link2 className="w-5 h-5" />
                     Bring Your Own Keys (BYOK)
                   </h2>
@@ -1902,43 +1855,18 @@ export default function Settings() {
                 </div>
                 <ByokSettings />
               </div>
-            </TabsContent>
 
-            <TabsContent value="account" className="space-y-8 mt-6" data-testid="tab-content-account-appearance">
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <SettingsIcon className="w-5 h-5" />
-                    Appearance
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Five themes, five type pairings, and the small comforts that make
-                    the workspace feel like yours.
-                  </p>
+              {/* Autonomy matrix (founder-gated feature flag) */}
+              {autonomyFlag && (
+                <div className="pt-4 border-t" data-testid="tab-content-integrations-autonomy">
+                  <AutonomyPanel />
                 </div>
-                <AppearancePanel />
-                <PreferencesCard />
-                {/* Investor persona — drives vocabulary swaps + onboarding
-                    path. Sits in Workspace cluster alongside appearance
-                    because both shape how the workspace feels. */}
-                <PersonaPanel />
-                {/* Wave B accessibility & comfort accommodations:
-                    Lexend, reading density, cognitive a11y, larger taps,
-                    picture-first parcels, focus mode + quiet hours. */}
-                <AccessibilityPanel />
-              </div>
-            </TabsContent>
+              )}
 
-            {autonomyFlag && (
-              <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-autonomy">
-                <AutonomyPanel />
-              </TabsContent>
-            )}
-
-            <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-developer">
-              <div className="space-y-4">
+              {/* Developer tools */}
+              <div className="space-y-4 pt-4 border-t" data-testid="tab-content-integrations-developer">
                 <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <h2 className="text-section-h2 flex items-center gap-2">
                     <Database className="w-5 h-5" />
                     Developer Tools
                   </h2>
@@ -1983,19 +1911,119 @@ export default function Settings() {
                     </Button>
                   </CardContent>
                 </Card>
+
+                {/* API Key Management */}
+                <ApiKeyManager />
+
+                {/* Activity Audit Log */}
+                <ActivityLogPanel />
               </div>
 
-              {/* API Key Management */}
-              <ApiKeyManager />
+              {/* Workflow automations */}
+              <div className="pt-4 border-t" data-testid="tab-content-integrations-automations">
+                <WorkflowsSettingsTab />
+              </div>
 
-              {/* Activity Audit Log */}
-              <ActivityLogPanel />
+              {/* Pax task settings */}
+              <div className="pt-4 border-t" data-testid="tab-content-integrations-ai-tasks">
+                <PaxTasksSettingsTab />
+              </div>
             </TabsContent>
 
-            {/* ── Goals Tab ─────────────────────────────────────────────── */}
-            <TabsContent value="organization" className="space-y-6 mt-6" data-testid="tab-content-organization-goals">
-              <GoalsSettings />
+            <TabsContent value="tax-compliance" className="space-y-8 mt-6" data-testid="tab-content-tax-compliance">
+              {/* Tax identity link card — surfaces /settings/tax-identity
+                  (shipped during the onboarding-tax-identity merge but
+                  never discoverably wired from this bucket). Reyna §2 gap.
+                  Distinct testid from the legacy card under the Account
+                  bucket so both can coexist while we sunset the old home. */}
+              <Card data-testid="card-tax-compliance-identity">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" aria-hidden="true" />
+                    Tax identity (W-9)
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your W-9 tax identity and TIN for 1099 reporting. Required
+                    for borrowers and any seller you pay {">"} $600 in a tax year.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button aria-label="File text"
+                    variant="outline"
+                    onClick={() => setLocation("/settings/tax-identity")}
+                    data-testid="button-tax-compliance-open-tax-identity"
+                  >
+                    <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Open tax identity settings
+                    <ExternalLink className="w-3 h-3 ml-2" aria-hidden="true" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-section-h2 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Custom Fields
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Define custom fields for leads, properties, and deals.
+                  </p>
+                </div>
+                <CustomFieldsManager />
+              </div>
+
+              <div className="space-y-4">
+                <ImportExportManager />
+              </div>
+
+              <div className="space-y-4">
+                <ComplianceSettings />
+              </div>
             </TabsContent>
+
+            {/* ── Account: appearance, persona, privacy, referral ─── */}
+            {/* All four were previously split across separate TabsContent
+                value="account" blocks — only the first one was ever rendered
+                by Radix Tabs. This single block is the canonical account tab. */}
+            <TabsContent value="account" className="space-y-8 mt-6" data-testid="tab-content-account-appearance">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-section-h2 flex items-center gap-2">
+                    <SettingsIcon className="w-5 h-5" />
+                    Appearance
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Five themes, five type pairings, and the small comforts that make
+                    the workspace feel like yours.
+                  </p>
+                </div>
+                <AppearancePanel />
+                <PreferencesCard />
+                {/* Investor persona — drives vocabulary swaps + onboarding
+                    path. Sits in Workspace cluster alongside appearance
+                    because both shape how the workspace feels. */}
+                <PersonaPanel />
+                {/* Wave B accessibility & comfort accommodations:
+                    Lexend, reading density, cognitive a11y, larger taps,
+                    picture-first parcels, focus mode + quiet hours. */}
+                <AccessibilityPanel />
+              </div>
+
+              {/* Privacy & data rights (GDPR/CCPA) */}
+              <div className="pt-4 border-t" data-testid="tab-content-account-privacy">
+                <PrivacyDataSettings />
+              </div>
+
+              {/* Refer & earn */}
+              <div className="pt-4 border-t" data-testid="tab-content-account-referral">
+                <ReferralSettings />
+              </div>
+            </TabsContent>
+
+            {/* ── Organization: team + goals ─────────────────────────── */}
+            {/* GoalsSettings was previously in a second TabsContent
+                value="organization" that never rendered. Merged here. */}
 
             {/* ── Security Tab ─────────────────────────────────────────── */}
             {/* Password change is delegated to Clerk's UserProfile dialog
@@ -2004,23 +2032,6 @@ export default function Settings() {
                 exists — Clerk owns credentials end-to-end. */}
             <TabsContent value="security" className="space-y-6 mt-6" data-testid="tab-content-security">
               <TwoFactorAuthSettings />
-            </TabsContent>
-
-            {/* ── Privacy Tab ──────────────────────────────────────────── */}
-            <TabsContent value="account" className="space-y-6 mt-6" data-testid="tab-content-account-privacy">
-              <PrivacyDataSettings />
-            </TabsContent>
-
-            <TabsContent value="account" className="space-y-6 mt-6" data-testid="tab-content-account-referral">
-              <ReferralSettings />
-            </TabsContent>
-
-            <TabsContent value="integrations" className="space-y-6 mt-6" data-testid="tab-content-integrations-automations">
-              <WorkflowsSettingsTab />
-            </TabsContent>
-
-            <TabsContent value="integrations" className="space-y-6 mt-6" data-testid="tab-content-integrations-ai-tasks">
-              <PaxTasksSettingsTab />
             </TabsContent>
           </Tabs>
       <ConfirmDialog
@@ -2570,7 +2581,7 @@ function ApiKeyManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="text-section-h2 flex items-center gap-2">
             <Code className="w-5 h-5" aria-hidden="true" />
             API keys
           </h2>
@@ -2843,7 +2854,7 @@ function ActivityLogPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold flex items-center gap-2">
+        <h2 className="text-section-h2 flex items-center gap-2">
           <Shield className="w-5 h-5" aria-hidden="true" />
           Activity log
         </h2>
@@ -2978,7 +2989,7 @@ function PrivacyDataSettings() {
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-center" role="status" aria-live="polite">
         <CheckCircle2 className="w-12 h-12 text-acr-pos" aria-hidden="true" />
-        <h2 className="text-xl font-semibold">Data deletion complete</h2>
+        <h2 className="text-section-h2">Data deletion complete</h2>
         <p className="text-muted-foreground text-sm">Your personal data has already been anonymized.</p>
       </div>
     );
@@ -2987,7 +2998,7 @@ function PrivacyDataSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold flex items-center gap-2">
+        <h2 className="text-section-h2 flex items-center gap-2">
           <Lock className="w-5 h-5" aria-hidden="true" />
           Privacy &amp; data rights
         </h2>

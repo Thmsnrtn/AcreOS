@@ -157,7 +157,7 @@ export default function ApiKeysSettingsPage() {
       <div className="space-y-6">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">API Keys</h1>
+            <h1 className="text-hero">API Keys</h1>
             <p className="text-sm text-muted-foreground">
               Generate bearer tokens for the public AcreOS API (v1). Each key is
               scoped — give integrations only what they need.

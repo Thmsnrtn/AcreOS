@@ -119,7 +119,7 @@ export default function AccountSecurityPage() {
       <div className="mb-6 flex items-start gap-3">
         <Shield className="w-6 h-6 text-primary mt-1" aria-hidden="true" />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Account security</h1>
+          <h1 className="text-hero">Account security</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Active sessions, two-factor enrollment, and login-history at a glance. If
             anything looks off, sign out everywhere — the rest is best handled via the

@@ -18,7 +18,7 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { PauseCircle, RotateCcw, History, AlertTriangle, ShieldOff, Clock, FileCode, Gauge } from "lucide-react";
+import { PauseCircle, RotateCcw, History, AlertTriangle, ShieldOff, Clock, FileCode, Gauge, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -249,8 +249,8 @@ export default function PaxControlsPage() {
   return (
     <PageShell label="Pax controls">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <ShieldOff className="w-6 h-6 text-acr-brand" aria-hidden="true" />
+        <h1 className="text-hero flex items-center gap-2">
+          <ShieldOff className="w-7 h-7 text-acr-brand" aria-hidden="true" />
           Pax controls
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -304,7 +304,7 @@ export default function PaxControlsPage() {
       {/* ── Pax autonomy threshold (moved from Today) ────────────────── */}
       <Card className="rounded-card mb-4" data-testid="card-pax-autonomy">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="text-section-h2 flex items-center gap-2">
             <Gauge className="w-5 h-5 text-acr-brand" aria-hidden="true" />
             Pax autonomy
           </CardTitle>
@@ -349,7 +349,7 @@ export default function PaxControlsPage() {
       {/* ── Control 1: Pause for 24h ─────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="card-pax-pause">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="text-section-h2 flex items-center gap-2">
             <PauseCircle className="w-5 h-5 text-amber-600" aria-hidden="true" />
             Pause all Pax automation for 24 hours
           </CardTitle>
@@ -361,10 +361,11 @@ export default function PaxControlsPage() {
         </CardHeader>
         <CardContent>
           <Button
-            variant="destructive"
+            variant="outline"
             onClick={() => pauseMutation.mutate()}
             disabled={pauseMutation.isPending || paused}
             data-testid="button-pax-pause-24h"
+            className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:border-amber-400 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
           >
             <PauseCircle className="w-4 h-4 mr-2" aria-hidden="true" />
             {paused ? "Already paused" : "Pause Pax for 24 hours"}
@@ -375,7 +376,7 @@ export default function PaxControlsPage() {
       {/* ── Control 2: Replay last 10 ────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="card-pax-replay">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="text-section-h2 flex items-center gap-2">
             <History className="w-5 h-5 text-acr-brand" aria-hidden="true" />
             Replay last {REPLAY_LIMIT} Pax actions
           </CardTitle>
@@ -464,30 +465,81 @@ export default function PaxControlsPage() {
       </Card>
 
       {/* ── Control 3: Reset to manual-only ──────────────────────────── */}
+      {/* Calm danger-zone: outline until confirm click, then destructive. */}
       <Card className="rounded-card" data-testid="card-pax-reset">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="text-section-h2 flex items-center gap-2">
             <RotateCcw className="w-5 h-5 text-acr-neg" aria-hidden="true" />
             Reset Pax to manual-only
           </CardTitle>
           <CardDescription>
             Sets the autonomy threshold to the never-auto sentinel (101%) and
             clears any pause. Pax will ask before every action, forever — until
-            you raise the slider again on Today.
+            you raise the slider again.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button
-            variant="destructive"
-            onClick={() => resetMutation.mutate()}
-            disabled={resetMutation.isPending}
-            data-testid="button-pax-reset"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
-            Reset Pax to manual-only
-          </Button>
+          <PaxResetConfirm onConfirm={() => resetMutation.mutate()} isPending={resetMutation.isPending} />
         </CardContent>
       </Card>
     </PageShell>
+  );
+}
+
+// ── Calm danger-zone confirmation — no red alarm until the moment of confirm ──
+
+function PaxResetConfirm({
+  onConfirm,
+  isPending,
+}: {
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  const [confirming, setConfirming] = React.useState(false);
+
+  if (!confirming) {
+    return (
+      <Button
+        variant="outline"
+        onClick={() => setConfirming(true)}
+        disabled={isPending}
+        data-testid="button-pax-reset"
+      >
+        <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+        Reset Pax to manual-only
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 p-3 rounded-card border border-acr-neg/30 bg-acr-neg-soft/30">
+      <p className="text-sm text-muted-foreground flex-1 min-w-0">
+        Pax will ask before every action. You can raise the autonomy threshold again at any time.
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => { onConfirm(); setConfirming(false); }}
+          disabled={isPending}
+          data-testid="button-pax-reset-confirm"
+        >
+          {isPending ? (
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" aria-hidden="true" />
+          ) : (
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+          )}
+          Confirm reset
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setConfirming(false)}
+          aria-label="Cancel reset"
+        >
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
   );
 }

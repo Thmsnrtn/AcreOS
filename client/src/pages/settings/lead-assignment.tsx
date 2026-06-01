@@ -156,7 +156,7 @@ export default function LeadAssignmentSettingsPage() {
     <PageShell isLoading={rulesLoading} label="Loading lead-assignment rules">
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Lead assignment rules</h1>
+          <h1 className="text-hero">Lead assignment rules</h1>
           <p className="text-sm text-muted-foreground">
             Auto-assign new leads to team members. Rules apply top-down — first match wins.
           </p>

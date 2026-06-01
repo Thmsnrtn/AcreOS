@@ -112,7 +112,7 @@ export default function UnderwritingSettingsPage() {
   return (
     <PageShell label="Underwriting defaults">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-hero">
           Underwriting defaults
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -122,7 +122,7 @@ export default function UnderwritingSettingsPage() {
       </header>
       <Card data-testid="underwriting-defaults-card">
         <CardHeader>
-          <CardTitle>Owner-finance defaults</CardTitle>
+          <CardTitle className="text-section-h2">Owner-finance defaults</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {!data?.isCustomised && (
