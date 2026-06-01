@@ -64,6 +64,13 @@
   gap: 24px;
   margin-top: 4px;
 }
+/* ── SHIM: .acr-cc-greeting and .acr-cc-greeting-soft ─────────────────
+   Canonical definition: client/src/index.css — TYPOGRAPHY HIERARCHY block.
+   These declarations are intentionally kept here so pages that import
+   today.css directly continue to receive the styles even if the bundler
+   somehow omits the global index.css pass. Do NOT edit the rules here;
+   edit index.css instead. Both files must stay in sync.
+   ───────────────────────────────────────────────────────────────────── */
 .acr-cc-greeting {
   font: 600 32px/1.15 var(--font-display, var(--font-sans));
   letter-spacing: -0.03em;
@@ -178,7 +185,9 @@
 }
 /* h2-grade section title — used inside a page that already has an
    editorial header (h1 .acr-cc-greeting). Keeps Fraunces-display
-   identity but at body weight. */
+   identity but at body weight.
+   ── SHIM: canonical definition in client/src/index.css (TYPOGRAPHY
+   HIERARCHY block). Edit there; keep this in sync. ── */
 .acr-section-h2 {
   font: 500 18px/1.2 var(--font-display, var(--font-sans));
   letter-spacing: -0.015em;

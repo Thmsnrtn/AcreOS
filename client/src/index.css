@@ -1115,6 +1115,57 @@
 .heading-section  { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
 .caption-label    { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
 
+/* ───────────── TYPOGRAPHY HIERARCHY ────────────────────────────────
+   Canonical named levels. Authoritative source for the hero and
+   section-head classes used across all production pages. Previously
+   these two rules lived only in today.css (page-scoped), which meant
+   any page loaded without today.css in the bundle silently lost its H1
+   style. Defining them here — in the global reset layer — eliminates
+   the tree-shake risk.
+
+   Tailwind utility aliases: `text-hero` and `text-section-h2`
+   (tailwind.config.ts theme.extend.fontSize). Use either the class or
+   the utility — they produce identical computed styles.
+
+   Motion note: these are static typographic rules; no transitions or
+   transforms are involved. prefers-reduced-motion has no effect on
+   this block. When used as animated targets (e.g. staggerItem), the
+   motion lives on the wrapper, not on the heading itself.
+
+   Level table reference: docs/design/SYSTEM-V1.md §1.2
+   ─────────────────────────────────────────────────────────────────── */
+
+/* hero — page H1s (Today, Deals, Leads, Finance, Settings, …) */
+.acr-cc-greeting {
+  font: 600 32px/1.15 var(--font-display, var(--font-sans));
+  letter-spacing: -0.03em;
+  color: var(--acr-ink);
+  margin: 4px 0 0;
+  text-wrap: pretty;
+  max-width: 680px;
+}
+/* Soft span inside .acr-cc-greeting — secondary name clause */
+.acr-cc-greeting-soft {
+  color: var(--acr-ink-3);
+  font-weight: 500;
+}
+
+/* section — h2-grade in-page section heads (Decision Queue, Activity, …)
+   Keeps --font-display identity at body weight so it reads below the H1. */
+.acr-section-h2 {
+  font: 500 18px/1.2 var(--font-display, var(--font-sans));
+  letter-spacing: -0.015em;
+  color: var(--acr-ink);
+  font-variation-settings: "opsz" 36;
+}
+
+/* Mobile override — hero scales down at ≤720px to match today.css breakpoint */
+@media (max-width: 720px) {
+  .acr-cc-greeting {
+    font-size: 26px;
+  }
+}
+
 /* Floating window effect like macOS — Tahoe elevation */
 .floating-window {
   @apply rounded-2xl;

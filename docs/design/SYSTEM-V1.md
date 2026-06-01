@@ -35,8 +35,8 @@ inline Tailwind. This table makes it canonical. Use these names in code review.
 | Level           | CSS class / token            | Font       | Size / Line-height | Weight | Letter-spacing | Use case                                      |
 |-----------------|------------------------------|------------|--------------------|--------|----------------|-----------------------------------------------|
 | **display**     | `.heading-display`           | display    | ~36–48px / 1.1     | 700    | −0.025em       | Landing hero only                             |
-| **hero**        | `.acr-cc-greeting`           | display    | 32px / 1.15        | 600    | −0.03em        | Page H1s (Today, Deals, Leads, Finance, etc.) |
-| **section**     | `.acr-section-h2`            | display    | 18px / 1.2         | 500    | −0.015em       | In-page section heads (Decision Queue, etc.)  |
+| **hero**        | `.acr-cc-greeting` / `text-hero`         | display    | 32px / 1.15        | 600    | −0.03em        | Page H1s (Today, Deals, Leads, Finance, etc.) |
+| **section**     | `.acr-section-h2` / `text-section-h2`    | display    | 18px / 1.2         | 500    | −0.015em       | In-page section heads (Decision Queue, etc.)  |
 | **subsection**  | `.heading-section`           | display    | ~20–24px / 1.25    | 600    | −0.015em       | Card titles, panel headers                    |
 | **card-title**  | `text-2xl font-semibold`     | display    | 24px / tight       | 600    | −0.018em       | `CardTitle` default (currently inline)        |
 | **label-sm**    | `.acr-section-title`         | sans       | 13px / 1           | 600    | −0.005em       | Widget row labels                             |
@@ -54,13 +54,23 @@ inline Tailwind. This table makes it canonical. Use these names in code review.
 
 ### 1.3 Tailwind font scale
 
-Tailwind's default `text-*` scale is unchanged. Two custom additions live in
-`tailwind.config.ts`:
+Tailwind's default `text-*` scale is unchanged. Custom additions live in
+`tailwind.config.ts theme.extend.fontSize`:
 
 ```
-text-caption  → 11px / 14px line-height
-text-micro    → 10px / 12px line-height
+text-hero       → 32px / 1.15 line-height, weight 600   ← .acr-cc-greeting alias
+text-section-h2 → 18px / 1.2  line-height, weight 500   ← .acr-section-h2 alias
+text-caption    → 11px / 14px line-height
+text-micro      → 10px / 12px line-height
 ```
+
+`text-hero` and `text-section-h2` are Tailwind-queryable aliases for the
+corresponding CSS classes. The CSS classes (`.acr-cc-greeting`, `.acr-section-h2`)
+remain the canonical definitions — they additionally set `font-family`,
+`letter-spacing`, `color`, and `font-variation-settings`. The Tailwind utilities
+cover size + line-height + weight so the hierarchy is visible in component code
+via `<h1 className="text-hero">`. **During migration, either form is valid; in
+new code prefer the Tailwind utility.**
 
 Everything below `text-micro` (8px, 9px) is non-semantic ornamentation
 (badge counters, grade superscripts). These are allowed as `text-[Npx]`
@@ -485,13 +495,12 @@ The exit transition on `variantPageFade` used `DURATIONS.fast` (0.15s) with
 
 The three issues that will have the highest visual impact when fixed:
 
-**1. Type hierarchy alignment across page H1s.**
-`.acr-cc-greeting` is correctly defined in `today.css` but applied via raw
-classname on 8+ pages. Any page outside `today.tsx` that uses `.acr-cc-greeting`
-relies on the CSS being globally available (it is via the `today.css` import in
-`today.tsx` which Vite bundles globally). This is fragile. The hero level should
-be a proper Tailwind utility or at minimum extracted to `index.css`. Until it is,
-a page rendering without `today.tsx` in the bundle would lose its H1 style.
+**1. Type hierarchy alignment across page H1s. ✓ RESOLVED.**
+`.acr-cc-greeting` and `.acr-section-h2` migrated from `today.css` to
+`index.css` (TYPOGRAPHY HIERARCHY block) and aliased as `text-hero` /
+`text-section-h2` in `tailwind.config.ts`. The tree-shake risk is eliminated.
+`today.css` retains the original declarations for backward compat with existing
+page imports, but `index.css` is now the canonical source.
 
 **2. Hardcoded chart colors on customer-facing pages.**
 `buyer-network.tsx`, `acquisition-radar.tsx`, and `maps.tsx` use raw hex for

@@ -157,6 +157,17 @@ export default {
         // line-height stays coherent across the system.
         caption: ["11px", "14px"],
         micro:   ["10px", "12px"],
+        // Typography hierarchy — hero + section utilities (§1.2).
+        // These are Tailwind-queryable aliases for .acr-cc-greeting and
+        // .acr-section-h2 respectively. The CSS classes remain the
+        // canonical definition (index.css TYPOGRAPHY HIERARCHY block);
+        // these tokens exist so `<h1 className="text-hero">` compiles
+        // and can be used alongside the legacy class names during the
+        // incremental migration. Font family + letter-spacing MUST be
+        // set separately (the class handles them; utilities below cover
+        // size + line-height only per Tailwind fontSize convention).
+        hero:          ["32px", { lineHeight: "1.15", fontWeight: "600" }],
+        "section-h2":  ["18px", { lineHeight: "1.2",  fontWeight: "500" }],
       },
       keyframes: {
         "accordion-down": {
