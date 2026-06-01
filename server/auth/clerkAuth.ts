@@ -293,13 +293,27 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
     return hydrateUser(req, res, next);
   }
 
-  // No Clerk session — try JWT fallback from __session cookie
-  const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
-  if (sessionCookie && process.env.CLERK_JWT_KEY) {
+  // No Clerk session from clerkMiddleware — try the JWT fallback in hydrateUser.
+  //
+  // BUG FIX (2026-05-31): the prior guard here used `/__session=([^;]+)/`
+  // which only matched the bare `__session=` cookie name. Clerk in our
+  // proxy config sets `__session_<instance-hash>=` (suffixed form).  When
+  // clerkMiddleware couldn't populate req.auth.userId, that regex found
+  // nothing even though a perfectly valid suffixed session JWT was present,
+  // and we returned 401 immediately — bypassing hydrateUser entirely.
+  //
+  // hydrateUser already has the correct multi-cookie-name walking logic
+  // (added in commit F-D14): it iterates every cookie that matches
+  // /^__session(_[A-Za-z0-9_-]+)?$/ and verifies each JWT until one
+  // passes. That logic is authoritative; this guard was redundant AND
+  // wrong.  Remove the guard and always delegate to hydrateUser.  If there
+  // is genuinely no valid session (no CLERK_JWT_KEY, no matching cookies,
+  // all JWTs expired), hydrateUser returns 401 itself at line 214.
+  if (process.env.CLERK_JWT_KEY || req.headers.cookie) {
     return hydrateUser(req, res, next);
   }
 
-  // No valid auth at all — return 401 JSON (never redirect)
+  // No CLERK_JWT_KEY configured and no cookies at all — no auth possible.
   return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
 };
 
