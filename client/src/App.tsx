@@ -81,8 +81,8 @@ const TodayPage = React.lazy(() => import("@/pages/today"));
 const PipelinePage = React.lazy(() => import("@/pages/pipeline"));
 const MoneyPage = React.lazy(() => import("@/pages/money"));
 const PaxPage = React.lazy(() => import("@/pages/pax"));
-const AtlasPage = React.lazy(() => import("@/pages/atlas"));
-const Dashboard = React.lazy(() => import("@/pages/dashboard"));
+// AtlasPage archived 2026-06-01 — was "Atlas is coming soon" placeholder; no route wired.
+// Dashboard archived 2026-06-01 — route is a Redirect to /today; lazy import was dead code.
 const LeadsPage = React.lazy(() => import("@/pages/leads"));
 const LeadDetailPage = React.lazy(() => import("@/pages/lead-detail"));
 const PropertiesPage = React.lazy(() => import("@/pages/properties"));
@@ -135,8 +135,8 @@ const OffersPage = React.lazy(() => import("@/pages/offers"));
 const ListingsPage = React.lazy(() => import("@/pages/listings"));
 const DocumentsPage = React.lazy(() => import("@/pages/documents"));
 const CountiesPage = React.lazy(() => import("@/pages/counties"));
-const SequencesPage = React.lazy(() => import("@/pages/sequences"));
-const AbTestsPage = React.lazy(() => import("@/pages/ab-tests"));
+// SequencesPage archived 2026-06-01 — DEPRECATED; route is a Redirect to /campaigns?channel=sequences.
+// AbTestsPage archived 2026-06-01 — was a redirect stub; route is a Redirect to /campaigns#ab-tests.
 const ActivityPage = React.lazy(() => import("@/pages/activity"));
 const MarketplacePage = React.lazy(() => import("@/pages/marketplace"));
 
@@ -159,22 +159,22 @@ const FeeDashboardPage = React.lazy(() => import("@/pages/fee-dashboard"));
 // AI / Intelligence
 const AVMPage = React.lazy(() => import("@/pages/avm"));
 const AvmBulkPage = React.lazy(() => import("@/pages/avm-bulk"));
-const AcquisitionRadarPage = React.lazy(() => import("@/pages/acquisition-radar"));
+// AcquisitionRadarPage archived 2026-06-01 — route is Redirect to /deals/discover.
 const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
-const DealHunterPage = React.lazy(() => import("@/pages/deal-hunter"));
-const AgentCommandCenterPage = React.lazy(() => import("@/pages/agent-command-center"));
+// DealHunterPage archived 2026-06-01 — route is Redirect to /deals/discover.
+// AgentCommandCenterPage archived 2026-06-01 — route is Redirect to /ai#agents.
 const VisionAIPage = React.lazy(() => import("@/pages/vision-ai"));
 const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
 const MarketIntelligencePage = React.lazy(() => import("@/pages/market-intelligence"));
 const MarketWatchlistPage = React.lazy(() => import("@/pages/market-watchlist"));
 const PriceOptimizerPage = React.lazy(() => import("@/pages/price-optimizer"));
 const SellerIntentPage = React.lazy(() => import("@/pages/seller-intent"));
-const DealPatternsPage = React.lazy(() => import("@/pages/deal-patterns"));
-const DealFeedPage = React.lazy(() => import("@/pages/deal-feed"));
-const MarketDataPage = React.lazy(() => import("@/pages/market-data"));
+// DealPatternsPage archived 2026-06-01 — route is Redirect to /deals/discover.
+// DealFeedPage archived 2026-06-01 — route is Redirect to /deals/discover.
+// MarketDataPage archived 2026-06-01 — no nav entry, no callers.
 const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intelligence"));
 // VoiceAnalyticsPage removed — AI Voice feature deprecated
-const MarketplaceAnalyticsPage = React.lazy(() => import("@/pages/marketplace-analytics"));
+// MarketplaceAnalyticsPage archived 2026-06-01 — @ts-nocheck, no nav entry.
 
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
@@ -187,24 +187,24 @@ const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
-const TerritoryManagerPage = React.lazy(() => import("@/pages/territory-manager"));
+// TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
 const TitleSearchPage = React.lazy(() => import("@/pages/title-search"));
 const PropertyEnrichmentPage = React.lazy(() => import("@/pages/property-enrichment"));
-const DirectMailCampaignsPage = React.lazy(() => import("@/pages/direct-mail-campaigns"));
+// DirectMailCampaignsPage archived 2026-06-01 — route is Redirect to /campaigns?channel=direct-mail.
 // Pillar 3 — customer-facing /outreach/mail (Compose + In-Flight tabs).
 const OutreachMailPage = React.lazy(() => import("@/pages/outreach/mail"));
-const DripSequencesPage = React.lazy(() => import("@/pages/drip-sequences"));
+// DripSequencesPage archived 2026-06-01 — consolidated into /campaigns; route redirects there.
 const ListingSyndicationPage = React.lazy(() => import("@/pages/listing-syndication"));
 const SyndicationPage = React.lazy(() => import("@/pages/syndication"));
-const DocumentVersionsPage = React.lazy(() => import("@/pages/document-versions"));
-const VaDashboardPage = React.lazy(() => import("@/pages/va-dashboard"));
+// DocumentVersionsPage archived 2026-06-01 — no nav entry.
+// VaDashboardPage archived 2026-06-01 — no nav entry, no callers.
 
 // Team
-const TeamDashboardPage = React.lazy(() => import("@/pages/team-dashboard"));
+// TeamDashboardPage archived 2026-06-01 — no sidebar entry, no callers.
 const TeamInboxPage = React.lazy(() => import("@/pages/team-inbox"));
 const CommissionsPage = React.lazy(() => import("@/pages/commissions"));
-const TeamLeaderboardPage = React.lazy(() => import("@/pages/team-leaderboard"));
+// TeamLeaderboardPage archived 2026-06-01 — no sidebar entry, no callers.
 // Phase 5 §5 — team-readiness pages.
 const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
 const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-approvals"));
@@ -213,16 +213,16 @@ const UnderwritingSettingsPage = React.lazy(() => import("@/pages/settings/under
 const IntegrationsSettingsPage = React.lazy(() => import("@/pages/settings/integrations"));
 
 // Analytics / Reporting
-const KPIDashboardPage = React.lazy(() => import("@/pages/kpi-dashboard"));
-const CohortAnalysisPage = React.lazy(() => import("@/pages/cohort-analysis"));
-const AuditLogPage = React.lazy(() => import("@/pages/audit-log"));
+// KPIDashboardPage archived 2026-06-01 — no nav entry, no callers.
+// CohortAnalysisPage archived 2026-06-01 — no sidebar, founder-gated but no nav link.
+// AuditLogPage archived 2026-06-01 — audit log is a tab in compliance-settings, standalone page had no callers.
 const DataExportPage = React.lazy(() => import("@/pages/data-export"));
 const DataImportPage = React.lazy(() => import("@/pages/data-import"));
-const ModelTrainingPage = React.lazy(() => import("@/pages/model-training"));
+// ModelTrainingPage archived 2026-06-01 — no nav entry, no callers.
 
 // Settings / Compliance
-const EmailSettingsPage = React.lazy(() => import("@/pages/email-settings"));
-const MailSettingsPage = React.lazy(() => import("@/pages/mail-settings"));
+// EmailSettingsPage deleted 2026-06-01 — was a redirect stub to /settings#communications.
+// MailSettingsPage deleted 2026-06-01 — was a redirect stub to /settings#communications.
 const PrivacySettingsPage = React.lazy(() => import("@/pages/privacy-settings"));
 const TaxIdentitySettingsPage = React.lazy(() => import("@/pages/settings/tax-identity"));
 const AccessibilitySettingsPage = React.lazy(() => import("@/pages/settings/accessibility"));
@@ -230,48 +230,46 @@ const PaxControlsPage = React.lazy(() => import("@/pages/settings/pax-controls")
 const WebhooksPage = React.lazy(() => import("@/pages/webhooks"));
 const CompliancePage = React.lazy(() => import("@/pages/compliance"));
 const DoddFrankCheckerPage = React.lazy(() => import("@/pages/dodd-frank-checker"));
-const StateDocumentsPage = React.lazy(() => import("@/pages/state-documents"));
+// StateDocumentsPage archived 2026-06-01 — no nav entry, no callers.
 const RegulatoryIntelPage = React.lazy(() => import("@/pages/regulatory-intel"));
-const UsageQuotaPage = React.lazy(() => import("@/pages/usage-quota"));
+// UsageQuotaPage archived 2026-06-01 — no nav entry, no callers.
 const GoalsPage = React.lazy(() => import("@/pages/goals"));
 const TaxResearcherPage = React.lazy(() => import("@/pages/tax-researcher"));
 
 // Platform / Marketplace
 // AcademyPage removed — Academy feature deprecated
 const InvestorDirectoryPage = React.lazy(() => import("@/pages/investor-directory"));
-const BuyerQualificationPage = React.lazy(() => import("@/pages/buyer-qualification"));
-const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
+// BuyerQualificationPage archived 2026-06-01 — no nav entry.
+// MatchingEnginePage archived 2026-06-01 — no nav entry.
 
 // Admin / Founder
-const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
+// AdminSupportPage archived 2026-06-01 — no nav entry, no callers.
 // IA consolidation (Lens 4): the legacy FounderDashboard and FounderHomePage
 // page bundles are no longer mounted — every prior founder-home route
-// redirects to /founder/bridge. Files remain on disk pending dedicated
-// extraction sweep (founder-dashboard.tsx is the 7,400-line monolith
-// tracked in docs/exhaustive-completion/FOUNDER-DASHBOARD-V2-PLAN.md).
+// redirects to /founder/bridge. Both files deleted 2026-06-01.
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
-const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
+// FounderFeatureFlags archived 2026-06-01 — route redirects to /founder/features; lazy import was dead code.
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
 const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
 const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"));
 const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
 const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
-const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integrations"));
+// FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
 const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
 const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
 const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
 const FounderUnitEconomicsPage = React.lazy(() => import("@/pages/founder/unit-economics"));
-const FounderDsarPage = React.lazy(() => import("@/pages/founder/dsar"));
-const FounderLegalHoldsPage = React.lazy(() => import("@/pages/founder/legal-holds"));
-const FounderSubProcessorsPage = React.lazy(() => import("@/pages/founder/sub-processors"));
+// FounderDsarPage archived 2026-06-01 — no sidebar entry.
+// FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
+// FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
 const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/recovery-console"));
-const FounderActivationPage = React.lazy(() => import("@/pages/founder/activation"));
-const FounderMlSnapshotsPage = React.lazy(() => import("@/pages/founder/ml-snapshots"));
-const FounderEtlPage = React.lazy(() => import("@/pages/founder/etl"));
-const FounderPromptVersionsPage = React.lazy(() => import("@/pages/founder/prompt-versions"));
-const FounderTitlePartnersPage = React.lazy(() => import("@/pages/founder/title-partners"));
+// FounderActivationPage archived 2026-06-01 — no sidebar entry.
+// FounderMlSnapshotsPage archived 2026-06-01 — no sidebar entry.
+// FounderEtlPage archived 2026-06-01 — no sidebar entry.
+// FounderPromptVersionsPage archived 2026-06-01 — no sidebar entry.
+// FounderTitlePartnersPage archived 2026-06-01 — no sidebar entry.
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
@@ -298,22 +296,22 @@ const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
 const FounderInspectorRouter = React.lazy(() => import("@/pages/founder/inspector"));
 const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
-const PropertiesComparePage = React.lazy(() => import("@/pages/properties-compare"));
-const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
-const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
+// PropertiesComparePage archived 2026-06-01 — no callers.
+// DealUnderwritingPage archived 2026-06-01 — route is Redirect to /deals/discover.
+// TeamKPIPage archived 2026-06-01 — no nav entry, no callers.
 const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
 const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
 const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
-const OpsDashboardPage = React.lazy(() => import("@/pages/ops-dashboard"));
-const BetaIntakePage = React.lazy(() => import("@/pages/beta-intake"));
-const BetaAnalyticsPage = React.lazy(() => import("@/pages/beta-analytics"));
-const QueueMonitorPage = React.lazy(() => import("@/pages/queue-monitor"));
-const IntegrationsHealthPage = React.lazy(() => import("@/pages/integrations-health"));
-const ProactiveMonitorPage = React.lazy(() => import("@/pages/proactive-monitor"));
-const BetaDashboardPage = React.lazy(() => import("@/pages/beta-dashboard"));
+// OpsDashboardPage archived 2026-06-01 — no nav entry.
+// BetaIntakePage archived 2026-06-01 — no nav entry; /admin/beta-intake redirects to /admin/beta.
+// BetaAnalyticsPage archived 2026-06-01 — no nav entry.
+// QueueMonitorPage archived 2026-06-01 — no nav entry.
+// IntegrationsHealthPage archived 2026-06-01 — no nav entry.
+// ProactiveMonitorPage archived 2026-06-01 — no nav entry.
+// BetaDashboardPage archived 2026-06-01 — no nav entry.
 const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
-const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboard"));
+// DataMoatDashboardPage archived 2026-06-01 — no nav entry (sidebar shows "/data-moat" which routes to it, but page is a founder deep-tool with no unique value vs other telemetry pages).
 const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
 
 // Sovereign Protocol — Phase A Visibility Layer
@@ -352,15 +350,15 @@ const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
-const InvestorAnalyticsPage = React.lazy(() => import("@/pages/investor-analytics"));
+// InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
 const AccountSecurityPage = React.lazy(() => import("@/pages/account-security"));
-const FounderFinancialsPage = React.lazy(() => import("@/pages/founder-financials"));
+// FounderFinancialsPage archived 2026-06-01 — no sidebar entry.
 const FcraSubstantiveFormPage = React.lazy(() => import("@/pages/fcra-substantive-form"));
 const FounderComplianceOpsPage = React.lazy(() => import("@/pages/founder-compliance-ops"));
-const MultiVerticalPnLPage = React.lazy(() => import("@/pages/multi-vertical-pnl"));
-const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
-const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
+// MultiVerticalPnLPage archived 2026-06-01 — no callers.
+// FounderAgentsPage archived 2026-06-01 — no sidebar entry.
+// FounderDailyDigestPage archived 2026-06-01 — no sidebar entry.
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
 const FounderLetterPage = React.lazy(() => import("@/pages/founder-letter"));
 const FounderSettingsPage = React.lazy(() => import("@/pages/founder-settings"));
@@ -374,7 +372,7 @@ const OfferBatchesPage = React.lazy(() => import("@/pages/offer-batches"));
 const LeadsDedupePage = React.lazy(() => import("@/pages/leads-dedupe"));
 const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
-const MyLetterPage = React.lazy(() => import("@/pages/my-letter"));
+// MyLetterPage archived 2026-06-01 — no callers outside App.tsx.
 const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboarding"));
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
@@ -404,7 +402,7 @@ const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
 const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
-const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
+// GlossaryPage archived 2026-06-01 — public route but nothing links to it.
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 // Shown during route-level auth resolution and React.lazy() chunk loads.
@@ -598,7 +596,7 @@ function Router() {
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
-      <Route path="/glossary" component={GlossaryPage} />
+      {/* 2026-06-01 cut — GlossaryPage archived; nothing links to it. */}
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
@@ -706,7 +704,8 @@ function Router() {
         {() => <ProtectedRoute component={MaintenancePage} />}
       </Route>
       <Route path="/investor-analytics">
-        {() => <ProtectedRoute component={InvestorAnalyticsPage} />}
+        {/* 2026-06-01 cut — InvestorAnalyticsPage archived; no direct callers. */}
+        {() => <Redirect to="/analytics" />}
       </Route>
       <Route path="/inspections/:id">
         {() => <ProtectedRoute component={InspectionDetailPage} />}
@@ -718,7 +717,8 @@ function Router() {
         {() => <ProtectedRoute component={FcraSubstantiveFormPage} />}
       </Route>
       <Route path="/money/cross-vertical">
-        {() => <ProtectedRoute component={MultiVerticalPnLPage} />}
+        {/* 2026-06-01 cut — MultiVerticalPnLPage archived; no callers. */}
+        {() => <Redirect to="/money" />}
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
@@ -731,7 +731,9 @@ function Router() {
           Registered BEFORE /deals/:id so wouter doesn't match "discover" as
           the :id param. */}
       <Route path="/deals/discover">
-        {() => <FlaggedRoute route="/radar" component={AcquisitionRadarPage} />}
+        {/* 2026-06-01 cut — AcquisitionRadarPage archived; /deals/discover kept as a ProtectedRoute
+            to DealsPage until discover tab is extracted as its own page. */}
+        {() => <ProtectedRoute component={DealsPage} />}
       </Route>
       {/* P1-28 — shareable URLs for deal detail. */}
       <Route path="/deals/:id">
@@ -741,7 +743,8 @@ function Router() {
         {() => <ProtectedRoute component={TasksPage} />}
       </Route>
       <Route path="/team-dashboard">
-        {() => <ProtectedRoute component={TeamDashboardPage} />}
+        {/* 2026-06-01 cut — TeamDashboardPage archived; no sidebar entry. */}
+        {() => <Redirect to="/team" />}
       </Route>
       {/* Phase 5 §5 — team-readiness routes. */}
       <Route path="/team/dashboard">
@@ -863,7 +866,8 @@ function Router() {
         {() => <ProtectedRoute component={CampaignsPage} />}
       </Route>
       <Route path="/ab-tests">
-        {() => <ProtectedRoute component={AbTestsPage} />}
+        {/* 2026-06-01 cut — ab-tests.tsx deleted; redirect inline. */}
+        {() => <Redirect to="/campaigns#ab-tests" />}
       </Route>
       <Route path="/sequences">
         {/* 2026-05-11 audit — consolidated into /campaigns (channel-tab). */}
@@ -906,13 +910,16 @@ function Router() {
         {() => <ProtectedRoute component={SettingsPage} />}
       </Route>
       <Route path="/my-letter">
-        {() => <ProtectedRoute component={MyLetterPage} />}
+        {/* 2026-06-01 cut — my-letter.tsx archived; no callers. Redirect to today. */}
+        {() => <Redirect to="/today" />}
       </Route>
       <Route path="/settings/email">
-        {() => <ProtectedRoute component={EmailSettingsPage} />}
+        {/* 2026-06-01 cut — email-settings.tsx deleted (was a redirect stub). */}
+        {() => <Redirect to="/settings#communications" />}
       </Route>
       <Route path="/settings/mail">
-        {() => <ProtectedRoute component={MailSettingsPage} />}
+        {/* 2026-06-01 cut — mail-settings.tsx deleted (was a redirect stub). */}
+        {() => <Redirect to="/settings#communications" />}
       </Route>
       <Route path="/inbox">
         {() => <ProtectedRoute component={InboxPage} />}
@@ -932,7 +939,8 @@ function Router() {
         {() => <KnowledgeBaseArticlePage />}
       </Route>
       <Route path="/admin/support">
-        {() => <ProtectedRoute component={AdminSupportPage} />}
+        {/* 2026-06-01 cut — admin-support.tsx archived; redirect to help. */}
+        {() => <Redirect to="/help#support" />}
       </Route>
       {/* IA consolidation (Lens 4): /founder/bridge is the canonical
           founder home — fused chat + telemetry surface. Every prior
@@ -1013,7 +1021,8 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/founder/financials">
-        {() => <FounderProtectedRoute component={FounderFinancialsPage} />}
+        {/* 2026-06-01 cut — FounderFinancialsPage archived; no sidebar entry. */}
+        {() => <Redirect to="/founder/cost" />}
       </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
@@ -1054,7 +1063,8 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderCustomersPage} />}
       </Route>
       <Route path="/founder/integrations">
-        {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}
+        {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
       <Route path="/founder/cost">
@@ -1073,31 +1083,39 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderUnitEconomicsPage} />}
       </Route>
       <Route path="/founder/dsar">
-        {() => <FounderProtectedRoute component={FounderDsarPage} />}
+        {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/legal-holds">
-        {() => <FounderProtectedRoute component={FounderLegalHoldsPage} />}
+        {/* 2026-06-01 cut — FounderLegalHoldsPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/sub-processors">
-        {() => <FounderProtectedRoute component={FounderSubProcessorsPage} />}
+        {/* 2026-06-01 cut — FounderSubProcessorsPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/recovery-console">
         {() => <FounderProtectedRoute component={FounderRecoveryConsolePage} />}
       </Route>
       <Route path="/founder/activation">
-        {() => <FounderProtectedRoute component={FounderActivationPage} />}
+        {/* 2026-06-01 cut — FounderActivationPage archived; redirect to onboarding. */}
+        {() => <Redirect to="/founder/onboarding" />}
       </Route>
       <Route path="/founder/ml-snapshots">
-        {() => <FounderProtectedRoute component={FounderMlSnapshotsPage} />}
+        {/* 2026-06-01 cut — FounderMlSnapshotsPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/etl">
-        {() => <FounderProtectedRoute component={FounderEtlPage} />}
+        {/* 2026-06-01 cut — FounderEtlPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/prompt-versions">
-        {() => <FounderProtectedRoute component={FounderPromptVersionsPage} />}
+        {/* 2026-06-01 cut — FounderPromptVersionsPage archived; redirect to prompt-evolutions. */}
+        {() => <Redirect to="/founder/prompt-evolutions" />}
       </Route>
       <Route path="/founder/title-partners">
-        {() => <FounderProtectedRoute component={FounderTitlePartnersPage} />}
+        {/* 2026-06-01 cut — FounderTitlePartnersPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/feedback">
         {() => <FounderProtectedRoute component={FounderFeedbackInboxPage} />}
@@ -1108,7 +1126,10 @@ function Router() {
       <Route path="/founder/feed">
         {() => <FounderProtectedRoute component={FounderFeedPage} />}
       </Route>
-      <Route path="/properties/compare" component={PropertiesComparePage} />
+      <Route path="/properties/compare">
+        {/* 2026-06-01 cut — PropertiesComparePage archived; no callers. */}
+        {() => <Redirect to="/properties" />}
+      </Route>
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}
       </Route>
@@ -1161,7 +1182,8 @@ function Router() {
         {() => <FlaggedRoute route="/document-intelligence" component={DocumentIntelligencePage} />}
       </Route>
       <Route path="/admin/beta">
-        {() => <FounderProtectedRoute component={BetaDashboardPage} />}
+        {/* 2026-06-01 cut — BetaDashboardPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/admin/safety-gates">
         {() => <FounderProtectedRoute component={SafetyGatesPage} />}
@@ -1180,7 +1202,8 @@ function Router() {
         {() => <Redirect to="/admin/decisions" />}
       </Route>
       <Route path="/admin/ops">
-        {() => <FounderProtectedRoute component={OpsDashboardPage} />}
+        {/* 2026-06-01 cut — OpsDashboardPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/admin/beta-intake">
         {/* Cycle 10 F03: /admin/beta-intake was routing to the PUBLIC
@@ -1191,13 +1214,16 @@ function Router() {
         {() => <Redirect to="/admin/beta" />}
       </Route>
       <Route path="/founder/beta-analytics">
-        {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}
+        {/* 2026-06-01 cut — BetaAnalyticsPage archived; redirect to bridge. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/agents">
-        {() => <FounderProtectedRoute component={FounderAgentsPage} />}
+        {/* 2026-06-01 cut — FounderAgentsPage archived; redirect to agent-queue. */}
+        {() => <Redirect to="/founder/agent-queue" />}
       </Route>
       <Route path="/founder/daily-digest">
-        {() => <FounderProtectedRoute component={FounderDailyDigestPage} />}
+        {/* 2026-06-01 cut — FounderDailyDigestPage archived; redirect to founder pulse. */}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder/decisions">
         {() => <FounderProtectedRoute component={FounderDecisionsPage} />}
@@ -1257,10 +1283,12 @@ function Router() {
         {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/market-data">
-        {() => <ProtectedRoute component={MarketDataPage} />}
+        {/* 2026-06-01 cut — MarketDataPage archived; redirect to market-intelligence. */}
+        {() => <Redirect to="/market-intelligence" />}
       </Route>
       <Route path="/team-kpi">
-        {() => <ProtectedRoute component={TeamKPIPage} />}
+        {/* 2026-06-01 cut — TeamKPIPage archived; redirect to analytics. */}
+        {() => <Redirect to="/analytics" />}
       </Route>
 
       {/* Finance — additional */}
@@ -1372,20 +1400,22 @@ function Router() {
         {() => <FounderProtectedRoute component={CommissionsPage} />}
       </Route>
       <Route path="/team-leaderboard">
-        {() => <ProtectedRoute component={TeamLeaderboardPage} />}
+        {/* 2026-06-01 cut — TeamLeaderboardPage archived; no callers. */}
+        {() => <Redirect to="/team" />}
       </Route>
 
       {/* Analytics / Reporting */}
       <Route path="/kpis">
-        {() => <ProtectedRoute component={KPIDashboardPage} />}
+        {/* 2026-06-01 cut — KPIDashboardPage archived; redirect to analytics. */}
+        {() => <Redirect to="/analytics" />}
       </Route>
       <Route path="/cohort-analysis">
-        {/* Founder-gated 2026-05-11: cross-org retention cohorts are a
-            founder-business analytics surface, not a customer-facing one. */}
-        {() => <FounderProtectedRoute component={CohortAnalysisPage} />}
+        {/* 2026-06-01 cut — CohortAnalysisPage archived. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/audit-log">
-        {() => <ProtectedRoute component={AuditLogPage} />}
+        {/* 2026-06-01 cut — AuditLogPage archived; audit log is in compliance-settings. */}
+        {() => <Redirect to="/settings" />}
       </Route>
       <Route path="/data-export">
         {() => <ProtectedRoute component={DataExportPage} />}
@@ -1394,7 +1424,8 @@ function Router() {
         {() => <ProtectedRoute component={DataImportPage} />}
       </Route>
       <Route path="/model-training">
-        {() => <ProtectedRoute component={ModelTrainingPage} />}
+        {/* 2026-06-01 cut — ModelTrainingPage archived; no nav entry. */}
+        {() => <Redirect to="/analytics" />}
       </Route>
       <Route path="/investor-network">
         {() => <ProtectedRoute component={InvestorDirectoryPage} />}
@@ -1417,7 +1448,8 @@ function Router() {
         {() => <ProtectedRoute component={PaxControlsPage} />}
       </Route>
       <Route path="/usage">
-        {() => <ProtectedRoute component={UsageQuotaPage} />}
+        {/* 2026-06-01 cut — UsageQuotaPage archived; no nav entry. */}
+        {() => <Redirect to="/settings" />}
       </Route>
       <Route path="/goals">
         {() => <ProtectedRoute component={GoalsPage} />}
@@ -1429,7 +1461,8 @@ function Router() {
         {() => <FlaggedRoute route="/dodd-frank" component={DoddFrankCheckerPage} />}
       </Route>
       <Route path="/state-documents">
-        {() => <ProtectedRoute component={StateDocumentsPage} />}
+        {/* 2026-06-01 cut — StateDocumentsPage archived; no nav entry. */}
+        {() => <Redirect to="/settings" />}
       </Route>
       <Route path="/dunning">
         {() => <ProtectedRoute component={DunningManagerPage} />}
@@ -1448,22 +1481,27 @@ function Router() {
         {() => <FounderProtectedRoute component={AgentDetailPage} />}
       </Route>
       <Route path="/admin/beta-analytics">
-        {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}
+        {/* 2026-06-01 cut — BetaAnalyticsPage archived; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/admin/queues">
-        {() => <FounderProtectedRoute component={QueueMonitorPage} />}
+        {/* 2026-06-01 cut — QueueMonitorPage archived; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/admin/integrations-health">
-        {() => <FounderProtectedRoute component={IntegrationsHealthPage} />}
+        {/* 2026-06-01 cut — IntegrationsHealthPage archived; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/admin/monitor">
-        {() => <ProtectedRoute component={ProactiveMonitorPage} />}
+        {/* 2026-06-01 cut — ProactiveMonitorPage archived; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/reseller">
         {() => <FounderProtectedRoute component={ResellerDashboardPage} />}
       </Route>
       <Route path="/data-moat">
-        {() => <FounderProtectedRoute component={DataMoatDashboardPage} />}
+        {/* 2026-06-01 cut — DataMoatDashboardPage archived; no nav entry. */}
+        {() => <Redirect to="/founder/telemetry" />}
       </Route>
 
       {/* Sovereign Protocol — Phase A Visibility Layer */}

@@ -30,7 +30,8 @@ import {
 // doesn't ship them in the parent chunk — each loads on demand when the
 // matching drawer opens.
 const ActivityPage = lazy(() => import("@/pages/activity"));
-const AgentCommandCenterPage = lazy(() => import("@/pages/agent-command-center"));
+// AgentCommandCenterPage archived 2026-06-01 — agents drawer now deep-links
+// to /founder/agent-queue via the "Full page" button in the sheet header.
 
 function DrawerFallback() {
   return (
@@ -59,8 +60,8 @@ const SHEET_META: Record<
   agents: {
     title: "Agents",
     description: "The agent roster working behind Pax.",
-    route: "/agent-command-center",
-    routeLabel: "Open Agents full page",
+    route: "/founder/agent-queue",
+    routeLabel: "Open Agent Queue",
   },
   insights: {
     title: "Insights",
@@ -169,9 +170,11 @@ export function PaxOverflowMenu({
                   </Suspense>
                 )}
                 {view === "agents" && isFounder && (
-                  <Suspense fallback={<DrawerFallback />}>
-                    <AgentCommandCenterPage />
-                  </Suspense>
+                  /* Agent Command Center archived 2026-06-01 — use the
+                     "Full page" button above to navigate to /founder/agent-queue. */
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    Open the agent queue via the Full page link above.
+                  </div>
                 )}
               </div>
             </>

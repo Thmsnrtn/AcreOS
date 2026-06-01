@@ -1,22 +1,14 @@
 /**
- * LegacyNowSurface — wrapper around the legacy tile-driven Now page so
- * the chat-first /founder route can still link to "View dashboard" and
- * render the pre-chat experience verbatim.
+ * LegacyNowSurface — stub.
  *
- * This re-exports the existing FounderNowPage component (which renders
- * the bucket alarm, net-negative orgs, scale-up triggers tiles). When
- * Phase F deprecates the dashboard surface entirely, this wrapper goes
- * away — for now it keeps the legacy path under one named symbol so we
- * have a single grep target for the eventual removal.
- *
- * Phase E will refactor the SAME data into the morning brief artifact
- * that gets seeded as the first message of the day in the default
- * thread — at that point /founder/dashboard becomes redundant.
+ * Phase F: /founder/now was deleted and /founder/dashboard redirects to
+ * /founder/bridge. This symbol is preserved for grep-ability during the
+ * eventual removal sweep; it no longer renders anything meaningful.
  */
-import FounderNowPage from "@/pages/founder/now";
+import { Redirect } from "wouter";
 
 export function LegacyNowSurface() {
-  return <FounderNowPage />;
+  return <Redirect to="/founder/bridge" />;
 }
 
 export default LegacyNowSurface;
