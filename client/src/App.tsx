@@ -258,6 +258,7 @@ const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/cust
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
 const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
 const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integrations"));
+const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
 const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
 const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
@@ -1039,6 +1040,10 @@ function Router() {
       <Route path="/founder/integrations">
         {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}
       </Route>
+      {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
+      <Route path="/founder/cost">
+        {() => <FounderProtectedRoute component={FounderCostPage} />}
+      </Route>
       <Route path="/founder/ai-costs">
         {() => <FounderProtectedRoute component={FounderAiCostsPage} />}
       </Route>
@@ -1751,7 +1756,10 @@ function AppContent() {
           />
         </Suspense>
       )}
-      <PWAInstallPrompt />
+      {/* PWA install prompt — gated on auth so it never overlaps the
+          landing-page primary CTA (Chesky review finding). Unauthenticated
+          visitors on landing should never see the install banner. */}
+      {user && <PWAInstallPrompt />}
     </>
   );
 }
