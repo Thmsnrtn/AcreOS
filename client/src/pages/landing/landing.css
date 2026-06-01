@@ -1690,6 +1690,52 @@
   border-color: var(--acr-line-soft, rgba(80, 40, 15, 0.08));
   background: transparent;
 }
+
+/* ─── Positioning chip maturity tiers ────────────────────────────────
+   Three tiers, each with its own visual weight. Core > Beta > Roadmap.
+   All are intentionally non-interactive (no hover, no cursor:pointer).
+   The beta chip uses a flex layout to seat the inline "Beta" micro-label
+   without wrapping on narrow screens. ──────────────────────────────── */
+
+/* Core — full-weight chip; same ink-2 color as the standard chip but with
+   a slightly stronger border to signal production readiness. */
+.lp-positioning-chip-core {
+  color: var(--acr-ink-2, #4a3520) !important;
+  border-color: color-mix(in srgb, var(--acr-brand, #C2531C) 35%, transparent);
+  background: var(--acr-surface, #FFFCF6);
+  font-weight: 600;
+}
+
+/* Beta — same base chip, lighter text, plus the inline badge. Uses flex
+   so the chip label and the badge sit on one line. */
+.lp-positioning-chip-beta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--acr-ink, #241607) 65%, transparent) !important;
+  border-color: var(--acr-line-soft, rgba(80, 40, 15, 0.12));
+  background: var(--acr-surface, #FFFCF6);
+}
+
+/* The "Beta" label inside a beta chip — small, brand-adjacent, uppercase. */
+.lp-positioning-chip-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--acr-brand, #C2531C);
+  background: var(--acr-brand-soft, rgba(194, 83, 28, 0.10));
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  /* Keep the badge from contributing to chip line-height math. */
+  flex-shrink: 0;
+}
+
+/* Spacing between the core chip row and the beta chip row. */
+.lp-positioning-list-beta {
+  margin-top: 6px;
+}
 @media (max-width: 720px) {
   .lp-positioning-inner {
     padding: 28px 20px;

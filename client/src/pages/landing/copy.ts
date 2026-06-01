@@ -55,18 +55,34 @@ export const LANDING_COPY = {
   },
   positioning: {
     primary: "Built for Land Investors.",
-    // Truth-engine note: the six types named here are split by actual
-    // product maturity (shared/business-types.ts):
-    //   core  — note investors, hybrid land+notes (full workflow templates)
-    //   beta  — fix-and-flippers, wholesalers, subdividers, tax-delinquent
-    //            buyers (schema + onboarding path defined, partial workflow)
-    //   roadmap — buy-and-hold landlords (declared, UI suppressed)
-    // Copy is honest about this — "already in the product" covers core+beta;
-    // "on a rolling schedule" covers the gap to full parity.
+    // Truth-engine note (verified against Rafe Castellan CCO report, 2026-06-01
+    // and shared/business-types.ts):
+    //
+    //   core    — land investors (primary), note investors (full workflow
+    //              templates: note_payment_missed, note_partial_payment,
+    //              note_payoff; real Finance hero; Pax vocabulary complete).
+    //
+    //   beta    — fix-and-flippers (workflow tpl_fix_flip_rehab_kickoff,
+    //              Finance hero, onboarding seed), wholesalers (Finance hero,
+    //              onboarding seed, 4 dedicated today routes), tax-delinquent
+    //              buyers (redemption clock, auction worksheet, quiet title,
+    //              courthouse mode — all real pages; Finance hero gap pending).
+    //              DriveMode route pending Iris (B-1). Courthouse route pending
+    //              Iris (B-2). Workflows real but outer shell still maturing.
+    //
+    //   roadmap — subdividers (parcel editor + CC&R templates real; Finance
+    //              hero is land-investor generic; Pax falls to developer
+    //              context — shakiest beta, demoted to roadmap on landing for
+    //              honesty), buy-and-hold landlords (declared in registry, UI
+    //              suppressed).
+    //
+    // "inProduct" copy covers core (Note Investor) + beta three.
+    // "roadmap" covers Subdivider + Buy-and-hold.
+    // The chip tiers in Positioning.tsx enforce this split visually.
     inProduct:
-      "Note investors, fix-and-flippers, wholesalers, subdividers, and tax-delinquent buyers are already in the product — workflows, vocabulary, and deal tracking shaped for how each one operates. Land investors get the deepest tooling today; the others reach parity on a rolling schedule.",
+      "Note investors run a full workflow today. Fix-and-flippers, wholesalers, and tax-delinquent buyers are in beta — the workflows are real but still maturing. Subdividers and buy-and-hold landlords are on the roadmap.",
     roadmap:
-      "Buy-and-hold landlords are on the roadmap.",
+      "Subdividers and buy-and-hold landlords are on the roadmap.",
   },
   how: {
     eyebrow: "How it works",
