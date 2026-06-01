@@ -177,7 +177,7 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
-          <h2 className="acr-section-h2">Decision queue</h2>
+          <h2 className="acr-section-h2 text-section-h2">Decision queue</h2>
           {visible.length > 0 && (
             <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
               {visible.length}

@@ -307,7 +307,7 @@ export default function TodayPage() {
             <span className="tabular-nums">{format(new Date(), "EEEE, MMMM d")}</span>
             <VerticalBadge className="ml-1" />
           </div>
-          <h1 className="acr-cc-greeting" data-testid="text-today-title">
+          <h1 className="acr-cc-greeting text-hero" data-testid="text-today-title">
             {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}.
             {pendingDecisionCount > 0 ? (
               <span className="acr-cc-greeting-soft">

@@ -13,7 +13,7 @@ export function TodayActivityFeed() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="acr-section-h2">Activity</h2>
+          <h2 className="acr-section-h2 text-section-h2">Activity</h2>
         </div>
         <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
           <Link href="/activity">

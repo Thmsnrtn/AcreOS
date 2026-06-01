@@ -1,6 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Archive } from "lucide-react";
+import { Archive, CheckCircle2 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 /**
  * ClearedEmpty
@@ -10,6 +9,11 @@ import { CheckCircle2, Archive } from "lucide-react";
  * archived/older items still exist in the system.
  *
  * Tone: affirming and quiet. Don't oversell.
+ *
+ * Composes the canonical EmptyState primitive so the "required cta" contract
+ * is enforced at the type level. When no `onShowArchive` is provided the cta
+ * uses the _noOp escape hatch — a deliberately CTA-less cleared state is
+ * a valid UI moment (nothing to do IS the message).
  */
 
 interface ClearedEmptyProps {
@@ -34,58 +38,33 @@ export function ClearedEmpty({
   archiveLabel = "View archived",
   className = "",
 }: ClearedEmptyProps) {
+  const ctaLabel =
+    archiveCount !== undefined && archiveCount > 0
+      ? `${archiveLabel} (${archiveCount.toLocaleString()})`
+      : archiveLabel;
+
   return (
-    <Card
-      className={`border-dashed bg-acr-pos-soft/40 ${className}`}
-      data-testid="cleared-empty"
-    >
-      <CardContent className="flex flex-col items-center justify-center py-12 px-6 text-center">
-        <div
-          className="mb-4 p-3 rounded-full bg-background border border-border"
-          aria-hidden="true"
-        >
-          <CheckCircle2 className="w-8 h-8 text-acr-pos" />
-        </div>
-
-        <h3
-          className="text-base font-semibold mb-1.5 text-foreground"
-          data-testid="cleared-empty-title"
-        >
-          {headline}
-        </h3>
-        {subtitle && (
-          <p
-            className="text-sm text-muted-foreground max-w-sm mb-4"
-            data-testid="cleared-empty-subtitle"
-          >
-            {subtitle}
-          </p>
-        )}
-
-        {onShowArchive && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onShowArchive}
-            aria-label={
-              archiveCount !== undefined
-                ? `${archiveLabel} (${archiveCount} item${archiveCount === 1 ? "" : "s"})`
-                : archiveLabel
+    <EmptyState
+      icon={CheckCircle2}
+      headline={headline}
+      subtitle={subtitle}
+      tone="celebratory"
+      actionIcon={Archive}
+      cta={
+        onShowArchive
+          ? {
+              label: ctaLabel,
+              onClick: onShowArchive,
+              "data-testid": "cleared-empty-archive",
             }
-            data-testid="cleared-empty-archive"
-            className="gap-1.5"
-          >
-            <Archive className="w-3.5 h-3.5" aria-hidden="true" />
-            {archiveLabel}
-            {archiveCount !== undefined && archiveCount > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                ({archiveCount.toLocaleString()})
-              </span>
-            )}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+          : {
+              // TODO(cta): no archive handler — cleared queue is self-contained
+              label: "",
+              _noOp: true,
+            }
+      }
+      className={className}
+      testId="cleared-empty"
+    />
   );
 }

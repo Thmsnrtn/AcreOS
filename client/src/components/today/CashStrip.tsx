@@ -63,8 +63,8 @@ export function CashStrip({
   return (
     <div data-testid="section-cash-strip">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="acr-eyebrow" style={{ color: "var(--acr-ink-3)" }}>
-          Cash strip
+        <h2 className="acr-section-h2 text-section-h2">
+          Cash
         </h2>
         <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
           <Link href="/finance">

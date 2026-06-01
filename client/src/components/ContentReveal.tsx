@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { DURATIONS } from "@/lib/motion-tokens";
 
 interface ContentRevealProps {
   /**
@@ -67,7 +68,7 @@ export function ContentReveal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: DURATIONS.fast }}
             data-testid="content-reveal-skeleton"
           >
             {skeleton}
