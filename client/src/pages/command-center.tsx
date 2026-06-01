@@ -331,7 +331,10 @@ function TeamTabContent() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-72 border-r border-border flex flex-col overflow-hidden">
+        {/* Roster column: full-width on mobile (shown when no agent selected),
+            fixed 18rem on md+. The middle activity feed and detail panel are
+            hidden on mobile — they display md+. */}
+        <div className={`${selectedAgentId ? "hidden md:flex" : "flex"} w-full md:w-72 border-r border-border flex-col overflow-hidden`}>
           <div className="p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-muted-foreground">Agent Roster</h2>
           </div>
@@ -361,18 +364,20 @@ function TeamTabContent() {
                           <IconComponent className="w-4 h-4" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm truncate">{agent.name}</span>
-                            <div className={`w-2 h-2 rounded-full ${getAgentStatusColor(agent.status)}`} />
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium text-sm truncate min-w-0">{agent.name}</span>
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${getAgentStatusColor(agent.status)}`} />
                           </div>
                           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
                             {agent.description}
                           </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            {agent.pendingActions > 0 && (
-                              <Badge variant="secondary" className="text-xs">
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            {agent.pendingActions > 0 ? (
+                              <Badge variant="secondary" className="text-xs min-w-0 truncate">
                                 {agent.pendingActions} pending
                               </Badge>
+                            ) : (
+                              <span />
                             )}
                             <Switch
                               checked={agent.enabled}
@@ -396,7 +401,8 @@ function TeamTabContent() {
           </ScrollArea>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Activity feed: hidden on mobile, shown on md+ */}
+        <div className="hidden md:flex flex-1 flex-col overflow-hidden">
           {briefing && (
             <Card className="m-4 mb-0 border-primary/20 bg-primary/5">
               <CardContent className="p-4">
@@ -518,7 +524,10 @@ function TeamTabContent() {
           </ScrollArea>
         </div>
 
-        <div className="w-80 border-l border-border flex flex-col overflow-hidden">
+        {/* Detail panel: full-width on mobile (shown when agent selected),
+            fixed 20rem on md+. Back affordance lets mobile users return
+            to the roster without redesigning the panel layout. */}
+        <div className={`${selectedAgentId ? "flex" : "hidden md:flex"} w-full md:w-80 border-l border-border flex-col overflow-hidden`}>
           {!selectedAgent ? (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
               <Settings2 className="w-12 h-12 text-muted-foreground/30 mb-4" />
@@ -527,19 +536,29 @@ function TeamTabContent() {
           ) : (
             <>
               <div className="p-4 border-b border-border">
+                {/* Back button: only visible on mobile, returns to roster */}
+                <button
+                  type="button"
+                  className="md:hidden flex items-center gap-1 text-xs text-muted-foreground mb-3 active:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setSelectedAgentId(null)}
+                  aria-label="Back to agent roster"
+                >
+                  <ChevronRight className="w-3 h-3 rotate-180" aria-hidden="true" />
+                  All agents
+                </button>
                 <div className="flex items-center gap-3">
                   {(() => {
                     const IconComponent = getAgentIcon(selectedAgent.type);
                     return (
-                      <div className="p-3 rounded-card bg-primary text-primary-foreground">
+                      <div className="p-3 rounded-card bg-primary text-primary-foreground shrink-0">
                         <IconComponent className="w-5 h-5" />
                       </div>
                     );
                   })()}
-                  <div>
-                    <h3 className="font-semibold" data-testid="text-selected-va-agent-name">{selectedAgent.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold truncate" data-testid="text-selected-va-agent-name">{selectedAgent.name}</h3>
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${getAgentStatusColor(selectedAgent.status)}`} />
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${getAgentStatusColor(selectedAgent.status)}`} />
                       <span className="text-xs text-muted-foreground capitalize">{selectedAgent.status}</span>
                     </div>
                   </div>
@@ -1290,12 +1309,12 @@ function AIOperationsTabContent() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <Dialog open={dueDiligenceDialogOpen} onOpenChange={setDueDiligenceDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="h-auto py-3 flex flex-col items-center gap-2" data-testid="button-run-due-diligence">
                       <Search className="w-5 h-5" />
-                      <span className="text-xs">Run Due Diligence</span>
+                      <span className="text-xs text-center leading-tight">Run Due Diligence</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -1330,7 +1349,7 @@ function AIOperationsTabContent() {
                   <DialogTrigger asChild>
                     <Button variant="outline" className="h-auto py-3 flex flex-col items-center gap-2" data-testid="button-get-price">
                       <Calculator className="w-5 h-5" />
-                      <span className="text-xs">Get Price Recommendation</span>
+                      <span className="text-xs text-center leading-tight">Get Price Recommendation</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -1373,7 +1392,7 @@ function AIOperationsTabContent() {
                   ) : (
                     <Eye className="w-5 h-5" aria-hidden="true" />
                   )}
-                  <span className="text-xs">Monitor Portfolio</span>
+                  <span className="text-xs text-center leading-tight">Monitor Portfolio</span>
                 </Button>
 
                 <Button
@@ -1388,7 +1407,7 @@ function AIOperationsTabContent() {
                   ) : (
                     <Shield className="w-5 h-5" aria-hidden="true" />
                   )}
-                  <span className="text-xs">Check Compliance</span>
+                  <span className="text-xs text-center leading-tight">Check Compliance</span>
                 </Button>
               </div>
             </CardContent>
@@ -1976,7 +1995,7 @@ export default function CommandCenterPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="opacity-0 group-hover:opacity-100 shrink-0"
+                              className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60 shrink-0"
                               onClick={(e) => handleDeleteConversation(e, conv.id)}
                               aria-label={`Delete conversation ${conv.title ?? ""}`.trim()}
                               data-testid={`button-delete-conversation-${conv.id}`}
@@ -2221,7 +2240,7 @@ export default function CommandCenterPage() {
                             <span className="text-xs truncate max-w-[100px]">{att.file.name}</span>
                             <button aria-label={`Remove attachment ${att.file.name}`}
                               onClick={() => removeAttachment(att.id)}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               data-testid={`button-remove-attachment-${att.id}`}
                             >
                               <X className="w-3 h-3" aria-hidden="true" />

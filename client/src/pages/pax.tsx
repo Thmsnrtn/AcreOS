@@ -149,7 +149,7 @@ function GreetingBanner() {
         type="button"
         onClick={handleDismiss}
         aria-label="Dismiss greeting from Pax"
-        className="shrink-0 text-acr-brand/60 hover:text-acr-brand transition-colors"
+        className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
