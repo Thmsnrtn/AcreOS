@@ -184,8 +184,10 @@ export default function ExecutiveDashboard() {
       ) : !metrics ? (
         <EmptyState
           icon={BarChart3}
-          title="No metrics available"
-          description="Metrics will appear once the platform has active organizations."
+          headline="No metrics available"
+          subtitle="Metrics will appear once the platform has active organizations."
+          // TODO(cta): founder-only executive dashboard — metrics are system-aggregated; no direct user action
+          cta={{ label: "", _noOp: true }}
         />
       ) : (
         <motion.div

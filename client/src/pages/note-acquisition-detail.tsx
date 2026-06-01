@@ -153,11 +153,14 @@ export default function NoteAcquisitionDetailPage() {
         <BackButton />
         <EmptyState
           icon={FileText}
-          title="Acquisition not found"
-          description="The URL is missing a valid ID."
-          actionLabel="Back to pipeline"
+          headline="Acquisition not found"
+          subtitle="The URL is missing a valid ID."
+          cta={{
+            label: "Back to pipeline",
+            onClick: () => { window.location.href = "/notes/pipeline"; },
+            "data-testid": "note-acq-back-to-pipeline",
+          }}
           actionIcon={null}
-          onAction={() => { window.location.href = "/notes/pipeline"; }}
         />
       </PageShell>
     );
@@ -182,11 +185,14 @@ export default function NoteAcquisitionDetailPage() {
         <BackButton />
         <EmptyState
           icon={AlertCircle}
-          title="Acquisition not found"
-          description="It may have been deleted or you don't have access."
-          actionLabel="Back to pipeline"
+          headline="Acquisition not found"
+          subtitle="It may have been deleted or you don't have access."
+          cta={{
+            label: "Back to pipeline",
+            onClick: () => { window.location.href = "/notes/pipeline"; },
+            "data-testid": "note-acq-not-found-back",
+          }}
           actionIcon={null}
-          onAction={() => { window.location.href = "/notes/pipeline"; }}
         />
       </PageShell>
     );

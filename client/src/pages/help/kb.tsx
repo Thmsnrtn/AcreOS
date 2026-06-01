@@ -170,22 +170,27 @@ export function KnowledgeBaseBrowseInner({ showHeader = true }: { showHeader?: b
       ) : isError ? (
         <EmptyState
           icon={BookOpen}
-          title="Couldn't load articles"
-          description="We had trouble reaching the knowledge base. Try again in a moment."
-          actionLabel="Retry"
+          headline="Couldn't load articles"
+          subtitle="We had trouble reaching the knowledge base. Try again in a moment."
+          cta={{
+            label: "Retry",
+            onClick: () => refetch(),
+            "data-testid": "kb-retry",
+          }}
           actionIcon={null}
-          onAction={() => refetch()}
           testId="kb-error"
         />
       ) : !data || data.data.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title={query ? "No articles match" : "No articles yet"}
-          description={
+          headline={query ? "No articles match" : "No articles yet"}
+          subtitle={
             query
               ? "Try different keywords or clear the category filter."
               : "Articles will appear here as the support team publishes them."
           }
+          // TODO(cta): KB is author-published content; for search misses, the action is "clear search"
+          cta={{ label: "", _noOp: true }}
           actionIcon={null}
           testId="kb-empty"
         />

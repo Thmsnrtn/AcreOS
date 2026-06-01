@@ -231,8 +231,10 @@ export default function FounderTodoPage() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="Inbox zero"
-            description="Nothing is waiting on you right now. The system is running itself. Check System trends in the sidebar to see how quality is trending."
+            headline="Inbox zero"
+            subtitle="Nothing is waiting on you right now. The system is running itself. Check System trends in the sidebar to see how quality is trending."
+            // TODO(cta): celebratory cleared state — the right next action is review, not create
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <>

@@ -121,12 +121,14 @@ function CollateralStrip({ propertyLabel }: { propertyLabel: string }) {
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
           icon={MapPin}
-          title="No serviced notes yet"
-          description={`Collateral geography appears here once you have active notes. Add a note to see your ${propertyLabel.toLowerCase()} on the map color-coded by days late.`}
-          actionLabel="Start servicing notes"
-          onAction={() => {
-            window.location.href = "/finance?action=new";
+          headline="No serviced notes yet"
+          subtitle={`Collateral geography appears here once you have active notes. Add a note to see your ${propertyLabel.toLowerCase()} on the map color-coded by days late.`}
+          cta={{
+            label: "Start servicing notes",
+            onClick: () => { window.location.href = "/finance?action=new"; },
+            "data-testid": "persona-map-start-notes",
           }}
+          actionIcon={null}
           className="py-6"
         />
       </div>
@@ -210,13 +212,14 @@ function CurbCaptureStrip({
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
           icon={Navigation}
-          title={`No ${leadLabel.toLowerCase()}s captured yet`}
-          description={`Curb-capture pins appear here as you drive your route. Launch DriveMode to start tagging.`}
-          actionLabel="Launch DriveMode"
-          actionIcon={Navigation}
-          onAction={() => {
-            window.location.href = "/drivemode";
+          headline={`No ${leadLabel.toLowerCase()}s captured yet`}
+          subtitle={`Curb-capture pins appear here as you drive your route. Launch DriveMode to start tagging.`}
+          cta={{
+            label: "Launch DriveMode",
+            onClick: () => { window.location.href = "/drivemode"; },
+            "data-testid": "persona-map-launch-drivemode",
           }}
+          actionIcon={Navigation}
           className="py-6"
         />
       </div>
@@ -286,12 +289,14 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
           icon={Hammer}
-          title={`No ${projectPluralLabel.toLowerCase()} yet`}
-          description={`Add a ${projectLabel.toLowerCase()} to see acquisitions, renovations, and listings on the same map.`}
-          actionLabel={`Add ${projectLabel.toLowerCase()}`}
-          onAction={() => {
-            window.location.href = "/properties?action=new";
+          headline={`No ${projectPluralLabel.toLowerCase()} yet`}
+          subtitle={`Add a ${projectLabel.toLowerCase()} to see acquisitions, renovations, and listings on the same map.`}
+          cta={{
+            label: `Add ${projectLabel.toLowerCase()}`,
+            onClick: () => { window.location.href = "/properties?action=new"; },
+            "data-testid": "persona-map-add-property",
           }}
+          actionIcon={null}
           className="py-6"
         />
       </div>

@@ -145,11 +145,14 @@ export default function NotesPipelinePage() {
       ) : acquisitions.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="No acquisitions in flight"
-          description="When you're considering buying a note, start a row here. Track BPO, title, payment-history, and lien-position checks as you go."
-          actionLabel="Start an acquisition"
-          actionIcon={Plus}
-          onAction={() => setNewDialogOpen(true)}
+          headline="No acquisitions in flight"
+          subtitle="When you're considering buying a note, start a row here. Track BPO, title, payment-history, and lien-position checks as you go."
+          cta={{
+            label: "Start an acquisition",
+            onClick: () => setNewDialogOpen(true),
+            "data-testid": "notes-pipeline-start-acq",
+          }}
+          actionIcon={null}
         />
       ) : (
         <div className="space-y-4">

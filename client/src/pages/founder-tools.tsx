@@ -134,8 +134,10 @@ export default function FounderToolsPage() {
         ) : proposals.length === 0 ? (
           <EmptyState
             icon={Wrench}
-            title="No proposals yet"
-            description="The strategic synthesis will surface capability gaps automatically when it detects recurring 'I couldn't act because I lack X' signals. You can also manually seed proposals from the agent chat."
+            headline="No proposals yet"
+            subtitle="The strategic synthesis will surface capability gaps automatically when it detects recurring 'I couldn't act because I lack X' signals. You can also manually seed proposals from the agent chat."
+            // TODO(cta): founder tools proposals are system-generated from capability-gap signals
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <>

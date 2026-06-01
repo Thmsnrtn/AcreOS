@@ -260,8 +260,10 @@ export default function FounderPaxCalibrationPage() {
       {!isLoading && !error && data && data.sampleCount === 0 && (
         <EmptyState
           icon={Target}
-          title="No Pax observations yet"
-          description={`No Pax observations were emitted in the last ${data.windowDays} days. As soon as Pax starts making calls, the calibration plot will populate.`}
+          headline="No Pax observations yet"
+          subtitle={`No Pax observations were emitted in the last ${data.windowDays} days. As soon as Pax starts making calls, the calibration plot will populate.`}
+          // TODO(cta): Pax observations are system-generated from customer AI calls; no direct founder action
+          cta={{ label: "", _noOp: true }}
           actionIcon={null}
           testId="pax-calibration-empty"
         />

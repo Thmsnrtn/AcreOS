@@ -202,8 +202,10 @@ export default function AuctionWorksheetPage() {
       ) : listings.length === 0 ? (
         <EmptyState
           icon={Gavel}
-          title="No listings on the worksheet"
-          description="Add tax-sale listings to your watchlist via /tax-researcher, then return here to set max bids and walk-away rules before the sale."
+          headline="No listings on the worksheet"
+          subtitle="Add tax-sale listings to your watchlist via /tax-researcher, then return here to set max bids and walk-away rules before the sale."
+          // TODO(cta): listings are added via the tax-researcher; a direct link would help here
+          cta={{ label: "", _noOp: true }}
         />
       ) : courthouseMode ? (
         <CourthouseMode

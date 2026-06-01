@@ -71,8 +71,10 @@ export default function InFlightTab() {
     return (
       <EmptyState
         icon={Mailbox}
-        title="No campaigns in flight"
-        description="Queued sends show up here with per-piece USPS scans, QR scans, and inbound calls. Start a send under Compose."
+        headline="No campaigns in flight"
+        subtitle="Queued sends show up here with per-piece USPS scans, QR scans, and inbound calls. Start a send under Compose."
+        // TODO(cta): the compose action is the right CTA but lives in the Compose tab — add tab navigation link here
+        cta={{ label: "", _noOp: true }}
         testId="in-flight-empty"
       />
     );

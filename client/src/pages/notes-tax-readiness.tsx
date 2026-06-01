@@ -199,8 +199,10 @@ export default function NotesTaxReadinessPage() {
         <Card className="mb-6"><div className="p-5">
           <EmptyState
             icon={FileText}
-            title={`No notes hit the $600 threshold in ${taxYear}`}
-            description="Either no interest was recorded for the year or every borrower fell below the IRS reporting threshold. Either way, no 1099-INT batch is required."
+            headline={`No notes hit the $600 threshold in ${taxYear}`}
+            subtitle="Either no interest was recorded for the year or every borrower fell below the IRS reporting threshold. Either way, no 1099-INT batch is required."
+            // TODO(cta): informational state — no direct action; the system generates 1099-INT when threshold is met
+            cta={{ label: "", _noOp: true }}
           />
         </div></Card>
       )}

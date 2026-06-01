@@ -394,9 +394,11 @@ function TeamActivityPanel({ commits }: { commits: CommitRow[] }) {
     return (
       <motion.div variants={staggerItem}>
         <EmptyState
-          title="No commits found"
-          description="Git log returned no results. This is unusual — check the server logs."
+          headline="No commits found"
+          subtitle="Git log returned no results. This is unusual — check the server logs."
           icon={GitCommit}
+          // TODO(cta): git log view — no user action creates commits; check server logs via the Fly dashboard
+          cta={{ label: "", _noOp: true }}
         />
       </motion.div>
     );

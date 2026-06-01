@@ -509,10 +509,14 @@ export default function DocumentsPage() {
       return (
         <EmptyState
           icon={FileText}
-          title="No templates yet"
-          description="Create your first document template to get started."
-          actionLabel="Create template"
-          onAction={() => setIsCreateTemplateOpen(true)}
+          headline="No templates yet"
+          subtitle="Create your first document template to get started."
+          cta={{
+            label: "Create template",
+            onClick: () => setIsCreateTemplateOpen(true),
+            "data-testid": "documents-create-template",
+          }}
+          actionIcon={null}
         />
       );
     }
@@ -659,10 +663,14 @@ export default function DocumentsPage() {
         {filteredTemplates.length === 0 ? (
           <EmptyState
             icon={FileText}
-            title={templateFilter === "my" ? "No custom templates" : "No templates found"}
-            description={templateFilter === "my" ? "Create your own custom template to speed up future deals." : "No templates match the current filter."}
-            actionLabel={templateFilter === "my" ? "Create template" : undefined}
-            onAction={templateFilter === "my" ? () => setIsCreateTemplateOpen(true) : undefined}
+            headline={templateFilter === "my" ? "No custom templates" : "No templates found"}
+            subtitle={templateFilter === "my" ? "Create your own custom template to speed up future deals." : "No templates match the current filter."}
+            cta={
+              templateFilter === "my"
+                ? { label: "Create template", onClick: () => setIsCreateTemplateOpen(true), "data-testid": "documents-create-template-filter" }
+                : { label: "", _noOp: true } // TODO(cta): non-"my" filter — action is to clear filters, not create
+            }
+            actionIcon={null}
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -694,10 +702,14 @@ export default function DocumentsPage() {
       return (
         <EmptyState
           icon={FileCheck}
-          title="No documents generated"
-          description="Generate your first document from a template."
-          actionLabel="View templates"
-          onAction={() => setActiveTab("templates")}
+          headline="No documents generated"
+          subtitle="Generate your first document from a template."
+          cta={{
+            label: "View templates",
+            onClick: () => setActiveTab("templates"),
+            "data-testid": "documents-view-templates",
+          }}
+          actionIcon={null}
         />
       );
     }
@@ -812,10 +824,14 @@ export default function DocumentsPage() {
       return (
         <EmptyState
           icon={Package}
-          title="No document packages"
-          description="Bundle multiple documents together — like a closing packet — to save time on every deal."
-          actionLabel="Create package"
-          onAction={() => setIsCreatePackageOpen(true)}
+          headline="No document packages"
+          subtitle="Bundle multiple documents together — like a closing packet — to save time on every deal."
+          cta={{
+            label: "Create package",
+            onClick: () => setIsCreatePackageOpen(true),
+            "data-testid": "documents-create-package",
+          }}
+          actionIcon={null}
         />
       );
     }

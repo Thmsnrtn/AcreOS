@@ -177,13 +177,14 @@ export default function KnowledgeBaseArticlePage() {
       ) : isError || !data ? (
         <EmptyState
           icon={BookOpen}
-          title="Article not found"
-          description="This article may have been moved or unpublished. Search the knowledge base for related topics."
-          actionLabel="Browse all articles"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/help#kb";
+          headline="Article not found"
+          subtitle="This article may have been moved or unpublished. Search the knowledge base for related topics."
+          cta={{
+            label: "Browse all articles",
+            onClick: () => { window.location.href = "/help#kb"; },
+            "data-testid": "kb-browse-all",
           }}
+          actionIcon={null}
           testId="kb-article-error"
         />
       ) : (

@@ -155,11 +155,14 @@ function DoubleCloseIndex() {
       ) : deals.length === 0 ? (
         <EmptyState
           icon={GitBranch}
-          title="No double-close deals"
-          description="When you can't legally assign, plan a double-close here. Track A→B + B→C contracts side-by-side with the transactional funder fee + net to wholesaler."
-          actionLabel="New double-close"
-          actionIcon={Plus}
-          onAction={() => setCreateOpen(true)}
+          headline="No double-close deals"
+          subtitle="When you can't legally assign, plan a double-close here. Track A→B + B→C contracts side-by-side with the transactional funder fee + net to wholesaler."
+          cta={{
+            label: "New double-close",
+            onClick: () => setCreateOpen(true),
+            "data-testid": "double-close-create",
+          }}
+          actionIcon={null}
         />
       ) : (
         <Card>

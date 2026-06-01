@@ -413,10 +413,14 @@ export default function OffersPage() {
               ) : filteredOffers.length === 0 ? (
                 <EmptyState
                   icon={Mail}
-                  title="No offer letters"
-                  description="Generate batch offers using the calculator or create individual offers."
-                  actionLabel="Open calculator"
-                  onAction={() => setActiveTab("calculator")}
+                  headline="No offer letters"
+                  subtitle="Generate batch offers using the calculator or create individual offers."
+                  cta={{
+                    label: "Open calculator",
+                    onClick: () => setActiveTab("calculator"),
+                    "data-testid": "offers-open-calculator",
+                  }}
+                  actionIcon={null}
                 />
               ) : (
                 <Card>
@@ -838,14 +842,18 @@ export default function OffersPage() {
               ) : !templates || templates.length === 0 ? (
                 <EmptyState
                   icon={FileText}
-                  title="No offer templates"
-                  description="Save your first offer-letter template — Pax merges parcel data, owner name, and offer amount into it on every send."
-                  actionLabel="Create template"
-                  onAction={() => {
-                    setEditingTemplate(null);
-                    setTemplateForm({ name: "", type: "blind_offer", subject: "", content: "" });
-                    setIsTemplateDialogOpen(true);
+                  headline="No offer templates"
+                  subtitle="Save your first offer-letter template — Pax merges parcel data, owner name, and offer amount into it on every send."
+                  cta={{
+                    label: "Create template",
+                    onClick: () => {
+                      setEditingTemplate(null);
+                      setTemplateForm({ name: "", type: "blind_offer", subject: "", content: "" });
+                      setIsTemplateDialogOpen(true);
+                    },
+                    "data-testid": "offers-create-template",
                   }}
+                  actionIcon={null}
                 />
               ) : (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 list-none p-0 m-0" aria-label={`${templates.length} offer-letter template${templates.length === 1 ? "" : "s"}`}>

@@ -180,13 +180,14 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
       <PageShell>
         <EmptyState
           icon={MapPin}
-          title="Parcel not found"
-          description="The URL is missing a valid parcel ID."
-          actionLabel="Back to properties"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/properties";
+          headline="Parcel not found"
+          subtitle="The URL is missing a valid parcel ID."
+          cta={{
+            label: "Back to properties",
+            onClick: () => { window.location.href = "/properties"; },
+            "data-testid": "parcel-back-to-properties",
           }}
+          actionIcon={null}
         />
       </PageShell>
     );

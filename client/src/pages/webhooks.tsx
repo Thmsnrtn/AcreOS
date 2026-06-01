@@ -182,10 +182,14 @@ export default function WebhooksPage() {
       ) : endpoints.length === 0 ? (
         <EmptyState
           icon={Webhook}
-          title="No webhook endpoints"
-          description="Webhooks push events to any URL in real time — wire AcreOS into Zapier, Make, or your own systems."
-          actionLabel="Add your first endpoint"
-          onAction={() => setAddOpen(true)}
+          headline="No webhook endpoints"
+          subtitle="Webhooks push events to any URL in real time — wire AcreOS into Zapier, Make, or your own systems."
+          cta={{
+            label: "Add your first endpoint",
+            onClick: () => setAddOpen(true),
+            "data-testid": "webhooks-add-endpoint",
+          }}
+          actionIcon={null}
           tips={[
             "Each endpoint can subscribe to specific events (lead.created, payment.received, etc).",
             "Every payload is signed — verify the signature header on your receiver.",

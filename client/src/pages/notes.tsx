@@ -276,10 +276,13 @@ export default function NotesPage() {
       ) : notes.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="No notes serviced yet"
-          description="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
-          actionLabel="Import notes"
-          onAction={() => setIsImportOpen(true)}
+          headline="No notes serviced yet"
+          subtitle="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
+          cta={{
+            label: "Import notes",
+            onClick: () => setIsImportOpen(true),
+            "data-testid": "notes-import",
+          }}
           actionIcon={Upload}
           tips={[
             "Import an existing portfolio via CSV — Pax column-maps it to acquired_notes inside 90 seconds.",

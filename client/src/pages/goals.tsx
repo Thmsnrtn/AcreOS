@@ -232,10 +232,14 @@ export default function GoalsPage() {
       ) : goals.length === 0 ? (
         <EmptyState
           icon={Target}
-          title="Set a target — Pax tracks the pace"
-          description="Wire up a revenue target, deal count, or offer-sent number — Pax recalculates your weekly pace overnight and flags the morning you fall off track."
-          actionLabel="Create your first goal"
-          onAction={() => setCreateOpen(true)}
+          headline="Set a target — Pax tracks the pace"
+          subtitle="Wire up a revenue target, deal count, or offer-sent number — Pax recalculates your weekly pace overnight and flags the morning you fall off track."
+          cta={{
+            label: "Create your first goal",
+            onClick: () => setCreateOpen(true),
+            "data-testid": "goals-create",
+          }}
+          actionIcon={null}
           tips={[
             "Tie revenue goals to a deadline to see weekly pace.",
             "Mix outcome goals (closed deals) with leading-indicator goals (offers sent).",

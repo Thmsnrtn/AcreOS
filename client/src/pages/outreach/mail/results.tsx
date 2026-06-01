@@ -107,8 +107,10 @@ export default function ResultsTab() {
     return (
       <EmptyState
         icon={BarChart3}
-        title="No campaigns to analyze yet"
-        description="Once a shipment leaves the hold window, this tab unlocks per-campaign attribution — delivery, QR scans, inbound calls, and deal lift."
+        headline="No campaigns to analyze yet"
+        subtitle="Once a shipment leaves the hold window, this tab unlocks per-campaign attribution — delivery, QR scans, inbound calls, and deal lift."
+        // TODO(cta): results are populated automatically once a shipment leaves the hold window
+        cta={{ label: "", _noOp: true }}
         testId="results-empty"
       />
     );
@@ -216,8 +218,10 @@ function FunnelCard({
         ) : (
           <EmptyState
             icon={BarChart3}
-            title="No funnel data yet"
-            description="Once your campaign ships and recipients start engaging, the sent→delivered→QR→call→deal funnel populates here."
+            headline="No funnel data yet"
+            subtitle="Once your campaign ships and recipients start engaging, the sent→delivered→QR→call→deal funnel populates here."
+            // TODO(cta): funnel data is system-generated from recipient engagement signals
+            cta={{ label: "", _noOp: true }}
             actionIcon={null}
             className="py-8"
             testId="results-funnel-empty"
@@ -585,8 +589,10 @@ function CohortTable({ cohort }: { cohort: ReturnType<typeof useCohortByMonth> }
         ) : (
           <EmptyState
             icon={Mailbox}
-            title="Not enough history yet"
-            description="Once you've run a few campaigns, this rolls up monthly so you can spot trend shifts."
+            headline="Not enough history yet"
+            subtitle="Once you've run a few campaigns, this rolls up monthly so you can spot trend shifts."
+            // TODO(cta): cohort trends require multiple campaigns over time; no direct user action accelerates this
+            cta={{ label: "", _noOp: true }}
             testId="cohort-empty"
           />
         )}

@@ -57,13 +57,14 @@ function LeadDetailDesktop({ id }: { id: number | null }) {
         <BackToLeads />
         <EmptyState
           icon={User}
-          title="Lead not found"
-          description="The URL is missing a valid lead ID."
-          actionLabel="Back to leads"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/leads";
+          headline="Lead not found"
+          subtitle="The URL is missing a valid lead ID."
+          cta={{
+            label: "Back to leads",
+            onClick: () => { window.location.href = "/leads"; },
+            "data-testid": "lead-detail-back",
           }}
+          actionIcon={null}
         />
       </PageShell>
     );
@@ -106,13 +107,14 @@ function LeadDetailDesktop({ id }: { id: number | null }) {
         <BackToLeads />
         <EmptyState
           icon={User}
-          title="Lead not found"
-          description="This lead doesn't exist or you don't have access to it."
-          actionLabel="Back to leads"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/leads";
+          headline="Lead not found"
+          subtitle="This lead doesn't exist or you don't have access to it."
+          cta={{
+            label: "Back to leads",
+            onClick: () => { window.location.href = "/leads"; },
+            "data-testid": "lead-detail-not-found-back",
           }}
+          actionIcon={null}
         />
       </PageShell>
     );

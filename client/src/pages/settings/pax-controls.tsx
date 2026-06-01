@@ -416,8 +416,10 @@ export default function PaxControlsPage() {
           {!observationsLoading && !observationsError && observations.length === 0 && (
             <EmptyState
               icon={History}
-              title="No recent Pax actions"
-              description="Pax hasn't surfaced any observations yet. As soon as it does, the last 10 will appear here."
+              headline="No recent Pax actions"
+              subtitle="Pax hasn't surfaced any observations yet. As soon as it does, the last 10 will appear here."
+              // TODO(cta): Pax observations are system-generated; no direct user action produces them
+              cta={{ label: "", _noOp: true }}
               actionIcon={null}
               testId="pax-replay-empty"
             />

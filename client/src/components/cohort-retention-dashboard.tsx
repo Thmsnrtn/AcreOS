@@ -138,8 +138,10 @@ export function CohortRetentionDashboard() {
     return (
       <EmptyState
         icon={BarChart3}
-        title="No cohort data yet"
-        description="Cohort retention data will appear here once you have leads created over multiple weeks."
+        headline="No cohort data yet"
+        subtitle="Cohort retention data will appear here once you have leads created over multiple weeks."
+        // TODO(cta): cohort analytics — data is system-generated, no direct user action
+        cta={{ label: "", _noOp: true }}
       />
     );
   }

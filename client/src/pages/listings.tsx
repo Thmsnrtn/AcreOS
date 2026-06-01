@@ -622,10 +622,14 @@ export default function ListingsPage() {
         ) : !listings || listings.length === 0 ? (
           <EmptyState
             icon={Building}
-            title="No listings live"
-            description="Publish your first listing — Pax syndicates it to your active channels within 90 seconds and threads every inquiry back to the parcel."
-            actionLabel="Create listing"
-            onAction={() => setIsCreateOpen(true)}
+            headline="No listings live"
+            subtitle="Publish your first listing — Pax syndicates it to your active channels within 90 seconds and threads every inquiry back to the parcel."
+            cta={{
+              label: "Create listing",
+              onClick: () => setIsCreateOpen(true),
+              "data-testid": "listings-create",
+            }}
+            actionIcon={null}
           />
         ) : (
           <Tabs defaultValue="grid" className="space-y-4">

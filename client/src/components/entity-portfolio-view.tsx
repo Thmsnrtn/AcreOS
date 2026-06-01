@@ -292,8 +292,10 @@ export function EntityPortfolioView() {
     return (
       <EmptyState
         icon={Building2}
-        title="No entity portfolio data"
-        description="Properties with status 'owned' will appear here, grouped by their owning entity."
+        headline="No entity portfolio data"
+        subtitle="Properties with status 'owned' will appear here, grouped by their owning entity."
+        // TODO(cta): entity portfolio is a derived view — action is to add properties via the Properties surface
+        cta={{ label: "", _noOp: true }}
       />
     );
   }

@@ -209,11 +209,14 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
       {total === 0 ? (
         <EmptyState
           icon={Camera}
-          title="No photos yet"
-          description="Upload before/after shots, defect callouts, lender-draw photos, and tax basis evidence. Photos group by tag automatically."
-          actionLabel="Upload photos"
+          headline="No photos yet"
+          subtitle="Upload before/after shots, defect callouts, lender-draw photos, and tax basis evidence. Photos group by tag automatically."
+          cta={{
+            label: "Upload photos",
+            onClick: () => fileRef.current?.click(),
+            "data-testid": "rehab-photos-upload",
+          }}
           actionIcon={Upload}
-          onAction={() => fileRef.current?.click()}
           testId="rehab-photos-empty"
         />
       ) : (

@@ -164,8 +164,10 @@ export default function FounderExperimentsPage() {
         ) : experiments.length === 0 ? (
           <EmptyState
             icon={FlaskConical}
-            title="No experiments yet"
-            description="Create your first experiment to split a decision playbook across variants. Example: half of past-due customers get 7-day dunning, half get 10-day — which recovers more?"
+            headline="No experiments yet"
+            subtitle="Create your first experiment to split a decision playbook across variants. Example: half of past-due customers get 7-day dunning, half get 10-day — which recovers more?"
+            // TODO(cta): experiments are created from the agent chat or the founder config panel — no inline create here yet
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <ul className="space-y-4" aria-label="Decision experiments">

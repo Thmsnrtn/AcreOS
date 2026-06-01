@@ -228,8 +228,10 @@ export default function FounderPaxTracesPage() {
       {!isLoading && !error && data && data.traces.length === 0 && (
         <EmptyState
           icon={FileCode}
-          title="No Pax traces yet"
-          description="Pax hasn't made any captured LLM calls in this environment yet. As soon as Pax runs an observation, negotiation, or support exchange, the trace will appear here."
+          headline="No Pax traces yet"
+          subtitle="Pax hasn't made any captured LLM calls in this environment yet. As soon as Pax runs an observation, negotiation, or support exchange, the trace will appear here."
+          // TODO(cta): Pax traces are system-generated from LLM calls; no direct founder action
+          cta={{ label: "", _noOp: true }}
           actionIcon={null}
           testId="pax-traces-empty"
         />

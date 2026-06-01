@@ -171,8 +171,10 @@ export default function FounderOnboardingPage() {
             ) : active.length === 0 ? (
               <EmptyState
                 icon={Rocket}
-                title="No journeys in progress"
-                description="Journeys start automatically when a new Land Investor org signs up."
+                headline="No journeys in progress"
+                subtitle="Journeys start automatically when a new Land Investor org signs up."
+                // TODO(cta): onboarding journeys are system-triggered by signup events; no direct founder action
+                cta={{ label: "", _noOp: true }}
               />
             ) : (
               <ul className="space-y-2" aria-label="Onboarding journeys in progress">

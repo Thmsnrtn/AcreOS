@@ -181,8 +181,10 @@ export default function TaxIdentitySettingsPage() {
       <PageShell>
         <EmptyState
           icon={Lock}
-          title="Owner-only"
-          description="Only the workspace owner can view or edit the organization's tax identity. Ask an owner to update these settings."
+          headline="Owner-only"
+          subtitle="Only the workspace owner can view or edit the organization's tax identity. Ask an owner to update these settings."
+          // TODO(cta): access-restricted view — the action is to contact the owner; no direct system action available
+          cta={{ label: "", _noOp: true }}
         />
       </PageShell>
     );
@@ -209,10 +211,14 @@ export default function TaxIdentitySettingsPage() {
       <PageShell>
         <EmptyState
           icon={AlertTriangle}
-          title="Couldn't load tax identity"
-          description="We couldn't reach the server. Your stored data is unchanged."
-          actionLabel="Try again"
-          onAction={() => refetch()}
+          headline="Couldn't load tax identity"
+          subtitle="We couldn't reach the server. Your stored data is unchanged."
+          cta={{
+            label: "Try again",
+            onClick: () => refetch(),
+            "data-testid": "tax-identity-retry",
+          }}
+          actionIcon={null}
         />
       </PageShell>
     );

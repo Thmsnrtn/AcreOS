@@ -290,8 +290,10 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
         ) : events.length === 0 ? (
           <EmptyState
             icon={Clock}
-            title="No activity yet"
-            description="Phone calls, emails, status changes, and notes will appear here as interactions are logged."
+            headline="No activity yet"
+            subtitle="Phone calls, emails, status changes, and notes will appear here as interactions are logged."
+            // TODO(cta): timeline is a read-only log — no user action creates activity directly here
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <ScrollArea className="h-[400px] pr-4">

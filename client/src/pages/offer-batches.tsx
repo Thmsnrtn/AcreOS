@@ -83,8 +83,10 @@ export default function OfferBatchesPage() {
         ) : data.length === 0 ? (
           <EmptyState
             icon={Layers}
-            title="No batches mailed"
-            description="POST a pricing matrix + parcel list to /api/offers/batch — Pax generates an offer per parcel, hands the merge to the print vendor, and tracks reply windows per recipient. A guided dialog is on the roadmap."
+            headline="No batches mailed"
+            subtitle="POST a pricing matrix + parcel list to /api/offers/batch — Pax generates an offer per parcel, hands the merge to the print vendor, and tracks reply windows per recipient. A guided dialog is on the roadmap."
+            // TODO(cta): guided batch creation dialog is on roadmap — no inline create yet
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <ul className="space-y-3" aria-label="Offer batches">

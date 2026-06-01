@@ -106,10 +106,14 @@ export default function CourthouseModePage() {
         ) : listings.length === 0 ? (
           <EmptyState
             icon={Gavel}
-            title="No listings on this worksheet"
-            description="Add listings to your auction worksheet first, then return here on auction day."
-            actionLabel="Go to Auction Worksheet"
-            onAction={() => setLocation("/auction-worksheet")}
+            headline="No listings on this worksheet"
+            subtitle="Add listings to your auction worksheet first, then return here on auction day."
+            cta={{
+              label: "Go to Auction Worksheet",
+              onClick: () => setLocation("/auction-worksheet"),
+              "data-testid": "courthouse-go-to-worksheet",
+            }}
+            actionIcon={null}
             className="py-16"
           />
         ) : (

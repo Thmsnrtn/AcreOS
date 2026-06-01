@@ -383,8 +383,10 @@ export default function FounderCostPage() {
                   {data.dailyTrend.length === 0 ? (
                     <EmptyState
                       icon={BarChart3}
-                      title="No spend data yet"
-                      description="AI calls will appear here once the system has processed requests."
+                      headline="No spend data yet"
+                      subtitle="AI calls will appear here once the system has processed requests."
+                      // TODO(cta): spend data is system-generated from AI call volume; no direct user action
+                      cta={{ label: "", _noOp: true }}
                     />
                   ) : (
                     <SparkLine data={data.dailyTrend} />
@@ -490,8 +492,10 @@ export default function FounderCostPage() {
                   <CardContent className="pt-6">
                     <EmptyState
                       icon={Database}
-                      title="No per-org spend yet"
-                      description="AI usage by organization will appear here once customers are active."
+                      headline="No per-org spend yet"
+                      subtitle="AI usage by organization will appear here once customers are active."
+                      // TODO(cta): per-org spend is system-generated; no direct founder action
+                      cta={{ label: "", _noOp: true }}
                     />
                   </CardContent>
                 </Card>

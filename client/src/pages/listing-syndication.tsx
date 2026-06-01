@@ -170,10 +170,13 @@ export default function ListingSyndicationPage() {
       ) : channels.length === 0 ? (
         <EmptyState
           icon={Globe}
-          title="No syndication channels"
-          description="Connect MLS feeds, listing portals, or marketplaces to push your listings everywhere at once."
-          actionLabel="Browse channels"
-          onAction={() => { window.location.assign("/integrations"); }}
+          headline="No syndication channels"
+          subtitle="Connect MLS feeds, listing portals, or marketplaces to push your listings everywhere at once."
+          cta={{
+            label: "Browse channels",
+            onClick: () => { window.location.assign("/integrations"); },
+            "data-testid": "listing-syndication-browse",
+          }}
           actionIcon={null}
           tips={[
             "MLS connections require board credentials.",

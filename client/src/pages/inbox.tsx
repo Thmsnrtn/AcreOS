@@ -1068,19 +1068,19 @@ export default function InboxPage() {
     }
   };
 
-  const getEmptyMessage = () => {
+  const getEmptyMessage = (): { headline: string; subtitle: string } => {
     if (channelFilter === "sms") {
-      return { title: "No SMS conversations", description: "SMS conversations will appear here." };
+      return { headline: "No SMS conversations", subtitle: "SMS conversations will appear here." };
     }
     switch (statusFilter) {
       case "unread":
-        return { title: "No unread messages", description: "You're all caught up!" };
+        return { headline: "No unread messages", subtitle: "You're all caught up!" };
       case "starred":
-        return { title: "No starred messages", description: "Star messages to find them quickly." };
+        return { headline: "No starred messages", subtitle: "Star messages to find them quickly." };
       case "archived":
-        return { title: "No archived messages", description: "Archived messages will appear here." };
+        return { headline: "No archived messages", subtitle: "Archived messages will appear here." };
       default:
-        return { title: "No messages", description: "Your inbox is empty." };
+        return { headline: "No messages", subtitle: "Your inbox is empty." };
     }
   };
 
@@ -1253,6 +1253,8 @@ export default function InboxPage() {
                   <EmptyState
                     icon={channelFilter === "sms" ? Phone : Mail}
                     {...getEmptyMessage()}
+                    // TODO(cta): inbox empty state — the relevant action (connect mailbox) is available in Settings
+                    cta={{ label: "", _noOp: true }}
                   />
                 )}
               </div>
@@ -1308,8 +1310,10 @@ export default function InboxPage() {
               <div className="flex-1 flex items-center justify-center p-4">
                 <EmptyState
                   icon={MessageSquare}
-                  title="Select a message"
-                  description="Choose a conversation from the list to read it here."
+                  headline="Select a message"
+                  subtitle="Choose a conversation from the list to read it here."
+                  // TODO(cta): placeholder panel when no message selected — not an empty-data state
+                  cta={{ label: "", _noOp: true }}
                 />
               </div>
             )}

@@ -152,8 +152,10 @@ export default function FounderPreviewPage() {
             ) : recent.length === 0 ? (
               <EmptyState
                 icon={Eye}
-                title="No recent autonomous actions"
-                description="Actions will appear here once the executor processes its first decisions."
+                headline="No recent autonomous actions"
+                subtitle="Actions will appear here once the executor processes its first decisions."
+                // TODO(cta): autonomous actions are system-generated; no direct user action produces them here
+                cta={{ label: "", _noOp: true }}
               />
             ) : (
               <ul className="space-y-2" aria-label="Recent autonomous actions">

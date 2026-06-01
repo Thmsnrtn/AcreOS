@@ -220,11 +220,14 @@ function QuietTitleIndex() {
       ) : cases.length === 0 ? (
         <EmptyState
           icon={Gavel}
-          title="No quiet-title cases"
-          description="When you take a tax deed, open a case here to track the 10-step legal workflow with statutory deadlines."
-          actionLabel="Open case"
-          actionIcon={Plus}
-          onAction={() => setOpenDialog(true)}
+          headline="No quiet-title cases"
+          subtitle="When you take a tax deed, open a case here to track the 10-step legal workflow with statutory deadlines."
+          cta={{
+            label: "Open case",
+            onClick: () => setOpenDialog(true),
+            "data-testid": "quiet-title-open-case",
+          }}
+          actionIcon={null}
         />
       ) : (
         <Card>

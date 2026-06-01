@@ -55,13 +55,14 @@ export default function DealDetailPage() {
         <BackToDeals />
         <EmptyState
           icon={Briefcase}
-          title="Deal not found"
-          description="The URL is missing a valid deal ID."
-          actionLabel="Back to deals"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/deals";
+          headline="Deal not found"
+          subtitle="The URL is missing a valid deal ID."
+          cta={{
+            label: "Back to deals",
+            onClick: () => { window.location.href = "/deals"; },
+            "data-testid": "deal-detail-back",
           }}
+          actionIcon={null}
         />
       </PageShell>
     );
@@ -104,13 +105,14 @@ export default function DealDetailPage() {
         <BackToDeals />
         <EmptyState
           icon={Briefcase}
-          title="Deal not found"
-          description="This deal doesn't exist or you don't have access to it."
-          actionLabel="Back to deals"
-          actionIcon={null}
-          onAction={() => {
-            window.location.href = "/deals";
+          headline="Deal not found"
+          subtitle="This deal doesn't exist or you don't have access to it."
+          cta={{
+            label: "Back to deals",
+            onClick: () => { window.location.href = "/deals"; },
+            "data-testid": "deal-detail-not-found-back",
           }}
+          actionIcon={null}
         />
       </PageShell>
     );

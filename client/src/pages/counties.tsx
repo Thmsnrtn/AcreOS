@@ -625,14 +625,18 @@ export default function CountiesPage() {
         ) : filteredCounties.length === 0 ? (
           <EmptyState
             icon={MapPin}
-            title={counties?.length === 0 ? "No target counties yet" : "No counties match filters"}
-            description={
+            headline={counties?.length === 0 ? "No target counties yet" : "No counties match filters"}
+            subtitle={
               counties?.length === 0
                 ? "Add your first target county to start tracking acquisition markets."
                 : "Try adjusting your filters to see more results."
             }
-            actionLabel={counties?.length === 0 ? "Add county" : undefined}
-            onAction={counties?.length === 0 ? handleOpenCreate : undefined}
+            cta={
+              counties?.length === 0
+                ? { label: "Add county", onClick: handleOpenCreate, "data-testid": "counties-add" }
+                : { label: "", _noOp: true } // TODO(cta): filter result — action is to clear filters
+            }
+            actionIcon={null}
           />
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 list-none p-0 m-0" aria-label="Target counties">

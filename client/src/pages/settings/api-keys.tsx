@@ -275,10 +275,14 @@ export default function ApiKeysSettingsPage() {
             {!isLoading && !error && keys.length === 0 && (
               <EmptyState
                 icon={KeyRound}
-                title="No API keys yet"
-                description="Create your first key to start integrating AcreOS with external tools."
-                actionLabel="Create a key"
-                onAction={() => setCreateOpen(true)}
+                headline="No API keys yet"
+                subtitle="Create your first key to start integrating AcreOS with external tools."
+                cta={{
+                  label: "Create a key",
+                  onClick: () => setCreateOpen(true),
+                  "data-testid": "api-keys-create",
+                }}
+                actionIcon={null}
               />
             )}
             {!isLoading && !error && keys.length > 0 && (

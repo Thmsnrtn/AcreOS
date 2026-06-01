@@ -422,10 +422,14 @@ export default function FinancePage() {
               ) : !enrichedNotes || enrichedNotes.length === 0 ? (
                 <EmptyState
                   icon={FileText}
-                  title="No notes serviced yet"
-                  description="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then dunns on day 11 and emits the 1099-NEC at year-end."
-                  actionLabel="Create Your First Note"
-                  onAction={() => setIsCreateOpen(true)}
+                  headline="No notes serviced yet"
+                  subtitle="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then dunns on day 11 and emits the 1099-NEC at year-end."
+                  cta={{
+                    label: "Create Your First Note",
+                    onClick: () => setIsCreateOpen(true),
+                    "data-testid": "finance-create-note",
+                  }}
+                  actionIcon={null}
                 />
               ) : (
                 <>

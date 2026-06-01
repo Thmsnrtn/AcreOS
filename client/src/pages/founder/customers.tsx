@@ -221,8 +221,10 @@ export default function FounderCustomersPage() {
                 <div className="px-4 pb-4">
                   <EmptyState
                     icon={TrendingUp}
-                    title="No UTM data yet"
-                    description="No signups in the last 90 days have a captured UTM source. Tag your campaign URLs with utm_source / utm_medium / utm_campaign so this page can tell you what's working."
+                    headline="No UTM data yet"
+                    subtitle="No signups in the last 90 days have a captured UTM source. Tag your campaign URLs with utm_source / utm_medium / utm_campaign so this page can tell you what's working."
+                    // TODO(cta): UTM tagging happens externally on campaign URLs; link to docs when available
+                    cta={{ label: "", _noOp: true }}
                     actionIcon={null}
                     testId="founder-customers-utm-empty"
                   />
@@ -276,8 +278,10 @@ export default function FounderCustomersPage() {
                 <div className="px-4 pb-4">
                   <EmptyState
                     icon={Users}
-                    title="No signups yet"
-                    description="Nobody has signed up. The first one will land here."
+                    headline="No signups yet"
+                    subtitle="Nobody has signed up. The first one will land here."
+                    // TODO(cta): signups come from the landing page; a link to the live signup URL would help here
+                    cta={{ label: "", _noOp: true }}
                     actionIcon={null}
                     testId="founder-customers-recent-empty"
                   />

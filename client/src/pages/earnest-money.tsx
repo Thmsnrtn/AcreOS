@@ -234,11 +234,14 @@ export default function EarnestMoneyPage() {
       ) : holds.length === 0 ? (
         <EmptyState
           icon={Banknote}
-          title="No EMD holds"
-          description="Record an earnest-money deposit when you wire to title. The inspection-period timer flips status to non-refundable on day N+1."
-          actionLabel="Record EMD"
-          actionIcon={Plus}
-          onAction={() => setCreateOpen(true)}
+          headline="No EMD holds"
+          subtitle="Record an earnest-money deposit when you wire to title. The inspection-period timer flips status to non-refundable on day N+1."
+          cta={{
+            label: "Record EMD",
+            onClick: () => setCreateOpen(true),
+            "data-testid": "earnest-money-record",
+          }}
+          actionIcon={null}
         />
       ) : (
         <Card>

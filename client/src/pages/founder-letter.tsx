@@ -183,19 +183,26 @@ export default function FounderLetterPage() {
           ) : isError ? (
             <EmptyState
               icon={FileText}
-              title="Couldn't load the letter"
-              description="Your previous letter (if any) is still saved. Try generating a fresh one or come back in a moment."
-              actionLabel="Retry"
-              onAction={() => refetch()}
+              headline="Couldn't load the letter"
+              subtitle="Your previous letter (if any) is still saved. Try generating a fresh one or come back in a moment."
+              cta={{
+                label: "Retry",
+                onClick: () => refetch(),
+                "data-testid": "founder-letter-retry",
+              }}
+              actionIcon={null}
             />
           ) : !letter ? (
             <EmptyState
               icon={FileText}
-              title="No letter yet"
-              description="The first letter will be generated on the 1st of next month. You can also generate one on demand from the current data."
-              actionLabel={generate.isPending ? "Generating…" : "Generate now"}
-              onAction={() => generate.mutate()}
-              testId="button-generate-letter"
+              headline="No letter yet"
+              subtitle="The first letter will be generated on the 1st of next month. You can also generate one on demand from the current data."
+              cta={{
+                label: generate.isPending ? "Generating…" : "Generate now",
+                onClick: () => generate.mutate(),
+                "data-testid": "button-generate-letter",
+              }}
+              actionIcon={null}
             />
           ) : (
             <>

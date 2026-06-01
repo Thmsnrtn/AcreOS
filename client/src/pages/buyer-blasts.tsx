@@ -141,11 +141,14 @@ function BlastIndex() {
       ) : blasts.length === 0 ? (
         <EmptyState
           icon={Send}
-          title="Lock up a subject — blast your cash buyer list"
-          description="The moment you lock up a subject property, Pax matches it against your cash buyer list, fires the email, and tracks opens + replies per recipient."
-          actionLabel="Blast a property"
-          actionIcon={Plus}
-          onAction={() => setComposerOpen(true)}
+          headline="Lock up a subject — blast your cash buyer list"
+          subtitle="The moment you lock up a subject property, Pax matches it against your cash buyer list, fires the email, and tracks opens + replies per recipient."
+          cta={{
+            label: "Blast a property",
+            onClick: () => setComposerOpen(true),
+            "data-testid": "buyer-blasts-compose",
+          }}
+          actionIcon={null}
         />
       ) : (
         <Card>

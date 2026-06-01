@@ -74,8 +74,10 @@ export default function FounderProvidersPage() {
         ) : !data || data.totalLookups === 0 ? (
           <EmptyState
             icon={Database}
-            title="No provider lookups yet"
-            description="Once customers start enriching parcels and properties, provider telemetry will populate here."
+            headline="No provider lookups yet"
+            subtitle="Once customers start enriching parcels and properties, provider telemetry will populate here."
+            // TODO(cta): provider telemetry is system-generated from customer activity; no direct founder action
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <>

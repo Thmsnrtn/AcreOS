@@ -233,11 +233,14 @@ export default function RedemptionClockPage() {
       ) : certs.length === 0 ? (
         <EmptyState
           icon={Clock}
-          title="No certificates yet"
-          description="Add a tax certificate or deed to start tracking the redemption clock. The math runs nightly and surfaces deadlines closest to expiry first."
-          actionLabel="Add certificate"
-          actionIcon={Plus}
-          onAction={() => setCreateOpen(true)}
+          headline="No certificates yet"
+          subtitle="Add a tax certificate or deed to start tracking the redemption clock. The math runs nightly and surfaces deadlines closest to expiry first."
+          cta={{
+            label: "Add certificate",
+            onClick: () => setCreateOpen(true),
+            "data-testid": "redemption-clock-add",
+          }}
+          actionIcon={null}
         />
       ) : isMobile ? (
         // 2026-05-26 mobile audit fix: the horizontal-scroll table is

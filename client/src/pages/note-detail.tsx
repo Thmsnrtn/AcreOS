@@ -329,11 +329,14 @@ export default function NoteDetailPage() {
         <BackButton />
         <EmptyState
           icon={FileText}
-          title="Note not found"
-          description="The URL is missing a valid note ID."
-          actionLabel="Back to notes"
+          headline="Note not found"
+          subtitle="The URL is missing a valid note ID."
+          cta={{
+            label: "Back to notes",
+            onClick: () => { window.location.href = "/notes"; },
+            "data-testid": "note-detail-back",
+          }}
           actionIcon={null}
-          onAction={() => { window.location.href = "/notes"; }}
         />
       </PageShell>
     );
@@ -374,11 +377,14 @@ export default function NoteDetailPage() {
         <BackButton />
         <EmptyState
           icon={AlertCircle}
-          title="Note not found"
-          description="This note may have been deleted or you don't have access."
-          actionLabel="Back to notes"
+          headline="Note not found"
+          subtitle="This note may have been deleted or you don't have access."
+          cta={{
+            label: "Back to notes",
+            onClick: () => { window.location.href = "/notes"; },
+            "data-testid": "note-detail-not-found-back",
+          }}
           actionIcon={null}
-          onAction={() => { window.location.href = "/notes"; }}
         />
       </PageShell>
     );

@@ -159,8 +159,11 @@ export default function LeadsDedupePage() {
         ) : clusters.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="No duplicates found"
-            description="Your lead list is clean — no matching phone, email, or name+address clusters detected."
+            headline="No duplicates found"
+            subtitle="Your lead list is clean — no matching phone, email, or name+address clusters detected."
+            tone="celebratory"
+            // TODO(cta): "clean" state is celebratory — no action needed; tone signals success
+            cta={{ label: "", _noOp: true }}
           />
         ) : (
           <div className="space-y-4">
