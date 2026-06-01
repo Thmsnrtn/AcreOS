@@ -389,6 +389,8 @@ const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 // B-1: DriveMode — full-screen mobile curb-capture surface.
 const DriveModePage = React.lazy(() => import("@/pages/drivemode"));
+// B-2: CourthouseMode — Tax-Delinquent leapfrog mobile surface.
+const CourthouseModePage = React.lazy(() => import("@/pages/courthouse-mode"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 // /freedom-meter removed (Lens 4 Fix 4): 706-line customer-facing
 // surface with no nav link, no in-app referrers, no link to /today.
@@ -811,6 +813,12 @@ function Router() {
           its own header + back button. */}
       <Route path="/drivemode">
         {() => <ProtectedRoute component={DriveModePage} />}
+      </Route>
+      {/* B-2: CourthouseMode — Tax-Delinquent leapfrog mobile surface.
+          Fetches auction-worksheet listings; designed for one-handed
+          use at a live auction with spotty connectivity. */}
+      <Route path="/courthouse-mode">
+        {() => <ProtectedRoute component={CourthouseModePage} />}
       </Route>
       <Route path="/counties/:id">
         {() => <ProtectedRoute component={CountyDetailPage} />}
