@@ -10,6 +10,7 @@ import { ClearedEmpty } from "@/components/empty-states";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
 import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import { lightImpact } from "@/lib/haptics";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   Sparkles,
@@ -150,10 +151,12 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
   }, [snoozed]);
 
   function snoozeItem(id: string) {
+    lightImpact();
     setSnoozed((prev) => ({ ...prev, [id]: Date.now() + SNOOZE_DURATION_MS }));
   }
 
   function snoozeAll(ids: string[]) {
+    lightImpact();
     const expiry = Date.now() + SNOOZE_DURATION_MS;
     setSnoozed((prev) => {
       const next = { ...prev };

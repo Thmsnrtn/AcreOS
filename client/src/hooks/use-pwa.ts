@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { toast } from "@/hooks/use-toast";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -54,10 +55,24 @@ export function usePWA() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
-    // Listen for SW sync-complete messages
+    // Listen for SW sync-complete and sync-failed messages.
+    // OFFLINE_SYNC_COMPLETE: one or more queued requests replayed OK.
+    //   count = how many succeeded this drain cycle.
+    // OFFLINE_SYNC_FAILED: a queued request got a permanent 4xx and was
+    //   dropped. Notify the user so they know the item didn't save.
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data?.type === "OFFLINE_SYNC_COMPLETE") {
-        setSyncedCount((c) => c + 1);
+        const count = typeof event.data.count === "number" ? event.data.count : 1;
+        setSyncedCount((c) => c + count);
+        refreshPendingCount();
+      }
+      if (event.data?.type === "OFFLINE_SYNC_FAILED") {
+        clientLogger.warn("[PWA] Offline request permanently failed:", event.data.url);
+        toast({
+          title: "Couldn't sync a saved change",
+          description: "One offline action was rejected by the server and couldn't be retried. Check your data and try again.",
+          duration: 8000,
+        });
         refreshPendingCount();
       }
     };

@@ -27,6 +27,7 @@
 
 import { useMotionValue, useTransform, motion, type PanInfo } from "framer-motion";
 import { useReducedMotionPreference } from "@/lib/motion-tokens";
+import { lightImpact } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
@@ -87,6 +88,18 @@ export function SwipeableCard({
   const reduced = useReducedMotionOrAttribute();
   const x = useMotionValue(0);
 
+  // Haptic on commit. Fire once when the gesture lands past the commit
+  // threshold — not during drag (that would spam vibrations). The check
+  // mirrors handleDragEnd's threshold logic exactly so the haptic is
+  // always coupled to the same moment the action fires.
+  const fireHapticOnCommit = (offset: number, velocity: number) => {
+    const passedDistance = Math.abs(offset) > commitDistancePx;
+    const passedVelocity = Math.abs(velocity) > commitVelocityPxs;
+    if (passedDistance || passedVelocity) {
+      lightImpact();
+    }
+  };
+
   // Action backgrounds — fade in as the user drags toward the action.
   // bgLeftOpacity reveals the `leftAction` during a right-swipe (x > 0).
   // bgRightOpacity reveals the `rightAction` during a left-swipe (x < 0).
@@ -113,6 +126,11 @@ export function SwipeableCard({
     const passedDistance = Math.abs(offset) > commitDistancePx;
     const passedVelocity = Math.abs(velocity) > commitVelocityPxs;
     if (!passedDistance && !passedVelocity) return;
+
+    // Haptic at the moment the gesture commits — one pulse, the same
+    // instant the action fires. lightImpact() is a no-op when
+    // prefers-reduced-motion is set.
+    fireHapticOnCommit(offset, velocity);
 
     // Direction of the gesture decides which action fires. A
     // right-swipe (offset > 0) commits the leftAction (background

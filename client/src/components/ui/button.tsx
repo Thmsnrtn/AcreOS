@@ -31,7 +31,9 @@ const buttonVariants = cva(
         // / rounded-full mixed across sizes) created three shapes inside
         // the same primitive.
         default: "min-h-9 sm:min-h-9 max-sm:min-h-11 rounded-card px-4 py-2",
-        sm: "min-h-8 max-sm:min-h-10 rounded-card px-3 text-xs",
+        // max-sm:min-h-11 = 44px on mobile — Apple HIG / WCAG 2.5.5 minimum.
+        // Previously min-h-10 (40px), 4px below the HIG threshold.
+        sm: "min-h-8 max-sm:min-h-11 rounded-card px-3 text-xs",
         lg: "min-h-10 max-sm:min-h-12 rounded-full px-8",
         icon: "h-9 w-9 max-sm:h-11 max-sm:w-11 rounded-card",
       },

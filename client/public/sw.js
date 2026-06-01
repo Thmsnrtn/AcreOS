@@ -169,6 +169,8 @@ async function replayOfflineQueue() {
 
   console.log(`[SW] Replaying ${items.length} offline request(s)`);
 
+  let successCount = 0;
+
   for (const { key, value } of items) {
     try {
       const response = await fetch(value.url, {
@@ -178,21 +180,42 @@ async function replayOfflineQueue() {
       });
       if (response.ok) {
         await deleteOfflineRequest(key);
+        successCount++;
         console.log(`[SW] Replayed offline request to ${value.url}`);
-
-        // Notify all open clients
+      } else if (response.status >= 400 && response.status < 500) {
+        // 4xx = permanent client error — the server rejected this request
+        // and retrying will never help (wrong payload, forbidden, gone,
+        // etc.). Pull it from the queue so it doesn't block future syncs,
+        // and notify the user so they know the item was dropped.
+        await deleteOfflineRequest(key);
+        console.warn(`[SW] Dropped offline request ${value.url} — permanent ${response.status}`);
         const clients = await self.clients.matchAll({ type: 'window' });
         clients.forEach((client) => {
           client.postMessage({
-            type: 'OFFLINE_SYNC_COMPLETE',
+            type: 'OFFLINE_SYNC_FAILED',
             url: value.url,
+            status: response.status,
             data: value.data,
           });
         });
       }
+      // 5xx: leave in queue — transient server error, retry next time.
     } catch (err) {
-      console.error(`[SW] Replay failed for ${value.url}:`, err);
+      // Network still down or fetch threw — stop draining, try again later.
+      console.error(`[SW] Replay network error for ${value.url}:`, err);
+      break;
     }
+  }
+
+  if (successCount > 0) {
+    // Notify all open clients so the app can show "Synced N items" toast.
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach((client) => {
+      client.postMessage({
+        type: 'OFFLINE_SYNC_COMPLETE',
+        count: successCount,
+      });
+    });
   }
 }
 

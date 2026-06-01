@@ -49,6 +49,7 @@ const CommandPalette = React.lazy(() => import("@/components/command-palette").t
 // inspector/intel/persona-toggle groups. The standalone
 // founder-command-palette.tsx file was deleted in the same change.
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
+import { usePWA } from "@/hooks/use-pwa";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
@@ -1676,6 +1677,30 @@ function AppContent() {
       path: typeof window !== "undefined" ? window.location.pathname : null,
     });
   }, []);
+
+  // ── Offline sync toasts ─────────────────────────────────────────────────────
+  // usePWA tracks the SW's OFFLINE_SYNC_COMPLETE message (incrementing
+  // syncedCount) and the pending offline queue size. We surface:
+  //   1. When a request is queued offline → SW response already says so
+  //      in its 202 body; the OfflineIndicator banner covers this state.
+  //   2. When the queue flushes on reconnect → toast: "Synced N items."
+  //   3. When pendingSyncCount drops to 0 from >0 → handled by (2).
+  // We do NOT show the "Saved offline" toast here — that's embedded in
+  // the individual mutation callers (field-scout, courthouse, etc.) where
+  // context is meaningful ("Scout saved offline" vs a generic message).
+  const { syncedCount } = usePWA();
+  const prevSyncedCountRef = React.useRef(0);
+  React.useEffect(() => {
+    if (syncedCount > prevSyncedCountRef.current && syncedCount > 0) {
+      const delta = syncedCount - prevSyncedCountRef.current;
+      toast({
+        title: delta === 1 ? "Synced offline change" : `Synced ${delta} offline changes`,
+        description: "Your data is up to date.",
+        duration: 4000,
+      });
+    }
+    prevSyncedCountRef.current = syncedCount;
+  }, [syncedCount, toast]);
 
   // Cmd+; (Ctrl+; on Windows/Linux) — toggle persona mode. Solves Tom's
   // #1 nav pain (founder dashboard → had to hit Back repeatedly).

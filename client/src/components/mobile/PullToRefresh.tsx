@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
-import { Haptics, ImpactStyle } from "@capacitor/haptics";
+import { mediumImpact } from "@/lib/haptics";
 import { RefreshCw, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -24,7 +24,7 @@ type PullState = "idle" | "pulling" | "ready" | "refreshing";
  * 
  * Features:
  * - Native-feeling pull gesture with visual feedback
- * - Haptic feedback at threshold via Capacitor
+ * - Haptic feedback at threshold via haptics.ts (Capacitor in native, vibrate() in PWA)
  * - Automatic detection of scroll position
  * - Works with React Query's refetch pattern
  */
@@ -47,18 +47,18 @@ export function PullToRefresh({
   // Don't render pull-to-refresh on desktop
   const isEnabled = enabled && isMobile;
 
-  const triggerHaptic = useCallback(async () => {
-    try {
-      await Haptics.impact({ style: ImpactStyle.Medium });
-    } catch {
-      // Haptics not available (web or unsupported device)
-    }
+  const triggerHaptic = useCallback(() => {
+    // mediumImpact() routes to Capacitor taptics in native context,
+    // navigator.vibrate() in PWA/web context, and no-ops on iOS Safari
+    // or when prefers-reduced-motion is set.
+    mediumImpact();
   }, []);
 
   const handleRefresh = useCallback(async () => {
     setPullState("refreshing");
+    // Fire haptic at the moment of refresh trigger (threshold commit).
+    triggerHaptic();
     try {
-      await triggerHaptic();
       await onRefresh();
     } finally {
       // Smooth transition back

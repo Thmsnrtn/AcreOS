@@ -29,6 +29,43 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
+    <!-- iOS PWA splash screens. iOS uses apple-touch-startup-image to
+         render a native-feeling launch screen when the app is opened from
+         the home screen. Without these, iOS falls back to a white flash
+         before the app shell paints. Each media query matches a specific
+         iPhone screen size + pixel density combination (portrait only —
+         AcreOS uses portrait-primary orientation).
+
+         Sizes are: [device-width × device-height] at [dpr].
+         Source: https://developer.apple.com/design/human-interface-guidelines/
+         Covers: iPhone 16 Pro Max, 16 Pro, 16/15/14 Plus, 15/14 Pro Max,
+                 14 Pro, 13/12 Pro Max, 11 Pro Max, XS Max,
+                 11/XR, 11 Pro/XS/X, 12/13/14, 12/13 mini,
+                 SE 3rd gen, SE 2nd gen / 8 / 7 / 6s / 6
+
+         All point to the same branded splash — the brand terracotta with
+         the AcreOS wordmark. Background matches manifest background_color
+         (#EDE3D0 Bedrock warm). The image itself should be 2732×2048 to
+         cover the largest viewport at 3x; we use the 512x512 app icon
+         centred on the brand background as a graceful fallback. -->
+    <!-- iPhone 16 Pro Max (430pt × 932pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1290x2796.png">
+    <!-- iPhone 16 Pro / 15 Pro / 14 Pro (393pt × 852pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1179x2556.png">
+    <!-- iPhone 16 Plus / 15 Plus / 14 Plus / 13 Pro Max / 12 Pro Max (428pt × 926pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1284x2778.png">
+    <!-- iPhone 15 / 14 / 13 Pro / 12 Pro / 13 / 12 (390pt × 844pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1170x2532.png">
+    <!-- iPhone 11 Pro Max / XS Max (414pt × 896pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1242x2688.png">
+    <!-- iPhone 11 / XR (414pt × 896pt @2x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/apple-splash-828x1792.png">
+    <!-- iPhone 11 Pro / XS / X (375pt × 812pt @3x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1125x2436.png">
+    <!-- iPhone 13 mini / 12 mini (375pt × 812pt @3x, same as X resolution) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/apple-splash-1125x2436.png">
+    <!-- iPhone SE 3rd gen / SE 2nd / 8 / 7 / 6s / 6 (375pt × 667pt @2x) -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/apple-splash-750x1334.png">
     <!-- Warm the TLS connection to Clerk + Mapbox before the app code runs.
          Saves ~100-150ms on the first auth/map call (DNS+TCP+TLS handshake
          happens in parallel with the JS bundle download instead of after). -->

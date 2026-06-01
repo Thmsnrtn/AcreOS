@@ -3,7 +3,7 @@
   "short_name": "AcreOS",
   "description": "The AI-powered platform for Land Investors — find parcels, run campaigns, close deals, manage portfolios.",
   "theme_color": "#C45C3E",
-  "background_color": "#C45C3E",
+  "background_color": "#EDE3D0",
   "display": "standalone",
   "orientation": "portrait-primary",
   "scope": "/",
@@ -31,6 +31,12 @@
     {
       "src": "/pwa-maskable-512x512.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/pwa-maskable-192x192.png",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },

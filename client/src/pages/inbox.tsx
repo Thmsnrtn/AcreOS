@@ -1166,7 +1166,14 @@ export default function InboxPage() {
     // doesn't push content below the visible viewport. pb-[…] reserves
     // space for MobileBottomNav (~72px + iOS safe-area) so the message
     // list and reply panel don't sit under it on mobile.
-    <div className="flex min-h-[100dvh] bg-background">
+    <div
+      className="flex min-h-[100dvh] bg-background"
+      // env(safe-area-inset-top) clears the Dynamic Island / notch in
+      // standalone PWA mode. The inbox uses a custom layout (no PageShell)
+      // so we apply the inset here rather than inheriting it from PageShell's
+      // outer wrapper. Desktop reads it as 0.
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
       <Sidebar />
 
       <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
