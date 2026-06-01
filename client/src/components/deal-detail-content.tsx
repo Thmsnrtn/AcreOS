@@ -52,20 +52,20 @@ type DealWithProperty = Deal & { property?: Property };
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
   { value: 'offer_sent', label: 'Offer Sent', color: 'bg-acr-brand-soft' },
-  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft dark:bg-acr-warn-soft' },
-  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
-  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-brand-soft' },
-  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
+  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft' },
+  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft' },
+  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-warn-soft' },
+  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft' },
 ];
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
   offer_sent: 'bg-acr-brand-soft text-acr-brand',
-  countered: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
-  accepted: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
-  in_escrow: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
-  closed: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
-  cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg',
+  countered: 'bg-acr-warn-soft text-acr-warn',
+  accepted: 'bg-acr-pos-soft text-acr-pos',
+  in_escrow: 'bg-acr-warn-soft text-acr-warn',
+  closed: 'bg-acr-pos-soft text-acr-pos',
+  cancelled: 'bg-acr-neg-soft text-acr-neg',
 };
 
 interface PricingRecommendation {
@@ -260,7 +260,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   {deal.status?.replace(/_/g, ' ')}
                 </Badge>
               </div>
-              <h2 id="deal-drawer-title" className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">
+              <h2 id="deal-drawer-title" className="text-section-h2 font-semibold mt-2 line-clamp-2" data-testid="text-deal-title">
                 {deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
               </h2>
               <div className="mt-3 max-w-md">
@@ -475,7 +475,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         )}
                       </ResponsiveModalContent>
                     </ResponsiveModal>
-                    <p className="text-xl font-bold font-mono tabular-nums">
+                    <p className="acr-metric-value font-mono tabular-nums mt-1">
                       {deal.offerAmount != null && deal.offerAmount !== ''
                         ? usd(deal.offerAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
@@ -485,7 +485,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                 <Card className="glass-panel">
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Accepted amount</p>
-                    <p className="text-xl font-bold font-mono tabular-nums text-acr-pos">
+                    <p className="acr-metric-value font-mono tabular-nums text-acr-pos mt-1">
                       {deal.acceptedAmount != null && deal.acceptedAmount !== ''
                         ? usd(deal.acceptedAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}

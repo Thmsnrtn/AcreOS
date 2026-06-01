@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { type AuthenticatedRequest, getOrganizationId } from "./types/request";
 import {
   getAllHandoffs,
   getHandoffsForDeal,
@@ -1987,6 +1988,53 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(handoff);
     } catch (err: any) {
       Errors.badRequest(res, err.message);
+    }
+  });
+
+  // POST /api/deals/:id/advance-stage — move a deal to the next pipeline stage.
+  // Used by the SwipeableCard right-swipe gesture on mobile deal cards.
+  // Respects the same state-machine transition table as the PUT endpoint.
+  app.post("/api/deals/:id/advance-stage", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const dealId = Number(req.params.id);
+      if (isNaN(dealId)) return Errors.badRequest(res, "Invalid deal ID");
+
+      const existingDeal = await storage.getDeal(orgId, dealId);
+      if (!existingDeal) return Errors.notFound(res, "Deal");
+
+      const currentStatus = existingDeal.status || "negotiating";
+      const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus];
+      if (!allowedNext || allowedNext.length === 0) {
+        return Errors.badRequest(res, `Deal is already at its final stage (${currentStatus})`);
+      }
+
+      // Advance to the first non-cancelled next stage — skip "cancelled" so a
+      // right-swipe can never accidentally cancel a deal.
+      const nextStatus = allowedNext.find((s) => s !== "cancelled");
+      if (!nextStatus) {
+        return Errors.badRequest(res, `No forward stage available from ${currentStatus}`);
+      }
+
+      const deal = await storage.updateDeal(dealId, { status: nextStatus }, undefined, orgId);
+
+      const user = req.user as any;
+      const userId = user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "update",
+        entityType: "deal",
+        entityId: dealId,
+        changes: { before: { status: currentStatus }, after: { status: nextStatus }, fields: ["status"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+
+      logger.info("Deal advanced via swipe gesture", { dealId, orgId, from: currentStatus, to: nextStatus });
+      res.json({ deal, previousStatus: currentStatus, nextStatus });
+    } catch (err) {
+      return Errors.internal(res, err as Error);
     }
   });
 

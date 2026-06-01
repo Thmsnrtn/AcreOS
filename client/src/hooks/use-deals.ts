@@ -223,6 +223,40 @@ export function useBulkStageUpdate() {
   });
 }
 
+/**
+ * Advance a deal to the next pipeline stage — drives the SwipeableCard
+ * right-swipe gesture on mobile. Uses the dedicated POST endpoint so the
+ * server's state-machine logic (DEAL_STATUS_TRANSITIONS) is always the
+ * source of truth; we never compute the next stage client-side.
+ */
+export function useAdvanceDealStage() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (dealId: number) => {
+      const res = await apiRequest("POST", `/api/deals/${dealId}/advance-stage`, {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Failed to advance stage");
+      }
+      return res.json() as Promise<{ deal: import("@shared/schema").Deal; previousStatus: string; nextStatus: string }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", data.deal.id] });
+      toast({
+        title: "Stage advanced",
+        description: `Deal moved to ${data.nextStatus.replace(/_/g, " ")}.`,
+      });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
+  });
+}
+
 export function useBulkStageUndo() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

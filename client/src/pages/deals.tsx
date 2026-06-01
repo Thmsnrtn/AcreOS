@@ -4,7 +4,7 @@ import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
@@ -52,7 +52,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight, EllipsisVertical, ChevronsRight, Archive } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FirstHelloEmpty } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
@@ -69,16 +70,17 @@ import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { DealDetailContent } from "@/components/deal-detail-content";
+import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 
 type DealWithProperty = Deal & { property?: Property };
 
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
   { value: 'offer_sent', label: 'Offer Sent', color: 'bg-acr-brand-soft' },
-  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft dark:bg-acr-warn-soft' },
-  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
-  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-brand-soft' },
-  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
+  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft' },
+  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft' },
+  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-warn-soft' },
+  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft' },
 ];
 
 // Benchmark days per stage before a deal is considered stalled
@@ -101,20 +103,16 @@ function getDealHealth(deal: DealWithProperty): { status: 'healthy' | 'warning' 
   return { status: 'healthy', days };
 }
 
-const HEALTH_DOT: Record<string, string> = {
-  healthy: 'bg-acr-pos',
-  warning: 'bg-acr-warn',
-  stalled: 'bg-acr-neg',
-};
+// HEALTH_DOT reserved for future deal-list health indicators (pipeline view)
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
   offer_sent: 'bg-acr-brand-soft text-acr-brand',
-  countered: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
-  accepted: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
-  in_escrow: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
-  closed: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
-  cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg',
+  countered: 'bg-acr-warn-soft text-acr-warn',
+  accepted: 'bg-acr-pos-soft text-acr-pos',
+  in_escrow: 'bg-acr-warn-soft text-acr-warn',
+  closed: 'bg-acr-pos-soft text-acr-pos',
+  cancelled: 'bg-acr-neg-soft text-acr-neg',
 };
 
 export default function DealsPage() {
@@ -485,7 +483,7 @@ export default function DealsPage() {
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Deals</div>
-                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                <h1 className="text-hero acr-cc-greeting" data-testid="text-page-title">
                   Acquisitions and dispositions.
                   <span className="acr-cc-greeting-soft">
                     {" "}From offer to close, all on one rail.
@@ -1106,17 +1104,45 @@ const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
   alert: <AlertTriangle className="w-3 h-3" />,
 };
 
+/**
+ * DealCard — refined to Rocket-Money grade.
+ *
+ * Hierarchy: location (title) → amount → stage badge → meta (days/action).
+ * One primary CTA: tap the card to open the deal detail.
+ * Secondary actions (Pax context, select) live in the overflow menu.
+ * On mobile, wrapped in SwipeableCard:
+ *   right-swipe → advance stage (pos tone)
+ *   left-swipe  → snooze for 24h (warn tone)
+ */
 function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSelect }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean; isSelected?: boolean; onToggleSelect?: (id: number) => void }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
-  const health = getDealHealth(deal);
   const isClosed = deal.status === 'closed' || deal.status === 'cancelled';
   const nextAction = getDealNextAction(deal);
   const daysInStage = getDaysInStage(deal);
   const urgency = getDealUrgency(deal);
   const isActiveStage = !isClosed;
+  const { isMobile } = useIsMobile();
+  const { mutate: advanceStage, isPending: isAdvancing } = useAdvanceDealStage();
 
-  return (
+  // Snooze: hide deal card for 24 h using localStorage (mirrors Decision Queue pattern)
+  const snoozeKey = `deal-snooze-${deal.id}`;
+  const [snoozed, setSnoozed] = useState(() => {
+    const until = localStorage.getItem(snoozeKey);
+    return until ? Date.now() < Number(until) : false;
+  });
+
+  const handleSnooze = () => {
+    const until = Date.now() + 24 * 60 * 60 * 1000;
+    localStorage.setItem(snoozeKey, String(until));
+    setSnoozed(true);
+  };
+
+  if (snoozed) return null;
+
+  const amountValue = deal.acceptedAmount || deal.offerAmount;
+
+  const cardInner = (
     <Card
       ref={setNodeRef}
       style={style}
@@ -1124,8 +1150,9 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
-      <CardContent className="p-4 min-h-[88px]">
+      <CardContent className="p-4">
         <div className="flex items-start gap-3">
+          {/* Drag handle — desktop only */}
           <button
             type="button"
             aria-label={
@@ -1140,51 +1167,123 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
           >
             <GripVertical className="w-4 h-4" aria-hidden="true" />
           </button>
+
+          {/* Card body */}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Row 1: type badge + overflow menu */}
+            <div className="flex items-center justify-between gap-2">
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                 {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
               </Badge>
-              <PaxContextButton
-                entityType="deal"
-                entityId={deal.id}
-                entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
-              />
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {/* Checkbox for bulk selection */}
+                {onToggleSelect && (
+                  <label
+                    className="inline-flex items-center justify-center min-h-[36px] min-w-[36px] cursor-pointer"
+                    aria-label={`Select ${deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}`}
+                  >
+                    <Checkbox
+                      checked={!!isSelected}
+                      onCheckedChange={() => onToggleSelect(deal.id)}
+                      className="h-4 w-4"
+                      aria-label={`Select deal ${deal.id}`}
+                    />
+                  </label>
+                )}
+                {/* Pax context button — appears on hover */}
+                <PaxContextButton
+                  entityType="deal"
+                  entityId={deal.id}
+                  entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
+                />
+                {/* Overflow menu — secondary actions */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                      aria-label="More deal actions"
+                    >
+                      <EllipsisVertical className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => onSelect()}>
+                      <Eye className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Open deal
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={handleSnooze}>
+                      <Clock className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Snooze 24 h
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
+
+            {/* Row 2: location (primary title) */}
             <div className="mt-2">
               {deal.property ? (
                 <div className="flex items-start gap-1.5">
-                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div className="text-sm font-medium line-clamp-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
+                  <p className="text-sm font-semibold leading-snug line-clamp-2">
                     {deal.property.county}, {deal.property.state}
-                  </div>
+                  </p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Property #{deal.propertyId}</p>
               )}
               {deal.property?.sizeAcres && (
-                <p className="text-xs text-muted-foreground mt-1 ml-5">{deal.property.sizeAcres} acres</p>
+                <p className="text-xs text-muted-foreground mt-0.5 ml-5">{deal.property.sizeAcres} acres</p>
               )}
             </div>
-            {(deal.offerAmount || deal.acceptedAmount) && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4 text-acr-pos" aria-hidden="true" />
-                <span className="text-base font-mono font-medium tabular-nums text-acr-pos">
-                  {usd(deal.acceptedAmount || deal.offerAmount, { noCents: true })}
+
+            {/* Row 3: deal amount — big readable number */}
+            {amountValue && (
+              <div className="mt-2.5 flex items-baseline gap-1">
+                <span className="text-lg font-semibold font-mono tabular-nums text-acr-pos leading-none">
+                  {usd(amountValue, { noCents: true })}
                 </span>
+                {deal.acceptedAmount && deal.offerAmount && deal.acceptedAmount !== deal.offerAmount && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    offered {usd(deal.offerAmount, { noCents: true })}
+                  </span>
+                )}
               </div>
             )}
-            {/* Next Action Indicator */}
+
+            {/* Row 4: stage badge + days in stage */}
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[deal.status] || statusColors.negotiating}`}>
+                {deal.status?.replace(/_/g, ' ')}
+              </span>
+              {isActiveStage && (
+                <span
+                  className={`text-xs tabular-nums font-medium ${
+                    urgency === 'urgent' ? 'text-acr-neg' :
+                    urgency === 'warning' ? 'text-acr-warn' :
+                    'text-muted-foreground'
+                  }`}
+                  title={`${daysInStage} day${daysInStage !== 1 ? 's' : ''} in this stage`}
+                >
+                  {daysInStage}d in stage
+                </span>
+              )}
+            </div>
+
+            {/* Row 5: next action indicator */}
             {isActiveStage && (
-              <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`next-action-${deal.id}`}>
-                <ArrowRight className="w-3 h-3 flex-shrink-0" />
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`next-action-${deal.id}`}>
+                <ArrowRight className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
                 <span className="flex items-center gap-1">
                   {nextActionIcons[nextAction.icon]}
                   {nextAction.action}
                 </span>
               </div>
             )}
-            {/* Stage progression — dense dot strip fits inside the card */}
+
+            {/* Row 6: stage progression strip */}
             <div className="mt-3" data-testid={`journey-${deal.id}`}>
               <DealJourney status={deal.status as any} dense />
             </div>
@@ -1193,6 +1292,32 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
       </CardContent>
     </Card>
   );
+
+  // On mobile, wrap in SwipeableCard for gesture actions.
+  // On desktop, render the card directly (DnD handles repositioning).
+  if (isMobile && isActiveStage) {
+    return (
+      <SwipeableCard
+        leftAction={{
+          icon: ChevronsRight,
+          label: "Advance",
+          tone: "pos",
+          onAction: () => advanceStage(deal.id),
+        }}
+        rightAction={{
+          icon: Archive,
+          label: "Snooze",
+          tone: "warn",
+          onAction: handleSnooze,
+        }}
+        disabled={isAdvancing}
+      >
+        {cardInner}
+      </SwipeableCard>
+    );
+  }
+
+  return cardInner;
 }
 
 interface PricingRecommendation {
