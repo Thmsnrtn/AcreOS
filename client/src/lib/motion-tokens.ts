@@ -239,6 +239,9 @@ export function useRespectfulVariants(variants: Variants): Variants {
 // `staggerContainer`, `staggerItem`, etc. from `@/lib/animations` continue
 // to work unchanged. Anything new should prefer these typed Variants.
 
+// Exit rule: all exits run at DURATIONS.fast (0.15s). An exit that outstays
+// its welcome is a UX tax. Never exit at DURATIONS.slow or DURATIONS.slower.
+// Maintain this contract in every Variants block added to this file.
 export const variantPageFade: Variants = {
   initial: { opacity: 0, x: 8 },
   animate: {
@@ -247,6 +250,7 @@ export const variantPageFade: Variants = {
     transition: { duration: DURATIONS.normal, ease: EASINGS.linearExpo },
   },
   exit: {
+    // fast (0.15s) — exit rule honored
     opacity: 0,
     x: -8,
     transition: { duration: DURATIONS.fast, ease: EASINGS.linearExpo },
@@ -282,6 +286,7 @@ export const variantModalContent: Variants = {
     transition: { duration: DURATIONS.normal, ease: EASINGS.smoothOut },
   },
   exit: {
+    // fast (0.15s) — exit rule honored
     opacity: 0,
     scale: SCALES.modalEnter,
     y: 8,
