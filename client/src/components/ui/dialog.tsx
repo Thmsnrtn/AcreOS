@@ -62,7 +62,7 @@ const DialogContent = React.forwardRef<
       {children}
       {/* macOS traffic-light close button */}
       <DialogPrimitive.Close
-        className="traffic-light-group traffic-light-close absolute left-4 top-4 focus:outline-none"
+        className="traffic-light-group traffic-light-close absolute left-4 top-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-full"
         aria-label="Close"
       >
         <span className="tl-symbol" aria-hidden="true">✕</span>

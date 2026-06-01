@@ -216,7 +216,7 @@ export default function FinancePage() {
               <CardHeader className="pb-2">
                 {/* §1.3: section-level head — dual class + utility. */}
                 <CardTitle className="acr-section-h2 text-section-h2 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <TrendingUp className="w-5 h-5 text-primary" aria-hidden="true" />
                   Monthly Cash Flow (Last 12 Months)
                 </CardTitle>
               </CardHeader>
@@ -302,7 +302,7 @@ export default function FinancePage() {
                 disabled={isExporting}
                 data-testid="button-export-notes"
               >
-                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Export CSV
               </Button>
               <Button
@@ -311,13 +311,13 @@ export default function FinancePage() {
                 disabled={isQboSyncing}
                 data-testid="button-qbo-sync"
               >
-                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Sync to QuickBooks
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-create-note">
-                    <Plus className="w-4 h-4 mr-2" /> Create Note
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create Note
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[600px] floating-window">
@@ -340,7 +340,7 @@ export default function FinancePage() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-xl bg-primary/10">
-                    <FileText className="w-5 h-5 text-primary" />
+                    <FileText className="w-5 h-5 text-primary" aria-hidden="true" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Active Notes</p>
@@ -354,7 +354,7 @@ export default function FinancePage() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-xl bg-acr-pos/10">
-                    <DollarSign className="w-5 h-5 text-acr-pos" />
+                    <DollarSign className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Portfolio value</p>
@@ -370,7 +370,7 @@ export default function FinancePage() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-xl bg-acr-accent/10">
-                    <TrendingUp className="w-5 h-5 text-acr-accent" />
+                    <TrendingUp className="w-5 h-5 text-acr-accent" aria-hidden="true" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly income</p>
@@ -386,7 +386,7 @@ export default function FinancePage() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-xl bg-accent/10">
-                    <Calculator className="w-5 h-5 text-accent-foreground" />
+                    <Calculator className="w-5 h-5 text-accent-foreground" aria-hidden="true" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total originated</p>
@@ -473,11 +473,11 @@ export default function FinancePage() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-muted-foreground shrink-0" />
+                                  <User className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
                                   <span className="font-medium truncate">{borrowerLabel}</span>
                                 </div>
                                 <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                  <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                                   <span className="truncate">{propertyLabel}</span>
                                 </div>
                               </div>
@@ -532,7 +532,7 @@ export default function FinancePage() {
                             >
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-muted-foreground" />
+                                  <User className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                   <span className="font-medium">
                                     {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
                                   </span>
@@ -540,7 +540,7 @@ export default function FinancePage() {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                                  <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                   <span className="text-sm">
                                     {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
                                   </span>

@@ -321,9 +321,9 @@ function TeamTabContent() {
           data-testid="button-generate-briefing"
         >
           {generateBriefingMutation.isPending ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
           Generate Daily Briefing
         </Button>
@@ -488,22 +488,22 @@ function TeamTabContent() {
                           </div>
                           {action.status === "proposed" && (
                             <div className="flex items-center gap-2">
-                              <Button aria-label="Button"
+                              <Button aria-label="Reject action"
                                 size="sm"
                                 variant="outline"
                                 onClick={() => rejectActionMutation.mutate(action.id)}
                                 disabled={rejectActionMutation.isPending}
                                 data-testid={`button-reject-va-action-${action.id}`}
                               >
-                                <X className="w-4 h-4" />
+                                <X className="w-4 h-4" aria-hidden="true" />
                               </Button>
-                              <Button aria-label="Confirm"
+                              <Button aria-label="Approve action"
                                 size="sm"
                                 onClick={() => approveActionMutation.mutate(action.id)}
                                 disabled={approveActionMutation.isPending}
                                 data-testid={`button-approve-va-action-${action.id}`}
                               >
-                                <Check className="w-4 h-4" />
+                                <Check className="w-4 h-4" aria-hidden="true" />
                               </Button>
                             </div>
                           )}
@@ -664,7 +664,7 @@ function TeamTabContent() {
                             data-testid="button-submit-va-task"
                           >
                             {submitTaskMutation.isPending ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                             ) : null}
                             Submit Task
                           </Button>
@@ -878,7 +878,7 @@ function AgentsTabContent() {
                     
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <RefreshCw className="w-3 h-3" />
+                        <RefreshCw className="w-3 h-3" aria-hidden="true" />
                         <span>{agent.frequency}</span>
                       </div>
                       {agent.lastRunAt && (
@@ -1032,7 +1032,7 @@ function TasksTabContent() {
               />
               <div className="flex flex-col gap-1">
                 <Button type="submit" className="w-full" disabled={isPending || !input.trim()} data-testid="button-deploy-task">
-                  {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                  {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : <Send className="w-4 h-4 mr-2" aria-hidden="true" />}
                   Deploy Agent
                 </Button>
                 <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-agent-task">$0.02 per task</span>
@@ -1070,7 +1070,7 @@ function TasksTabContent() {
                             {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
                           </span>
                           {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-acr-pos" />}
-                          {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                          {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />}
                         </div>
                         <div className="bg-muted/50 rounded-card p-4 mb-3 border">
                           <p className="text-sm font-medium">{String(task.input ?? '')}</p>
@@ -1318,7 +1318,7 @@ function AIOperationsTabContent() {
                         disabled={runDueDiligenceMutation.isPending || !propertyIdInput.trim()}
                         data-testid="button-confirm-due-diligence"
                       >
-                        {runDueDiligenceMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        {runDueDiligenceMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
                         Start Analysis
                       </Button>
                     </DialogFooter>
@@ -1353,7 +1353,7 @@ function AIOperationsTabContent() {
                         disabled={getPricingMutation.isPending || !propertyIdInput.trim()}
                         data-testid="button-confirm-pricing"
                       >
-                        {getPricingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        {getPricingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
                         Get Recommendation
                       </Button>
                     </DialogFooter>
@@ -1368,24 +1368,24 @@ function AIOperationsTabContent() {
                   data-testid="button-monitor-portfolio"
                 >
                   {monitorPortfolioMutation.isPending ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="w-5 h-5" aria-hidden="true" />
                   )}
                   <span className="text-xs">Monitor Portfolio</span>
                 </Button>
 
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="h-auto py-3 flex flex-col items-center gap-2"
                   onClick={() => checkComplianceMutation.mutate()}
                   disabled={checkComplianceMutation.isPending}
                   data-testid="button-check-compliance"
                 >
                   {checkComplianceMutation.isPending ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Shield className="w-5 h-5" />
+                    <Shield className="w-5 h-5" aria-hidden="true" />
                   )}
                   <span className="text-xs">Check Compliance</span>
                 </Button>
@@ -1919,9 +1919,9 @@ export default function CommandCenterPage() {
                       data-testid="button-new-conversation"
                     >
                       {createConversationMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                       ) : (
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
                       )}
                       New Conversation
                     </Button>
@@ -1929,8 +1929,8 @@ export default function CommandCenterPage() {
                   <ScrollArea className="flex-1">
                     <div className="p-2 space-y-1" data-testid="list-conversations">
                       {conversationsLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                        <div className="flex items-center justify-center py-8" role="status" aria-label="Loading conversations">
+                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
                         </div>
                       ) : conversations.length === 0 ? (
                         <div className="text-center py-8 text-sm text-muted-foreground">
@@ -2044,8 +2044,8 @@ export default function CommandCenterPage() {
                         )}
                       </div>
                     ) : messagesLoading ? (
-                      <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      <div className="flex items-center justify-center py-20" role="status" aria-label="Loading messages">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
                       </div>
                     ) : messages.length === 0 && !streamingContent ? (
                       <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -2143,12 +2143,12 @@ export default function CommandCenterPage() {
                                       key={idx}
                                       className="flex items-center gap-2 text-xs bg-muted/50 rounded p-2"
                                     >
-                                      <Wrench className="w-3 h-3" />
+                                      <Wrench className="w-3 h-3" aria-hidden="true" />
                                       <span>{tc.name}</span>
                                       {!tc.result ? (
-                                        <Loader2 className="w-3 h-3 animate-spin ml-auto" />
+                                        <Loader2 className="w-3 h-3 animate-spin ml-auto" aria-hidden="true" />
                                       ) : (
-                                        <ChevronRight className="w-3 h-3 ml-auto text-accent" />
+                                        <ChevronRight className="w-3 h-3 ml-auto text-accent" aria-hidden="true" />
                                       )}
                                     </div>
                                   ))}
@@ -2158,8 +2158,8 @@ export default function CommandCenterPage() {
                               {streamingContent ? (
                                 <p className="whitespace-pre-wrap text-sm">{streamingContent}</p>
                               ) : pendingToolCalls.length === 0 ? (
-                                <div className="flex items-center gap-2">
-                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                <div className="flex items-center gap-2" role="status" aria-label="Pax is thinking">
+                                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                                   <span className="text-sm text-muted-foreground">Thinking...</span>
                                 </div>
                               ) : null}
@@ -2198,15 +2198,15 @@ export default function CommandCenterPage() {
                                 className="w-8 h-8 object-cover rounded"
                               />
                             ) : (
-                              <FileText className="w-5 h-5 text-muted-foreground" />
+                              <FileText className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                             )}
                             <span className="text-xs truncate max-w-[100px]">{att.file.name}</span>
-                            <button aria-label="Button"
+                            <button aria-label={`Remove attachment ${att.file.name}`}
                               onClick={() => removeAttachment(att.id)}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted"
+                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                               data-testid={`button-remove-attachment-${att.id}`}
                             >
-                              <X className="w-3 h-3" />
+                              <X className="w-3 h-3" aria-hidden="true" />
                             </button>
                           </div>
                         ))}
@@ -2231,7 +2231,7 @@ export default function CommandCenterPage() {
                           aria-label="Attach file"
                           data-testid="button-attach-file"
                         >
-                          <Paperclip className="w-4 h-4" />
+                          <Paperclip className="w-4 h-4" aria-hidden="true" />
                         </Button>
                         <Button
                           type="button"
@@ -2243,7 +2243,7 @@ export default function CommandCenterPage() {
                           aria-label={isImageMode ? "Disable image mode" : "Enable image mode"}
                           data-testid="button-image-mode"
                         >
-                          <ImageIcon className="w-4 h-4" />
+                          <ImageIcon className="w-4 h-4" aria-hidden="true" />
                         </Button>
                       </div>
                       <Textarea
@@ -2265,9 +2265,9 @@ export default function CommandCenterPage() {
                         data-testid="button-send-message"
                       >
                         {isStreaming ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                         ) : (
-                          <Send className="w-4 h-4" />
+                          <Send className="w-4 h-4" aria-hidden="true" />
                         )}
                       </Button>
                     </div>

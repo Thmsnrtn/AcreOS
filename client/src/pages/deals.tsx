@@ -681,7 +681,7 @@ export default function DealsPage() {
                   value={bulkTargetStage}
                   onValueChange={setBulkTargetStage}
                 >
-                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" data-testid="select-bulk-stage-deals">
+                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
                     <SelectValue placeholder="Change stage" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1095,13 +1095,13 @@ function KanbanColumn({
 }
 
 const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
-  send: <Send className="w-3 h-3" />,
-  eye: <Eye className="w-3 h-3" />,
-  phone: <Phone className="w-3 h-3" />,
-  file: <FileText className="w-3 h-3" />,
-  calendar: <Calendar className="w-3 h-3" />,
-  check: <CheckCircle className="w-3 h-3" />,
-  alert: <AlertTriangle className="w-3 h-3" />,
+  send: <Send className="w-3 h-3" aria-hidden="true" />,
+  eye: <Eye className="w-3 h-3" aria-hidden="true" />,
+  phone: <Phone className="w-3 h-3" aria-hidden="true" />,
+  file: <FileText className="w-3 h-3" aria-hidden="true" />,
+  calendar: <Calendar className="w-3 h-3" aria-hidden="true" />,
+  check: <CheckCircle className="w-3 h-3" aria-hidden="true" />,
+  alert: <AlertTriangle className="w-3 h-3" aria-hidden="true" />,
 };
 
 /**

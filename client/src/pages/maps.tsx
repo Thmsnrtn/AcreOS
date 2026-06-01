@@ -313,14 +313,14 @@ function PropertyIntelligencePanel({
             </Badge>
             {intel.opportunityScore !== undefined && (
               <Badge className="text-micro bg-primary/10 text-primary border-primary/20">
-                <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                <Sparkles className="w-2.5 h-2.5 mr-0.5" aria-hidden="true" />
                 {intel.opportunityScore} opp
               </Badge>
             )}
           </div>
-          <h3 className="font-bold text-sm mt-1 truncate">
+          <h2 className="font-bold text-sm mt-1 truncate">
             {property.address || `${property.county}, ${property.state}`}
-          </h3>
+          </h2>
           <p className="text-xs text-muted-foreground truncate">
             {property.county}, {property.state}
             {property.apn && <> · APN: {property.apn}</>}
@@ -434,9 +434,9 @@ function PropertyIntelligencePanel({
                 intel.marketTrend === "up" ? "text-acr-pos" :
                 intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground"
               )}>
-                {intel.marketTrend === "up" ? <TrendingUp className="w-3 h-3" /> :
-                 intel.marketTrend === "down" ? <TrendingDown className="w-3 h-3" /> :
-                 <Minus className="w-3 h-3" />}
+                {intel.marketTrend === "up" ? <TrendingUp className="w-3 h-3" aria-hidden="true" /> :
+                 intel.marketTrend === "down" ? <TrendingDown className="w-3 h-3" aria-hidden="true" /> :
+                 <Minus className="w-3 h-3" aria-hidden="true" />}
                 {intel.marketTrendPct?.toFixed(1)}% YoY
               </div>
             </div>
