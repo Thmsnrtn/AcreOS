@@ -8,6 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { hasAnyClerkCookie } from "@/lib/clerk-session-detect";
 import { markSignupIntent } from "@/lib/acquisition-utm";
+import { trackCanonicalEvent } from "@/lib/analytics";
 
 export default function AuthPage() {
   usePageMeta(
@@ -151,11 +152,22 @@ export default function AuthPage() {
   // plant a sessionStorage flag so App.tsx can distinguish "first
   // authenticated render after sign-up" from "first authenticated render
   // after sign-in." Only the former flushes pending UTM to the server.
+  const signupStartedRef = useRef(false);
   useEffect(() => {
     if (mode === "sign-up") {
       markSignupIntent();
+      // Phase Zero-Two — canonical funnel event 1 of 5. Fires once per
+      // browser session, on first entry to sign-up mode. Subsequent
+      // toggles (sign-up → sign-in → sign-up) don't re-fire — the funnel
+      // counts intent at the top, not toggles.
+      if (!signupStartedRef.current) {
+        signupStartedRef.current = true;
+        trackCanonicalEvent("signup_started", {
+          entry_mode: params.get("mode") === "register" ? "direct_link" : "toggle",
+        });
+      }
     }
-  }, [mode]);
+  }, [mode, params]);
   const inviteToken = params.get("invite");
   const inviteAcceptedRef = useRef(false);
   const [inviteState, setInviteState] = useState<"idle" | "accepting" | "done">(

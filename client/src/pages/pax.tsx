@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { trackCanonicalEvent } from "@/lib/analytics";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -661,8 +662,33 @@ function SuggestedPrompts() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+/**
+ * Phase Zero-Two — canonical funnel event 4 of 5. Fires once per browser
+ * (localStorage gate) on first /pax visit. We can't easily hook the
+ * actual first message-send without threading analytics through several
+ * components; page visit is a defensible proxy for "user discovered
+ * Pax." Upgrade to actual first-send when the Pax send mutation
+ * surfaces in a single place. The localStorage key is namespaced so it
+ * survives reset on sign-out (resetAnalytics drops PostHog identity,
+ * not this flag) — that's intentional: we don't want a user logging in
+ * and out to re-trigger the event.
+ */
+const PAX_FIRST_INTERACTION_KEY = "acreos-pax-first-interaction-fired";
+
 export default function PaxPage() {
   useDocumentTitle("Pax");
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (localStorage.getItem(PAX_FIRST_INTERACTION_KEY)) return;
+      localStorage.setItem(PAX_FIRST_INTERACTION_KEY, new Date().toISOString());
+      trackCanonicalEvent("pax_first_interaction", {
+        surface: "pax_page_visit",
+      });
+    } catch {
+      /* best-effort — localStorage can throw in private mode */
+    }
+  }, []);
   // Pax is ONE conversation. The chat is the primary, full-screen surface.
   // Everything that used to be a peer tab — Insights, Activity ("What Pax
   // did"), Agents (founder-only), Automation — is re-homed into the header

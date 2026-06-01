@@ -108,6 +108,41 @@ export function trackEvent(name: string, props?: Record<string, unknown>): void 
 }
 
 /**
+ * Canonical conversion funnel events. These five are the spine the
+ * acquisition dashboard reads — every other captured event is supplemental.
+ * If you're tempted to add a sixth, ask Soren first: the smaller this
+ * set, the easier the funnel is to reason about.
+ *
+ *   signup_started        — user enters sign-up mode in AuthPage (intent)
+ *   signup_completed      — server-confirmed auth + UTM flushed (conversion)
+ *   first_value_reached   — org onboarding marked complete (activation)
+ *   pax_first_interaction — first time user lands on the Pax surface (engagement)
+ *   trial_to_paid         — subscription transitions to active billing (revenue)
+ *
+ * Phase Zero-Two foundation: these five are the funnel Lena/Solene use to
+ * answer "where do trial signups come from + what's their funnel
+ * completion %" once 30 days of traffic accumulate.
+ */
+export type CanonicalEvent =
+  | "signup_started"
+  | "signup_completed"
+  | "first_value_reached"
+  | "pax_first_interaction"
+  | "trial_to_paid";
+
+/**
+ * Type-checked emit for the canonical funnel events. Use this in product
+ * code instead of trackEvent() with a string literal — the compiler
+ * catches typos, and Soren/Lena can grep usage with confidence.
+ */
+export function trackCanonicalEvent(
+  name: CanonicalEvent,
+  props?: Record<string, unknown>,
+): void {
+  trackEvent(name, props);
+}
+
+/**
  * Tag subsequent events with a stable user id + optional traits. Call
  * once the server has confirmed the authenticated user (useAuth().user).
  */

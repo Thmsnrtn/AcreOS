@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { trackCanonicalEvent } from "@/lib/analytics";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { UsageDashboard } from "@/components/usage-dashboard";
 import { PricingGuide } from "@/components/pricing-guide";
@@ -801,6 +802,15 @@ export default function Settings() {
       toast({
         title: "Subscription activated!",
         description: "Your subscription has been successfully activated.",
+      });
+      // Phase Zero-Two — canonical funnel event 5 of 5. Stripe Checkout
+      // returns to /settings?subscription=success after a confirmed
+      // purchase. The webhook is the source of truth for billing state;
+      // this client-side event is for funnel attribution (who converted
+      // when, from which UTM source). The Stripe success redirect only
+      // fires post-checkout-confirmation, so we don't double-count.
+      trackCanonicalEvent("trial_to_paid", {
+        surface: "stripe_checkout_return",
       });
     } else if (subscriptionStatus === "cancelled") {
       toast({

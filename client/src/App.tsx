@@ -11,7 +11,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
-import { identifyUser, trackEvent } from "@/lib/analytics";
+import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
 import { flushPendingUtm, hasSignupIntent } from "@/lib/acquisition-utm";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
@@ -1652,7 +1652,11 @@ function AppContent() {
     signupFlushedRef.current = true;
     void (async () => {
       const snap = await flushPendingUtm();
-      trackEvent("signup_completed", {
+      // Phase Zero-Two — canonical funnel event 2 of 5. trackCanonicalEvent
+      // is the type-checked variant so a typo here can't silently break
+      // attribution. The UTM snapshot was captured pre-signup by
+      // capturePendingUtm() on the landing → auth path.
+      trackCanonicalEvent("signup_completed", {
         persona: user.persona ?? "land_investor",
         utm_source: snap?.utm_source ?? null,
         utm_medium: snap?.utm_medium ?? null,
