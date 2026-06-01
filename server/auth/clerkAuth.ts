@@ -235,6 +235,16 @@ async function hydrateUser(req: any, res: any, next: any) {
       );
       const email = primaryEmail?.emailAddress?.toLowerCase() ?? null;
 
+      // Phase Zero-Three clickwrap (Beatrice audit 2026-06-01): every NEW
+      // user row is stamped with ToS + Privacy acceptance at creation. The
+      // client-side checkbox gate in auth-page.tsx blocks Clerk SignUp from
+      // rendering until the user affirmatively checks the box, so reaching
+      // this code path on a brand-new clerkUserId is itself the audit trail
+      // for the affirmation. We trust the server clock (defense against
+      // client-clock manipulation); the two columns are set to the same
+      // instant for v1.0 (separate columns enable independent re-acceptance
+      // tracking when v1.1 ships).
+      const acceptedAt = new Date();
       const inserted = await db
         .insert(users)
         .values({
@@ -243,6 +253,8 @@ async function hydrateUser(req: any, res: any, next: any) {
           firstName: clerkUser.firstName ?? null,
           lastName: clerkUser.lastName ?? null,
           profileImageUrl: clerkUser.imageUrl ?? null,
+          tosAcceptedAt: acceptedAt,
+          privacyAcceptedAt: acceptedAt,
         })
         .onConflictDoNothing({ target: users.clerkUserId })
         .returning();

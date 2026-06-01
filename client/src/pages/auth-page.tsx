@@ -9,6 +9,8 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { hasAnyClerkCookie } from "@/lib/clerk-session-detect";
 import { markSignupIntent } from "@/lib/acquisition-utm";
 import { trackCanonicalEvent } from "@/lib/analytics";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 export default function AuthPage() {
   usePageMeta(
@@ -147,6 +149,15 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     params.get("mode") === "register" ? "sign-up" : "sign-in"
   );
+  // Phase Zero-Three clickwrap (Beatrice audit 2026-06-01). Required,
+  // default-unchecked acceptance of ToS + Privacy at signup. The Clerk
+  // <SignUp/> widget is not rendered until this is checked — a true form-
+  // level gate (there is no form to submit), not a visual disable. The
+  // first hydrateUser request after Clerk creates the user writes the
+  // acceptance timestamps onto the user row (server clock — defense
+  // against client-clock manipulation). Pre-ticked default would be a
+  // CFPB + EU AI Act dark pattern, so it MUST start false.
+  const [tosAccepted, setTosAccepted] = useState(false);
   // Wave 3 Workstream E — distribution telemetry. When the user enters
   // sign-up mode (via ?mode=register OR by toggling once on the form),
   // plant a sessionStorage flag so App.tsx can distinguish "first
@@ -375,10 +386,60 @@ export default function AuthPage() {
             fallbackRedirectUrl="/today"
           />
         ) : (
-          <SignUp
-            routing="hash"
-            fallbackRedirectUrl="/today"
-          />
+          <div className="w-full flex flex-col items-center gap-4">
+            {/* Phase Zero-Three clickwrap gate — checkbox MUST be checked
+                before the Clerk SignUp widget is rendered. There is
+                literally no form to submit until tosAccepted === true. */}
+            <div className="w-full max-w-sm rounded-card border border-border bg-card p-4">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="tos-accept"
+                  checked={tosAccepted}
+                  onCheckedChange={(v) => setTosAccepted(v === true)}
+                  aria-label="I agree to the Terms of Service and Privacy Policy"
+                  data-testid="checkbox-tos-accept"
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor="tos-accept"
+                  className="text-sm leading-relaxed text-foreground cursor-pointer select-none"
+                >
+                  By creating an account, I agree to the{" "}
+                  <Link
+                    href="/terms"
+                    className="underline underline-offset-2 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 rounded"
+                  >
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link
+                    href="/privacy"
+                    className="underline underline-offset-2 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 rounded"
+                  >
+                    Privacy Policy
+                  </Link>
+                  .
+                </Label>
+              </div>
+            </div>
+            {tosAccepted ? (
+              <SignUp
+                routing="hash"
+                fallbackRedirectUrl="/today"
+              />
+            ) : (
+              <div
+                className="w-full max-w-sm rounded-card border border-dashed border-border bg-muted/30 p-6 text-center"
+                role="status"
+                aria-live="polite"
+                data-testid="signup-gate-message"
+              >
+                <p className="text-sm text-muted-foreground">
+                  Check the box above to continue.
+                </p>
+              </div>
+            )}
+          </div>
         )}
         {/* One-liner reassurance at the highest-anxiety moment — first
             credential entry. The /security page goes deeper (encryption

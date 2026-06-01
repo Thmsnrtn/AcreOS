@@ -4383,6 +4383,18 @@ const STATEMENTS = [
   // migrations/0105_users_pax_disclosure.sql. Set once via POST
   // /api/pax/acknowledge-disclosure (idempotent — no overwrite once non-null).
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "pax_disclosure_acknowledged_at" timestamp`,
+
+  // 2026-06-01 — Phase Zero-Three gate (Beatrice audit). Clickwrap acceptance
+  // of ToS + Privacy at signup. Without affirmative acceptance, the ToS
+  // limitation-of-liability + arbitration + class-action waiver are softer
+  // ground than they need to be. Mirrors
+  // migrations/0106_users_clickwrap_acceptance.sql. Captured by the
+  // required checkbox above the Clerk SignUp widget in
+  // client/src/pages/auth-page.tsx; first hydrateUser request after sign-up
+  // writes both columns on the user row. Nullable so existing pre-clickwrap
+  // users are grandfathered; the server enforces non-null on every NEW row.
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "tos_accepted_at" timestamp`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "privacy_accepted_at" timestamp`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

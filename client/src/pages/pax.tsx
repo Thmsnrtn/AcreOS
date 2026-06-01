@@ -178,7 +178,7 @@ function GreetingBanner() {
         type="button"
         onClick={handleDismiss}
         disabled={ackMutation.isPending}
-        aria-label="Acknowledge AI disclosure and dismiss greeting from Pax"
+        aria-label="Dismiss greeting from Pax"
         className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
       >
         <X className="h-4 w-4" aria-hidden="true" />

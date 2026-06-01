@@ -79,7 +79,12 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
   // 4. Create the user
   // Note: oauthProvider/oauthProviderId columns were dropped in migration 0020
   // (Clerk migration). Clerk now manages OAuth identity; we only store the basics.
+  // Phase Zero-Three clickwrap (Beatrice audit 2026-06-01): stamp ToS +
+  // Privacy acceptance at creation. The legacy Passport OAuth path here is
+  // currently dormant (Clerk handles real signups), but treat every new
+  // user row identically so the columns are always non-null going forward.
   const userId = crypto.randomUUID();
+  const acceptedAt = new Date();
   const [newUser] = await db
     .insert(users)
     .values({
@@ -88,6 +93,8 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       firstName: profile.firstName,
       lastName: profile.lastName,
       profileImageUrl: profile.avatarUrl,
+      tosAcceptedAt: acceptedAt,
+      privacyAcceptedAt: acceptedAt,
     })
     .returning();
 
