@@ -89,7 +89,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     label: "Fix-and-flip",
     shortDescription: "Buy distressed houses, renovate, resell.",
     maturity: "beta",
-    workflowTemplateIds: ["flip_renovation_milestones"],
+    workflowTemplateIds: ["tpl_fix_flip_rehab_kickoff"],
     spotlightModules: ["properties", "deals"],
     integrations: ["stripe"],
   },
