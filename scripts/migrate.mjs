@@ -4375,6 +4375,14 @@ const STATEMENTS = [
   // and the dialog re-fires so re-consent is recorded.
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosed_at" timestamp`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosure_version" varchar(32)`,
+
+  // 2026-06-01 — Phase Zero-Three gate (Beatrice audit). Auditable server-side
+  // record of the customer's acknowledgement on the first /pax interaction.
+  // Replaces the prior localStorage greeting-dismissed key (not auditable).
+  // Constitution §7 + CO SB 24-205 §6-1-1703 evidentiary trail. Mirrors
+  // migrations/0105_users_pax_disclosure.sql. Set once via POST
+  // /api/pax/acknowledge-disclosure (idempotent — no overwrite once non-null).
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "pax_disclosure_acknowledged_at" timestamp`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

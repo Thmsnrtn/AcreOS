@@ -285,6 +285,34 @@ describe("Pax page — source contract", () => {
   it("shows QueryErrorState for failed assistant data", () => {
     expect(src).toContain("QueryErrorState");
   });
+
+  // Phase Zero-Three gate (Beatrice audit 2026-06-01) — the Pax disclosure
+  // surface must NOT key on a localStorage flag. Both the legacy
+  // `pax_first_interaction` analytics key and the `pax_greeting_dismissed`
+  // gate key have been migrated to server-side via
+  // users.pax_disclosure_acknowledged_at. Regression guard: no
+  // localStorage.{get,set,remove}Item call may reference either key.
+  it("does not gate pax-disclosure or pax-first-interaction on localStorage", () => {
+    expect(src).not.toMatch(/localStorage[^\n]*pax_first/);
+    expect(src).not.toMatch(/localStorage[^\n]*pax_disclosure/);
+    expect(src).not.toMatch(/localStorage[^\n]*pax_greeting/);
+  });
+
+  it("POSTs to /api/pax/acknowledge-disclosure on disclosure dismiss", () => {
+    expect(src).toContain("/api/pax/acknowledge-disclosure");
+  });
+});
+
+// ─── AiDisclosureDialog must not key on localStorage for pax state ─────────────
+
+describe("AiDisclosureDialog — no localStorage pax gating", () => {
+  const dialogPath = path.join(COMPONENTS_DIR, "onboarding", "AiDisclosureDialog.tsx");
+  const src = fs.readFileSync(dialogPath, "utf-8");
+
+  it("does not reference localStorage with pax_first/pax_disclosure keys", () => {
+    expect(src).not.toMatch(/localStorage[^\n]*pax_first/);
+    expect(src).not.toMatch(/localStorage[^\n]*pax_disclosure/);
+  });
 });
 
 // ─── 6. Onboarding gate — AI-disclosure dialog ────────────────────────────────

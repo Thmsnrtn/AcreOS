@@ -83,6 +83,7 @@ import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
 import aiDisclosureRouter from "./routes-ai-disclosure";
+import paxDisclosureRouter from "./routes-pax-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
@@ -1355,6 +1356,10 @@ export async function registerRoutes(
   // Constitution §7 + Colorado SB 24-205 — auditable AI-disclosure consent.
   // No org context needed (disclosure is per-user, not per-org).
   app.use('/api/me/ai-disclosure', isAuthenticated, aiDisclosureRouter);
+  // Phase Zero-Three gate (Beatrice audit 2026-06-01) — auditable record of
+  // the customer's acknowledgement on first /pax visit. Replaces the prior
+  // localStorage greeting-dismissed key (not auditable).
+  app.use('/api/pax', isAuthenticated, paxDisclosureRouter);
   // Feature flags — read endpoint accessible to authenticated users (returns
   // their resolved view); admin endpoints inside the router enforce founder.
   app.use('/api/feature-flags', isAuthenticated, getOrCreateOrg, featureFlagsRouter);

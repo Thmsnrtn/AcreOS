@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { trackCanonicalEvent } from "@/lib/analytics";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,49 +110,76 @@ const SEVERITY_BADGE: Record<
 };
 
 // ─── Greeting Banner ──────────────────────────────────────────────────────────
-
-const GREETING_DISMISSED_KEY = "pax_greeting_dismissed";
+//
+// Phase Zero-Three (Beatrice audit 2026-06-01): server-side disclosure
+// acknowledgement. The prior implementation gated visibility on a
+// `pax_greeting_dismissed` localStorage key, which is not auditable for
+// Constitution §7 / CO SB 24-205 §6-1-1703. The banner now persists until
+// the user dismisses it, at which point we POST to
+// /api/pax/acknowledge-disclosure (idempotent server set) and update the
+// `/api/auth/user` cache so subsequent visits don't re-show the banner.
+// The banner doubles as the first-interaction AI-disclosure surface —
+// the copy explicitly names Pax as AI ("Pax is your AI-powered assistant…").
 
 function GreetingBanner() {
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(GREETING_DISMISSED_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const acknowledged = user?.paxDisclosureAcknowledgedAt != null;
 
+  // Only fetch the greeting copy while we still need to show it. Once the
+  // server records the acknowledgement, the query stays disabled.
   const { data } = useQuery<{ message: string | null; isFirstSession: boolean }>({
     queryKey: ["/api/pax/greeting"],
-    enabled: !dismissed,
+    enabled: !!user && !acknowledged,
   });
 
-  if (dismissed || !data?.isFirstSession || !data.message) {
+  const ackMutation = useMutation({
+    mutationFn: async () => {
+      const resp = await apiRequest("POST", "/api/pax/acknowledge-disclosure", {});
+      return resp.json();
+    },
+    onSuccess: (updatedUser) => {
+      // Update the cache directly with the canonical payload returned by
+      // the server, then invalidate so any other consumers re-read it.
+      queryClient.setQueryData(["/api/auth/user"], updatedUser);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+  });
+
+  if (!user || acknowledged) {
+    return null;
+  }
+  // Defer rendering until the greeting copy resolves — the server may return
+  // isFirstSession=false for users whose history predates the schema add,
+  // in which case the banner is suppressed without requiring a click.
+  if (!data?.isFirstSession || !data.message) {
+    // No banner needed, but the disclosure must still be recorded once for
+    // anyone who lands on /pax. Fire-and-forget the POST so the audit row
+    // exists; idempotent server-side.
+    if (!ackMutation.isPending && !ackMutation.isSuccess) {
+      ackMutation.mutate();
+    }
     return null;
   }
 
   function handleDismiss() {
-    try {
-      localStorage.setItem(GREETING_DISMISSED_KEY, "true");
-    } catch {
-      // ignore
-    }
-    setDismissed(true);
+    ackMutation.mutate();
   }
 
   return (
     <div
       className="relative flex items-start gap-3 rounded-card border border-acr-brand/30 bg-acr-brand-soft p-4 mb-4"
       role="region"
-      aria-label="First-session greeting from Pax"
+      aria-label="First-session AI disclosure and greeting from Pax"
     >
       <Sparkles className="h-5 w-5 text-acr-brand mt-0.5 shrink-0" aria-hidden="true" />
       <p className="text-sm text-acr-brand flex-1">{data.message}</p>
       <button
         type="button"
         onClick={handleDismiss}
-        aria-label="Dismiss greeting from Pax"
-        className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors"
+        disabled={ackMutation.isPending}
+        aria-label="Acknowledge AI disclosure and dismiss greeting from Pax"
+        className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -663,32 +692,36 @@ function SuggestedPrompts() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 /**
- * Phase Zero-Two — canonical funnel event 4 of 5. Fires once per browser
- * (localStorage gate) on first /pax visit. We can't easily hook the
- * actual first message-send without threading analytics through several
- * components; page visit is a defensible proxy for "user discovered
- * Pax." Upgrade to actual first-send when the Pax send mutation
- * surfaces in a single place. The localStorage key is namespaced so it
- * survives reset on sign-out (resetAnalytics drops PostHog identity,
- * not this flag) — that's intentional: we don't want a user logging in
- * and out to re-trigger the event.
+ * Phase Zero-Two — canonical funnel event 4 of 5. Fires once per user on
+ * the FIRST /pax visit, gated on the server-side disclosure timestamp
+ * (users.pax_disclosure_acknowledged_at). Prior to Phase Zero-Three the
+ * gate was a localStorage key; replaced with the auditable server-side
+ * column required by Beatrice's audit (Constitution §7 + CO SB 24-205
+ * §6-1-1703). Firing on the same signal as the disclosure ack means the
+ * analytics event and the audit row are co-located: if the row exists,
+ * the event was fired; if it doesn't, both will be on the next visit.
+ *
+ * Implementation note: we observe the auth-user object. When
+ * paxDisclosureAcknowledgedAt is still null at first paint, we know this
+ * IS the user's first /pax visit — fire the analytics event. The actual
+ * server write happens in GreetingBanner's mutation; we only fire
+ * analytics from the page-level observer so it doesn't double-fire if
+ * the banner is suppressed (no greeting copy returned).
  */
-const PAX_FIRST_INTERACTION_KEY = "acreos-pax-first-interaction-fired";
-
 export default function PaxPage() {
   useDocumentTitle("Pax");
+  const { user } = useAuth();
   useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      if (localStorage.getItem(PAX_FIRST_INTERACTION_KEY)) return;
-      localStorage.setItem(PAX_FIRST_INTERACTION_KEY, new Date().toISOString());
-      trackCanonicalEvent("pax_first_interaction", {
-        surface: "pax_page_visit",
-      });
-    } catch {
-      /* best-effort — localStorage can throw in private mode */
-    }
-  }, []);
+    if (!user) return;
+    if (user.paxDisclosureAcknowledgedAt != null) return;
+    trackCanonicalEvent("pax_first_interaction", {
+      surface: "pax_page_visit",
+    });
+    // Intentionally only depend on the boolean transition, not the full
+    // user object — re-renders that don't change ack-state must not
+    // re-fire the event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.paxDisclosureAcknowledgedAt]);
   // Pax is ONE conversation. The chat is the primary, full-screen surface.
   // Everything that used to be a peer tab — Insights, Activity ("What Pax
   // did"), Agents (founder-only), Automation — is re-homed into the header

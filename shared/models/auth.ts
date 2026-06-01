@@ -190,6 +190,25 @@ export const users = pgTable("users", {
   // re-fires, preserving the original consent row for evidentiary value.
   aiDisclosedAt: timestamp("ai_disclosed_at"),
   aiDisclosureVersion: varchar("ai_disclosure_version", { length: 32 }),
+  // Phase Zero-Three gate (Beatrice audit 2026-06-01) — auditable record of
+  // the customer's acknowledgement of AI involvement at the first /pax
+  // interaction surface. Constitution §7 (disclosure at first interaction)
+  // + CO SB 24-205 §6-1-1703 (evidentiary trail) require server-side
+  // capture; the prior localStorage greeting-dismissed key was not
+  // auditable. Set once via POST /api/pax/acknowledge-disclosure;
+  // idempotent (no overwrite once non-null).
+  paxDisclosureAcknowledgedAt: timestamp("pax_disclosure_acknowledged_at"),
+  // Clickwrap acceptance of Terms of Service. Captured by the required
+  // checkbox at signup (auth-page.tsx) before the Clerk widget renders.
+  // The first hydrateUser request after sign-up writes this column from
+  // the client-side acceptance timestamp planted on the auth page.
+  // Nullable in schema so existing pre-clickwrap users are grandfathered;
+  // every NEW user record is written with a non-null value.
+  tosAcceptedAt: timestamp("tos_accepted_at"),
+  // Clickwrap acceptance of Privacy Policy. Set simultaneously with
+  // tosAcceptedAt at signup; separate column lets us track per-document
+  // re-acceptance if Privacy v1.1 ships without re-bumping ToS.
+  privacyAcceptedAt: timestamp("privacy_accepted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
