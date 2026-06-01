@@ -1672,6 +1672,24 @@
   /* Intentionally non-interactive — these are roadmap markers, not
      CTAs. No hover, no cursor:pointer. */
 }
+.lp-positioning-roadmap-footer {
+  /* Secondary roadmap line — smaller, less emphasis than the in-product
+     paragraph above it. Visually separates "already shipping" from "next." */
+  font-size: 13px;
+  color: color-mix(in srgb, var(--acr-ink, #241607) 55%, transparent);
+  margin-top: 12px;
+}
+.lp-positioning-roadmap-list-muted {
+  margin-top: 6px;
+}
+.lp-positioning-roadmap-chip-muted {
+  /* Roadmap-only items: lighter than in-product chips. Still readable,
+     but visually lower priority so the eye lands on the in-product group
+     first. No hover, no pointer — these are markers, not CTAs. */
+  color: var(--acr-ink-3, rgba(36, 22, 7, 0.45)) !important;
+  border-color: var(--acr-line-soft, rgba(80, 40, 15, 0.08));
+  background: transparent;
+}
 @media (max-width: 720px) {
   .lp-positioning-inner {
     padding: 28px 20px;

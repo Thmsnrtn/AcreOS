@@ -20,7 +20,7 @@ type GlyphKind =
 const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
   { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS scans listings, parcels, notes, distressed liens, and off-market leads against it within 90 seconds of ingest — forever.", i: "box" },
   { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Pax ships the week's list on Monday at 6am.", i: "list" },
-  { cat: "Analyze", t: "Comp engine", d: "Real comparable sales, not Zillow guesses. With confidence scores.", i: "scale" },
+  { cat: "Analyze", t: "Comp engine", d: "Real comparable sales from county records, not Zillow estimates. Ranked by acreage band and recency. Confidence score on every result.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },
   { cat: "Reach", t: "Mail platform", d: "Multi-touch campaigns. Tracked. A/B tested. Full creative control.", i: "mail" },
   { cat: "Reach", t: "Pax Inbox", d: "SMS, email, voicemail in one thread. Pax drafts a reply within 90 seconds of the inbound.", i: "inbox" },

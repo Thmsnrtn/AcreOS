@@ -6,13 +6,13 @@
  * tone, no audience-flattering rhetorical hooks.
  *
  * Positioning: AcreOS leads with Land Investors as the founding
- * vertical (per v6 positioning). Other verticals — note investors,
+ * vertical (per v6 positioning). Other investor types — note buyers,
  * fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers,
- * buy-and-hold landlords — are roadmap-framed under the positioning
- * band, with no active CTAs. The earlier 7-persona rotating headline
- * was removed because it diluted the wedge and made the page read as
- * a generic "real estate investor suite" rather than the consolidation
- * play it actually is.
+ * buy-and-hold landlords — are already in the product at varying
+ * depth (core / beta / roadmap per shared/business-types.ts). The
+ * positioning band names them honestly: what's live today vs. what's
+ * still rolling out. No active CTAs for non-core types; they're named
+ * so adjacent operators know the platform sees them.
  *
  * 10-second test: a reader should understand within 10 seconds who
  * the platform is for, what it does, and how it works. Every section
@@ -20,6 +20,14 @@
  *
  * The previous `founder` block (a first-person letter from Thomas) and
  * its FounderNote section have been removed entirely.
+ *
+ * Truth-engine notes (2026-05-31):
+ *   - "14 comps per parcel" removed from hero sub; engine caps at 25 and
+ *     returns however many ATTOM finds per county/acreage band. No fixed
+ *     number is defensible as a blanket claim.
+ *   - "90 seconds" for buy-box filtering and Pax reply drafts retained —
+ *     these are system latency targets baked into the job queue.
+ *   - "10 minutes" for first list retained — setup time, not processing.
  */
 
 export const LANDING_COPY = {
@@ -39,7 +47,7 @@ export const LANDING_COPY = {
     wedge:
       "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
     sub:
-      "AcreOS pulls lists, runs comps with 14 per parcel, sends direct mail, drafts seller replies, and tracks parcels from cold lead through closed note in one thread. The operator handles judgment calls; the system handles the busy work.",
+      "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies, and tracks every parcel from cold lead through closed note in one thread. The operator handles judgment calls; the system handles the busy work.",
     cta1: "See Pax run on your county — free for 14 days",
     cta2: "Watch a 90-second demo first",
     ctaSub: "Pax pulls your first list inside 10 minutes.",
@@ -47,8 +55,18 @@ export const LANDING_COPY = {
   },
   positioning: {
     primary: "Built for Land Investors.",
+    // Truth-engine note: the six types named here are split by actual
+    // product maturity (shared/business-types.ts):
+    //   core  — note investors, hybrid land+notes (full workflow templates)
+    //   beta  — fix-and-flippers, wholesalers, subdividers, tax-delinquent
+    //            buyers (schema + onboarding path defined, partial workflow)
+    //   roadmap — buy-and-hold landlords (declared, UI suppressed)
+    // Copy is honest about this — "already in the product" covers core+beta;
+    // "on a rolling schedule" covers the gap to full parity.
+    inProduct:
+      "Note investors, fix-and-flippers, wholesalers, subdividers, and tax-delinquent buyers are already in the product — workflows, vocabulary, and deal tracking shaped for how each one operates. Land investors get the deepest tooling today; the others reach parity on a rolling schedule.",
     roadmap:
-      "Note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords land next — each built around how that operator actually works. Land investors first, because that's where the receipts are.",
+      "Buy-and-hold landlords are on the roadmap.",
   },
   how: {
     eyebrow: "How it works",
