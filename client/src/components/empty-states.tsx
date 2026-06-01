@@ -1,5 +1,5 @@
 import { EmptyState } from "@/components/empty-state";
-import { Users, Map, Handshake, CheckSquare, Megaphone, Banknote, FileSpreadsheet, Target, TrendingUp } from "lucide-react";
+import { Users, Map, Handshake, CheckSquare, Megaphone, Banknote, FileSpreadsheet, Target } from "lucide-react";
 import { useBrandName } from "@/hooks/use-white-label";
 
 // ---------------------------------------------------------------------------
@@ -18,6 +18,10 @@ export {
 } from "@/components/empty-states/index";
 
 // ---------------------------------------------------------------------------
+// Surface-specific wrappers
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Leads
 // ---------------------------------------------------------------------------
 
@@ -33,10 +37,13 @@ export function LeadsEmptyState({
     <div className="space-y-2">
       <EmptyState
         icon={Users}
-        title="Tell Pax which counties to watch"
-        description={`You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am. (${brandName})`}
-        actionLabel="Add a Lead"
-        onAction={onAddLead}
+        headline="Tell Pax which counties to watch"
+        subtitle={`You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am. (${brandName})`}
+        cta={{
+          label: "Add a Lead",
+          onClick: onAddLead,
+          "data-testid": "empty-state-leads-action",
+        }}
         tips={[
           "Paste a CSV of county tax-delinquent records — Pax tags motivation signals overnight",
           "Add a lead manually — Pax pulls comps and owner history inside 90 seconds",
@@ -76,10 +83,13 @@ export function PropertiesEmptyState({
     <div className="space-y-2">
       <EmptyState
         icon={Map}
-        title="No properties in inventory"
-        description="Add your first parcel — Pax pulls 14 comps and a flood-zone read inside 90 seconds, and re-runs the valuation the moment a comparable sale hits."
-        actionLabel="Add a Property"
-        onAction={onAddProperty}
+        headline="No properties in inventory"
+        subtitle="Add your first parcel — Pax pulls 14 comps and a flood-zone read inside 90 seconds, and re-runs the valuation the moment a comparable sale hits."
+        cta={{
+          label: "Add a Property",
+          onClick: onAddProperty,
+          "data-testid": "empty-state-properties-action",
+        }}
         tips={[
           "Add a parcel — Pax returns 14 comps and a flood-zone read in 90 seconds",
           "Paste a CSV — Pax auto-values your inventory with 14 comps per parcel",
@@ -111,10 +121,13 @@ export function DealsEmptyState({ onAddDeal }: { onAddDeal?: () => void }) {
   return (
     <EmptyState
       icon={Handshake}
-      title="No open deals"
-      description="The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet."
-      actionLabel="Create a Deal"
-      onAction={onAddDeal}
+      headline="No open deals"
+      subtitle="The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet."
+      cta={{
+        label: "Create a Deal",
+        onClick: onAddDeal,
+        "data-testid": "empty-state-deals-action",
+      }}
       tips={[
         "Wire a deal to a lead and a parcel — Pax keeps the offer, counter, and reply window in one thread",
         "Track offer price, closing date, and profit projections",
@@ -133,10 +146,13 @@ export function TasksEmptyState({ onAddTask }: { onAddTask?: () => void }) {
   return (
     <EmptyState
       icon={CheckSquare}
-      title="Nothing on your list yet"
-      description="Add a task and link it to a lead, deal, or parcel — Pax slides follow-ups in automatically as deals age past 5 days."
-      actionLabel="Add a Task"
-      onAction={onAddTask}
+      headline="Nothing on your list yet"
+      subtitle="Add a task and link it to a lead, deal, or parcel — Pax slides follow-ups in automatically as deals age past 5 days."
+      cta={{
+        label: "Add a Task",
+        onClick: onAddTask,
+        "data-testid": "empty-state-tasks-action",
+      }}
       tips={[
         "Wire a task to a lead, deal, or parcel — Pax surfaces it on Today the morning it's due",
         "Set a due date — Pax pings you the day before, not the day of",
@@ -155,10 +171,13 @@ export function CampaignsEmptyState({ onCreateCampaign }: { onCreateCampaign?: (
   return (
     <EmptyState
       icon={Megaphone}
-      title="Reach motivated sellers"
-      description="Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and threads every reply back against the right lead."
-      actionLabel="Create a Campaign"
-      onAction={onCreateCampaign}
+      headline="Reach motivated sellers"
+      subtitle="Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and threads every reply back against the right lead."
+      cta={{
+        label: "Create a Campaign",
+        onClick: onCreateCampaign,
+        "data-testid": "empty-state-campaigns-action",
+      }}
       tips={[
         "Send direct mail, email, or SMS to a targeted lead list — Pax handles the merge and the tracking pixel",
         "Wire up a drip sequence — Pax fires the next touch the moment the prior one goes 5 days silent",
@@ -177,10 +196,13 @@ export function FinanceEmptyState({ onAddNote }: { onAddNote?: () => void }) {
   return (
     <EmptyState
       icon={Banknote}
-      title="No notes serviced yet"
-      description="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
-      actionLabel="Create a Note"
-      onAction={onAddNote}
+      headline="No notes serviced yet"
+      subtitle="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
+      cta={{
+        label: "Create a Note",
+        onClick: onAddNote,
+        "data-testid": "empty-state-finance-action",
+      }}
       tips={[
         "Pax generates the amortization schedule the moment you wire the terms",
         "Track payments, delinquencies, and payoff balances — Pax dunns on day 11, you get the email first",
@@ -199,8 +221,12 @@ export function PipelineEmptyState() {
   return (
     <EmptyState
       icon={Target}
-      title="Nothing in the pipeline"
-      description="Wire a lead to a deal — Pax tracks the offer, the reply window, and the cool-off, and pings you the day a deal needs a nudge."
+      headline="Nothing in the pipeline"
+      subtitle="Wire a lead to a deal — Pax tracks the offer, the reply window, and the cool-off, and pings you the day a deal needs a nudge."
+      // TODO(cta): pipeline is an aggregate view — the right action depends on
+      // whether leads or deals is the missing piece. Leaving as no-op here;
+      // the caller should use FirstHelloEmpty with surface-appropriate CTAs instead.
+      cta={{ label: "", _noOp: true }}
       tips={[
         "Add a lead — Pax promotes it to the pipeline the moment you send an offer",
         "Drag deals between stages on the board view — Pax flags the ones aging past 5 days",

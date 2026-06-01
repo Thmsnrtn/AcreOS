@@ -1,91 +1,32 @@
-import { Button } from "@/components/ui/button";
-import { Handshake, Plus, Sparkles, DollarSign, TrendingUp } from "lucide-react";
-import { motion } from "framer-motion";
+import { Handshake } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 interface DealsEmptyStateProps {
   onAddDeal?: () => void;
 }
 
+/**
+ * Surface-specific empty state for the Deals surface.
+ * Thin wrapper around the canonical EmptyState primitive.
+ * Agency-frame copy (Joanna wave 3): names what Pax does the moment the user acts.
+ */
 export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="flex flex-col items-center justify-center py-16 px-4"
-      data-testid="empty-state-deals"
-    >
-      <div className="relative mb-6" aria-hidden="true">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-          className="w-24 h-24 rounded-full bg-gradient-to-br from-acr-warn/20 to-acr-warn/5 flex items-center justify-center"
-        >
-          <Handshake className="w-12 h-12 text-acr-warn" />
-        </motion.div>
-        
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="absolute -top-1 -right-3 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
-        >
-          <DollarSign className="w-5 h-5 text-acr-pos" />
-        </motion.div>
-        
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="absolute -bottom-2 -left-2 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center"
-        >
-          <TrendingUp className="w-4 h-4 text-primary" />
-        </motion.div>
-      </div>
-      
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="text-center max-w-md"
-      >
-        <h3 className="text-xl font-semibold mb-2">
-          No open deals
-        </h3>
-        <p className="text-muted-foreground mb-6">
-          The moment you send an offer, Pax tracks the reply window and
-          pings you on day 5 if the seller goes quiet.
-        </p>
-        
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          {onAddDeal && (
-            <Button type="button" onClick={onAddDeal} data-testid="button-add-deal">
-              <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-              Create your first deal
-            </Button>
-          )}
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="mt-8 p-4 rounded-card bg-muted/50 text-left"
-        >
-          <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-medium mb-1">Pro tip</p>
-              <p className="text-sm text-muted-foreground">
-                Wire deals to parcels and leads — Pax keeps the offer,
-                counter, reply window, and cool-off in one thread, and
-                pings you the day a deal aged past 5 days.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </motion.div>
+    <EmptyState
+      icon={Handshake}
+      headline="No open deals"
+      subtitle="The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet."
+      cta={{
+        label: "Create your first deal",
+        onClick: onAddDeal,
+        "data-testid": "button-add-deal",
+      }}
+      actionIcon={null}
+      tips={[
+        "Wire deals to parcels and leads — Pax keeps the offer, counter, reply window, and cool-off in one thread",
+        "Pax pings you the day a deal ages past 5 days without a reply",
+      ]}
+      testId="empty-state-deals"
+    />
   );
 }

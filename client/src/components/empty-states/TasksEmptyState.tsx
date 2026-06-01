@@ -1,77 +1,32 @@
-import { Button } from "@/components/ui/button";
-import { ListTodo, Plus, Sparkles, Clock } from "lucide-react";
-import { motion } from "framer-motion";
+import { ListTodo } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 interface TasksEmptyStateProps {
   onAddTask?: () => void;
 }
 
+/**
+ * Surface-specific empty state for the Tasks surface.
+ * Thin wrapper around the canonical EmptyState primitive.
+ * Agency-frame copy (Joanna wave 3): names what Pax does the moment the user acts.
+ */
 export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="flex flex-col items-center justify-center py-16 px-4"
-      data-testid="empty-state-tasks"
-    >
-      <div className="relative mb-6" aria-hidden="true">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-          className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center"
-        >
-          <ListTodo className="w-12 h-12 text-primary" />
-        </motion.div>
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-acr-pos/10 flex items-center justify-center"
-        >
-          <Clock className="w-5 h-5 text-acr-pos" />
-        </motion.div>
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="text-center max-w-md"
-      >
-        <h3 className="text-xl font-semibold mb-2">Nothing on your list yet</h3>
-        <p className="text-muted-foreground mb-6">
-          Add a task and link it to a lead, deal, or parcel — Pax slides
-          follow-ups in automatically as deals age past 5 days.
-        </p>
-
-        {onAddTask && (
-          <Button type="button" onClick={onAddTask} data-testid="button-add-task-empty">
-            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-            Create your first task
-          </Button>
-        )}
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="mt-8 p-4 rounded-card bg-muted/50 text-left"
-        >
-          <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-medium mb-1">Pro tip</p>
-              <p className="text-sm text-muted-foreground">
-                Pax adds a follow-up task the moment a seller goes 5
-                days silent — you don't have to remember the cool-off
-                window.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </motion.div>
+    <EmptyState
+      icon={ListTodo}
+      headline="Nothing on your list yet"
+      subtitle="Add a task and link it to a lead, deal, or parcel — Pax slides follow-ups in automatically as deals age past 5 days."
+      cta={{
+        label: "Create your first task",
+        onClick: onAddTask,
+        "data-testid": "button-add-task-empty",
+      }}
+      actionIcon={null}
+      tips={[
+        "Pax adds a follow-up task the moment a seller goes 5 days silent — you don't have to remember the cool-off window",
+        "Wire tasks to leads, deals, or parcels — Pax surfaces them on Today the morning they're due",
+      ]}
+      testId="empty-state-tasks"
+    />
   );
 }
