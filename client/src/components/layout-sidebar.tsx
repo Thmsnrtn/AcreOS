@@ -619,9 +619,13 @@ const NAV_MODULES: NavModule[] = [
     description: "Autonomous-operation command center",
     founderOnly: true,
     children: [
+      // ── Pulse (CEO pull surface — Solene's daily one-line as live UI) ──
+      // First entry so Tom lands here immediately. Autonomy Horizon +
+      // capital + phase + team activity + decisions waiting.
+      { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
       // ── Canonical surfaces (founder redesign) ──────────────────────────
       // The four-surface IA from /Users/user/.claude/plans/.
-      { label: "Now", icon: CheckCircle2, href: "/founder", description: "Daily inbox — what only the founder can decide today" },
+      { label: "Now", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge — previously /founder canonical" },
       { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
       { label: "Inspector", icon: Search, href: "/founder/inspector/audit", description: "Provenance lens — per-agent, per-decision, founder audit feed" },

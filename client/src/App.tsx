@@ -279,6 +279,10 @@ const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-c
 // Wave 3 Workstream E — distribution truth surface. Paid / trial /
 // churned counts + UTM sources + recent signups by name.
 const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
+// Solene's daily one-line + Autonomy Horizon + capital + phase — the
+// pull-first CEO surface at /founder. Replaces the FounderChat shell
+// which was previously served at /founder (now remains at /founder/chat).
+const FounderPulsePage = React.lazy(() => import("@/pages/founder/index"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
 // /founder/bridge. The page file lives on disk pending extraction sweep.
 // /founder is the Atlas chat shell; /founder/bridge is the fused
@@ -968,14 +972,14 @@ function Router() {
       <Route path="/founder/dashboard">
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* /founder is the chat shell (Phase C). The fused bridge surface
-          at /founder/bridge is the canonical home — /founder still
-          renders the chat shell directly so the URL is unchanged for
-          users who bookmarked it, but every variant home above
-          (/founder-dashboard, /founder-home, /founder/now,
-          /founder/cockpit, /founder/dashboard) now points at bridge. */}
+      {/* /founder — Pulse home (Solene's daily one-line + Autonomy Horizon
+          + capital position + phase + team activity). Replaces the chat
+          shell that was previously at this URL; chat remains at
+          /founder/chat. Every other variant home (/founder-dashboard,
+          /founder-home, /founder/now, /founder/cockpit, /founder/dashboard)
+          continues to redirect to /founder/bridge. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderChatPage} />}
+        {() => <FounderProtectedRoute component={FounderPulsePage} />}
       </Route>
       {/* Bridge — fused chat + telemetry surface. Canonical founder home
           per the Lens 4 IA consolidation. */}
