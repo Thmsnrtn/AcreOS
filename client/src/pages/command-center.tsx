@@ -184,20 +184,20 @@ const defaultVAActions: VAAction[] = [
 
 function getStatusColor(status: VAAction["status"]) {
   switch (status) {
-    case "proposed": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
-    case "approved": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
-    case "completed": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-    case "rejected": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+    case "proposed": return "bg-acr-warn-soft text-acr-warn border border-acr-warn/30";
+    case "approved": return "bg-acr-brand-soft text-acr-brand border border-acr-brand/30";
+    case "completed": return "bg-acr-pos-soft text-acr-pos border border-acr-pos/30";
+    case "rejected": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/30";
     default: return "bg-muted text-muted-foreground";
   }
 }
 
 function getAgentStatusColor(status: VAAgent["status"]) {
   switch (status) {
-    case "active": return "bg-green-500";
-    case "idle": return "bg-amber-500";
-    case "disabled": return "bg-muted-foreground";
-    default: return "bg-muted-foreground";
+    case "active": return "bg-acr-pos";
+    case "idle": return "bg-acr-warn";
+    case "disabled": return "bg-acr-ink-4";
+    default: return "bg-acr-ink-4";
   }
 }
 
@@ -408,7 +408,7 @@ function TeamTabContent() {
                       <ul className="mt-2 space-y-1">
                         {briefing.highlights.slice(0, 3).map((h, i) => (
                           <li key={i} className="text-xs text-muted-foreground flex items-center gap-2">
-                            <Check className="w-3 h-3 text-green-500" /> {h}
+                            <Check className="w-3 h-3 text-acr-pos" aria-hidden="true" /> {h}
                           </li>
                         ))}
                       </ul>
@@ -457,8 +457,8 @@ function TeamTabContent() {
                 ))
               ) : filteredActions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground text-sm">No actions match your filters</p>
+                  <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" aria-hidden="true" />
+                  <p className="text-sm text-acr-ink-3">No actions match these filters.</p>
                 </div>
               ) : (
                 filteredActions.map((action) => {
@@ -863,8 +863,8 @@ function AgentsTabContent() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-card ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : agent.status === "error" ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
-                          <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : agent.status === "error" ? "text-red-600 dark:text-red-400" : ""}`} />
+                        <div className={`p-2 rounded-card ${agent.status === "running" ? "bg-acr-pos-soft" : agent.status === "error" ? "bg-acr-neg-soft" : "bg-muted"}`}>
+                          <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-acr-pos" : agent.status === "error" ? "text-acr-neg" : ""}`} />
                         </div>
                         <div>
                           <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
@@ -889,12 +889,12 @@ function AgentsTabContent() {
                       )}
                       {(agent.processedCount !== undefined && agent.processedCount > 0) && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                          <CheckCircle2 className="w-3 h-3 text-acr-pos" />
                           <span>Processed: {agent.processedCount}</span>
                         </div>
                       )}
                       {(agent.errorCount !== undefined && agent.errorCount > 0) && (
-                        <div className="flex items-center gap-2 text-red-500">
+                        <div className="flex items-center gap-2 text-acr-neg">
                           <AlertCircle className="w-3 h-3" />
                           <span>Errors: {agent.errorCount}</span>
                         </div>
@@ -1052,15 +1052,15 @@ function TasksTabContent() {
                   <div className="text-center py-10 text-muted-foreground">Connecting to agents...</div>
                 ) : tasks?.length === 0 ? (
                   <div className="text-center py-20 text-muted-foreground">
-                    <Bot className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                    No active tasks. Start a new one!
+                    <Bot className="w-12 h-12 mx-auto mb-4 opacity-20" aria-hidden="true" />
+                    <p className="text-sm">Nothing running — assign a task to get started.</p>
                   </div>
                 ) : (
                   tasks?.map((task) => (
                     <div key={task.id} className="group flex gap-4" data-testid={`task-item-${task.id}`}>
                       <div className="flex flex-col items-center gap-2">
                         <div className={`w-2 h-full rounded-full ${
-                          task.status === 'completed' ? 'bg-green-500/20' : 'bg-muted'
+                          task.status === 'completed' ? 'bg-acr-pos-soft' : 'bg-muted'
                         }`} />
                       </div>
                       <div className="flex-1 pb-8">
@@ -1069,14 +1069,14 @@ function TasksTabContent() {
                           <span className="text-xs text-muted-foreground">
                             {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
                           </span>
-                          {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                          {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-acr-pos" />}
                           {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                         </div>
                         <div className="bg-muted/50 rounded-card p-4 mb-3 border">
                           <p className="text-sm font-medium">{String(task.input ?? '')}</p>
                         </div>
                         {task.output != null && task.output !== '' ? (
-                          <div className="bg-green-50/50 dark:bg-green-900/10 rounded-card p-4 border border-green-100 dark:border-green-900/50">
+                          <div className="bg-acr-pos-soft rounded-card p-4 border border-acr-pos/20">
                             <p className="text-sm whitespace-pre-wrap leading-relaxed">
                               {String(task.output)}
                             </p>
@@ -1241,20 +1241,20 @@ function AIOperationsTabContent() {
 
   const getPhaseColor = (phase: number) => {
     switch (phase) {
-      case 3: return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
-      case 4: return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
-      case 5: return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
-      case 6: return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+      case 3: return "bg-acr-brand-soft text-acr-brand";
+      case 4: return "bg-acr-accent/20 text-acr-ink-2";
+      case 5: return "bg-acr-warn-soft text-acr-warn";
+      case 6: return "bg-acr-pos-soft text-acr-pos";
       default: return "bg-muted text-muted-foreground";
     }
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case "critical": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      case "high": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-      case "medium": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
-      case "low": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+      case "critical": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/30";
+      case "high": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/20";
+      case "medium": return "bg-acr-warn-soft text-acr-warn border border-acr-warn/30";
+      case "low": return "bg-acr-brand-soft text-acr-brand border border-acr-brand/20";
       default: return "bg-muted text-muted-foreground";
     }
   };
@@ -1415,7 +1415,7 @@ function AIOperationsTabContent() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium text-sm">{service.name}</span>
                               <Badge variant="secondary" className="text-xs">
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-acr-pos mr-1" aria-hidden="true" />
                                 Ready
                               </Badge>
                             </div>
@@ -1471,10 +1471,9 @@ function AIOperationsTabContent() {
                       data-testid={`alert-item-${alert.id}`}
                     >
                       <AlertCircle className={`w-4 h-4 mt-0.5 ${
-                        alert.severity === "critical" ? "text-red-500" :
-                        alert.severity === "high" ? "text-orange-500" :
-                        alert.severity === "medium" ? "text-amber-500" : "text-blue-500"
-                      }`} />
+                        alert.severity === "critical" || alert.severity === "high" ? "text-acr-neg" :
+                        alert.severity === "medium" ? "text-acr-warn" : "text-acr-brand"
+                      }`} aria-hidden="true" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-sm">{alert.title}</span>
@@ -1982,22 +1981,25 @@ export default function CommandCenterPage() {
                         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                           <Sparkles className="w-10 h-10 text-primary" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Assistant</h3>
-                        <p className="text-muted-foreground text-sm max-w-md mb-4">
-                          Your intelligent partner for land investing. I can help with research, deals, communications, and operations.
+                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Pax</h3>
+                        <p className="text-sm text-acr-ink-2 max-w-md mb-4">
+                          Ask about your pipeline, a specific deal, or anything across your portfolio.
                         </p>
                         {trialTokens > 0 && (
-                          <div className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-emerald-500/10 border border-emerald-500/20" data-testid="trial-tokens-indicator">
-                            <Gift className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-sm text-emerald-700 dark:text-emerald-400">
-                              {trialTokens} trial token{trialTokens !== 1 ? 's' : ''} available to try premium features
+                          <div
+                            className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-acr-pos-soft border border-acr-pos/30"
+                            data-testid="trial-tokens-indicator"
+                          >
+                            <Gift className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
+                            <span className="text-sm text-acr-pos">
+                              {trialTokens} trial token{trialTokens !== 1 ? 's' : ''} available
                             </span>
                           </div>
                         )}
                         
                         {suggestions.length > 0 && (
                           <div className="w-full max-w-2xl">
-                            <p className="text-xs text-muted-foreground mb-3">Try asking me to:</p>
+                            <p className="text-xs font-semibold text-acr-ink-3 uppercase tracking-wide mb-3">Try asking Pax:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {suggestions.slice(0, 6).map((suggestion, idx) => (
                                 <Button
@@ -2020,7 +2022,10 @@ export default function CommandCenterPage() {
                                         </Badge>
                                       )}
                                       {suggestion.category === "action" && !suggestion.available && suggestion.canUseTrialToken && (
-                                        <Badge className="text-xs ml-auto bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs ml-auto bg-acr-pos-soft text-acr-pos border-acr-pos/30"
+                                        >
                                           Try Free
                                         </Badge>
                                       )}
@@ -2044,9 +2049,9 @@ export default function CommandCenterPage() {
                       </div>
                     ) : messages.length === 0 && !streamingContent ? (
                       <div className="flex flex-col items-center justify-center h-64 text-center">
-                        <MessageSquare className="w-12 h-12 text-muted-foreground/30 mb-4" />
-                        <p className="text-muted-foreground text-sm">
-                          Send a message to start the conversation
+                        <MessageSquare className="w-12 h-12 text-acr-ink-3/30 mb-4" aria-hidden="true" />
+                        <p className="text-sm text-acr-ink-3">
+                          Quiet — nothing yet. Send a message to begin.
                         </p>
                       </div>
                     ) : (

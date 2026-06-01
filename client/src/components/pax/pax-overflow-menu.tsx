@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   Sparkles,
   ArrowUpRight,
 } from "lucide-react";
+import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 
 // The standalone pages re-homed from the old peer tabs. Lazy so opening Pax
 // doesn't ship them in the parent chunk — each loads on demand when the
@@ -33,15 +35,19 @@ const ActivityPage = lazy(() => import("@/pages/activity"));
 // AgentCommandCenterPage archived 2026-06-01 — agents drawer now deep-links
 // to /founder/agent-queue via the "Full page" button in the sheet header.
 
+// Drawer lazy-load fallback — canonical motion tokens.
 function DrawerFallback() {
   return (
-    <div
+    <motion.div
       className="flex items-center justify-center py-20"
       role="status"
       aria-live="polite"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: DURATIONS.normal, ease: EASINGS.linearExpo }}
     >
-      <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
-    </div>
+      <span className="text-sm text-acr-ink-3">Loading…</span>
+    </motion.div>
   );
 }
 

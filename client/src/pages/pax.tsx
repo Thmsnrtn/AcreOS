@@ -1,11 +1,11 @@
 import { lazy, Suspense, useState } from "react";
+import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent } from "@/components/ui/card";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Bot,
@@ -21,17 +21,29 @@ import {
   Flame,
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
+import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
+import { staggerContainer, staggerItem } from "@/lib/animations";
 // The conversation is the primary surface. CommandCenterPage (~2,264 LOC) is
 // lazy so opening /pax doesn't ship it in the parent chunk; it loads behind a
 // Suspense fallback.
 const CommandCenterPage = lazy(() => import("@/pages/command-center"));
 
+// Lazy-load fallback — uses canonical motion tokens.
+// Duration: DURATIONS.normal (0.25s); easing: linearExpo (snappy start, soft land).
 function ChatFallback() {
   return (
-    <div className="flex items-center justify-center py-20" role="status" aria-live="polite">
-      <div className="animate-pulse text-muted-foreground text-sm">Waking Pax…</div>
-    </div>
+    <motion.div
+      className="flex items-center justify-center py-20"
+      role="status"
+      aria-live="polite"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: DURATIONS.normal, ease: EASINGS.linearExpo }}
+    >
+      <span className="text-sm text-acr-ink-3">Waking Pax…</span>
+    </motion.div>
   );
 }
 
@@ -202,15 +214,15 @@ function InsightsPanel() {
 
   if (totalItems === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-2" role="status">
-        <Sparkles className="h-8 w-8 text-muted-foreground mb-2" aria-hidden="true" />
-        <p className="text-base font-medium text-muted-foreground">
-          All clear — Pax is keeping watch.
-        </p>
-        <p className="text-sm text-muted-foreground max-w-sm">
-          No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends.
-        </p>
-      </div>
+      <EmptyState
+        icon={Sparkles}
+        headline="All clear — Pax is keeping watch."
+        subtitle="No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends."
+        tone="celebratory"
+        // TODO(cta): insights panel — no action available when all clear
+        cta={{ label: "", _noOp: true }}
+        testId="pax-insights-empty"
+      />
     );
   }
 
@@ -219,7 +231,7 @@ function InsightsPanel() {
       {/* Pax Noticed */}
       {observations.length > 0 && (
         <section aria-labelledby="pax-noticed-heading">
-          <h2 id="pax-noticed-heading" className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h2 id="pax-noticed-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3">
             Pax noticed
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Observations Pax wants you to know about">
@@ -272,7 +284,7 @@ function InsightsPanel() {
       {/* Stale Leads */}
       {staleLeads.length > 0 && (
         <section aria-labelledby="stale-leads-heading">
-          <h2 id="stale-leads-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="stale-leads-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
             Stale leads
             <Badge variant="outline" className="text-micro tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
@@ -326,7 +338,7 @@ function InsightsPanel() {
       {/* Expiring Offers */}
       {expiringOffers.length > 0 && (
         <section aria-labelledby="expiring-offers-heading">
-          <h2 id="expiring-offers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="expiring-offers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
             Expiring offers
             <Badge variant="destructive" className="text-micro tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
@@ -378,7 +390,7 @@ function InsightsPanel() {
       {/* Motivated Callers */}
       {motivatedCallers.length > 0 && (
         <section aria-labelledby="motivated-callers-heading">
-          <h2 id="motivated-callers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="motivated-callers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
             <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
             Motivated callers
             <Badge variant="outline" className="text-micro text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
@@ -556,20 +568,14 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
 
   if (aiUnavailable) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <div className="p-4 rounded-full bg-muted" aria-hidden="true">
-            <Bot className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <div className="space-y-2 max-w-md">
-            <h3 className="text-lg font-semibold">Pax is temporarily unavailable</h3>
-            <p className="text-sm text-muted-foreground">
-              The AI service is not reachable right now. This usually clears in a
-              minute or two — please try again shortly.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Bot}
+        headline="Pax is temporarily unavailable"
+        subtitle="The AI service is not reachable right now. This usually clears in a minute or two."
+        // TODO(cta): auto-recovers — no manual action available
+        cta={{ label: "", _noOp: true }}
+        testId="pax-ai-unavailable"
+      />
     );
   }
 
@@ -622,27 +628,34 @@ function SuggestedPrompts() {
   };
 
   return (
-    <div className="mb-6">
-      <p id="suggested-prompts-label" className="text-sm text-muted-foreground mb-3">Try asking Pax:</p>
+    <motion.div
+      className="mb-6"
+      variants={staggerContainer}
+      initial="hidden"
+      animate="show"
+    >
+      <p id="suggested-prompts-label" className="text-xs font-semibold text-acr-ink-3 uppercase tracking-wide mb-3">
+        Try asking Pax:
+      </p>
       <ul
         className="grid grid-cols-1 sm:grid-cols-2 gap-2 list-none p-0 m-0"
         aria-labelledby="suggested-prompts-label"
       >
         {SUGGESTED_PROMPTS.map(({ label, icon: Icon }) => (
-          <li key={label}>
+          <motion.li key={label} variants={staggerItem}>
             <Button
               variant="outline"
               className="justify-start gap-2 h-auto py-3 text-left w-full"
               onClick={() => handleClick(label)}
               aria-label={`Send to Pax: ${label}`}
             >
-              <Icon className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />
+              <Icon className="w-4 h-4 shrink-0 text-acr-brand" aria-hidden="true" />
               <span className="text-sm">{label}</span>
             </Button>
-          </li>
+          </motion.li>
         ))}
       </ul>
-    </div>
+    </motion.div>
   );
 }
 
@@ -661,11 +674,11 @@ export default function PaxPage() {
     <PageShell label="Pax">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-ai-hub-title">
+          <h1 className="text-hero" data-testid="text-ai-hub-title">
             Pax
           </h1>
-          <p className="text-muted-foreground text-sm md:text-base">
-            Your AI assistant — ask anything, and watch what Pax does.
+          <p className="text-sm text-acr-ink-2 mt-1">
+            Ask anything about your portfolio, deals, or leads.
           </p>
         </div>
         <div className="shrink-0">
