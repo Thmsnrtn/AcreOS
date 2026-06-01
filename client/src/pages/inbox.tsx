@@ -9,7 +9,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
-import { format } from "date-fns";
+import { format, isToday, isThisWeek } from "date-fns";
 import { ProviderReadinessBanner, ProviderStatusIndicator } from "@/components/provider-readiness-banner";
 
 import { Button } from "@/components/ui/button";
@@ -116,12 +116,14 @@ function EmailMessageRow({
   message,
   isSelected,
   onSelect,
-  leadName
+  leadName,
+  onArchive,
 }: {
   message: InboxMessage;
   isSelected: boolean;
   onSelect: () => void;
   leadName?: string;
+  onArchive?: () => void;
 }) {
   const { toast } = useToast();
   // Hand-rolled snapshot/rollback collapsed to the shared factory. Optimistic
@@ -137,6 +139,20 @@ function EmailMessageRow({
     successToast: false,
   });
 
+  const archiveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/archive`);
+      return res.json();
+    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isArchived: true }),
+    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    successToast: { title: "Archived", description: "Moved to archive." },
+  }, {
+    onSuccess: () => onArchive?.(),
+  });
+
   const senderLabel = message.senderName || message.senderEmail || "Unknown sender";
   const subjectLabel = message.subject || "(No subject)";
   const rowAriaLabel = `${message.isRead ? "Read" : "Unread"} email from ${senderLabel}: ${subjectLabel}`;
@@ -150,12 +166,12 @@ function EmailMessageRow({
       aria-current={isSelected ? "true" : undefined}
       onClick={onSelect}
       onKeyDown={(e) => handleRowKeyDown(e, onSelect)}
-      className={`flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
+      className={`group flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
         isSelected
-          ? "bg-accent"
+          ? "bg-[color:var(--acr-brand-soft)]"
           : message.isRead
-            ? "hover-elevate"
-            : "bg-accent/30 hover-elevate"
+            ? "hover:bg-[color:var(--acr-surface-2)]"
+            : "bg-[color:var(--acr-brand-soft)]/30 hover:bg-[color:var(--acr-brand-soft)]/50"
       }`}
     >
       <Avatar className="h-9 w-9 flex-shrink-0">
@@ -166,15 +182,16 @@ function EmailMessageRow({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className={`text-sm truncate ${!message.isRead ? "font-semibold" : ""}`}>
+          {/* Unread: --acr-ink (primary weight). Read: --acr-ink-2 (secondary). */}
+          <span className={`text-sm truncate ${!message.isRead ? "font-semibold text-[color:var(--acr-ink)]" : "text-[color:var(--acr-ink-2)]"}`}>
             {senderLabel}
           </span>
-          <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+          <span className="text-xs text-[color:var(--acr-ink-3)] flex-shrink-0 tabular-nums">
             {formatMessageDate(message.receivedAt)}
           </span>
         </div>
 
-        <div className={`text-sm truncate ${!message.isRead ? "font-medium" : "text-muted-foreground"}`}>
+        <div className={`text-sm truncate ${!message.isRead ? "font-medium text-[color:var(--acr-ink)]" : "text-[color:var(--acr-ink-3)]"}`}>
           {subjectLabel}
         </div>
 
@@ -186,25 +203,48 @@ function EmailMessageRow({
             </Badge>
           )}
           {!message.isRead && (
-            <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
+            // Semantic unread dot uses --acr-brand (not --primary) to stay
+            // theme-coherent. Aria-hidden since the row aria-label already
+            // announces unread state.
+            <span className="w-2 h-2 rounded-full bg-[color:var(--acr-brand)] flex-shrink-0" aria-hidden="true" />
           )}
         </div>
       </div>
 
-      <Button
-        size="icon"
-        variant="ghost"
-        data-testid={`button-star-email-${message.id}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
-        }}
-        disabled={starMutation.isPending}
-        className={message.isStarred ? "text-acr-warn" : "text-muted-foreground"}
-        aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
-      >
-        <Star className={`h-4 w-4 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
-      </Button>
+      {/* Desktop fast-action row — visible on group-hover or when row has focus.
+          Equivalent surface to mobile swipe: star + archive without opening. */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+        <Button
+          size="icon"
+          variant="ghost"
+          data-testid={`button-star-email-${message.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
+          }}
+          disabled={starMutation.isPending}
+          className={`h-7 w-7 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
+          aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
+        >
+          <Star className={`h-3.5 w-3.5 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
+        </Button>
+        {onArchive && (
+          <Button
+            size="icon"
+            variant="ghost"
+            data-testid={`button-quick-archive-email-${message.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              archiveMutation.mutate({ id: message.id });
+            }}
+            disabled={archiveMutation.isPending}
+            className="h-7 w-7 text-[color:var(--acr-ink-3)]"
+            aria-label={`Archive email from ${senderLabel}`}
+          >
+            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -234,7 +274,9 @@ function SMSConversationRow({
       onClick={onSelect}
       onKeyDown={(e) => handleRowKeyDown(e, onSelect)}
       className={`flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
-        isSelected ? "bg-accent" : "hover-elevate"
+        isSelected
+          ? "bg-[color:var(--acr-brand-soft)]"
+          : "hover:bg-[color:var(--acr-surface-2)]"
       }`}
     >
       <Avatar className="h-9 w-9 flex-shrink-0">
@@ -245,10 +287,10 @@ function SMSConversationRow({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm truncate font-medium">
+          <span className="text-sm truncate font-medium text-[color:var(--acr-ink)]">
             {contactLabel}
           </span>
-          <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+          <span className="text-xs text-[color:var(--acr-ink-3)] flex-shrink-0 tabular-nums">
             {formatMessageDate(conversation.lastMessageAt)}
           </span>
         </div>
@@ -523,7 +565,9 @@ function EmailMessageDetail({
           </div>
 
           <div className="border-t pt-4">
-            <h2 className="text-lg font-semibold mb-4">
+            {/* Subject line sits at subsection level — it heads the message body,
+                not a page section. text-section-h2 (18px/500) is the right tier. */}
+            <h2 className="text-section-h2 mb-4">
               {message.subject || "(No subject)"}
             </h2>
             
@@ -780,11 +824,17 @@ function SMSConversationDetail({
             testId="sms-messages-error"
           />
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-center">
-            <MessageSquare className="h-12 w-12 mb-2 opacity-50" aria-hidden="true" />
-            <p>Thread starts the moment you hit send</p>
-            <p className="text-sm">Pax threads every reply against this lead and pings you if the seller goes 5 days quiet.</p>
-          </div>
+          /* Data-empty SMS thread: the conversation record exists but has no
+             messages yet (e.g. created by a campaign that hasn't fired yet).
+             This IS a data-empty state — use EmptyState with a real CTA. */
+          <EmptyState
+            icon={MessageSquare}
+            headline="Thread starts the moment you hit send"
+            subtitle="Pax threads every reply against this lead and pings you if the seller goes 5 days quiet."
+            cta={{ label: "Send a message", onClick: () => document.querySelector<HTMLTextAreaElement>('[data-testid="input-sms-message"]')?.focus() }}
+            actionIcon={null}
+            testId="sms-empty-thread"
+          />
         ) : (
           <div
             className="space-y-4"
@@ -1084,6 +1134,33 @@ export default function InboxPage() {
     }
   };
 
+  /**
+   * Group the filtered items into temporal buckets for triage-shaped section
+   * headers ("Today · 3 messages", "This week · 5 messages", "Earlier").
+   * Returns buckets in order; empty buckets are omitted.
+   */
+  type TimeBucket = "today" | "week" | "earlier";
+  const groupedItems = useMemo(() => {
+    const buckets: Record<TimeBucket, UnifiedItem[]> = { today: [], week: [], earlier: [] };
+    for (const item of filteredItems) {
+      const t = item.timestamp;
+      if (isToday(t)) {
+        buckets.today.push(item);
+      } else if (isThisWeek(t, { weekStartsOn: 1 })) {
+        buckets.week.push(item);
+      } else {
+        buckets.earlier.push(item);
+      }
+    }
+    return buckets;
+  }, [filteredItems]);
+
+  const BUCKET_LABELS: Record<TimeBucket, string> = {
+    today: "Today",
+    week: "This week",
+    earlier: "Earlier",
+  };
+
   return (
     // min-h-dvh (not min-h-screen) so iOS Safari's dynamic address bar
     // doesn't push content below the visible viewport. pb-[…] reserves
@@ -1094,12 +1171,12 @@ export default function InboxPage() {
 
       <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
-          {/* Homestead editorial inbox header (prototype: tier-c.jsx Inbox) */}
+          {/* Inbox hero header — canonical text-hero (32px/600) via acr-cc-greeting.
+              No inline fontSize override: the token governs. */}
           <div>
             <div className="acr-eyebrow">Inbox</div>
             <h1
               className="acr-cc-greeting"
-              style={{ fontSize: "26px", marginTop: 2 }}
               data-testid="text-inbox-title"
             >
               {unreadCount > 0 ? (
@@ -1250,42 +1327,88 @@ export default function InboxPage() {
                     archiveLabel="View all messages"
                   />
                 ) : (
+                  // DATA-EMPTY state — the inbox genuinely has no messages.
+                  // CTA points to Settings > Providers where mailbox/SMS is connected.
+                  // Archived, SMS-only, or status-filtered zero-message states above
+                  // handle their own specific archetypes; this is the catch-all.
                   <EmptyState
                     icon={channelFilter === "sms" ? Phone : Mail}
                     {...getEmptyMessage()}
-                    // TODO(cta): inbox empty state — the relevant action (connect mailbox) is available in Settings
-                    cta={{ label: "", _noOp: true }}
+                    cta={
+                      statusFilter === "archived"
+                        ? {
+                            label: "View all messages",
+                            onClick: () => setStatusFilter("all"),
+                            "data-testid": "inbox-empty-view-all",
+                          }
+                        : {
+                            label: "Connect a mailbox",
+                            href: "/settings?tab=providers",
+                            "data-testid": "inbox-empty-connect-mailbox",
+                          }
+                    }
+                    actionIcon={null}
                   />
                 )}
               </div>
             ) : (
               <ScrollArea className="flex-1">
-                <ul className="list-none p-0 m-0" role="list" aria-label={`${filteredItems.length} message${filteredItems.length === 1 ? "" : "s"}`}>
-                  {filteredItems.map((item) => (
-                    <li key={item.type === "email" ? `email-${item.data.id}` : `sms-${item.data.id}`}>
-                      {item.type === "email" ? (
-                        <EmailMessageRow
-                          message={item.data}
-                          isSelected={selectedItem?.type === "email" && selectedItem.data.id === item.data.id}
-                          onSelect={() => handleSelectItem(item)}
-                          leadName={item.data.leadId
-                            ? (() => {
-                                const lead = leadsMap.get(item.data.leadId!);
-                                return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
-                              })()
-                            : undefined}
-                        />
-                      ) : (
-                        <SMSConversationRow
-                          conversation={item.data}
-                          isSelected={selectedItem?.type === "sms" && selectedItem.data.id === item.data.id}
-                          onSelect={() => handleSelectItem(item)}
-                          lead={leadsMap.get(item.data.leadId)}
-                        />
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                {/* Temporal section grouping — triage-shaped, not flat-list-shaped.
+                    Each bucket header uses text-section-h2 per the typography system. */}
+                {(["today", "week", "earlier"] as TimeBucket[]).map((bucket) => {
+                  const items = groupedItems[bucket];
+                  if (items.length === 0) return null;
+                  const unreadInBucket = items.filter(
+                    (i) => i.type === "email" && !(i.data as InboxMessage).isRead
+                  ).length;
+                  const narrativeSuffix = unreadInBucket > 0
+                    ? ` · ${unreadInBucket} unread`
+                    : "";
+                  return (
+                    <div key={bucket}>
+                      {/* Section divider — text-section-h2 is 18px/500 per SYSTEM-V1 §1.2 */}
+                      <div className="px-3 py-2 border-b bg-[color:var(--acr-bg-sunken)]">
+                        <h2 className="text-section-h2 text-[color:var(--acr-ink-2)]">
+                          {BUCKET_LABELS[bucket]}
+                          <span className="text-caption font-normal text-[color:var(--acr-ink-3)] ml-2">
+                            {items.length} message{items.length !== 1 ? "s" : ""}{narrativeSuffix}
+                          </span>
+                        </h2>
+                      </div>
+                      <ul className="list-none p-0 m-0" role="list" aria-label={`${BUCKET_LABELS[bucket]}: ${items.length} message${items.length !== 1 ? "s" : ""}`}>
+                        {items.map((item) => (
+                          <li key={item.type === "email" ? `email-${item.data.id}` : `sms-${item.data.id}`}>
+                            {item.type === "email" ? (
+                              <EmailMessageRow
+                                message={item.data}
+                                isSelected={selectedItem?.type === "email" && selectedItem.data.id === item.data.id}
+                                onSelect={() => handleSelectItem(item)}
+                                leadName={item.data.leadId
+                                  ? (() => {
+                                      const lead = leadsMap.get(item.data.leadId!);
+                                      return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
+                                    })()
+                                  : undefined}
+                                onArchive={() => {
+                                  if (selectedItem?.type === "email" && selectedItem.data.id === item.data.id) {
+                                    setSelectedItem(null);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <SMSConversationRow
+                                conversation={item.data}
+                                isSelected={selectedItem?.type === "sms" && selectedItem.data.id === item.data.id}
+                                onSelect={() => handleSelectItem(item)}
+                                lead={leadsMap.get(item.data.leadId)}
+                              />
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
               </ScrollArea>
             )}
             </ContentReveal>
@@ -1308,11 +1431,16 @@ export default function InboxPage() {
               )
             ) : (
               <div className="flex-1 flex items-center justify-center p-4">
+                {/* SELECTION-PROMPT STATE — not a data-empty state.
+                    The inbox has messages; the user hasn't selected one yet.
+                    Per wave-3 EmptyState consolidation rules: _noOp + TODO(cta).
+                    TODO(cta): selection prompt — the CTA is implicit (click a
+                    message in the list). No button needed; the panel's purpose
+                    is orientation, not agency. */}
                 <EmptyState
                   icon={MessageSquare}
                   headline="Select a message"
                   subtitle="Choose a conversation from the list to read it here."
-                  // TODO(cta): placeholder panel when no message selected — not an empty-data state
                   cta={{ label: "", _noOp: true }}
                 />
               </div>

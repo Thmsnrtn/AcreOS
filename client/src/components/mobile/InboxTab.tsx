@@ -27,7 +27,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRespectfulTransition } from "@/lib/motion-tokens";
+import { useRespectfulTransition, DURATIONS } from "@/lib/motion-tokens";
 import { useLocation } from "wouter";
 import {
   Mail,
@@ -42,6 +42,8 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import { QueryErrorState } from "@/components/query-error-state";
+import { ClearedEmpty } from "@/components/empty-states";
 import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { relative } from "@/lib/format";
@@ -152,7 +154,8 @@ export function InboxTab() {
   const { toast } = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
   // Respect prefers-reduced-motion for the swipe-card exit collapse.
-  const cardExitTransition = useRespectfulTransition({ duration: 0.18 });
+  // DURATIONS.fast (0.15s) — exits run fast per SYSTEM-V1 §2.2 exit rule.
+  const cardExitTransition = useRespectfulTransition({ duration: DURATIONS.fast });
 
   const {
     data: conversations = [],
@@ -236,41 +239,28 @@ export function InboxTab() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <InboxIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        </div>
-        <h2 className="text-base font-semibold mb-1">Couldn't load inbox</h2>
-        <p className="text-sm text-muted-foreground max-w-xs">
-          Network or session issue. Try again to pull replies.
-        </p>
-        <Button variant="outline" size="sm" className="mt-6" onClick={() => refetch()}>
-          Try again
-        </Button>
-      </div>
+      <QueryErrorState
+        error={error as Error}
+        onRetry={() => refetch()}
+        title="Couldn't load inbox"
+        description="Network or session issue. Try again to pull replies."
+        testId="inbox-tab-error"
+      />
     );
   }
 
   if (visible.length === 0) {
+    // DATA-EMPTY (triage inbox): all active conversations have been swiped away
+    // or there are none. ClearedEmpty is the right archetype — affirming, with an
+    // escape-hatch CTA to campaigns ("View outreach") so the user can act.
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <InboxIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        </div>
-        <h2 className="text-base font-semibold mb-1">Inbox zero</h2>
-        <p className="text-sm text-muted-foreground max-w-xs">
-          No inbound responses to triage. New replies to your outreach show
-          up here automatically.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-6"
-          onClick={() => setLocation("/campaigns")}
-        >
-          View outreach
-        </Button>
-      </div>
+      <ClearedEmpty
+        headline="Inbox zero"
+        subtitle="No inbound responses to triage. New replies to your outreach show up here automatically."
+        onShowArchive={() => setLocation("/campaigns")}
+        archiveLabel="View outreach"
+        archiveCount={0}
+      />
     );
   }
 
