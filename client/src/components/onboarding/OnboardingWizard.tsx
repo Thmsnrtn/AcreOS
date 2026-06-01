@@ -15,7 +15,6 @@ import {
   Loader2,
   SkipForward,
   X,
-  Plus,
   Map,
   FileText,
   Building2,
@@ -734,37 +733,51 @@ export function OnboardingWizard() {
                 AcreOS's schema. You can also add leads in the same flow.
               </p>
 
+              {/* No window.open — navigate inline. Notes CSV and leads CSV
+                  are both in-app pages; the tab-open pattern was iOS Safari
+                  unsafe. Secondary text links follow the single-primary-action
+                  rule from SYSTEM-V1.md §4. */}
               <div className="ob-cards">
                 <button
                   type="button"
                   className="ob-card"
-                  onClick={() => window.open("/notes?action=import", "_blank")}
+                  onClick={() => loadSampleDataMutation.mutate()}
                   data-testid="card-import-notes-csv"
                 >
                   <span className="ob-card-glyph">
-                    <Upload className="w-4 h-4" aria-hidden="true" />
+                    {loadSampleDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" aria-hidden="true" />
+                    )}
                   </span>
-                  <span className="ob-card-title">Import notes CSV</span>
+                  <span className="ob-card-title">Try with sample data</span>
                   <span className="ob-card-desc">
-                    Map your columns to acquired_notes — opens in a new tab.
+                    Pax loads realistic notes and leads so Today is alive
+                    immediately. Wipe them when you're ready.
                   </span>
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  className="ob-card"
-                  onClick={() => window.open("/leads?action=import", "_blank")}
-                  data-testid="card-import-leads-csv"
+              {/* Secondary paths — inline navigation, no new tabs */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+                <a
+                  href="/notes?action=import"
+                  className="ob-hint"
+                  style={{ color: "var(--acr-ink-3)", textDecoration: "underline", cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center" }}
+                  data-testid="link-import-notes"
                 >
-                  <span className="ob-card-glyph">
-                    <Upload className="w-4 h-4" aria-hidden="true" />
-                  </span>
-                  <span className="ob-card-title">Import leads CSV</span>
-                  <span className="ob-card-desc">
-                    Bring in landowner leads from a spreadsheet — opens in
-                    a new tab.
-                  </span>
-                </button>
+                  Import notes CSV
+                </a>
+                <span style={{ color: "var(--acr-ink-4)", fontSize: 13 }} aria-hidden="true">·</span>
+                <a
+                  href="/leads?action=import"
+                  className="ob-hint"
+                  style={{ color: "var(--acr-ink-3)", textDecoration: "underline", cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center" }}
+                  data-testid="link-import-leads"
+                >
+                  Import leads CSV
+                </a>
               </div>
 
               <p className="ob-hint" style={{ marginTop: 16 }}>
@@ -793,6 +806,10 @@ export function OnboardingWizard() {
               single lead by hand. You can switch approaches anytime.
             </p>
 
+            {/* Primary path: sample data — one calm CTA.
+                Manual import and CSV are demoted to secondary text links
+                so there is one primary action per step. No window.open —
+                everything stays inline per SYSTEM-V1.md §4. */}
             <div className="ob-cards">
               <button
                 type="button"
@@ -807,42 +824,51 @@ export function OnboardingWizard() {
                     <Sparkles className="w-4 h-4" aria-hidden="true" />
                   )}
                 </span>
-                <span className="ob-card-title">Load sample data</span>
+                <span className="ob-card-title">Try with sample data</span>
                 <span className="ob-card-desc">
-                  Realistic leads, properties &amp; deals so you can explore
-                  immediately.
+                  Pax loads 50 realistic leads so Today is alive from the
+                  start. Wipe them when you're ready for real data.
                 </span>
               </button>
+            </div>
 
-              <button
-                type="button"
-                className="ob-card"
-                onClick={() => window.open("/leads?action=import", "_blank")}
-                data-testid="card-import-csv"
+            {/* Secondary paths — inline navigation, no new tabs */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+              <a
+                href="/leads?action=import"
+                className="ob-hint"
+                style={{
+                  color: "var(--acr-ink-3)",
+                  textDecoration: "underline",
+                  textDecorationColor: "transparent",
+                  cursor: "pointer",
+                  minHeight: 44,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  transition: "color 0.15s, text-decoration-color 0.15s",
+                }}
+                data-testid="link-import-csv"
               >
-                <span className="ob-card-glyph">
-                  <Upload className="w-4 h-4" aria-hidden="true" />
-                </span>
-                <span className="ob-card-title">Import CSV</span>
-                <span className="ob-card-desc">
-                  Upload leads from a spreadsheet — opens in a new tab.
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="ob-card"
-                onClick={() => window.open("/leads?action=new", "_blank")}
-                data-testid="card-add-lead"
+                Import a CSV instead
+              </a>
+              <span style={{ color: "var(--acr-ink-4)", fontSize: 13 }} aria-hidden="true">·</span>
+              <a
+                href="/leads?action=new"
+                className="ob-hint"
+                style={{
+                  color: "var(--acr-ink-3)",
+                  textDecoration: "underline",
+                  textDecorationColor: "transparent",
+                  cursor: "pointer",
+                  minHeight: 44,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  transition: "color 0.15s, text-decoration-color 0.15s",
+                }}
+                data-testid="link-add-manual"
               >
-                <span className="ob-card-glyph">
-                  <Plus className="w-4 h-4" aria-hidden="true" />
-                </span>
-                <span className="ob-card-title">Add one manually</span>
-                <span className="ob-card-desc">
-                  Type in a single lead — opens in a new tab.
-                </span>
-              </button>
+                Add one lead manually
+              </a>
             </div>
           </motion.div>
         );
@@ -868,21 +894,19 @@ export function OnboardingWizard() {
               back to your inbox.
             </p>
 
-            <div className="ob-cards">
-              <button
-                type="button"
-                className="ob-card"
-                onClick={() => window.open("/settings?tab=email", "_blank")}
-                data-testid="card-connect-email"
+            {/* No window.open — navigate inline to email settings.
+                Email connect is optional, so Skip (in footer) is
+                the expected primary path. The link below is a
+                secondary in-app navigation. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+              <a
+                href="/settings?tab=email"
+                className="ob-hint"
+                style={{ color: "var(--acr-ink-3)", textDecoration: "underline", cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center" }}
+                data-testid="link-email-settings"
               >
-                <span className="ob-card-glyph">
-                  <Settings className="w-4 h-4" aria-hidden="true" />
-                </span>
-                <span className="ob-card-title">Open email settings</span>
-                <span className="ob-card-desc">
-                  Gmail, Outlook, or custom SMTP — opens in a new tab.
-                </span>
-              </button>
+                Open email settings
+              </a>
             </div>
 
             <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0", display: "grid", gap: 6 }}>
@@ -933,21 +957,18 @@ export function OnboardingWizard() {
               send. Direct mail, email, or SMS — Pax handles the orchestration.
             </p>
 
-            <div className="ob-cards">
-              <button
-                type="button"
-                className="ob-card"
-                onClick={() => window.open("/campaigns", "_blank")}
-                data-testid="card-create-campaign"
+            {/* No window.open — navigate inline. Campaign creation is
+                optional at this stage; Skip in the footer is the
+                expected primary path. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+              <a
+                href="/campaigns"
+                className="ob-hint"
+                style={{ color: "var(--acr-ink-3)", textDecoration: "underline", cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center" }}
+                data-testid="link-open-campaigns"
               >
-                <span className="ob-card-glyph">
-                  <Target className="w-4 h-4" aria-hidden="true" />
-                </span>
-                <span className="ob-card-title">Open Marketing Hub</span>
-                <span className="ob-card-desc">
-                  Build a direct mail, email, or SMS campaign — opens in a new tab.
-                </span>
-              </button>
+                Open Marketing Hub
+              </a>
             </div>
 
             <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0", display: "grid", gap: 6 }}>
