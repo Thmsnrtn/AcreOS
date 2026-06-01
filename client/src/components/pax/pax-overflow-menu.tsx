@@ -115,14 +115,25 @@ export function PaxOverflowMenu({
           <DropdownMenuLabel>Pax tools</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onSelect={() => setView("insights")}
+            onSelect={(e) => {
+              // On iOS, DropdownMenu close and Sheet open happen in the same
+              // synchronous batch. The SheetOverlay (frosted backdrop z-60)
+              // renders before SheetContent slides in, producing a blank frosted
+              // screen for the full 500ms open animation. Deferring via rAF
+              // lets the dropdown finish its close cycle before the Sheet mounts.
+              e.preventDefault();
+              requestAnimationFrame(() => setView("insights"));
+            }}
             data-testid="pax-menu-insights"
           >
             <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
             Insights
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={() => setView("activity")}
+            onSelect={(e) => {
+              e.preventDefault();
+              requestAnimationFrame(() => setView("activity"));
+            }}
             data-testid="pax-menu-activity"
           >
             <Activity className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -130,7 +141,10 @@ export function PaxOverflowMenu({
           </DropdownMenuItem>
           {isFounder && (
             <DropdownMenuItem
-              onSelect={() => setView("agents")}
+              onSelect={(e) => {
+                e.preventDefault();
+                requestAnimationFrame(() => setView("agents"));
+              }}
               data-testid="pax-menu-agents"
             >
               <Bot className="mr-2 h-4 w-4" aria-hidden="true" />
