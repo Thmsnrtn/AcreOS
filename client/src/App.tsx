@@ -387,6 +387,8 @@ const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // standalone `/pages/onboarding-wizard.tsx` page was deleted as redundant.
 const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
+// B-1: DriveMode — full-screen mobile curb-capture surface.
+const DriveModePage = React.lazy(() => import("@/pages/drivemode"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 // /freedom-meter removed (Lens 4 Fix 4): 706-line customer-facing
 // surface with no nav link, no in-app referrers, no link to /today.
@@ -803,6 +805,12 @@ function Router() {
       </Route>
       <Route path="/auction-worksheet">
         {() => <ProtectedRoute component={AuctionWorksheetPage} />}
+      </Route>
+      {/* B-1: DriveMode — Wholesaler + Fix-Flipper Map CTA. Full-screen
+          mobile curb-capture surface. No PageShell; the component owns
+          its own header + back button. */}
+      <Route path="/drivemode">
+        {() => <ProtectedRoute component={DriveModePage} />}
       </Route>
       <Route path="/counties/:id">
         {() => <ProtectedRoute component={CountyDetailPage} />}
