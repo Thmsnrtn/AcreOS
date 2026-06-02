@@ -2099,6 +2099,32 @@ function startV5MaintenanceJob() {
   }, FIFTEEN_MINUTES);
 }
 
+// ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
+// Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
+// rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
+// window). Idempotent — re-running just rebuilds the table.
+function startOfacSdnRefreshJob() {
+  log('Registering OFAC SDN refresh job (daily ~03:30 UTC)', 'sanctions');
+  // 5-minute poll window so we don't miss the 03:30 hour due to drift.
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 3 || now.getUTCMinutes() >= 35 || now.getUTCMinutes() < 30) {
+      return;
+    }
+    withJobLock("ofac_sdn_refresh", 23 * 60 * 60, async () => {
+      const { refreshOfacSdnList } = await import("../services/sanctionsList");
+      const result = await refreshOfacSdnList();
+      log(
+        `OFAC SDN refresh: fetched=${result.fetched} inserted=${result.inserted} duration=${result.durationMs}ms${result.error ? ` error=${result.error}` : ""}`,
+        'sanctions',
+      );
+      jobSupervisor.notifyResult('ofac_sdn_refresh', 24 * 60 * 60 * 1000, !result.error, undefined, result.error);
+    }).catch((err) => {
+      log(`OFAC SDN refresh lock error: ${err}`, 'sanctions');
+    });
+  }, 5 * 60 * 1000);
+}
+
 // ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
@@ -2224,6 +2250,11 @@ export async function runScheduledJobs(): Promise<void> {
   startAgentReactionProcessorJob();
   startAgentProactiveEngineJob();
   startV5MaintenanceJob();
+
+  // Phase 0 traffic-readiness — daily OFAC SDN list refresh (~03:30 UTC).
+  // Required before public acquisition opens; the signup-time hash check
+  // (server/services/sanctionsList.ts → checkOfacSdn) reads from this table.
+  startOfacSdnRefreshJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both

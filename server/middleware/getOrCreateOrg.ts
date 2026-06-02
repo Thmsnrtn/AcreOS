@@ -128,6 +128,46 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   }
 
   if (!org) {
+    // Phase 0 traffic-readiness — OFAC + sanctioned-country screening before
+    // we ever stand up the org. Founder bypasses (the check skips when
+    // isFounder=true is already known). Failure mode is fail-open: a downed
+    // sanctions table never blocks legitimate signups. See
+    // server/services/sanctionsList.ts.
+    if (!isFounder) {
+      try {
+        const { checkSignup } = await import("../services/sanctionsList");
+        const candidateName =
+          (user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : "") || user.email || "";
+        const candidateCountry =
+          (user as { country?: string | null }).country ??
+          (req.headers["cf-ipcountry"] as string | undefined) ??
+          (req.headers["x-vercel-ip-country"] as string | undefined) ??
+          "";
+        const block = await checkSignup({ name: candidateName, country: candidateCountry });
+        if (block.matched) {
+          logger.warn("[getOrCreateOrg] signup blocked by sanctions check", {
+            source: "getOrCreateOrg",
+            metadata: {
+              userId,
+              email: userEmail,
+              reason: block.reason,
+              country: candidateCountry || null,
+            },
+          });
+          return res.status(403).json({
+            error: "SANCTIONS_BLOCK",
+            message: block.message,
+            statusCode: 403,
+          });
+        }
+      } catch (err) {
+        // Sanctions module unavailable: log + continue (fail open).
+        logger.warn("[getOrCreateOrg] sanctions screening unavailable — failing open", {
+          metadata: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    }
+
     // DEFECT-0021: Wrap org creation + team member creation in a transaction
     // so we never end up with an org that has no owner team member.
     const displayName = user.firstName || user.email || "User";
