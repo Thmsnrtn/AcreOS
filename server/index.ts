@@ -327,6 +327,12 @@ app.use("/api/auth/forgot-password", passwordResetLimiter);
 app.use("/api/auth/resend-verification", emailVerifyLimiter);
 app.use("/api/auth/verify-email", emailVerifyLimiter);
 
+// Bot-signal collection on signup. Capture-only by default; only blocks
+// when ENABLE_CAPTCHA=1 AND the captcha token fails to verify (env-gated).
+import { captureSignupSignals, requireCaptchaIfEnabled } from "./middleware/botSignals";
+app.use("/api/register", captureSignupSignals, requireCaptchaIfEnabled);
+app.use("/api/onboarding/provision", captureSignupSignals, requireCaptchaIfEnabled);
+
 // AI / Pax / chat endpoints: 240 requests per minute, keyed by userId with
 // IP fallback. These are hot paths — /api/pax fans out ~8 calls per page
 // load when the Gabriel × Pax rail is mounted. A pure 60/min per-IP cap

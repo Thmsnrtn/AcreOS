@@ -4493,6 +4493,86 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "late_fee_assessments_loan_period_uk" ON "late_fee_assessments" ("loan_id", "period_start")`,
   `CREATE INDEX IF NOT EXISTS "late_fee_assessments_org_assessed_idx" ON "late_fee_assessments" ("organization_id", "assessed_at")`,
+
+  // Reg-Z §1026.41 acquired-notes scope ruling (Beatrice 2026-06-02) — see
+  // docs/legal/acquired-notes-1026-41-ruling.md. Three new acquired_notes
+  // columns gate whether the periodic-statement generator + §1026.36(c)
+  // piggyback duties attach to the org for a given note. Defaults are
+  // conservative ("don't generate") — existing rows MUST be backfilled from
+  // assignment documents by ops + reviewed by Beatrice quarterly.
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "is_consumer_purpose" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "collateral_is_dwelling" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "servicing_arrangement" text NOT NULL DEFAULT 'passive_holder'`,
+  // Enforced enum on servicing_arrangement. CHECK constraint added separately
+  // so we can re-run the ADD COLUMN above on an already-migrated DB without
+  // double-applying the constraint.
+  `DO $$ BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'acquired_notes_servicing_arrangement_check'
+     ) THEN
+       ALTER TABLE "acquired_notes"
+         ADD CONSTRAINT "acquired_notes_servicing_arrangement_check"
+         CHECK ("servicing_arrangement" IN ('self_serviced','sub_serviced','seller_retained','passive_holder'));
+     END IF;
+   END $$`,
+
+  // periodic_statement_skips — audit ledger. Append-only. Polymorphic on
+  // note_table so one ledger covers both originated notes + acquired notes.
+  // §-citation persisted on every row — silent skip = examiner-readable
+  // negligence (Beatrice ruling, §4 audit primitive).
+  `CREATE TABLE IF NOT EXISTS "periodic_statement_skips" (
+     "id" BIGSERIAL PRIMARY KEY,
+     "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "note_id" text NOT NULL,
+     "note_table" text NOT NULL,
+     "cycle_start" timestamp with time zone NOT NULL,
+     "reason" text NOT NULL,
+     "citation" text NOT NULL,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     CONSTRAINT "periodic_statement_skips_note_table_check"
+       CHECK ("note_table" IN ('notes','acquired_notes'))
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "periodic_statement_skips_org_table_note_cycle_uk" ON "periodic_statement_skips" ("org_id", "note_table", "note_id", "cycle_start")`,
+  `CREATE INDEX IF NOT EXISTS "periodic_statement_skips_org_created_idx" ON "periodic_statement_skips" ("org_id", "created_at")`,
+
+  // Phase 0 hardening — bot-signal collection on signup. Capture-only by
+  // design: every signup gets a row; the row contains the honeypot value,
+  // time-to-fill (ms), UA string, ip-bucket (/24), and an "is_suspicious"
+  // boolean computed at write time. Founder reviews via /api/founder/...;
+  // we never block based on these signals without explicit human gate.
+  `CREATE TABLE IF NOT EXISTS "signup_signals" (
+     "id" serial PRIMARY KEY,
+     "email_hash" text,
+     "user_id" text,
+     "user_agent" text,
+     "ip_bucket" text,
+     "honeypot_filled" boolean NOT NULL DEFAULT false,
+     "time_to_fill_ms" integer,
+     "is_suspicious" boolean NOT NULL DEFAULT false,
+     "reasons" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "captcha_token_present" boolean NOT NULL DEFAULT false,
+     "captcha_verified" boolean,
+     "captured_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "signup_signals_captured_idx" ON "signup_signals" ("captured_at")`,
+  `CREATE INDEX IF NOT EXISTS "signup_signals_suspicious_idx" ON "signup_signals" ("is_suspicious", "captured_at")`,
+  `CREATE INDEX IF NOT EXISTS "signup_signals_ip_bucket_idx" ON "signup_signals" ("ip_bucket", "captured_at")`,
+
+  // Phase 0 hardening — OFAC SDN hash table. Daily cron downloads the
+  // public Treasury SDN CSV, hashes (name+country) entries, stores the
+  // first-12 bytes of SHA-256. Signup-time check is a single PK lookup.
+  // Refresh job re-builds the table; the old rows are TRUNCATEd then
+  // re-INSERTed in one transaction. No PII stored — only the hash + a
+  // short reason code.
+  `CREATE TABLE IF NOT EXISTS "sanctions_list" (
+     "id" serial PRIMARY KEY,
+     "name_country_hash" text NOT NULL,
+     "list_source" text NOT NULL DEFAULT 'ofac-sdn',
+     "program" text,
+     "fetched_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "sanctions_list_hash_uk" ON "sanctions_list" ("list_source", "name_country_hash")`,
+  `CREATE INDEX IF NOT EXISTS "sanctions_list_fetched_idx" ON "sanctions_list" ("fetched_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -16078,3 +16078,8 @@ export * from "./schema/finance";
 // PUBLIC API v0 — extracted to ./schema/public-api.ts
 // ============================================================================
 export * from "./schema/public-api";
+
+// ============================================================================
+// PHASE 0 HARDENING — bot-signal capture + OFAC SDN hash table
+// ============================================================================
+export * from "./schema/hardening";
