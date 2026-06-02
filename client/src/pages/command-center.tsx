@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
@@ -166,22 +167,12 @@ function getAgentIcon(iconName: string) {
   return agentIcons[iconName] || Bot;
 }
 
-const defaultVAAgents: VAAgent[] = [
-  { id: "1", type: "executive", name: "Executive VA", description: "Oversees all operations and provides strategic insights", status: "active", enabled: true, autonomyLevel: "supervised", pendingActions: 3 },
-  { id: "2", type: "sales", name: "Sales VA", description: "Handles buyer communications and follow-ups", status: "active", enabled: true, autonomyLevel: "supervised", pendingActions: 5 },
-  { id: "3", type: "acquisitions", name: "Acquisitions VA", description: "Manages seller outreach and deal negotiation", status: "idle", enabled: true, autonomyLevel: "manual", pendingActions: 2 },
-  { id: "4", type: "marketing", name: "Marketing VA", description: "Creates campaigns and marketing content", status: "idle", enabled: true, autonomyLevel: "full_auto", pendingActions: 0 },
-  { id: "5", type: "collections", name: "Collections VA", description: "Manages payment reminders and note servicing", status: "disabled", enabled: false, autonomyLevel: "manual", pendingActions: 0 },
-  { id: "6", type: "research", name: "Research VA", description: "Performs due diligence and market research", status: "active", enabled: true, autonomyLevel: "supervised", pendingActions: 1 },
-];
-
-const defaultVAActions: VAAction[] = [
-  { id: "1", agentType: "sales", agentName: "Sales VA", title: "Send follow-up email to Robert Chen", description: "Buyer showed interest in 10-acre parcels, proposing a personalized property list", status: "proposed", createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-  { id: "2", agentType: "acquisitions", agentName: "Acquisitions VA", title: "Generate offer letter for Maria Garcia", description: "Seller responded to mailer, ready to send $4,500 offer", status: "proposed", createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() },
-  { id: "3", agentType: "research", agentName: "Research VA", title: "Due diligence completed for APN 456-78-901", description: "Title clear, no liens, road access verified", status: "completed", createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
-  { id: "4", agentType: "marketing", agentName: "Marketing VA", title: "Created Facebook ad campaign", description: "Targeting AZ land buyers, budget $50/day", status: "approved", createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() },
-  { id: "5", agentType: "executive", agentName: "Executive VA", title: "Weekly performance report generated", description: "Summarized 12 deals in pipeline, 3 closings expected", status: "completed", createdAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString() },
-];
+// VA agents + actions render from /api/va/agents and /api/va/actions. When the
+// backend returns nothing (no VAs provisioned yet for this org), the UI shows
+// the canonical EmptyState — never invented "Acquisitions VA / Sales VA / Robert
+// Chen / Maria Garcia" placeholder data. Founder-only surface, but truthfulness
+// still applies: the founder should not see fake activity attributed to real-
+// sounding customers, ever.
 
 function getStatusColor(status: VAAction["status"]) {
   switch (status) {
@@ -212,13 +203,13 @@ function TeamTabContent() {
   const [taskInput, setTaskInput] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
 
-  const { data: vaAgents = defaultVAAgents, isLoading: vaAgentsLoading } = useQuery<VAAgent[]>({
+  const { data: vaAgents = [], isLoading: vaAgentsLoading } = useQuery<VAAgent[]>({
     queryKey: ["/api/va/agents"],
     retry: false,
     staleTime: 30000,
   });
 
-  const { data: vaActions = defaultVAActions, isLoading: vaActionsLoading } = useQuery<VAAction[]>({
+  const { data: vaActions = [], isLoading: vaActionsLoading } = useQuery<VAAction[]>({
     queryKey: ["/api/va/actions"],
     retry: false,
     staleTime: 30000,
@@ -344,6 +335,16 @@ function TeamTabContent() {
                 Array.from({ length: 6 }).map((_, i) => (
                   <Skeleton key={i} className="h-20 w-full rounded-card" />
                 ))
+              ) : vaAgents.length === 0 ? (
+                <EmptyState
+                  icon={Bot}
+                  headline="No VA agents yet"
+                  subtitle="Once you provision an agent role (Acquisitions, Sales, Research, etc.), it'll appear here with live status and pending actions."
+                  // TODO(cta): VA provisioning is a Phase 1+ feature — there's no
+                  // self-serve "create VA" action yet. When it ships, swap to a real CTA.
+                  cta={{ label: "", _noOp: true }}
+                  testId="empty-va-agents"
+                />
               ) : (
                 vaAgents.map((agent) => {
                   const IconComponent = getAgentIcon(agent.type);
@@ -463,10 +464,20 @@ function TeamTabContent() {
                   <Skeleton key={i} className="h-24 w-full rounded-card" />
                 ))
               ) : filteredActions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" aria-hidden="true" />
-                  <p className="text-sm text-acr-ink-3">No actions match these filters.</p>
-                </div>
+                <EmptyState
+                  icon={AlertCircle}
+                  headline={vaActions.length === 0 ? "No agent activity yet" : "No actions match these filters"}
+                  subtitle={
+                    vaActions.length === 0
+                      ? "When your VA agents propose actions — outreach, due diligence, follow-ups — they'll queue here for your approval."
+                      : "Try clearing the agent or status filter to see all activity."
+                  }
+                  // TODO(cta): activity feed is observe-only — there's no "create action"
+                  // affordance; actions originate from VA agents. Filter-reset is the only
+                  // meaningful CTA and it's already on-screen via the Select dropdowns.
+                  cta={{ label: "", _noOp: true }}
+                  testId="empty-va-actions"
+                />
               ) : (
                 filteredActions.map((action) => {
                   const IconComponent = getAgentIcon(action.agentType);
