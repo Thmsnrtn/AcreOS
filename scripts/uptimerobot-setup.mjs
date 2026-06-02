@@ -43,33 +43,29 @@ const API_KEY =
 
 const STATUS_HOSTNAME = process.env.STATUS_PAGE_HOSTNAME || "status.acreos.io";
 
-// Free tier supports type=1 (HTTP) monitors at 5-min intervals.
-// Keyword monitors (type=2) and custom http_method are paid-tier only.
-// Plain HTTP/200 check on each endpoint is enough — non-200 = down.
+// Free tier (5-min interval default). Minimum required fields only —
+// any optional setting (interval other than the default, timeout, http_method,
+// custom_http_statuses) triggers access_denied on the free plan.
 const MONITORS = [
   {
     friendly_name: "AcreOS — site",
     url: "https://acreos.io",
     type: 1,
-    interval: 300,
   },
   {
     friendly_name: "AcreOS — healthz",
     url: "https://acreos.io/api/healthz",
     type: 1,
-    interval: 300,
   },
   {
     friendly_name: "AcreOS — status",
     url: "https://acreos.io/api/status",
     type: 1,
-    interval: 300,
   },
   {
     friendly_name: "AcreOS — version",
     url: "https://acreos.io/api/version",
     type: 1,
-    interval: 300,
   },
 ];
 
