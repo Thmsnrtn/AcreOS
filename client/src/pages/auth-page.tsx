@@ -179,6 +179,56 @@ export default function AuthPage() {
       }
     }
   }, [mode, params]);
+
+  // ── Phase 0 hardening: anti-bot signal capture (2026-06-02) ─────────────
+  // We can't intercept the Clerk-hosted <SignUp> widget's submit handler
+  // (cross-origin iframe / shadow DOM), so we capture two signals through
+  // the surrounding DOM and ship them sideband to POST /api/auth/signup-signals
+  // once Clerk completes the signup (detected via the user prop transitioning
+  // from null → defined). The server cross-references against the new-user
+  // branch in getOrCreateOrg.provisionUser.
+  //
+  // Signals:
+  //   • honeypot — hidden <input name="website">. Humans never see it; bots
+  //     fill it. Hidden via off-screen position (the only style that
+  //     consistently fools form-autofill bots without screen-readers
+  //     advertising it).
+  //   • TTF — formRenderedAt set on first mount of the sign-up card,
+  //     formSubmittedAt = Date.now() when we fire the POST. Real humans
+  //     spend ≥ 2s; bots fire in < 1s.
+  const honeypotRef = useRef<HTMLInputElement | null>(null);
+  const formRenderedAtRef = useRef<number | null>(null);
+  const signupSignalsFiredRef = useRef(false);
+  useEffect(() => {
+    if (mode === "sign-up" && formRenderedAtRef.current === null) {
+      formRenderedAtRef.current = Date.now();
+    }
+  }, [mode]);
+  useEffect(() => {
+    // Fire once per page life when Clerk completes signup AND we're in
+    // sign-up mode. Skip on the sign-in path (no signal value there).
+    if (!user || mode !== "sign-up" || signupSignalsFiredRef.current) return;
+    signupSignalsFiredRef.current = true;
+    const website = honeypotRef.current?.value ?? "";
+    const formRenderedAt = formRenderedAtRef.current ?? null;
+    const formSubmittedAt = Date.now();
+    const email = (user as { email?: string } | null)?.email ?? "";
+    // Fire-and-forget — never block signup completion on this. We don't
+    // even await the POST; failure means the signal row will be persisted
+    // by the server as signals-not-emitted=false in provisionUser, which
+    // is the correct fallback.
+    try {
+      void fetch("/api/auth/signup-signals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ website, formRenderedAt, formSubmittedAt, email }),
+        // keepalive so the POST survives an immediate redirect to /today.
+        keepalive: true,
+      }).catch(() => {/* fire-and-forget */});
+    } catch {
+      /* fire-and-forget */
+    }
+  }, [user, mode]);
   const inviteToken = params.get("invite");
   const inviteAcceptedRef = useRef(false);
   const [inviteState, setInviteState] = useState<"idle" | "accepting" | "done">(
@@ -387,6 +437,31 @@ export default function AuthPage() {
           />
         ) : (
           <div className="w-full flex flex-col items-center gap-4">
+            {/* Phase 0 hardening honeypot (2026-06-02). Hidden via
+                off-screen positioning + aria-hidden + tabIndex=-1 +
+                autoComplete=off. Humans never reach it; bots iterating
+                form fields fill it. The value is read in the
+                signup-signals POST useEffect above. Stays hidden on
+                both mobile (390px) and desktop (1920px) because the
+                positioning is absolute-offset, not viewport-relative. */}
+            <input
+              ref={honeypotRef}
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              defaultValue=""
+              data-testid="honeypot-website"
+              style={{
+                position: "absolute",
+                left: "-9999px",
+                width: 0,
+                height: 0,
+                opacity: 0,
+                pointerEvents: "none",
+              }}
+            />
             {/* Phase Zero-Three clickwrap gate — checkbox MUST be checked
                 before the Clerk SignUp widget is rendered. There is
                 literally no form to submit until tosAccepted === true. */}
