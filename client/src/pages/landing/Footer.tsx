@@ -60,7 +60,7 @@ export function Footer() {
           <div className="lp-footer-col">
             <div className="lp-footer-h">Resources</div>
             <Link href="/academy">Academy</Link>
-            <Link href="/blog">Blog</Link>
+            <a href="https://acreos.substack.com" target="_blank" rel="noreferrer">Field notes</a>
             <Link href="/calculator">Land deal calculator</Link>
             <Link href="/api-docs">API docs</Link>
           </div>
