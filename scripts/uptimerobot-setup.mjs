@@ -9,7 +9,7 @@
  * safe and is the recommended way to inspect monitor health.
  *
  * Required env (from Fly secrets):
- *   UpTimeRobot (or UPTIMEROBOT_API_KEY / UPTIMEROBOT_TOKEN)
+ *   UPTIMEROBOT_API_KEY  (canonical — set via `fly secrets set UPTIMEROBOT_API_KEY=u... -a acreos`)
  *
  * Optional:
  *   STATUS_PAGE_HOSTNAME (defaults to status.acreos.io — used for the
@@ -34,12 +34,7 @@
  */
 
 const ENDPOINT = "https://api.uptimerobot.com/v2";
-const API_KEY =
-  process.env.UPTIMEROBOT_API_KEY ||
-  process.env.UPTIMEROBOT_TOKEN ||
-  process.env.UpTimeRobot ||
-  process.env.UptimeRobot ||
-  null;
+const API_KEY = process.env.UPTIMEROBOT_API_KEY || process.env.UPTIMEROBOT_TOKEN || null;
 
 const STATUS_HOSTNAME = process.env.STATUS_PAGE_HOSTNAME || "status.acreos.io";
 
@@ -82,7 +77,7 @@ const fail = (msg) => {
 
 if (!API_KEY) {
   fail(
-    "Missing UptimeRobot API key. Set Fly secret named UpTimeRobot (or UPTIMEROBOT_API_KEY / UPTIMEROBOT_TOKEN).",
+    "Missing UptimeRobot API key. Set Fly secret UPTIMEROBOT_API_KEY (or UPTIMEROBOT_TOKEN).",
   );
 }
 

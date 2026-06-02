@@ -7,8 +7,8 @@
  * the team's only social-posting surface — no Postiz, no Buffer, no
  * platform-specific clients to maintain.
  *
- * Auth: `Authorization: Bearer <ZERNIO_API_KEY>` per their docs. The token
- * is set as the `Zernio` Fly secret (mixed-case, per Tom's naming).
+ * Auth: `Authorization: Bearer <ZERNIO_API_KEY>` per their docs. Set via
+ * `fly secrets set ZERNIO_API_KEY=sk_... -a acreos`.
  *
  * IMPORTANT: This wrapper does NOT touch the Pax customer surface. Pax-only
  * branding is constitutional. Internal callers (Soren's runway publishing,
@@ -23,12 +23,7 @@ import { logger } from "../../utils/logger";
 const ZERNIO_BASE = process.env.ZERNIO_BASE_URL || "https://zernio.com/api/v1";
 
 function readToken(): string | null {
-  return (
-    process.env.ZERNIO_API_KEY ||
-    process.env.ZERNIO_TOKEN ||
-    process.env.Zernio ||
-    null
-  );
+  return process.env.ZERNIO_API_KEY || process.env.ZERNIO_TOKEN || null;
 }
 
 export type SocialPlatform =
@@ -99,7 +94,7 @@ async function zfetch(path: string, init: RequestInit = {}): Promise<unknown> {
   const token = readToken();
   if (!token) {
     throw new ZernioConfigError(
-      "Zernio token missing. Set Fly secret named Zernio (or ZERNIO_API_KEY / ZERNIO_TOKEN).",
+      "Zernio token missing. Set Fly secret ZERNIO_API_KEY (or ZERNIO_TOKEN).",
     );
   }
   const res = await fetch(`${ZERNIO_BASE}${path}`, {

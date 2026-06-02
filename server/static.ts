@@ -81,6 +81,12 @@ function buildRuntimeEnvPayload(): string {
   if (process.env.VITE_MAPBOX_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_TOKEN;
   if (process.env.VITE_MAPBOX_ACCESS_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_ACCESS_TOKEN;
   if (process.env.VITE_SENTRY_DSN) cfg.VITE_SENTRY_DSN = process.env.VITE_SENTRY_DSN;
+  // PostHog public project key. Read at runtime (not baked at build) so the
+  // founder can rotate via `fly secrets set VITE_POSTHOG_KEY=...` + redeploy
+  // without a rebuild. client/src/lib/analytics.ts already reads from both
+  // import.meta.env and window.__ENV__; we inject the runtime value here.
+  if (process.env.VITE_POSTHOG_KEY) cfg.VITE_POSTHOG_KEY = process.env.VITE_POSTHOG_KEY;
+  if (process.env.VITE_POSTHOG_HOST) cfg.VITE_POSTHOG_HOST = process.env.VITE_POSTHOG_HOST;
   // Deploy SHA — lets version-check.ts read the running build's SHA from
   // window.__ENV__ even when vite didn't bake VITE_GIT_SHA into the bundle.
   // Without a real SHA here, installVersionCheck() no-ops and stale tabs
