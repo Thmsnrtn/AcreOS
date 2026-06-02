@@ -1,0 +1,109 @@
+{
+  "vertical": "land-flipping",
+  "stateSlug": "texas",
+  "stateName": "Texas",
+  "headline": "Land flipping in Texas: contracts-for-deed, the annual statement rule, and how Texas operators actually close",
+  "metaDescription": "A working primer on land flipping in Texas — executory contracts, Tex. Prop. Code §5.077 annual statements, cash-deed closes, and the gotchas Texas-specific operators run into.",
+  "intro": "Texas is the highest-volume state for vacant-land flipping in the country, and it carries a body of statute that materially changes how the deal closes. Operators flipping rural acreage in Texas need to know the difference between a cash deed and an executory contract, what Section 5 of the Texas Property Code requires when a seller finances the buyer, and how Texas’s county recording layer affects the back-office.",
+  "mechanics": "A Texas land flip starts the same way most states do — pull a delinquent-tax or absentee-owner list from the county appraisal district (CAD), run direct mail, take inbound calls, run comps, write an offer. The split happens at the close. Pure cash flips terminate at the courthouse with a recorded general warranty deed or special warranty deed and a title commitment from a Texas title company. Seller-financed flips, which are common on rural acreage under $30,000, can either be a Deed of Trust (a true mortgage with a recorded lien) or an executory contract — what most operators still call a contract-for-deed. Executory contracts in Texas come with their own statutory regime: Tex. Prop. Code §5.061-§5.085 governs what the seller must disclose, when, and how the buyer’s equitable interest is protected. Operators who default to executory contracts because they’re easier to administer often discover the administrative burden is heavier, not lighter, once Section 5.077’s annual-statement requirement compounds across a 100-note book."
+,
+  "statutes": [
+    {
+      "headline": "Tex. Prop. Code §5.077 — annual accounting statement to the buyer",
+      "body": "Section 5.077 of the Texas Property Code requires the seller under an executory contract to deliver a written annual statement to the buyer by January 31 of each year. The statement must include the amount paid under the contract, the remaining amount owed, the number of payments remaining, the amounts paid to taxes and insurance on the buyer’s behalf if escrowed, the amount of property insurance coverage, and a legal description of the property. Failure to provide the statement is liable for liquidated damages of $250 per day of noncompliance plus reasonable attorney’s fees. For a book of 40 contracts, missing the January 31 deadline by even a week is a real financial exposure."
+    },
+    {
+      "headline": "Tex. Prop. Code §5.069 — pre-execution seller disclosures",
+      "body": "Before entering an executory contract, the seller must give the prospective purchaser a survey not older than seven years (or a current title commitment), a sworn affidavit naming any lienholder and the amount owed, and notice of any encumbrances. The statute’s purpose is to surface clouds on title before money changes hands. Operators who skip this — common when the deal is small and the buyer is unsophisticated — risk the buyer canceling the contract within 14 days and demanding return of all sums paid."
+    },
+    {
+      "headline": "Tex. Prop. Code §5.063 — notice before forfeiture or rescission",
+      "body": "When a buyer defaults, the seller cannot simply tear up the contract. Section 5.063 requires a 30-day cure notice delivered by certified or registered mail before the seller can enforce forfeiture or accelerate. If the buyer has paid 40% or more of the purchase price or made 48 or more monthly payments, the contract converts to a recorded lien and the seller must proceed by judicial or non-judicial foreclosure rather than simple forfeiture. The threshold matters: a buyer who is 41% paid in cannot be evicted with a self-help forfeiture."
+    },
+    {
+      "headline": "Tex. Tax Code §34.21 — redemption period after tax sale",
+      "body": "If the underlying parcel was acquired at a tax sale, Texas grants the prior owner a redemption right. For homestead, agricultural, or mineral property, the redemption period is two years from the date the deed is recorded; for non-homestead non-agricultural property, the redemption period is 180 days. The redemption price escalates: 25% premium in the first year, 50% in the second year for homestead/ag property. Flippers buying at tax sales need to factor the redemption clock into their hold model — a fast resale during the redemption window is a real risk."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "County appraisal district (CAD) ≠ county clerk",
+      "body": "Texas has 254 counties, each with two distinct offices that matter for land flippers. The CAD owns the valuation roll and the public parcel data; the county clerk owns the recording layer (deeds, liens, easements). Operators pulling lists from the CAD and then searching for liens at the same office are looking in the wrong place. The recording lookup is at the county clerk’s office, sometimes online (Tarrant, Harris, Travis), sometimes in person."
+    },
+    {
+      "headline": "Recording fees are county-set, not state-set",
+      "body": "Texas Local Gov. Code §118.011 sets a statutory cap, but the actual recording fee for a deed varies by county and by page count. Most rural counties charge between $26 and $40 for the first page and around $4 per additional page. A flipper closing 5 deals a month across 5 different counties will see meaningful fee variance — model the closing-cost line accordingly."
+    },
+    {
+      "headline": "Homestead protection complicates seller-financed reposessions",
+      "body": "If a buyer occupies the parcel as a homestead, the parcel acquires constitutional homestead protection under Tex. Const. art. XVI §50. Foreclosure on a homestead requires court order; non-judicial foreclosure is barred. Operators selling raw land via executory contract who allow the buyer to put a mobile home or RV on it have, in many cases, just turned the parcel into a homestead — and lost the cheap remedy."
+    },
+    {
+      "headline": "Property tax is collected by the county, not the state",
+      "body": "Texas has no state property tax. The seller financing a parcel and escrowing taxes is dealing directly with the county tax assessor-collector. Payment is annual (due January 31), with a 7% penalty kicking in on February 1 and escalating monthly. A note buyer servicing a Texas book has to track 254 possible tax-collector portals, each with its own login flow."
+    }
+  ],
+  "valueProp": "AcreOS ships with the executory-contract workflow templates Texas operators actually need: the §5.077 annual-statement generator runs from the loan record every January, the §5.063 30-day cure-notice template pulls the borrower’s contact-of-record automatically, and Pax watches the payment ledger to flag any contract approaching the 40%-paid threshold where remedies change. The Texas county registry is pre-loaded — pull a list from any of the 254 CADs, push deeds to recording, and keep one record per parcel from cold list through final payoff.",
+  "faq": [
+    {
+      "q": "Do I need a real-estate license to flip land in Texas?",
+      "a": "Not to buy and sell your own parcels. Tex. Occ. Code §1101 requires a license to act as a real-estate broker on behalf of others, but a principal selling property they own is exempt. The line gets blurry if you’re routinely double-closing or marketing other people’s parcels — talk to a Texas real-estate attorney before treating wholesaler-style assignments as license-free."
+    },
+    {
+      "q": "Can I record an executory contract in Texas?",
+      "a": "Yes — and you generally should. Tex. Prop. Code §5.076 requires the seller to record an executory contract within 30 days of execution. Failure to record allows the buyer to cancel and rescind. Recording costs are the same as recording a deed at the county clerk."
+    },
+    {
+      "q": "How fast can I resell a parcel I bought at a Texas tax sale?",
+      "a": "You can resell immediately, but during the redemption period (180 days for non-homestead non-ag; 2 years for homestead/ag) the prior owner can reclaim the parcel by paying the redemption premium. Most operators wait out the redemption period before listing — or disclose the redemption risk to the new buyer and price it in."
+    },
+    {
+      "q": "Are the 'subject-to' rules different for vacant land?",
+      "a": "Subject-to (taking a property subject to an existing mortgage) is rare on vacant land because vacant rural land is usually unencumbered. When it does come up, the underlying note’s due-on-sale clause is the live issue — Tex. Prop. Code does not override the lender’s acceleration right."
+    },
+    {
+      "q": "What disclosure forms does Texas require for raw-land sales?",
+      "a": "The TREC Seller’s Disclosure Notice (Tex. Prop. Code §5.008) is required for single-family residential resales but is not required for vacant land. Sellers of vacant land still owe common-law disclosure of known material defects (Frenzel v. Browning-Ferris, etc.). Operators selling executory contracts also owe the §5.069 pre-execution disclosure package."
+    },
+    {
+      "q": "Does Texas have a 'cooling-off' period on land sales?",
+      "a": "Only for executory contracts under §5.074: the buyer has the right to cancel within 14 days of receiving the §5.069 disclosure package. A straight cash close with a recorded deed is not subject to a statutory cooling-off period."
+    },
+    {
+      "q": "How do I find rural land deal flow in Texas?",
+      "a": "The standard four lists are CAD-pulled absentee-owners, county tax-delinquent rolls, probate filings (county clerk), and code-violation rolls (city or county). Texas CADs publish parcel-level rolls under Tex. Tax Code §25.027 — most are downloadable. AcreOS pulls these into a single normalized parcel record per county."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Texas Property Code, Title 2, Subtitle A, Chapter 5",
+      "citation": "Tex. Prop. Code §§5.061-5.085",
+      "url": "https://statutes.capitol.texas.gov/Docs/PR/htm/PR.5.htm"
+    },
+    {
+      "name": "Texas Tax Code — Right of Redemption",
+      "citation": "Tex. Tax Code §34.21",
+      "url": "https://statutes.capitol.texas.gov/Docs/TX/htm/TX.34.htm"
+    },
+    {
+      "name": "Texas Local Government Code — county clerk fees",
+      "citation": "Tex. Local Gov. Code §118.011",
+      "url": "https://statutes.capitol.texas.gov/Docs/LG/htm/LG.118.htm"
+    },
+    {
+      "name": "Texas Constitution Homestead Protection",
+      "citation": "Tex. Const. art. XVI §50",
+      "url": "https://statutes.capitol.texas.gov/Docs/CN/htm/CN.16.htm"
+    },
+    {
+      "name": "Texas Occupations Code — Real Estate License Act",
+      "citation": "Tex. Occ. Code Chapter 1101",
+      "url": "https://statutes.capitol.texas.gov/Docs/OC/htm/OC.1101.htm"
+    },
+    {
+      "name": "Texas Tax Code — appraisal records availability",
+      "citation": "Tex. Tax Code §25.027",
+      "url": "https://statutes.capitol.texas.gov/Docs/TX/htm/TX.25.htm"
+    }
+  ]
+}

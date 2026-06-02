@@ -1,0 +1,109 @@
+{
+  "vertical": "land-flipping",
+  "stateSlug": "arkansas",
+  "stateName": "Arkansas",
+  "headline": "Land flipping in Arkansas: Commissioner of State Lands tax sales, statutory foreclosure, and how Arkansas operators actually close",
+  "metaDescription": "A working primer on land flipping in Arkansas — the Commissioner of State Lands tax-sale process, Ark. Code §18-49 statutory foreclosure, and the gotchas Arkansas operators run into.",
+  "intro": "Arkansas is one of the most underpriced rural-land markets in the U.S. — five-acre and ten-acre parcels in counties like Sharp, Izard, Searcy, and Newton trade for hundreds of dollars per acre, often acquired through the Arkansas Commissioner of State Lands’ post-tax-delinquency sale process. The state runs its own centralized tax-sale clearinghouse rather than leaving it to each county, which is unusual and gives Arkansas operators a single source of distressed inventory. The legal mechanics on the close side are also operator-friendly: Arkansas allows non-judicial ‘statutory foreclosure’ of mortgages under Ark. Code §18-50, which makes seller-financed land notes cheaper to administer than in many Southern states.",
+  "mechanics": "Arkansas has 75 counties. The county assessor publishes parcel rolls; the county collector handles property-tax payments. When property taxes go unpaid, the parcel is certified to the Commissioner of State Lands two years after delinquency, then offered at a public auction once a year. The Commissioner sells parcels for the back-tax amount plus interest and fees, and the deed conveyed is a Limited Warranty Deed from the Commissioner. The first two years post-sale carry a redemption right by the prior owner; after the redemption period closes, the buyer has merchantable title (though many title insurers still want a quiet-title action). For a market-bought parcel, closings happen at a title company or attorney’s office and use a general or special warranty deed. Seller financing in Arkansas typically uses a mortgage + promissory note; non-judicial statutory foreclosure under Ark. Code §18-50-101 et seq. allows a faster default remedy than judicial foreclosure."
+,
+  "statutes": [
+    {
+      "headline": "Ark. Code §26-37 — Commissioner of State Lands tax-sale framework",
+      "body": "Property taxes that go unpaid for two years are certified to the Commissioner of State Lands under Ark. Code §26-37-101. The Commissioner offers the parcel at public auction (typically annually, by region). The opening bid is the back-tax amount plus interest, penalty, and costs. The prior owner has a 30-day post-sale right to redeem, and limited equity-related defenses can extend that period under Ark. Code §26-37-202. A Limited Warranty Deed conveys after redemption."
+    },
+    {
+      "headline": "Ark. Code §18-50-101 — statutory non-judicial foreclosure",
+      "body": "Arkansas’s Statutory Foreclosure Act allows the holder of a mortgage or deed of trust with a power-of-sale clause to foreclose without a court action. The trustee or mortgagee files a Notice of Default and Intention to Sell with the county circuit clerk and records it, then mails it to the borrower; sale follows in approximately 60-75 days. The borrower may reinstate by paying arrears and fees. Compared with judicial foreclosure (Ark. Code §18-49), the statutory route is meaningfully faster and cheaper for note holders."
+    },
+    {
+      "headline": "Ark. Code §18-12-301 — recording requirements",
+      "body": "Every deed conveying real property in Arkansas must be acknowledged and recorded with the circuit clerk and recorder of the county where the property is located. Until recorded, the deed is not constructive notice to third parties. Recording fees vary by county but typically run $15-$25 for the first page plus $5 per additional page under Ark. Code §21-6-306. The clerk also collects the real-estate transfer tax (see below)."
+    },
+    {
+      "headline": "Ark. Code §26-60-105 — real-property transfer tax",
+      "body": "Arkansas imposes a state-level real-property transfer tax of $3.30 per $1,000 of consideration on instruments recording a transfer of real property, payable in the form of tax stamps affixed to the deed. The first $100 of consideration is exempt. A flipper closing a $20,000 parcel pays $66 in transfer tax at recording — light by Florida standards but worth modeling in the closing-cost line."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "‘Sold for taxes’ parcels often have access problems",
+      "body": "Cheap parcels in Sharp, Izard, and Stone counties were frequently part of 1960s-70s wildcat subdivisions (Cherokee Village, Horseshoe Bend) that were platted on paper but never had county-maintained roads built to every lot. The recorded plat may show a road; the ground may show forest. Operators flipping low-end Arkansas inventory should verify physical access via county GIS or boots-on-ground before marketing."
+    },
+    {
+      "headline": "Title insurance is harder on Commissioner deeds",
+      "body": "Arkansas Limited Warranty Deeds from the Commissioner of State Lands carry the implied warranty that the Commissioner followed the statutory process — but not against pre-existing third-party claims. Most title insurers require a quiet-title action under Ark. Code §18-60-501 before they’ll insure for the buyer. Budget the cost (~$1,500-$3,000 in attorney fees) or sell with title-as-is and discount the price."
+    },
+    {
+      "headline": "Mineral rights are often severed",
+      "body": "Arkansas’s Fayetteville Shale gas play and historic timber and bauxite activity mean mineral rights on many rural parcels have been severed and conveyed separately. The surface deed the flipper records may carry zero mineral interest. Disclose ‘surface rights only’ or ‘no mineral rights conveyed’ in the listing to avoid an end-deal cancellation."
+    },
+    {
+      "headline": "Property tax due dates can trap a seller-financed escrow",
+      "body": "Arkansas property tax is due October 15 of the following year (taxes on the 2024 assessed value are due October 15, 2025). The lag confuses both seller and buyer in escrow setups — the seller financing the parcel mid-year is paying taxes assessed before they ever owned it. Model the proration carefully in the closing sheet."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads all 75 Arkansas county assessor parcel feeds and surfaces the Commissioner of State Lands sale calendar as a workspace alert — operators get the regional auction list 30 days in advance with the back-tax amount and minimum bid per parcel. The statutory-foreclosure workflow under Ark. Code §18-50 is baked into Pax’s servicing flow: when a borrower defaults, AcreOS generates the Notice of Default text, calculates the earliest possible sale date, and tracks the publication requirements. Title-insurability flags surface on Commissioner-deed parcels so operators can choose to quiet-title-then-resell or discount-and-disclose.",
+  "faq": [
+    {
+      "q": "Do I need an Arkansas real-estate license to flip my own land?",
+      "a": "No — Ark. Code §17-42-103 exempts a principal selling property they own. The license rule applies if you’re acting on behalf of others or operating a brokerage business."
+    },
+    {
+      "q": "How does the Commissioner of State Lands auction differ from a county auction?",
+      "a": "Most Arkansas counties don’t run their own tax sales. After two years of delinquency, parcels are certified to the Commissioner, who runs centralized regional auctions. Opening bid is back tax + fees; the deed conveys after the redemption period closes."
+    },
+    {
+      "q": "What’s the redemption period after the Commissioner’s sale?",
+      "a": "30 days post-sale by default, with limited equity-related extensions available under Ark. Code §26-37-202. Compared with Texas’s 180-day-to-2-year window, Arkansas closes the redemption window fast."
+    },
+    {
+      "q": "Can I use a deed of trust in Arkansas?",
+      "a": "Yes. Arkansas honors both mortgages and deeds of trust as secured-real-estate instruments. The statutory-foreclosure remedy (Ark. Code §18-50) applies to either if a power-of-sale clause is present."
+    },
+    {
+      "q": "How long does a statutory foreclosure take?",
+      "a": "Approximately 60-75 days from Notice of Default to sale, depending on publication scheduling. The borrower may reinstate up to the sale date by paying arrears and fees."
+    },
+    {
+      "q": "Are mineral rights conveyed with a standard Arkansas deed?",
+      "a": "Only if the deed says so. Arkansas treats minerals as severable from surface; many parcels have severed mineral estates from past sales. The flipper must convey whatever interest they were conveyed — pull the chain of title to know what that is."
+    },
+    {
+      "q": "Is there a state-level cooling-off period for vacant-land sales?",
+      "a": "No. Arkansas has no statutory rescission window for ordinary vacant-land transactions. Federal regulations (Interstate Land Sales Full Disclosure Act) may apply to certain subdivided-and-marketed-interstate situations."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Arkansas Code — Tax Sales by Commissioner",
+      "citation": "Ark. Code §26-37-101 et seq.",
+      "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    },
+    {
+      "name": "Arkansas Code — Statutory Foreclosure",
+      "citation": "Ark. Code §18-50-101 et seq.",
+      "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    },
+    {
+      "name": "Arkansas Code — Real Property Recording",
+      "citation": "Ark. Code §18-12-301",
+      "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    },
+    {
+      "name": "Arkansas Code — Real Property Transfer Tax",
+      "citation": "Ark. Code §26-60-105",
+      "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    },
+    {
+      "name": "Arkansas Commissioner of State Lands",
+      "citation": "Arkansas Commissioner of State Lands tax-auction listings",
+      "url": "https://www.cosl.org/"
+    },
+    {
+      "name": "Arkansas Code — Real Estate License",
+      "citation": "Ark. Code §17-42-103",
+      "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    }
+  ]
+}

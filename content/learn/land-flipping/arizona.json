@@ -1,0 +1,109 @@
+{
+  "vertical": "land-flipping",
+  "stateSlug": "arizona",
+  "stateName": "Arizona",
+  "headline": "Land flipping in Arizona: A.R.S. §32-2185 subdivider rules, tax-lien certificates, and how Arizona operators actually close",
+  "metaDescription": "A working primer on land flipping in Arizona — A.R.S. Title 32 subdivider licensing, the 16% tax-lien certificate market, deeds of trust, and the gotchas Arizona operators run into.",
+  "intro": "Arizona is one of the cheapest entry points for vacant-land flipping in the country — five-acre parcels in Cochise, Navajo, Apache, and Mohave counties trade at the low end of the U.S. rural-land market. Arizona’s legal framework has two distinct features land flippers must understand: a tight statutory definition of when subdividing a parcel triggers state-level subdivider regulation under A.R.S. Title 32, and one of the country’s most active tax-lien-certificate markets — which feeds inventory into both sides of an Arizona operator’s book.",
+  "mechanics": "Arizona deal flow comes from the county assessor’s parcel rolls (15 counties) and the county treasurer’s delinquent tax lists. Most Arizona land transactions close as cash sales via a deed of trust + promissory note (Arizona is a trust-deed state — A.R.S. §33-801 et seq. — not a mortgage state, which means non-judicial foreclosure is the default remedy on a defaulted seller-financed sale). The county recorder records deeds and trust deeds; the state board of equalization and county assessor handle valuation. When seller financing is structured as a true note + trust deed, the trustee’s sale on default is fast (90 days notice + 30 days reinstatement under A.R.S. §33-807) compared to a judicial foreclosure. When the deal is structured as an agreement for sale (Arizona’s version of contract-for-deed under A.R.S. §33-741), the seller has additional notice and forfeiture timelines to navigate."
+,
+  "statutes": [
+    {
+      "headline": "A.R.S. §32-2181 — when subdividing triggers a subdivider license",
+      "body": "Arizona Revised Statutes §32-2181 defines a 'subdivided land' transaction as the sale or lease of any improved or unimproved land divided into six or more lots (or any number of lots if the original parcel was less than 36 acres divided into 36 or fewer lots and includes any common-area infrastructure). Sellers of subdivided land must obtain a Public Report from the Arizona Department of Real Estate before any sale. A land flipper buying a 40-acre parcel and splitting it into 5 lots of 8 acres each is below the trigger; a flipper splitting a parcel into 6 lots, regardless of acreage, triggers the subdivider statute. Selling without a Public Report is a class 4 felony under A.R.S. §32-2185.01."
+    },
+    {
+      "headline": "A.R.S. §33-741 to §33-749 — agreement for sale (contract-for-deed) regime",
+      "body": "Arizona regulates installment land contracts under the agreement-for-sale chapter. The seller must record the agreement (A.R.S. §33-741) and, on default, give the purchaser written notice and a statutory cure period that varies by how much the purchaser has paid: 30 days if less than 20% paid; 60 days if 20-30%; 120 days if 30-50%; 9 months if more than 50%. The longer cure periods at higher equity levels are the Arizona analog to Texas’s 40%-paid threshold, and they materially change the back-office model for note operators."
+    },
+    {
+      "headline": "A.R.S. §42-18051 — tax-lien certificate sales",
+      "body": "Arizona is a tax-lien state. County treasurers auction tax-lien certificates each February. The certificate accrues interest at the bid rate — capped at 16% per year — until redeemed by the property owner. If the certificate is not redeemed within three years (A.R.S. §42-18201), the holder can file a judicial action to foreclose the right of redemption and take the underlying parcel. Many Arizona land-flipping operators run a parallel tax-lien book, both for the 16% yield on quick redemptions and as a sourcing channel for parcels that go all the way through foreclosure."
+    },
+    {
+      "headline": "A.R.S. §33-807 — trustee’s sale notice period",
+      "body": "On a deed of trust with a power of sale, the trustee must record a Notice of Sale and provide the trustor at least 90 days notice. The trustor may reinstate the loan up to 5 PM Mountain Standard Time on the last business day before the sale by paying arrears and trustee fees. The fast non-judicial timeline makes seller-financed trust deeds attractive to Arizona note holders compared with the judicial route required in mortgage states."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "Mohave County’s deed-restricted ranchettes",
+      "body": "Lake Mead Estates, White Hills, and adjacent subdivisions in Mohave County have parcel-level CC&Rs that survive any flip. Operators pulling cheap APNs from Mohave County without checking the recorded CC&Rs find out at the resale that the parcel is restricted to one single-family residence per 2 acres, no commercial use, no manufactured homes pre-1990 — and the next buyer walks. Pull the CC&Rs at the Mohave County recorder before marketing."
+    },
+    {
+      "headline": "Wildcat subdivisions and access",
+      "body": "Many of the cheap Arizona parcels in Apache and Navajo counties are part of pre-1976 ‘wildcat’ subdivisions that were platted before A.R.S. §32-2181 was tightened. The county may have recorded the parcels but never approved the access roads. Buyers arrive expecting a public road and find a BLM track. Operators should check whether the parcel has a recorded easement to a public road before marketing."
+    },
+    {
+      "headline": "On-site wastewater (septic) is the buyer’s problem in most rural counties",
+      "body": "Arizona requires a septic-system permit through the Arizona Department of Environmental Quality (ADEQ) under A.R.S. §49-104 for any on-site wastewater. Parcels in unincorporated areas don’t come with a permit — the next buyer has to perc-test and engineer their own. Disclose this clearly in any flip listing or the deal stalls at the buyer’s due-diligence stage."
+    },
+    {
+      "headline": "Affidavit of Property Value is required on most transfers",
+      "body": "A.R.S. §11-1133 requires an Affidavit of Property Value to be filed with most deed recordings, capturing the actual sale price for the assessor. The deed plus the affidavit is one bundle at recording. A flipper who skips the affidavit gets the recording rejected."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the Arizona county assessor data for all 15 counties, surfaces the Mohave CC&R lookup as a one-click parcel-detail check, and ships the A.R.S. §33-741 agreement-for-sale cure-period calculator that updates as the borrower’s paid-in equity crosses each statutory threshold. The trust-deed non-judicial timeline is baked into Pax’s servicing workflow — when a borrower misses a payment, AcreOS calculates the earliest possible trustee’s sale date under A.R.S. §33-807 and surfaces the 90-day notice window. Arizona tax-lien certificate inventory tracking is available for operators running both books in one workspace.",
+  "faq": [
+    {
+      "q": "Do I need an Arizona real-estate license to flip my own parcels?",
+      "a": "No — A.R.S. §32-2121(A)(1) exempts a principal selling property they own. The license rule kicks in if you’re acting on someone else’s behalf, or if the parcel falls under the subdivider statute at §32-2181."
+    },
+    {
+      "q": "When does splitting a parcel make me a subdivider?",
+      "a": "Six or more lots from the parent parcel — that’s the bright-line trigger in A.R.S. §32-2181. Below six lots, the standard real-estate-license exemption still applies."
+    },
+    {
+      "q": "How does an Arizona tax-lien certificate auction work?",
+      "a": "Counties auction certificates in February. Bidders bid down the interest rate from 16% — the certificate goes to the bidder accepting the lowest yield. The certificate earns simple interest until redemption (up to three years), at which point the holder can foreclose."
+    },
+    {
+      "q": "What’s the difference between an Arizona deed of trust and a mortgage?",
+      "a": "Arizona statute (A.R.S. §33-801) treats deeds of trust as the standard secured-real-estate instrument. Deed of trust uses a third-party trustee and allows non-judicial trustee’s sale on default — 90 days notice, no court. A mortgage requires judicial foreclosure. Most seller-financed Arizona land notes use the deed of trust for the speed advantage."
+    },
+    {
+      "q": "How long does the agreement-for-sale forfeiture process take?",
+      "a": "Depends on the buyer’s paid-in equity: 30 days notice if less than 20% paid, 60 days at 20-30%, 120 days at 30-50%, and 9 months at over 50%. The seller cannot accelerate within those windows."
+    },
+    {
+      "q": "Are there state-specific disclosures for vacant land?",
+      "a": "The Arizona Department of Real Estate Public Report applies only to subdivided land (six lots or more). For un-subdivided parcels, common-law disclosure of known material defects applies, plus the Affidavit of Property Value at recording (A.R.S. §11-1133)."
+    },
+    {
+      "q": "Can I assign a purchase contract on Arizona land?",
+      "a": "Yes — wholesaler assignments are legal in Arizona, but if your business model is routine assignment-marketing of properties you don’t own, you’re likely acting as an unlicensed broker. The Department of Real Estate has pursued enforcement against ‘assignment factories.’ Talk to Arizona counsel before scaling that model."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Arizona Revised Statutes — Subdivided Lands",
+      "citation": "A.R.S. §32-2181 et seq.",
+      "url": "https://www.azleg.gov/arsDetail/?title=32"
+    },
+    {
+      "name": "Arizona Revised Statutes — Agreement for Sale",
+      "citation": "A.R.S. §33-741 to §33-749",
+      "url": "https://www.azleg.gov/arsDetail/?title=33"
+    },
+    {
+      "name": "Arizona Revised Statutes — Tax Liens",
+      "citation": "A.R.S. §42-18051 and §42-18201",
+      "url": "https://www.azleg.gov/arsDetail/?title=42"
+    },
+    {
+      "name": "Arizona Revised Statutes — Deeds of Trust",
+      "citation": "A.R.S. §33-801 to §33-821",
+      "url": "https://www.azleg.gov/arsDetail/?title=33"
+    },
+    {
+      "name": "Arizona Revised Statutes — Affidavit of Property Value",
+      "citation": "A.R.S. §11-1133",
+      "url": "https://www.azleg.gov/arsDetail/?title=11"
+    },
+    {
+      "name": "Arizona Revised Statutes — Real Estate Brokers",
+      "citation": "A.R.S. §32-2121",
+      "url": "https://www.azleg.gov/arsDetail/?title=32"
+    }
+  ]
+}

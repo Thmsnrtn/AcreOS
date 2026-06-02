@@ -1,0 +1,123 @@
+{
+  "vertical": "note-investing",
+  "stateSlug": "georgia",
+  "stateName": "Georgia",
+  "headline": "Note investing in Georgia: security deeds, fast non-judicial foreclosure, and how Georgia note operators actually run the book",
+  "metaDescription": "A working primer on note investing in Georgia — O.C.G.A. §44-14 security-deed framework, §44-14-162 non-judicial foreclosure, the Georgia Residential Mortgage Act, and the gotchas Georgia note operators run into.",
+  "intro": "Georgia is one of the most note-holder-friendly states for residential mortgage paper in the country. The state uses Security Deeds (also called Deeds to Secure Debt) rather than mortgages or deeds of trust — a structure where the borrower conveys title to the lender as security, and the lender reconveys on payoff. Combined with one of the fastest non-judicial foreclosure timelines in the country (roughly 35 days from default notice to sale under O.C.G.A. §44-14-162), Georgia is a state where defaulted notes resolve quickly. The licensing overlay under the Georgia Residential Mortgage Act adds a layer note investors need to clear before originating new Georgia paper.",
+  "mechanics": "Georgia’s security-deed model is the operational quirk that drives everything. The borrower signs a Security Deed conveying legal title to the lender; the lender holds title until full payment, then reconveys via a Cancellation/Reconveyance recorded in the county clerk of superior court. On default, the lender already holds title — foreclosure is a process of confirming and exercising the power-of-sale clause to convert the contingent title interest into clean title for a third-party buyer or for the lender itself. The process under O.C.G.A. §44-14-162: lender sends written notice to the borrower at least 30 days before sale; lender publishes notice once a week for four weeks in the county legal organ; sale held on the first Tuesday of the month at the courthouse. Total: roughly 35-40 days from default notice to sale. Title transfers by Deed Under Power of Sale. The borrower has no statutory post-sale redemption right."
+,
+  "statutes": [
+    {
+      "headline": "O.C.G.A. §44-14-60 to §44-14-67 — security deeds (deeds to secure debt)",
+      "body": "Georgia security deeds operate as conveyances of legal title with a defeasance clause: full performance by the grantor (the borrower) extinguishes the grantee’s (the lender’s) title interest. The structure derives from common-law equitable mortgages but Georgia courts and the General Assembly have treated it as a stand-alone security instrument since the 19th century. Recording with the county clerk of superior court is required to perfect priority."
+    },
+    {
+      "headline": "O.C.G.A. §44-14-162 — non-judicial foreclosure under power of sale",
+      "body": "A security deed with a power of sale allows the lender to foreclose without filing a lawsuit. The lender must send the borrower written notice at least 30 days before the foreclosure date, identifying the secured creditor with the authority to negotiate. Sale is conducted on the first Tuesday of the month at the county courthouse after publication once a week for four weeks in the county’s legal-organ newspaper (O.C.G.A. §9-13-140). The post-Mar 2008 reforms (O.C.G.A. §44-14-162.2) added the requirement that the notice identify the entity with authority to negotiate amendments."
+    },
+    {
+      "headline": "O.C.G.A. §44-14-161 — confirmation of sale (for deficiency)",
+      "body": "If the note holder wants to pursue a deficiency judgment after a non-judicial foreclosure, the sale must be confirmed by the superior court under O.C.G.A. §44-14-161. The court reviews the sale process and the sale price against fair market value; confirmation requires the price to have been at least the property’s true market value. The confirmation step is unusual — Georgia is one of few states requiring judicial confirmation as a precondition to deficiency. Most note holders elect not to confirm, foregoing the deficiency to keep the foreclosure inside the 35-day non-judicial track."
+    },
+    {
+      "headline": "Georgia Residential Mortgage Act — O.C.G.A. §7-1-1000 et seq.",
+      "body": "The GRMA requires a license from the Georgia Department of Banking and Finance for any person making residential mortgage loans secured by Georgia real estate (with exemptions for banks, credit unions, and certain related-party transactions). The seller-financing exception under O.C.G.A. §7-1-1001(a)(3) covers an individual seller financing the sale of the seller’s own residence in any 12-month period (cap of 5 transactions). The license also covers servicing — anyone collecting payments on residential mortgage loans must hold a Mortgage Broker, Lender, or Servicer license unless exempt."
+    },
+    {
+      "headline": "O.C.G.A. §44-14-39 — intangible recording tax",
+      "body": "Georgia imposes an intangible recording tax of $1.50 per $500 of the secured note amount on recording the security deed (capped at $25,000 of tax per note). A $50,000 seller-financed note incurs $150 in intangible tax at recording, plus standard county recording fees. The tax is collected by the county clerk at the time of recording."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "‘Reconveyance’ is your obligation after payoff",
+      "body": "When the borrower pays off, the security-deed holder must record a Cancellation/Reconveyance promptly. O.C.G.A. §44-14-3 requires the holder to do so within 60 days of payoff request. Failure exposes the holder to liability for actual damages plus $500 statutory penalty. Note buyers acquiring Georgia paper should confirm the seller-holder is current on all cancellations on paid-off loans in the portfolio."
+    },
+    {
+      "headline": "The note holder must identify the secured creditor on the foreclosure notice",
+      "body": "Post-2008 reforms (O.C.G.A. §44-14-162.2) require the foreclosure notice to identify the entity with full authority to negotiate, amend, or modify the loan. Wrong identification (e.g., naming the servicer when the trust owns the note) can void the foreclosure. Note investors taking assignment of Georgia paper need to track the chain of ownership carefully."
+    },
+    {
+      "headline": "Confirmation hearings are slow and risky",
+      "body": "If you want a deficiency, you’re in superior court for a confirmation hearing within 30 days of sale (O.C.G.A. §44-14-161). The court can refuse to confirm if it finds the sale price inadequate, in which case you get neither the deficiency nor a second chance at the sale (some courts allow resale). Most operators forgo deficiency on Georgia paper."
+    },
+    {
+      "headline": "Property tax delinquencies layer on top of the lien",
+      "body": "Georgia county property tax is due by the local county’s deadline (varies, often late October to late November). Tax liens can be transferred to private tax-lien purchasers under O.C.G.A. §48-3-19 and accrue interest at the state statutory rate. A note holder failing to escrow taxes can find a third-party tax-lien holder with priority over the security deed."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the Georgia clerk of superior court data and surfaces the security-deed lookup as a parcel-detail check across all 159 counties. The O.C.G.A. §44-14-162 foreclosure timeline calculator runs the 30-day notice + 4-week publication math automatically and lines up the first-Tuesday sale dates. The §44-14-3 cancellation tracker watches the portfolio for paid-off loans approaching the 60-day reconveyance deadline. GRMA licensing screening prompts surface on origination workflows. The intangible-tax calculator under §44-14-39 lives in the closing worksheet. Pax watches the chain-of-ownership identification requirement under §44-14-162.2 on every Georgia default workflow.",
+  "faq": [
+    {
+      "q": "What’s a Georgia security deed?",
+      "a": "A conveyance of legal title from borrower to lender with a defeasance clause: full payment extinguishes the lender’s title interest. Functionally equivalent to a mortgage in other states, but the title-conveyance structure changes the foreclosure mechanics."
+    },
+    {
+      "q": "Do I need a GRMA license to buy Georgia notes?",
+      "a": "Buying notes is not the same as making loans, but the GRMA also licenses mortgage servicers. If you’re collecting payments on Georgia residential mortgage loans, you likely need a Mortgage Servicer license unless an exemption applies. Check with the Georgia Department of Banking and Finance."
+    },
+    {
+      "q": "How fast is a Georgia foreclosure?",
+      "a": "Roughly 35-40 days from default notice to non-judicial sale, assuming clean documentation. Among the fastest in the country."
+    },
+    {
+      "q": "Can I get a deficiency judgment after a Georgia foreclosure?",
+      "a": "Only if the sale is confirmed by the superior court within 30 days (O.C.G.A. §44-14-161). Confirmation requires a sale price at or above fair market value. Most note holders forgo deficiency in exchange for the fast non-judicial timeline."
+    },
+    {
+      "q": "Is there a redemption period after a Georgia foreclosure?",
+      "a": "Not for a security-deed foreclosure. (Georgia tax sales do have a 12-month redemption period under O.C.G.A. §48-4-40, but that’s a separate regime.)"
+    },
+    {
+      "q": "What’s the intangible recording tax?",
+      "a": "$1.50 per $500 of the secured debt, paid at the time the security deed is recorded. Capped at $25,000. Pay it once at origination; assignments do not trigger additional intangible tax."
+    },
+    {
+      "q": "Are usury caps a concern in Georgia?",
+      "a": "Georgia’s usury cap for written contracts is 7% per year under O.C.G.A. §7-4-2, but the cap is widely modified: notes over $3,000 may charge any rate agreed in writing under §7-4-2(a)(1)(A). Most seller-financed Georgia notes are above the $3,000 threshold and thus uncapped by general usury law (though predatory-lending statutes apply on residential)."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Official Code of Georgia Annotated — Security Deeds",
+      "citation": "O.C.G.A. §44-14-60 to §44-14-80",
+      "url": "https://law.justia.com/codes/georgia/2022/title-44/chapter-14/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Foreclosure under Power of Sale",
+      "citation": "O.C.G.A. §44-14-162, §44-14-162.2",
+      "url": "https://law.justia.com/codes/georgia/2022/title-44/chapter-14/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Confirmation of Sale",
+      "citation": "O.C.G.A. §44-14-161",
+      "url": "https://law.justia.com/codes/georgia/2022/title-44/chapter-14/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Georgia Residential Mortgage Act",
+      "citation": "O.C.G.A. §7-1-1000 et seq.",
+      "url": "https://law.justia.com/codes/georgia/2022/title-7/chapter-1/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Intangible Recording Tax",
+      "citation": "O.C.G.A. §44-14-39",
+      "url": "https://law.justia.com/codes/georgia/2022/title-44/chapter-14/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Reconveyance Obligation",
+      "citation": "O.C.G.A. §44-14-3",
+      "url": "https://law.justia.com/codes/georgia/2022/title-44/chapter-14/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Usury",
+      "citation": "O.C.G.A. §7-4-2",
+      "url": "https://law.justia.com/codes/georgia/2022/title-7/chapter-4/"
+    },
+    {
+      "name": "Official Code of Georgia Annotated — Tax Sale Redemption",
+      "citation": "O.C.G.A. §48-4-40",
+      "url": "https://law.justia.com/codes/georgia/2022/title-48/chapter-4/"
+    }
+  ]
+}

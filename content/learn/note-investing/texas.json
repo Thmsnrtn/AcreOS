@@ -1,0 +1,118 @@
+{
+  "vertical": "note-investing",
+  "stateSlug": "texas",
+  "stateName": "Texas",
+  "headline": "Note investing in Texas: SAFE Act licensure, executory-contract servicing, and how Texas note operators actually run the book",
+  "metaDescription": "A working primer on note investing in Texas — SAFE Act + Finance Code §156/180 licensing, the §5.077 annual-statement rule, and the gotchas Texas note operators run into.",
+  "intro": "Texas note investors operate at the intersection of two distinct legal regimes: the federal SAFE Act overlay (implemented in Texas through Finance Code Chapter 156 and Chapter 180) for residential mortgage loan origination, and the Texas executory-contract regime (Tex. Prop. Code §5.061-§5.085) for the installment land contracts that still dominate the seller-financed rural land book. Note investors buying or servicing Texas paper need to know which regulator covers what they hold — the Texas Department of Savings and Mortgage Lending, the Office of Consumer Credit Commissioner, or neither — before the first payment posts.",
+  "mechanics": "Texas note investors source paper three ways: direct origination from a related land flip, secondary purchase from another Texas operator, or marketplace acquisitions (Paperstac, NotesDirect, etc.). The structure of the underlying paper drives almost everything that follows. A recorded Deed of Trust with a real promissory note is the cleanest instrument: non-judicial trustee’s foreclosure is fast (21 days notice plus posting) under Tex. Prop. Code §51.002, and the Texas Property Code chapters on liens apply cleanly. An executory contract (contract-for-deed) is heavier administratively: the §5.077 annual statement, the §5.063 30-day cure notice, the §5.076 recording requirement, and the 40%-paid threshold all kick in. Texas note investors holding a mixed book — some trust deeds, some executory contracts — typically segment the servicing workflow by instrument type because the regulatory burden is asymmetric."
+,
+  "statutes": [
+    {
+      "headline": "Tex. Finance Code Chapter 156 + Chapter 180 — Texas SAFE Act",
+      "body": "Texas implemented the federal SAFE Act of 2008 through Finance Code Chapter 180 (originator licensing) and Chapter 156 (mortgage company licensing). Anyone who originates a residential mortgage loan on Texas property must be licensed through the NMLS unless an exemption applies. The seller-financing exemption under Finance Code §180.003(a)(3) covers a natural-person seller who finances the sale of their own residence in any 12-month period (one transaction). Operators originating more than one residential mortgage in a 12-month period need to be licensed or use a Residential Mortgage Loan Originator who is."
+    },
+    {
+      "headline": "Tex. Prop. Code §5.077 — annual statement to executory-contract buyer",
+      "body": "By January 31 of each year, the seller under an executory contract must deliver a written annual statement to the buyer covering payments made, balance owed, escrow disposition, and a legal description of the property. Liquidated damages for failure: $250 per day of noncompliance plus attorney’s fees. The math on a 50-note book missing the deadline by two weeks is a real number: $250 × 50 × 14 = $175,000 of potential exposure if every buyer sued. Note servicers running Texas books treat the January 31 deadline as a hard system date."
+    },
+    {
+      "headline": "Tex. Prop. Code §51.002 — non-judicial trustee’s sale",
+      "body": "For a recorded deed of trust with a power of sale, Texas allows non-judicial foreclosure. The trustee posts notice at the courthouse, files the notice with the county clerk, and sends notice to the borrower at least 21 days before the sale (held on the first Tuesday of the month). The borrower can cure up to the sale date. The 21-day clock is the fastest residential foreclosure timeline in the country and is the operational reason note investors prefer Texas deed-of-trust paper."
+    },
+    {
+      "headline": "Tex. Finance Code §392 — Texas Debt Collection Act",
+      "body": "The Texas Debt Collection Act applies to creditors collecting their own debts (broader than the federal FDCPA, which applies only to third-party collectors). A note holder collecting their own Texas loan must avoid threatening criminal charges (§392.301), misrepresenting the amount owed (§392.303), or harassing communications (§392.302). Violations are $100-$1,000 per violation plus actual damages. Note investors servicing Texas paper through their own staff need their dialer scripts and dunning letters checked against §392."
+    },
+    {
+      "headline": "Tex. Fin. Code §342.005 — Office of Consumer Credit Commissioner license trigger",
+      "body": "Most installment land contracts and seller-financed notes secured by Texas property fall outside the OCCC’s Regulated Lender license — but personal property paper and certain residential-mortgage loan products may trigger it. Operators expanding from raw-land paper into mobile-home-on-land or home-with-lot paper should review §342 before assuming the rural land exemption carries over."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "The 40%-paid-or-48-payments threshold flips the remedy",
+      "body": "Under Tex. Prop. Code §5.066, once an executory-contract buyer has paid 40% of the purchase price or made 48 monthly payments, the contract converts to a recorded lien against the property and the seller’s remedy on default is foreclosure rather than forfeiture. A note servicer must watch this threshold in real time on every executory contract in the book — and adjust the default playbook accordingly. The threshold is non-waivable."
+    },
+    {
+      "headline": "Wrap-around mortgages are a Texas pattern but require disclosure",
+      "body": "Texas Finance Code §159 (the Texas Wrap Mortgage Loan Financing Act, effective Jan 1, 2022) requires a wrap-lender to give the wrap-borrower a 7-day pre-execution disclosure covering the underlying loan, the wrap terms, and the due-on-sale risk. Wraps were a common Texas creative-finance structure pre-2022; the disclosure requirement materially tightened the back-office for operators running wrap books."
+    },
+    {
+      "headline": "Texas is a community-property state",
+      "body": "If the borrower on a Texas note is married, the spouse generally has community-property rights in the residence even if the deed names only one spouse. Foreclosure notices need to reach both spouses; failing to notice the non-signing spouse can void the trustee’s sale on a homestead. Note investors taking assignment of Texas paper should verify the original notes were executed with proper spousal joinder."
+    },
+    {
+      "headline": "Property tax escrows are administered against 254 county tax-assessor portals",
+      "body": "Texas has no state property tax. Each county tax assessor-collector runs its own portal, deadlines, and payment formats. A note servicer escrowing taxes on a 30-county Texas book is reconciling against 30 different web systems. The default due date is January 31; penalties cascade from February 1."
+    }
+  ],
+  "valueProp": "AcreOS ships dedicated Texas note-investor workflows: the §5.077 annual-statement generator runs from the loan record every January with audit logging for the proof-of-mailing requirement, the §5.066 paid-in-threshold calculator flags any executory contract crossing the 40%/48-payment line, and the §51.002 trustee-sale timeline auto-calculates earliest sale dates when a borrower defaults on a deed-of-trust note. The dunning workflow is pre-checked against Tex. Fin. Code §392 — every script is reviewed for the Debt Collection Act language requirements. Pax surfaces the Texas community-property warning on any single-signature note where the borrower’s marital status is on file.",
+  "faq": [
+    {
+      "q": "Do I need a Texas Residential Mortgage Loan Originator license to buy notes?",
+      "a": "Purchasing existing notes is not origination — the RMLO license under Texas Finance Code Chapter 180 is triggered by taking a residential mortgage loan application or offering terms. Pure secondary-market purchases of existing notes do not require an RMLO. Originating new residential mortgage loans on Texas property does."
+    },
+    {
+      "q": "Can I service Texas notes from out of state?",
+      "a": "Yes, but Texas Finance Code Chapter 158 (Residential Mortgage Loan Servicer Registration Act) requires servicers of residential mortgage loans on Texas property to register with the Texas Department of Savings and Mortgage Lending. Several exemptions apply — including for servicers of their own portfolio in some configurations. Confirm with Texas counsel."
+    },
+    {
+      "q": "What’s a wrap mortgage and is it still legal in Texas?",
+      "a": "A wrap mortgage is a junior loan that ‘wraps around’ an existing senior mortgage — the wrap-lender collects the full payment and forwards to the senior. They’re legal in Texas, but the Texas Wrap Mortgage Loan Financing Act (Tex. Fin. Code §159) imposes a 7-day pre-execution disclosure requirement on the wrap-lender."
+    },
+    {
+      "q": "How fast can I foreclose a Texas deed-of-trust note?",
+      "a": "21 days from notice to sale, held on the first Tuesday of the month at the courthouse. That makes Texas one of the fastest non-judicial-foreclosure states in the country."
+    },
+    {
+      "q": "What’s the practical difference between a deed of trust and an executory contract for a note investor?",
+      "a": "A deed of trust is a recorded lien — the borrower owns the property, the lender has security. An executory contract leaves title with the seller until full payment. The remedies on default differ: deed of trust = non-judicial foreclosure (fast); executory contract = the §5 chapter framework (notice periods, paid-in thresholds, equitable-mortgage risk above 40%)."
+    },
+    {
+      "q": "Are there usury caps on Texas seller-financed notes?",
+      "a": "Yes — Texas Finance Code §302 caps interest at 18% per year for most consumer credit transactions and 10% for transactions without a written rate agreement. Higher rates require the lender to comply with specific Finance Code chapters. Most seller-financed land paper structures around the 10-12% range to stay safely under the consumer cap."
+    },
+    {
+      "q": "What records do I need to keep on a Texas note?",
+      "a": "Original note, recorded security instrument (deed of trust or executory contract), payment ledger, all §5.077 annual statements with proof of delivery, all default notices with proof of certified-mail receipt, and the closing file. Texas does not have a specific statutory retention period for note-holder records; the federal Truth in Lending Act retention rules (2 years) apply to originators."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Texas Finance Code — SAFE Act and Mortgage Loan Originators",
+      "citation": "Tex. Fin. Code Chapters 156, 180",
+      "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.180.htm"
+    },
+    {
+      "name": "Texas Property Code — Executory Contracts",
+      "citation": "Tex. Prop. Code §§5.061-5.085",
+      "url": "https://statutes.capitol.texas.gov/Docs/PR/htm/PR.5.htm"
+    },
+    {
+      "name": "Texas Property Code — Non-Judicial Foreclosure",
+      "citation": "Tex. Prop. Code §51.002",
+      "url": "https://statutes.capitol.texas.gov/Docs/PR/htm/PR.51.htm"
+    },
+    {
+      "name": "Texas Finance Code — Debt Collection Act",
+      "citation": "Tex. Fin. Code §392",
+      "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.392.htm"
+    },
+    {
+      "name": "Texas Finance Code — Wrap Mortgage Loan Financing Act",
+      "citation": "Tex. Fin. Code §159",
+      "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.159.htm"
+    },
+    {
+      "name": "Texas Finance Code — Usury",
+      "citation": "Tex. Fin. Code §302",
+      "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.302.htm"
+    },
+    {
+      "name": "Texas Finance Code — Residential Mortgage Loan Servicer Registration Act",
+      "citation": "Tex. Fin. Code §158",
+      "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.158.htm"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "vertical": "note-investing",
+  "stateSlug": "ohio",
+  "stateName": "Ohio",
+  "headline": "Note investing in Ohio: judicial foreclosure, the Residential Mortgage Lending Act, and how Ohio note operators actually run the book",
+  "metaDescription": "A working primer on note investing in Ohio — Ohio R.C. §2323.07 judicial foreclosure, R.C. Chapter 1322 mortgage broker/originator licensing, and the gotchas Ohio note operators run into.",
+  "intro": "Ohio is a judicial-foreclosure state with a deep secondary-market for low-balance residential paper, especially in the Rust Belt urban cores (Cleveland, Akron, Youngstown, Toledo, Dayton). The combination of cheap underlying property values, contested judicial timelines, and the Ohio Residential Mortgage Lending Act (R.C. Chapter 1322) shapes what a note investor in Ohio actually does day-to-day. Note operators acquiring Ohio paper need to understand the county sheriff’s sale process, the 8-month-to-2-year foreclosure timeline, and the Ohio Department of Commerce Division of Financial Institutions’ licensing reach.",
+  "mechanics": "Ohio note investors typically acquire paper through three channels: secondary marketplaces, direct purchase from small-bank or credit-union sellers, or origination from Ohio-licensed mortgage lenders. On default, the lender (note holder) files a foreclosure complaint in the county court of common pleas. Service runs through the standard civil-procedure track. Once the complaint is filed, the borrower has 28 days to answer; if no answer, default judgment can follow; if contested, the case proceeds. After judgment of foreclosure, the property is appraised by three court-appointed appraisers, and the county sheriff conducts a public sale at the courthouse. The sale price floor is two-thirds of the appraised value (R.C. §2329.20). Total time from filing to sheriff’s sale typically runs 8-12 months in clean cases, 18-36+ months in contested or vacant-property cases. After sheriff’s sale, the court confirms the sale and the sheriff issues a Sheriff’s Deed; the deed is recorded with the county recorder."
+,
+  "statutes": [
+    {
+      "headline": "Ohio R.C. Chapter 1322 — Residential Mortgage Lending Act",
+      "body": "The RMLA requires registration with the Ohio Department of Commerce Division of Financial Institutions for any person making, brokering, or servicing residential mortgage loans on Ohio property. The seller-financing exception under R.C. §1322.05(B)(8) covers an individual seller financing the sale of their own residence in any 12-month period (limited number of transactions). Operators servicing more than a de minimis Ohio residential book typically need either a Mortgage Lender, Mortgage Broker, or Mortgage Loan Originator license, or to use a licensed servicer."
+    },
+    {
+      "headline": "Ohio R.C. §2329.20 — two-thirds appraisal floor at sheriff’s sale",
+      "body": "Real property cannot be sold at a sheriff’s sale for less than two-thirds of the appraised value set by three court-appointed appraisers. This is the operational floor on every Ohio foreclosure sale. If no bidder meets the floor, the sheriff returns the writ unsatisfied and the lender must wait and re-set the sale (often with a new appraisal). The two-thirds rule was modernized by R.C. §2329.152 for residential vacant properties to allow alternative valuation methods."
+    },
+    {
+      "headline": "Ohio R.C. §5301.36 — mortgage cancellation upon payoff",
+      "body": "Within 90 days of full payoff, the mortgagee must file a satisfaction of the mortgage with the county recorder. Failure to do so exposes the holder to statutory damages of $250 per violation plus the borrower’s attorney’s fees. The same obligation applies to assignees who took the note in the chain — note investors acquiring Ohio paper should verify the seller has filed all prior cancellations."
+    },
+    {
+      "headline": "Ohio R.C. §1322.07 and §1349.27 — Predatory Lending Restrictions",
+      "body": "Ohio’s predatory-lending law restricts certain practices on covered loans: prepayment penalties on high-cost loans, balloon payments under specified circumstances, financing of credit insurance, and certain refinancing patterns. Note holders acquiring high-cost Ohio paper should run the loan documents through the covered-loan analysis at acquisition."
+    },
+    {
+      "headline": "Ohio R.C. §1303 — Ohio UCC Article 3 (negotiable instruments)",
+      "body": "Ohio adopts UCC Article 3. A promissory note that meets the statutory tests is a negotiable instrument; possession and proper endorsement transfer the right to enforce. The holder’s right to enforce the note (separate from the right to enforce the mortgage) is a recurring issue in Ohio foreclosure litigation — courts routinely require the foreclosing plaintiff to demonstrate it holds the note and has authority under both the note and the mortgage at the time of filing."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "Standing-to-foreclose challenges are common",
+      "body": "Ohio appellate courts, including in Federal Home Loan Mortg. Corp. v. Schwartzwald, have emphasized that the foreclosing plaintiff must have standing at the time the complaint is filed. Note investors buying Ohio paper through a chain of assignments need clean documentation — note endorsements, mortgage assignments recorded in the county, and a clear chain of holders. A missing endorsement can derail the foreclosure."
+    },
+    {
+      "headline": "Vacant-property foreclosures move faster but recover less",
+      "body": "Ohio R.C. §2329.152 allows expedited foreclosure on vacant residential properties, and many Ohio counties (Cuyahoga, Franklin, Lucas) maintain vacant-property registries and dockets. The expedited process moves to sale faster but the underlying property is often deeply distressed — note holders may recover the asset but face $20,000-$50,000 in vacant-property restoration costs before resale."
+    },
+    {
+      "headline": "Cuyahoga County’s 28-day-answer is the operational baseline",
+      "body": "Ohio Civ. R. 12(A) gives defendants 28 days to answer a foreclosure complaint. Practically, Cuyahoga, Franklin, and Hamilton counties see many borrowers either default (no answer, leading to default judgment 6-8 weeks post-filing) or file pro-se answers that require trial-track scheduling. Plan staffing accordingly."
+    },
+    {
+      "headline": "Conveyance fee at recording is meaningful",
+      "body": "Ohio R.C. §319.54 sets the state conveyance fee at $1 per $1,000 of consideration on most real-property transfers, with each county able to add a permissive fee up to $3 per $1,000 (most do). A flipper or note investor recording a sheriff’s deed pays the conveyance fee plus standard recording. Note assignments do not trigger the conveyance fee but do incur recording fees."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the Ohio county recorder data for all 88 counties and surfaces the chain-of-title and chain-of-endorsement audit on every Ohio loan acquisition so the standing-to-foreclose question is resolved before default ever occurs. The judicial-foreclosure timeline calculator under R.C. Chapter 2323 tracks every required step: complaint filed, service, answer deadline, judgment, appraisal, sale-date setting, sheriff’s sale, confirmation, Sheriff’s Deed. The §5301.36 cancellation tracker watches for paid-off Ohio loans approaching the 90-day satisfaction-recording deadline. The two-thirds appraisal-floor calculation under §2329.20 surfaces on every Ohio sale-projection worksheet. RMLA licensing screening prompts surface on Ohio originations and servicing additions.",
+  "faq": [
+    {
+      "q": "How long does an Ohio foreclosure take?",
+      "a": "Median 8-12 months from complaint filing to sheriff’s sale in clean cases. Contested or vacant-property cases regularly run 18-36+ months. Vacant-property expedited tracks under R.C. §2329.152 can be faster."
+    },
+    {
+      "q": "Do I need an Ohio license to buy and hold notes?",
+      "a": "Purchasing existing notes is not making loans, but the Ohio Residential Mortgage Lending Act licenses servicing. If you’re collecting payments on Ohio residential mortgage loans, you likely need a Mortgage Servicer license unless an exemption applies (R.C. Chapter 1322). Confirm with Ohio counsel."
+    },
+    {
+      "q": "What’s the two-thirds rule at the sheriff’s sale?",
+      "a": "Under R.C. §2329.20, real property cannot be sold for less than two-thirds of the court-appointed appraisers’ value. If no bidder meets the floor, the writ returns unsatisfied and the lender resets the sale (often with a fresh appraisal)."
+    },
+    {
+      "q": "Is there a redemption period after the sheriff’s sale?",
+      "a": "The borrower may redeem before the sheriff’s sale is confirmed by the court — typically a window of a few days to a few weeks after the sale. Once confirmed, redemption is foreclosed. There is no extended post-confirmation redemption period."
+    },
+    {
+      "q": "Can I get a deficiency judgment in Ohio?",
+      "a": "Yes — Ohio permits deficiency judgments after sheriff’s sale, but R.C. §2329.08 imposes a two-year statute of limitations on the deficiency. The deficiency is the difference between the unpaid debt and the appraised value (not the sale price)."
+    },
+    {
+      "q": "Are Ohio land contracts (installment contracts) regulated separately?",
+      "a": "Yes — Ohio R.C. §5313 regulates land installment contracts for residential property. The seller must record the contract within 20 days, deliver a written copy to the buyer, and provide annual statements. If the buyer has paid 20% or more, default cure runs 30 days and the seller must use judicial foreclosure rather than forfeiture. The 20% threshold is the Ohio analog to Texas’s 40% threshold."
+    },
+    {
+      "q": "What’s the usury cap on Ohio notes?",
+      "a": "Ohio R.C. §1343.01 caps interest at 8% per year unless the parties contract for a higher rate in writing. Written contracts for loans over $100,000 are generally not subject to usury caps. Most consumer notes use written terms above 8% by agreement."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Ohio Revised Code — Residential Mortgage Lending Act",
+      "citation": "Ohio R.C. Chapter 1322",
+      "url": "https://codes.ohio.gov/ohio-revised-code/chapter-1322"
+    },
+    {
+      "name": "Ohio Revised Code — Sheriff’s Sale Two-Thirds Rule",
+      "citation": "Ohio R.C. §2329.20",
+      "url": "https://codes.ohio.gov/ohio-revised-code/section-2329.20"
+    },
+    {
+      "name": "Ohio Revised Code — Vacant Property Expedited Foreclosure",
+      "citation": "Ohio R.C. §2329.152",
+      "url": "https://codes.ohio.gov/ohio-revised-code/section-2329.152"
+    },
+    {
+      "name": "Ohio Revised Code — Mortgage Satisfaction",
+      "citation": "Ohio R.C. §5301.36",
+      "url": "https://codes.ohio.gov/ohio-revised-code/section-5301.36"
+    },
+    {
+      "name": "Ohio Revised Code — Land Installment Contracts",
+      "citation": "Ohio R.C. Chapter 5313",
+      "url": "https://codes.ohio.gov/ohio-revised-code/chapter-5313"
+    },
+    {
+      "name": "Ohio Revised Code — Conveyance Fee",
+      "citation": "Ohio R.C. §319.54",
+      "url": "https://codes.ohio.gov/ohio-revised-code/section-319.54"
+    },
+    {
+      "name": "Ohio Revised Code — Usury",
+      "citation": "Ohio R.C. §1343.01",
+      "url": "https://codes.ohio.gov/ohio-revised-code/section-1343.01"
+    },
+    {
+      "name": "Ohio Revised Code — UCC Article 3",
+      "citation": "Ohio R.C. Chapter 1303",
+      "url": "https://codes.ohio.gov/ohio-revised-code/chapter-1303"
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "vertical": "note-investing",
+  "stateSlug": "california",
+  "stateName": "California",
+  "headline": "Note investing in California: CFL licensure, anti-deficiency limits, and how California note operators actually run the book",
+  "metaDescription": "A working primer on note investing in California — California Financing Law (CFL §22000), Cal. Civ. Code §2924 trustee’s-sale process, §580b anti-deficiency, and the gotchas California note operators run into.",
+  "intro": "California has the most regulated and the most operator-aware note-investing environment in the country. Three statutory regimes touch every California note: the California Financing Law (CFL, Fin. Code §22000 et seq.) governs who can make consumer and commercial loans, the trustee’s-sale process under Cal. Civ. Code §2924 governs non-judicial foreclosure, and the anti-deficiency rules under Cal. Code Civ. Proc. §580b/§580d limit what a defaulted-loan note holder can collect. A note investor moving into California needs to understand all three before the first acquisition.",
+  "mechanics": "California is a trust-deed state: virtually every recorded residential security instrument is a Deed of Trust naming a third-party trustee with power of sale. The county recorder records deeds and trust deeds in each of 58 counties. Servicing on a California note involves Reg Z periodic statements (federal), Civ. Code §2954 (escrow accountings), and the §2924 foreclosure timeline on default. The §2924 timeline is roughly: Notice of Default recorded after the borrower is 30+ days late; 90-day cure period during which the borrower can reinstate; if not cured, Notice of Trustee’s Sale recorded; sale at least 21 days later. Minimum total: about 110 days from NOD to sale. The borrower’s reinstatement right runs through the 90-day NOD period plus 5 business days before the actual sale (Civ. Code §2924c). California also overlays the Homeowner Bill of Rights (HBOR, §2923.55 et seq.) which adds pre-NOD contact, single-point-of-contact, and dual-tracking restrictions on residential mortgage loans secured by owner-occupied 1-4 unit properties."
+,
+  "statutes": [
+    {
+      "headline": "California Financing Law — Fin. Code §22000 et seq.",
+      "body": "The CFL requires a license from the Department of Financial Protection and Innovation (DFPI) for any person engaged in the business of making or brokering consumer or commercial loans secured by California real estate, with some exceptions. The seller-financing exception under Fin. Code §22057 covers a natural-person seller who finances the sale of their own residence in any 12-month period (one transaction); the de minimis exemption for non-residential at Fin. Code §22050 is narrow. Operators making more than one seller-financed loan per year on California property typically need a CFL license or must use a licensed broker."
+    },
+    {
+      "headline": "Cal. Civ. Code §2924 — non-judicial foreclosure (trustee’s sale)",
+      "body": "The trustee records a Notice of Default after the borrower is in default. The borrower has 90 days to cure under §2924c. If not cured, the trustee records a Notice of Sale and posts/publishes it; the sale occurs no less than 21 days after the NOS recording. The trustee’s sale is conducted on the courthouse steps or at the trustee’s designated location. Title transfers by Trustee’s Deed Upon Sale, which is recorded post-sale."
+    },
+    {
+      "headline": "Cal. Code Civ. Proc. §580b and §580d — anti-deficiency",
+      "body": "§580b bars a deficiency judgment on any purchase-money loan secured by a deed of trust on a one-to-four-family residence the borrower occupies, and on any seller-financed purchase-money loan regardless of occupancy. §580d bars a deficiency judgment after any non-judicial trustee’s sale. The combined effect: a California note holder who forecloses non-judicially walks away with the property and nothing else. To preserve a deficiency, the lender must pursue judicial foreclosure (slower) and demonstrate the loan is not purchase-money."
+    },
+    {
+      "headline": "Cal. Civ. Code §2966 — balloon-payment notice",
+      "body": "For any consumer loan secured by residential property with a balloon payment maturing in five years or less, the lender must give the borrower a written notice of the balloon’s maturity at least 90 days but no more than 150 days before the balloon date. The notice must specify the balloon amount, the maturity date, and the lender’s contact information. Skipping the notice can extend the maturity by 90 days under the statute."
+    },
+    {
+      "headline": "Cal. Civ. Code §2954 — escrow account requirements",
+      "body": "When the lender escrows taxes or insurance, §2954.8 requires interest on the escrow balance at the rate of at least 2% per year (the higher of 2% or the rate paid by federal-chartered savings associations in the same area) for residential loans. This is a California-specific overlay on top of RESPA — the borrower’s escrow account is an interest-bearing account."
+    },
+    {
+      "headline": "Cal. Civ. Code §2923.55 — Homeowner Bill of Rights pre-NOD contact",
+      "body": "On owner-occupied residential 1-4 unit loans, the lender must contact the borrower (or attempt with due diligence) at least 30 days before recording a Notice of Default to discuss alternatives to foreclosure. The lender must provide a declaration of compliance with the NOD. HBOR also bars dual-tracking — pursuing foreclosure while a loss-mitigation application is pending."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "Purchase-money seller financing has no deficiency, ever",
+      "body": "If you’re the seller financing the buyer’s purchase of a 1-4 unit residence, §580b bars any deficiency regardless of whether you foreclose judicially or non-judicially. Your collateral is the property. Price the loan accordingly — you cannot reach the borrower’s other assets."
+    },
+    {
+      "headline": "The trustee is a separate role with separate fees",
+      "body": "Most California deeds of trust name a third-party trustee (a foreclosure-services company). The trustee charges per-step fees: $400-$700 for the Notice of Default, additional fees for the Notice of Sale, publication costs, and the sale itself. A full §2924 foreclosure typically runs $2,500-$5,000 in trustee fees that the note holder advances and adds to the borrower’s reinstatement balance."
+    },
+    {
+      "headline": "DFPI licensing investigations are aggressive",
+      "body": "The DFPI has issued cease-and-desist orders against out-of-state note investors who took assignment of California paper and serviced it without registering. The fact pattern is recurring: an investor buys a small portfolio at auction, starts collecting payments, and gets a DFPI letter within months. Confirm the CFL license question before the first acquisition."
+    },
+    {
+      "headline": "Recording fees include the Building Homes & Jobs Act surcharge",
+      "body": "Cal. Gov. Code §27388.1 adds a $75-per-document recording surcharge on most real-estate-related instruments, capped at $225 per single transaction. The surcharge funds the Building Homes & Jobs Act trust fund. Note investors recording multiple assignments and reconveyances in a year should budget the surcharge into per-transaction closing costs."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the California county recorder data for all 58 counties and surfaces the CFL licensing screening prompt the first time a California-secured loan is added to a portfolio. The §2924 foreclosure timeline calculator tracks every required notice and waiting period from NOD through Trustee’s Deed Upon Sale, with the HBOR §2923.55 pre-NOD contact log built in. The §2954.8 escrow-interest calculation runs automatically on California-secured loans with escrow accounts. Pax flags any consumer loan secured by California residential property with a balloon under §2966 and surfaces the 90-150 day notice window before the balloon maturity.",
+  "faq": [
+    {
+      "q": "Do I need a California Financing Law license to buy notes?",
+      "a": "Buying existing notes is not the same as making loans. The CFL license attaches to the activity of making or brokering loans (Fin. Code §22100). Servicing notes you own may or may not be covered depending on the activity; consult the DFPI’s licensing FAQ and California counsel."
+    },
+    {
+      "q": "How fast can I foreclose a California deed-of-trust note?",
+      "a": "Minimum about 110-120 days from Notice of Default to trustee’s sale: 90-day NOD cure period plus 21+ days from Notice of Sale to sale. HBOR-covered loans add the pre-NOD 30-day contact requirement."
+    },
+    {
+      "q": "What’s the difference between judicial and non-judicial foreclosure in California?",
+      "a": "Non-judicial (trustee’s sale under §2924) is the default for deeds of trust with power-of-sale clauses. It’s fast and cheap but bars a deficiency judgment (§580d). Judicial foreclosure preserves the right to a deficiency on non-purchase-money loans but takes 12-24+ months and runs through superior court."
+    },
+    {
+      "q": "Are there usury caps on California notes?",
+      "a": "Yes — California’s constitutional usury cap is 10% per year for consumer loans (Cal. Const. art. XV §1). Many exceptions apply: licensed CFL lenders, real-estate brokers, and certain seller-financed transactions can exceed 10%. The seller-financing exception under Cal. Const. art. XV §1(2) generally permits the seller of real property to set the rate on a purchase-money loan to that buyer without usury limit."
+    },
+    {
+      "q": "Does California have a redemption period after a trustee’s sale?",
+      "a": "No. The trustee’s sale is final — there’s no post-sale statutory redemption. The borrower’s last opportunity to cure is 5 business days before the sale (Civ. Code §2924c)."
+    },
+    {
+      "q": "What’s the Homeowner Bill of Rights?",
+      "a": "A set of statutes (Civ. Code §2923.5 et seq.) imposing additional procedural requirements on foreclosures of owner-occupied 1-4 unit residential mortgages: pre-NOD contact, single-point-of-contact, no dual-tracking, and proper documentation of standing to foreclose. Violations can trigger injunctive relief and damages."
+    },
+    {
+      "q": "Do I have to record the assignment when I buy a California note?",
+      "a": "An assignment of a deed of trust may be recorded at the county recorder’s office to give constructive notice. While unrecorded assignments are valid between assignor and assignee, recording is best practice to perfect priority against subsequent transferees. The $75-per-document surcharge under Cal. Gov. Code §27388.1 applies."
+    }
+  ],
+  "sources": [
+    {
+      "name": "California Financial Code — California Financing Law",
+      "citation": "Cal. Fin. Code §22000 et seq.",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=FIN&division=9.&title=&part=&chapter=&article="
+    },
+    {
+      "name": "California Civil Code — Foreclosure (Trustee’s Sale)",
+      "citation": "Cal. Civ. Code §2924, §2924c",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=CIV&division=3.&title=14.&part=4."
+    },
+    {
+      "name": "California Code of Civil Procedure — Anti-deficiency",
+      "citation": "Cal. Code Civ. Proc. §580b, §580d",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=CCP&division=&title=&part=2.&chapter=&article="
+    },
+    {
+      "name": "California Civil Code — Balloon Payment Notice",
+      "citation": "Cal. Civ. Code §2966",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=CIV&division=3.&title=14.&part=4."
+    },
+    {
+      "name": "California Civil Code — Escrow Account Interest",
+      "citation": "Cal. Civ. Code §2954.8",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=CIV&division=3.&title=14.&part=4."
+    },
+    {
+      "name": "California Civil Code — Homeowner Bill of Rights",
+      "citation": "Cal. Civ. Code §2923.55",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayexpandedbranch.xhtml?tocCode=CIV&division=3.&title=14.&part=4."
+    },
+    {
+      "name": "California Constitution — Usury",
+      "citation": "Cal. Const. art. XV §1",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CONS&sectionNum=SEC.%201.&article=XV"
+    },
+    {
+      "name": "California Government Code — Recording Surcharge",
+      "citation": "Cal. Gov. Code §27388.1",
+      "url": "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?lawCode=GOV"
+    }
+  ]
+}

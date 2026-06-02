@@ -1202,7 +1202,13 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                      // Touch-device escape: opacity-0 + group-hover hides
+                      // this button on touch entirely (no hover event), so
+                      // the overflow menu is unreachable on iOS/Android.
+                      // [@media(hover:none)]:opacity-60 makes it visible
+                      // (subdued) on touch — same pattern as the Pax
+                      // delete-conversation button (contract test #4).
+                      className="min-h-11 min-w-11 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
                       aria-label="More deal actions"
                     >
                       <EllipsisVertical className="h-4 w-4" aria-hidden="true" />

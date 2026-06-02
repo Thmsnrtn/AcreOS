@@ -1,0 +1,118 @@
+{
+  "vertical": "note-investing",
+  "stateSlug": "florida",
+  "stateName": "Florida",
+  "headline": "Note investing in Florida: judicial foreclosure, F.S. §494 servicing rules, and how Florida note operators actually run the book",
+  "metaDescription": "A working primer on note investing in Florida — F.S. §494 loan-servicer licensing, F.S. Chapter 702 judicial foreclosure, the intangible-tax history, and the gotchas Florida note operators run into.",
+  "intro": "Florida is a judicial-foreclosure state — every defaulted residential mortgage runs through the circuit court. That single fact reshapes the Florida note investor’s playbook: timelines are measured in months not weeks, attorney fees are budgeted into every loan, and the borrower’s right to contest the foreclosure is robust. Florida also runs an aggressive licensing regime for both loan originators and loan servicers under F.S. Chapter 494, enforced by the Office of Financial Regulation. Note investors who acquire Florida paper without understanding the servicer-licensing trigger can find themselves operating without a license they didn’t know they needed.",
+  "mechanics": "Florida note investors source paper from owner-financed sales in the rural interior counties (Putnam, Citrus, Levy, Highlands), from secondary marketplaces, and from acquisitions out of small Florida community-bank portfolios. Closings on origination happen at title companies or attorneys; the note is delivered along with a recorded mortgage in the clerk of court’s mortgage book. Servicing means collecting payments, posting them to the ledger, sending periodic statements (federal Reg Z timing on closed-end residential mortgages applies), handling escrows for property tax (county tax-collector portal in each of 67 counties) and hazard insurance (Florida’s wind/hail insurance market makes this nontrivial), and managing defaults. Default management runs through F.S. Chapter 702: the lender files a foreclosure complaint, the borrower has 20 days to answer, summary judgment may follow if undefended, and a clerk’s public sale typically occurs 35-60 days after final judgment. Total time from first missed payment to clerk’s sale runs 8-14 months in the median Florida county."
+,
+  "statutes": [
+    {
+      "headline": "F.S. Chapter 494 — Loan Originator, Mortgage Broker, and Loan Servicer licensing",
+      "body": "Florida regulates three distinct activities under Chapter 494: loan origination (§494.0014), mortgage brokering (§494.003), and loan servicing (§494.00611). The loan-servicer provision requires anyone who collects payments on a residential mortgage loan secured by Florida real estate to be licensed unless an exemption applies. The exemptions cover banks, credit unions, attorneys collecting on behalf of clients, and certain related-party servicers. Independent note investors servicing their own portfolio do not always qualify for an exemption — check §494.00611(2) before assuming you’re clear."
+    },
+    {
+      "headline": "F.S. Chapter 702 — judicial foreclosure of mortgages",
+      "body": "Florida foreclosure is judicial. The lender files a complaint in circuit court, serves the borrower, and proceeds through the standard civil-litigation timeline. If the borrower defaults (does not answer), the lender moves for default judgment; if contested, the case proceeds to summary judgment or trial. After final judgment, the clerk sets a sale date — typically 35-60 days out. The clerk conducts the public sale; title passes by Certificate of Title 10 days post-sale absent objections. The whole timeline runs 8-14 months in median counties, longer in Miami-Dade and Broward."
+    },
+    {
+      "headline": "F.S. §697.06 — acceleration clauses are enforceable",
+      "body": "Florida statute and case law uphold the lender’s right to accelerate the full balance on default if the note so provides. Acceleration is a meaningful tool — the lender forecloses on the full remaining balance, not just the missed payments. The flip side: improperly noticed acceleration can be reversed, restarting the foreclosure clock."
+    },
+    {
+      "headline": "F.S. §726 — Florida Uniform Fraudulent Transfer Act and note assignments",
+      "body": "When a note is assigned (sold from one investor to another), the assignment must be recorded in Florida’s public records to give constructive notice to third parties. F.S. §701.02 requires the assignment to be recorded. An unrecorded note assignment is enforceable between the parties but may not survive a competing claim by another assignee. Note investors acquiring Florida paper should always record the assignment promptly."
+    },
+    {
+      "headline": "F.S. §95.11(2)(c) — five-year statute of limitations on mortgage foreclosure",
+      "body": "Florida’s statute of limitations on a foreclosure action is five years from the date of default (under post-Bartram v. U.S. Bank doctrine, each missed payment triggers a separate five-year clock). Note investors holding aged Florida defaults need to track which monthly defaults are still within the five-year window."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "The clerk’s sale price is the new baseline for deficiency",
+      "body": "Florida allows deficiency judgments after foreclosure under F.S. §702.06, but the deficiency is limited to the difference between the unpaid debt and the higher of (i) the clerk’s sale price or (ii) the fair market value at the time of sale. The court has discretion to award less. Most institutional lenders waive the deficiency in residential cases to avoid Florida’s aggressive consumer-protection counterclaim posture."
+    },
+    {
+      "headline": "Florida’s lis pendens recording is mandatory at filing",
+      "body": "A foreclosure complaint must be accompanied by a recorded lis pendens (F.S. §48.23). Failure to record the lis pendens at the same time the suit is filed can void the foreclosure’s effect on subsequent purchasers of the property. Track the lis pendens recording date in the loan file."
+    },
+    {
+      "headline": "Hurricane-zone hazard insurance escrows are non-trivial",
+      "body": "Florida’s wind/hail insurance market has tightened dramatically post-Ian. A note servicer escrowing insurance on a Florida residential note is dealing with annual premium changes of 20-50% and the borrower’s frequent inability to source a private-market policy. Force-placed insurance at lender expense becomes a real line item. Citizens Property Insurance Corp. is the insurer of last resort but caps coverage."
+    },
+    {
+      "headline": "Florida HOA and condo super-liens can leapfrog the mortgage",
+      "body": "F.S. §718.116 (condos) and §720.3085 (HOAs) give the association a limited super-lien for unpaid assessments that can have priority over the first mortgage on foreclosure. A note investor foreclosing in a Florida condo or HOA community should pull the association’s estoppel certificate before bidding so the association’s lien is on the close sheet, not a post-foreclosure surprise."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the Florida county clerk of court mortgage-book lookup so note investors can pull the recorded mortgage and any subsequent assignments from any of 67 counties in one workflow. The §494.00611 servicer-licensing screening prompts surface the licensing question when an operator adds Florida paper to their book. The judicial-foreclosure timeline calculator under F.S. Chapter 702 tracks each phase: complaint filed, service, default-or-answer deadline, summary judgment date, sale date, and Certificate of Title date — with reminders at each transition. Force-placed insurance escrow tracking is built into the loan servicing workflow with Florida-specific carrier patterns.",
+  "faq": [
+    {
+      "q": "Do I need a Florida license to buy and hold notes?",
+      "a": "Buying notes without originating them does not by itself require a loan-originator license under F.S. §494. Servicing the notes — collecting payments, handling escrows — may trigger the loan-servicer licensing requirement under F.S. §494.00611. The licensing analysis is fact-specific; consult Florida counsel."
+    },
+    {
+      "q": "How long does a Florida foreclosure take?",
+      "a": "Median 8-14 months from complaint to clerk’s sale, longer in Miami-Dade and Broward where dockets back up. Contested cases regularly run 18-24+ months."
+    },
+    {
+      "q": "What’s the difference between a Florida mortgage and a deed of trust?",
+      "a": "Florida is a mortgage state — there’s no functional deed-of-trust regime. All residential real-estate security uses mortgages, and all foreclosures are judicial."
+    },
+    {
+      "q": "Are there usury limits on Florida notes?",
+      "a": "Yes — F.S. §687.02 caps the legal rate at 18% per year for transactions up to $500,000, 25% above that. Criminal usury (over 45% per year) is a third-degree felony under F.S. §687.071."
+    },
+    {
+      "q": "Does Florida have a right of redemption after foreclosure?",
+      "a": "The borrower can redeem up until the clerk files the Certificate of Sale (F.S. §45.0315) — practically, until the sale itself. There is no extended post-sale redemption period as in some states."
+    },
+    {
+      "q": "Do I have to record the assignment when I buy a Florida note?",
+      "a": "Yes, per F.S. §701.02 to perfect priority against third parties. The recording fee is the standard county clerk rate; no doc stamp applies to the assignment itself."
+    },
+    {
+      "q": "What happens to a Florida note when the borrower files Chapter 13 bankruptcy?",
+      "a": "The automatic stay halts foreclosure under 11 U.S.C. §362. The lender files a Proof of Claim, the borrower’s Chapter 13 plan typically cures the arrears over 60 months, and current payments resume. If the plan is confirmed and the borrower pays, the note is reinstated. If the plan defaults, the lender can move for relief from stay and resume the Florida foreclosure."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Florida Statutes — Chapter 494 (Loan Originators, Mortgage Brokers, Loan Servicers)",
+      "citation": "F.S. Chapter 494",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0494/0494.html"
+    },
+    {
+      "name": "Florida Statutes — Chapter 702 (Foreclosure)",
+      "citation": "F.S. Chapter 702",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0700-0799/0702/0702.html"
+    },
+    {
+      "name": "Florida Statutes — Assignment of Mortgages",
+      "citation": "F.S. §701.02",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0700-0799/0701/0701.html"
+    },
+    {
+      "name": "Florida Statutes — Usury",
+      "citation": "F.S. §687.02, §687.071",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0600-0699/0687/0687.html"
+    },
+    {
+      "name": "Florida Statutes — Statute of Limitations",
+      "citation": "F.S. §95.11(2)(c)",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0095/0095.html"
+    },
+    {
+      "name": "Florida Statutes — Lis Pendens",
+      "citation": "F.S. §48.23",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0048/0048.html"
+    },
+    {
+      "name": "Florida Statutes — HOA and Condo Liens",
+      "citation": "F.S. §718.116, §720.3085",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0700-0799/0718/0718.html"
+    }
+  ]
+}

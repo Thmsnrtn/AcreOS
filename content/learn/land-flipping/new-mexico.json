@@ -1,0 +1,109 @@
+{
+  "vertical": "land-flipping",
+  "stateSlug": "new-mexico",
+  "stateName": "New Mexico",
+  "headline": "Land flipping in New Mexico: deferred-judgment foreclosures, real-estate contracts, and how New Mexico operators actually close",
+  "metaDescription": "A working primer on land flipping in New Mexico — NMSA §47-10 land-sale disclosure, NMSA §39-5 deficiency-judgment limits, real-estate contracts, and the gotchas New Mexico operators run into.",
+  "intro": "New Mexico is a high-volume cheap-land state with deep history in seller-financed rural sales. The two big legal artifacts an operator must understand are the New Mexico real-estate contract (an installment land contract with its own century of case law) and New Mexico’s judicial-foreclosure-only stance on mortgages. New Mexico is not a trust-deed state in practice for residential — foreclosure runs through the district court — which is why so many rural deals are structured as real-estate contracts where the title stays with the seller until paid in full.",
+  "mechanics": "New Mexico has 33 counties, and the county assessor in each publishes a parcel roll. The Bureau of Land Management owns a meaningful fraction of New Mexico acreage, so confirming whether a parcel is private fee-simple vs. checkerboarded against BLM is a routine due-diligence step. Most New Mexico seller-financed land deals are structured as real-estate contracts under the long-standing common-law form. Title stays with the seller; the buyer takes possession and equitable interest; on full payment, the seller delivers the deed. Default is governed by the contract terms but tempered by NMSA §47-10 (notice requirements) and decades of equitable-interest case law (Bishop v. Beecher, Eiferle v. Toppino) that disfavors strict forfeiture where the buyer has significant paid-in equity. When the deal closes cash, recording happens at the county clerk’s office; transfer taxes are nil at the state level (no New Mexico documentary transfer tax)."
+,
+  "statutes": [
+    {
+      "headline": "NMSA §47-10-1 to §47-10-7 — Land Subdivision Act disclosures",
+      "body": "The New Mexico Subdivision Act regulates the sale of subdivided land. ‘Subdivision’ covers the division of land into five or more parcels (the threshold for what NMSA §47-6-2 calls a Type-Five subdivision, 0-2 acres) or fewer parcels at larger acreages. Sellers of subdivided land must provide a buyer with a disclosure statement before sale, covering water availability, access, soil conditions, and utilities. The threshold is lower than Arizona’s six-lot cutoff — operators splitting parcels in New Mexico cross the line earlier."
+    },
+    {
+      "headline": "NMSA §39-5-19 — deficiency-judgment limits",
+      "body": "After a judicial foreclosure sale in New Mexico, the secured creditor’s deficiency is capped at the difference between the unpaid debt and the higher of (i) the foreclosure sale price or (ii) the fair market value of the property at the time of sale. This anti-deficiency posture means a New Mexico seller-financed mortgage with a low sale-price bid still doesn’t expose the borrower to a runaway deficiency — and means a flipper holding a paper note has limited recovery if the resale at foreclosure underprices the parcel."
+    },
+    {
+      "headline": "NMSA §47-6-2 — Subdivision Act type classifications",
+      "body": "New Mexico classifies subdivisions into five types based on lot size and count. Type One: five or more parcels of 35 acres or less. Type Two: five or more parcels of 35-160 acres. Type Three: five or more parcels of 160+ acres. Type Four: two or four parcels of less than 35 acres. Type Five: any subdivision of land into two-or-more 0-to-2-acre parcels — the lowest threshold. Each type has different disclosure and infrastructure requirements. Operators planning to split parcels in New Mexico should reference the type classification before structuring the deal."
+    },
+    {
+      "headline": "NMSA §7-2-14 — no state documentary transfer tax",
+      "body": "Unlike Florida’s doc stamps or California’s Documentary Transfer Tax, New Mexico does not impose a state-level transfer tax on real-estate deeds. Recording fees at the county clerk are nominal — typically $25 for the first page plus per-page surcharges. The lower friction at closing makes New Mexico attractive for high-volume flippers."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "BLM checkerboarding limits parcel access",
+      "body": "Significant portions of rural New Mexico were patterned by 19th-century railroad land grants, creating a checkerboard of private and federal sections. A private parcel surrounded by BLM with no recorded access easement may be physically inaccessible without a federal Right-of-Way grant — a multi-year process. Pull the parcel’s legal description and check it against the BLM Master Title Plat before listing."
+    },
+    {
+      "headline": "Water rights are severable and often missing",
+      "body": "Under the New Mexico Office of the State Engineer’s priority-doctrine framework, water rights in New Mexico are severable from the land. A parcel may have been sold ‘land only’ years prior with the water right going to a different owner. Buyers planning to drill or irrigate need to check the parcel’s water-right status with OSE before closing — and operators should disclose ‘no water rights conveyed’ in the listing when that’s the case."
+    },
+    {
+      "headline": "Acequia easements run with the land",
+      "body": "Rural northern New Mexico parcels frequently have acequia (community irrigation ditch) easements that grant the acequia association maintenance access. The easement is rarely visible on the parcel walk but is enforceable. Pull the recorded easements at the county clerk before marketing."
+    },
+    {
+      "headline": "Real-estate contracts under §47-10 default to seller’s remedies",
+      "body": "A New Mexico real-estate contract typically gives the seller the choice on default of strict forfeiture, judicial foreclosure, or suit for the unpaid balance. The choice is meaningful — the equity-rich buyer is more likely to win a court-equity argument against strict forfeiture, so for high-equity defaults, judicial foreclosure is often the cleaner path."
+    }
+  ],
+  "valueProp": "AcreOS pre-loads the New Mexico county assessor data for all 33 counties and surfaces the BLM master-title plat lookup as a parcel-detail check so operators catch the checkerboard problem before they spend mail on a landlocked parcel. The real-estate-contract servicing workflow covers New Mexico’s default-notice timelines and equitable-interest thresholds. Pax watches the OSE water-rights flag on each parcel record and prompts the seller-disclosure note when water rights are not conveyed. Recording-fee per-county schedules are baked into the closing worksheet.",
+  "faq": [
+    {
+      "q": "Do I need a New Mexico real-estate license to flip my own land?",
+      "a": "No — NMSA §61-29-2(L) exempts a principal selling their own property. The license rule applies if you’re acting as a broker on someone else’s behalf or are routinely flipping in volume that suggests broker activity."
+    },
+    {
+      "q": "What’s a real-estate contract and why is it so common here?",
+      "a": "It’s New Mexico’s common-law installment land contract. Title stays with the seller; the buyer pays over time; on payoff, the deed conveys. It’s common because New Mexico is a judicial-foreclosure state and real-estate contracts give the seller more flexible remedies on default than a recorded mortgage would."
+    },
+    {
+      "q": "Is non-judicial foreclosure available on a New Mexico mortgage?",
+      "a": "Power-of-sale deeds of trust are technically available under NMSA §48-10 but are unusual for residential and rural land sales — most New Mexico sales use mortgages or real-estate contracts. Practitioners default to judicial foreclosure when a mortgage is involved."
+    },
+    {
+      "q": "How do I find water-rights data for a parcel?",
+      "a": "The New Mexico Office of the State Engineer (OSE) publishes the WATERS database. Search by parcel or by point-of-diversion. The parcel may have multiple severed rights at varying priority dates."
+    },
+    {
+      "q": "What’s the redemption period after a New Mexico foreclosure?",
+      "a": "Nine months by default, reducible to one month if the mortgage contract so provides (NMSA §39-5-19). A flipper buying at a foreclosure auction takes title subject to that redemption window."
+    },
+    {
+      "q": "Does New Mexico require a survey for vacant-land sales?",
+      "a": "Not as a matter of state law for un-subdivided parcels. Subdivisions under NMSA §47-6 do require survey-grade plats as part of the disclosure package. Title insurers may require a survey for ALTA coverage."
+    },
+    {
+      "q": "How do I check whether a parcel is landlocked by BLM?",
+      "a": "Pull the parcel’s legal description, locate it on the BLM Master Title Plat for the township, and check whether the parcel touches a public road or has a recorded easement to one. The county clerk’s easement index covers private easements; the BLM record covers federal access."
+    }
+  ],
+  "sources": [
+    {
+      "name": "New Mexico Statutes — Subdivision Act",
+      "citation": "NMSA §47-6-1 et seq.",
+      "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    },
+    {
+      "name": "New Mexico Statutes — Land Sales Disclosure",
+      "citation": "NMSA §47-10-1 et seq.",
+      "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    },
+    {
+      "name": "New Mexico Statutes — Mortgage Foreclosure and Deficiency",
+      "citation": "NMSA §39-5-19",
+      "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    },
+    {
+      "name": "New Mexico Statutes — Deeds of Trust",
+      "citation": "NMSA §48-10-1 et seq.",
+      "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    },
+    {
+      "name": "New Mexico Office of the State Engineer — Water Rights",
+      "citation": "NMSA §72 (Water Code)",
+      "url": "https://www.ose.nm.gov/"
+    },
+    {
+      "name": "New Mexico Statutes — Real Estate Brokers",
+      "citation": "NMSA §61-29-2",
+      "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    }
+  ]
+}

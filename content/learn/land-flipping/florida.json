@@ -1,0 +1,118 @@
+{
+  "vertical": "land-flipping",
+  "stateSlug": "florida",
+  "stateName": "Florida",
+  "headline": "Land flipping in Florida: documentary stamps, the SAFE-Act loan-originator rule, and how Florida operators actually close",
+  "metaDescription": "A working primer on land flipping in Florida — Florida’s documentary stamp tax on deeds and notes, F.S. §494 mortgage broker licensing, and the gotchas Florida operators run into.",
+  "intro": "Florida is a high-volume state for vacant-land flipping, particularly in the rural interior counties (Putnam, Citrus, Levy, Highlands) and the cheap northwest panhandle. Florida’s legal framework around closings is friendlier than Texas’s in some ways — no annual statement requirement equivalent to Tex. Prop. Code §5.077 — but heavier in others. The documentary stamp tax (F.S. §201.02) hits every recorded deed at the closing table, and Florida’s licensing regime for anyone who originates a residential mortgage loan is enforced by the Office of Financial Regulation.",
+  "mechanics": "A Florida land flip moves the same way: pull a list (the property appraiser’s office in each of 67 counties publishes a parcel roll), run mail, take inbound calls, run comps off the property appraiser’s recent sales tab, write offers. Florida closings happen either at a title company or a real-estate attorney’s office — both are common — and use a Florida-form general warranty deed or a special warranty deed. When seller financing comes in, the operator can use either a note + mortgage (recorded as a mortgage with the clerk of court) or an agreement-for-deed (Florida’s analog to Texas’s executory contract). Florida case law has historically been less protective of agreement-for-deed buyers than Texas statute, but Mid-State Investment v. O’Steen and subsequent cases pushed Florida courts toward treating long-term agreements-for-deed as equitable mortgages — meaning a defaulted buyer with substantial equity in is owed a foreclosure rather than self-help cancellation."
+,
+  "statutes": [
+    {
+      "headline": "F.S. §201.02 — documentary stamp tax on deeds",
+      "body": "Florida levies a documentary stamp tax of $0.70 per $100 of consideration on every deed recorded statewide (Miami-Dade is $0.60 per $100 plus a $0.45 per $100 surtax for non-single-family). The tax is collected by the clerk of court at recording. On a $20,000 raw-land flip, that’s $140 paid at the closing table. A flipper running 30 closings a year is writing roughly $4,200 in doc stamps. The same statute applies to assignments of contract — wholesalers who structure as double-closes pay doc stamps twice."
+    },
+    {
+      "headline": "F.S. §201.08 — documentary stamp tax on promissory notes",
+      "body": "Florida also levies a $0.35-per-$100 doc stamp on the face amount of every promissory note executed or delivered in Florida. A $25,000 seller-financed note carries an $87.50 stamp tax at execution. Sellers who fail to affix the stamp render the note unenforceable in Florida courts until the tax is paid plus penalty. Operators running a note book in Florida need to budget this into the per-deal close cost."
+    },
+    {
+      "headline": "F.S. Chapter 494 — Loan Originator and Mortgage Broker licensing",
+      "body": "Florida’s SAFE-Act implementation (F.S. §494.0011-§494.00125) requires a license to originate residential mortgage loans on Florida property. The seller-financing exception is narrow: F.S. §494.00115(2)(a)(3) exempts a natural-person seller who finances the sale of their own residence in any 12-month period — but commercial sellers (including most LLCs) and serial-finance operators do not qualify. Land flippers selling raw vacant land are generally outside the residential-mortgage definition; flippers seller-financing a home with the lot are not. The OFR’s enforcement actions against unlicensed serial seller-financers have included six-figure fines."
+    },
+    {
+      "headline": "Florida case law on agreements-for-deed",
+      "body": "Florida courts have repeatedly held that long-term installment land contracts can be treated as equitable mortgages, triggering full judicial foreclosure rather than the simple eviction the seller wrote into the contract (see Hoffman v. Semet, H&L Land Co. v. Warner, Hidden Harbour v. Allied Riggers). Operators relying on agreement-for-deed for the eviction speed should run that assumption past Florida counsel — a default on year 7 of a 10-year agreement is more likely to require a Chapter 702 foreclosure than a Chapter 83 eviction."
+    },
+    {
+      "headline": "F.S. §197.502 — tax-deed redemption",
+      "body": "Florida tax deeds are issued through a clerk-of-court auction after a tax certificate has been outstanding for at least two years. The redemption right ends the moment the tax deed is issued — there is no post-sale statutory redemption period the way Texas has. Buyers at a Florida tax deed auction take immediate title, subject to any pre-existing governmental liens and certain pre-existing mortgages. Operators flipping tax-deed acquisitions in Florida have a cleaner timeline than operators flipping Texas tax sales."
+    }
+  ],
+  "gotchas": [
+    {
+      "headline": "Homestead exemption fights add risk in Florida",
+      "body": "Florida’s constitutional homestead protection (Fla. Const. art. X §4) is broader than most states’. If the buyer claims homestead on a parcel sold under agreement-for-deed, the seller’s remedy gets harder. Verify the buyer’s homestead status at the property appraiser before structuring the deal."
+    },
+    {
+      "headline": "The clerk-of-court is the recording office, not the property appraiser",
+      "body": "Florida flippers regularly confuse the two. The property appraiser publishes parcel rolls + assessed values. The clerk of court records deeds, mortgages, and lien filings. They are separate elected offices in each of 67 counties, with separate websites, search interfaces, and fee schedules."
+    },
+    {
+      "headline": "Florida has no state income tax, but counties levy non-ad-valorem assessments",
+      "body": "A parcel with a special-district assessment (CDD, fire, mosquito control) carries an annual lien that runs with the land. The seller financing such a parcel and escrowing taxes is also escrowing the non-ad-valorem assessment. Missing it once at closing and the buyer is paying it as 'a surprise' the following year."
+    },
+    {
+      "headline": "Quiet-title actions are common for tax-deed parcels",
+      "body": "A Florida tax-deed acquisition is technically merchantable but most title insurers will not insure it for 3-4 years post-deed without a quiet-title action under F.S. §65.011. Operators flipping tax-deed acquisitions should budget for a quiet-title suit (~$1,500-$3,500 in attorney fees + court costs) if they want to deliver a title-insurable parcel to the next buyer quickly."
+    }
+  ],
+  "valueProp": "AcreOS ships with the Florida-specific closing-cost worksheet built into the deal record — doc stamps on deeds, doc stamps on notes, recording fees, and non-ad-valorem assessment lookup are all pulled from F.S. §201 and the clerk-of-court fee schedule per county. The mortgage-vs-agreement-for-deed decision surfaces in the deal worksheet with the equitable-mortgage risk flagged. Pax watches the Florida county tax-deed calendars and surfaces auction dates 30 days out per county. The Florida county registry is pre-loaded across all 67 counties.",
+  "faq": [
+    {
+      "q": "Do I need a license to flip land in Florida?",
+      "a": "Not to sell your own parcels. F.S. Chapter 475 regulates real-estate brokers acting on behalf of others; a principal selling their own property is exempt. The licensing question changes if you’re originating residential mortgage loans on the financed sale of a home (see F.S. Chapter 494)."
+    },
+    {
+      "q": "Who pays Florida doc stamps at closing?",
+      "a": "By Florida custom the seller pays the deed doc stamp; the buyer pays the note doc stamp and intangible tax (F.S. §199 — repealed for non-recurring intangibles in 2007 but still applicable in narrow cases). The parties can contract otherwise but the clerk collects from whoever shows up at recording."
+    },
+    {
+      "q": "Are wraparound mortgages legal in Florida?",
+      "a": "Yes, but the underlying note’s due-on-sale clause is enforceable in Florida (F.S. §697.061 allows acceleration). Wraps on Florida land where the underlying lender is paying attention are real-world risky."
+    },
+    {
+      "q": "How fast can I resell a Florida tax-deed property?",
+      "a": "Immediately — there’s no post-sale redemption. The blocker is title insurability. Most insurers want a four-year cure period or a quiet-title action under F.S. §65.011 before they’ll insure."
+    },
+    {
+      "q": "What does a Florida property-appraiser parcel record give me?",
+      "a": "Owner name + mailing address, legal description, assessed value, taxable value, year built (if improved), zoning, recent sale history (with deed-recording details), and the homestead-exemption flag. It’s the foundation of most Florida land flippers’ list-building."
+    },
+    {
+      "q": "Are there county-by-county recording fee differences in Florida?",
+      "a": "Yes — F.S. §28.24 sets the floor at $10 for the first page, $8.50 each additional page, but counties layer service charges. Miami-Dade and Broward routinely run higher. AcreOS pre-loads the per-county fee schedule into the closing worksheet."
+    },
+    {
+      "q": "Do I owe Florida sales tax on a vacant-land flip?",
+      "a": "Sales of real property are not subject to Florida sales tax. The transfer tax is the documentary stamp under F.S. §201."
+    }
+  ],
+  "sources": [
+    {
+      "name": "Florida Statutes — Documentary Stamp Tax",
+      "citation": "F.S. §201.02 and §201.08",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0200-0299/0201/0201.html"
+    },
+    {
+      "name": "Florida Statutes — Loan Originators and Mortgage Brokers",
+      "citation": "F.S. Chapter 494",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0494/0494.html"
+    },
+    {
+      "name": "Florida Statutes — Tax Deed Sales",
+      "citation": "F.S. §197.502",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0100-0199/0197/0197.html"
+    },
+    {
+      "name": "Florida Constitution — Homestead",
+      "citation": "Fla. Const. art. X §4",
+      "url": "https://www.flsenate.gov/Laws/Constitution"
+    },
+    {
+      "name": "Florida Statutes — Real Estate Brokers",
+      "citation": "F.S. Chapter 475",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0475/0475.html"
+    },
+    {
+      "name": "Florida Statutes — Quiet Title",
+      "citation": "F.S. §65.011",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0065/0065.html"
+    },
+    {
+      "name": "Florida Statutes — Recording Fees",
+      "citation": "F.S. §28.24",
+      "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0028/0028.html"
+    }
+  ]
+}

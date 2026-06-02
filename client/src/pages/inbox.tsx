@@ -211,9 +211,13 @@ function EmailMessageRow({
         </div>
       </div>
 
-      {/* Desktop fast-action row — visible on group-hover or when row has focus.
-          Equivalent surface to mobile swipe: star + archive without opening. */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+      {/* Fast-action row — visible on group-hover (desktop) or when row
+          has focus (keyboard). On touch devices (which never fire hover)
+          [@media(hover:none)]:opacity-60 keeps star + archive reachable
+          since the inbox does not yet have a swipe affordance. Same
+          touch-escape pattern as the Pax delete-conversation button
+          (contract test #4). Touch targets bumped to 44 (iOS HIG). */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity">
         <Button
           size="icon"
           variant="ghost"
@@ -223,10 +227,10 @@ function EmailMessageRow({
             starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
           }}
           disabled={starMutation.isPending}
-          className={`h-7 w-7 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
+          className={`min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
           aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
         >
-          <Star className={`h-3.5 w-3.5 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
+          <Star className={`h-4 w-4 sm:h-3.5 sm:w-3.5 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
         </Button>
         {onArchive && (
           <Button
@@ -238,10 +242,10 @@ function EmailMessageRow({
               archiveMutation.mutate({ id: message.id });
             }}
             disabled={archiveMutation.isPending}
-            className="h-7 w-7 text-[color:var(--acr-ink-3)]"
+            className="min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 text-[color:var(--acr-ink-3)]"
             aria-label={`Archive email from ${senderLabel}`}
           >
-            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+            <Archive className="h-4 w-4 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
           </Button>
         )}
       </div>
