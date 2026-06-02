@@ -36,4 +36,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./client/src"),
     },
   },
+  // tsconfig sets jsx: "preserve" so vite/SWC can handle JSX in the
+  // app build. Vitest's transformer needs an explicit jsx mode — we
+  // pick "automatic" so client component tests (statementsPanel.test.tsx,
+  // dock.test.tsx) don't need `import React from "react"` shims.
+  esbuild: {
+    jsx: "automatic",
+  },
 });

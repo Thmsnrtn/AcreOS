@@ -24,6 +24,7 @@ import { format, differenceInDays } from "date-fns";
 import type { jsPDF as JsPDFType } from "jspdf";
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
+import { StatementsPanel } from "@/components/borrower/StatementsPanel";
 
 type BorrowerLoanData = {
   note: Note & { property?: Property };
@@ -1043,9 +1044,10 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         )}
 
         <Tabs defaultValue="history">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="history" data-testid="tab-history">Payment history</TabsTrigger>
             <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment schedule</TabsTrigger>
+            <TabsTrigger value="statements" data-testid="tab-statements">Statements</TabsTrigger>
             <TabsTrigger
               value="messages"
               data-testid="tab-messages"
@@ -1266,6 +1268,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="statements">
+            {/* §1026.41 periodic statements. Sits under the borrower's
+                Finance door per CLAUDE.md five-doors rule — never a new
+                top-level nav entry. */}
+            <StatementsPanel />
           </TabsContent>
 
           <TabsContent value="schedule">
