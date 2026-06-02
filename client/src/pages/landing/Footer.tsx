@@ -75,9 +75,7 @@ export function Footer() {
               Contact us
             </button>
             <Link href="/help#support">Support</Link>
-            <a href="https://status.acreos.io" target="_blank" rel="noreferrer">
-              Status
-            </a>
+            <Link href="/status">Status</Link>
           </div>
         </div>
       </div>
