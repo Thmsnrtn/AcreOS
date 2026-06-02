@@ -4395,6 +4395,104 @@ const STATEMENTS = [
   // users are grandfathered; the server enforces non-null on every NEW row.
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "tos_accepted_at" timestamp`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "privacy_accepted_at" timestamp`,
+
+  // 2026-06-02 — Reg-Z §1026.41 (periodic statements) + §1026.36(c)
+  // (payment application, suspense bucket, late-fee non-pyramiding).
+  // Mirrors shared/schema/reg-z.ts. All four tables are new — no risk
+  // of column-add conflict on existing prod rows. Idempotent
+  // CREATE TABLE IF NOT EXISTS so re-running deploy is safe.
+  //
+  // Scaffolding for the Phase 1 deferred work flagged 2026-05-31
+  // legal-risk audit follow-up. Wired to the monthly cron in
+  // server/jobs/runScheduledJobs.ts and the borrower-portal
+  // /account/statements route.
+  `CREATE TABLE IF NOT EXISTS "periodic_statements" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "loan_id" text NOT NULL,
+     "loan_type" text NOT NULL DEFAULT 'note',
+     "cycle_start" date NOT NULL,
+     "cycle_end" date NOT NULL,
+     "due_date" date NOT NULL,
+     "amount_due_cents" bigint NOT NULL,
+     "payment_application_explanation" jsonb NOT NULL,
+     "principal_balance_cents" bigint NOT NULL,
+     "interest_rate_bps" integer NOT NULL,
+     "payoff_cents" bigint NOT NULL,
+     "prepayment_penalty_disclosed" boolean NOT NULL DEFAULT false,
+     "past_payment_breakdown" jsonb NOT NULL,
+     "ytd_principal_cents" bigint NOT NULL DEFAULT 0,
+     "ytd_interest_cents" bigint NOT NULL DEFAULT 0,
+     "ytd_escrow_cents" bigint NOT NULL DEFAULT 0,
+     "ytd_fees_cents" bigint NOT NULL DEFAULT 0,
+     "transactions" jsonb NOT NULL,
+     "partial_payment_balance_cents" bigint DEFAULT 0,
+     "delinquency_info" jsonb,
+     "generated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "delivered_at" timestamp with time zone,
+     "delivery_method" text,
+     "delivery_status" text NOT NULL DEFAULT 'pending',
+     "delivery_error" text,
+     "pdf_s3_key" text,
+     "delivery_deadline" date NOT NULL,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "periodic_statements_loan_cycle_idx" ON "periodic_statements" ("loan_id", "cycle_end")`,
+  `CREATE INDEX IF NOT EXISTS "periodic_statements_org_generated_idx" ON "periodic_statements" ("organization_id", "generated_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "periodic_statements_loan_cycle_uk" ON "periodic_statements" ("loan_id", "cycle_start")`,
+
+  `CREATE TABLE IF NOT EXISTS "payment_applications" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "loan_id" text NOT NULL,
+     "loan_type" text NOT NULL DEFAULT 'note',
+     "payment_id" text NOT NULL,
+     "received_at" timestamp with time zone NOT NULL,
+     "applied_at" timestamp with time zone NOT NULL,
+     "applied_to_principal_cents" bigint NOT NULL DEFAULT 0,
+     "applied_to_interest_cents" bigint NOT NULL DEFAULT 0,
+     "applied_to_escrow_cents" bigint NOT NULL DEFAULT 0,
+     "applied_to_fees_cents" bigint NOT NULL DEFAULT 0,
+     "applied_to_suspense_cents" bigint NOT NULL DEFAULT 0,
+     "reg_citation" text NOT NULL DEFAULT '12 C.F.R. §1026.36(c)(1)(i)',
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "payment_applications_loan_applied_idx" ON "payment_applications" ("loan_id", "applied_at")`,
+  `CREATE INDEX IF NOT EXISTS "payment_applications_org_applied_idx" ON "payment_applications" ("organization_id", "applied_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "payment_applications_payment_uk" ON "payment_applications" ("payment_id")`,
+
+  `CREATE TABLE IF NOT EXISTS "suspense_balances" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "loan_id" text NOT NULL,
+     "loan_type" text NOT NULL DEFAULT 'note',
+     "balance_cents" bigint NOT NULL DEFAULT 0,
+     "last_updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "ledger_entries" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "suspense_balances_loan_uk" ON "suspense_balances" ("loan_id")`,
+  `CREATE INDEX IF NOT EXISTS "suspense_balances_org_idx" ON "suspense_balances" ("organization_id")`,
+
+  `CREATE TABLE IF NOT EXISTS "late_fee_assessments" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "loan_id" text NOT NULL,
+     "loan_type" text NOT NULL DEFAULT 'note',
+     "period_start" date NOT NULL,
+     "period_end" date NOT NULL,
+     "payment_id" text,
+     "fee_amount_cents" bigint NOT NULL,
+     "justification" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'assessed',
+     "waived_at" timestamp with time zone,
+     "waived_by" text,
+     "waived_reason" text,
+     "assessed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "late_fee_assessments_loan_period_uk" ON "late_fee_assessments" ("loan_id", "period_start")`,
+  `CREATE INDEX IF NOT EXISTS "late_fee_assessments_org_assessed_idx" ON "late_fee_assessments" ("organization_id", "assessed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -11283,6 +11283,14 @@ export * from "./schema/ai-telemetry";
 // ============================================================================
 export * from "./schema/compliance";
 
+// ============================================================================
+// REG-Z §1026.41 + §1026.36(c) — periodic statements, payment
+// applications, suspense bucket, late-fee non-pyramiding.
+// Lives in ./schema/reg-z.ts so a CFPB examiner reading the codebase can
+// see every regulated field in one place.
+// ============================================================================
+export * from "./schema/reg-z";
+
 // ============================================
 // DEAL ROOM MESSAGES & DOCUMENTS (Tasks 45-52)
 // ============================================
