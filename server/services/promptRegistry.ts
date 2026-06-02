@@ -78,15 +78,9 @@ const BUILTINS: Record<string, Omit<PromptVersion, "hash" | "createdAt">> = {
     active: true,
     isCandidate: false,
   },
-  "atlas.deal-analysis": {
-    promptName: "atlas.deal-analysis",
-    version: "1.0.0",
-    system: `You are Atlas, AcreOS's deal-analysis engine. Output structured JSON only.`,
-    tier: "standard",
-    weight: 100,
-    active: true,
-    isCandidate: false,
-  },
+  // atlas.deal-analysis removed 2026-06-01 — zero call sites, and the "Atlas"
+  // codename should not appear in registries the rest of the system can read.
+  // Customer AI is Pax-only per the constitution. Beatrice Phase Zero-Three audit.
 };
 
 function computeHash(s: string): string {

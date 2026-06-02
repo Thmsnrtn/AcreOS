@@ -36,6 +36,16 @@ const LEAK_PATTERNS: RegExp[] = [
   /UNTRUSTED DATA HANDLING/i,
   // Common system-prompt boundary phrasings the model might echo
   /^---\s*system\s*:/im,
+  // Internal AI-executive codename self-identification — Pax-only is constitutional
+  // (§ persona-architecture). Match only the self-identification phrasings most
+  // likely to come from a system-prompt leak ("I am Atlas", "as Solene", etc.),
+  // NOT bare mentions — "Atlas Property Management" is a real company a customer
+  // might legitimately ask about, and false positives would replace a useful
+  // response with the SAFE_FALLBACK. Beatrice Phase Zero-Three audit.
+  /\bI\s+am\s+(Sophie|Forge|Atlas|Lena|Iris|Soren|Beatrice|Solene|Andrei|Maren|Tess|Quinn|Rafe|Eleonora|Krieger|Kai)\b/i,
+  /\bI'm\s+(Sophie|Forge|Atlas|Lena|Iris|Soren|Beatrice|Solene|Andrei|Maren|Tess|Quinn|Rafe|Eleonora|Krieger|Kai)\b/i,
+  /\bas\s+(Sophie|Forge|Atlas|Lena|Iris|Soren|Beatrice|Solene|Andrei|Maren|Tess|Quinn|Rafe|Eleonora|Krieger|Kai)[\s,]/i,
+  /\bMy\s+name\s+is\s+(Sophie|Forge|Atlas|Lena|Iris|Soren|Beatrice|Solene|Andrei|Maren|Tess|Quinn|Rafe|Eleonora|Krieger|Kai)\b/i,
 ];
 
 const SAFE_FALLBACK =

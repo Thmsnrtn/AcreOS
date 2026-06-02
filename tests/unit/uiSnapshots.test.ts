@@ -38,7 +38,7 @@ function libExists(filename: string): boolean {
 
 describe("Critical Page Files Exist (Task #253)", () => {
   const criticalPages = [
-    "dashboard.tsx",
+    // dashboard.tsx removed in the Phase Zero-One 70% page cut (#166); no longer authoritative.
     "leads.tsx",
     "deals.tsx",
     "properties.tsx",
