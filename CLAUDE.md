@@ -54,7 +54,7 @@ Providers are registered by category and priority. The registry handles:
 
 ## Known monoliths
 
-- `client/src/pages/founder-dashboard.tsx` is a deliberately-deferred 7,379-line monolith (C.1 deferral, 2026-05-06 — see `docs/exhaustive-completion/FOUNDER-DASHBOARD-V2-PLAN.md`). **Before adding ≥100 lines to any panel in this file**, extract that panel into its own route first per the 5-item queue in `docs/exhaustive-completion/founder-dashboard-extraction-queue.md`. Adding to the monolith strictly raises the cost of the eventual extraction.
+- The founder-dashboard.tsx monolith (7,379 lines) was fully decomposed across commits `f0787190` (keys) → `3ef1efed` (readiness) → `f01e5fb3` (todo merge) → `bf12d8b7` (customers/health) → `be9e37c7` (growth wizard) and ultimately retired by `f2801428` (3-screen Pulse/Cost/Customers model). The file now lives only as `client/src/pages/founder-dashboard.DELETED.bak`; the canonical founder surface is the focused `/founder/*` route set. No new code should reference founder-dashboard.tsx — add new founder surfaces as their own route.
 
 ## Commands
 
