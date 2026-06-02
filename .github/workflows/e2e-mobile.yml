@@ -47,6 +47,13 @@ jobs:
       # The inbound-email webhook refuses to boot in production without one of
       # these; we don't exercise email here, so require SNS-only (no secret).
       INBOUND_EMAIL_SNS_ONLY: "1"
+      # Founder-positive E2E gating: when a spec needs to assert what Tom sees
+      # (Team / Background / AI Ops tabs visible to founder), bypass-auth must
+      # know which email = founder. The e2e seed uses e2e@acreos.test.
+      # Iris's Phase Zero-One verification (#182) flagged the absence of this
+      # var as the one coverage asymmetry (customer-side E2E only). Closing.
+      FOUNDER_EMAIL: e2e@acreos.test
+      FOUNDER_EMAILS: e2e@acreos.test
 
     steps:
       - uses: actions/checkout@v6

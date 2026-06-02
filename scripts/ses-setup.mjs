@@ -302,8 +302,13 @@ async function run() {
       );
       ok(`production-access requested — AWS typically reviews within 24 hours`);
     } catch (e) {
-      if ((e.message || "").toLowerCase().includes("already")) {
-        info(`production access already requested or granted`);
+      const msg = (e.message || "").toLowerCase();
+      const name = (e.name || "").toLowerCase();
+      // AWS returns ConflictException when a request is already pending — that's
+      // a successful idempotent path, not an error. "Already" appears in some
+      // variants. ValidationException can fire if details are partially set.
+      if (name.includes("conflict") || msg.includes("already") || msg.includes("pending")) {
+        info(`production access already requested or granted — submission is in AWS queue`);
       } else {
         throw e;
       }
