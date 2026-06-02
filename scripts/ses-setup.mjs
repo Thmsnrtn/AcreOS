@@ -57,7 +57,8 @@ const CF_TOKEN =
   process.env.CLOUDFLARE_API_TOKEN ||
   process.env.CF_API_TOKEN ||
   process.env.CLOUDFLARE_TOKEN ||
-  process.env.CF_TOKEN;
+  process.env.CF_TOKEN ||
+  process.env.Cloudflare;
 
 const AWS_ID = process.env.AWS_ACCESS_KEY_ID;
 const AWS_SECRET = process.env.AWS_SECRET_ACCESS_KEY;
