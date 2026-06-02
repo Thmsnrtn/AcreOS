@@ -2134,6 +2134,60 @@ function startPaxContinuousAuditJob() {
   }, ONE_HOUR);
 }
 
+/**
+ * Solene (COO) — self-audit cron.
+ *
+ * Two cadences honoured by one tick function:
+ *  - per-session sweep: every 60 minutes. Honest constraint — Solene can't
+ *    detect session boundaries from server-side, so a 60-min poll is the
+ *    best proxy for "end of session" granularity.
+ *  - per-week sweep: Sunday 23:00 UTC. Captures the broader pattern after
+ *    a full week of decisions.
+ *
+ * Both wrapped in withJobLock so concurrent worker + app processes don't
+ * double-fire. Detection only — drift signals fire via logger.error +
+ * Sentry; remediation is downstream.
+ */
+function startSoleneAuditJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  log(
+    'Registering Solene self-audit job (per-session every 60m, per-week Sun 23:00 UTC)',
+    'solene-audit',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    // Per-week sweep: Sunday (day=0) at 23:00 UTC, within a 5-min window.
+    if (now.getUTCDay() === 0 && now.getUTCHours() === 23 && now.getUTCMinutes() < 5) {
+      void withJobLock('solene_audit_per_week', 60 * 60, async () => {
+        const { runSoleneAudit } = await import('../services/solene/selfAudit');
+        const r = await runSoleneAudit({ scope: 'per-week' });
+        log(
+          `[solene-audit] per-week: examined=${r.decisionsExamined} findings=${r.findingCount} drift=${r.driftSignalEmitted}`,
+          'solene-audit',
+        );
+      }).catch((err) => {
+        log(`[solene-audit] per-week lock error: ${err}`, 'solene-audit');
+      });
+    }
+    // Per-session sweep: every 60 minutes, on the hour (within the 5m poll window).
+    if (now.getUTCMinutes() < 5) {
+      void withJobLock('solene_audit_per_session', 55 * 60, async () => {
+        const { runSoleneAudit } = await import('../services/solene/selfAudit');
+        const r = await runSoleneAudit({ scope: 'per-session' });
+        if (r.findingCount > 0 || r.driftSignalEmitted) {
+          log(
+            `[solene-audit] per-session: examined=${r.decisionsExamined} findings=${r.findingCount} drift=${r.driftSignalEmitted}`,
+            'solene-audit',
+          );
+        }
+      }).catch((err) => {
+        log(`[solene-audit] per-session lock error: ${err}`, 'solene-audit');
+      });
+    }
+  }, FIVE_MINUTES);
+}
+
 // ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
 // Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
 // rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
@@ -2296,6 +2350,12 @@ export async function runScheduledJobs(): Promise<void> {
   // regulatory detectors. Findings persist to pax_audit_findings; drift
   // signals fire via logger.error + Sentry (when SENTRY_DSN set).
   startPaxContinuousAuditJob();
+
+  // Solene — self-audit (per-session every 60m, per-week Sunday 23:00 UTC).
+  // Samples recent solene_decisions and scores each through eight
+  // discipline detectors. Findings persist to solene_audit_findings;
+  // drift signals fire via logger.error + Sentry tag solene_audit_drift.
+  startSoleneAuditJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both
