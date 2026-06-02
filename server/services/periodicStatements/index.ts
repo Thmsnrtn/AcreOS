@@ -30,14 +30,17 @@
  */
 
 import { db } from "../../db";
-import { notes, organizations } from "@shared/schema";
+import { notes } from "@shared/schema";
 import {
   periodicStatements,
+  periodicStatementSkips,
   type InsertPeriodicStatement,
 } from "@shared/schema/reg-z";
 import { paymentApplications } from "@shared/schema/reg-z";
+import { acquiredNotes, type AcquiredNote } from "@shared/schema/notes-vertical";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { qualifiesForRegZStatement } from "./predicate";
 
 // HUD-approved housing counsellor hotline — §1026.41(d)(8) mandates
 // disclosure when the borrower is 45+ days delinquent. The hotline
@@ -126,10 +129,26 @@ export async function generateStatementsForCycle(
       ),
     );
 
+  // Acquired notes (Beatrice 2026-06-02 ruling). The predicate gates
+  // whether each row generates — most acquired notes will SKIP because
+  // their servicingArrangement defaults to 'passive_holder'. The skip
+  // ledger captures every skip with its §-citation for examiner audit.
+  // Pull only rows in active servicing states; paid-off / sold notes
+  // never owe a current statement.
+  const activeAcquiredNotes = await db
+    .select()
+    .from(acquiredNotes)
+    .where(
+      and(
+        eq(acquiredNotes.organizationId, organizationId),
+        sql`${acquiredNotes.status} NOT IN ('paid_off', 'sold')`,
+      ),
+    );
+
   const result: GenerateStatementsResult = {
     organizationId,
     asOfDate: asOfDate.toISOString().slice(0, 10),
-    loansEvaluated: activeLoans.length,
+    loansEvaluated: activeLoans.length + activeAcquiredNotes.length,
     statementsGenerated: 0,
     statementsSkipped: 0,
     errors: [],
@@ -138,6 +157,25 @@ export async function generateStatementsForCycle(
 
   for (const loan of activeLoans) {
     try {
+      // Originated notes: predicate always returns qualifies=true (AcreOS
+      // is the servicer by construction for this vertical). The skip
+      // ledger therefore only writes for acquired notes in this commit.
+      const predicate = await qualifiesForRegZStatement(
+        { kind: "note", row: loan },
+        organizationId,
+      );
+      if (!predicate.qualifies) {
+        await writeSkipLedger({
+          organizationId,
+          noteTable: "notes",
+          noteId: String(loan.id),
+          cycleStart,
+          reason: predicate.skipReason ?? "predicate returned skip without reason",
+          citation: predicate.citation,
+        });
+        result.statementsSkipped += 1;
+        continue;
+      }
       const generated = await generateOneStatement({
         loan,
         organizationId,
@@ -157,6 +195,48 @@ export async function generateStatementsForCycle(
       result.errors.push({ loanId: String(loan.id), error: errMsg });
       logger.error(
         `[periodicStatements] error generating for loan ${loan.id}`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  for (const acq of activeAcquiredNotes) {
+    try {
+      const predicate = await qualifiesForRegZStatement(
+        { kind: "acquired_note", row: acq },
+        organizationId,
+      );
+      if (!predicate.qualifies) {
+        await writeSkipLedger({
+          organizationId,
+          noteTable: "acquired_notes",
+          noteId: acq.id,
+          cycleStart,
+          reason: predicate.skipReason ?? "predicate returned skip without reason",
+          citation: predicate.citation,
+        });
+        result.statementsSkipped += 1;
+        continue;
+      }
+      const generated = await generateOneAcquiredStatement({
+        note: acq,
+        organizationId,
+        cycleStart,
+        cycleEnd,
+        nextDueDate,
+        deliveryDeadline,
+        regenerate: options.regenerate ?? false,
+      });
+      if (generated) {
+        result.statementsGenerated += 1;
+      } else {
+        result.statementsSkipped += 1;
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      result.errors.push({ loanId: acq.id, error: errMsg });
+      logger.error(
+        `[periodicStatements] error generating for acquired note ${acq.id}`,
         err instanceof Error ? err : undefined,
       );
     }
@@ -469,6 +549,233 @@ async function computeStatementFields(
     partialPaymentBalanceCents,
     delinquencyInfo,
   };
+}
+
+// ============================================================================
+// SKIP LEDGER — Beatrice ruling §4 audit primitive
+// ----------------------------------------------------------------------------
+// Every predicate skip persists a row here with the §-citation. UNIQUE on
+// (org_id, note_table, note_id, cycle_start) — re-running the generator
+// for a cycle whose skip was already logged is a no-op at the DB layer.
+// ============================================================================
+
+interface WriteSkipInput {
+  organizationId: number;
+  noteTable: "notes" | "acquired_notes";
+  noteId: string;
+  cycleStart: Date;
+  reason: string;
+  citation: string;
+}
+
+async function writeSkipLedger(input: WriteSkipInput): Promise<void> {
+  await db
+    .insert(periodicStatementSkips)
+    .values({
+      organizationId: input.organizationId,
+      noteTable: input.noteTable,
+      noteId: input.noteId,
+      cycleStart: input.cycleStart,
+      reason: input.reason,
+      citation: input.citation,
+    })
+    .onConflictDoNothing({
+      target: [
+        periodicStatementSkips.organizationId,
+        periodicStatementSkips.noteTable,
+        periodicStatementSkips.noteId,
+        periodicStatementSkips.cycleStart,
+      ],
+    });
+  logger.info(
+    `[periodicStatements] skip logged: org=${input.organizationId} table=${input.noteTable} note=${input.noteId} cycle=${input.cycleStart.toISOString().slice(0, 10)} reason="${input.reason}" citation="${input.citation}"`,
+  );
+}
+
+// ============================================================================
+// ACQUIRED-NOTE STATEMENT GENERATION
+// ----------------------------------------------------------------------------
+// Same §1026.41(d) field set as the originated-notes path, but pulled from
+// the acquired_notes columns (which store cents directly instead of the
+// decimal-string convention the originated `notes` table uses).
+// ============================================================================
+
+interface GenerateOneAcquiredInput {
+  note: AcquiredNote;
+  organizationId: number;
+  cycleStart: Date;
+  cycleEnd: Date;
+  nextDueDate: Date;
+  deliveryDeadline: Date;
+  regenerate: boolean;
+}
+
+async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Promise<boolean> {
+  const { note, organizationId, cycleStart, cycleEnd, nextDueDate, deliveryDeadline, regenerate } =
+    input;
+  const loanId = note.id;
+
+  const existing = await db
+    .select({ id: periodicStatements.id })
+    .from(periodicStatements)
+    .where(
+      and(
+        eq(periodicStatements.loanId, loanId),
+        eq(periodicStatements.cycleStart, cycleStart.toISOString().slice(0, 10)),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0 && !regenerate) {
+    return false;
+  }
+
+  // Pull the cycle's payment_applications for past-payment + transactions.
+  // The unified payment_applications table holds rows for both note types,
+  // distinguished by loan_type. Acquired-note rows write loanType='acquired_note'.
+  const cyclePayments = await db
+    .select()
+    .from(paymentApplications)
+    .where(
+      and(
+        eq(paymentApplications.loanId, loanId),
+        gte(paymentApplications.appliedAt, cycleStart),
+        lte(paymentApplications.appliedAt, cycleEnd),
+      ),
+    );
+
+  const pastPaymentBreakdown = {
+    principalCents: 0,
+    interestCents: 0,
+    escrowCents: 0,
+    feesCents: 0,
+    unappliedCents: 0,
+    totalReceivedCents: 0,
+  };
+  const transactions: Array<{
+    date: string;
+    label: string;
+    amountCents: number;
+    appliedTo: string;
+  }> = [];
+
+  for (const p of cyclePayments) {
+    pastPaymentBreakdown.principalCents += p.appliedToPrincipalCents;
+    pastPaymentBreakdown.interestCents += p.appliedToInterestCents;
+    pastPaymentBreakdown.escrowCents += p.appliedToEscrowCents;
+    pastPaymentBreakdown.feesCents += p.appliedToFeesCents;
+    pastPaymentBreakdown.unappliedCents += p.appliedToSuspenseCents;
+    pastPaymentBreakdown.totalReceivedCents +=
+      p.appliedToPrincipalCents +
+      p.appliedToInterestCents +
+      p.appliedToEscrowCents +
+      p.appliedToFeesCents +
+      Math.max(p.appliedToSuspenseCents, 0);
+
+    transactions.push({
+      date: new Date(p.appliedAt).toISOString().slice(0, 10),
+      label: p.appliedToSuspenseCents > 0 ? "Partial payment (held)" : "Payment received",
+      amountCents:
+        p.appliedToPrincipalCents +
+        p.appliedToInterestCents +
+        p.appliedToEscrowCents +
+        p.appliedToFeesCents +
+        Math.max(p.appliedToSuspenseCents, 0),
+      appliedTo: p.appliedToSuspenseCents > 0 ? "suspense" : "principal/interest",
+    });
+  }
+
+  const ytdStart = new Date(Date.UTC(cycleStart.getUTCFullYear(), 0, 1));
+  const ytdRow = await db
+    .select({
+      principal: sql<number>`COALESCE(SUM(${paymentApplications.appliedToPrincipalCents}), 0)::bigint`,
+      interest: sql<number>`COALESCE(SUM(${paymentApplications.appliedToInterestCents}), 0)::bigint`,
+      escrow: sql<number>`COALESCE(SUM(${paymentApplications.appliedToEscrowCents}), 0)::bigint`,
+      fees: sql<number>`COALESCE(SUM(${paymentApplications.appliedToFeesCents}), 0)::bigint`,
+    })
+    .from(paymentApplications)
+    .where(
+      and(
+        eq(paymentApplications.loanId, loanId),
+        gte(paymentApplications.appliedAt, ytdStart),
+        lte(paymentApplications.appliedAt, cycleEnd),
+      ),
+    );
+
+  const amountDueCents = note.paymentAmountCents;
+  const principalBalanceCents = note.currentBalanceCents;
+  const interestRateBps = note.interestRateBps;
+  const upcomingInterest = Math.round(
+    (principalBalanceCents * interestRateBps) / (10_000 * 12),
+  );
+  const upcomingPrincipal = Math.max(0, amountDueCents - upcomingInterest);
+  const payoffCents = principalBalanceCents + upcomingInterest;
+
+  // Delinquency block — acquired_notes carries `status` but no day-counter.
+  // For this commit we leave delinquencyInfo undefined; the day-counter
+  // wiring is the RESPA §1024.39 follow-up commit.
+  const partialPaymentBalanceCents = Math.max(0, pastPaymentBreakdown.unappliedCents);
+
+  const row: InsertPeriodicStatement = {
+    organizationId,
+    loanId,
+    loanType: "acquired_note",
+    cycleStart: cycleStart.toISOString().slice(0, 10),
+    cycleEnd: cycleEnd.toISOString().slice(0, 10),
+    dueDate: nextDueDate.toISOString().slice(0, 10),
+    amountDueCents,
+    paymentApplicationExplanation: {
+      principalCents: upcomingPrincipal,
+      interestCents: upcomingInterest,
+      escrowCents: 0,
+      feesCents: 0,
+    },
+    principalBalanceCents,
+    interestRateBps,
+    payoffCents,
+    prepaymentPenaltyDisclosed: false,
+    pastPaymentBreakdown,
+    ytdPrincipalCents: Number(ytdRow[0]?.principal ?? 0),
+    ytdInterestCents: Number(ytdRow[0]?.interest ?? 0),
+    ytdEscrowCents: Number(ytdRow[0]?.escrow ?? 0),
+    ytdFeesCents: Number(ytdRow[0]?.fees ?? 0),
+    transactions,
+    partialPaymentBalanceCents,
+    delinquencyInfo: undefined,
+    deliveryDeadline: deliveryDeadline.toISOString().slice(0, 10),
+    deliveryStatus: "pending",
+  };
+
+  let persistedId: string;
+  if (existing.length > 0 && regenerate) {
+    persistedId = existing[0].id;
+    await db.update(periodicStatements).set(row).where(eq(periodicStatements.id, persistedId));
+  } else {
+    const [inserted] = await db
+      .insert(periodicStatements)
+      .values(row)
+      .returning({ id: periodicStatements.id });
+    persistedId = inserted.id;
+  }
+
+  // Borrower notification: same delivery hook as originated notes. The
+  // delivery module reads loanType from the persisted row and renders
+  // accordingly.
+  try {
+    const { notifyStatementGenerated } = await import("./delivery");
+    await notifyStatementGenerated(persistedId);
+  } catch (notifyErr) {
+    logger.warn(
+      `[periodicStatements] notify failed for acquired-note statement ${persistedId} (note ${loanId}) — generation succeeded, email did not`,
+      {
+        metadata: {
+          detail: { error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr) },
+        },
+      },
+    );
+  }
+
+  return true;
 }
 
 /**
