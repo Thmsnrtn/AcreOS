@@ -234,13 +234,33 @@ async function generateOneStatement(input: GenerateOneInput): Promise<boolean> {
     deliveryStatus: "pending",
   };
 
+  let persistedId: string;
   if (existing.length > 0 && regenerate) {
+    persistedId = existing[0].id;
     await db
       .update(periodicStatements)
       .set(row)
-      .where(eq(periodicStatements.id, existing[0].id));
+      .where(eq(periodicStatements.id, persistedId));
   } else {
-    await db.insert(periodicStatements).values(row);
+    const [inserted] = await db
+      .insert(periodicStatements)
+      .values(row)
+      .returning({ id: periodicStatements.id });
+    persistedId = inserted.id;
+  }
+
+  // Fire the borrower notification email. The notifier is idempotent —
+  // re-running for an already-delivered statement is a no-op (it reads
+  // delivery_status before sending). A send failure here MUST NOT abort
+  // the cron batch; we catch + log so the remaining loans keep generating.
+  try {
+    const { notifyStatementGenerated } = await import("./delivery");
+    await notifyStatementGenerated(persistedId);
+  } catch (notifyErr) {
+    logger.warn(
+      `[periodicStatements] notify failed for statement ${persistedId} (loan ${loanId}) — generation succeeded, email did not`,
+      { metadata: { detail: { error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr) } } },
+    );
   }
 
   return true;
