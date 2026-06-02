@@ -346,6 +346,9 @@ const WhyPage = React.lazy(() => import("@/pages/why"));
 // intent. Lazy-loaded so they don't weigh on the landing-page first paint.
 const AcreosVsPropstreamPage = React.lazy(() => import("@/pages/compare/acreos-vs-propstream"));
 const AcreosVsDealmachinePage = React.lazy(() => import("@/pages/compare/acreos-vs-dealmachine"));
+// /learn/<vertical>/<state> — programmatic SEO surface for state×vertical
+// long-tail queries. Public, lazy-loaded so it doesn't weigh on first paint.
+const StateVerticalLearnPage = React.lazy(() => import("@/pages/learn/state-vertical"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
@@ -602,6 +605,8 @@ function Router() {
       <Route path="/why" component={WhyPage} />
       <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />
       <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />
+      {/* Programmatic SEO — state×vertical primers */}
+      <Route path="/learn/:vertical/:state" component={StateVerticalLearnPage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />

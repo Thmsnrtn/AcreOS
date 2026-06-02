@@ -39,6 +39,14 @@ jobs:
       - name: Truth-engine audit (public claims)
         run: npm run truth-engine:audit
 
+      # Same discipline applied to the programmatic SEO /learn/* pages.
+      # Each content/learn/<vertical>/<state>.json must trace every
+      # numeric, statutory, and capability claim to a named source
+      # declared inside the same file. CI fails the push if any claim
+      # token is unmatched.
+      - name: Truth-engine audit (learn pages)
+        run: npm run truth-engine:audit-learn
+
       - name: Coverage report
         run: npm run test:coverage
 

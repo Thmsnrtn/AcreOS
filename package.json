@@ -39,6 +39,7 @@
     "cmo:generate-script": "tsx scripts/cmo-generate-script.ts",
     "cmo:seed": "tsx scripts/cmo-seed.ts",
     "truth-engine:audit": "tsx scripts/audit-public-claims.ts",
+    "truth-engine:audit-learn": "tsx scripts/audit-learn-pages.ts",
     "cmo:render-ad": "tsx scripts/cmo-render-ad.ts",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "tauri:dev": "cargo tauri dev",

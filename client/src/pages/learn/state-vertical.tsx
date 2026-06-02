@@ -132,9 +132,12 @@ function buildSchema(content: LearnContent, canonicalUrl: string) {
   return { article, faqPage, breadcrumbs };
 }
 
+// Wouter's useRoute generic requires `DefaultParams` shape (`{ [k: string]: string | undefined }`).
+// The named fields below give us typed access; the index signature satisfies the constraint.
 interface StateVerticalParams {
   vertical: string;
   state: string;
+  [key: string]: string | undefined;
 }
 
 export default function StateVerticalLandingPage() {

@@ -79,6 +79,7 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      "@content": path.resolve(import.meta.dirname, "content"),
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
@@ -144,6 +145,13 @@ export default defineConfig({
     fs: {
       strict: true,
       deny: ["**/.*"],
+      // Allow Vite to read content/ which lives at the repo root, a
+      // sibling of the Vite root (client/). Used by the programmatic
+      // SEO loader at client/src/pages/learn/registry.ts.
+      allow: [
+        path.resolve(import.meta.dirname),
+        path.resolve(import.meta.dirname, "content"),
+      ],
     },
   },
 });
