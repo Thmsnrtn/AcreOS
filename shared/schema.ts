@@ -16088,3 +16088,8 @@ export * from "./schema/hardening";
 // BEATRICE — Pax continuous-audit ledger (constitutional compliance audit)
 // ============================================================================
 export * from "./schema/pax-audit";
+
+// ============================================================================
+// SOLENE — self-audit ledger (operating-discipline drift detection)
+// ============================================================================
+export * from "./schema/solene-audit";
