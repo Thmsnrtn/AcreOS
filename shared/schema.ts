@@ -16083,3 +16083,8 @@ export * from "./schema/public-api";
 // PHASE 0 HARDENING — bot-signal capture + OFAC SDN hash table
 // ============================================================================
 export * from "./schema/hardening";
+
+// ============================================================================
+// BEATRICE — Pax continuous-audit ledger (constitutional compliance audit)
+// ============================================================================
+export * from "./schema/pax-audit";

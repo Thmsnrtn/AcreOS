@@ -4603,6 +4603,50 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "sanctions_list_hash_uk" ON "sanctions_list" ("list_source", "name_country_hash")`,
   `CREATE INDEX IF NOT EXISTS "sanctions_list_fetched_idx" ON "sanctions_list" ("fetched_at")`,
+
+  // ── Beatrice (CRO) — Pax continuous-audit ledger ───────────────────────
+  // Detection-only daily audit. Persists every (sample → check) cycle.
+  // pax_audit_runs:     one row per (cron tick × org). organizationId NULL
+  //                     marks a platform-wide / ad-hoc run.
+  // pax_audit_findings: one row per (sampled output × failed check). The
+  //                     UNIQUE index makes re-runs over the same window
+  //                     idempotent at the DB layer.
+  // Mirrors shared/schema/pax-audit.ts. New tables — no risk of column
+  // conflict on existing rows. Wired to the daily cron in
+  // server/jobs/runScheduledJobs.ts → startPaxContinuousAuditJob.
+  `CREATE TABLE IF NOT EXISTS "pax_audit_runs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "run_started_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "run_ended_at" timestamp with time zone,
+     "samples_examined" integer NOT NULL DEFAULT 0,
+     "samples_failed" integer NOT NULL DEFAULT 0,
+     "drift_signal_emitted" boolean NOT NULL DEFAULT false,
+     "window_hours" integer NOT NULL DEFAULT 24,
+     "sample_size" integer NOT NULL DEFAULT 20,
+     "skip_reason" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_audit_runs_started_idx" ON "pax_audit_runs" ("run_started_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_audit_runs_org_started_idx" ON "pax_audit_runs" ("organization_id", "run_started_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "pax_audit_findings" (
+     "id" serial PRIMARY KEY,
+     "run_id" integer NOT NULL REFERENCES "pax_audit_runs"("id") ON DELETE CASCADE,
+     "source_table" text NOT NULL,
+     "source_row_id" text NOT NULL,
+     "persona" text,
+     "audience_scope" text,
+     "content_excerpt" text NOT NULL,
+     "check_name" text NOT NULL,
+     "severity" text NOT NULL,
+     "citation" text NOT NULL,
+     "matched_patterns" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "fired_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pax_audit_findings_unique" ON "pax_audit_findings" ("run_id", "source_table", "source_row_id", "check_name")`,
+  `CREATE INDEX IF NOT EXISTS "pax_audit_findings_run_idx" ON "pax_audit_findings" ("run_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_audit_findings_severity_idx" ON "pax_audit_findings" ("severity", "fired_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_audit_findings_check_idx" ON "pax_audit_findings" ("check_name", "fired_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
