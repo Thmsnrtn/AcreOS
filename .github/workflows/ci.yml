@@ -30,6 +30,15 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      # Truth-engine audit — public-facing claims must each map to a
+      # named source. A landing copy edit that doesn't update sources
+      # (or cites a source that no longer contains the claim's tokens)
+      # fails here, BEFORE the build ships to acreos.io. Same discipline
+      # shape as migrate-mirror-check — guards a Soren-level invariant
+      # at CI time instead of trusting Soren to remember.
+      - name: Truth-engine audit (public claims)
+        run: npm run truth-engine:audit
+
       - name: Coverage report
         run: npm run test:coverage
 
