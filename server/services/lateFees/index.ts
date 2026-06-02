@@ -173,6 +173,8 @@ export async function assessLateFee(
   const evaluationDate = input.evaluationDate ?? new Date();
 
   // Idempotency check: has a fee row already been written for this cycle?
+  // Include loanType — the UNIQUE index is composite (loan_id, period_start,
+  // loan_type) so a same-id-different-table collision can't false-positive.
   const existing = await db
     .select()
     .from(lateFeeAssessments)
@@ -180,6 +182,7 @@ export async function assessLateFee(
       and(
         eq(lateFeeAssessments.loanId, input.loanId),
         eq(lateFeeAssessments.periodStart, input.periodStart.toISOString().slice(0, 10)),
+        eq(lateFeeAssessments.loanType, loanType),
       ),
     )
     .limit(1);
@@ -193,7 +196,8 @@ export async function assessLateFee(
     };
   }
 
-  // Sum payment_applications credited to this cycle.
+  // Sum payment_applications credited to this cycle. Filter on loanType
+  // so a parallel cycle on a same-id-different-table loan can't contaminate.
   const credited = await db
     .select({
       total: sql<number>`COALESCE(SUM(${paymentApplications.appliedToPrincipalCents}) + SUM(${paymentApplications.appliedToInterestCents}) + SUM(${paymentApplications.appliedToEscrowCents}), 0)::bigint`,
@@ -202,6 +206,7 @@ export async function assessLateFee(
     .where(
       and(
         eq(paymentApplications.loanId, input.loanId),
+        eq(paymentApplications.loanType, loanType),
         gte(paymentApplications.appliedAt, input.periodStart),
         lte(paymentApplications.appliedAt, input.periodEnd),
       ),
@@ -248,7 +253,11 @@ export async function assessLateFee(
       status: "assessed",
     })
     .onConflictDoNothing({
-      target: [lateFeeAssessments.loanId, lateFeeAssessments.periodStart],
+      target: [
+        lateFeeAssessments.loanId,
+        lateFeeAssessments.periodStart,
+        lateFeeAssessments.loanType,
+      ],
     })
     .returning();
 
@@ -261,6 +270,7 @@ export async function assessLateFee(
         and(
           eq(lateFeeAssessments.loanId, input.loanId),
           eq(lateFeeAssessments.periodStart, input.periodStart.toISOString().slice(0, 10)),
+          eq(lateFeeAssessments.loanType, loanType),
         ),
       )
       .limit(1);

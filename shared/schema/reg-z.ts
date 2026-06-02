@@ -352,8 +352,18 @@ export const lateFeeAssessments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    // Non-pyramiding guarantee: one fee row per (loan, cycle). Idempotent.
-    uniqueIndex("late_fee_assessments_loan_period_uk").on(table.loanId, table.periodStart),
+    // Non-pyramiding guarantee: one fee row per (loan_type, loan, cycle).
+    // The loan_type discriminator is REQUIRED in the key — distinct
+    // originated notes + acquired notes can share an integer-vs-uuid id
+    // collision space; without loanType in the index, a stringified
+    // collision would silently de-duplicate two genuinely-distinct loans.
+    // Beatrice piggyback (2026-06-02): the §1026.36(c)(2) non-pyramiding
+    // guarantee must hold across the two loan-table boundary.
+    uniqueIndex("late_fee_assessments_loan_period_uk").on(
+      table.loanId,
+      table.periodStart,
+      table.loanType,
+    ),
     index("late_fee_assessments_org_assessed_idx").on(table.organizationId, table.assessedAt),
   ],
 );

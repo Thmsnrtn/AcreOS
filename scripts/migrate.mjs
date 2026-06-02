@@ -4491,7 +4491,14 @@ const STATEMENTS = [
      "assessed_at" timestamp with time zone NOT NULL DEFAULT now(),
      "created_at" timestamp with time zone NOT NULL DEFAULT now()
    )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "late_fee_assessments_loan_period_uk" ON "late_fee_assessments" ("loan_id", "period_start")`,
+  // Beatrice piggyback (2026-06-02): include loan_type in the uniqueness
+  // key. Originated notes (integer ids cast to text) and acquired notes
+  // (uuid ids) live in distinct id-spaces but their stringified forms
+  // share a collision space. Composite (loan_id, period_start, loan_type)
+  // keeps §1026.36(c)(2) non-pyramiding guarantees holding across the two
+  // loan-table boundary. Drop the old 2-col index before replacing.
+  `DROP INDEX IF EXISTS "late_fee_assessments_loan_period_uk"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "late_fee_assessments_loan_period_uk" ON "late_fee_assessments" ("loan_id", "period_start", "loan_type")`,
   `CREATE INDEX IF NOT EXISTS "late_fee_assessments_org_assessed_idx" ON "late_fee_assessments" ("organization_id", "assessed_at")`,
 
   // Reg-Z §1026.41 acquired-notes scope ruling (Beatrice 2026-06-02) — see

@@ -49,8 +49,10 @@ import {
   paymentApplications,
   suspenseBalances,
 } from "@shared/schema/reg-z";
+import { acquiredNotes } from "@shared/schema/notes-vertical";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { qualifiesForRegZStatement } from "../periodicStatements/predicate";
 
 // ============================================================================
 // PURE ALGORITHM
@@ -405,4 +407,123 @@ export async function applyPayment(
   }
 
   return { decision, created: true };
+}
+
+// ============================================================================
+// ACQUIRED-NOTE PIGGYBACK — §1026.36(c)(1) on acquired-note payments
+// ----------------------------------------------------------------------------
+// Beatrice 2026-06-02 ruling §5: prompt-crediting + suspense-bucket
+// obligations attach to acquired-note payments whenever the underlying note
+// qualifies for the Reg-Z statement (consumer-purpose + dwelling + AcreOS
+// is servicer-of-record). This helper performs the predicate gate up-front,
+// then routes to the same `applyPayment` algorithm with loanType='acquired_note'.
+//
+// A non-qualifying acquired note (e.g. passive_holder) does NOT get the
+// §1026.36(c) protections — we simply return { applied: false, reason }
+// without writing a payment_applications row. The skip-ledger here is
+// conceptually the same as the periodic-statement skip ledger but lives
+// inline as a logger.info record (we don't persist payment-skips because
+// the absence of a row IS the skip, and the periodic-statement skip ledger
+// already documents WHY the loan is out of scope).
+// ============================================================================
+
+export interface ApplyAcquiredNotePaymentInput {
+  organizationId: number;
+  acquiredNoteId: string;
+  paymentId: string;
+  paymentAmountCents: number;
+  periodicPaymentAmountCents: number;
+  receivedAt: Date;
+  dueDate: Date;
+  loanTz: string;
+  periodicSplit: {
+    principalCents: number;
+    interestCents: number;
+    escrowCents: number;
+  };
+}
+
+export interface ApplyAcquiredNotePaymentResult {
+  applied: boolean;
+  /** Set when applied=false; explains why the predicate gated. */
+  skipReason?: string;
+  /** Set when applied=false; the §-citation that authorised the skip. */
+  citation?: string;
+  /** Set when applied=true; the application decision (mirrors applyPayment). */
+  decision?: PaymentApplicationDecision;
+  /** Set when applied=true; whether the payment_applications row was newly created. */
+  created?: boolean;
+}
+
+/**
+ * Apply a payment against an acquired note. Gates on the §1026.41 predicate
+ * first — if the note doesn't qualify for Reg-Z scope (e.g. seller-retained
+ * servicing, passive-holder, non-dwelling collateral, business-purpose
+ * borrower), we don't take on §1026.36(c) obligations either.
+ *
+ * Idempotency: the underlying `applyPayment` is idempotent on paymentId via
+ * the UNIQUE index on payment_applications.payment_id.
+ */
+export async function applyAcquiredNotePayment(
+  input: ApplyAcquiredNotePaymentInput,
+): Promise<ApplyAcquiredNotePaymentResult> {
+  // Load the acquired-note row so the predicate can read its scope flags.
+  const noteRows = await db
+    .select()
+    .from(acquiredNotes)
+    .where(eq(acquiredNotes.id, input.acquiredNoteId))
+    .limit(1);
+
+  if (noteRows.length === 0) {
+    return {
+      applied: false,
+      skipReason: `acquired note ${input.acquiredNoteId} not found`,
+      citation: "operational",
+    };
+  }
+
+  const note = noteRows[0];
+  if (note.organizationId !== input.organizationId) {
+    // Multi-tenant safety — refuse cross-org payment application.
+    return {
+      applied: false,
+      skipReason: "acquired note belongs to a different organization",
+      citation: "operational",
+    };
+  }
+
+  const predicate = await qualifiesForRegZStatement(
+    { kind: "acquired_note", row: note },
+    input.organizationId,
+  );
+
+  if (!predicate.qualifies) {
+    logger.info(
+      `[paymentApplication] acquired-note payment ${input.paymentId} on note ${input.acquiredNoteId} skipped: ${predicate.skipReason} (${predicate.citation})`,
+    );
+    return {
+      applied: false,
+      skipReason: predicate.skipReason,
+      citation: predicate.citation,
+    };
+  }
+
+  const result = await applyPayment({
+    organizationId: input.organizationId,
+    loanId: input.acquiredNoteId,
+    loanType: "acquired_note",
+    paymentId: input.paymentId,
+    paymentAmountCents: input.paymentAmountCents,
+    periodicPaymentAmountCents: input.periodicPaymentAmountCents,
+    receivedAt: input.receivedAt,
+    dueDate: input.dueDate,
+    loanTz: input.loanTz,
+    periodicSplit: input.periodicSplit,
+  });
+
+  return {
+    applied: true,
+    decision: result.decision,
+    created: result.created,
+  };
 }
