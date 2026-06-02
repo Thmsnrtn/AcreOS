@@ -214,6 +214,7 @@ import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
 import { registerApiContractRoutes, registerApiVersionHeader } from "./routes-api-contract";
 import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
+import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
@@ -2162,6 +2163,7 @@ export async function registerRoutes(
   registerApiContractRoutes(app);
   // Panel-300 #26: GDPR DSAR endpoint with 24h SLA.
   registerPrivacyDsarRoutes(app);
+  registerPaxAuditRoutes(app);
   // Panel-300 founder compliance + ops dashboards backend.
   registerFounderComplianceRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.

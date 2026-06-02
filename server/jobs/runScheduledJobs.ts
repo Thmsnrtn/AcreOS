@@ -2099,6 +2099,41 @@ function startV5MaintenanceJob() {
   }, FIFTEEN_MINUTES);
 }
 
+/**
+ * Beatrice (CRO) — Pax continuous-audit. Daily 04:00 UTC sweep that samples
+ * recent Pax outputs across every active org and checks them against six
+ * constitutional/regulatory detectors. Detection-only — drift signals fire
+ * via logger.error + (when configured) Sentry; remediation is the
+ * quarterly review.
+ *
+ * Lock TTL: 30 minutes. The sweep is per-org sequential but each org is
+ * fast (≤ sampleSize queries + N regex passes). A 30m TTL covers the
+ * 04:xx UTC fire window across worker processes without leaving the lock
+ * dangling if the worker dies mid-walk.
+ */
+function startPaxContinuousAuditJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering Pax continuous-audit job (daily 04:00 UTC)', 'beatrice');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 4) return;
+
+    void withJobLock('pax_continuous_audit', TTL_SECONDS, async () => {
+      const { walkAllOrgsForAudit } = await import('../services/pax/continuousAudit');
+      const result = await walkAllOrgsForAudit();
+      log(
+        `[pax-audit] daily: considered=${result.orgsConsidered} audited=${result.orgsAudited} skipped=${result.orgsSkipped} drift=${result.totalDriftSignals} errors=${result.errors.length}`,
+        'beatrice',
+      );
+    }).catch((err) => {
+      log(`[pax-audit] daily failed to acquire lock or run: ${err}`, 'beatrice');
+    });
+  }, ONE_HOUR);
+}
+
 // ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
 // Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
 // rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
@@ -2255,6 +2290,12 @@ export async function runScheduledJobs(): Promise<void> {
   // Required before public acquisition opens; the signup-time hash check
   // (server/services/sanctionsList.ts → checkOfacSdn) reads from this table.
   startOfacSdnRefreshJob();
+
+  // Beatrice — Pax continuous-audit (daily 04:00 UTC). Samples 20 Pax
+  // outputs per active org from the last 24h and runs six constitutional/
+  // regulatory detectors. Findings persist to pax_audit_findings; drift
+  // signals fire via logger.error + Sentry (when SENTRY_DSN set).
+  startPaxContinuousAuditJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both
