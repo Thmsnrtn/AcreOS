@@ -302,6 +302,31 @@ app.use("/api/auth/microsoft", authAttemptLimiter);
 app.use("/api/login", authAttemptLimiter);
 app.use("/api/register", authAttemptLimiter);
 
+// ── Phase 0 traffic-readiness — dual-lane CGNAT-safe limiters ───────────────
+// On top of the broad authLimiter/authAttemptLimiter above (which protect the
+// SPA from the obvious flood patterns), we mount tighter dual-lane limits on
+// the exact endpoints that initiate a credential attempt or a sensitive
+// account-state change. Each lane (email + /24 IP-bucket) is sized per the
+// memory rule in feedback_rate_limit_ip_keying.md — 100 phones behind one
+// carrier NAT must remain in good standing for normal traffic, but burst
+// abuse from a single email or a single /24 trips quickly.
+import {
+  signupLimiter,
+  loginLimiter,
+  passwordResetLimiter,
+  emailVerifyLimiter,
+} from "./middleware/authPathLimits";
+// Login: 5 failures / email / 15min (hard); IP-bucket secondary is soft.
+app.use("/api/login", loginLimiter);
+// Signup: 5/email/hr, 50/ip-bucket/hr.
+app.use("/api/register", signupLimiter);
+// Password reset endpoints — email-only lane, ZERO ip-only blocks.
+app.use("/api/auth/password-reset", passwordResetLimiter);
+app.use("/api/auth/forgot-password", passwordResetLimiter);
+// Email verification re-send.
+app.use("/api/auth/resend-verification", emailVerifyLimiter);
+app.use("/api/auth/verify-email", emailVerifyLimiter);
+
 // AI / Pax / chat endpoints: 240 requests per minute, keyed by userId with
 // IP fallback. These are hot paths — /api/pax fans out ~8 calls per page
 // load when the Gabriel × Pax rail is mounted. A pure 60/min per-IP cap
