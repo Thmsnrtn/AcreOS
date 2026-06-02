@@ -56,7 +56,7 @@ Chris expects cancellation and data export to be self-serve, immediate, and fric
 
 ## Realistic Failure Modes
 
-1. **Cannot find cancellation.** There is no "Cancel" or "Close Account" button anywhere in the settings. The only option is to email support@acreos.com. Chris does not want to email anyone. He wants a button. If he has to email, he will write an angry one-liner and then dispute the charge.
+1. **Cannot find cancellation.** There is no "Cancel" or "Close Account" button anywhere in the settings. The only option is to email support@acreos.io. Chris does not want to email anyone. He wants a button. If he has to email, he will write an angry one-liner and then dispute the charge.
 2. **Cancellation requires phone call.** The cancel flow says "Contact us to cancel your subscription." Chris will not call. He will dispute the credit card charge, leave a 1-star review on G2 and Capterra, and tell the Facebook group the product is a scam.
 3. **Data export is incomplete or absent.** Chris clicks "Export" and gets a CSV with parcel IDs and status codes but not the notes he typed or the addresses he entered. Or there is no export option at all. His 4 parcels are trapped. This confirms his "data hostage" suspicion.
 4. **Account deletion is not real.** Chris finds a "Delete Account" option, clicks it, confirms, and gets a message: "Your account has been scheduled for deletion in 30 days." He wanted it gone now. Or worse: he "deletes" his account, then can still log in the next day. The data is still there. He feels deceived.

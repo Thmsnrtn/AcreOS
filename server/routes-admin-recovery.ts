@@ -820,7 +820,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
               const base =
                 process.env.CLERK_FRONTEND_API ??
                 process.env.PUBLIC_BASE_URL ??
-                "https://acreos.com";
+                "https://acreos.io";
               url = `${base}/sign-in?__clerk_ticket=${token.token}`;
             }
           } else {

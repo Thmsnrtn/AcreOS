@@ -102,9 +102,9 @@ Per Bertha §3-§4, the listing draft includes:
   3. Offer pipeline
   4. Pax conversation
   5. Field-visit / scout
-- **Privacy policy URL**: <https://acreos.com/privacy>
-- **Support URL**: <https://acreos.com/support>
-- **Marketing URL**: <https://acreos.com>
+- **Privacy policy URL**: <https://acreos.io/privacy>
+- **Support URL**: <https://acreos.io/support>
+- **Marketing URL**: <https://acreos.io>
 
 ### Code-signing
 - iOS: Apple Distribution + Apple Push Notification certificates.

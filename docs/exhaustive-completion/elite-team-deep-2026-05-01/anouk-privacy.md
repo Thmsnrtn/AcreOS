@@ -20,7 +20,7 @@ The legal posture in `client/src/pages/privacy.tsx:145-163` claims access, expor
 
 | Right (GDPR / CCPA) | Endpoint | UI | Implementation reality | Gap |
 |---|---|---|---|---|
-| **Art. 15 / §1798.110 — Access** | `POST /api/privacy/export` | `/privacy-settings` "Download my data" | `gdprService.exportUserData(userId)` returns user row + leads/deals/properties/tasks/teamMessages/supportTickets the **user is `assignedTo`** | **Critical scope error.** The data subject under GDPR is the *natural person* (the lead, the property owner, the borrower). The endpoint exports the *AcreOS user's* CRM workspace, not the data we hold *about* the data subject. A property owner who emails `privacy@acreos.com` has no machinery here. |
+| **Art. 15 / §1798.110 — Access** | `POST /api/privacy/export` | `/privacy-settings` "Download my data" | `gdprService.exportUserData(userId)` returns user row + leads/deals/properties/tasks/teamMessages/supportTickets the **user is `assignedTo`** | **Critical scope error.** The data subject under GDPR is the *natural person* (the lead, the property owner, the borrower). The endpoint exports the *AcreOS user's* CRM workspace, not the data we hold *about* the data subject. A property owner who emails `privacy@acreos.io` has no machinery here. |
 | **Art. 16 — Rectification** | none | `/settings` (own profile only) | Owner-of-org can edit their own profile via Clerk + `/api/me`. No flow for rectification of lead/property data on behalf of a third-party data subject. | No endpoint, no UI, no DSAR intake form. |
 | **Art. 17 / §1798.105 — Erasure** | `POST /api/privacy/delete` | `/privacy-settings` "Delete my account" | `anonymizeUser` overwrites email/firstName/lastName, deletes agentEvents/teamMessages/supportTickets/tasks/sessions/aiConversations, and anonymizes leads where `assignedTo = userId`. | (a) Deletes *AcreOS user* PII, not the third-party data subject's PII held in `leads`/`properties`/`skip_traces`/`signatures`/`borrowers`. (b) `properties.owner_*` columns are not touched. (c) `skip_traces.results` jsonb is not touched. (d) `signatures.signature_data` (legal artefact) is not touched — defensible if legal-hold reason is documented; today it isn't. (e) No cascade through `webhook_deliveries`, `inbox_messages`, `conversations`, `audit_log`. (f) No 30-day cooling-off / undo window. (g) Doesn't write an audit row (Sam §4). |
 | **Art. 18 — Restriction of processing** | none | none | A claim in §7 of `/privacy`. No `processing_restricted` flag on `users` or `leads`. No middleware honors it. | Pure paperwork. Implementation: 0%. |
@@ -75,7 +75,7 @@ Asher flagged "real estate CRM platform" — he's right. The policy is the wrong
 
 8. **§7 lists rights AcreOS does not implement** (restriction, objection, rectification of third-party DSAR). §7 + §11 + §15 (proposed) should each map a right → an actual mechanism. If there's no mechanism, the policy is offering a right we cannot honor. That's the textbook FTC §5 unfair-and-deceptive case.
 
-9. **No DPO disclosure rules.** §14 lists `dpo@acreos.com` — under GDPR Art. 37, only certain orgs *must* designate a DPO; for AcreOS at current scale it's optional. If a DPO is not formally appointed, don't list one. Listing a DPO who isn't a DPO is a finding.
+9. **No DPO disclosure rules.** §14 lists `dpo@acreos.io` — under GDPR Art. 37, only certain orgs *must* designate a DPO; for AcreOS at current scale it's optional. If a DPO is not formally appointed, don't list one. Listing a DPO who isn't a DPO is a finding.
 
 10. **No "international transfers" section.** AcreOS is on Fly.io US, but European customers' data crosses the Atlantic. SCCs, EU-US DPF certification — none of it is mentioned. For the Canadian-expansion plan in `VERTICAL-EXPANSION-PLAN.md`, add PIPEDA and Quebec Law 25 sections before the first Canadian customer signs.
 
@@ -110,7 +110,7 @@ Every name in the table above except (potentially) Sentry-EU is US-based. EU cus
 
 **Verdict:** the list is more complete than 90% of seed-stage SaaS, but **zero DPAs are confirmed signed**. We can list sub-processors all we want; without DPAs the GDPR Art. 28(3) chain is broken. If a customer asks for an AcreOS DPA, we cannot in turn show our chain.
 
-**Customer-facing DPA:** does not exist. No `acreos.io/legal/dpa.pdf`. No DPA generation flow. Asher's policy says privacy@acreos.com handles it; in practice, no template exists. This blocks every prospective customer with a procurement function.
+**Customer-facing DPA:** does not exist. No `acreos.io/legal/dpa.pdf`. No DPA generation flow. Asher's policy says privacy@acreos.io handles it; in practice, no template exists. This blocks every prospective customer with a procurement function.
 
 ---
 

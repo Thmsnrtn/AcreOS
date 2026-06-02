@@ -213,7 +213,7 @@ async function sendNewLocationEmail(opts: {
     const [user] = await db.select().from(users).where(eq(users.id, opts.userId)).limit(1);
     if (!user?.email) return;
     const when = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-    const reviewUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.com"}/account/security`;
+    const reviewUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.io"}/account/security`;
     const lines = [
       `A new sign-in to your AcreOS account just happened.`,
       ``,

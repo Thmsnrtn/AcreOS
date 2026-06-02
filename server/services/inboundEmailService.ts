@@ -13,11 +13,11 @@ const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET
 
 /**
  * Generate a reply-to address for a specific lead.
- * Format: inbox+{leadId}-{hash}@replies.acreos.com
+ * Format: inbox+{leadId}-{hash}@replies.acreos.io
  */
 export function generateReplyToAddress(leadId: number, orgId: number): string {
   const hash = generateHash(leadId, orgId);
-  const domain = process.env.INBOUND_EMAIL_DOMAIN || "replies.acreos.com";
+  const domain = process.env.INBOUND_EMAIL_DOMAIN || "replies.acreos.io";
   return `inbox+${leadId}-${hash}@${domain}`;
 }
 

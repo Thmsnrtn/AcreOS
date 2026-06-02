@@ -16,7 +16,7 @@ import { users } from "@shared/models/auth";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
 
-const APP_URL = process.env.APP_URL || "https://app.acreos.com";
+const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 
 // ---------------------------------------------------------------------------
 // Dunning email templates
@@ -385,7 +385,7 @@ class DunningService {
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
       const message =
         `Hi ${org.name}, AcreOS — your card was declined for ${amountDue}. ` +
-        `Update at acreos.com/settings/billing to keep service running.`;
+        `Update at acreos.io/settings/billing to keep service running.`;
 
       const { smsService } = await import("./smsService");
       const result = await smsService.sendSMS({ to: phone, message });

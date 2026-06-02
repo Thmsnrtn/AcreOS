@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
     // In dev mode, use livereload; in production, serve from bundled assets
     ...(isDev
       ? {}
-      : { url: "https://app.acreos.com", cleartext: false }),
+      : { url: "https://app.acreos.io", cleartext: false }),
   },
   plugins: {
     // ── Splash Screen ────────────────────────────────────────────────────────

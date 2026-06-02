@@ -127,7 +127,7 @@ Conditions precedent — all must ship before production credentials issue:
 2. Listing-broker attribution columns on the cached MLS-row shape; render layer refuses to display without them.
 3. `PropertyType` defense-in-depth filter in the connector; AI tool system prompt carries the license scope as a binding constraint.
 4. `ModificationTimestamp` watermark replication; status-change webhook listener; cache invalidation within 12 hours of upstream status change, demonstrated in staging.
-5. DMCA / emergency-takedown inbound channel — admin tool plus published `compliance@acreos.com` mailbox with a 4-hour SLA.
+5. DMCA / emergency-takedown inbound channel — admin tool plus published `compliance@acreos.io` mailbox with a 4-hour SLA.
 6. `governance_policies` seeded with the MLS rule catalog; `<PolicyGate>` wired into the render layer; `policyEvaluations` extended to carry a `subject_listing_key` column.
 7. Per-listing-broker analytics surface — viewer counts, lead origination, time-on-page — exposed back to the listing broker at no charge.
 

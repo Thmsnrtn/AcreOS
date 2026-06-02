@@ -37,7 +37,7 @@ export function generateICal(events: Array<{ title: string; date: Date; descript
       `DTEND:${dateStr}`,
       `SUMMARY:${event.title}`,
       event.description ? `DESCRIPTION:${event.description.replace(/\n/g, "\\n")}` : "",
-      `UID:${Date.now()}-${Math.random().toString(36)}@acreos.com`,
+      `UID:${Date.now()}-${Math.random().toString(36)}@acreos.io`,
       "END:VEVENT",
     );
   }

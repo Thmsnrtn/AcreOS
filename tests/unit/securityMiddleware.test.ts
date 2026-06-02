@@ -188,7 +188,7 @@ describe("Security Middleware Verification", () => {
     testApp.use(express.json());
     testApp.use((req, res, next) => {
       // Production CORS: only allow configured origins
-      const allowedOrigins = [process.env.APP_URL || "https://app.acreos.com"];
+      const allowedOrigins = [process.env.APP_URL || "https://app.acreos.io"];
       const origin = req.headers.origin;
       if (origin && allowedOrigins.includes(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);

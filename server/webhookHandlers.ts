@@ -265,10 +265,10 @@ export class WebhookHandlers {
                   <li><strong>Properties:</strong> ${limits.properties}</li>
                   <li><strong>AI Requests:</strong> ${limits.ai}</li>
                 </ul>
-                <p><a href="${process.env.APP_URL || 'https://app.acreos.com'}">Go to your dashboard</a></p>
+                <p><a href="${process.env.APP_URL || 'https://app.acreos.io'}">Go to your dashboard</a></p>
                 <p>— The AcreOS Team</p>
               `,
-              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.com'}`,
+              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.io'}`,
             });
             logger.info(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
           }
@@ -405,10 +405,10 @@ export class WebhookHandlers {
               <h2>Subscription Cancelled</h2>
               <p>Your AcreOS ${previousTier} subscription has been cancelled. Your account has been moved to the Free tier.</p>
               <p>Your data is preserved — you can re-subscribe at any time to pick up where you left off.</p>
-              <p><a href="${process.env.APP_URL || 'https://app.acreos.com'}/settings">Re-subscribe</a></p>
+              <p><a href="${process.env.APP_URL || 'https://app.acreos.io'}/settings">Re-subscribe</a></p>
               <p>— The AcreOS Team</p>
             `,
-            text: `Your AcreOS ${previousTier} subscription has been cancelled. Your account has been moved to the Free tier.\n\nYour data is preserved — re-subscribe any time: ${process.env.APP_URL || 'https://app.acreos.com'}/settings\n\n— The AcreOS Team`,
+            text: `Your AcreOS ${previousTier} subscription has been cancelled. Your account has been moved to the Free tier.\n\nYour data is preserved — re-subscribe any time: ${process.env.APP_URL || 'https://app.acreos.io'}/settings\n\n— The AcreOS Team`,
           });
         }
       } catch (emailErr) {

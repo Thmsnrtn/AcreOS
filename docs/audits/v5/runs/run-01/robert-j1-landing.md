@@ -154,7 +154,7 @@ He scans the footer. He sees: "(c) 2026 AcreOS. All rights reserved." and links 
 | Severity | HIGH |
 |---|---|
 | Element | Footer / entire landing page |
-| Issue | There is no phone number, no chat widget, no "Contact Us" link, no mailing address anywhere on the landing page. The only contact point is an email link (hello@acreos.com) buried on the pricing page. For Robert, who defaults to calling someone when confused, this is a dead end. He has no way to ask a human being for help. |
+| Issue | There is no phone number, no chat widget, no "Contact Us" link, no mailing address anywhere on the landing page. The only contact point is an email link (hello@acreos.io) buried on the pricing page. For Robert, who defaults to calling someone when confused, this is a dead end. He has no way to ask a human being for help. |
 | Quote | "There's no phone number anywhere. How am I supposed to get help if something goes wrong? I don't want to send an email and wait three days." |
 | Recommendation | Add a visible phone number or at minimum a live chat widget. For a product targeting professionals who may be less technical, a phone number in the footer or nav is essential trust infrastructure. |
 

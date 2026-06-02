@@ -13,7 +13,7 @@ async function main() {
   console.log(`Sending test email to ${to}...`);
   try {
     const result = await emailService.sendEmail({
-      to, from: from || "test@acreos.com",
+      to, from: from || "test@acreos.io",
       subject: "AcreOS Test Email",
       html: "<h1>Test Email</h1><p>This is a test email from AcreOS.</p>",
       text: "This is a test email from AcreOS.",

@@ -31,7 +31,7 @@
 
 | Asset | Status | Priority |
 |---|---|---|
-| `/press` page on acreos.com | **Missing** | P0 |
+| `/press` page on acreos.io | **Missing** | P0 |
 | One-page fact sheet (PDF) — what / who / when / numbers | **Missing** | P0 |
 | Founder bio — short (50w), medium (150w), long (400w) | **Missing** | P0 |
 | Founder headshot — square + landscape, 2000px, transparent + on-brand bg | **Missing** | P0 |
@@ -40,7 +40,7 @@
 | Product screenshots — hero shots, 5 surfaces, 2x retina | Some exist as PNG but not packaged | P0 |
 | 15-30s product walkthrough video | **Missing** | P1 |
 | Boilerplate "About AcreOS" — 75 words, copy-paste | **Missing** | P0 |
-| Press contact (press@acreos.com → routed) | **Missing** | P0 |
+| Press contact (press@acreos.io → routed) | **Missing** | P0 |
 | Embargo policy + spokesperson availability | **Missing** | P1 |
 | Customer reference list (with permission) | **Missing — no testimonials captured yet** | P0 |
 | Crisis comms playbook | **Missing** | P1 |
@@ -183,7 +183,7 @@ This will happen. Land deals fail because of title issues, undisclosed easements
 
 - **Never** quote one customer's transaction to a reporter without written consent.
 - **Never** "no comment." Use a holding statement.
-- **Never** let an engineer or support rep speak to press — single spokesperson (founder), single email (press@acreos.com), single phone line.
+- **Never** let an engineer or support rep speak to press — single spokesperson (founder), single email (press@acreos.io), single phone line.
 - **Never** trash the customer publicly even if they're wrong on facts.
 - **Never** discuss other customers' situations to defend yourself.
 
@@ -199,12 +199,12 @@ You can credibly close the gap in 5 working days. This is the sprint.
 
 ### Day 1 — Assets
 
-- [ ] Carve out `/press` route on acreos.com (static page, no auth)
+- [ ] Carve out `/press` route on acreos.io (static page, no auth)
 - [ ] Write boilerplate "About AcreOS" — 75 words exactly
 - [ ] Write founder bio — 50w / 150w / 400w versions
 - [ ] Book founder headshot session (square, landscape, transparent bg)
 - [ ] Export logo lockups: wordmark, mark, dark/light, SVG + PNG @ 1x/2x/3x
-- [ ] Set up press@acreos.com → routes to founder + one backup
+- [ ] Set up press@acreos.io → routes to founder + one backup
 
 ### Day 2 — Fact sheet + screenshots
 

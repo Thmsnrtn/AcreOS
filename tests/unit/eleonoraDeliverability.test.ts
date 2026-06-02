@@ -133,15 +133,15 @@ describe("Eleonora MIME builder — List-Unsubscribe headers", () => {
   it("emits both mailto and https in List-Unsubscribe", async () => {
     const { buildRawMimeMessage } = await import("../../server/services/emailService");
     const raw = buildRawMimeMessage({
-      from: "AcreOS <noreply@acreos.com>",
+      from: "AcreOS <noreply@acreos.io>",
       to: ["recipient@example.com"],
       subject: "Test",
       html: "<p>hi</p>",
       text: "hi",
-      listUnsubscribeMailto: "unsubscribe@acreos.com",
+      listUnsubscribeMailto: "unsubscribe@acreos.io",
       listUnsubscribeUrl: "https://app.acreos.io/u/abc123",
     });
-    expect(raw).toContain("List-Unsubscribe: <mailto:unsubscribe@acreos.com>, <https://app.acreos.io/u/abc123>");
+    expect(raw).toContain("List-Unsubscribe: <mailto:unsubscribe@acreos.io>, <https://app.acreos.io/u/abc123>");
     expect(raw).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
   });
 

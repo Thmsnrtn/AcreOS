@@ -61,4 +61,4 @@ Pre-revenue, deploy-ready. 400K+ lines of TypeScript, 4,875+ tests passing, 276 
 
 ---
 
-*Contact: thomas@acreos.com*
+*Contact: thomas@acreos.io*

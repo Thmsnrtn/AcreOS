@@ -66,7 +66,7 @@ This is the single biggest blocker. A bank partnership is worth ~10x a marketing
 **Current state:** Nothing is built for this. There is no co-branded landing page, no UTM-aware signup flow, no partner-attributed plan, no shared cohort dashboard.
 
 **What I'd want my marketing team to require:**
-- **Co-branded landing page** at `acreos.com/[partner-bank-slug]` that survives a refresh and stores `?ref=BANK&utm_*` in a 30-day cookie before signup. Today the landing repos (`acreos-landing/`, `acreos-onboarding/`) are present but I see no partner-templating.
+- **Co-branded landing page** at `acreos.io/[partner-bank-slug]` that survives a refresh and stores `?ref=BANK&utm_*` in a 30-day cookie before signup. Today the landing repos (`acreos-landing/`, `acreos-onboarding/`) are present but I see no partner-templating.
 - **Partner-attributed pricing.** "Get 90 days free as a [Bank] customer" requires a coupon-like primitive scoped to a partner code. Stripe service exists (`server/stripeService.ts`) — coupons are easy to wire, but the partner→coupon mapping does not.
 - **Shared cohort analytics.** Partner-side dashboard showing: signups attributed, activation rate, deals-won, gross-revenue attributed, dollars sent to partner via referral. A `partners.routes.ts` with `/api/partners/:id/cohort` would be the surface.
 - **Co-marketed in-app surface.** "Need acquisition financing? [Bank] is our preferred lender" tile on the deal-detail page, with a one-click handoff. This would slot near the existing `routes-deal-underwriting.ts` and `routes-borrower.ts` surfaces but does not exist.

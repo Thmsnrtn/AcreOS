@@ -23,7 +23,7 @@ import { getIdentityForSend } from "./orgEmailIdentity";
  * Per-org DKIM/SPF/DMARC identity (orgEmailIdentity) overrides the default
  * platform from-address when a verified identity exists for the org.
  */
-const UNSUBSCRIBE_MAILTO = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@acreos.com';
+const UNSUBSCRIBE_MAILTO = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@acreos.io';
 
 interface AWSCredentials {
   accessKeyId: string;

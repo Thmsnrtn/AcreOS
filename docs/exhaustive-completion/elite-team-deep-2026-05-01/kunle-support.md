@@ -18,7 +18,7 @@
 |---|---|---|
 | **In-app ticket form** | `/api/support/tickets` POST (in `routes-support-tickets.ts`); creates `supportTickets` row with `pageContext` + `errorContext` (browser, screen, stack) | EXISTS |
 | **Pax chat** | `customerSupportAutoResolver.ts` → creates `supportCases` row, classifies via `supportBrain.ts` | EXISTS |
-| **Email** | None — no inbound email-to-ticket pipe. `support@acreos.com` (or whatever Thomas uses) goes to Thomas's personal inbox, not into the ticket store. | **MISSING** |
+| **Email** | None — no inbound email-to-ticket pipe. `support@acreos.io` (or whatever Thomas uses) goes to Thomas's personal inbox, not into the ticket store. | **MISSING** |
 | **Live chat widget on marketing site** | None | **MISSING** (acceptable pre-launch) |
 | **Bug report from inside-app error boundary** | Stack/page captured to `errorContext` *if* user opens the form; auto-capture on uncaught error → ticket draft does not exist | **PARTIAL** |
 | **Triage** | `supportBrain.classifyMessage()` (gpt-4o-mini): category, confidence, sentiment, urgency, suggested playbook. Maps urgency → priority 1–5. Auto-routes to playbook or escalates if confidence < 0.4 or aiAttempts ≥ 3. | EXISTS |
@@ -26,7 +26,7 @@
 
 ### Needed for 50-customer scale
 
-1. **Inbound email pipe.** `support@acreos.com` → SES inbound → webhook → `createSupportTicket(source: "email")` with reply-by email-thread matching on `Message-ID` / `In-Reply-To`. ~1.5 days. Without this, every customer who emails (which they will, regardless of in-app form) lands in Thomas's personal inbox and is invisible to metrics.
+1. **Inbound email pipe.** `support@acreos.io` → SES inbound → webhook → `createSupportTicket(source: "email")` with reply-by email-thread matching on `Message-ID` / `In-Reply-To`. ~1.5 days. Without this, every customer who emails (which they will, regardless of in-app form) lands in Thomas's personal inbox and is invisible to metrics.
 2. **Auto-capture from error boundary.** When `ErrorBoundary` catches a render-tree crash or `window.onerror` fires, prefill a ticket draft with stack, route, user state. One-click "send to support."
 3. **Triage lane in `/admin/support`.** Today escalated == needs human. Split into: (a) **inbox** — newly arrived, not yet classified or assigned; (b) **mine** — assigned to me; (c) **waiting on customer**; (d) **breached SLA**. Today the page shows only one queue.
 

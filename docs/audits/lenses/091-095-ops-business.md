@@ -320,7 +320,7 @@ Tier: 2
 | 2 | No incident tracking system (no JIRA incidents, no PagerDuty integration configured, no on-call rotation) | HIGH |
 | 3 | No blameless postmortem culture artifacts (retrospective process, action item tracking) | MEDIUM |
 | 4 | No automated runbook execution (e.g., Fly.io restart on health check failure is manual) | MEDIUM |
-| 5 | No status page configured (status.acreos.com referenced in DR doc but not deployed) | HIGH |
+| 5 | No status page configured (status.acreos.io referenced in DR doc but not deployed) | HIGH |
 | 6 | No alerting pipeline -- health endpoints exist but nothing monitors them and triggers alerts | HIGH |
 | 7 | Recovery testing schedule documented but no evidence any test has been executed | MEDIUM |
 | 8 | No incident severity auto-detection from monitoring data | LOW |

@@ -19,7 +19,7 @@
 
 **Toast on copy:** "Referral link copied! Share it with a fellow investor."
 
-**Link format:** `https://app.acreos.com/signup?ref={USER_REFERRAL_CODE}`
+**Link format:** `https://app.acreos.io/signup?ref={USER_REFERRAL_CODE}`
 
 ---
 

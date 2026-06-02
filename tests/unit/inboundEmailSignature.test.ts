@@ -67,7 +67,7 @@ describe("verifyInboundEmailSignature — HMAC fallback", () => {
   const secret = "super-secret-test-key-with-enough-entropy-1234";
   const validEmail = {
     from: "sender@example.com",
-    to: "inbox+1-abcdef@replies.acreos.com",
+    to: "inbox+1-abcdef@replies.acreos.io",
     subject: "Re: deal",
     textBody: "hello",
     messageId: `<msg-${Math.random().toString(36).slice(2)}@example.com>`,
@@ -243,7 +243,7 @@ describe("verifyInboundEmailSignature — SNS path", () => {
   it("accepts a properly signed SNS Notification and forwards inner Message", async () => {
     const inner = {
       from: "sender@example.com",
-      to: "inbox+1-abc@replies.acreos.com",
+      to: "inbox+1-abc@replies.acreos.io",
       subject: "Hello",
       textBody: "body",
       messageId: "<inner-1@x>",

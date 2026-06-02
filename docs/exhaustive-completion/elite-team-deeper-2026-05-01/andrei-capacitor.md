@@ -131,7 +131,7 @@ iOS is easier: WKWebView ships with the OS, so iOS 17 = Safari 17 features. If y
 
 ### 7.3 Cookies / auth across web and native
 
-Clerk works in WKWebView, but session cookies behave differently in `iosScheme: "https"` mode vs. real `https://app.acreos.com`. Test the auth flow on day 1 of the wrap — I have seen Clerk silently fail on Capacitor with `appBoundDomains` misconfigured. The `server.url: "https://app.acreos.com"` in production config (`capacitor.config.ts:14`) means the wrap is loading the *live web app* over HTTPS rather than bundling local assets. **This is a fork-in-the-road decision.**
+Clerk works in WKWebView, but session cookies behave differently in `iosScheme: "https"` mode vs. real `https://app.acreos.io`. Test the auth flow on day 1 of the wrap — I have seen Clerk silently fail on Capacitor with `appBoundDomains` misconfigured. The `server.url: "https://app.acreos.io"` in production config (`capacitor.config.ts:14`) means the wrap is loading the *live web app* over HTTPS rather than bundling local assets. **This is a fork-in-the-road decision.**
 
 - **`server.url` mode (current):** Native shell is a thin viewport on the deployed web app. Pros: every web deploy is instantly live in the app, no native release cycle for content/feature changes. Cons: zero offline (the shell can't load if the user is offline at launch), Apple may flag this as "WebView wrapper" under 4.2.
 - **Bundled-asset mode (recommended):** `webDir: "dist/public"` is bundled into the IPA/APK. Native works offline. Web changes require a Capacitor sync + native rebuild + store release. Mitigated by `@capacitor/live-updates` for non-binary changes.
@@ -140,9 +140,9 @@ Clerk works in WKWebView, but session cookies behave differently in `iosScheme: 
 
 ### 7.4 Deep linking
 
-`capacitor.config.ts:90` enables `appUrlOpen`. To make `https://app.acreos.com/deal-room/123` open in the app rather than Safari requires:
-- **iOS:** Universal Links — `apple-app-site-association` JSON file at `https://app.acreos.com/.well-known/apple-app-site-association`, served as `application/json`, no redirects, signed with the team ID + bundle ID.
-- **Android:** App Links — `assetlinks.json` at `https://app.acreos.com/.well-known/assetlinks.json`, signed with the Play upload key SHA-256.
+`capacitor.config.ts:90` enables `appUrlOpen`. To make `https://app.acreos.io/deal-room/123` open in the app rather than Safari requires:
+- **iOS:** Universal Links — `apple-app-site-association` JSON file at `https://app.acreos.io/.well-known/apple-app-site-association`, served as `application/json`, no redirects, signed with the team ID + bundle ID.
+- **Android:** App Links — `assetlinks.json` at `https://app.acreos.io/.well-known/assetlinks.json`, signed with the Play upload key SHA-256.
 
 Both files must exist before submission. Most teams discover this 4 hours into launch day.
 

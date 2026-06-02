@@ -130,7 +130,7 @@ Scale is cheaper for an 8-person team. But wait -- if the 8-person team grows to
 **FRICTION EVENT F-02: Per-seat pricing is counterintuitive.**
 Scale tier charges $40/additional seat vs. Pro's $20/additional seat. While Scale includes more base seats (10 vs. 2), the higher marginal seat cost creates confusion for evaluators calculating total team cost.
 
-**Enterprise pricing:** "Need custom enterprise pricing? Contact us." This is a mailto link to `hello@acreos.com`. Sarah notes this -- she may need to contact them if RBAC turns out to be an enterprise-only feature.
+**Enterprise pricing:** "Need custom enterprise pricing? Contact us." This is a mailto link to `hello@acreos.io`. Sarah notes this -- she may need to contact them if RBAC turns out to be an enterprise-only feature.
 
 > "I've scored 4 must-have items and three of them are 1/5. If the product doesn't have RBAC, audit trails, and data export, I'm done. I need to sign up and verify empirically."
 

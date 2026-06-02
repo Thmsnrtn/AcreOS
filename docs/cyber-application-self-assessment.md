@@ -360,7 +360,7 @@ AML pattern monitoring).
 
 ### J3. Do you have a bug bounty program?
 
-**Current state:** **No.** A `security.txt` + `mailto:security@acreos.com` reporting channel is on near-term roadmap. Formal bug-bounty after first SOC 2 Type II.
+**Current state:** **No.** A `security.txt` + `mailto:security@acreos.io` reporting channel is on near-term roadmap. Formal bug-bounty after first SOC 2 Type II.
 
 **Evidence:** N/A — roadmap
 

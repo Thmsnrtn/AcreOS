@@ -502,7 +502,7 @@ async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boole
   const criticalChecks = checks.filter(c => c.status === "critical");
   if (criticalChecks.length === 0) return false;
 
-  const appUrl = process.env.APP_URL || "https://app.acreos.com";
+  const appUrl = process.env.APP_URL || "https://app.acreos.io";
   const subject = `🔴 AcreOS Critical Alert — ${criticalChecks.length} issue(s) need attention`;
 
   const issueList = criticalChecks.map(c =>

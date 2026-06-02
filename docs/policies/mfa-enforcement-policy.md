@@ -151,7 +151,7 @@ To verify this control as a third party:
 | 1. Check the middleware exists | `cat server/middleware/requireClerkMFA.ts` | Contains the decision matrix from §4.2 |
 | 2. Check the middleware is mounted on `/api/admin` | `grep -n "requireClerkMFA" server/routes.ts` | Mount at `app.use("/api/admin", isAuthenticated, requireClerkMFA)` |
 | 3. Confirm Clerk instance has MFA enabled | Clerk dashboard → User & Authentication → Multi-factor | TOTP enabled; SMS enabled; backup codes enabled |
-| 4. Confirm enforcement on a real request | `curl -X POST https://app.acreos.com/api/admin/users/<id>/2fa/reset` with a non-MFA session | 403 `mfa_required` or `mfa_setup_required` |
+| 4. Confirm enforcement on a real request | `curl -X POST https://app.acreos.io/api/admin/users/<id>/2fa/reset` with a non-MFA session | 403 `mfa_required` or `mfa_setup_required` |
 | 5. Confirm audit trail | `SELECT action, count(*) FROM audit_events WHERE action LIKE 'mfa.%' GROUP BY action` | Non-zero counts for `mfa.pass` and at least one `mfa.blocked_*` |
 
 ---

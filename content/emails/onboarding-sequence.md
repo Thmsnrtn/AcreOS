@@ -16,7 +16,7 @@ Here's the fastest way to get value:
 
 3. **Send your first offer** — click into any lead or Deal Feed opportunity, hit "Make Offer," and the system will generate an offer letter that matches your writing style.
 
-Your dashboard is live: https://app.acreos.com/dashboard
+Your dashboard is live: https://app.acreos.io/dashboard
 
 If you hit any snags, reply to this email. I read every one.
 
@@ -40,7 +40,7 @@ Want to work with your existing data too? Two ways to get leads into AcreOS:
 
 Once your leads are in, AcreOS scores them automatically based on seller motivation signals and property data. The highest-scored leads surface to the top.
 
-Quick link: https://app.acreos.com/leads
+Quick link: https://app.acreos.io/leads
 
 — Thomas
 
@@ -65,7 +65,7 @@ No more toggling to Mailchimp. No more responses lost in Gmail.
 
 The AI-generated copy isn't generic — it learns from your previous messages and matches your tone. Most users can't tell the difference from what they'd write themselves.
 
-Quick link: https://app.acreos.com/campaigns
+Quick link: https://app.acreos.io/campaigns
 
 — Thomas
 
@@ -138,7 +138,7 @@ After your trial:
 
 If AcreOS is saving you time and helping you find better deals, the Pro plan pays for itself with one deal per quarter.
 
-Upgrade here: https://app.acreos.com/settings/billing
+Upgrade here: https://app.acreos.io/settings/billing
 
 — Thomas
 
@@ -169,7 +169,7 @@ Your Pro trial has ended. Your account has moved to the Free tier.
 - Campaign sending
 - Team features
 
-To get everything back: https://app.acreos.com/settings/billing
+To get everything back: https://app.acreos.io/settings/billing
 
 If you have questions about whether AcreOS is worth it for your specific situation, reply to this email. I'll give you a straight answer.
 

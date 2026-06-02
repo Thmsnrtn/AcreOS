@@ -28,8 +28,8 @@ fly releases -a acreos
 
 # Output example:
 # VERSION  STATUS   DESCRIPTION         USER                  DATE
-# v42      complete Deployed            deploy@acreos.com     2025-01-15T10:30:00Z
-# v41      complete Deployed            deploy@acreos.com     2025-01-15T09:00:00Z  ← target
+# v42      complete Deployed            deploy@acreos.io     2025-01-15T10:30:00Z
+# v41      complete Deployed            deploy@acreos.io     2025-01-15T09:00:00Z  ← target
 
 # 2. Redeploy the previous image SHA
 fly deploy --image registry.fly.io/acreos:<previous-image-sha> -a acreos

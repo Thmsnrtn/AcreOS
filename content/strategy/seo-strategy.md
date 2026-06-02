@@ -39,7 +39,7 @@
 ### "land investing software"
 - **Monthly search volume:** 500-1,200
 - **Competition:** Medium (Pebble, REsimpli, PropStream ads)
-- **Target page:** Landing page — acreos.com or acreos.com/land-investing-software
+- **Target page:** Landing page — acreos.io or acreos.io/land-investing-software
 - **Optimization:** Feature comparison table. Testimonials (once available). Free trial CTA. "18 free data sources" and "Land Credit Score" as differentiators.
 
 ### "land investing CRM"

@@ -618,7 +618,7 @@ export async function checkCircuitBreaker(
           <h2 style="color:#c0392b;">Autonomy Circuit Breaker Tripped</h2>
           <p><strong>${overridesInWindow} founder overrides</strong> detected within the last hour for <strong>${org?.name ?? `Org #${organizationId}`}</strong>.</p>
           <p>The organization has been automatically downgraded to <strong>assisted</strong> mode. All autonomous decisions now require manual approval.</p>
-          <p>Review recent decisions at <a href="${process.env.APP_URL || "https://app.acreos.com"}/founder/autonomy-log">the autonomy log</a> and re-enable when ready.</p>
+          <p>Review recent decisions at <a href="${process.env.APP_URL || "https://app.acreos.io"}/founder/autonomy-log">the autonomy log</a> and re-enable when ready.</p>
           <p style="color:#7f8c8d;font-size:12px;">This is an automated safety notification from the AcreOS autonomy system.</p>
         </div>`,
         text: `Autonomy Circuit Breaker Tripped\n\n${overridesInWindow} founder overrides detected within the last hour for ${org?.name ?? `Org #${organizationId}`}.\n\nThe organization has been automatically downgraded to "assisted" mode. All autonomous decisions now require manual approval.\n\nReview recent decisions at the autonomy log and re-enable when ready.`,

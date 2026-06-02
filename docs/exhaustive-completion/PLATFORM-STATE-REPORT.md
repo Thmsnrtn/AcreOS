@@ -269,7 +269,7 @@ Source: `docs/exhaustive-completion/JUDGMENT-CALL-RECOMMENDATIONS.md` (11 items 
 ### New issues surfaced during overnight work
 
 - **Migration `0067` collision still on disk** — `migrations/0067_acquired_notes.sql` and `migrations/0067_property_vision_snapshots.sql` both present. The note-investor agent's renumber didn't take. Both will run on next deploy because `scripts/migrate.mjs` adds DDL idempotently — but the file collision is a code-review smell and breaks any tool that sorts strictly by filename.
-- **Two committer identities** appear in recent commits — `Tom <user@Thomass-MacBook-Pro.local>` (system default) vs. `Tom <tom@acreos.com>` (the email I used to commit waves 11-12 due to merge-tooling pressure). **Severity: cosmetic** but creates split GitHub author attribution.
+- **Two committer identities** appear in recent commits — `Tom <user@Thomass-MacBook-Pro.local>` (system default) vs. `Tom <tom@acreos.io>` (the email I used to commit waves 11-12 due to merge-tooling pressure). **Severity: cosmetic** but creates split GitHub author attribution.
 - **Capacitor `ios/` and `android/` directories committed (75 files)** — adds repo weight; first-time-clone time is now noticeably higher
 
 ### Severity assessment

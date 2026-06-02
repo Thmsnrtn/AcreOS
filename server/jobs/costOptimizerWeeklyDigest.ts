@@ -183,7 +183,7 @@ export async function sendCostOptimizerWeeklyDigest(): Promise<{ sent: number; f
   let failed = 0;
   try {
     const payload = await loadLatestRun();
-    const appUrl = process.env.APP_URL || "https://app.acreos.com";
+    const appUrl = process.env.APP_URL || "https://app.acreos.io";
     const { html, text, subject } = generateHtml(payload, appUrl);
 
     for (const email of founderEmails) {

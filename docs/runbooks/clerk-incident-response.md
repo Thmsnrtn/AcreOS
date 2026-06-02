@@ -18,7 +18,7 @@
 1. Check **Clerk status page** (`https://status.clerk.com`) — note if there's an active incident.
 2. Verify our proxy is operational:
    ```bash
-   curl -I https://acreos.com/__clerk/v1/oauth/authorize
+   curl -I https://acreos.io/__clerk/v1/oauth/authorize
    ```
    Should return 200/301, not 502 or timeout.
 3. Check Cloudflare WAF rules blocking `clerk.acreos.io`:
@@ -64,7 +64,7 @@
   npm run test:auth:synthetic
   ```
   Should complete sign-in → `/today` redirect in <2s.
-- Test with a non-customer email (e.g., `test+auth-check@acreos.com`) and verify magic link arrives within 30s.
+- Test with a non-customer email (e.g., `test+auth-check@acreos.io`) and verify magic link arrives within 30s.
 - Monitor `/api/healthz` — should return 200 with `auth_provider: ok`.
 - Spot-check one real customer: ask them to sign in and confirm success in next 5 min.
 

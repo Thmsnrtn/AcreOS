@@ -20,7 +20,7 @@
    - **Secondary backup:** Operations lead
    - **Tertiary:** Founder's spouse / emergency contact (P0 only — for "founder is incapacitated" scenarios)
 3. Confirm the on-call is reachable on the channel listed (phone, SMS, Slack DM, etc).
-4. Founder's calendar (founder.acreos.com or shared cal) shows OOO windows ahead of time — check there before paging.
+4. Founder's calendar (founder.acreos.io or shared cal) shows OOO windows ahead of time — check there before paging.
 
 ---
 

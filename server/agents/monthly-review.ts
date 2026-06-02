@@ -175,11 +175,11 @@ export function renderMonthlyReviewHtml(data: MonthlyReviewData): string {
     ${data.projectedDate ? `<div class="stat">At current pace: ${data.projectedDate}</div>` : ""}
   </div>
 
-  <a href="https://app.acreos.com" class="cta">View Full Dashboard →</a>
+  <a href="https://app.acreos.io" class="cta">View Full Dashboard →</a>
 
   <div class="footer">
     <p>AcreOS — Real Estate Intelligence</p>
-    <p><a href="https://app.acreos.com/settings/notifications" style="color: #999;">Unsubscribe</a></p>
+    <p><a href="https://app.acreos.io/settings/notifications" style="color: #999;">Unsubscribe</a></p>
   </div>
 </body>
 </html>`;

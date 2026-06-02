@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in AcreOS, please report it responsibly:
 
-1. **Email:** security@acreos.com
+1. **Email:** security@acreos.io
 2. **Do NOT** open a public GitHub issue for security vulnerabilities
 3. Include a detailed description and steps to reproduce
 

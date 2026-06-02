@@ -31,9 +31,9 @@ What's right:
 
 What's missing or unclear:
 
-- **Cloudflare zone strategy is not documented in-repo.** The user-memory says "Cloudflare DNS," but I could not find a `terraform/`, `cloudflare/`, or `infra/dns.tf` directory. DNS is being managed by hand in the Cloudflare dashboard. That is fine for one zone (`acreos.com`); it is **not fine** the day the first white-label reseller goes live and you need to provision a CNAME plus a `_acme-challenge` record under SLA.
+- **Cloudflare zone strategy is not documented in-repo.** The user-memory says "Cloudflare DNS," but I could not find a `terraform/`, `cloudflare/`, or `infra/dns.tf` directory. DNS is being managed by hand in the Cloudflare dashboard. That is fine for one zone (`acreos.io`); it is **not fine** the day the first white-label reseller goes live and you need to provision a CNAME plus a `_acme-challenge` record under SLA.
 - **No documented record TTLs.** For a CRM where Twilio webhooks, Stripe webhooks, and Clerk callbacks all hit your apex, the apex `A`/`AAAA`/`CNAME` records should be on **Cloudflare's "Auto" (300s effective) at minimum, and ideally proxied (orange-cloud) so Cloudflare answers with edge IPs** and you can re-point Fly without a TTL wait. Confirm in dashboard.
-- **No DNSSEC.** I cannot verify from the repo whether DNSSEC is enabled on `acreos.com` at the registrar. For a fintech-adjacent platform that signs deeds and moves money, DNSSEC is table stakes — without it, a BGP hijack or rogue resolver can MITM a cert issuance. **Action:** enable DNSSEC in Cloudflare, copy DS records to the registrar, validate with `dig +dnssec acreos.com`.
+- **No DNSSEC.** I cannot verify from the repo whether DNSSEC is enabled on `acreos.io` at the registrar. For a fintech-adjacent platform that signs deeds and moves money, DNSSEC is table stakes — without it, a BGP hijack or rogue resolver can MITM a cert issuance. **Action:** enable DNSSEC in Cloudflare, copy DS records to the registrar, validate with `dig +dnssec acreos.io`.
 
 ---
 
@@ -54,7 +54,7 @@ This is the highest-leverage finding in this audit.
 
 When a reseller sets `customDomain = "app.acquireland.com"`:
 
-1. They CNAME their hostname to `acreos.com` (or to a Fly app hostname).
+1. They CNAME their hostname to `acreos.io` (or to a Fly app hostname).
 2. The next request lands on Fly. **Fly does not have a cert for `app.acquireland.com`.** Fly's TLS handshake fails. Browser shows `NET::ERR_CERT_COMMON_NAME_INVALID`.
 3. There is no code anywhere in `/server` that calls `flyctl certs create` (or the Fly Machines API equivalent), no ACME client, no Cloudflare for SaaS / Custom Hostname API call, nothing.
 
@@ -62,7 +62,7 @@ You have **three** viable architectures; pick one and codify it:
 
 | Option | How it works | Cost / complexity | When to pick |
 |---|---|---|---|
-| **A. Cloudflare for SaaS (Custom Hostnames)** | Reseller CNAMEs to `*.acreos.com`. Cloudflare issues + renews edge certs automatically via their API. AcreOS calls `POST /zones/:zone/custom_hostnames` on tenant create. | $0.10/active hostname/mo; ~50 lines of code. | **Default recommendation.** Best ergonomics, hands-off renewal, edge-terminated. |
+| **A. Cloudflare for SaaS (Custom Hostnames)** | Reseller CNAMEs to `*.acreos.io`. Cloudflare issues + renews edge certs automatically via their API. AcreOS calls `POST /zones/:zone/custom_hostnames` on tenant create. | $0.10/active hostname/mo; ~50 lines of code. | **Default recommendation.** Best ergonomics, hands-off renewal, edge-terminated. |
 | **B. Fly Certificates API** | On tenant create, call `flyctl certs create app.acquireland.com`. Fly handles ACME. Customer adds `_acme-challenge.app` TXT or CNAME-validates. | $0/cert; ~80 lines + a verification poll job. | If you want zero CDN dep. Worse cache/WAF story. |
 | **C. Self-host an ACME client (caddy / lego / acme.sh)** | Run your own DNS-01 or HTTP-01 issuer. Store certs in S3 / DB. | Highest complexity. | Only if regulatory / sovereignty requires. **Not recommended.** |
 
@@ -131,9 +131,9 @@ For Wave-3 minimum: enable a **Cloudflare Load Balancer** with two Fly origins (
 
 In Cloudflare dashboard, verify and document:
 
-- **DNSSEC:** Enabled. DS record at registrar. `dig +dnssec acreos.com SOA` returns `ad` flag.
-- **CAA records:** `acreos.com. CAA 0 issue "letsencrypt.org"` and `... "pki.goog"` (Cloudflare uses Google Trust Services for Universal SSL, Let's Encrypt for Custom Hostnames). Without CAA, **any public CA** can issue for your domain.
-- **MTA-STS / TLS-RPT:** If you send email via Sendgrid/Postmark on `mail.acreos.com`, publish `_mta-sts.acreos.com` TXT and `mta-sts.acreos.com/.well-known/mta-sts.txt` to enforce TLS for inbound mail. Phishing protection.
+- **DNSSEC:** Enabled. DS record at registrar. `dig +dnssec acreos.io SOA` returns `ad` flag.
+- **CAA records:** `acreos.io. CAA 0 issue "letsencrypt.org"` and `... "pki.goog"` (Cloudflare uses Google Trust Services for Universal SSL, Let's Encrypt for Custom Hostnames). Without CAA, **any public CA** can issue for your domain.
+- **MTA-STS / TLS-RPT:** If you send email via Sendgrid/Postmark on `mail.acreos.io`, publish `_mta-sts.acreos.io` TXT and `mta-sts.acreos.io/.well-known/mta-sts.txt` to enforce TLS for inbound mail. Phishing protection.
 - **DMARC / SPF / DKIM:** Out of my lane (Diallo's), but DNS-published — make sure the white-label flow doesn't break tenant SPF when they send from `mail.<their-domain>`.
 
 ---
@@ -142,7 +142,7 @@ In Cloudflare dashboard, verify and document:
 
 AcreOS has `featureGate.ts` middleware. None of it is DNS-driven. For staged rollouts of risky features (the new e-sign stack, the Voice Pass), consider:
 
-- TXT record `_acreos-flag.<feature>.acreos.com = "off"|"on"|"canary:0.1"`
+- TXT record `_acreos-flag.<feature>.acreos.io = "off"|"on"|"canary:0.1"`
 - Read once per minute, cache in-process, override DB feature flag.
 - Why DNS? Because it's **out of band** — if your DB is wedged, you can still kill a feature globally by editing one TXT record from your phone. Cloudflare API lets you do it from a script in 2 lines.
 

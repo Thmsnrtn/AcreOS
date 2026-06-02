@@ -145,7 +145,7 @@ Jenna found AcreOS via a Reddit thread about passive income from land. She has $
 | Priority Support | X | X | Check | Check |
 
 **Enterprise CTA:**
-- "Need custom enterprise pricing? Contact us." (mailto:hello@acreos.com)
+- "Need custom enterprise pricing? Contact us." (mailto:hello@acreos.io)
 
 **Footer:**
 - (c) 2026 AcreOS. All rights reserved. | Home | Sign In

@@ -148,7 +148,7 @@ HealthScore =
 **Rules across the whole sequence:**
 - **Persona-flexed** — pull from `personaVocabulary.ts`. A note investor's email #3 should mention "yield-to-maturity" not "tax-delinquent."
 - **Skip rules** — if user hits the milestone before the email fires, suppress it. Email #5 doesn't send if `first_artifact` already happened.
-- **Reply-able** — `from: thomas@acreos.com` while pre-50, `from: pax@acreos.com` after. All replies route to `/admin/support` and trigger Sophie classification.
+- **Reply-able** — `from: thomas@acreos.io` while pre-50, `from: pax@acreos.io` after. All replies route to `/admin/support` and trigger Sophie classification.
 - **Frequency cap** — never more than one email per 24h, never more than 4 per week.
 - **Telemetry** — log `email_sent`, `email_opened`, `email_clicked`, `email_replied` per template; surface in `cohort-retention-dashboard.tsx` so the team can see template-level conversion.
 

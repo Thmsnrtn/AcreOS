@@ -3,7 +3,7 @@
  *
  * Sends Web Push API notifications to subscribed users.
  * Requires VAPID keys (generate once and set as env vars):
- *   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:contact@acreos.com)
+ *   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:contact@acreos.io)
  *
  * Uses the `web-push` npm package for VAPID signing.
  * If the package is not installed, operations are logged but skipped gracefully.
@@ -50,7 +50,7 @@ async function getWebPush(): Promise<any> {
     // try/catch already degrades gracefully when the package is absent.
     const webPushModule = "web-push";
     webPush = await import(webPushModule);
-    const subject = process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || "noreply@acreos.com"}`;
+    const subject = process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || "noreply@acreos.io"}`;
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
 

@@ -215,7 +215,7 @@ const EXECUTOR_CONFIG = {
   // Founder emails for daily summary
   FOUNDER_EMAILS: (process.env.FOUNDER_EMAIL || "").split(",").map(e => e.trim()).filter(Boolean),
 
-  APP_URL: process.env.APP_URL || "https://app.acreos.com",
+  APP_URL: process.env.APP_URL || "https://app.acreos.io",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

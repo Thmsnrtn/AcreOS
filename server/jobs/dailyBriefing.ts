@@ -201,7 +201,7 @@ function generateBriefingEmailHtml(data: BriefingData): string {
 
   <!-- CTA -->
   <div style="text-align:center; margin:24px 0;">
-    <a href="${process.env.APP_URL || 'https://app.acreos.com'}/dashboard"
+    <a href="${process.env.APP_URL || 'https://app.acreos.io'}/dashboard"
        style="display:inline-block; background:#1e3a5f; color:white; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:15px;">
       Open AcreOS Dashboard →
     </a>
@@ -209,7 +209,7 @@ function generateBriefingEmailHtml(data: BriefingData): string {
 
   <p style="text-align:center; font-size:12px; color:#9ca3af; margin-top:24px;">
     Atlas Daily Briefing for ${data.orgName} · Powered by AcreOS<br>
-    <a href="${process.env.APP_URL || 'https://app.acreos.com'}/settings/notifications" style="color:#9ca3af;">Manage email preferences</a>
+    <a href="${process.env.APP_URL || 'https://app.acreos.io'}/settings/notifications" style="color:#9ca3af;">Manage email preferences</a>
   </p>
 </body>
 </html>`;

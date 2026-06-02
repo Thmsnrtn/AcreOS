@@ -61,7 +61,7 @@ confirmation handling. The `INBOUND_EMAIL_HMAC_SECRET` Sam noted in
 (`inboundEmailService.ts:27`); the webhook itself trusts the JSON body.
 
 **Attack:** anyone who has ever received an AcreOS lead-thread reply (and thus
-seen one `inbox+{leadId}-{hash}@replies.acreos.com` address) can replay POSTs
+seen one `inbox+{leadId}-{hash}@replies.acreos.io` address) can replay POSTs
 to this endpoint forever. Per-lead `verifyReplyHash` (`inboundEmailService.ts:89`)
 blocks cross-lead spoofing — but for the captured lead they can inject arbitrary
 `bodyText` / `bodyHtml`, flip `leads.status` to `"responded"` poisoning pipeline

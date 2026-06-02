@@ -60,7 +60,7 @@ What's there: 100 cents. One dollar. Per signup that closes a deal. There is no 
 My readers don't sign up the day they read the email. They read it, save the email, sit on it three weeks, watch one of my YouTube videos, click that link, and *then* sign up. If your attribution is "the user typed `?ref=CODE` into the signup URL and we caught it in the same session," you will lose 70% of the conversions I drive.
 
 What I need:
-- **First-click cookie, 60-day window, persisted client-side** (`acreos_ref` cookie set on `acreos.com` and `app.acreos.com`, signed, domain-scoped, SameSite=Lax). 60 days is the floor for B2B SaaS in 2026; 90 is better.
+- **First-click cookie, 60-day window, persisted client-side** (`acreos_ref` cookie set on `acreos.io` and `app.acreos.io`, signed, domain-scoped, SameSite=Lax). 60 days is the floor for B2B SaaS in 2026; 90 is better.
 - **UTM parameters honored separately** — `utm_source=acreletter&utm_campaign=tuesday-2026-05-01&utm_content=v1` should resolve to my affiliate ID via a partner-mapping table, so I don't have to retrain my list to use a new link format.
 - **Cross-device attribution** via email-address fallback — if the same email shows up on a YouTube-clicked device that didn't have the cookie, but a previous click *did* land the cookie on a different device, the click-on-other-device wins. Industry calls this "deterministic + probabilistic stitch." I don't expect probabilistic, but deterministic via verified email is table-stakes.
 - **Clear tie-break rule**, written down: first-click wins over last-click, with a 60-day window, and a documented exception list (users who self-attribute via "how did you hear about us" override the cookie).
@@ -115,7 +115,7 @@ The vendors I currently promote send me three things, every quarter, without me 
 What AcreOS has: the `referral-copy.md` file. It has Twitter/Facebook/DM copy aimed at *user-to-user* sharing — "I've been using this tool, if you sign up we both get a free month." That copy doesn't work for me. My audience knows me as the affiliate guy. I cannot write "we both get a free month" because (a) I'm not getting a free month, I'm getting a check, and (b) my audience would feel patronized.
 
 What I'd want shipped:
-- A **partner asset library** at a stable URL (`acreos.com/partners/assets/`) with PNG/SVG logos in 4 sizes, PDF one-pagers, three pre-written email templates per use-case (general intro / upgrade pitch / vertical-specific hook), 5 short-form video clips under 60 seconds licensed for repost.
+- A **partner asset library** at a stable URL (`acreos.io/partners/assets/`) with PNG/SVG logos in 4 sizes, PDF one-pagers, three pre-written email templates per use-case (general intro / upgrade pitch / vertical-specific hook), 5 short-form video clips under 60 seconds licensed for repost.
 - **A monthly partner email** with what shipped, what's coming, hook angles. Five-minute read.
 - **A private Slack or Discord** for partners >10 conversions/quarter. Not a Circle community — I have enough of those — a low-traffic operator channel with a PM who actually answers.
 

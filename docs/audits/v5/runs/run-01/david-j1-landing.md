@@ -137,7 +137,7 @@ David buys 10-20 parcels per year, all tracked in spreadsheets (Excel and Google
 | SMS/Voice Outreach | X | X | Check | Check |
 | Priority Support | X | X | Check | Check |
 
-**Enterprise CTA:** "Need custom enterprise pricing? Contact us." (mailto:hello@acreos.com)
+**Enterprise CTA:** "Need custom enterprise pricing? Contact us." (mailto:hello@acreos.io)
 
 **Footer:**
 - "(c) 2026 AcreOS. All rights reserved."

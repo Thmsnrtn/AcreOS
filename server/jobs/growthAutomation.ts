@@ -78,7 +78,7 @@ const CONFIG = {
   // Re-engagement: days of inactivity before re-engagement email
   REENGAGEMENT_DAYS: 14,
 
-  APP_URL: process.env.APP_URL || "https://app.acreos.com",
+  APP_URL: process.env.APP_URL || "https://app.acreos.io",
 };
 
 // Plan limits for upsell detection

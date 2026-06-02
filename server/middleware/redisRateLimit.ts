@@ -235,7 +235,7 @@ export function createApiKeyRateLimit(redisClient: any) {
       return res.status(429).json({
         error: "api_rate_limit_exceeded",
         message: `API key rate limit exceeded. Max: ${limits.perMinute} requests/minute.`,
-        docs: "https://docs.acreos.com/api/rate-limits",
+        docs: "https://docs.acreos.io/api/rate-limits",
       });
     }
 

@@ -153,7 +153,7 @@ function getOpenRouterClient(): OpenAI {
     apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY || "missing",
     baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
     defaultHeaders: {
-      "HTTP-Referer": "https://acreos.com/founder",
+      "HTTP-Referer": "https://acreos.io/founder",
       "X-Title": "AcreOS Atlas",
     },
   });

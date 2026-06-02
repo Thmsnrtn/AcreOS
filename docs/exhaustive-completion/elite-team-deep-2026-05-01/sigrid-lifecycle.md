@@ -159,7 +159,7 @@ Eden §7 codified long-form voice; Mira §6 codified microcopy. Lifecycle email 
    - Eden §7.1 rule. The first sentence of every lifecycle email should pass the "kitchen table" test. If it sounds like a CRM, rewrite.
 
 3. **Sign with `— Thomas` while ≤500 customers; `— Pax` after; `— The AcreOS team` only on the monthly newsletter.**
-   - The `from:` follows the same rule (Camila §4): `thomas@acreos.com` reply-to while pre-50, `pax@acreos.com` after.
+   - The `from:` follows the same rule (Camila §4): `thomas@acreos.io` reply-to while pre-50, `pax@acreos.io` after.
    - **Never** `noreply@`. Every send is reply-able. Replies route to `/admin/support` and trigger Sophie classification.
 
 4. **Banned words on every customer send** (extends Mira §6 + Eden §7.2):
@@ -272,7 +272,7 @@ Goal: move from "no program" to "every new customer hits a real lifecycle." This
 | 3 | **Wire welcome (#1), reentry-D0 (#2), morning-briefing (#3, #4), nudge-first-artifact (#5), cohort-recap-D7 (#7)** into `onboardingAutonomy` handlers. Replace each handler's intent-string return with an actual `emailService.send()` call. | 3d | Camila's spine becomes real; the 30-day journey stops being theatre | Camila §4 |
 | 4 | **`lifecycle_sends` log table + delivery telemetry** (sends/opens/clicks/replies/bounces/suppressed_reason). | 0.5d | Without it, §6 is impossible | §6 |
 | 5 | **Frequency cap + suppression rules engine.** Max 1/24h, 4/week, persona suppression, unsubscribe token, `users.lifecycle_paused` honor. | 1d | Defends against the worst lifecycle failure mode (over-sending) | §4.3 |
-| 6 | **Reply-routing into `/admin/support` + Sophie classification.** Replies to `thomas@acreos.com` create support threads with sentiment chip. | 1d | The reply-rate metric (§6.4) is meaningless without this | Camila §6 |
+| 6 | **Reply-routing into `/admin/support` + Sophie classification.** Replies to `thomas@acreos.io` create support threads with sentiment chip. | 1d | The reply-rate metric (§6.4) is meaningless without this | Camila §6 |
 
 **Week 1 ships:** 7 templates live, transport and frequency caps in place, replies route, telemetry logged. Every D0 → D7 send in the program now fires for real customers.
 

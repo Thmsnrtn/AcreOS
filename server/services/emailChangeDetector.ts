@@ -129,7 +129,7 @@ async function sendEmailChangeAlert(opts: {
 }): Promise<void> {
   try {
     const when = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-    const securityUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.com"}/account/security`;
+    const securityUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.io"}/account/security`;
     const lead =
       opts.role === "old"
         ? "The primary email on your AcreOS account just changed."

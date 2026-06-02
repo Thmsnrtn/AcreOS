@@ -23,7 +23,7 @@ Let me take you through what I actually heard, in order, on the morning I tried 
 
 ### Login
 
-I open `acreos.com`, log in with Clerk. **This works.** Clerk has been audited a hundred times and it shows. Email field announces "Email, edit text." Password field announces "Password, secure edit text." Sign-in button is labelled. I'm in. No sighted help required for the door. Good — most apps fail at the door.
+I open `acreos.io`, log in with Clerk. **This works.** Clerk has been audited a hundred times and it shows. Email field announces "Email, edit text." Password field announces "Password, secure edit text." Sign-in button is labelled. I'm in. No sighted help required for the door. Good — most apps fail at the door.
 
 A small footnote: the Clerk-proxied auth subdomain announces correctly because Clerk owns the markup. The instant I land on a page Thomas's team built, the experience changes. That is the tell I am listening for, and I hear it within the first five seconds.
 

@@ -560,7 +560,7 @@ async function collectEnhancedBriefingData(
 }
 
 function generateEnhancedBriefingEmail(data: EnhancedBriefingData): string {
-  const appUrl = process.env.APP_URL || "https://app.acreos.com";
+  const appUrl = process.env.APP_URL || "https://app.acreos.io";
 
   const urgencyColors = {
     critical: "#ef4444",

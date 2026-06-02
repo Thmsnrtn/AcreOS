@@ -94,7 +94,7 @@ export function registerWholesalerRuleRoutes(app: Express): void {
                 "858-301; IL 225 ILCS 454/1-10; SC § 40-57-30; PA § 35.201) " +
                 "are exactly the states most likely to be missing from a " +
                 "partial seed. A permissive default biases failure toward " +
-                "the customer. Request review at support@acreos.com with " +
+                "the customer. Request review at support@acreos.io with " +
                 "the statute citation you want us to load.",
               attorneyReviewedAt: null,
               attorneyReviewedBy: null,
@@ -103,7 +103,7 @@ export function registerWholesalerRuleRoutes(app: Express): void {
             preliminary: true,
             unseeded: true,
             requestCitationUrl:
-              `mailto:support@acreos.com?subject=Statute%20citation%20request%3A%20${state}%20wholesaler%20rules&body=I%27m%20wholesaling%20in%20${state}.%20Please%20review%20the%20broker-license%20%2B%20assignment-disclosure%20regime%20and%20seed%20the%20wholesaler_state_rules%20entry.%0A%0AStatute%20citation%20(if%20I%20have%20one)%3A%20`,
+              `mailto:support@acreos.io?subject=Statute%20citation%20request%3A%20${state}%20wholesaler%20rules&body=I%27m%20wholesaling%20in%20${state}.%20Please%20review%20the%20broker-license%20%2B%20assignment-disclosure%20regime%20and%20seed%20the%20wholesaler_state_rules%20entry.%0A%0AStatute%20citation%20(if%20I%20have%20one)%3A%20`,
           });
         }
         return res.json({ rule: row, preliminary: !row.attorneyReviewedAt });

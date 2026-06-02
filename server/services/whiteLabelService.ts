@@ -115,7 +115,7 @@ class WhiteLabelService {
       primaryColor: config.primaryColor || '#2563eb',
       accentColor: config.accentColor || '#16a34a',
       customDomain: config.customDomain,
-      supportEmail: config.supportEmail || 'support@acreos.com',
+      supportEmail: config.supportEmail || 'support@acreos.io',
       supportPhone: config.supportPhone,
       footerText: config.footerText || 'Powered by AcreOS',
       features: {

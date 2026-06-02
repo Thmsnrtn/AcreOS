@@ -215,7 +215,7 @@ class GrowthAdService {
       : `act_${adAccount.adAccountId}`;
 
     // Derive the landing page URL — use META_APP_URL env or fall back to placeholder
-    const appUrl = process.env.PUBLIC_APP_URL || process.env.META_APP_URL || "https://app.acreos.com";
+    const appUrl = process.env.PUBLIC_APP_URL || process.env.META_APP_URL || "https://app.acreos.io";
     const landingUrl = `${appUrl}${template.landingPagePath}&utm_campaign=${encodeURIComponent(name)}`;
 
     // Apply country targeting override if provided
@@ -286,7 +286,7 @@ class GrowthAdService {
       ? adAccount.adAccountId
       : `act_${adAccount.adAccountId}`;
 
-    const appUrl = process.env.PUBLIC_APP_URL || process.env.META_APP_URL || "https://app.acreos.com";
+    const appUrl = process.env.PUBLIC_APP_URL || process.env.META_APP_URL || "https://app.acreos.io";
     const sep = template.landingPagePath.includes("?") ? "&" : "?";
     const landingUrl = `${appUrl}${template.landingPagePath}${sep}utm_campaign=${encodeURIComponent(name)}`;
 

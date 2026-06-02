@@ -11,7 +11,7 @@ export function generateOpenAPISpec(): Record<string, any> {
       version: '1.0.0',
       description:
         'AcreOS platform API — real estate CRM, AVM, voice AI, portfolio optimizer, and data licensing.',
-      contact: { name: 'AcreOS Support', email: 'support@acreos.com' },
+      contact: { name: 'AcreOS Support', email: 'support@acreos.io' },
     },
     servers: [
       { url: '/api', description: 'Production API' },

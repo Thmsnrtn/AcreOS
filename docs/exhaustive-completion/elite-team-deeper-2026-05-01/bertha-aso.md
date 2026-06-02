@@ -3,7 +3,7 @@
 **Persona:** Bertha Ofoedu, 39, ex-AppFollow ASO specialist. Nine years optimizing B2B SaaS, vertical-fintech, and prosumer apps for the iOS App Store and Google Play. Owned the ASO program at AppFollow itself for two years.
 **Wave:** 3 of 87, store-acquisition lens (companion to Skye iOS / Devika Android device passes; companion to Ezra paid-acq and Lavinia co-marketing on the channel side)
 **Date:** 2026-05-01
-**Reviewing:** AcreOS at HEAD, commit `8aa9a4d`. Capacitor wraps `app.acreos.com` into iOS + Android shells; Tauri wraps desktop. No App Store Connect or Play Console listing exists yet — but `capacitor.config.ts` declares `com.acreos.app` and `NATIVE_APPS.md` documents submission. So my audit assumes a near-term store launch.
+**Reviewing:** AcreOS at HEAD, commit `8aa9a4d`. Capacitor wraps `app.acreos.io` into iOS + Android shells; Tauri wraps desktop. No App Store Connect or Play Console listing exists yet — but `capacitor.config.ts` declares `com.acreos.app` and `NATIVE_APPS.md` documents submission. So my audit assumes a near-term store launch.
 
 ---
 
@@ -15,7 +15,7 @@
 
 ## 2. The strategic question nobody asked: why is AcreOS in the store?
 
-Before any ASO tactic matters: **most Land Investor operators discover software via web — podcasts, paid search, YouTube, Facebook groups, conference referrals.** The App Store and Play Store are *not* their primary discovery surface. I've watched three vertical-SaaS launches torture themselves over keyword density when their actual install path was "founder mentions tool on Spotify → operator googles it on laptop → signs up at acreos.com → installs PWA or native app *after* paying."
+Before any ASO tactic matters: **most Land Investor operators discover software via web — podcasts, paid search, YouTube, Facebook groups, conference referrals.** The App Store and Play Store are *not* their primary discovery surface. I've watched three vertical-SaaS launches torture themselves over keyword density when their actual install path was "founder mentions tool on Spotify → operator googles it on laptop → signs up at acreos.io → installs PWA or native app *after* paying."
 
 This means the store has two possible jobs, and the team must pick:
 
@@ -132,7 +132,7 @@ Play Store's long description is indexed and matters. iOS App Store's "promotion
 2. **Six feature bullets** — Parcels, Leads, Campaigns, Deals, Pax (AI), Notes/Tasks. Each bullet 1 sentence. Mirror the on-site "Everything a land investor actually does" section.
 3. **Proof block.** "$1.4M closed in 90 days. 12 land investors in private beta." Use the same number on every surface — store, web, paid ads. Consistency is its own form of credibility.
 4. **What it is NOT.** This is a B2B SaaS-specific move that consumer ASO consultants miss. Land Investors googling "real estate CRM" are *also* downloading Zillow and Redfin and being disappointed. A line like "AcreOS is for land investors who acquire and sell parcels — not homebuyers, not renters, not agents listing single-family homes." Filters wrong-fit installs and protects the rating.
-5. **Pricing transparency.** Both stores rank apps with no pricing info as "freemium" and group them with games. Say it: "Subscription required. 14-day free trial. See acreos.com/pricing."
+5. **Pricing transparency.** Both stores rank apps with no pricing info as "freemium" and group them with games. Say it: "Subscription required. 14-day free trial. See acreos.io/pricing."
 
 iOS promotional text is the only field that doesn't require re-review. Use it for time-sensitive copy: "May 2026: New Pax v2 — ask any parcel question."
 
@@ -142,9 +142,9 @@ iOS promotional text is the only field that doesn't require re-review. Use it fo
 
 Per the strategic frame in §2, most installs will come from web. ASO must support that, not fight it.
 
-1. **Smart App Banners on every marketing page.** iOS `<meta name="apple-itunes-app">` + Android `<meta name="google-play-app">`. When a Land Investor on mobile lands on `acreos.com` from a podcast referral, they get a one-tap install banner. Conversion lift on B2B mobile-web → install is 3–8x vs. forcing them to search the store. Two engineer-hours.
+1. **Smart App Banners on every marketing page.** iOS `<meta name="apple-itunes-app">` + Android `<meta name="google-play-app">`. When a Land Investor on mobile lands on `acreos.io` from a podcast referral, they get a one-tap install banner. Conversion lift on B2B mobile-web → install is 3–8x vs. forcing them to search the store. Two engineer-hours.
 2. **App Clip / Instant App for `/parcels/:id` shareable links.** A Land Investor sends "look at this APN" to a partner via SMS. Instead of "open browser → render slow → bounce," App Clip / Instant App opens a 10MB native fragment, parcel renders instantly, install prompt at the bottom. This is exactly the high-intent moment to convert.
-3. **Universal Links / App Links to deep-link from email.** Capacitor config has `appUrlOpen: true` (line 90) but I see no Universal Links entitlement file (`apple-app-site-association`) or Android Asset Links (`/.well-known/assetlinks.json`). Without these, every email link to `app.acreos.com/deals/123` opens the browser, not the installed app. This is the largest installed-app re-engagement leak in the codebase. One engineer-day, both platforms.
+3. **Universal Links / App Links to deep-link from email.** Capacitor config has `appUrlOpen: true` (line 90) but I see no Universal Links entitlement file (`apple-app-site-association`) or Android Asset Links (`/.well-known/assetlinks.json`). Without these, every email link to `app.acreos.io/deals/123` opens the browser, not the installed app. This is the largest installed-app re-engagement leak in the codebase. One engineer-day, both platforms.
 
 ---
 
@@ -152,9 +152,9 @@ Per the strategic frame in §2, most installs will come from web. ASO must suppo
 
 Six things specific to vertical SaaS in the App Store that consumer ASO docs won't tell you:
 
-1. **App Review will ask "what is a Land Investor?"** Apple's App Review is a contractor reading your listing in 4 minutes. If your category is opaque, expect a guideline 2.1 rejection ("we need more information"). Pre-empt with a 30-second screen recording in App Review Notes showing a deal moving from lead to close, plus a sentence: "AcreOS is a CRM for professional land buyers — see acreos.com."
+1. **App Review will ask "what is a Land Investor?"** Apple's App Review is a contractor reading your listing in 4 minutes. If your category is opaque, expect a guideline 2.1 rejection ("we need more information"). Pre-empt with a 30-second screen recording in App Review Notes showing a deal moving from lead to close, plus a sentence: "AcreOS is a CRM for professional land buyers — see acreos.io."
 2. **Sign-In with Apple is required if you offer any third-party login.** Clerk supports Google + email. Apple's guideline 4.8 requires SIWA as a co-equal option. Add it before submission or get rejected. (This is Skye iOS's territory but it intersects with ASO because rejection delays launch.)
-3. **Subscription pricing must use IAP if the app gates features.** If AcreOS gates anything inside the app behind a paywall, Apple wants their 15–30%. The way to avoid this: gate at signup on the *web*, the app only logs into existing accounts. The Capacitor config currently points to `https://app.acreos.com` for production (line 15), so the auth happens server-side — good. But the team needs an explicit policy: **no in-app upsell of paid tiers, ever.** Pricing pages must redirect to web checkout.
+3. **Subscription pricing must use IAP if the app gates features.** If AcreOS gates anything inside the app behind a paywall, Apple wants their 15–30%. The way to avoid this: gate at signup on the *web*, the app only logs into existing accounts. The Capacitor config currently points to `https://app.acreos.io` for production (line 15), so the auth happens server-side — good. But the team needs an explicit policy: **no in-app upsell of paid tiers, ever.** Pricing pages must redirect to web checkout.
 4. **The "Reader App" rule (3.1.3(a)) is your friend.** If AcreOS only logs into pre-existing paid accounts, it qualifies as a reader app and is exempt from IAP. Document this in the App Review Notes.
 5. **Account deletion in-app is required.** As of 2022, Apple enforces guideline 5.1.1(v) — users must be able to delete their account from within the app, not "contact support." `/settings/account/delete` must work in both web and Capacitor wrappers. Verify before submission.
 6. **Privacy Nutrition Labels must be exact.** Capacitor config requests Camera, Photos, Microphone, Location (foreground + background), Push. All five must be declared with usage descriptions. Background location especially attracts review scrutiny — Apple will ask why you need it. The honest answer is in `capacitor.config.ts:71` ("track field visit routes while scouting"). Use that exact phrasing in the privacy label, the `Info.plist`, and the store privacy policy. Inconsistency triggers rejection.

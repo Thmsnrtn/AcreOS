@@ -304,7 +304,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
       "lead.phone": "(555) 123-4567",
       "lead.address": "456 Maple Street, Dallas, TX 75201",
       "organization.name": "AcreOS Land Co.",
-      "organization.email": "contact@acreos.com",
+      "organization.email": "contact@acreos.io",
       "organization.phone": "(555) 999-0000",
       "organization.address": "789 Business Ave, Suite 100",
       "deal.title": "Oak Lane Property Acquisition",

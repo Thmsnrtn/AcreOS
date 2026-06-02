@@ -184,7 +184,7 @@ The Enterprise tier ($899/mo) exists in `SUBSCRIPTION_TIERS` but:
 - `pricing_enterprise_tier_enabled` is `false` (usageLimits.ts line 25)
 - Not shown on any pricing page
 - No "Contact Sales" form or flow exists
-- The only mention is a mailto link on the pricing page (`hello@acreos.com`)
+- The only mention is a mailto link on the pricing page (`hello@acreos.io`)
 
 #### P3-3: Credit system and usage limits are separate enforcement mechanisms
 

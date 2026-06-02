@@ -177,7 +177,7 @@ Features listed in the table (16 rows):
 "2 (add more at $20/seat)" and "10 (add more at $40/seat)" are long strings that will cause the text to wrap awkwardly or overflow in a `w-28` (112px) cell.
 
 #### Enterprise line
-- "Need custom enterprise pricing? Contact us." -- links to `mailto:hello@acreos.com`
+- "Need custom enterprise pricing? Contact us." -- links to `mailto:hello@acreos.io`
 
 #### Footer
 - "(c) 2026 AcreOS. All rights reserved."

@@ -488,7 +488,7 @@ class PermanentSovereigntyEngine {
   async checkRenewalCalendar(): Promise<Array<{ item: string; dueDate: string; status: string }>> {
     // In production: check domain registrations, SSL certs, vendor contracts
     return [
-      { item: "Domain Registration (acreos.com)", dueDate: "2027-01-15", status: "active" },
+      { item: "Domain Registration (acreos.io)", dueDate: "2027-01-15", status: "active" },
       { item: "SSL Certificate", dueDate: "2026-12-01", status: "active" },
       { item: "SendGrid Contract", dueDate: "2026-06-01", status: "active" },
       { item: "Fly.io Subscription", dueDate: "Monthly", status: "active" },

@@ -159,7 +159,7 @@ A two-sided integration. AcreOS pushes exchange intake to me; I push fund and mi
   },
   "exchangeType": "delayed | reverse | improvement | simultaneous",
   "identificationRule": "three_property | two_hundred_percent | ninety_five_percent",
-  "callbackUrl": "https://api.acreos.com/webhooks/qi/blaine"
+  "callbackUrl": "https://api.acreos.io/webhooks/qi/blaine"
 }
 ```
 

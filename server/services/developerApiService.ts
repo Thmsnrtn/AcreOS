@@ -180,7 +180,7 @@ export function signWebhookPayload(rawJson: string, secret: string): string {
 // Embeddable Widgets
 //
 // Third-party sites can embed AcreOS intelligence with a single script tag:
-// <script src="https://app.acreos.com/embed.js" data-widget="deal-analyzer" data-key="pub_xxx"></script>
+// <script src="https://app.acreos.io/embed.js" data-widget="deal-analyzer" data-key="pub_xxx"></script>
 // ---------------------------------------------------------------------------
 
 export interface EmbeddableWidget {
@@ -190,7 +190,7 @@ export interface EmbeddableWidget {
 }
 
 export function generateWidgetEmbedCode(widget: EmbeddableWidget): string {
-  const appUrl = process.env.APP_URL || "https://app.acreos.com";
+  const appUrl = process.env.APP_URL || "https://app.acreos.io";
   const config = JSON.stringify(widget.config).replace(/'/g, "\\'");
 
   return `<!-- AcreOS ${widget.widgetType.replace("_", " ")} Widget -->
@@ -239,14 +239,14 @@ See the Webhooks section for the full event type list.
     `.trim(),
     contact: {
       name: "AcreOS Developer Support",
-      url: "https://docs.acreos.com",
-      email: "api@acreos.com",
+      url: "https://docs.acreos.io",
+      email: "api@acreos.io",
     },
-    license: { name: "Commercial", url: "https://acreos.com/terms" },
+    license: { name: "Commercial", url: "https://acreos.io/terms" },
   },
   servers: [
-    { url: "https://api.acreos.com/v1", description: "Production" },
-    { url: "https://api-staging.acreos.com/v1", description: "Staging" },
+    { url: "https://api.acreos.io/v1", description: "Production" },
+    { url: "https://api-staging.acreos.io/v1", description: "Staging" },
   ],
   security: [{ BearerAuth: [] }],
   components: {

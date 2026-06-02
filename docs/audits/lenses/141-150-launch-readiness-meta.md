@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-AcreOS has significantly more operational documentation than a typical early-stage SaaS: a 59 KB Owner's Manual, 10 ADRs, 9 dedicated runbooks, a disaster recovery plan with RTO/RPO targets, an incident response plan, a security hardening guide with key rotation procedures, and a launch-day checklist. The material quantity is strong. The gaps are in accuracy (README describes wrong auth system, docs contradict each other on table counts and rate limits), completeness (GDPR export truncates at 1000 records, anonymization misses several tables), regulatory formality (missing CCPA-specific disclosures, placeholder address in legal pages, no DPA for customers), and operational infrastructure that is referenced but does not exist (status.acreos.com, PagerDuty, Slack #incidents channel). Most findings are P2/P3 (missing ops artifacts that should exist before scaling). P1 findings are reserved for legally-required items and data-loss risks.
+AcreOS has significantly more operational documentation than a typical early-stage SaaS: a 59 KB Owner's Manual, 10 ADRs, 9 dedicated runbooks, a disaster recovery plan with RTO/RPO targets, an incident response plan, a security hardening guide with key rotation procedures, and a launch-day checklist. The material quantity is strong. The gaps are in accuracy (README describes wrong auth system, docs contradict each other on table counts and rate limits), completeness (GDPR export truncates at 1000 records, anonymization misses several tables), regulatory formality (missing CCPA-specific disclosures, placeholder address in legal pages, no DPA for customers), and operational infrastructure that is referenced but does not exist (status.acreos.io, PagerDuty, Slack #incidents channel). Most findings are P2/P3 (missing ops artifacts that should exist before scaling). P1 findings are reserved for legally-required items and data-loss risks.
 
 ---
 
@@ -102,10 +102,10 @@ This is a strong set. Most early-stage startups have zero runbooks.
 **Evidence:** Defined RTO of 4 hours and RPO of 1 hour. Backup strategy: daily Fly.io Postgres snapshots with 7-day retention. S3 replication for object storage. Recovery procedure with exact commands. Communication plan defined (internal via Slack, external via status page, customer email within 2 hours for data-impacting incidents).
 **Assessment:** Good for the company's stage. RTO/RPO targets are reasonable.
 
-### F143-02 -- DR plan references non-existent status.acreos.com (P3)
+### F143-02 -- DR plan references non-existent status.acreos.io (P3)
 
 **Files:** `/docs/disaster-recovery.md` line 60
-**Evidence:** Communication plan says "Status page update at status.acreos.com within 30 min of SEV1." There is no external status page at that domain. The internal `/status` page exists in the app but requires authentication context and is part of the app itself -- if the app is down, the status page is also down.
+**Evidence:** Communication plan says "Status page update at status.acreos.io within 30 min of SEV1." There is no external status page at that domain. The internal `/status` page exists in the app but requires authentication context and is part of the app itself -- if the app is down, the status page is also down.
 **Impact:** During a real SEV1, there would be no public communication channel. Users would have no way to check whether the outage is known and being worked on.
 
 ### F143-03 -- No DR testing evidence (P3)
@@ -162,10 +162,10 @@ This is a strong set. Most early-stage startups have zero runbooks.
 **Files:** `/docs/disaster-recovery.md` lines 59--61, `/docs/INCIDENT_RESPONSE.md` lines 50--57
 **Evidence:** DR plan specifies:
 - Internal: Slack #incidents channel, PagerDuty escalation
-- External: Status page update at status.acreos.com within 30 min of SEV1
+- External: Status page update at status.acreos.io within 30 min of SEV1
 - Customer: Email to affected orgs within 2 hours
 
-Neither the Slack channel, PagerDuty, nor status.acreos.com currently exist. The INCIDENT_RESPONSE.md has a breach notification template, severity-based response times, and a data breach checklist, all of which are well-structured.
+Neither the Slack channel, PagerDuty, nor status.acreos.io currently exist. The INCIDENT_RESPONSE.md has a breach notification template, severity-based response times, and a data breach checklist, all of which are well-structured.
 **Impact:** During a real incident, the founder would have to improvise communication channels rather than following documented procedures.
 
 ### F146-02 -- Customer notification template exists (No Finding -- Strong)
@@ -186,8 +186,8 @@ Neither the Slack channel, PagerDuty, nor status.acreos.com currently exist. The
 ### F147-01 -- Internal status page exists but has no public-facing counterpart (P2)
 
 **Files:** `client/src/pages/status.tsx`
-**Evidence:** An internal status page exists at `/status` that polls `/api/status` every 30 seconds and displays service health (database, Stripe, OpenAI, etc.). However, this page is part of the main application -- if the app is down, the status page is also down. The DR plan references `status.acreos.com` as a public status page, but this domain/subdomain does not exist.
-**Recommendation:** Set up a third-party status page (Statuspage.io, Instatus, or Betteruptime) at `status.acreos.com` that is hosted independently from the main application. This is table-stakes for any SaaS product with paying customers.
+**Evidence:** An internal status page exists at `/status` that polls `/api/status` every 30 seconds and displays service health (database, Stripe, OpenAI, etc.). However, this page is part of the main application -- if the app is down, the status page is also down. The DR plan references `status.acreos.io` as a public status page, but this domain/subdomain does not exist.
+**Recommendation:** Set up a third-party status page (Statuspage.io, Instatus, or Betteruptime) at `status.acreos.io` that is hosted independently from the main application. This is table-stakes for any SaaS product with paying customers.
 
 ### F147-02 -- Status page lacks incident history and uptime display (P3, cross-ref Lens 29-F29-11)
 
@@ -300,7 +300,7 @@ The data privacy doc confirms "Full data export is available at any time via Set
 | F142-02 | Runbooks reference non-existent PagerDuty | P3 | 142 | -- |
 | F142-03 | No runbook for Clerk auth outage/key rotation | P2 | 142 | -- |
 | F142-04 | Key rotation runbook untested | P3 | 142 | -- |
-| F143-02 | DR plan references non-existent status.acreos.com | P3 | 143 | -- |
+| F143-02 | DR plan references non-existent status.acreos.io | P3 | 143 | -- |
 | F143-03 | No DR testing evidence | P3 | 143 | -- |
 | F144-02 | Fly.io backup retention only 7 days | P2 | 144 | -- |
 | F144-03 | PITR not confirmed active | P3 | 144 | -- |

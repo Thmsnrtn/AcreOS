@@ -8,7 +8,7 @@
 
 ## Symptom
 - App is returning 5xx or timeout errors
-- `https://acreos.com` or `https://app.acreos.com` is unreachable
+- `https://acreos.io` or `https://app.acreos.io` is unreachable
 - Customers report app is down or very slow
 - Fly.io dashboard shows primary machine (e827514ae34de8) as `stopped`, `suspended`, or `unhealthy`
 - No recent deploy or changes known
@@ -38,7 +38,7 @@
    Look for crash loops, memory/CPU overload, or connectivity issues.
 5. Try a health check:
    ```bash
-   curl -I https://acreos.com/api/healthz
+   curl -I https://acreos.io/api/healthz
    ```
    Should return 200. If timeout or 502, the machine is not responding.
 
@@ -72,7 +72,7 @@
   ```
   If a secondary is healthy, Fly's load balancer will already be routing traffic to it. Verify:
   ```bash
-  curl -I https://acreos.com/api/healthz
+  curl -I https://acreos.io/api/healthz
   ```
   Should return 200.
 - **No secondary machine available** — Create an emergency secondary:
@@ -94,9 +94,9 @@
 
 ## Verify
 - `flyctl status -a acreos` shows at least one machine as `running` and `healthy`.
-- `curl -I https://acreos.com/api/healthz` returns 200.
+- `curl -I https://acreos.io/api/healthz` returns 200.
 - `/api/healthz` response includes `status: ok`, `database: connected`, `cache: connected`.
-- Customer can load `https://acreos.com` and navigate to `/today` within <2s.
+- Customer can load `https://acreos.io` and navigate to `/today` within <2s.
 - App handles a test request (POST/GET) without errors.
 - Monitor `flyctl logs -a acreos` for 2 min — no new errors or restarts.
 

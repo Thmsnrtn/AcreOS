@@ -75,4 +75,4 @@ When you delete your account:
 
 ## Questions
 
-If you have questions about how your data is handled, email privacy@acreos.com or reply to any email from AcreOS. We'll give you a straight answer.
+If you have questions about how your data is handled, email privacy@acreos.io or reply to any email from AcreOS. We'll give you a straight answer.

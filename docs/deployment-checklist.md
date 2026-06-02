@@ -38,8 +38,8 @@ fly secrets set STRIPE_SECRET_KEY="sk_live_..."
 fly secrets set STRIPE_WEBHOOK_SECRET="whsec_..."
 fly secrets set AWS_ACCESS_KEY_ID="AKIA..."
 fly secrets set AWS_SECRET_ACCESS_KEY="..."
-fly secrets set AWS_SES_FROM_EMAIL="no-reply@acreos.com"
-fly secrets set FOUNDER_EMAIL="thomas@acreos.com"
+fly secrets set AWS_SES_FROM_EMAIL="no-reply@acreos.io"
+fly secrets set FOUNDER_EMAIL="thomas@acreos.io"
 fly secrets set APP_URL="https://acreos.fly.dev"
 fly secrets set AI_INTEGRATIONS_OPENAI_API_KEY="sk-..."
 fly secrets set AI_INTEGRATIONS_OPENAI_BASE_URL="https://openrouter.ai/api/v1"
@@ -179,11 +179,11 @@ Ensure these settings in `fly.toml` for zero-downtime:
 ## Custom Domain Setup
 
 ```bash
-fly certs add acreos.com
-fly certs add www.acreos.com
+fly certs add acreos.io
+fly certs add www.acreos.io
 # Add CNAME records in your DNS provider:
-#   acreos.com       → acreos.fly.dev
-#   www.acreos.com   → acreos.fly.dev
+#   acreos.io       → acreos.fly.dev
+#   www.acreos.io   → acreos.fly.dev
 ```
 
 Verify certificates are provisioned: `fly certs list`

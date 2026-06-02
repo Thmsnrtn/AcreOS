@@ -174,7 +174,7 @@
 
 **What I see:** You're SMB SaaS, not a dev tool. But your customers *use* APIs: integrations with Stripe, integrations with Twilio. If your API docs are bad, or your OAuth flow is confusing, your SMB customers (who are not developers) have a bad time. Meanwhile, your competitors (Zillow, Buildium) have polished API experiences.
 
-**Outside-in move:** Ship an API docs site (`docs.acreos.com`) with three sections: (1) Authentication (OAuth + API keys + code examples in Node + Python), (2) Core Resources (Properties, Deals, Notes, Tenants — CRUD endpoints with curl examples), (3) Webhooks (event types + retry logic + signature verification). Make it better than your main docs. This is how you win: your SMB customers feel like you respect their time.
+**Outside-in move:** Ship an API docs site (`docs.acreos.io`) with three sections: (1) Authentication (OAuth + API keys + code examples in Node + Python), (2) Core Resources (Properties, Deals, Notes, Tenants — CRUD endpoints with curl examples), (3) Webhooks (event types + retry logic + signature verification). Make it better than your main docs. This is how you win: your SMB customers feel like you respect their time.
 
 **Tie to AcreOS:** Kaapo (98, developer advocate) would push for this. Pair with a "getting started in 5 minutes" video: "Create an API key → authenticate → fetch your properties." DX isn't just for dev tools; it's for SaaS that touches technical users (VAs, accountants, title agents).
 

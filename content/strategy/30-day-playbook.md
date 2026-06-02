@@ -14,7 +14,7 @@
 - Record demo video using the script from content/demo/demo-script.md (3-5 min)
 - Edit: add captions, trim dead air, export at 1080p
 - Upload to YouTube (unlisted initially), Loom (for DMs), and keep a downloadable version
-- Set up blog (Substack, Ghost, or simple /blog route on acreos.com)
+- Set up blog (Substack, Ghost, or simple /blog route on acreos.io)
 - Publish the landing page with demo video embedded
 
 ### Day 3 — First Outreach

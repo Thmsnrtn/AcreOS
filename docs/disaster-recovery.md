@@ -57,7 +57,7 @@ DATABASE_URL=$NEW_DB_URL npm run db:push
 
 ## Communication Plan
 - **Internal**: Slack #incidents channel, PagerDuty escalation
-- **External**: Status page update at status.acreos.com within 30 min of SEV1
+- **External**: Status page update at status.acreos.io within 30 min of SEV1
 - **Customer**: Email to affected orgs within 2 hours for data-impacting incidents
 
 ## Recovery Testing Schedule

@@ -105,7 +105,7 @@ What data was involved: [List data categories]
 What we are doing: [Actions taken]
 What you should do: [Reset password, enable 2FA, monitor accounts]
 
-We sincerely apologize for this incident. Please contact security@acreos.com
+We sincerely apologize for this incident. Please contact security@acreos.io
 if you have questions.
 ```
 
@@ -150,6 +150,6 @@ fly secrets set \
 
 ## Contacts
 - GDPR DPA: [Supervisory authority contact]
-- Security email: security@acreos.com
+- Security email: security@acreos.io
 - Legal counsel: [Contact]
 - Cyber insurance: [Policy number and hotline]

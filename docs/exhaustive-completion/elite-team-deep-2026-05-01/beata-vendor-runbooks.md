@@ -16,13 +16,13 @@ Each runbook follows the same shape: **Symptoms / Mitigation / Comms / Recovery*
 
 ### 2.1 Clerk auth outage — P0
 
-**Symptoms.** `/sign-in` and `/sign-up` return Clerk-branded errors; existing sessions hang on token refresh; `clerk.acreos.com` (proxy domain) returns 5xx; status.clerk.com shows incident; spike in `auth_failure_total` metric; support inbox fills with "I can't log in."
+**Symptoms.** `/sign-in` and `/sign-up` return Clerk-branded errors; existing sessions hang on token refresh; `clerk.acreos.io` (proxy domain) returns 5xx; status.clerk.com shows incident; spike in `auth_failure_total` metric; support inbox fills with "I can't log in."
 
 **User impact.** New signups: blocked. Existing customers with valid session cookies (≤7 days old): app works until next token refresh, then locked out. Estimated blast radius at 50 customers: 60–100% within 2 hours.
 
 **Mitigation.**
 1. Confirm scope: hit https://status.clerk.com and https://api.clerk.com/v1/health. If Clerk-side, this is a wait-and-comms incident — we cannot self-mitigate.
-2. If Clerk is up but our proxy is down: check Cloudflare DNS for `clerk.acreos.com` CNAME → `frontend-api.clerk.services`. See 2.2.
+2. If Clerk is up but our proxy is down: check Cloudflare DNS for `clerk.acreos.io` CNAME → `frontend-api.clerk.services`. See 2.2.
 3. Disable forced re-authentication: set `CLERK_SESSION_TOKEN_LIFETIME` to max (7d) via Clerk dashboard so existing sessions hold longer. (Pre-staged config; document in `server/auth/clerk-config.ts`.)
 4. Pause any cron or job that calls `clerkClient.users.*` admin API to avoid back-pressure when Clerk recovers.
 5. Set the `AUTH_DEGRADED_BANNER` feature flag to surface a yellow banner site-wide on authenticated pages.
@@ -43,7 +43,7 @@ Each runbook follows the same shape: **Symptoms / Mitigation / Comms / Recovery*
 
 ### 2.2 Cloudflare DNS / proxy outage — P0
 
-**Symptoms.** `acreos.com` and `app.acreos.com` return DNS NXDOMAIN or Cloudflare 5xx error pages (520/521/522); `clerk.acreos.com` proxy domain returns 5xx (this also breaks Clerk per persona-architecture memo); synthetic monitor `external-dns-check.ts` fires.
+**Symptoms.** `acreos.io` and `app.acreos.io` return DNS NXDOMAIN or Cloudflare 5xx error pages (520/521/522); `clerk.acreos.io` proxy domain returns 5xx (this also breaks Clerk per persona-architecture memo); synthetic monitor `external-dns-check.ts` fires.
 
 **User impact.** 100% lockout. Even the status page may be affected if it's hosted on a Cloudflare-fronted domain.
 
@@ -224,7 +224,7 @@ Why not custom-built:
 - Statuspage runs on AWS (different blast radius), supports automated incidents from PagerDuty webhooks, and customers already trust the Atlassian-branded UI.
 
 **Components to model:**
-- Web app (acreos.com)
+- Web app (acreos.io)
 - Authentication (Clerk + Cloudflare proxy)
 - Email delivery (SendGrid)
 - SMS delivery (Twilio)

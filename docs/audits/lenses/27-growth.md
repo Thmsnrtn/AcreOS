@@ -24,7 +24,7 @@ However, critical gaps exist in the activation funnel. The referral link is neve
 | **Severity** | P1 — broken conversion path |
 | **Evidence** | `client/src/pages/auth-page.tsx` renders `<SignIn>` / `<SignUp>` from Clerk with no `ref=` query parameter handling. The `POST /api/referral/apply` endpoint exists (`server/routes-referral.ts:98`) and expects `{ code, refereeId }`, but nothing in the auth flow reads `?ref=CODE` from the URL and calls this endpoint after registration. |
 | **Impact** | The entire referral program is non-functional. Referral links (`/?ref=CODE`) land on the landing page, the user clicks "Get Started," navigates to `/auth`, and the `ref` param is lost. Even if preserved, no client code ever calls `/api/referral/apply`. |
-| **Evidence (marketing copy)** | `content/marketing/referral-copy.md` advertises link format `https://app.acreos.com/signup?ref={CODE}` but no `/signup` route exists (auth is at `/auth`). |
+| **Evidence (marketing copy)** | `content/marketing/referral-copy.md` advertises link format `https://app.acreos.io/signup?ref={CODE}` but no `/signup` route exists (auth is at `/auth`). |
 | **Evidence (settings page)** | `client/src/pages/settings.tsx:1831` constructs the referral link as `${appUrl}/?ref=${code}` (root URL, not `/signup`). |
 
 ### F27-02 Onboarding Email Drip Sequence Not Implemented (P1)

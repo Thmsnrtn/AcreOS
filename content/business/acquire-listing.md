@@ -73,4 +73,4 @@ $250,000 — $500,000
 - Engineering standards document (CLAUDE.md) ensures code quality consistency
 - 7-pass voice quality refinement removed 6,776 lines of mechanical code across 317 files
 - No technical debt that would block immediate deployment
-- Domain: acreos.com (if included in sale)
+- Domain: acreos.io (if included in sale)

@@ -123,13 +123,13 @@ describe("requireFounderForRecovery", () => {
     const res = mockRes();
     const req = mockReq({
       auth: undefined,
-      user: { email: "founder@acreos.com", clerkUserId: "user_founder" },
+      user: { email: "founder@acreos.io", clerkUserId: "user_founder" },
     });
 
     requireFounderForRecovery(req, res);
 
     expect(isFounderIdentityMock).toHaveBeenCalledWith({
-      email: "founder@acreos.com",
+      email: "founder@acreos.io",
       userId: "user_founder",
     });
   });

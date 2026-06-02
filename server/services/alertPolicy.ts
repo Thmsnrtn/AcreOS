@@ -69,7 +69,7 @@ class AlertPolicyService {
     this.config = {
       founderEmail: process.env.FOUNDER_EMAIL || process.env.ALERT_EMAIL || "",
       founderPhone: process.env.FOUNDER_PHONE,
-      appUrl: process.env.APP_URL || "https://app.acreos.com",
+      appUrl: process.env.APP_URL || "https://app.acreos.io",
     };
   }
 

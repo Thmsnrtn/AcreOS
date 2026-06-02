@@ -14,7 +14,7 @@
  * aiRouter consults this helper before routing a paid call; if the org
  * is at-or-over the ceiling, the call is rejected with an explicit
  * AiCostCeilingExceededError that the agent surfaces back to the
- * customer ("AI is paused for today; contact support@acreos.com").
+ * customer ("AI is paused for today; contact support@acreos.io").
  */
 
 import { db } from "../db";

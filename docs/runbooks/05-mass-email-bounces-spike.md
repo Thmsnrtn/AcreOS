@@ -40,7 +40,7 @@
   npm run script -- rebuild-suppressions
   ```
   This re-uploads bounce + spam-report addresses to SendGrid's suppression list so we don't re-send to known-bad addresses.
-- **DKIM/SPF mis-aligned** → Re-verify in SendGrid, update Cloudflare DNS records (TXT `acreos.com`, CNAMEs for `s1._domainkey` etc).
+- **DKIM/SPF mis-aligned** → Re-verify in SendGrid, update Cloudflare DNS records (TXT `acreos.io`, CNAMEs for `s1._domainkey` etc).
 - **Reputation drop on dedicated IP** → Throttle send volume to 50% of normal for 48h to let reputation recover. Pause non-essential campaigns.
 - **Spam reports clustered on one campaign** → Pull the campaign immediately, refund any send credits used, post-mortem the content.
 

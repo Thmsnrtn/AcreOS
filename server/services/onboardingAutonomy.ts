@@ -377,7 +377,7 @@ async function handleActivationVerdict(
         .where(eq(users.id, orgRow.ownerId))
         .limit(1);
       if (ownerRow?.email) {
-        const baseUrl = process.env.PUBLIC_APP_URL ?? "https://app.acreos.com";
+        const baseUrl = process.env.PUBLIC_APP_URL ?? "https://app.acreos.io";
         const subject =
           status === "active"
             ? "30 days in — your AcreOS pulse"

@@ -132,7 +132,7 @@ async function processEnrollment(enrollment: any): Promise<{
       enrollment.courseId,
       completedAt
     );
-    const certUrl = `${process.env.APP_URL || "https://app.acreos.com"}/academy/certificates/${verificationHash}`;
+    const certUrl = `${process.env.APP_URL || "https://app.acreos.io"}/academy/certificates/${verificationHash}`;
 
     // Upsert certificateVerification record
     await db.insert(certificateVerification).values({

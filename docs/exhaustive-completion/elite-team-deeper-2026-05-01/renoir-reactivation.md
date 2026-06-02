@@ -32,7 +32,7 @@ The picture: every primitive needed to do reactivation right is in the schema. N
 
 **Day 0 (April 14, 2026), 9:08 AM.** Email lands in my inbox: "AcreOS roadmap update — what we shipped this quarter." I open it on my phone. The headline mentions the peer-to-peer note marketplace, which is the one feature I would have stayed for in March 2025. I click "See what's new."
 
-**Day 0, 9:09 AM.** Lands me on `acreos.com/changelog` (public). I scroll. **It's a wall.** Versions back to 2024, no filter, no "since you cancelled" view, no anchor link to "what's new since April 2025." I scroll for ninety seconds, lose patience, click "Sign in" in the topbar.
+**Day 0, 9:09 AM.** Lands me on `acreos.io/changelog` (public). I scroll. **It's a wall.** Versions back to 2024, no filter, no "since you cancelled" view, no anchor link to "what's new since April 2025." I scroll for ninety seconds, lose patience, click "Sign in" in the topbar.
 
 **Day 0, 9:11 AM.** Clerk knows me. SSO works. I'm in. The dashboard loads. **It looks completely different from what I remember** — page-topbar, command palette (⌘K), new sidebar layout. Good redesign. *No tour, no "what changed" tooltip, no first-login-after-long-absence callout.* I'm staring at a UI I've never seen, with my own data in it (?), with no map.
 

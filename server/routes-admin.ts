@@ -2819,7 +2819,7 @@ export function registerAdminRoutes(app: Express): void {
           priority: "critical",
           status: hasEnv("APP_URL") && !process.env.APP_URL?.includes("localhost") ? "complete" : "incomplete",
           section: "section-config",
-          helpText: "Set APP_URL environment variable to your production domain (e.g. https://app.acreos.com)",
+          helpText: "Set APP_URL environment variable to your production domain (e.g. https://app.acreos.io)",
         },
         {
           key: "founder_email",

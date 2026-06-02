@@ -158,14 +158,14 @@ The bigger risk than not emailing dormant users is emailing them so badly that y
 **The discipline:**
 
 1. **Sender-reputation segmentation.** Two sending subdomains:
-   - `briefings.acreos.com` — high-engagement transactional (morning briefings, milestone celebrations). Active-user-only.
-   - `re-engage.acreos.com` — re-engagement only. Lower deliverability OK; isolated reputation.
+   - `briefings.acreos.io` — high-engagement transactional (morning briefings, milestone celebrations). Active-user-only.
+   - `re-engage.acreos.io` — re-engagement only. Lower deliverability OK; isolated reputation.
 
    Dormant emails *never* go through `briefings.` — protects the active-user pipeline.
 
 2. **Engagement gating.** Don't email someone who hasn't opened any email in 60 days *via the re-engage subdomain*. After 90 days no engagement, suppress entirely or hand off to founder for personal outreach.
 
-3. **Plain-text re-engagement.** Re-engagement emails should be plain-text, from a person (`thomas@acreos.com`), no HTML, no images, no tracking pixel. Looks like a personal email; deliverability triples; reply rate 5×.
+3. **Plain-text re-engagement.** Re-engagement emails should be plain-text, from a person (`thomas@acreos.io`), no HTML, no images, no tracking pixel. Looks like a personal email; deliverability triples; reply rate 5×.
 
 4. **One-question subject lines.** "Want to come back?" beats "We've shipped 12 things since you left." Best-in-class: "{{first_name}} — quick question." Reply-bait, not click-bait.
 

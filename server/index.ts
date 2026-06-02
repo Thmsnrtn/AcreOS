@@ -493,7 +493,7 @@ app.use("/api", apiLimiter);
   app.get("/.well-known/security.txt", (_req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send([
-      "Contact: mailto:security@acreos.com",
+      "Contact: mailto:security@acreos.io",
       "Expires: 2027-03-18T00:00:00.000Z",
       "Preferred-Languages: en",
       "Canonical: https://acreos.fly.dev/.well-known/security.txt",

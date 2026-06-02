@@ -1148,7 +1148,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         const packName = `$${(packCents / 100).toFixed(0)} Mail Credit Pack`;
 
         const protocol = (req.protocol || "https") as string;
-        const host = req.get("host") ?? "app.acreos.com";
+        const host = req.get("host") ?? "app.acreos.io";
 
         const session = await stripeService.createCreditPurchaseCheckout(
           customerId,

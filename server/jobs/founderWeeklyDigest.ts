@@ -870,7 +870,7 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
 
   try {
     const data = await collectWeeklyData();
-    const appUrl = process.env.APP_URL || "https://app.acreos.com";
+    const appUrl = process.env.APP_URL || "https://app.acreos.io";
     const html = generateDigestEmail(data, appUrl);
 
     const vibeLabel = { green: "All Clear", yellow: "Review Needed", red: "Action Required" }[data.overallVibe];

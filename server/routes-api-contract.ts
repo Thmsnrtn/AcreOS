@@ -40,7 +40,7 @@ const OPENAPI_SKELETON = {
       "Customer-facing API for AcreOS. Generated lazily; coverage is incremental.",
   },
   servers: [
-    { url: "https://app.acreos.com", description: "production" },
+    { url: "https://app.acreos.io", description: "production" },
   ],
   paths: {
     "/api/leads": {

@@ -31,7 +31,7 @@ inactive_user       F1: simplified F2: white-glove F3: dedicated CSM
 
 **Rules:**
 1. **Six reasons × three tiers ≠ 18 sequences** — effectively eight distinct treatments. `wrong_fit | missing_feature | timing` don't tier-flex meaningfully; `pricing | inactive_user | competitor` do.
-2. **Tier-flex is who replies, not what's said.** Operator+ churners route to `thomas@acreos.com`; Solo route to Sophie-classified queue with founder escalation only on positive intent.
+2. **Tier-flex is who replies, not what's said.** Operator+ churners route to `thomas@acreos.io`; Solo route to Sophie-classified queue with founder escalation only on positive intent.
 3. **`wrong_fit` gets one email and stops.** 5-10% reactivation × high effort = bad ROI. Single empathy email exists for brand reasons (the FAQ promise), not conversion. Suppress all subsequent touches.
 
 ### 2.2 The unstated seventh segment — `unintentional_churn`
@@ -98,7 +98,7 @@ The single most-overlooked win-back lever is **what happens when the email succe
 
 ### 5.1 One-click reactivation + the "data is warm" promise
 
-Every win-back email's primary CTA goes to `https://acreos.com/return?token={{signed_jwt}}`. The `/return` route validates the token (signed, expires 14d, single-use), auto-logs in (no password), and if subscription is `canceled` + segment qualifies, presents one-click reactivation. On click → Stripe API restore → redirect to `/today` with banner: "Welcome back. Pax has been watching your counties — {{N}} new opportunities since you left." **No password reset. No re-onboarding. No MFA challenge** — signed token serves as second factor. 1.5d for `/return` route + token signing + Stripe restore.
+Every win-back email's primary CTA goes to `https://acreos.io/return?token={{signed_jwt}}`. The `/return` route validates the token (signed, expires 14d, single-use), auto-logs in (no password), and if subscription is `canceled` + segment qualifies, presents one-click reactivation. On click → Stripe API restore → redirect to `/today` with banner: "Welcome back. Pax has been watching your counties — {{N}} new opportunities since you left." **No password reset. No re-onboarding. No MFA challenge** — signed token serves as second factor. 1.5d for `/return` route + token signing + Stripe restore.
 
 The in-product hook delivers what the T+0 email promised — **leads, mailers, scans, artifacts, and Pax memory exactly as left.** No data deletion at cancel: set `organizations.archived_at`; reads gated behind `archived_at IS NULL OR within_winback_window(archived_at)`. Pax memory preserved across the gap so the first returning briefing can reference it. Hard-delete only at T+90 + 30d grace — the "deleting your data on {{date}}" message must be honest, and the window between message and delete is the final conversion lever (~3-7% of remaining segment).
 
@@ -183,7 +183,7 @@ Konstantin §7 covered sender reputation; this is the deeper ethical layer. Win-
 
 ### 8.2 Deliverability + brand-test
 
-Konstantin's two-subdomain split (`briefings.acreos.com` transactional / `re-engage.acreos.com` win-back) is right. Additions: engagement gating (no send to churners who haven't opened anything via re-engage in 60d); single hard bounce → permanent suppression; FBL complaint → forever-suppressed across *every* email including transactional (must explicitly re-opt-in via login). Brand-test before any template ships: **would I be embarrassed if a churned customer screenshotted this and posted it?** If yes, rewrite. Customers share angry-discount-emails, not welcome emails.
+Konstantin's two-subdomain split (`briefings.acreos.io` transactional / `re-engage.acreos.io` win-back) is right. Additions: engagement gating (no send to churners who haven't opened anything via re-engage in 60d); single hard bounce → permanent suppression; FBL complaint → forever-suppressed across *every* email including transactional (must explicitly re-opt-in via login). Brand-test before any template ships: **would I be embarrassed if a churned customer screenshotted this and posted it?** If yes, rewrite. Customers share angry-discount-emails, not welcome emails.
 
 ---
 
