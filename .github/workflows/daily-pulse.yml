@@ -32,6 +32,8 @@ jobs:
 
       - name: Gather live state
         id: gather
+        env:
+          PULSE_SHARED_SECRET: ${{ secrets.PULSE_SHARED_SECRET }}
         run: |
           set -uo pipefail
 
@@ -47,8 +49,22 @@ jobs:
           # Date in Tom's local
           DATE_LINE=$(TZ="America/New_York" date "+%a %b %d")
 
+          # Solene capital envelope — 3s timeout; omit segment on failure
+          # so a transient endpoint outage never breaks the pulse.
+          COST_SEGMENT=""
+          if ENVELOPE_JSON=$(curl -sS --max-time 3 \
+              -H "X-Pulse-Secret: ${PULSE_SHARED_SECRET:-}" \
+              "https://acreos.io/api/founder/solene-capital/envelope" 2>/dev/null); then
+            MTD=$(echo "$ENVELOPE_JSON" | jq -r '.envelope.monthToDateUsd // empty' 2>/dev/null)
+            ENV_USD=$(echo "$ENVELOPE_JSON" | jq -r '.envelope.envelopeUsd // empty' 2>/dev/null)
+            PCT=$(echo "$ENVELOPE_JSON" | jq -r '.envelope.percentUsed // empty' 2>/dev/null)
+            if [ -n "$MTD" ] && [ -n "$ENV_USD" ] && [ -n "$PCT" ]; then
+              COST_SEGMENT=" · \$${MTD} spent / \$${ENV_USD} envelope (${PCT}%)"
+            fi
+          fi
+
           # Build the one-line
-          ONE_LINE="${DATE_LINE} · acreos@${SHA} · health ${HEALTH} · ${COMMITS_24H} commits 24h · Phase Zero-Zero · MRR \$0"
+          ONE_LINE="${DATE_LINE} · acreos@${SHA} · health ${HEALTH} · ${COMMITS_24H} commits 24h · Phase Zero-Zero · MRR \$0${COST_SEGMENT}"
 
           # Last commit subject as a second-line detail
           DETAIL="last shipped: ${LAST_COMMIT_SUBJECT}"

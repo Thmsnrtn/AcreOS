@@ -16093,3 +16093,8 @@ export * from "./schema/pax-audit";
 // SOLENE — self-audit ledger (operating-discipline drift detection)
 // ============================================================================
 export * from "./schema/solene-audit";
+
+// ============================================================================
+// SOLENE — capital event ledger (per-session + per-day spend tracker)
+// ============================================================================
+export * from "./schema/solene-capital";

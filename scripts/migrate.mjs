@@ -4700,6 +4700,22 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_audit_findings_run_idx" ON "solene_audit_findings" ("run_id")`,
   `CREATE INDEX IF NOT EXISTS "solene_audit_findings_severity_idx" ON "solene_audit_findings" ("severity", "fired_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_audit_findings_pattern_idx" ON "solene_audit_findings" ("pattern", "fired_at")`,
+
+  // ── Solene (COO) — capital event ledger ────────────────────────────────
+  // Per-session + per-day spend tracker. Fire-and-forget writes from
+  // recordCapitalEvent; getMonthlyEnvelopeStatus reads the rolling rollup.
+  // Mirrors shared/schema/solene-capital.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_capital_events" (
+     "id" serial PRIMARY KEY,
+     "occurred_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "event_type" text NOT NULL,
+     "cost_usd" numeric(10,4) NOT NULL,
+     "context_summary" text NOT NULL,
+     "session_token" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_capital_events_occurred_idx" ON "solene_capital_events" ("occurred_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_capital_events_type_occurred_idx" ON "solene_capital_events" ("event_type", "occurred_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_capital_events_session_idx" ON "solene_capital_events" ("session_token", "occurred_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
