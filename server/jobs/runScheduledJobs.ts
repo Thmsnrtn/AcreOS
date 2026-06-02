@@ -1922,6 +1922,85 @@ function startCompanyBriefingJob() {
 }
 
 /**
+ * §1026.41 periodic statements — monthly cron.
+ *
+ * Fires once an hour and checks for the 1st-of-month / 09:00 UTC slot;
+ * when matched, walks every active organization and generates one
+ * statement per active loan for the previous-month cycle. Idempotent
+ * via the (loan_id, cycle_start) unique index — re-running is a no-op.
+ *
+ * Lock TTL: 50 minutes — generation must finish within 30s per org per
+ * the elite-engineering performance budget, but we give head-room for
+ * an org with multiple thousand loans + slow PDF rendering.
+ */
+function startPeriodicStatementsMonthlyJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 50 * 60;
+
+  log('Registering §1026.41 periodic statements monthly job (1st of month, 09:00 UTC)', 'compliance');
+
+  trackInterval(() => {
+    const now = new Date();
+    const dayOfMonth = now.getUTCDate();
+    const utcHour = now.getUTCHours();
+
+    // 1st of the month at 09:00 UTC = the canonical fire slot. The
+    // ONE_HOUR interval means we get one shot per hour — the lock
+    // guarantees only one process actually runs the work.
+    if (dayOfMonth === 1 && utcHour === 9) {
+      void withJobLock('periodic_statements_monthly', TTL_SECONDS, async () => {
+        const { generateStatementsForCycle } = await import(
+          '../services/periodicStatements'
+        );
+        const { db: dbHandle } = await import('../db');
+        const { organizations: orgsTable } = await import('@shared/schema');
+        const { sql: sqlOp } = await import('drizzle-orm');
+
+        // Last month's last day — the cycle anchor.
+        const asOfDate = new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0),
+        );
+
+        const activeOrgs = await dbHandle
+          .select({ id: orgsTable.id })
+          .from(orgsTable)
+          .where(sqlOp`${orgsTable.subscriptionStatus} = 'active'`);
+
+        log(
+          `Running §1026.41 statements for ${activeOrgs.length} orgs, asOfDate=${asOfDate.toISOString().slice(0, 10)}`,
+          'compliance',
+        );
+
+        let totalGenerated = 0;
+        let totalErrors = 0;
+        for (const org of activeOrgs) {
+          try {
+            const result = await generateStatementsForCycle(org.id, asOfDate);
+            totalGenerated += result.statementsGenerated;
+            totalErrors += result.errors.length;
+            if (result.errors.length > 0) {
+              log(
+                `§1026.41 errors for org ${org.id}: ${JSON.stringify(result.errors.slice(0, 5))}`,
+                'compliance',
+              );
+            }
+          } catch (err) {
+            totalErrors += 1;
+            log(`§1026.41 fatal error for org ${org.id}: ${err}`, 'compliance');
+          }
+        }
+        log(
+          `§1026.41 monthly run complete — generated=${totalGenerated} errors=${totalErrors}`,
+          'compliance',
+        );
+      }).catch((err) => {
+        log(`§1026.41 monthly job failed to acquire lock or run: ${err}`, 'compliance');
+      });
+    }
+  }, ONE_HOUR);
+}
+
+/**
  * Trust Evolution — runs weekly on Sunday at midnight UTC.
  * Recalculates trust scores for all agents based on decision accuracy.
  */
@@ -2092,6 +2171,11 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
   startCustomerConcentrationJob();
+
+  // §1026.41 periodic statements — monthly (1st of month, 09:00 UTC).
+  // Generates one statement per active loan per org per cycle.
+  // Idempotent via (loan_id, cycle_start) unique index.
+  startPeriodicStatementsMonthlyJob();
 
   // Wave 10: Self-tuning cost optimiser (daily, self-rescheduling)
   startCostOptimizerSelfRescheduling();

@@ -1065,6 +1065,131 @@ export function registerBorrowerRoutes(app: Express): void {
   });
   
   // ============================================
+  // §1026.41 PERIODIC STATEMENTS (Session-authenticated)
+  // --------------------------------------------
+  // The persisted-row endpoints. The /generate endpoint above is the
+  // legacy on-demand JSON shape (kept for back-compat); these new
+  // endpoints serve the actual regulatory-compliant
+  // periodic_statements rows + PDF download.
+  //
+  // Multi-tenant safety: every read joins on session.noteId AND
+  // notes.organizationId AGAINST session.organizationId (re-asserted
+  // by validateBorrowerSession). A borrower for note A can never read
+  // statements for note B even if they guess a row's UUID.
+  // ============================================
+
+  // List the borrower's last 24 statements (§1026.41 cycles). Ordered
+  // newest-cycle first. The portal page calls this on mount.
+  api.get("/api/borrower/periodic-statements", validateBorrowerSession, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const { periodicStatements } = await import("@shared/schema/reg-z");
+      const { desc: descOp } = await import("drizzle-orm");
+
+      const rows = await db
+        .select({
+          id: periodicStatements.id,
+          cycleStart: periodicStatements.cycleStart,
+          cycleEnd: periodicStatements.cycleEnd,
+          dueDate: periodicStatements.dueDate,
+          amountDueCents: periodicStatements.amountDueCents,
+          principalBalanceCents: periodicStatements.principalBalanceCents,
+          generatedAt: periodicStatements.generatedAt,
+          deliveryStatus: periodicStatements.deliveryStatus,
+        })
+        .from(periodicStatements)
+        .where(
+          and(
+            eq(periodicStatements.loanId, String(session.noteId)),
+            eq(periodicStatements.organizationId, session.organizationId),
+          ),
+        )
+        .orderBy(descOp(periodicStatements.cycleStart))
+        .limit(24);
+
+      res.json({ statements: rows });
+    } catch (err) {
+      logger.error("Failed to list periodic statements", err instanceof Error ? err : undefined);
+      res.status(500).json({ message: "Failed to load statements" });
+    }
+  });
+
+  // Download one statement as PDF. The renderer re-builds the document
+  // from the persisted snapshot — a borrower's re-download is always
+  // identical to what was originally sent (§1026.41 evidentiary record).
+  api.get(
+    "/api/borrower/periodic-statements/:statementId/pdf",
+    validateBorrowerSession,
+    async (req, res) => {
+      try {
+        const session = (req as any).borrowerSession;
+        const { periodicStatements } = await import("@shared/schema/reg-z");
+        const { renderPeriodicStatementPdf } = await import(
+          "./services/periodicStatements/pdf"
+        );
+
+        const rows = await db
+          .select()
+          .from(periodicStatements)
+          .where(
+            and(
+              eq(periodicStatements.id, req.params.statementId),
+              eq(periodicStatements.loanId, String(session.noteId)),
+              eq(periodicStatements.organizationId, session.organizationId),
+            ),
+          )
+          .limit(1);
+
+        if (rows.length === 0) {
+          return res.status(404).json({ message: "Statement not found" });
+        }
+
+        const statement = rows[0];
+        const org = await storage.getOrganization(session.organizationId);
+        let borrowerName: string | undefined;
+        let borrowerAddress: string | undefined;
+        const note = await db
+          .select()
+          .from(notes)
+          .where(eq(notes.id, session.noteId))
+          .limit(1);
+        if (note[0]?.borrowerId) {
+          const borrower = await storage.getLead(session.organizationId, note[0].borrowerId);
+          if (borrower) {
+            borrowerName = `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim();
+            borrowerAddress = [borrower.address, borrower.city, borrower.state, borrower.zip]
+              .filter(Boolean)
+              .join(", ");
+          }
+        }
+
+        const doc = await renderPeriodicStatementPdf({
+          statement,
+          orgName: org?.name ?? "Lender",
+          borrowerName,
+          borrowerAddress,
+          contactPhone: (org?.settings as { companyPhone?: string } | undefined)?.companyPhone,
+          contactEmail: (org?.settings as { companyEmail?: string } | undefined)?.companyEmail,
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="statement-${statement.cycleStart}.pdf"`,
+        );
+        doc.pipe(res);
+        doc.end();
+      } catch (err) {
+        logger.error(
+          "Failed to render periodic statement PDF",
+          err instanceof Error ? err : undefined,
+        );
+        res.status(500).json({ message: "Failed to render statement" });
+      }
+    },
+  );
+
+  // ============================================
   // BORROWER MESSAGING (Session-authenticated)
   // ============================================
 
