@@ -17,8 +17,13 @@ import { USER_DATA_OPEN, USER_DATA_CLOSE } from "./sanitizePrompt";
  * Each entry is matched case-insensitively. Add new entries as the Pax
  * prompt evolves — anything that should NEVER appear in a customer-
  * visible response belongs here.
+ *
+ * EXPORTED so Beatrice's continuousAudit service can re-use the exact
+ * same gate at sampling time without forking a second copy. The
+ * per-response validator below is the synchronous fast-path; the audit
+ * service is the asynchronous sampling-floor.
  */
-const LEAK_PATTERNS: RegExp[] = [
+export const LEAK_PATTERNS: RegExp[] = [
   // Direct prompt-template tokens
   /<<\s*SYS\s*>>/i,
   /\[\s*INST\s*\]/i,
