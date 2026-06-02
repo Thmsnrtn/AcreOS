@@ -429,3 +429,71 @@ export const periodicStatementSkips = pgTable(
 
 export type PeriodicStatementSkip = typeof periodicStatementSkips.$inferSelect;
 export type InsertPeriodicStatementSkip = typeof periodicStatementSkips.$inferInsert;
+
+// ============================================================================
+// 12 C.F.R. §1024.39 — EARLY INTERVENTION (RESPA piggyback)
+// ----------------------------------------------------------------------------
+// Beatrice 2026-06-02 ruling §5 piggyback item 4. Servicer must attempt
+// live contact with a delinquent borrower not later than the 36th day of
+// delinquency, and provide written notice by day 45. This ledger captures
+// every fired (or skipped) outreach event with the §-citation that
+// authorised it. Append-only audit primitive — no UPDATE / DELETE in
+// production code paths.
+//
+// SCAFFOLD ONLY: this commit persists the trigger row. The actual borrower-
+// facing comms (email language, content templates) are Beatrice's domain
+// and wire up in a follow-up. content_ref is reserved for the eventual
+// link to the rendered outreach content (S3 key or template id).
+// ============================================================================
+
+export const respaOutreachEvents = pgTable(
+  "respa_outreach_events",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    // Polymorphic — same convention as periodic_statement_skips. The
+    // loan_type discriminator tells the resolver which table the id
+    // belongs to.
+    loanId: text("loan_id").notNull(),
+    loanType: text("loan_type").notNull(), // 'note' | 'acquired_note'
+
+    // Discrete event types. Initial set is just early_intervention_36d;
+    // §1024.39(b) written-notice (day 45), §1024.40 continuity-of-contact
+    // (day 45), and §1024.41 loss-mit (day 45) attach later.
+    eventType: text("event_type").notNull(), // 'early_intervention_36d' | ...
+
+    firedAt: timestamp("fired_at", { withTimezone: true }).notNull(),
+    // Cycle anchor for idempotency — typically the first of the calendar
+    // month the event fired in. "One §1024.39 event per cycle" is the
+    // operational read.
+    cycleAnchor: timestamp("cycle_anchor", { withTimezone: true }).notNull(),
+    daysDelinquent: integer("days_delinquent").notNull(),
+
+    // The §-section that authorised this fire. Required on every row.
+    citation: text("citation").notNull(),
+
+    // Optional reference to the rendered outreach content (S3 key, template
+    // id, email message id). Null in this scaffold commit — populated when
+    // the actual outreach pipeline lands.
+    contentRef: text("content_ref"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Idempotency: one event_type per (org, loan, cycle).
+    uniqueIndex("respa_outreach_events_org_loan_type_event_cycle_uk").on(
+      table.organizationId,
+      table.loanId,
+      table.loanType,
+      table.eventType,
+      table.cycleAnchor,
+    ),
+    // Audit read path: "show me every outreach event this org logged."
+    index("respa_outreach_events_org_fired_idx").on(table.organizationId, table.firedAt),
+  ],
+);
+
+export type RespaOutreachEvent = typeof respaOutreachEvents.$inferSelect;
+export type InsertRespaOutreachEvent = typeof respaOutreachEvents.$inferInsert;

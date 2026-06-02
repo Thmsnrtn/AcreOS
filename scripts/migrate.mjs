@@ -4542,6 +4542,29 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "periodic_statement_skips_org_table_note_cycle_uk" ON "periodic_statement_skips" ("org_id", "note_table", "note_id", "cycle_start")`,
   `CREATE INDEX IF NOT EXISTS "periodic_statement_skips_org_created_idx" ON "periodic_statement_skips" ("org_id", "created_at")`,
 
+  // RESPA §1024.39 early-intervention scaffold (Beatrice 2026-06-02 ruling
+  // §5 piggyback item 4). Append-only audit trail — every borrower-outreach
+  // fire (or predicate-gated skip) persists with the §-citation that
+  // authorised it. The borrower-facing comms (template language, email
+  // sender) wires up in a follow-up Beatrice gates.
+  `CREATE TABLE IF NOT EXISTS "respa_outreach_events" (
+     "id" BIGSERIAL PRIMARY KEY,
+     "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "loan_id" text NOT NULL,
+     "loan_type" text NOT NULL,
+     "event_type" text NOT NULL,
+     "fired_at" timestamp with time zone NOT NULL,
+     "cycle_anchor" timestamp with time zone NOT NULL,
+     "days_delinquent" integer NOT NULL,
+     "citation" text NOT NULL,
+     "content_ref" text,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     CONSTRAINT "respa_outreach_events_loan_type_check"
+       CHECK ("loan_type" IN ('note','acquired_note'))
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "respa_outreach_events_org_loan_type_event_cycle_uk" ON "respa_outreach_events" ("org_id", "loan_id", "loan_type", "event_type", "cycle_anchor")`,
+  `CREATE INDEX IF NOT EXISTS "respa_outreach_events_org_fired_idx" ON "respa_outreach_events" ("org_id", "fired_at")`,
+
   // Phase 0 hardening — bot-signal collection on signup. Capture-only by
   // design: every signup gets a row; the row contains the honeypot value,
   // time-to-fill (ms), UA string, ip-bucket (/24), and an "is_suspicious"
