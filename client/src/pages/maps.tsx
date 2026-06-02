@@ -330,7 +330,7 @@ function PropertyIntelligencePanel({
           type="button"
           onClick={onClose}
           aria-label="Close property intelligence panel"
-          className="text-muted-foreground hover:text-foreground mt-0.5 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+          className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
         >
           <X className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -1061,9 +1061,9 @@ export default function MapsPage() {
                 type="button"
                 onClick={() => setSearchQuery("")}
                 aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
               >
-                <X className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -1085,8 +1085,13 @@ export default function MapsPage() {
           {/* Filters drawer */}
           <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
             <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 shrink-0 h-7 text-xs px-2.5">
-                <SlidersHorizontal className="w-3.5 h-3.5" />
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Open map filters"
+                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-h-9 sm:min-w-0 sm:h-7 text-xs px-2.5"
+              >
+                <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">Filters</span>
               </Button>
             </SheetTrigger>

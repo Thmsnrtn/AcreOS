@@ -322,7 +322,7 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 md:mt-2 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 sm:min-h-9 md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
@@ -450,7 +450,7 @@ export default function TodayPage() {
               <Button
                 asChild
                 size="sm"
-                className="h-8"
+                className="min-h-11 sm:min-h-9 md:h-8"
                 data-testid="button-heading-out-open"
               >
                 <Link href={DRIVE_MODE_ROUTE}>Open Drive Mode</Link>
@@ -459,7 +459,7 @@ export default function TodayPage() {
                 type="button"
                 onClick={dismissHeadingOut}
                 aria-label="Dismiss Heading out card for today"
-                className="h-8 w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 md:h-8 md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 active:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid="button-heading-out-dismiss"
               >
                 <XIcon className="w-4 h-4" aria-hidden="true" />
