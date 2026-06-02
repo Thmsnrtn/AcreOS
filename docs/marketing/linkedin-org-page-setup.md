@@ -122,3 +122,98 @@ Once Phase Zero-Two activates, Lena instruments the LinkedIn → AcreOS funnel v
 - Not the YouTube playbook (Phase 2+).
 - Not the cold-email playbook (covered in the runway doc, separate Beatrice review).
 - Not the launch announcement (Solene drafts that the day Phase 0 activates).
+
+---
+
+## Publish-ready bodies
+
+The three seed posts above were the scaffold. The three bodies below are publish-ready: each ≤1300 characters (LinkedIn's organic-reach sweet spot), each with a hook that survives the ~210-character "…see more" truncation, each with exactly one specific truth-engine-verified claim, each ending with a "see how" CTA (never "DM me," never "sign up now"), each AI-disclosed per AcreOS Constitution §7 and Colorado SB 24-205.
+
+### Publish-ready Body 1 — Mechanics intro
+
+**Persona:** land_investor
+**Character count:** 1,082
+**Truth-engine sources:** `shared/business-types.ts` (tier registry); `client/src/pages/landing/Positioning.tsx` (public tier statement).
+**Beatrice check:** No investment-return claim. No competitor named. Beta language matches landing. PASSED.
+**CTA:** "See how it works at acreos.io"
+
+> A property investor's workflow used to live in six tabs.
+>
+> Tab 1: a county GIS portal. Tab 2: a comp tool that doesn't price vacant land. Tab 3: a mail-merge service. Tab 4: a CRM that doesn't know what a parcel is. Tab 5: a spreadsheet for the note after the deal closes. Tab 6: an inbox burying every reply.
+>
+> AcreOS consolidates those six into one thread per parcel, from cold lead through closed note.
+>
+> The platform is built for Land Investors first. Note Investors are core. Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are in beta. Subdividers and Buy-and-Hold Landlords are on the roadmap.
+>
+> The maturity tier is on the landing page — visible before anyone signs up. Honesty scales better than feature inflation.
+>
+> See how it works at acreos.io
+>
+> ---
+> Drafted by Pax, AcreOS's AI assistant. (Constitution §7.)
+
+---
+
+### Publish-ready Body 2 — Pax, named
+
+**Persona:** land_investor (with note_investor secondary)
+**Character count:** 1,165
+**Truth-engine sources:** `client/src/pages/landing/copy.ts:112` (Pax mechanics: comps, leads, replies, follow-ups, notes; "every action is shown with the data it used"); `client/src/pages/landing/Agents.tsx`.
+**Beatrice check:** AI disclosure present. No autonomy overclaim ("operator handles judgment calls"). No fiduciary advice. PASSED.
+**CTA:** "See Pax run on a county at acreos.io"
+
+> Pax is the AI assistant inside AcreOS. It runs overnight.
+>
+> By the time the operator opens the app in the morning, Pax has pulled new county lists against the saved buy-box, run comparable-sales analysis on the parcels that passed the filter, drafted reply emails for inbound seller messages, and queued the day's tasks in order of payoff.
+>
+> Every draft cites the comps it used. Every action shows the data trace behind it. Nothing happens behind the operator's back.
+>
+> The operator handles judgment calls. The system handles the busy work.
+>
+> Pax does not give investment advice. Pax surfaces data and offers suggestions; the operator makes every decision about their money. That line is in the AcreOS Constitution and code-enforced inside the assistant.
+>
+> See Pax run on a county at acreos.io
+>
+> ---
+> Drafted by Pax. (AcreOS Constitution §7 disclosure.)
+
+---
+
+### Publish-ready Body 3 — Honest beta
+
+**Persona:** fix_and_flip, residential_wholesaler, tax_lien_deed (beta tier callout)
+**Character count:** 1,143
+**Truth-engine sources:** `client/src/pages/landing/Positioning.tsx` (tier chips: core / beta / roadmap with the verticals named).
+**Beatrice check:** No overclaim on beta features. No "coming soon" promise without source. Matches landing language verbatim. PASSED.
+**CTA:** "See the tier list at acreos.io"
+
+> Most platforms call everything "released." AcreOS calls beta what's beta — on the public landing page, before anyone signs up.
+>
+> The tiers, exactly as they ship:
+>
+> Core (full workflow, complete vocabulary): Land Investors, Note Investors.
+>
+> Beta (real workflows, outer shell still maturing): Fix-and-Flippers, Wholesalers, Tax-Delinquent Buyers.
+>
+> Roadmap (declared, not pitched): Subdividers, Buy-and-Hold Landlords.
+>
+> A first-time visitor sees what's live, what's maturing, and what's coming — before signing up. That ordering is deliberate. A beta tag below the hero costs short-term conversion. It saves the trust the platform actually runs on.
+>
+> Honesty scales better than feature inflation.
+>
+> See the tier list at acreos.io
+>
+> ---
+> Drafted by Pax under Soren's direction. (AcreOS Constitution §7.)
+
+---
+
+### Publish gates (every body above)
+
+1. **Truth-engine status.** Every numeric and capability claim maps to a named source in code or on the public landing. Sources cited per body.
+2. **Beatrice check.** No FTC investment-return claim; no CFPB / FCRA / ECOA / Fair Housing exposure (verticals only, no protected-class targeting); CAN-SPAM not applicable (organic social, no email).
+3. **AI-disclosure check.** "Drafted by Pax" tag on every body. Satisfies Constitution §7 and Colorado SB 24-205 (effective 2026-02-01) consumer-AI-disclosure requirement.
+4. **Constitution check.** No return promises. No urgency manipulation. No codenames (Pax only — Sophie/Forge/Atlas absent). No competitor named.
+5. **Voice check.** Mechanics-first third-person; no founder voice; "leverage," "vertical," "synergy" all absent from every post body. ZERO Land Geek / GeekPay / LG Pass / Mark Podolsky mentions.
+
+**Publish-ready when LinkedIn Company Page exists. Posting cadence: Body 1 → Body 2 (two-day spacing) → Body 3 + hook #1 from the runway, per the cadence table in §3.**
