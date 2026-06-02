@@ -128,7 +128,13 @@ export type CanonicalEvent =
   | "signup_completed"
   | "first_value_reached"
   | "pax_first_interaction"
-  | "trial_to_paid";
+  | "trial_to_paid"
+  // Public /tools/calculator funnel — top-of-funnel acquisition surface.
+  // calculator_completed fires once the math produces a meaningful output
+  // after debounce; calculator_cta_click fires on the signup CTA. `embed`
+  // flag separates iframe traffic from direct traffic in the funnel.
+  | "calculator_completed"
+  | "calculator_cta_click";
 
 /**
  * Type-checked emit for the canonical funnel events. Use this in product
