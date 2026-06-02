@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
+import crypto from "crypto";
 import { isAuthenticated, requireFounder } from "./clerkAuth";
 import { isFounderIdentity } from "../services/founder";
 import { db } from "../db";
@@ -8,6 +9,9 @@ import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
 import { ACTIVE_ORG_COOKIE, ACTIVE_ORG_COOKIE_OPTS } from "../middleware/getOrCreateOrg";
 import { auditFromRequest, AuditActions } from "../utils/auditLog";
+import { recordSignupSignals, computeReqIpBucket } from "../middleware/botSignals";
+import { createRateLimiter } from "../middleware/rateLimit";
+import { ipBucket } from "../middleware/authPathLimits";
 
 // Process-local set of userIds that have already emitted an auth.login
 // audit event. Cleared on process restart, which is acceptable: the audit
@@ -224,4 +228,84 @@ export function registerAuthRoutes(app: Express): void {
       return Errors.internal(res, err);
     }
   });
+
+  // ── Signup signals sideband (client → server) ──────────────────────────────
+  // The Clerk <SignUp> widget mounts in client/src/pages/auth-page.tsx. We
+  // can't intercept its submit handler directly (Clerk-hosted DOM), so the
+  // client emits a fire-and-forget POST here with:
+  //   - website (honeypot — humans don't see the field; bots fill it)
+  //   - formRenderedAt / formSubmittedAt (time-to-fill detector)
+  //   - email (for hashing — never stored as raw PII)
+  //
+  // Fires BEFORE Clerk completes the user record, so this endpoint is NOT
+  // isAuthenticated-gated. Returns ok:true fast; client never blocks on it.
+  // Rate-limited per email-hash + /24 IP-bucket (cellular-NAT-safe), looser
+  // caps than signup itself since this is observability, not the auth gate.
+  const signupSignalsEmailLimiter = createRateLimiter(
+    { maxRequests: 20, windowMs: 60 * 60 * 1000 },
+    (req: Request) => {
+      const body = (req.body ?? {}) as { email?: string };
+      const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+      const emailHash = email
+        ? crypto.createHash("sha256").update(email).digest("hex").slice(0, 24)
+        : "noemail";
+      return `signup-signals:email:${emailHash}`;
+    },
+  );
+  const signupSignalsIpLimiter = createRateLimiter(
+    { maxRequests: 200, windowMs: 60 * 60 * 1000 },
+    (req: Request) => `signup-signals:ipb:${computeReqIpBucket(req)}`,
+  );
+
+  app.post(
+    "/api/auth/signup-signals",
+    signupSignalsEmailLimiter,
+    signupSignalsIpLimiter,
+    async (req, res) => {
+      try {
+        // Belt-and-suspenders content discipline: ignore anything outside the
+        // tiny known shape so a malicious payload can't bloat the DB row.
+        const body = (req.body ?? {}) as {
+          website?: unknown;
+          formRenderedAt?: unknown;
+          formSubmittedAt?: unknown;
+          email?: unknown;
+        };
+        const email = typeof body.email === "string" ? body.email.trim().slice(0, 320) : "";
+        const website = typeof body.website === "string" ? body.website.slice(0, 1000) : "";
+        const formRenderedAt =
+          typeof body.formRenderedAt === "number" && Number.isFinite(body.formRenderedAt)
+            ? body.formRenderedAt
+            : null;
+        const formSubmittedAt =
+          typeof body.formSubmittedAt === "number" && Number.isFinite(body.formSubmittedAt)
+            ? body.formSubmittedAt
+            : null;
+
+        // Fire-and-forget — we don't await the insert before responding so
+        // the client never blocks on DB latency. Acceptable because the
+        // value of this signal row is observability, not auth.
+        void recordSignupSignals({
+          email,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+          ipBucket: computeReqIpBucket(req),
+          website,
+          formRenderedAt,
+          formSubmittedAt,
+          signalsEmitted: true,
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        // Never throw — sideband shouldn't break signup.
+        logger.warn("[signup-signals] endpoint error — returning ok to client", {
+          metadata: { error: err instanceof Error ? err.message : String(err) },
+        });
+        res.json({ ok: true });
+      }
+    },
+  );
+  // Quiet the unused-import warning for ipBucket — we re-export the same
+  // coarsening through computeReqIpBucket but keep the direct import handy
+  // for future endpoints that need to bucket pre-resolved IPs.
+  void ipBucket;
 }

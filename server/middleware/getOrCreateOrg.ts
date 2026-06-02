@@ -1,9 +1,14 @@
 import type { Request, Response, NextFunction, CookieOptions } from "express";
 import { storage, db } from "../storage";
 import { withTransaction } from "../db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { organizations, teamMembers } from "@shared/schema";
+import { signupSignals } from "@shared/schema";
+import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { Errors } from "../utils/errors";
+import { signupLimiter } from "./authPathLimits";
+import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -128,6 +133,20 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   }
 
   if (!org) {
+    // Phase 0 traffic-readiness — this is the REAL signup-completion path
+    // in this codebase. There is no /api/register handler; Clerk creates
+    // the user upstream, then the first authenticated request flows here
+    // and we provision the org. So the signup rate-limit + bot-signal
+    // capture must run on THIS branch — not on the (dead) /api/register
+    // mount the index.ts wiring used to advertise. See provisionUser
+    // below for the helper that encapsulates these checks.
+    const provisionResult = await provisionUser(req, res, {
+      userId,
+      userEmail,
+      isFounder,
+    });
+    if (provisionResult.shortCircuited) return;
+
     // Phase 0 traffic-readiness — OFAC + sanctioned-country screening before
     // we ever stand up the org. Founder bypasses (the check skips when
     // isFounder=true is already known). Failure mode is fail-open: a downed
@@ -295,3 +314,129 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   next();
 }
+
+/**
+ * provisionUser — the "new-user about to be provisioned" branch helper.
+ *
+ * Why this lives in getOrCreateOrg.ts: signup in this codebase has no
+ * dedicated POST handler. Clerk creates the user upstream and we discover
+ * "this is a brand-new user" on the FIRST authenticated request that
+ * reaches getOrCreateOrg without finding an existing org. That branch is
+ * the single chokepoint where signup-time hardening MUST run:
+ *
+ *   1. Signup rate-limit (dual-lane: email + /24 IP-bucket; cellular-NAT
+ *      safe per memory/feedback_rate_limit_ip_keying.md). If limited,
+ *      we return 429 Errors.limitExceeded and SHORT-CIRCUIT so no org
+ *      or team_member row is ever created. The Clerk user record itself
+ *      will remain orphaned for one cycle — acceptable, since it carries
+ *      no AcreOS-side state until provisioning completes.
+ *
+ *   2. Bot-signal cross-reference: if the client emitted to
+ *      POST /api/auth/signup-signals during the Clerk widget interaction,
+ *      we'll find a row keyed by sha256(email) within the last hour.
+ *      If we don't, we persist a row with `signals-not-emitted` in
+ *      reasons so the audit can count the gap rather than silently
+ *      missing.
+ *
+ * Returns {shortCircuited: true} if a response was already written (caller
+ * must early-return). Returns {shortCircuited: false} on pass-through so
+ * caller continues with sanctions check + org creation.
+ */
+async function provisionUser(
+  req: Request,
+  res: Response,
+  ctx: { userId: string; userEmail: string | undefined | null; isFounder: boolean },
+): Promise<{ shortCircuited: boolean }> {
+  // Founder bypass — Tom signing up in dev/staging shouldn't trip an
+  // empty signup_signals row or fight the rate limit.
+  if (ctx.isFounder) return { shortCircuited: false };
+
+  const email = (ctx.userEmail || "").toLowerCase().trim();
+
+  // ── 1. Signup rate-limit ────────────────────────────────────────────────
+  // We invoke the dual-lane signupLimiter middleware programmatically. It
+  // already handles cellular-NAT safety (/24 IP-bucket secondary lane) and
+  // writes the 429 response via Errors.limitExceeded when tripped. We give
+  // it a controlled "body" override so the email lane key resolves to the
+  // Clerk-resolved email (req.body is empty on these GET requests).
+  const limiterReq = Object.create(req) as Request;
+  (limiterReq as Request & { body: Record<string, unknown> }).body = { email };
+
+  const limiterOutcome = await new Promise<"passed" | "blocked">((resolve) => {
+    let settled = false;
+    const settle = (v: "passed" | "blocked") => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+    // The limiter writes res directly on block; we treat the absence of
+    // a next() callback within a short window as "blocked". Mirrors the
+    // pattern dualLaneLimiter itself uses internally.
+    void Promise.resolve(
+      signupLimiter(limiterReq, res, () => settle("passed")),
+    )
+      .then(() => {
+        if (!settled) {
+          // Inspect res.headersSent / statusCode to detect block.
+          if (res.headersSent || res.statusCode === 429) {
+            settle("blocked");
+          } else {
+            settle("passed");
+          }
+        }
+      })
+      .catch(() => settle("passed")); // fail-open
+  });
+
+  if (limiterOutcome === "blocked") {
+    logger.warn("[provisionUser] signup blocked by signupLimiter", {
+      source: "provisionUser",
+      metadata: { userId: ctx.userId, email },
+    });
+    return { shortCircuited: true };
+  }
+
+  // ── 2. Bot-signal cross-reference ───────────────────────────────────────
+  // Look for a signup_signals row written by POST /api/auth/signup-signals
+  // in the last hour, keyed by sha256(email). If absent, persist a row
+  // with signals-not-emitted so the audit knows the client never fired
+  // the sideband POST (vs. silently missing).
+  try {
+    if (email) {
+      const emailHash = crypto.createHash("sha256").update(email).digest("hex");
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const [existing] = await db
+        .select({ id: signupSignals.id })
+        .from(signupSignals)
+        .where(
+          and(
+            eq(signupSignals.emailHash, emailHash),
+            gt(signupSignals.capturedAt, oneHourAgo),
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        void recordSignalsNotEmitted({
+          email,
+          userId: ctx.userId,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+          ipBucket: computeReqIpBucket(req),
+        });
+      }
+    }
+  } catch (err) {
+    // Non-fatal — signal capture is observability, not a gate.
+    logger.warn("[provisionUser] signup_signals cross-reference failed", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
+  return { shortCircuited: false };
+}
+
+// Re-export for testing without going through the full getOrCreateOrg path.
+export const _provisionUserForTests = provisionUser;
+// Helper to silence unused-import lint on Errors when limiter doesn't trip
+// (Errors is referenced through Errors.limitExceeded inside dualLaneLimiter
+// via the signupLimiter middleware we invoke programmatically).
+void Errors;

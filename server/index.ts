@@ -300,7 +300,6 @@ app.use("/api/auth", authLimiter);
 app.use("/api/auth/google", authAttemptLimiter);
 app.use("/api/auth/microsoft", authAttemptLimiter);
 app.use("/api/login", authAttemptLimiter);
-app.use("/api/register", authAttemptLimiter);
 
 // ── Phase 0 traffic-readiness — dual-lane CGNAT-safe limiters ───────────────
 // On top of the broad authLimiter/authAttemptLimiter above (which protect the
@@ -311,15 +310,12 @@ app.use("/api/register", authAttemptLimiter);
 // carrier NAT must remain in good standing for normal traffic, but burst
 // abuse from a single email or a single /24 trips quickly.
 import {
-  signupLimiter,
   loginLimiter,
   passwordResetLimiter,
   emailVerifyLimiter,
 } from "./middleware/authPathLimits";
 // Login: 5 failures / email / 15min (hard); IP-bucket secondary is soft.
 app.use("/api/login", loginLimiter);
-// Signup: 5/email/hr, 50/ip-bucket/hr.
-app.use("/api/register", signupLimiter);
 // Password reset endpoints — email-only lane, ZERO ip-only blocks.
 app.use("/api/auth/password-reset", passwordResetLimiter);
 app.use("/api/auth/forgot-password", passwordResetLimiter);
@@ -327,11 +323,23 @@ app.use("/api/auth/forgot-password", passwordResetLimiter);
 app.use("/api/auth/resend-verification", emailVerifyLimiter);
 app.use("/api/auth/verify-email", emailVerifyLimiter);
 
-// Bot-signal collection on signup. Capture-only by default; only blocks
-// when ENABLE_CAPTCHA=1 AND the captcha token fails to verify (env-gated).
-import { captureSignupSignals, requireCaptchaIfEnabled } from "./middleware/botSignals";
-app.use("/api/register", captureSignupSignals, requireCaptchaIfEnabled);
-app.use("/api/onboarding/provision", captureSignupSignals, requireCaptchaIfEnabled);
+// ── Signup hardening — NOTE on /api/register ────────────────────────────────
+// The previous dispatch mounted three middleware on /api/register:
+//   • signupLimiter
+//   • captureSignupSignals
+//   • requireCaptchaIfEnabled
+// BUT /api/register has NO handler in this codebase. Signup flows through
+// Clerk → first authenticated request → server/middleware/getOrCreateOrg.ts.
+// Those middleware were dead-mounted (correct logic, never invoked).
+//
+// 2026-06-02 fix: signupLimiter and signal capture have been moved INTO
+// getOrCreateOrg.provisionUser, which is the real chokepoint for "new user
+// about to be provisioned." See:
+//   - server/middleware/getOrCreateOrg.ts (provisionUser)
+//   - server/auth/routes.ts (POST /api/auth/signup-signals — client sideband)
+//   - client/src/pages/auth-page.tsx (honeypot + TTF emission)
+// authAttemptLimiter is also intentionally NOT mounted on /api/register
+// since there's no handler to protect.
 
 // AI / Pax / chat endpoints: 240 requests per minute, keyed by userId with
 // IP fallback. These are hot paths — /api/pax fans out ~8 calls per page

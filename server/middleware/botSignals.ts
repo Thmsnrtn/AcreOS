@@ -125,14 +125,148 @@ async function verifyCaptchaToken(token: string | undefined | null): Promise<boo
 }
 
 /**
+ * Programmatic signal-row writer. Used by:
+ *   1. `captureSignupSignals` middleware (legacy / future custom-form path)
+ *   2. POST /api/auth/signup-signals (the sideband emission from the Clerk
+ *      <SignUp> widget — see client/src/pages/auth-page.tsx)
+ *   3. `recordSignalsNotEmitted` (audit fallback when client never POSTs)
+ *
+ * Always fire-and-forget at the call site: the DB insert is awaited inside
+ * this function but the caller decides whether to `void` it. Never block
+ * the signup completion path on the insert.
+ *
+ * @returns the inserted row id, or null if the write failed (caller can
+ * decide to log additional context — we already log internally).
+ */
+export async function recordSignupSignals(input: {
+  email?: string | null;
+  userId?: string | null;
+  userAgent?: string | null;
+  ipBucket?: string;
+  website?: string | null;
+  formRenderedAt?: number | null;
+  formSubmittedAt?: number | null;
+  captchaToken?: string | null;
+  /**
+   * When false, persists a row with `signals_emitted=false` flagged in
+   * reasons so the audit can count "client never fired the sideband POST"
+   * vs. "client fired but submitted nothing suspicious." We co-opt the
+   * existing `reasons` jsonb array rather than adding a new column.
+   */
+  signalsEmitted?: boolean;
+}): Promise<number | null> {
+  const now = Date.now();
+  const email = (input.email || "").toLowerCase().trim();
+  const emailHash = email ? sha256Email(email) : null;
+  const userAgent = (input.userAgent || "").slice(0, 1000);
+  const bucket = input.ipBucket || "unknown";
+  const honeypotFilled = typeof input.website === "string" && input.website.length > 0;
+  const renderedAt =
+    typeof input.formRenderedAt === "number" && Number.isFinite(input.formRenderedAt)
+      ? input.formRenderedAt
+      : null;
+  const submittedAt =
+    typeof input.formSubmittedAt === "number" && Number.isFinite(input.formSubmittedAt)
+      ? input.formSubmittedAt
+      : null;
+  // Prefer client-supplied submittedAt over server-now so the TTF reflects
+  // the actual form-fill duration, not network latency. Fall back to now.
+  const referenceEnd = submittedAt && renderedAt && submittedAt > renderedAt ? submittedAt : now;
+  const timeToFillMs =
+    renderedAt !== null && renderedAt > 0 && renderedAt <= referenceEnd
+      ? referenceEnd - renderedAt
+      : null;
+
+  const reasons: string[] = [];
+  if (honeypotFilled) reasons.push("honeypot");
+  if (timeToFillMs !== null && timeToFillMs < TTF_SUSPICIOUS_BELOW_MS) reasons.push("ttf-too-fast");
+  if (KNOWN_CRAWLER_PATTERNS.some((rx) => rx.test(userAgent))) reasons.push("crawler-ua");
+  if (!userAgent || userAgent.length < 10) reasons.push("missing-ua");
+  if (input.signalsEmitted === false) reasons.push("signals-not-emitted");
+
+  const isSuspicious = reasons.length > 0 && !(reasons.length === 1 && reasons[0] === "signals-not-emitted");
+
+  const captchaTokenPresent =
+    typeof input.captchaToken === "string" && input.captchaToken.length > 0;
+  let captchaVerified: boolean | null = null;
+  try {
+    captchaVerified = await verifyCaptchaToken(input.captchaToken ?? undefined);
+  } catch {
+    captchaVerified = null;
+  }
+
+  try {
+    const [row] = await db
+      .insert(signupSignals)
+      .values({
+        emailHash,
+        userId: input.userId ?? null,
+        userAgent,
+        ipBucket: bucket,
+        honeypotFilled,
+        timeToFillMs,
+        isSuspicious,
+        reasons,
+        captchaTokenPresent,
+        captchaVerified,
+      })
+      .returning({ id: signupSignals.id });
+    if (isSuspicious) {
+      logger.warn("[botSignals] suspicious signup attempt captured", {
+        metadata: {
+          ipBucket: bucket,
+          reasons,
+          ua: userAgent.slice(0, 200),
+          timeToFillMs,
+          honeypotFilled,
+        },
+      });
+    }
+    return row?.id ?? null;
+  } catch (err) {
+    logger.warn("[botSignals] signup_signals insert failed — continuing", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    return null;
+  }
+}
+
+/**
+ * Convenience for the "client never fired the sideband POST" case.
+ * Called from provisionUser when no prior signal row exists for the email
+ * hash. Persists a row with signals_emitted=false so the audit can see the
+ * gap (rather than silently missing).
+ */
+export async function recordSignalsNotEmitted(input: {
+  email: string;
+  userId: string;
+  userAgent?: string | null;
+  ipBucket?: string;
+}): Promise<void> {
+  await recordSignupSignals({
+    email: input.email,
+    userId: input.userId,
+    userAgent: input.userAgent ?? null,
+    ipBucket: input.ipBucket,
+    signalsEmitted: false,
+  });
+}
+
+export function computeReqIpBucket(req: Request): string {
+  return reqIpBucket(req);
+}
+
+/**
  * Captures bot signals for a signup request. ALWAYS calls next() — this is
  * collection-only by design. The decision to act on a suspicious row sits
  * outside this middleware (founder admin surface).
  *
- * Mount BEFORE the actual signup handler. The signup body should include
- * `website` (honeypot) and `formRenderedAt` (timestamp) — the client form
- * needs a tiny patch to emit them, but if they're missing we still capture
- * a row with whatever we have.
+ * NOTE (2026-06-02): Originally mounted on /api/register — which has no
+ * handler in this codebase (signup flows through Clerk → first authenticated
+ * request → getOrCreateOrg.provisionUser). Kept as exported middleware in
+ * case a non-Clerk signup form re-enters the stack, but the real signal
+ * capture now flows through POST /api/auth/signup-signals + recordSignalsNotEmitted
+ * inside provisionUser.
  */
 export async function captureSignupSignals(
   req: Request,
