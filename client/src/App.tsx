@@ -187,6 +187,14 @@ const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
+// Public /tools/calculator + /tools/calculator/embed surfaces. No auth,
+// no PageShell, no NAV_MODULES entry — these are top-of-funnel marketing
+// pages that any visitor can hit (and that other land-investing sites
+// can iframe in). See server/middleware/security.ts for the
+// X-Frame-Options override that scopes iframe-ability to the embed
+// route only.
+const CalculatorPage = React.lazy(() => import("@/pages/tools/calculator"));
+const CalculatorEmbedPage = React.lazy(() => import("@/pages/tools/calculator-embed"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -597,6 +605,12 @@ function Router() {
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
+      {/* Public Land Deal Calculator — top-of-funnel + embed-friendly.
+          Embed route mounted BEFORE the bare /tools/calculator so
+          wouter's first-match Switch routes the more-specific URL first.
+          Both must precede the authed /tools route registered later. */}
+      <Route path="/tools/calculator/embed" component={CalculatorEmbedPage} />
+      <Route path="/tools/calculator" component={CalculatorPage} />
       {/* 2026-06-01 cut — GlossaryPage archived; nothing links to it. */}
 
       {/* Public Borrower Portal */}

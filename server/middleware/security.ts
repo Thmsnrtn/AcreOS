@@ -8,12 +8,32 @@ import { e2eTestAuthEnabled } from "../auth/testAuth";
 // In development, fall back to 'unsafe-inline'/'unsafe-eval' for HMR compatibility.
 // The nonce is stored in res.locals.cspNonce for use by the static file server.
 
+// Routes that are allowed to render inside a third-party iframe. The
+// public Land Deal Calculator is intentionally embeddable on partner
+// land-investing sites; nothing else is. Keep this allow-list narrow —
+// every entry here is a clickjacking attack surface we accept the cost
+// of in exchange for distribution.
+const IFRAME_ALLOWED_PATHS = new Set<string>([
+  "/tools/calculator/embed",
+]);
+
+function isIframeAllowed(path: string): boolean {
+  return IFRAME_ALLOWED_PATHS.has(path);
+}
+
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {
   // Skip CSP for Clerk proxy — Clerk manages its own headers
   if (req.path.startsWith("/__clerk")) return next();
 
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
+  // X-Frame-Options is set per-path. Default: DENY (no iframes anywhere).
+  // The embed route opts in to ALLOWALL so partners can drop an
+  // <iframe src="https://acreos.io/tools/calculator/embed"> into their
+  // own pages. ALLOWALL is non-standard but widely supported; the
+  // canonical modern equivalent is the frame-ancestors CSP directive
+  // (set below).
+  const embedFriendly = isIframeAllowed(req.path);
+  res.setHeader("X-Frame-Options", embedFriendly ? "ALLOWALL" : "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()");
@@ -63,7 +83,11 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    // frame-ancestors is the modern (CSP-level) replacement for
+    // X-Frame-Options. Modern browsers honour CSP over the legacy
+    // header, so the X-Frame-Options ALLOWALL above is functionally
+    // dead unless this directive also opens up — keep the two in sync.
+    `frame-ancestors ${embedFriendly ? "*" : "'none'"}`,
   ];
 
   // Only upgrade to HTTPS in production — but NOT under E2E test-auth, where
