@@ -160,6 +160,22 @@ export const acquiredNotes = pgTable(
       computedAt: string;
       advisorVersion: string;
     }>(),
+    // ── Reg-Z §1026.41 servicer-scope gates (Beatrice ruling 2026-06-02) ─
+    // See docs/legal/acquired-notes-1026-41-ruling.md. The periodic-statement
+    // generator (and the §1026.36(c) / §1024.39 piggyback obligations) only
+    // attaches when ALL THREE of these read true AND an active
+    // note_ownership_of_record row names this org. Defaults are conservative
+    // ("don't generate") because §1026.41 attaches to the SERVICER, not the
+    // holder — backfilling a missed statement is cheap; sending one we
+    // weren't legally allowed to send creates a different category of risk.
+    // Backfill required from assignment documents — Beatrice quarterly audit.
+    isConsumerPurpose: boolean("is_consumer_purpose").notNull().default(false),
+    collateralIsDwelling: boolean("collateral_is_dwelling").notNull().default(false),
+    // 'self_serviced'  = AcreOS org services notes it also holds — duty attaches.
+    // 'sub_serviced'   = third-party sub-servicer is the §1024.2 servicer.
+    // 'seller_retained'= seller-servicer continues under sub-servicing back-arrangement.
+    // 'passive_holder' = AcreOS holds paper only, no servicing role.
+    servicingArrangement: text("servicing_arrangement").notNull().default("passive_holder"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

@@ -360,3 +360,62 @@ export const lateFeeAssessments = pgTable(
 
 export type LateFeeAssessment = typeof lateFeeAssessments.$inferSelect;
 export type InsertLateFeeAssessment = typeof lateFeeAssessments.$inferInsert;
+
+// ============================================================================
+// §1026.41 — PERIODIC STATEMENT SKIPS (audit ledger)
+// ----------------------------------------------------------------------------
+// Per Beatrice's 2026-06-02 acquired-notes ruling: "A skip without a logged
+// reason is indistinguishable from negligence." The predicate that gates
+// statement generation (see server/services/periodicStatements/predicate.ts)
+// MUST persist a row here every time it skips a (loan, cycle) — with the
+// §-citation that authorised the skip. When a CFPB examiner asks "why didn't
+// AcreOS send a statement for loan X in April," the ledger IS the answer.
+//
+// Append-only contract: no UPDATE / DELETE in production code paths. The
+// monotonic ledger is the audit primitive.
+//
+// The polymorphic note_table discriminator lets one ledger cover both the
+// originated `notes` flow and the new `acquired_notes` flow without a
+// migration-per-vertical proliferation.
+// ============================================================================
+
+export const periodicStatementSkips = pgTable(
+  "periodic_statement_skips",
+  {
+    // bigserial in prod (mirrors `id BIGSERIAL` in migrate.mjs); Drizzle's
+    // bigint+identity is the closest match.
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    // Polymorphic — points at either `notes.id` (integer cast to text) or
+    // `acquired_notes.id` (uuid). Discriminator below tells the resolver
+    // which table the id belongs to.
+    noteId: text("note_id").notNull(),
+    noteTable: text("note_table").notNull(), // 'notes' | 'acquired_notes'
+
+    cycleStart: timestamp("cycle_start", { withTimezone: true }).notNull(),
+
+    // Plain-English reason a future Beatrice audit reads at a glance.
+    reason: text("reason").notNull(),
+    // The §-section that AUTHORISED the skip. Required field — never silent.
+    citation: text("citation").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Idempotency: re-running the cron for a (org, table, note, cycle) is
+    // a no-op at the DB layer. ON CONFLICT DO NOTHING in the writer.
+    uniqueIndex("periodic_statement_skips_org_table_note_cycle_uk").on(
+      table.organizationId,
+      table.noteTable,
+      table.noteId,
+      table.cycleStart,
+    ),
+    // Audit read path: "show me every skip this org logged in the last quarter."
+    index("periodic_statement_skips_org_created_idx").on(table.organizationId, table.createdAt),
+  ],
+);
+
+export type PeriodicStatementSkip = typeof periodicStatementSkips.$inferSelect;
+export type InsertPeriodicStatementSkip = typeof periodicStatementSkips.$inferInsert;
