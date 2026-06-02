@@ -11,6 +11,7 @@ import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+import { compsGuard } from "./middleware/expensiveEndpointGuard";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
@@ -702,7 +703,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, compsGuard, async (req, res) => {
     try {
       const org = req.organization;
       const parsed = compsSearchSchema.safeParse(req.body);

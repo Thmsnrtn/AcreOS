@@ -12,6 +12,7 @@ import { storage, db } from "./storage";
 import { eq, sql, and } from "drizzle-orm";
 import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
+import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
@@ -246,7 +247,7 @@ export function registerAIRoutes(app: Express): void {
     propertyId: z.union([z.number(), z.string()]).optional(),
   });
 
-  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, paxChatGuard, usageLimitGate("ai_requests"), async (req, res) => {
     // STR-016: step tags let us see in Fly logs exactly which pre-processing
     // dependency failed when the handler 500s. Non-essential side effects
     // (trackUsage, recordUsage) are wrapped so they can't block the user's
@@ -374,7 +375,7 @@ export function registerAIRoutes(app: Express): void {
     ]).optional(),
   });
 
-  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, paxChatGuard, usageLimitGate("ai_requests"), async (req, res) => {
     // STR-016: mirror the resilience pattern from /api/ai/chat.
     let step: string = "init";
     try {

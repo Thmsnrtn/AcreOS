@@ -112,6 +112,7 @@ import { registerDeliverabilityRoutes } from "./routes-deliverability";
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
 import { aiRateLimit } from "./middleware/aiRateLimit";
+import { todayGuard, paxChatGuard, compsGuard } from "./middleware/expensiveEndpointGuard";
 
 
 // White-label domain middleware
@@ -1278,10 +1279,15 @@ export async function registerRoutes(
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
-  app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
+  // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
+  // gate on the four expensive endpoint families (Anthropic / OpenAI fan-out).
+  // Stacks AFTER aiLimiter (per-user/min) and BEFORE the actual handlers —
+  // soft-degrades to a structured LimitExceeded payload on cap exceeded
+  // instead of silently failing or relying solely on usageLimitGate.
+  app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
-  app.use('/api/today', isAuthenticated, getOrCreateOrg, todayRouter);
+  app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);
   app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
 
   // Voice pipeline: webhook callbacks (no auth, signature-verified) + authenticated API routes
