@@ -310,6 +310,33 @@ export async function recordReviewOutcome(
       findings ? ` (findings: ${findings.slice(0, 200)})` : ""
     }`,
   );
+
+  // L3.13 — self-debugging. When a review flags the original, call the
+  // original agent back to introspect on the findings. Fire-and-forget so
+  // recordReviewOutcome's contract (no throw) is preserved.
+  if (outcome === "flagged") {
+    const originalId = reviewRow.originalDispatchId;
+    const findingsText = findings ?? "";
+    import("./selfDebug")
+      .then(({ enqueueSelfDebugDispatch }) =>
+        enqueueSelfDebugDispatch({
+          originalDispatchId: originalId,
+          reviewDispatchId,
+          findings: findingsText,
+        }).catch((err) =>
+          logger.warn(
+            `[codeReviewQueue] self-debug failed for original=${originalId}`,
+            err,
+          ),
+        ),
+      )
+      .catch((err) =>
+        logger.warn(
+          `[codeReviewQueue] self-debug import failed for original=${originalId}`,
+          err,
+        ),
+      );
+  }
 }
 
 // ----------------------------------------------------------------------------
