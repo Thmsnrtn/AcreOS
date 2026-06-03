@@ -4796,6 +4796,34 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "beatrice_reg_events_reviewed_idx" ON "beatrice_reg_events" ("beatrice_reviewed", "published_at")`,
   `CREATE INDEX IF NOT EXISTS "beatrice_reg_events_source_idx" ON "beatrice_reg_events" ("source", "published_at")`,
 
+  // ── External-world feedback loops (Layer 1 cap #4 / #17 in 32-cap map) ─
+  // Extends Beatrice's regulatory-news shape to Anthropic API changelog +
+  // npm vulnerability feed (this dispatch) and Fly / Stripe / engineering-
+  // blog feeds (later dispatches). One row per (source × source_url);
+  // dedup is the index. ack_status drives the founder-visibility endpoint
+  // (GET /api/founder/external-watch/recent + POST /:id/ack). Mirrors
+  // shared/schema/external-watch.ts. Wired in
+  // server/jobs/runScheduledJobs.ts → startAnthropicWatchJob /
+  // startNpmWatchJob.
+  `CREATE TABLE IF NOT EXISTS "external_watch_events" (
+     "id" serial PRIMARY KEY,
+     "source" text NOT NULL,
+     "source_url" text NOT NULL,
+     "title" text NOT NULL,
+     "summary" text NOT NULL,
+     "severity_keyword_match" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "published_at" timestamp with time zone NOT NULL,
+     "fetched_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "ack_status" text NOT NULL DEFAULT 'pending',
+     "ack_by" text,
+     "ack_at" timestamp with time zone,
+     "action_taken" text
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "external_watch_events_source_url_uk" ON "external_watch_events" ("source", "source_url")`,
+  `CREATE INDEX IF NOT EXISTS "external_watch_events_source_fetched_idx" ON "external_watch_events" ("source", "fetched_at")`,
+  `CREATE INDEX IF NOT EXISTS "external_watch_events_published_idx" ON "external_watch_events" ("published_at")`,
+  `CREATE INDEX IF NOT EXISTS "external_watch_events_ack_status_idx" ON "external_watch_events" ("ack_status", "published_at")`,
+
   // ── Team-improvement opportunity ledger ────────────────────────────────
   // Persists every gap surfaced by the event-driven detector layer
   // (server/services/improvement). The 7 signal patterns:
@@ -4862,6 +4890,59 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_run_idx" ON "team_system_audit_findings" ("run_id")`,
   `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_dim_idx" ON "team_system_audit_findings" ("dimension", "fired_at")`,
   `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_severity_idx" ON "team_system_audit_findings" ("severity", "fired_at")`,
+
+  // ── Solene — REAL agent-dispatch queue + result ledger ────────────────
+  // Layer 1 capability #1 of the agentic-evolution architecture. Replaces
+  // the SIMULATED dispatch path in server/services/improvement/autoDispatch.ts.
+  // The worker (server/worker.ts → runSoleneDispatchLoop) drains the queue,
+  // invokes the Anthropic SDK with the agent_role brief + a minimal tool
+  // executor (file_read / file_write / bash / git_status / git_diff /
+  // git_commit), and persists the outcome to solene_dispatch_results +
+  // recordCapitalEvent so the envelope reasons against real spend.
+  //
+  // Atomic claim uses Postgres FOR UPDATE SKIP LOCKED so concurrent workers
+  // (today: 1 worker; tomorrow: N) never race the same row.
+  //
+  // Mirrors shared/schema/solene-dispatch.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_dispatch_queue" (
+     "id" serial PRIMARY KEY,
+     "queued_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "status" text NOT NULL DEFAULT 'queued',
+     "priority" numeric(8,3) NOT NULL DEFAULT 1.000,
+     "source_type" text NOT NULL,
+     "source_id" text NOT NULL,
+     "agent_role" text NOT NULL,
+     "prompt_text" text NOT NULL,
+     "max_cost_usd" numeric(10,2) NOT NULL,
+     "timeout_ms" integer NOT NULL,
+     "started_at" timestamp with time zone,
+     "completed_at" timestamp with time zone,
+     "result_summary" text,
+     "result_full_path" text,
+     "enqueued_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_pull_idx" ON "solene_dispatch_queue" ("status", "priority", "queued_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_queued_idx" ON "solene_dispatch_queue" ("queued_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_status_idx" ON "solene_dispatch_queue" ("status", "queued_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_source_idx" ON "solene_dispatch_queue" ("source_type", "source_id")`,
+
+  `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
+     "id" serial PRIMARY KEY,
+     "dispatch_id" integer NOT NULL,
+     "success" boolean NOT NULL,
+     "cost_usd" numeric(10,4) NOT NULL DEFAULT 0,
+     "duration_ms" integer NOT NULL DEFAULT 0,
+     "token_input" integer NOT NULL DEFAULT 0,
+     "token_output" integer NOT NULL DEFAULT 0,
+     "error_message" text,
+     "commits_referenced" jsonb,
+     "files_modified" jsonb,
+     "follow_up_opportunities" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "recorded_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_dispatch_idx" ON "solene_dispatch_results" ("dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_recorded_idx" ON "solene_dispatch_results" ("recorded_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_success_idx" ON "solene_dispatch_results" ("success", "recorded_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
