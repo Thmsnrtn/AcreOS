@@ -218,6 +218,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
+import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
 import { registerErrorBoundaryAggregatorRoutes } from "./routes-error-boundary-aggregator";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
@@ -2179,6 +2180,9 @@ export async function registerRoutes(
   registerSoleneAuditRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
+  // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:
+  // POST /api/founder/dispatches/queue + GET /dispatches + GET /:id + POST /:id/cancel.
+  registerDispatchRoutes(app);
   // Solene (COO) proactive page channel — POST /api/internal/solene/page
   // (shared-secret auth) + GET /api/founder/solene-page/recent (founder).
   registerSolenePageRoutes(app);

@@ -31,7 +31,7 @@
  *  - SKIP LOCKED requires Postgres >= 9.5; AcreOS runs 16, so this is safe.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
   soleneDispatchQueue,
@@ -41,7 +41,9 @@ import {
   DISPATCH_DEFAULT_TIMEOUT_MS,
   type SoleneDispatchAgentRole,
   type SoleneDispatchQueueRow,
+  type SoleneDispatchResultRow,
   type SoleneDispatchSourceType,
+  type SoleneDispatchStatus,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 
@@ -323,4 +325,120 @@ export async function cancelDispatch(
     { status: "cancelled" },
   );
   return { priorStatus: existing.status, cancelled: true };
+}
+
+// ----------------------------------------------------------------------------
+// Founder read/list/cancel helpers — back the /api/founder/dispatches surface.
+// ----------------------------------------------------------------------------
+
+export interface DispatchWithResult {
+  queue: SoleneDispatchQueueRow;
+  result: SoleneDispatchResultRow | null;
+}
+
+/**
+ * List recent dispatches (queue rows) optionally filtered by status. Left-joins
+ * the matching result row so terminal dispatches surface their cost/duration
+ * alongside the queue metadata. Ordered by queued_at DESC.
+ */
+export async function listDispatches(opts: {
+  status?: SoleneDispatchStatus;
+  limit?: number;
+}): Promise<DispatchWithResult[]> {
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? 50)), 200);
+  const baseQuery = db
+    .select({
+      queue: soleneDispatchQueue,
+      result: soleneDispatchResults,
+    })
+    .from(soleneDispatchQueue)
+    .leftJoin(
+      soleneDispatchResults,
+      eq(soleneDispatchResults.dispatchId, soleneDispatchQueue.id),
+    );
+
+  const rows = opts.status
+    ? await baseQuery
+        .where(eq(soleneDispatchQueue.status, opts.status))
+        .orderBy(desc(soleneDispatchQueue.queuedAt))
+        .limit(limit)
+    : await baseQuery
+        .orderBy(desc(soleneDispatchQueue.queuedAt))
+        .limit(limit);
+
+  return rows.map((r) => ({ queue: r.queue, result: r.result }));
+}
+
+/**
+ * Fetch a single dispatch by id along with its result row (if any). Returns
+ * null when no queue row exists for that id.
+ */
+export async function getDispatchById(
+  id: number,
+): Promise<DispatchWithResult | null> {
+  const rows = await db
+    .select({
+      queue: soleneDispatchQueue,
+      result: soleneDispatchResults,
+    })
+    .from(soleneDispatchQueue)
+    .leftJoin(
+      soleneDispatchResults,
+      eq(soleneDispatchResults.dispatchId, soleneDispatchQueue.id),
+    )
+    .where(eq(soleneDispatchQueue.id, id))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+  return { queue: rows[0].queue, result: rows[0].result };
+}
+
+/**
+ * Founder kill-switch — only legal from `queued` state. Cancelling an
+ * in-flight dispatch is rejected because the worker is mid-call and would
+ * orphan; cancelling an already-terminal dispatch is rejected because the
+ * state machine is closed. Does NOT write a solene_dispatch_results row —
+ * those are for terminal runtime outcomes, not pre-claim cancellations.
+ *
+ * Returns:
+ *   - { ok: true, priorStatus: 'queued' } when the cancel landed
+ *   - { ok: false, priorStatus: <found> } when the row exists but is not queued
+ *   - { ok: false, priorStatus: null } when no such row exists
+ */
+export async function cancelQueuedDispatch(
+  id: number,
+  reason: string,
+): Promise<{ ok: boolean; priorStatus: string | null }> {
+  const [existing] = await db
+    .select({
+      id: soleneDispatchQueue.id,
+      status: soleneDispatchQueue.status,
+    })
+    .from(soleneDispatchQueue)
+    .where(eq(soleneDispatchQueue.id, id))
+    .limit(1);
+
+  if (!existing) return { ok: false, priorStatus: null };
+  if (existing.status !== "queued") {
+    return { ok: false, priorStatus: existing.status };
+  }
+
+  const now = new Date();
+  const summary = reason && reason.trim().length > 0
+    ? `cancelled by founder: ${reason}`.slice(0, 4000)
+    : "cancelled by founder";
+  await db
+    .update(soleneDispatchQueue)
+    .set({
+      status: "cancelled",
+      completedAt: now,
+      resultSummary: summary,
+    })
+    .where(eq(soleneDispatchQueue.id, id));
+
+  logger.info(
+    `[dispatchQueue] cancelled id=${id} (prior=queued) reason=${(reason ?? "").slice(0, 120)}`,
+  );
+
+  return { ok: true, priorStatus: "queued" };
 }
