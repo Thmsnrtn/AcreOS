@@ -1044,7 +1044,7 @@ export function registerBorrowerRoutes(app: Express): void {
       if (dbSessionToken) {
         const dbSession = await storage.getBorrowerSession(dbSessionToken);
         if (dbSession && new Date(dbSession.expiresAt) >= new Date()) {
-          noteIdFromSession = dbSession.noteId;
+          noteIdFromSession = String(dbSession.noteId);
         }
       }
 
@@ -1059,12 +1059,17 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.unauthorized(res);
       }
 
+      const parsedNoteId = Number(noteIdFromSession);
+      if (!Number.isFinite(parsedNoteId) || parsedNoteId <= 0) {
+        return Errors.unauthorized(res);
+      }
+
       const { type, year, startDate, endDate } = req.query;
 
       const [note] = await db
         .select()
         .from(notes)
-        .where(eq(notes.id, noteIdFromSession));
+        .where(eq(notes.id, parsedNoteId));
       if (!note) {
         return Errors.notFound(res, "Loan");
       }
