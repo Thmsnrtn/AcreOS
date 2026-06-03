@@ -4716,6 +4716,23 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_capital_events_occurred_idx" ON "solene_capital_events" ("occurred_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_capital_events_type_occurred_idx" ON "solene_capital_events" ("event_type", "occurred_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_capital_events_session_idx" ON "solene_capital_events" ("session_token", "occurred_at")`,
+
+  // ── Solene (COO) — proactive page-event ledger ─────────────────────────
+  // Records every page Solene fires to Tom between sessions (urgent /
+  // critical). Per docs/internal/solene-page-discipline.md, page-worthy is
+  // a narrow set; this ledger lets Tom audit Solene's discipline weekly.
+  // Mirrors shared/schema/solene-page.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_page_events" (
+     "id" serial PRIMARY KEY,
+     "fired_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "severity" text NOT NULL,
+     "subject" text NOT NULL,
+     "body" text NOT NULL,
+     "delivery_status" text NOT NULL,
+     "delivery_detail" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_page_events_fired_idx" ON "solene_page_events" ("fired_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_page_events_severity_idx" ON "solene_page_events" ("severity", "fired_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

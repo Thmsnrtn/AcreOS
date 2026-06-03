@@ -16098,3 +16098,8 @@ export * from "./schema/solene-audit";
 // SOLENE — capital event ledger (per-session + per-day spend tracker)
 // ============================================================================
 export * from "./schema/solene-capital";
+
+// ============================================================================
+// SOLENE — proactive page-event ledger (urgent / critical pages to Tom)
+// ============================================================================
+export * from "./schema/solene-page";

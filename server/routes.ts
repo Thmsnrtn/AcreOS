@@ -216,6 +216,7 @@ import { registerApiContractRoutes, registerApiVersionHeader } from "./routes-ap
 import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
 import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
+import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
@@ -2167,6 +2168,9 @@ export async function registerRoutes(
   registerPaxAuditRoutes(app);
   // Solene (COO) self-audit + capital tracker founder read endpoints.
   registerSoleneAuditRoutes(app);
+  // Solene (COO) proactive page channel — POST /api/internal/solene/page
+  // (shared-secret auth) + GET /api/founder/solene-page/recent (founder).
+  registerSolenePageRoutes(app);
   // Panel-300 founder compliance + ops dashboards backend.
   registerFounderComplianceRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
