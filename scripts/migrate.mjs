@@ -5011,6 +5011,61 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_agent_claims_dispatch_unique" ON "solene_agent_claims" ("dispatch_id")`,
 
   // ============================================================
+  // Solene — confidence-calibrated outputs (L3.11)
+  // ============================================================
+  // solene_confidence_observations — one row per parsed final-text that
+  // surfaces a confidence signal (explicit %, explicit band, uncertainty
+  // marker, or hedge). Later — once the dispatch's code-review verdict is
+  // known — correlateWithReviewOutcome() stamps correlated_review_status +
+  // a [0,1] calibration_score so per-agentRole trust can be tuned against
+  // real outcomes rather than the agent's self-report.
+  //
+  // Mirrors shared/schema/solene-confidence-observations.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_confidence_observations" (
+     "id" serial PRIMARY KEY,
+     "observed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "dispatch_id" integer NOT NULL,
+     "agent_role" text NOT NULL,
+     "stated_confidence" numeric(5,4),
+     "confidence_phrase" text,
+     "confidence_kind" text NOT NULL,
+     "correlated_review_status" text,
+     "calibration_score" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_confidence_obs_agent_observed_idx" ON "solene_confidence_observations" ("agent_role", "observed_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_confidence_obs_dispatch_idx" ON "solene_confidence_observations" ("dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_confidence_obs_kind_observed_idx" ON "solene_confidence_observations" ("confidence_kind", "observed_at")`,
+
+  // ============================================================
+  // Solene — plan-then-execute proposals (Phase B L2.6)
+  // ============================================================
+  // plan_proposals — agents propose a multi-step plan + cost/duration estimate
+  // + risk assessment BEFORE the work is dispatched. Solene/Tom approve or
+  // reject; approval can optionally enqueue the dispatch immediately and link
+  // the executed dispatch back via executed_dispatch_id.
+  //
+  // Mirrors shared/schema/solene-plan-proposals.ts.
+  `CREATE TABLE IF NOT EXISTS "plan_proposals" (
+     "id" serial PRIMARY KEY,
+     "proposed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "agent_role" text NOT NULL,
+     "triggering_dispatch_id" integer,
+     "summary" text NOT NULL,
+     "plan_body" text NOT NULL,
+     "estimated_cost_usd" numeric(10,4) NOT NULL,
+     "estimated_duration_minutes" integer NOT NULL,
+     "risk_assessment" text,
+     "status" text NOT NULL DEFAULT 'proposed',
+     "decided_at" timestamp with time zone,
+     "decided_by" text,
+     "decision_rationale" text,
+     "executed_dispatch_id" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "plan_proposals_status_proposed_idx" ON "plan_proposals" ("status", "proposed_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "plan_proposals_role_proposed_idx" ON "plan_proposals" ("agent_role", "proposed_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "plan_proposals_triggering_idx" ON "plan_proposals" ("triggering_dispatch_id")`,
+
+  // ============================================================
   // Solene — persistent agent identity (Layer 1 capability L1.4)
   // ============================================================
   // solene_agent_identity_decisions — append-only ledger of decisions an
@@ -5034,6 +5089,12 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_agent_identity_role_decided_idx" ON "solene_agent_identity_decisions" ("agent_role", "decided_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_agent_identity_dispatch_idx" ON "solene_agent_identity_decisions" ("dispatch_id")`,
   `CREATE INDEX IF NOT EXISTS "solene_agent_identity_kind_decided_idx" ON "solene_agent_identity_decisions" ("decision_kind", "decided_at")`,
+  // L4.19 — time-aware decisions: horizon + revisit_due_at columns + a
+  // partial index covering only rows with a scheduled revisit so the daily
+  // overdue scan stays cheap as the ledger grows.
+  `ALTER TABLE "solene_agent_identity_decisions" ADD COLUMN IF NOT EXISTS "decision_horizon" text`,
+  `ALTER TABLE "solene_agent_identity_decisions" ADD COLUMN IF NOT EXISTS "revisit_due_at" timestamp with time zone`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_identity_decisions_revisit_idx" ON "solene_agent_identity_decisions" ("revisit_due_at") WHERE "revisit_due_at" IS NOT NULL`,
 
   // ============================================================
   // Solene — failure-mode library (Layer 3 capability L3.12)

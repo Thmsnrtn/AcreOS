@@ -77,6 +77,21 @@ export const soleneAgentIdentityDecisions = pgTable(
     // Session token correlates multiple decisions within a single dispatch
     // run so we can render "decisions made during dispatch N" as a thread.
     sessionToken: text("session_token"),
+    // L4.19 time-aware decisions — horizon tags the cadence at which this
+    // decision should be revisited. Nullable: a decision without a horizon
+    // is treated as "no revisit needed" (the default for most rows).
+    //   immediate -> revisit ~7d out
+    //   quarter   -> ~90d out
+    //   year      -> ~365d out
+    // Service layer (server/services/solene/timeAwareDecisions.ts) owns the
+    // horizon → revisit_due_at translation; this column just records the
+    // raw tag for audit + future re-evaluation if we change the windows.
+    decisionHorizon: text("decision_horizon"),
+    // When this decision is next due for a revisit. NULL = no scheduled
+    // revisit (either never had one, or it was already handled). The
+    // partial index (defined in scripts/migrate.mjs) only covers non-null
+    // rows so the daily overdue scan stays fast.
+    revisitDueAt: timestamp("revisit_due_at", { withTimezone: true }),
   },
   (t) => [
     // Most-recent-decisions-by-role lookup is the hot path (every dispatch).
@@ -89,6 +104,10 @@ export const soleneAgentIdentityDecisions = pgTable(
       t.decisionKind,
       t.decidedAt,
     ),
+    // Note: the matching `revisit_due_at` partial index is declared in
+    // scripts/migrate.mjs — drizzle-pg-core's `index().on()` builder doesn't
+    // surface a partial-where clause cleanly, and the runtime never relies
+    // on the drizzle index metadata (only the SQL migration).
   ],
 );
 
@@ -119,3 +138,19 @@ export const IDENTITY_BLOCK_DEFAULT_LIMIT = 10;
 
 // 8 KB cap on the rendered markdown block, matching the team-state preamble cap.
 export const IDENTITY_BLOCK_MAX_BYTES = 8 * 1024;
+
+// ============================================
+// L4.19 — TIME-AWARE DECISION HORIZONS
+// ============================================
+//
+// A horizon tag tells timeAwareDecisions.ts how far out the default
+// revisit_due_at should be set. Callers can override the date directly, but
+// most rows will use one of these three buckets:
+//
+//   immediate  — short-cycle decisions (current-week work, in-flight bugs).
+//   quarter    — medium-term commitments (roadmap items, ~13 weeks).
+//   year       — long-horizon strategic decisions (architecture, positioning).
+//
+// Kept as a const-array so the union type stays narrow + iterable.
+export const DECISION_HORIZONS = ["immediate", "quarter", "year"] as const;
+export type DecisionHorizon = (typeof DECISION_HORIZONS)[number];
