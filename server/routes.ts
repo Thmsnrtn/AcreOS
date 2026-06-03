@@ -221,6 +221,7 @@ import { registerIrisPerfRoutes } from "./routes-iris-perf";
 import { registerSorenSeoRoutes } from "./routes-soren-seo";
 import { registerBeatriceRegWatchRoutes } from "./routes-beatrice-regwatch";
 import { registerTeamImprovementRoutes } from "./routes-team-improvement";
+import { registerTeamSystemAuditRoutes } from "./routes-team-system-audit";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
@@ -2184,6 +2185,10 @@ export async function registerRoutes(
   // Team-improvement detector — GET /api/founder/team-improvement/recent + /pending.
   // Event-driven primary driver per feedback_continuous_improvement_cadence.md.
   registerTeamImprovementRoutes(app);
+  // Solene v3 — TEAM-SYSTEM audit (overarching team-as-a-system elite-bar audit).
+  //   GET /api/founder/team-system-audit/recent
+  //   GET /api/founder/team-system-audit/findings?dimension=...&severity=...
+  registerTeamSystemAuditRoutes(app);
   // Panel-300 founder compliance + ops dashboards backend.
   registerFounderComplianceRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.

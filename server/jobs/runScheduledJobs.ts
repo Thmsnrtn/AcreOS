@@ -2413,6 +2413,72 @@ async function processQuarterlySoleneArcReview(): Promise<void> {
   });
 }
 
+/**
+ * Solene v3 — TEAM-SYSTEM audit cron.
+ *
+ * Two cadences honoured by one tick function:
+ *  - continuous: every 60 minutes. Runs scanners 1/2/3/5/6 (cross-team
+ *    handoff, coordination, anti-fragmentation, synergy, elite-bar
+ *    trajectory). Cheap, mostly git + filesystem.
+ *  - weekly: Sunday 04:00 UTC. Runs the outside-in benchmark scanner
+ *    (RSS feed pull + keyword surfacing). Quarterly cadence per the
+ *    directive's "honest constraint" caveat is achieved by gating the
+ *    weekly run on the benchmark-feed-source returning items — when the
+ *    feed accessor returns [], the scan is a no-op.
+ *
+ * Both wrapped in withJobLock so concurrent worker + app processes
+ * don't double-fire. Detection only — drift signals fire via
+ * logger.error + (when configured) Sentry tag team_system_audit_drift.
+ * Remediation is downstream via Solene's morning brief + retros.
+ */
+function startTeamSystemAuditJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  log(
+    'Registering Solene team-system audit (continuous every 60m, weekly Sun 04:00 UTC)',
+    'team-system-audit',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    // Weekly outside-in benchmark sweep: Sunday (day=0) at 04:00 UTC, within a 5-min window.
+    if (
+      now.getUTCDay() === 0 &&
+      now.getUTCHours() === 4 &&
+      now.getUTCMinutes() < 5
+    ) {
+      void withJobLock('team_system_audit_weekly', 30 * 60, async () => {
+        const { runTeamSystemAudit } = await import(
+          '../services/team-system-audit'
+        );
+        const r = await runTeamSystemAudit({ scope: 'weekly' });
+        log(
+          `[team-system-audit] weekly: dims=${r.dimensionsScanned.length} findings=${r.findingCount} drift=${r.driftSignalEmitted}`,
+          'team-system-audit',
+        );
+      }).catch((err) => {
+        log(`[team-system-audit] weekly lock error: ${err}`, 'team-system-audit');
+      });
+    }
+    // Continuous sweep: every 60 minutes, on the hour (within the 5m poll window).
+    if (now.getUTCMinutes() < 5) {
+      void withJobLock('team_system_audit_continuous', 55 * 60, async () => {
+        const { runTeamSystemAudit } = await import(
+          '../services/team-system-audit'
+        );
+        const r = await runTeamSystemAudit({ scope: 'continuous' });
+        if (r.findingCount > 0 || r.driftSignalEmitted) {
+          log(
+            `[team-system-audit] continuous: dims=${r.dimensionsScanned.length} findings=${r.findingCount} drift=${r.driftSignalEmitted}`,
+            'team-system-audit',
+          );
+        }
+      }).catch((err) => {
+        log(`[team-system-audit] continuous lock error: ${err}`, 'team-system-audit');
+      });
+    }
+  }, FIVE_MINUTES);
+}
+
 function startQuarterlySoleneArcReviewJob() {
   log(
     'Registering Solene quarterly arc review (1st of Jan/Apr/Jul/Oct, 09:00 UTC)',
@@ -2772,6 +2838,14 @@ export async function runScheduledJobs(): Promise<void> {
   // pattern analysis + next-quarter self-development tranche. Same
   // staleness check applies.
   startQuarterlySoleneArcReviewJob();
+
+  // Solene v3 — TEAM-SYSTEM audit (overarching elite-bar audit). Continuous
+  // scanners every 60m (cross-team handoff, coordination, anti-fragmentation,
+  // synergy, elite-bar trajectory); weekly outside-in benchmark sweep on
+  // Sunday 04:00 UTC. Distinct from per-member audits (Pax, Iris perf,
+  // Solene self). Drift signals fire via logger.error + Sentry tag
+  // team_system_audit_drift.
+  startTeamSystemAuditJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both
