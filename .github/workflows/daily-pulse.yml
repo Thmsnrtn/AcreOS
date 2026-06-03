@@ -63,8 +63,17 @@ jobs:
             fi
           fi
 
+          # ErrorBoundary trip segment — Solene's customer-surface health.
+          # Empty when 0 trips in 24h. 3s timeout; segment omitted on outage
+          # so the pulse stays resilient to a single endpoint blip.
+          ERROR_BOUNDARY_SEGMENT=""
+          if EB_JSON=$(curl -sS --max-time 3 \
+              "https://acreos.io/api/internal/error-boundary-trips/pulse-segment?windowHours=24" 2>/dev/null); then
+            ERROR_BOUNDARY_SEGMENT=$(echo "$EB_JSON" | jq -r '.segment // empty' 2>/dev/null)
+          fi
+
           # Build the one-line
-          ONE_LINE="${DATE_LINE} · acreos@${SHA} · health ${HEALTH} · ${COMMITS_24H} commits 24h · Phase Zero-Zero · MRR \$0${COST_SEGMENT}"
+          ONE_LINE="${DATE_LINE} · acreos@${SHA} · health ${HEALTH} · ${COMMITS_24H} commits 24h · Phase Zero-Zero · MRR \$0${COST_SEGMENT}${ERROR_BOUNDARY_SEGMENT}"
 
           # Last commit subject as a second-line detail
           DETAIL="last shipped: ${LAST_COMMIT_SUBJECT}"

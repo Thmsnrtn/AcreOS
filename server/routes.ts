@@ -218,6 +218,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
+import { registerErrorBoundaryAggregatorRoutes } from "./routes-error-boundary-aggregator";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
 import { registerSorenSeoRoutes } from "./routes-soren-seo";
 import { registerBeatriceRegWatchRoutes } from "./routes-beatrice-regwatch";
@@ -2181,6 +2182,10 @@ export async function registerRoutes(
   // POST /api/client/error-boundary-trip (open, rate-limited per-user-per-route)
   // GET  /api/founder/error-boundary-trips/recent (founder).
   registerErrorBoundaryRoutes(app);
+  // Solene — customer-surface ErrorBoundary aggregator endpoints:
+  // GET  /api/founder/error-boundary-trips/counts (founder)
+  // GET  /api/internal/error-boundary-trips/pulse-segment (open, counts-only).
+  registerErrorBoundaryAggregatorRoutes(app);
   // Iris (CTO) continuous p95 baseline — GET /api/founder/iris-perf/recent.
   registerIrisPerfRoutes(app);
   // Soren (CGO) /learn SEO rank tracker — GET /api/founder/soren-seo/recent.

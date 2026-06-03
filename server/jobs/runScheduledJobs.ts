@@ -993,6 +993,38 @@ function startAtlasMorningBriefJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Customer-surface ErrorBoundary spike detector (Solene) ───────────────────
+// Every 15 minutes, scans error_boundary_trips for routes that fired more than
+// SPIKE_TRIPS_PER_HOUR ErrorBoundary trips in the last hour. When tripped,
+// fires Solene's proactive page channel (severity=urgent). Dedupes per (route,
+// hour) so a sustained spike doesn't loop-page Tom's phone. See
+// server/services/customer-surface/errorBoundaryAggregator.ts.
+async function processErrorBoundarySpikeDetect() {
+  try {
+    const { detectAndPageOnSpike } = await import("../services/customer-surface/errorBoundaryAggregator");
+    const r = await detectAndPageOnSpike();
+    if (r.pagedCount > 0 || r.spikes.length > 0) {
+      log(
+        `[error-boundary-spike] examinedRoutes=${r.examinedRoutes} spikes=${r.spikes.length} paged=${r.pagedCount}`,
+        'error-boundary-spike',
+      );
+    }
+  } catch (err) {
+    log(`[error-boundary-spike] error: ${err}`, 'error-boundary-spike');
+  }
+}
+
+function startErrorBoundarySpikeDetectorJob() {
+  const FIFTEEN_MINUTES = 15 * 60 * 1000;
+  const TTL_SECONDS = 14 * 60;
+  log('Starting ErrorBoundary spike detector (every 15 min)', 'error-boundary-spike');
+  trackInterval(() => {
+    withJobLock('error_boundary_spike_detect', TTL_SECONDS, processErrorBoundarySpikeDetect).catch((err: any) => {
+      log(`ErrorBoundary spike detector lock error: ${err}`, 'error-boundary-spike');
+    });
+  }, FIFTEEN_MINUTES);
+}
+
 // ── Atlas Background-Task Runner (Phase E) ───────────────────────────────────
 // Polls founder_chat_background_tasks every 10s. Started once at boot; the
 // runner self-loops, so no setInterval wrapper needed.
@@ -2748,6 +2780,10 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Atlas Morning Brief (Phase E) — daily 7am wall-clock, per-founder
   startAtlasMorningBriefJob();
+
+  // Customer-surface ErrorBoundary spike detector (Solene) — every 15m
+  // scan for routes spiking ErrorBoundary trips and page on threshold.
+  startErrorBoundarySpikeDetectorJob();
 
   // Atlas Background-Task Runner (Phase E) — 10s poller on the worker
   startAtlasBackgroundTaskRunner();
