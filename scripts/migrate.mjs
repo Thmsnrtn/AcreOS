@@ -5385,6 +5385,158 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_speculations_status_created_idx" ON "solene_speculations" ("status", "created_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_speculations_role_status_idx" ON "solene_speculations" ("created_by_agent_role", "status")`,
   `CREATE INDEX IF NOT EXISTS "solene_speculations_expires_idx" ON "solene_speculations" ("expires_at") WHERE "expires_at" IS NOT NULL`,
+
+  // ============================================================
+  // Solene — adversarial self-testing (Phase B L3.15)
+  // ============================================================
+  // solene_adversarial_tests — every completed dispatch can be paired with an
+  // adversary dispatch whose explicit job is to TRY TO BREAK the original's
+  // work. Distinct from L2.8 code-review (correctness check); adversarial
+  // testing probes edge cases / security / races / spec gaps / regressions.
+  //
+  // Five strategies shape the adversary's system prompt:
+  //   edge_case_hunter / security_red_team / race_condition_prober /
+  //   spec_misinterpretation / regression_predictor
+  //
+  // Lifecycle: pending → enqueued → running → found_issues | clean | inconclusive
+  //
+  // adversarial_dispatch_id back-references solene_dispatch_queue.id (set
+  // when enqueueAdversaryDispatch fires the sibling dispatch via the queue).
+  //
+  // Mirrors shared/schema/solene-adversarial-tests.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_adversarial_tests" (
+     "id" serial PRIMARY KEY,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "original_dispatch_id" integer NOT NULL,
+     "adversarial_dispatch_id" integer,
+     "original_agent_role" text NOT NULL,
+     "adversary_strategy" text NOT NULL,
+     "test_focus" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "findings" text,
+     "severity" text,
+     "reported_at" timestamp with time zone
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_adversarial_tests_original_idx" ON "solene_adversarial_tests" ("original_dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_adversarial_tests_status_idx" ON "solene_adversarial_tests" ("status", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_adversarial_tests_severity_idx" ON "solene_adversarial_tests" ("severity", "reported_at" DESC)`,
+
+  // ============================================================
+  // Solene — distributed reasoning sessions (Phase B L2.7)
+  // ============================================================
+  // A reasoning session coordinates N parallel sub-dispatches that each tackle
+  // a slice of a larger problem; contributions stream in, then a synthesizer
+  // consolidates them into a unified conclusion with a confidence score.
+  //
+  // Lifecycle: open → synthesizing → closed | abandoned.
+  // Four strategies: map_reduce | divide_and_conquer | adversarial_pair |
+  // parallel_perspectives.
+  //
+  // Mirrors shared/schema/solene-distributed-reasoning.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_reasoning_sessions" (
+     "id" serial PRIMARY KEY,
+     "opened_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "closed_at" timestamp with time zone,
+     "opened_by_agent_role" text NOT NULL,
+     "topic" text NOT NULL,
+     "problem_statement" text NOT NULL,
+     "decomposition_strategy" text NOT NULL,
+     "expected_sub_dispatch_count" integer NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "synthesis_output" text,
+     "final_conclusion" text,
+     "final_confidence" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_reasoning_sessions_status_opened_idx" ON "solene_reasoning_sessions" ("status", "opened_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_reasoning_sessions_opened_by_idx" ON "solene_reasoning_sessions" ("opened_by_agent_role")`,
+
+  `CREATE TABLE IF NOT EXISTS "solene_reasoning_contributions" (
+     "id" serial PRIMARY KEY,
+     "session_id" integer NOT NULL,
+     "contributing_dispatch_id" integer,
+     "contributor_agent_role" text NOT NULL,
+     "slice_description" text NOT NULL,
+     "contribution_text" text NOT NULL,
+     "contributed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "weight" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_reasoning_contributions_session_idx" ON "solene_reasoning_contributions" ("session_id", "contributed_at")`,
+
+  // ============================================================
+  // Solene — counterfactual reasoning on past decisions (Phase B L4.21)
+  // ============================================================
+  // solene_counterfactual_analyses — for each decision in
+  // solene_agent_identity_decisions, agents can record one or more
+  // "what if we'd chosen the OTHER option?" analyses. Each row attaches
+  // an alternative path, rationale for why it was plausible, predicted
+  // outcome, comparison to what actually happened, and (optionally) a
+  // lesson learned. Surfaces deeper insight than after-the-fact "we did
+  // X, it worked."
+  //
+  // Mirrors shared/schema/solene-counterfactuals.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_counterfactual_analyses" (
+     "id" serial PRIMARY KEY,
+     "analyzed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "source_decision_id" integer NOT NULL,
+     "analyzing_agent_role" text NOT NULL,
+     "alternative_path" text NOT NULL,
+     "alternative_rationale" text NOT NULL,
+     "predicted_outcome" text NOT NULL,
+     "comparison_to_actual" text NOT NULL,
+     "lesson_learned" text,
+     "confidence" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_counterfactuals_source_decision_idx" ON "solene_counterfactual_analyses" ("source_decision_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_counterfactuals_role_analyzed_idx" ON "solene_counterfactual_analyses" ("analyzing_agent_role", "analyzed_at" DESC)`,
+
+  // ============================================================
+  // Solene — capability discovery (Phase B L5.24)
+  // ============================================================
+  // solene_capability_proposals — agents introspect their own tools/APIs
+  // and propose new capabilities. A "capability proposal" is an agent
+  // saying "I noticed I do X often + there is no tool for it; here is
+  // what a tool for X would look like." Solene reviews + decides to
+  // build (accepted), defer, or reject. Once built, the proposal is
+  // linked to the implementing dispatch and marked 'implemented'.
+  //
+  // Lifecycle: proposed → accepted → implemented
+  //            proposed → deferred
+  //            proposed → rejected
+  //
+  // Mirrors shared/schema/solene-capability-proposals.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_capability_proposals" (
+     "id" serial PRIMARY KEY,
+     "proposed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "proposing_agent_role" text NOT NULL,
+     "proposed_capability_name" text NOT NULL,
+     "problem_statement" text NOT NULL,
+     "proposed_tool_signature" text NOT NULL,
+     "expected_value_usd" numeric(10,4),
+     "expected_invocations_per_week" integer,
+     "estimated_build_cost_usd" numeric(10,4),
+     "references_existing_tools" text[],
+     "status" text NOT NULL DEFAULT 'proposed',
+     "decided_at" timestamp with time zone,
+     "decided_by" text,
+     "decision_rationale" text,
+     "implementing_dispatch_id" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_capability_proposals_status_idx" ON "solene_capability_proposals" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "solene_capability_proposals_agent_decided_idx" ON "solene_capability_proposals" ("proposing_agent_role", "decided_at" DESC)`,
+
+  // solene_capability_introspections — per-agent snapshots of available
+  // tools + observed gap signals (e.g. "bash command ran 8 times in the
+  // last week with same template"). Drives the proposal pipeline.
+  //
+  // Mirrors shared/schema/solene-capability-proposals.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_capability_introspections" (
+     "id" serial PRIMARY KEY,
+     "introspected_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "agent_role" text NOT NULL,
+     "available_tools" jsonb NOT NULL,
+     "gap_signals" jsonb NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_capability_introspections_agent_idx" ON "solene_capability_introspections" ("agent_role", "introspected_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

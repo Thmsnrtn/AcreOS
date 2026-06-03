@@ -152,6 +152,10 @@ export const DISPATCH_SOURCE_TYPES = [
   // sibling self-debug dispatch back to the original agent. sourceId is
   // 'flagged:<originalId>:by:<reviewId>' for idempotency lookups.
   "self_debug",
+  // L3.15 — adversarial self-testing. When a dispatch completes successfully
+  // an adversary dispatch can be enqueued to try to break its work. sourceId
+  // is 'adversarial:<testId>:original:<originalId>'.
+  "adversarial_test",
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 
