@@ -5160,6 +5160,42 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_role_scored_idx" ON "solene_decision_score_events" ("agent_role", "scored_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_rec_scored_idx" ON "solene_decision_score_events" ("recommendation", "scored_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_dispatch_idx" ON "solene_decision_score_events" ("dispatch_id")`,
+
+  // ============================================================
+  // Solene — inter-agent direct communication (Phase B / L2.5)
+  // ============================================================
+  // agent_messages — one row per direct message between dispatched agents
+  // (Iris/Soren/Beatrice/Krieger/general-purpose). Lets Iris ask Beatrice
+  // for compliance review without round-tripping through Solene-as-router.
+  //
+  // Threading:
+  //   in_reply_to_message_id — FK back to agent_messages.id
+  //   correlation_id         — free-form thread key; auto-inherits from
+  //                            parent message in sendAgentMessage().
+  //
+  // Read tracking:
+  //   read_at        — markAsRead() sets when recipient sees it.
+  //   responded_at   — recordResponseSent() sets when a reply is posted.
+  //
+  // Mirrors shared/schema/solene-agent-messages.ts.
+  `CREATE TABLE IF NOT EXISTS "agent_messages" (
+     "id" serial PRIMARY KEY,
+     "sent_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "from_agent_role" text NOT NULL,
+     "to_agent_role" text NOT NULL,
+     "in_reply_to_message_id" integer,
+     "subject" text NOT NULL,
+     "body" text NOT NULL,
+     "priority" text NOT NULL DEFAULT 'normal',
+     "read_at" timestamp with time zone,
+     "responded_at" timestamp with time zone,
+     "dispatch_id_context" integer,
+     "correlation_id" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "agent_messages_to_role_sent_idx" ON "agent_messages" ("to_agent_role", "sent_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "agent_messages_to_role_read_idx" ON "agent_messages" ("to_agent_role", "read_at")`,
+  `CREATE INDEX IF NOT EXISTS "agent_messages_correlation_idx" ON "agent_messages" ("correlation_id")`,
+  `CREATE INDEX IF NOT EXISTS "agent_messages_in_reply_to_idx" ON "agent_messages" ("in_reply_to_message_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
