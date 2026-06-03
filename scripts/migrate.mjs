@@ -5011,6 +5011,36 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_agent_claims_dispatch_unique" ON "solene_agent_claims" ("dispatch_id")`,
 
   // ============================================================
+  // Solene — L6.32 real-time founder collaboration
+  // ============================================================
+  // solene_founder_asks — each row is "agent X asked Tom question Y on date
+  // D, awaiting an answer, with a timeout T." The pager service is the
+  // delivery mechanism; this table is the question-answer state machine
+  // dispatched agents poll against.
+  //
+  // Mirrors shared/schema/solene-founder-collab.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_founder_asks" (
+     "id" serial PRIMARY KEY,
+     "asked_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "asking_agent_role" text NOT NULL,
+     "asking_dispatch_id" integer,
+     "question_summary" text NOT NULL,
+     "question_body" text NOT NULL,
+     "options" jsonb,
+     "answer_format" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "answered_at" timestamp with time zone,
+     "answer_text" text,
+     "answer_chosen_option_id" text,
+     "pager_event_id" integer,
+     "timeout_at" timestamp with time zone,
+     "urgency" text NOT NULL DEFAULT 'normal'
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_founder_asks_status_asked_idx" ON "solene_founder_asks" ("status", "asked_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_founder_asks_agent_asked_idx" ON "solene_founder_asks" ("asking_agent_role", "asked_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_founder_asks_timeout_idx" ON "solene_founder_asks" ("timeout_at") WHERE "status" = 'open'`,
+
+  // ============================================================
   // Solene — confidence-calibrated outputs (L3.11)
   // ============================================================
   // solene_confidence_observations — one row per parsed final-text that
