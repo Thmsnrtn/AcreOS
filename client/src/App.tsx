@@ -281,6 +281,7 @@ const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/reco
 // FounderTitlePartnersPage archived 2026-06-01 — no sidebar entry.
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
+const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
 const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-calibration"));
@@ -1142,6 +1143,9 @@ function Router() {
       </Route>
       <Route path="/founder/agent-queue">
         {() => <FounderProtectedRoute component={FounderAgentQueuePage} />}
+      </Route>
+      <Route path="/founder/dispatches">
+        {() => <FounderProtectedRoute component={FounderDispatchesPage} />}
       </Route>
       <Route path="/founder/feed">
         {() => <FounderProtectedRoute component={FounderFeedPage} />}
