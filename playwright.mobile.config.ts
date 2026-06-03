@@ -29,12 +29,24 @@ export default defineConfig({
     screenshot: "on",
     video: "retain-on-failure",
   },
-  // The two real device classes founders use: iOS Safari (WebKit) and
-  // Android Chrome. A 320px "tiny-phone" project was dropped to cut runtime
-  // and flake under CI load — re-add once runner capacity is reliable.
+  // The real device classes founders + customers use. iOS Safari (WebKit)
+  // dominates on Tom's audience; Android Chrome is the second-largest. The
+  // SE / Pro Max / iPad-mini additions are Krieger's mobile-feel matrix —
+  // touch-target + active-companion + dvh contracts must hold across the
+  // full iPhone form-factor range and the smallest tablet, not just the
+  // single iPhone-14 baseline. See docs/design/krieger-mobile-feel-contracts.md.
   projects: [
     { name: "iphone-14", use: { ...devices["iPhone 14"] } },
     { name: "pixel-5", use: { ...devices["Pixel 5"] } },
+    // iPhone SE (3rd gen) — 375x667. The narrowest current-spec iPhone;
+    // catches buttons that wrap-and-collide at the smallest viewport.
+    { name: "iphone-se", use: { ...devices["iPhone SE"] } },
+    // iPhone 14 Pro Max — 430x932. The widest iPhone in production; catches
+    // surfaces that assume <= 414px width and stretch awkwardly.
+    { name: "iphone-14-pro-max", use: { ...devices["iPhone 14 Pro Max"] } },
+    // iPad mini — 768x1024. The boundary between phone-stack and
+    // desktop-grid; catches layouts that pick the wrong responsive arm.
+    { name: "ipad-mini", use: { ...devices["iPad Mini"] } },
   ],
   webServer: {
     command: "npm run start",
