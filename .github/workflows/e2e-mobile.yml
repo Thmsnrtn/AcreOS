@@ -73,8 +73,16 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Run mobile E2E
+      - name: Run mobile E2E (nav smoke + Pax founder gate)
         run: npm run test:e2e:mobile
+
+      # Krieger mobile-feel contract gates — touch-target ≥ 44px, hover:
+      # companion-active, 100dvh-over-100vh, first-paint < 3s. Runs the
+      # dedicated spec across the full device matrix (iphone-14, pixel-5,
+      # iphone-se, iphone-14-pro-max, ipad-mini). Separate step so an
+      # unrelated nav-smoke failure doesn't mask a contract violation.
+      - name: Run Krieger mobile-feel contracts
+        run: npx playwright test --config=playwright.mobile.config.ts tests/e2e-mobile/mobile-feel-contracts.spec.ts
 
       - name: Upload report + screenshots
         if: always()
