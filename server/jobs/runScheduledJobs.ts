@@ -2188,6 +2188,73 @@ function startSoleneAuditJob() {
   }, FIVE_MINUTES);
 }
 
+/**
+ * Solene (COO) — team-state map regenerator.
+ *
+ * Runs scripts/regenerate-team-state.mjs every 15 minutes so the auto-
+ * generated section of docs/internal/solene-team-state.md stays fresh.
+ * Solene loads that file on session start (per the session-start protocol
+ * in team_solene.md) — a stale map is worse than an empty one because it
+ * encourages dispatch collisions.
+ *
+ * The script itself is a thin node binary (no DB writes); we shell out to
+ * keep the cron path identical to the manual `node scripts/...` invocation
+ * so debug parity is trivial. withJobLock keeps multi-process worker + app
+ * from double-firing.
+ */
+async function processSoleneTeamStateRegenerator(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+  const scriptPath = path.resolve(process.cwd(), "scripts/regenerate-team-state.mjs");
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        // Inside the prod container we never want the regenerator to
+        // hit the public health endpoint from itself — same-host curl
+        // can loop and consume request slots. Skip it; the daily-pulse
+        // workflow already publishes health independently.
+        SOLENE_TEAM_STATE_SKIP_HEALTHCHECK: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (err) => rejectPromise(err));
+    child.on("exit", (code) => {
+      if (code === 0) return resolvePromise();
+      rejectPromise(
+        new Error(`regenerate-team-state exit ${code}: ${stderr.slice(0, 500)}`),
+      );
+    });
+  });
+}
+
+function startSoleneTeamStateRegeneratorJob() {
+  const FIFTEEN_MINUTES = 15 * 60 * 1000;
+  const TTL_SECONDS = 14 * 60; // slightly less than interval
+  log(
+    'Registering Solene team-state regenerator (every 15 minutes)',
+    'solene-team-state',
+  );
+
+  // Initial run 90s after startup so the file is fresh even on first boot.
+  setTimeout(() => {
+    withJobLock('solene_team_state_regenerator', TTL_SECONDS, processSoleneTeamStateRegenerator).catch((err) => {
+      log(`[solene-team-state] initial run failed: ${err}`, 'solene-team-state');
+    });
+  }, 90 * 1000);
+
+  trackInterval(() => {
+    withJobLock('solene_team_state_regenerator', TTL_SECONDS, processSoleneTeamStateRegenerator).catch((err) => {
+      log(`[solene-team-state] run failed: ${err}`, 'solene-team-state');
+    });
+  }, FIFTEEN_MINUTES);
+}
+
 // ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
 // Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
 // rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
@@ -2356,6 +2423,12 @@ export async function runScheduledJobs(): Promise<void> {
   // discipline detectors. Findings persist to solene_audit_findings;
   // drift signals fire via logger.error + Sentry tag solene_audit_drift.
   startSoleneAuditJob();
+
+  // Solene — team-state map regenerator (every 15m). Refreshes the
+  // auto-generated section of docs/internal/solene-team-state.md so the
+  // file Solene loads on session start reflects the current working tree +
+  // in-flight agent identities + production state.
+  startSoleneTeamStateRegeneratorJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both
