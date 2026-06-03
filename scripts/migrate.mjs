@@ -4733,6 +4733,26 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "solene_page_events_fired_idx" ON "solene_page_events" ("fired_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_page_events_severity_idx" ON "solene_page_events" ("severity", "fired_at")`,
+
+  // ── Iris (CTO) — continuous p95 baseline samples ──────────────────────
+  // One row per (endpoint × cron window). Feeds the regression detector
+  // (server/services/iris/perfMonitor.ts:detectRegression). Mirrors
+  // shared/schema/iris-perf.ts. Wired to the cron in
+  // server/jobs/runScheduledJobs.ts → startIrisPerfMonitorJob.
+  `CREATE TABLE IF NOT EXISTS "iris_perf_samples" (
+     "id" serial PRIMARY KEY,
+     "endpoint_path" text NOT NULL,
+     "method" text NOT NULL,
+     "p50_ms" numeric(10,2) NOT NULL,
+     "p95_ms" numeric(10,2) NOT NULL,
+     "p99_ms" numeric(10,2) NOT NULL,
+     "sample_count" integer NOT NULL,
+     "window_started_at" timestamp with time zone NOT NULL,
+     "window_ended_at" timestamp with time zone NOT NULL,
+     "inserted_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "iris_perf_samples_path_window_idx" ON "iris_perf_samples" ("endpoint_path", "window_started_at")`,
+  `CREATE INDEX IF NOT EXISTS "iris_perf_samples_window_idx" ON "iris_perf_samples" ("window_started_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

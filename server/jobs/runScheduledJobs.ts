@@ -2337,6 +2337,56 @@ function startOfacSdnRefreshJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Iris (CTO) — continuous p95 baseline sampler (every 30m) ────────────────
+// Drains the response-time ring buffer (server/middleware/responseTimeRing.ts)
+// per IRIS_TRACKED_ENDPOINTS, persists per-window p50/p95/p99 rows to
+// iris_perf_samples, then runs the regression detector and logs any findings.
+// Findings are detection-only — no Sentry hook yet, just structured warn logs.
+function startIrisPerfMonitorJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60; // slightly less than interval
+  log(
+    'Registering Iris perf monitor (every 30 minutes — sample + regression detect)',
+    'iris-perf',
+  );
+
+  // Run 60s after startup so the ring has a chance to accumulate
+  // observations before the first drain.
+  setTimeout(() => {
+    void withJobLock('iris_perf_monitor', TTL_SECONDS, async () => {
+      const { samplePerformance, detectRegression } = await import(
+        '../services/iris/perfMonitor'
+      );
+      const sample = await samplePerformance();
+      const regression = await detectRegression();
+      log(
+        `[iris-perf] sampled windows=${sample.windowsPersisted} obs=${sample.totalObservations} regressions=${regression.regressions.length}`,
+        'iris-perf',
+      );
+    }).catch((err) => {
+      log(`[iris-perf] initial run failed: ${err}`, 'iris-perf');
+    });
+  }, 60 * 1000);
+
+  trackInterval(() => {
+    void withJobLock('iris_perf_monitor', TTL_SECONDS, async () => {
+      const { samplePerformance, detectRegression } = await import(
+        '../services/iris/perfMonitor'
+      );
+      const sample = await samplePerformance();
+      const regression = await detectRegression();
+      if (sample.windowsPersisted > 0 || regression.regressions.length > 0) {
+        log(
+          `[iris-perf] sampled windows=${sample.windowsPersisted} obs=${sample.totalObservations} regressions=${regression.regressions.length}`,
+          'iris-perf',
+        );
+      }
+    }).catch((err) => {
+      log(`[iris-perf] scheduled run failed: ${err}`, 'iris-perf');
+    });
+  }, THIRTY_MINUTES);
+}
+
 // ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
@@ -2479,6 +2529,13 @@ export async function runScheduledJobs(): Promise<void> {
   // discipline detectors. Findings persist to solene_audit_findings;
   // drift signals fire via logger.error + Sentry tag solene_audit_drift.
   startSoleneAuditJob();
+
+  // Iris — continuous p95 baseline (every 30 minutes). Drains the
+  // response-time ring buffer for IRIS_TRACKED_ENDPOINTS, persists p50/
+  // p95/p99 summaries to iris_perf_samples, and runs the regression
+  // detector against the rolling 7d baseline. Detection-only — findings
+  // log at warn level for now.
+  startIrisPerfMonitorJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the

@@ -13,6 +13,7 @@ import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./util
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { metricsMiddleware, metricsHandler } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
+import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
@@ -186,6 +187,9 @@ app.use(
 app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
 app.use(metricsMiddleware); // Prometheus request metrics collection
+// Iris perf ring — captures p50/p95/p99 for IRIS_TRACKED_ENDPOINTS only.
+// O(1) bailout for untracked routes; ~50µs overhead on tracked ones.
+app.use(responseTimeRingMiddleware);
 app.use(corsMiddleware);
 app.use(requestTimeout);
 app.use(sanitizeQueryParams);
