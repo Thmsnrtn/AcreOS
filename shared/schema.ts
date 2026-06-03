@@ -16113,3 +16113,8 @@ export * from "./schema/team-system-audit";
 // SOLENE — customer-surface ErrorBoundary trip ledger
 // ============================================================================
 export * from "./schema/error-boundary-trips";
+
+// ============================================================================
+// SOLENE — real agent-dispatch queue + result ledger (Layer 1 capability #1)
+// ============================================================================
+export * from "./schema/solene-dispatch";
