@@ -1,0 +1,129 @@
+name: Customer Surface Monitor
+
+# SOLENE — synthetic customer-surface user-journey monitor.
+#
+# Walks the critical-path customer journeys (founder daily loop, customer
+# onboarding form load, pax interaction) every 6 hours against the
+# E2E-test-auth build. Detection-only: failures upload screenshots as
+# artifacts AND fire Solene's proactive page channel (severity=urgent) so
+# Tom hears about a customer-surface regression between sessions BEFORE he
+# trips it himself.
+#
+# Why 6h: balances catch-latency (4 ticks/day = max ~6h to first detection)
+# against runner spend. CI also runs the same spec on every push + PR via
+# .github/workflows/e2e-mobile.yml — this workflow is the production-drift
+# floor, not the only line of defense.
+#
+# Secrets required:
+#   SOLENE_PAGE_SECRET — shared secret for POST /api/internal/solene/page
+
+on:
+  schedule:
+    # 6h cadence — every six hours, on the 23rd minute (off-the-minute on
+    # purpose to dodge GHA's top-of-the-hour scheduling queue contention).
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+  # Also runs on push + PR so a journey regression caught at CI time blocks
+  # the merge rather than waiting for the next scheduled tick.
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  customer-surface-monitor:
+    name: Walk customer-surface journeys
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_e2e
+      E2E_TEST_AUTH: "1"
+      CLERK_SECRET_KEY: sk_test_e2e_dummy
+      VITE_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      FIELD_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      SESSION_SECRET: e2e-session-secret-at-least-32-characters-long
+      APP_URL: http://localhost:5000
+      PORT: "5000"
+      CI: "true"
+      SENTRY_SOURCEMAPS: skip
+      INBOUND_EMAIL_SNS_ONLY: "1"
+      FOUNDER_EMAIL: e2e@acreos.test
+      FOUNDER_EMAILS: e2e@acreos.test
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Build app
+        run: npm run build
+
+      - name: Walk customer-surface journeys
+        id: journeys
+        run: |
+          npx playwright test \
+            --config=playwright.mobile.config.ts \
+            tests/e2e-mobile/customer-surface-journeys.spec.ts
+
+      - name: Upload journey screenshots + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-surface-monitor-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+      # Page Solene → Tom on failure (severity=urgent). Production-drift
+      # cron failures are paged ALWAYS; PR/push failures only when running
+      # on the main branch (PRs already block the merge via the workflow
+      # status; a page on every PR fail would be discipline noise).
+      - name: Page Solene on failure
+        if: failure() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+        env:
+          SOLENE_PAGE_SECRET: ${{ secrets.SOLENE_PAGE_SECRET }}
+        run: |
+          if [ -z "${SOLENE_PAGE_SECRET:-}" ]; then
+            echo "SOLENE_PAGE_SECRET not set — cannot page Solene. Set it in repo secrets."
+            exit 0
+          fi
+          curl -sS --max-time 8 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Solene-Page-Secret: ${SOLENE_PAGE_SECRET}" \
+            "https://acreos.io/api/internal/solene/page" \
+            -d "$(cat <<EOF
+          {
+            "severity": "urgent",
+            "subject": "customer-surface monitor FAILED",
+            "body": "Synthetic user-journey monitor red on ${{ github.ref_name }} @ ${{ github.sha }} (trigger=${{ github.event_name }}). Screenshots in workflow artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )" || echo "page POST failed (non-fatal)"
