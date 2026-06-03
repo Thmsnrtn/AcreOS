@@ -219,6 +219,7 @@ import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
 import { registerSorenSeoRoutes } from "./routes-soren-seo";
+import { registerTeamImprovementRoutes } from "./routes-team-improvement";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
@@ -2177,6 +2178,9 @@ export async function registerRoutes(
   registerIrisPerfRoutes(app);
   // Soren (CGO) /learn SEO rank tracker — GET /api/founder/soren-seo/recent.
   registerSorenSeoRoutes(app);
+  // Team-improvement detector — GET /api/founder/team-improvement/recent + /pending.
+  // Event-driven primary driver per feedback_continuous_improvement_cadence.md.
+  registerTeamImprovementRoutes(app);
   // Panel-300 founder compliance + ops dashboards backend.
   registerFounderComplianceRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.
