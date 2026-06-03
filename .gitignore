@@ -12,6 +12,9 @@ dist
 # Local backups
 .acreos-backups/
 
+# L1.5 interactive-agent filesystem locks (per-session, never committed)
+.solene-locks/
+
 # Local logs / snapshots
 logs/
 logs/snapshots/

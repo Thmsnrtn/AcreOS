@@ -109,7 +109,7 @@ All code landed cleanly to disk. All tests pass. Only commit-message-to-
 content mapping is scrambled. Cosmetic; no rewrite-history performed
 (amends/reverts would risk losing work for a non-functional issue).
 
-## Structural gap surfaced by these manifestations
+## Structural gap surfaced by these manifestations [RESOLVED 2026-06-03]
 
 **K2 agent_claims (`shared/schema/solene-agent-claims.ts` + the
 pre-commit hook in `.githooks/pre-commit`) only protects the
@@ -143,3 +143,58 @@ interactive path. Options:
 This is a candidate L1.5 capability to add to
 `feedback_agentic_evolution_north_star.md`. Tracked separately from
 the 32 capabilities currently enumerated.
+
+## Resolved (L1.5 shipped 2026-06-03)
+
+The filesystem-lock primitive landed in the wave-1 expansion:
+
+- `scripts/check-interactive-claims.mjs` — pre-commit guard. Walks
+  staged files, matches them against active `.solene-locks/*.json`,
+  blocks on cross-agent overlap. Self-agent overlap allowed via
+  `SOLENE_AGENT_ID` env var. Expired locks (now > claimedAt +
+  ttlMinutes) are ignored automatically.
+- `scripts/solene-lock.mjs` — CLI for claim / release / list / sweep.
+- `.githooks/pre-commit` step 4 — invokes the new guard in addition to
+  K2 (step 3). Both fire; both must pass.
+- `.solene-locks/` — gitignored lock directory in repo root.
+- Bypass env: `SOLENE_BYPASS_INTERACTIVE_CLAIMS=1` (mirrors K2).
+
+### How to use it (per-dispatch)
+
+When Solene dispatches a sibling agent from a Claude Code session, the
+agent (or Solene on its behalf) runs:
+
+```sh
+node scripts/solene-lock.mjs claim \
+  --agent-id "iris-2026-06-03-perfbudgets" \
+  --role iris \
+  --patterns "server/services/iris/perfBudgets.ts,server/services/iris/perfBudgets.test.ts" \
+  --ttl-min 30 \
+  --note "Iris perf-budgets feature"
+```
+
+The agent then exports `SOLENE_AGENT_ID=iris-2026-06-03-perfbudgets` for
+its session so its own commits aren't blocked.
+
+When the work commits cleanly:
+
+```sh
+node scripts/solene-lock.mjs release --agent-id "iris-2026-06-03-perfbudgets"
+```
+
+Solene can audit at any time:
+
+```sh
+node scripts/solene-lock.mjs list
+node scripts/solene-lock.mjs sweep   # drop expired locks
+```
+
+### Why filesystem (and not DB)
+
+K2 `solene_agent_claims` already exists and works for the autonomous
+dispatch path — but it requires a live Postgres. The interactive
+Agent-tool path runs in the local sandbox where the dev DB is often
+down. The filesystem-lock primitive has identical semantics
+(agentId / patterns / ttl / role / note) and zero infrastructure
+dependencies, so it works in any environment. The two checks fire
+side-by-side in the pre-commit hook — belt-and-suspenders.

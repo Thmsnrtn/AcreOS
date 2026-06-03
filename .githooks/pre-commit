@@ -142,4 +142,37 @@ else
   fi
 fi
 
+# ── 4. L1.5 — Interactive-agent claim coordination (filesystem-lock) ────────
+#
+# Belt-and-suspenders sibling to step 3. The K2 DB-backed check above
+# protects the autonomous-worker dispatch path. This check protects the
+# INTERACTIVE Agent-tool dispatch path: parallel sub-sessions of the same
+# Claude Code conversation that share a working tree but have no live DB.
+#
+# Locks live in .solene-locks/<agent-id>.json (gitignored). The CLI helper
+# `scripts/solene-lock.mjs` manages them (claim / release / list / sweep).
+# An agent identifies itself via env SOLENE_AGENT_ID — files matching its
+# own lock are allowed; files matching ANOTHER agent's lock block the commit.
+#
+# Bypass: SOLENE_BYPASS_INTERACTIVE_CLAIMS=1 git commit ...
+
+if [ "${SOLENE_BYPASS_INTERACTIVE_CLAIMS:-0}" = "1" ]; then
+  echo "  Interactive-agent claim check: BYPASSED via SOLENE_BYPASS_INTERACTIVE_CLAIMS=1."
+else
+  STAGED_FILES_FOR_INTERACTIVE=$(git diff --cached --name-only --diff-filter=ACMR)
+  if [ -n "$STAGED_FILES_FOR_INTERACTIVE" ]; then
+    echo "  Checking interactive-agent locks (L1.5)..."
+    if command -v node >/dev/null 2>&1; then
+      echo "$STAGED_FILES_FOR_INTERACTIVE" | node scripts/check-interactive-claims.mjs
+      INTERACTIVE_CHECK_EXIT=$?
+    else
+      echo "  node not on PATH — skipping interactive-claim check (fail-open)."
+      INTERACTIVE_CHECK_EXIT=0
+    fi
+    if [ "$INTERACTIVE_CHECK_EXIT" -ne 0 ]; then
+      exit 1
+    fi
+  fi
+fi
+
 echo "  Pre-commit checks passed."
