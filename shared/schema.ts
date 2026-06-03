@@ -16103,3 +16103,8 @@ export * from "./schema/solene-capital";
 // SOLENE — proactive page-event ledger (urgent / critical pages to Tom)
 // ============================================================================
 export * from "./schema/solene-page";
+
+// ============================================================================
+// SOLENE — team-system audit (overarching team-as-a-system elite-bar audit)
+// ============================================================================
+export * from "./schema/team-system-audit";

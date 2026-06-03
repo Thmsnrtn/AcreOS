@@ -4771,6 +4771,31 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_page_checked_idx" ON "soren_seo_rankings" ("page_path", "checked_at")`,
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_keyword_checked_idx" ON "soren_seo_rankings" ("target_keyword", "checked_at")`,
 
+  // ── Beatrice (CRO) — regulatory-news feed ─────────────────────────────
+  // Daily RSS pull from CFPB / FTC / state AGs, keyword-filtered to
+  // AcreOS-relevant items. Dedup on (source, source_url). The
+  // beatrice_reviewed flag is flipped manually during Beatrice's 72h
+  // triage (per docs/legal/beatrice-regwatch-discipline.md). Mirrors
+  // shared/schema/beatrice-regwatch.ts. Wired to the cron in
+  // server/jobs/runScheduledJobs.ts → startBeatriceRegWatchJob.
+  `CREATE TABLE IF NOT EXISTS "beatrice_reg_events" (
+     "id" serial PRIMARY KEY,
+     "source" text NOT NULL,
+     "source_url" text NOT NULL,
+     "title" text NOT NULL,
+     "summary" text NOT NULL,
+     "published_at" timestamp with time zone NOT NULL,
+     "fetched_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "severity_keyword_match" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "beatrice_reviewed" boolean NOT NULL DEFAULT false,
+     "reviewed_at" timestamp with time zone,
+     "review_notes" text
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "beatrice_reg_events_source_url_uk" ON "beatrice_reg_events" ("source", "source_url")`,
+  `CREATE INDEX IF NOT EXISTS "beatrice_reg_events_published_idx" ON "beatrice_reg_events" ("published_at")`,
+  `CREATE INDEX IF NOT EXISTS "beatrice_reg_events_reviewed_idx" ON "beatrice_reg_events" ("beatrice_reviewed", "published_at")`,
+  `CREATE INDEX IF NOT EXISTS "beatrice_reg_events_source_idx" ON "beatrice_reg_events" ("source", "published_at")`,
+
   // ── Team-improvement opportunity ledger ────────────────────────────────
   // Persists every gap surfaced by the event-driven detector layer
   // (server/services/improvement). The 7 signal patterns:
@@ -4804,6 +4829,39 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_severity_idx" ON "team_improvement_opportunities" ("severity", "detected_at")`,
   `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_dispatched_idx" ON "team_improvement_opportunities" ("auto_dispatched", "detected_at")`,
   `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_resolved_idx" ON "team_improvement_opportunities" ("resolved_at")`,
+
+  // ── Solene v3 — TEAM-SYSTEM audit ledger ───────────────────────────────
+  // Distinct from per-member audits (Pax, Iris perf, Solene self). Captures
+  // the overarching elite-bar of the team-as-a-system across six dimensions:
+  //   cross_team_handoff | coordination_quality | anti_fragmentation |
+  //   outside_in_benchmark | team_synergy | elite_bar_trajectory
+  // Continuous scanners fire every 60 min via runScheduledJobs.ts →
+  // startTeamSystemAuditJob; the outside-in benchmark fires weekly (Sun 04:00
+  // UTC). Mirrors shared/schema/team-system-audit.ts.
+  `CREATE TABLE IF NOT EXISTS "team_system_audit_runs" (
+     "id" serial PRIMARY KEY,
+     "run_started_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "run_ended_at" timestamp with time zone,
+     "dimensions_scanned" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "finding_count" integer NOT NULL DEFAULT 0,
+     "drift_signal_emitted" boolean NOT NULL DEFAULT false,
+     "skip_reason" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "team_system_audit_runs_started_idx" ON "team_system_audit_runs" ("run_started_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "team_system_audit_findings" (
+     "id" serial PRIMARY KEY,
+     "run_id" integer NOT NULL REFERENCES "team_system_audit_runs"("id") ON DELETE CASCADE,
+     "dimension" text NOT NULL,
+     "severity" text NOT NULL,
+     "description" text NOT NULL,
+     "evidence" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "fired_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "team_system_audit_findings_unique" ON "team_system_audit_findings" ("run_id", "dimension", "description")`,
+  `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_run_idx" ON "team_system_audit_findings" ("run_id")`,
+  `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_dim_idx" ON "team_system_audit_findings" ("dimension", "fired_at")`,
+  `CREATE INDEX IF NOT EXISTS "team_system_audit_findings_severity_idx" ON "team_system_audit_findings" ("severity", "fired_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
