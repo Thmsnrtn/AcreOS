@@ -29,6 +29,7 @@ import type {
 } from "@shared/schema/solene-dispatch";
 import { DISPATCH_MAX_TURNS } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { listActiveClaims } from "./agentClaims";
 import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
@@ -56,6 +57,19 @@ const MEMORY_DIR =
     process.env.HOME ?? "/",
     ".claude/projects/-Users-user-AcreOS-AcreOS/memory",
   );
+
+// Auto-regenerated team-state map (every 15 minutes by
+// scripts/regenerate-team-state.mjs). Injected into the system prompt so
+// every dispatched agent knows who else is in flight, what's queued, and
+// what working-tree surfaces other agents are currently mutating.
+const TEAM_STATE_PATH =
+  process.env.SOLENE_DISPATCH_TEAM_STATE_PATH ??
+  path.resolve(process.cwd(), "docs/internal/solene-team-state.md");
+
+// Cap the team-state preamble at 8 KB. The file is normally well under
+// this; this protects against runaway regeneration putting the whole
+// dispatch transcript over the model's context budget.
+const TEAM_STATE_MAX_BYTES = 8 * 1024;
 
 // Per-1M-token pricing for Opus 4.7. Reads from env to allow Beatrice's
 // regwatch to update without a code deploy when Anthropic adjusts pricing.
@@ -97,17 +111,121 @@ async function loadAgentBrief(
 }
 
 // ----------------------------------------------------------------------------
+// Ensemble-awareness preamble loaders (Layer 1 capability #3 — keystone 3)
+//
+// `buildSystemPrompt` injects two blocks at the very top of every dispatched
+// agent's system prompt:
+//
+//   1. The auto-regenerated team-state map (the <!-- AUTO --> section of
+//      docs/internal/solene-team-state.md).
+//   2. The active-claims DO-NOT-TOUCH list (from agentClaims.listActiveClaims),
+//      excluding the current dispatch's own claim row.
+//
+// Both loaders fail soft — a missing file, a missing marker pair, or a DB
+// hiccup produces a short fallback string + a warn log, never a thrown
+// exception. The autonomous-dispatch path must keep running even if the
+// ensemble context is unavailable.
+// ----------------------------------------------------------------------------
+
+const TEAM_STATE_AUTO_OPEN = "<!-- AUTO -->";
+const TEAM_STATE_AUTO_CLOSE = "<!-- /AUTO -->";
+const TEAM_STATE_FALLBACK =
+  "(team-state map unavailable — proceeding with no team context preamble)";
+const ACTIVE_CLAIMS_EMPTY =
+  "_No other agents currently in flight. Working tree is yours to claim._";
+
+export async function loadTeamStatePreamble(): Promise<string> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(TEAM_STATE_PATH, "utf8");
+  } catch (err) {
+    logger.warn(
+      `[dispatchRunner] team-state map unreadable at ${TEAM_STATE_PATH}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return TEAM_STATE_FALLBACK;
+  }
+
+  const openIdx = raw.indexOf(TEAM_STATE_AUTO_OPEN);
+  const closeIdx = raw.indexOf(TEAM_STATE_AUTO_CLOSE);
+  if (openIdx === -1 || closeIdx === -1 || closeIdx <= openIdx) {
+    logger.warn(
+      `[dispatchRunner] team-state map missing AUTO markers at ${TEAM_STATE_PATH}`,
+    );
+    return TEAM_STATE_FALLBACK;
+  }
+  let block = raw.slice(openIdx + TEAM_STATE_AUTO_OPEN.length, closeIdx).trim();
+
+  // Cap at 8 KB so a runaway regenerator never blows the prompt budget.
+  if (Buffer.byteLength(block, "utf8") > TEAM_STATE_MAX_BYTES) {
+    // Slice by bytes via Buffer to avoid splitting a multi-byte char.
+    const buf = Buffer.from(block, "utf8");
+    block = buf.slice(0, TEAM_STATE_MAX_BYTES).toString("utf8") + "\n… [truncated]";
+  }
+  return block;
+}
+
+export async function loadActiveClaimsBlock(
+  currentDispatchId: number,
+): Promise<string> {
+  let claims: Awaited<ReturnType<typeof listActiveClaims>>;
+  try {
+    claims = await listActiveClaims();
+  } catch (err) {
+    logger.warn(
+      `[dispatchRunner] listActiveClaims failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return ACTIVE_CLAIMS_EMPTY;
+  }
+
+  // Exclude the row that belongs to the about-to-run dispatch — telling an
+  // agent to avoid its own authorized surfaces would be incoherent.
+  const others = claims.filter(
+    (c) => c.dispatchId !== currentDispatchId,
+  );
+  if (others.length === 0) return ACTIVE_CLAIMS_EMPTY;
+
+  const now = Date.now();
+  const lines: string[] = [];
+  for (const c of others) {
+    const ageSec = Math.max(0, Math.round((now - c.claimedAt.getTime()) / 1000));
+    const patterns = (c.fileSurfacePatterns ?? []).join(", ");
+    const dispatchPart =
+      c.dispatchId !== null && c.dispatchId !== undefined
+        ? `dispatch #${c.dispatchId}`
+        : "ad-hoc dispatch";
+    lines.push(
+      `- **${c.agentRole}** (${dispatchPart}, claimed ${ageSec}s ago, ttl ${c.ttlMinutes}min): ${patterns}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+// ----------------------------------------------------------------------------
 // System prompt composition
 // ----------------------------------------------------------------------------
 
-function buildSystemPrompt(
+export async function buildSystemPrompt(
   brief: string,
   role: SoleneDispatchAgentRole,
   dispatchId: number,
   maxCostUsd: number,
   timeoutMs: number,
-): string {
+): Promise<string> {
+  // Resolve preambles in parallel — both are I/O bound and independent.
+  const [teamStatePreamble, activeClaimsBlock] = await Promise.all([
+    loadTeamStatePreamble(),
+    loadActiveClaimsBlock(dispatchId),
+  ]);
+
   return [
+    "# Team-state preamble (auto-generated, 15-min refresh)",
+    "",
+    teamStatePreamble,
+    "",
+    "# Active agent claims — DO NOT TOUCH files matching these patterns",
+    "",
+    activeClaimsBlock,
+    "",
     "# Solene autonomous-dispatch mode",
     "",
     `You are operating as ${role} in Solene's autonomous-dispatch mode — the worker`,
@@ -240,17 +358,41 @@ export async function runDispatch(
   const { brief, source: briefSource } = await loadAgentBrief(
     row.agentRole as SoleneDispatchAgentRole,
   );
-  const systemPrompt = buildSystemPrompt(
+  const systemPrompt = await buildSystemPrompt(
     brief,
     row.agentRole as SoleneDispatchAgentRole,
     dispatchId,
     maxCostUsd,
     timeoutMs,
   );
+  // Compute injected ensemble-context sizes for post-hoc transcript analysis.
+  // These are derived from the assembled prompt, not by re-running the
+  // loaders, so the numbers match exactly what the model saw.
+  const teamStatePreambleBytes = (() => {
+    const open = systemPrompt.indexOf("# Team-state preamble");
+    const closeMarker = "# Active agent claims";
+    const close = systemPrompt.indexOf(closeMarker);
+    if (open === -1 || close === -1 || close <= open) return 0;
+    return Buffer.byteLength(systemPrompt.slice(open, close), "utf8");
+  })();
+  const activeClaimsCount = (() => {
+    const blockOpen = systemPrompt.indexOf(
+      "# Active agent claims — DO NOT TOUCH files matching these patterns",
+    );
+    const blockClose = systemPrompt.indexOf(
+      "# Solene autonomous-dispatch mode",
+    );
+    if (blockOpen === -1 || blockClose === -1) return 0;
+    const block = systemPrompt.slice(blockOpen, blockClose);
+    // Count rendered claim rows — lines starting with "- **".
+    return block.split("\n").filter((l) => l.startsWith("- **")).length;
+  })();
   await appendTranscript(transcriptPath, {
     event: "brief_loaded",
     source: briefSource,
     briefBytes: Buffer.byteLength(brief, "utf8"),
+    teamStatePreambleBytes,
+    activeClaimsCount,
   });
 
   // ── conversation state ─────────────────────────────────────────────────
