@@ -156,6 +156,12 @@ export const DISPATCH_SOURCE_TYPES = [
   // an adversary dispatch can be enqueued to try to break its work. sourceId
   // is 'adversarial:<testId>:original:<originalId>'.
   "adversarial_test",
+  // L6.31 — founder-mode bypass. Tom directly invokes an agent role with
+  // full authority via the founderDispatch service. sourceId is
+  // 'founder:<timestamp>'. Always priority 3.0 by default; jumps the queue
+  // ahead of auto-dispatched work. founderOverride=true is set when the
+  // requested maxCostUsd exceeds the normal $100 ceiling.
+  "founder_bypass",
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 
