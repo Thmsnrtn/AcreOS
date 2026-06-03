@@ -5037,6 +5037,36 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_confidence_obs_kind_observed_idx" ON "solene_confidence_observations" ("confidence_kind", "observed_at")`,
 
   // ============================================================
+  // Solene — reasoning over evidence weights (Phase B L6.30)
+  // ============================================================
+  // solene_evidence_assessments — when agents face conflicting sources on
+  // the same topic (regulatory text vs. UpCounsel commentary vs. internal
+  // compliance note), the assessEvidence() service scores each item via
+  // base_by_kind × authority_factor × recency_factor (normalized), picks
+  // a winner only when the top weight beats the next by >0.15, and
+  // computes a confidence = 1 - normalized_entropy(weights). One row per
+  // assessment with the full evidence array + weight map + rationale +
+  // chosen source.
+  //
+  // Mirrors shared/schema/solene-evidence-weights.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_evidence_assessments" (
+     "id" serial PRIMARY KEY,
+     "assessed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "agent_role" text NOT NULL,
+     "topic" text NOT NULL,
+     "decision_id" integer,
+     "evidence_items" jsonb NOT NULL,
+     "chosen_source_id" text,
+     "weight_assignments" jsonb NOT NULL,
+     "aggregate_conclusion" text NOT NULL,
+     "rationale" text NOT NULL,
+     "confidence" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_evidence_assessments_role_assessed_idx" ON "solene_evidence_assessments" ("agent_role", "assessed_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_evidence_assessments_topic_assessed_idx" ON "solene_evidence_assessments" ("topic", "assessed_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_evidence_assessments_decision_idx" ON "solene_evidence_assessments" ("decision_id")`,
+
+  // ============================================================
   // Solene — plan-then-execute proposals (Phase B L2.6)
   // ============================================================
   // plan_proposals — agents propose a multi-step plan + cost/duration estimate
