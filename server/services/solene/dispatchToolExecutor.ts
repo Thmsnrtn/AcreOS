@@ -38,6 +38,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { promises as fs } from "node:fs";
+import { screenToolCall } from "./constitutionalGuard";
 
 const PROJECT_ROOT = process.env.SOLENE_DISPATCH_PROJECT_ROOT
   ? path.resolve(process.env.SOLENE_DISPATCH_PROJECT_ROOT)
@@ -182,12 +183,45 @@ export interface ToolExecutionResult {
   commitSha?: string;
 }
 
+/**
+ * Constitutional context for the L6.29 guard. Optional so existing callers
+ * (pre-L6.29 callsites that don't yet plumb dispatch identity) keep working;
+ * when omitted, the guard still screens patterns but logs the violation with
+ * dispatch_id=null and agent_role='unknown'.
+ */
+export interface DispatchToolContext {
+  dispatchId?: number | null;
+  agentRole?: string;
+}
+
 export async function executeDispatchTool(
   toolName: string,
   input: Record<string, unknown>,
+  ctx: DispatchToolContext = {},
 ): Promise<ToolExecutionResult> {
   const started = Date.now();
   try {
+    // L6.29 — constitutional self-defense at the tool-call layer.
+    // screenToolCall is awaited BEFORE the underlying tool runs. If a
+    // pattern rule blocks the call, the underlying tool is NOT invoked,
+    // a violation row is written, and a page is fired.
+    const screen = await screenToolCall({
+      dispatchId: ctx.dispatchId ?? null,
+      toolName,
+      toolInput: input,
+      agentRole: ctx.agentRole ?? "unknown",
+    });
+    if (!screen.allowed) {
+      return {
+        success: false,
+        output:
+          `[CONSTITUTIONAL REFUSAL] This tool call would violate ` +
+          `immutable #${screen.immutableNumber}: "${screen.immutableText}". ` +
+          `The call has been blocked, logged, and escalated to Solene. Refusing.`,
+        durationMs: Date.now() - started,
+      };
+    }
+
     switch (toolName) {
       case "file_read":
         return await toolFileRead(input, started);
