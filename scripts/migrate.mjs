@@ -5567,6 +5567,49 @@ const STATEMENTS = [
      "gap_signals" jsonb NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS "solene_capability_introspections_agent_idx" ON "solene_capability_introspections" ("agent_role", "introspected_at" DESC)`,
+
+  // ============================================================
+  // Solene — pgvector embeddings registry (Phase B infra for L3.10 + L3.14)
+  // ============================================================
+  // solene_embedded_records — generic, namespace-keyed vector storage so
+  // multiple consumers (feedback memories, decision traces, failure modes,
+  // audit findings, …) share one registry rather than each rolling its own
+  // embeddings table. The (namespace, source_ref) pair is the natural key —
+  // unique so re-embedding a known item updates in place rather than
+  // appending. content_hash captures the sha256 of the *full* original text
+  // (we only persist a snippet ≤4000 chars) so downstream jobs can detect
+  // drift and re-embed when the underlying content actually changed.
+  //
+  // The vector column dimension is runtime-configurable via EMBEDDING_DIM
+  // (default 1024 — matches voyage-3 / cohere-embed-v3 — text-embedding-3-
+  // small lives at 1536). The drizzle schema declares the column via
+  // customType("vector") so the dim is enforced at the SQL layer.
+  //
+  // HNSW index over vector_cosine_ops (better recall than IVFFlat for the
+  // small-corpus regime we're in early on; no training step required).
+  //
+  // CREATE EXTENSION IF NOT EXISTS vector is already issued ~line 1377 so
+  // this CREATE TABLE finds the type available. Repeating it here would be
+  // safe but redundant.
+  //
+  // Mirrors shared/schema/solene-embeddings.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_embedded_records" (
+     "id" serial PRIMARY KEY,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "namespace" text NOT NULL,
+     "source_ref" text NOT NULL,
+     "content_snippet" text NOT NULL,
+     "content_hash" text NOT NULL,
+     "embedding_model" text NOT NULL,
+     "embedding_dim" integer NOT NULL,
+     "embedding" vector,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_embedded_records_namespace_source_unique" ON "solene_embedded_records" ("namespace", "source_ref")`,
+  `CREATE INDEX IF NOT EXISTS "solene_embedded_records_namespace_created_idx" ON "solene_embedded_records" ("namespace", "created_at" DESC)`,
+  // HNSW over cosine. Safe to skip when pgvector isn't yet installed
+  // (release_command classifies "extension not available" as non-fatal).
+  `CREATE INDEX IF NOT EXISTS "solene_embedded_records_embedding_hnsw_idx" ON "solene_embedded_records" USING hnsw ("embedding" vector_cosine_ops)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -5592,6 +5635,10 @@ const EXPECTED_FAILURE_PATTERNS = [
   /column ".*" does not exist/i,
   /relation ".*" does not exist/i,
   /extension ".*" is not available/i,
+  // pgvector not yet installed — type/access-method missing. The dependent
+  // table + HNSW index simply don't get added today; the deploy still ships.
+  /type "vector" does not exist/i,
+  /access method "hnsw" does not exist/i,
 ];
 
 let exitCode = 0;
