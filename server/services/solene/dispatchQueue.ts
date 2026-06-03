@@ -172,6 +172,9 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     result_summary: string | null;
     result_full_path: string | null;
     enqueued_by: string | null;
+    review_status: string | null;
+    reviewed_by_dispatch_id: number | null;
+    original_dispatch_id: number | null;
   }>(sql`
     UPDATE solene_dispatch_queue
     SET status = 'in_progress', started_at = now()
@@ -186,7 +189,8 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
       id, queued_at, status, priority, source_type, source_id,
       agent_role, prompt_text, max_cost_usd, timeout_ms,
       started_at, completed_at, result_summary, result_full_path,
-      enqueued_by
+      enqueued_by, review_status, reviewed_by_dispatch_id,
+      original_dispatch_id
   `);
 
   // drizzle's `execute` returns slightly different shapes across drivers.
@@ -213,6 +217,9 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     resultSummary: r.result_summary,
     resultFullPath: r.result_full_path,
     enqueuedBy: r.enqueued_by,
+    reviewStatus: r.review_status,
+    reviewedByDispatchId: r.reviewed_by_dispatch_id,
+    originalDispatchId: r.original_dispatch_id,
   };
 }
 
