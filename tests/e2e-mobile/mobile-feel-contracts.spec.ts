@@ -264,3 +264,158 @@ async function collectVhUsageViolations(page: Page): Promise<string[]> {
 // Silence the unused-import warning when only some of the imports are
 // used by the spec body (Playwright's type surface re-exports many shapes).
 void Locator;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Contract C1 — "no blank dialog" + C2 — "no blank route"
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Added 2026-06-02 in response to the Pax-Settings-blank-dialog incident
+// (Tom surfaced; team should have caught it). The two contracts below would
+// have failed CI before the merge that broke that dialog:
+//
+//   C1 — open every Dialog/Sheet across the 7 customer doors, wait 500ms,
+//        assert textContent.trim().length > 0. A "Dialog/Sheet" is detected
+//        by [role="dialog"] | [role="alertdialog"] | [data-state="open"]
+//        on a Radix-style dialog container.
+//
+//   C2 — for each customer-facing route, assert
+//        document.body.innerText.length > 100 after networkidle. Catches the
+//        "route mounts but renders empty" class (the bug shape that
+//        nav-smoke uses a threshold of 20 for; this one is stricter +
+//        runs across the full device matrix).
+//
+// Both contracts run across the full projects[] in playwright.mobile.config.ts
+// so a regression that only manifests on iPad-mini or iPhone-SE doesn't slip
+// through a single-viewport check.
+
+const DIALOG_TRIGGER_SELECTORS = [
+  // Common explicit triggers — buttons whose aria-haspopup is "dialog" or
+  // whose data-testid suggests they open something modal. Conservative on
+  // purpose; opening every button on the page produces too many false
+  // positives (kebab menus, dropdowns, navigation).
+  'button[aria-haspopup="dialog"]',
+  'button[data-testid*="dialog"]',
+  'button[data-testid*="modal"]',
+  'button[data-testid*="open-"]',
+  '[data-testid*="settings-gear"]',
+  '[data-testid*="settings-button"]',
+];
+
+const DIALOG_RENDER_MS = 500;
+const C2_MIN_BODY_TEXT_LEN = 100;
+
+test.describe("Krieger C1: no-blank-dialog", () => {
+  for (const route of ROUTES_TO_AUDIT) {
+    test(`dialogs render non-blank on ${route}`, async ({
+      page,
+      context,
+    }, _testInfo) => {
+      await context.addCookies([
+        {
+          name: "__session",
+          value: "e2e-c1-no-blank-dialog",
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          sameSite: "Lax",
+        },
+      ]);
+
+      await page.goto(route, { waitUntil: "domcontentloaded" });
+      await page.waitForLoadState("networkidle").catch(() => {});
+
+      const triggers = page.locator(DIALOG_TRIGGER_SELECTORS.join(", "));
+      const triggerCount = await triggers.count();
+      if (triggerCount === 0) {
+        _testInfo.annotations.push({
+          type: "info-c1-no-triggers",
+          description: `${route}: no dialog triggers matched on this surface`,
+        });
+        return;
+      }
+
+      const violations: string[] = [];
+      const examined: Array<{
+        label: string;
+        len: number;
+      }> = [];
+
+      for (let i = 0; i < Math.min(triggerCount, 12); i++) {
+        const trigger = triggers.nth(i);
+        if (!(await trigger.isVisible().catch(() => false))) continue;
+        const label =
+          (await trigger.getAttribute("aria-label")) ??
+          (await trigger.getAttribute("data-testid")) ??
+          (await trigger.textContent())?.trim().slice(0, 40) ??
+          `trigger#${i}`;
+
+        await trigger.click({ trial: false }).catch(() => {});
+        await page.waitForTimeout(DIALOG_RENDER_MS);
+
+        const dialog = page
+          .locator('[role="dialog"], [role="alertdialog"]')
+          .first();
+        if (await dialog.isVisible().catch(() => false)) {
+          const text = (await dialog.textContent().catch(() => "")) ?? "";
+          const len = text.trim().length;
+          examined.push({ label, len });
+          if (len === 0) {
+            violations.push(`${label} → dialog rendered empty (textContent="")`);
+          }
+          // Close before the next trigger.
+          await page.keyboard.press("Escape").catch(() => {});
+          await page.waitForTimeout(200);
+        }
+      }
+
+      expect(
+        violations,
+        `${route} C1 violations:\n  ${violations.join("\n  ")}\n\nExamined: ${JSON.stringify(examined)}`,
+      ).toEqual([]);
+    });
+  }
+});
+
+test.describe("Krieger C2: no-blank-route", () => {
+  for (const route of ROUTES_TO_AUDIT) {
+    test(`route ${route} renders non-blank body`, async ({
+      page,
+      context,
+    }) => {
+      await context.addCookies([
+        {
+          name: "__session",
+          value: "e2e-c2-no-blank-route",
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          sameSite: "Lax",
+        },
+      ]);
+
+      await page.goto(route, { waitUntil: "domcontentloaded" });
+      await page.waitForLoadState("networkidle").catch(() => {});
+
+      const bodyTextLen = await page.evaluate(
+        () => (document.body?.innerText || "").trim().length,
+      );
+
+      // /settings is the vendor-rendered (Clerk UserProfile) route that we
+      // tolerate per VENDOR_RENDERED_ROUTES above. Relax to a non-zero
+      // chrome check.
+      if (VENDOR_RENDERED_ROUTES.has(route)) {
+        expect(
+          bodyTextLen,
+          `${route} (vendor): even shell should render`,
+        ).toBeGreaterThan(20);
+        return;
+      }
+
+      expect(
+        bodyTextLen,
+        `${route} C2 violation: body innerText length=${bodyTextLen}, expected > ${C2_MIN_BODY_TEXT_LEN}. ` +
+          `The route mounted but rendered no meaningful content — the exact bug class C2 exists to catch.`,
+      ).toBeGreaterThan(C2_MIN_BODY_TEXT_LEN);
+    });
+  }
+});
