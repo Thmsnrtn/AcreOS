@@ -5095,6 +5095,36 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_imm_idx" ON "solene_constitutional_violations" ("immutable_number", "detected_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_sev_idx" ON "solene_constitutional_violations" ("severity", "reviewed_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_dispatch_idx" ON "solene_constitutional_violations" ("dispatch_id")`,
+
+  // ============================================================
+  // Solene — token-economy decision scoring (L5.27)
+  // ============================================================
+  // solene_decision_score_events — one row per dispatch-scoring decision.
+  // scoreDispatchProposal computes marginalCost vs marginalValue, weights
+  // by capitalTracker envelope status + per-role historical success rate,
+  // produces a clamped [0,1] score and a proceed/defer/reject recommendation.
+  //
+  // dispatch_id is nullable — scoring runs BEFORE enqueue, so the link to
+  // the dispatch row is backfilled when (if) the dispatch is enqueued.
+  //
+  // Mirrors shared/schema/solene-token-economy.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_decision_score_events" (
+     "id" serial PRIMARY KEY,
+     "scored_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "dispatch_id" integer,
+     "agent_role" text NOT NULL,
+     "prompt_summary" text NOT NULL,
+     "estimated_cost_usd" numeric(10,4) NOT NULL,
+     "estimated_value_usd" numeric(10,4),
+     "historical_success_rate" numeric(5,4) NOT NULL,
+     "envelope_status_at_decision" text NOT NULL,
+     "score" numeric(5,4) NOT NULL,
+     "recommendation" text NOT NULL,
+     "rationale" text NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_role_scored_idx" ON "solene_decision_score_events" ("agent_role", "scored_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_rec_scored_idx" ON "solene_decision_score_events" ("recommendation", "scored_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_decision_score_events_dispatch_idx" ON "solene_decision_score_events" ("dispatch_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
