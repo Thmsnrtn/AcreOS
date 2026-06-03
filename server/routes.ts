@@ -217,11 +217,13 @@ import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
 import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
+import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
 import { registerErrorBoundaryAggregatorRoutes } from "./routes-error-boundary-aggregator";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
 import { registerSorenSeoRoutes } from "./routes-soren-seo";
 import { registerBeatriceRegWatchRoutes } from "./routes-beatrice-regwatch";
+import { registerExternalWatchRoutes } from "./routes-external-watch";
 import { registerTeamImprovementRoutes } from "./routes-team-improvement";
 import { registerTeamSystemAuditRoutes } from "./routes-team-system-audit";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
@@ -2175,6 +2177,8 @@ export async function registerRoutes(
   registerPaxAuditRoutes(app);
   // Solene (COO) self-audit + capital tracker founder read endpoints.
   registerSoleneAuditRoutes(app);
+  // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
+  registerAgentClaimsRoutes(app);
   // Solene (COO) proactive page channel — POST /api/internal/solene/page
   // (shared-secret auth) + GET /api/founder/solene-page/recent (founder).
   registerSolenePageRoutes(app);
@@ -2192,6 +2196,10 @@ export async function registerRoutes(
   registerSorenSeoRoutes(app);
   // Beatrice (CRO) regulatory-news feed — GET /api/founder/beatrice-regwatch/recent.
   registerBeatriceRegWatchRoutes(app);
+  // External-watch (Layer 1 cap #4) — Anthropic API changelog + npm vuln feed.
+  //   GET /api/founder/external-watch/recent
+  //   POST /api/founder/external-watch/:id/ack
+  registerExternalWatchRoutes(app);
   // Team-improvement detector — GET /api/founder/team-improvement/recent + /pending.
   // Event-driven primary driver per feedback_continuous_improvement_cadence.md.
   registerTeamImprovementRoutes(app);

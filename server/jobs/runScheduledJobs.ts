@@ -2265,6 +2265,51 @@ async function processSoleneTeamStateRegenerator(): Promise<void> {
   });
 }
 
+/**
+ * Solene (Layer 1 cap #2) — agent-claims expiry sweep.
+ *
+ * Walks active rows in solene_agent_claims whose claimed_at + ttl_minutes
+ * is in the past and flips them to status='expired'. Without this, a crashed
+ * dispatch or a forgotten releaseClaim() would leave a stale row blocking
+ * future commits forever.
+ *
+ * Tiny job — runs every 5 minutes; ttl-lock slightly less than interval.
+ */
+function startAgentClaimsExpiryJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const TTL_SECONDS = 4 * 60 + 30;
+  log(
+    'Registering Solene agent-claims expiry job (every 5 minutes)',
+    'agent-claims',
+  );
+
+  // Initial run 60s after startup so leftover rows from a crashed worker
+  // clear quickly.
+  setTimeout(() => {
+    withJobLock('solene_agent_claims_expiry', TTL_SECONDS, async () => {
+      const { expireStaleClaims } = await import('../services/solene/agentClaims');
+      const n = await expireStaleClaims();
+      if (n > 0) {
+        log(`[agent-claims] expired ${n} stale claim(s) on startup`, 'agent-claims');
+      }
+    }).catch((err) => {
+      log(`[agent-claims] initial expiry run failed: ${err}`, 'agent-claims');
+    });
+  }, 60 * 1000);
+
+  trackInterval(() => {
+    withJobLock('solene_agent_claims_expiry', TTL_SECONDS, async () => {
+      const { expireStaleClaims } = await import('../services/solene/agentClaims');
+      const n = await expireStaleClaims();
+      if (n > 0) {
+        log(`[agent-claims] expired ${n} stale claim(s)`, 'agent-claims');
+      }
+    }).catch((err) => {
+      log(`[agent-claims] expiry run failed: ${err}`, 'agent-claims');
+    });
+  }, FIVE_MINUTES);
+}
+
 function startSoleneTeamStateRegeneratorJob() {
   const FIFTEEN_MINUTES = 15 * 60 * 1000;
   const TTL_SECONDS = 14 * 60; // slightly less than interval
@@ -2648,6 +2693,71 @@ function startSorenSeoTrackerJob() {
   }, ONE_HOUR);
 }
 
+// ── External-watch: Anthropic API changelog (daily 03:00 UTC) ───────────────
+// Layer 1 cap #4 (#17 in 32-cap map). Pulls Anthropic's public release-notes
+// feed, keyword-matches against ANTHROPIC_RELEVANCE_KEYWORDS, persists hits
+// to external_watch_events. Iris owns the 48h ack SLA per
+// docs/internal/anthropic-watch-discipline.md.
+function startAnthropicWatchJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering Anthropic API changelog watch (daily 03:00 UTC)',
+    'anthropic-watch',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 3 && now.getUTCMinutes() < 5) {
+      void withJobLock('anthropic_watch', TTL_SECONDS, async () => {
+        const { fetchAnthropicChangelog } = await import(
+          '../services/external-watch/anthropicWatch'
+        );
+        const r = await fetchAnthropicChangelog();
+        log(
+          `[anthropic-watch] daily run: fetched=${r.itemsFetched} matched=${r.itemsMatched} persisted=${r.itemsPersisted} dupes=${r.itemsSkippedDuplicate}${r.fetchError ? ` err=${r.fetchError}` : ''}`,
+          'anthropic-watch',
+        );
+      }).catch((err) => {
+        log(`[anthropic-watch] daily run failed: ${err}`, 'anthropic-watch');
+      });
+    }
+  }, ONE_HOUR);
+}
+
+// ── External-watch: npm vulnerability feed (daily 04:00 UTC) ────────────────
+// Layer 1 cap #4 (#17 in 32-cap map). Runs `npm audit --json
+// --audit-level=high` and persists each vulnerability as an
+// external_watch_events row. Iris owns: 7d ack for high, 24h for critical
+// per docs/internal/npm-watch-discipline.md. Critical vulns auto-page
+// Solene's channel as severity=urgent.
+function startNpmWatchJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering npm vulnerability watch (daily 04:00 UTC)',
+    'npm-watch',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 4 && now.getUTCMinutes() < 5) {
+      void withJobLock('npm_watch', TTL_SECONDS, async () => {
+        const { fetchNpmVulnerabilities } = await import(
+          '../services/external-watch/npmWatch'
+        );
+        const r = await fetchNpmVulnerabilities();
+        log(
+          `[npm-watch] daily run: scanned=${r.advisoriesScanned} matched=${r.advisoriesMatched} persisted=${r.advisoriesPersisted} dupes=${r.advisoriesSkippedDuplicate}${r.auditError ? ` err=${r.auditError}` : ''}`,
+          'npm-watch',
+        );
+      }).catch((err) => {
+        log(`[npm-watch] daily run failed: ${err}`, 'npm-watch');
+      });
+    }
+  }, ONE_HOUR);
+}
+
 // ── Beatrice (CRO) — regulatory-news feed (daily 02:00 UTC) ─────────────────
 // Pulls daily RSS from CFPB / FTC / state AGs (TX, CA). Each item is
 // keyword-filtered against BEATRICE_RELEVANCE_KEYWORDS; matches persist
@@ -2845,6 +2955,24 @@ export async function runScheduledJobs(): Promise<void> {
   // CFPB, FTC, TX-AG, CA-AG; keyword-filters; persists matches. 72h
   // manual triage SLA per docs/legal/beatrice-regwatch-discipline.md.
   startBeatriceRegWatchJob();
+
+  // External-watch: Anthropic API changelog (daily 03:00 UTC). Layer 1
+  // cap #4. Pulls Anthropic release-notes feed; keyword-filters; persists
+  // matches. Iris owns 48h ack SLA per
+  // docs/internal/anthropic-watch-discipline.md.
+  startAnthropicWatchJob();
+
+  // External-watch: npm vulnerabilities (daily 04:00 UTC). Runs
+  // `npm audit --json --audit-level=high` and persists each advisory.
+  // Iris owns 7d ack (high) / 24h ack (critical) per
+  // docs/internal/npm-watch-discipline.md.
+  startNpmWatchJob();
+
+  // Solene (Layer 1 cap #2) — agent-claims expiry sweep (every 5m). Walks
+  // solene_agent_claims rows past their TTL and flips them to 'expired' so
+  // a crashed dispatch or forgotten releaseClaim() can't leave a stale row
+  // blocking future commits via the pre-commit hook.
+  startAgentClaimsExpiryJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the

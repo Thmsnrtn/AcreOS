@@ -109,4 +109,37 @@ if [ -n "$STAGED_FILES_FOR_SCAN" ]; then
   echo "  No secrets detected."
 fi
 
+# ── 3. Cross-agent claim coordination (Layer 1 capability #2) ───────────────
+#
+# Reads currently-active rows from solene_agent_claims and blocks the commit
+# if any staged file falls under another agent's active claim. The CLI
+# helper (scripts/check-agent-claims.mjs) fails OPEN when DATABASE_URL is
+# missing or the DB is unreachable so local dev with the DB down is not
+# blocked. The dispatch-time predictor (predictDispatchConflicts in
+# server/services/solene/agentClaims.ts) is the upstream gate; this is the
+# last line.
+#
+# Bypass: SOLENE_BYPASS_AGENT_CLAIMS=1 git commit ...
+#   For founder-emergency commits or Solene-override commits.
+
+if [ "${SOLENE_BYPASS_AGENT_CLAIMS:-0}" = "1" ]; then
+  echo "  Cross-agent claim check: BYPASSED via SOLENE_BYPASS_AGENT_CLAIMS=1."
+else
+  STAGED_FILES_FOR_CLAIMS=$(git diff --cached --name-only --diff-filter=ACMR)
+  if [ -n "$STAGED_FILES_FOR_CLAIMS" ]; then
+    echo "  Checking cross-agent claims..."
+    # Pipe staged files to the helper. node-on-PATH or fallback to npx.
+    if command -v node >/dev/null 2>&1; then
+      echo "$STAGED_FILES_FOR_CLAIMS" | node scripts/check-agent-claims.mjs
+      CLAIM_CHECK_EXIT=$?
+    else
+      echo "  node not on PATH — skipping cross-agent claim check (fail-open)."
+      CLAIM_CHECK_EXIT=0
+    fi
+    if [ "$CLAIM_CHECK_EXIT" -ne 0 ]; then
+      exit 1
+    fi
+  fi
+fi
+
 echo "  Pre-commit checks passed."

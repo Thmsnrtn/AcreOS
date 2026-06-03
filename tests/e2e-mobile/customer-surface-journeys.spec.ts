@@ -36,11 +36,131 @@
  * which is the load-bearing assertion that catches "route rendered but the
  * content panel is empty" — the exact Pax-Settings-blank-dialog shape.
  */
-import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { test, expect, type Page, type ConsoleMessage, type TestInfo } from "@playwright/test";
 
 const MIN_BODY_TEXT_LEN = 100;
 const POST_NAV_SETTLE_MS = 800;
 const DIALOG_RENDER_MS = 500;
+
+// ────────────────────────────────────────────────────────────────────────────
+// FULL-EXPERIENCE EXTENSION (2026-06-02)
+//
+// When the runner is playwright.full.config.ts, testInfo.project.metadata
+// carries { formFactor, colorScheme, baseDevice }. Under the older mobile
+// config those keys are absent — we treat that as { formFactor: "mobile",
+// colorScheme: "light", baseDevice: <project.name> } so this spec runs
+// untouched on the mobile-only config too.
+//
+// Theme contract: at the start of every test, force the colorScheme via
+// page.emulateMedia so prefers-color-scheme media queries resolve to the
+// project's nominal theme before first paint. Then record body bg color
+// and assert that LIGHT ≠ DARK at the *same* checkpoint, across runs.
+// (Stored per-checkpoint in the journey result; comparison is deferred to
+// the cross-run reporter via testInfo.attachments so a single-theme run
+// stays self-contained.)
+// ────────────────────────────────────────────────────────────────────────────
+
+interface ProjectFullMeta {
+  formFactor: "mobile" | "desktop";
+  colorScheme: "light" | "dark";
+  baseDevice: string;
+}
+
+function resolveProjectMeta(testInfo: TestInfo): ProjectFullMeta {
+  const md = (testInfo.project.metadata ?? {}) as Partial<ProjectFullMeta>;
+  return {
+    formFactor: md.formFactor ?? "mobile",
+    colorScheme: md.colorScheme ?? "light",
+    baseDevice: md.baseDevice ?? testInfo.project.name,
+  };
+}
+
+async function applyProjectTheme(
+  page: Page,
+  meta: ProjectFullMeta,
+): Promise<void> {
+  // Force the project's nominal color scheme before any test step navigates.
+  // prefers-color-scheme media queries in client/src/index.css resolve to
+  // this value before the app's client-side theme hydration runs.
+  await page.emulateMedia({ colorScheme: meta.colorScheme });
+}
+
+/**
+ * Per-checkpoint theme contract: read computed body background color and
+ * attach to the testInfo so the cross-run reporter can verify LIGHT ≠ DARK
+ * at the same step. We also assert non-transparent — a fully transparent
+ * body means the theme tokens didn't resolve at all.
+ */
+async function assertThemeContract(
+  page: Page,
+  testInfo: TestInfo,
+  meta: ProjectFullMeta,
+  stepName: string,
+): Promise<void> {
+  const probe = await page.evaluate(() => {
+    const bodyStyle = window.getComputedStyle(document.body);
+    return {
+      backgroundColor: bodyStyle.backgroundColor,
+      color: bodyStyle.color,
+      htmlBackgroundColor: window.getComputedStyle(document.documentElement)
+        .backgroundColor,
+    };
+  });
+  testInfo.attachments.push({
+    name: `theme-probe-${stepName}-${meta.colorScheme}`,
+    contentType: "application/json",
+    body: Buffer.from(
+      JSON.stringify({ step: stepName, meta, probe }, null, 2),
+    ),
+  });
+  // Hard contract: body bg is not transparent. A transparent body usually
+  // means CSS tokens didn't resolve (theme file failed to load / wrong
+  // class on <html>). The check is generous on purpose — we only fail
+  // when the token literally didn't apply.
+  const bg = probe.backgroundColor;
+  expect(
+    bg === "rgba(0, 0, 0, 0)" || bg === "transparent",
+    `step "${stepName}" (${meta.colorScheme}/${meta.baseDevice}): body bg is transparent — theme tokens failed to resolve`,
+  ).toBe(false);
+}
+
+/**
+ * Informational scan: hex-literal #fff / #000 in inline styles inside the
+ * rendered page. In dark mode these usually indicate a light-mode artifact
+ * (hard-coded white background panel etc.). Annotation-only — not a hard
+ * fail, because some hex literals are legitimately theme-neutral (icons,
+ * borders). The annotation makes them visible for human review.
+ */
+async function scanLightModeArtifacts(
+  page: Page,
+  testInfo: TestInfo,
+  meta: ProjectFullMeta,
+  stepName: string,
+): Promise<void> {
+  if (meta.colorScheme !== "dark") return;
+  const hits = await page.evaluate(() => {
+    const matches: Array<{ tag: string; style: string }> = [];
+    document.querySelectorAll("[style]").forEach((node) => {
+      const style = (node as HTMLElement).getAttribute("style") ?? "";
+      if (/#fff(?:fff)?\b|#000(?:000)?\b/i.test(style)) {
+        matches.push({
+          tag: (node as HTMLElement).tagName.toLowerCase(),
+          style: style.slice(0, 120),
+        });
+      }
+    });
+    return matches.slice(0, 20);
+  });
+  if (hits.length > 0) {
+    testInfo.annotations.push({
+      type: "info-light-mode-artifact",
+      description: `step "${stepName}" (${meta.baseDevice} dark): ${hits.length} hex-literal hits — ${hits
+        .slice(0, 3)
+        .map((h) => `${h.tag}:${h.style}`)
+        .join(" | ")}`,
+    });
+  }
+}
 
 // Console-error noise that's outside-of-app and would false-fail the journey.
 // Same shape as nav-smoke.spec.ts's IGNORED_PAGE_ERRORS — Clerk-JS is
@@ -97,11 +217,23 @@ async function checkpoint(
   page: Page,
   ctx: JourneyContext,
   stepName: string,
+  testInfo?: TestInfo,
 ): Promise<void> {
+  // Project-tag screenshots so a single artifact dir from a full-matrix run
+  // doesn't overwrite the same step taken on a different device/theme.
+  const projectTag = testInfo
+    ? `-${testInfo.project.name}`
+    : "";
   await page.screenshot({
-    path: `test-results/journey-${stepName.replace(/[^a-z0-9]/gi, "-")}.png`,
+    path: `test-results/journey-${stepName.replace(/[^a-z0-9]/gi, "-")}${projectTag}.png`,
     fullPage: false,
   });
+
+  if (testInfo) {
+    const meta = resolveProjectMeta(testInfo);
+    await assertThemeContract(page, testInfo, meta, stepName);
+    await scanLightModeArtifacts(page, testInfo, meta, stepName);
+  }
 
   const bodyTextLen = await page.evaluate(
     () => (document.body?.innerText || "").trim().length,
@@ -135,7 +267,9 @@ test.describe("J1: founder daily loop", () => {
   test("login → today → map → deals → money → pax → settings gear → inbox → settings", async ({
     page,
     baseURL,
-  }) => {
+  }, testInfo) => {
+    const meta = resolveProjectMeta(testInfo);
+    await applyProjectTheme(page, meta);
     const ctx = attachListeners(page);
     await seedSessionCookie(page, baseURL!);
 
@@ -168,7 +302,7 @@ test.describe("J1: founder daily loop", () => {
           `settings: body too short (${len}) — even shell should render`,
         ).toBeGreaterThan(20);
       } else {
-        await checkpoint(page, ctx, `j1-${door.name}`);
+        await checkpoint(page, ctx, `j1-${door.name}`, testInfo);
       }
     }
 
@@ -207,7 +341,9 @@ test.describe("J2: customer onboarding form-load surface", () => {
   test("/auth form loads with clickwrap + submit affordance", async ({
     page,
     baseURL,
-  }) => {
+  }, testInfo) => {
+    const meta = resolveProjectMeta(testInfo);
+    await applyProjectTheme(page, meta);
     const ctx = attachListeners(page);
     // Onboarding journey does NOT seed a session — we want the public auth
     // page. The form-load step is the regression class: a blank /auth page is
@@ -215,7 +351,7 @@ test.describe("J2: customer onboarding form-load surface", () => {
     void baseURL;
     await page.goto("/auth", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(POST_NAV_SETTLE_MS);
-    await checkpoint(page, ctx, "j2-auth-form-load");
+    await checkpoint(page, ctx, "j2-auth-form-load", testInfo);
 
     // We do NOT actually submit — the production signup wiring lives behind
     // Clerk which is blocked in test-auth mode. The detector is "form
@@ -239,13 +375,15 @@ test.describe("J3: pax interaction loop", () => {
   test("/ai mounts → composer present → overflow + insights + activity panels render non-blank", async ({
     page,
     baseURL,
-  }) => {
+  }, testInfo) => {
+    const meta = resolveProjectMeta(testInfo);
+    await applyProjectTheme(page, meta);
     const ctx = attachListeners(page);
     await seedSessionCookie(page, baseURL!);
 
     await page.goto("/ai", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(POST_NAV_SETTLE_MS);
-    await checkpoint(page, ctx, "j3-pax-mount");
+    await checkpoint(page, ctx, "j3-pax-mount", testInfo);
 
     // Composer should exist (textarea or contenteditable). Detection-only:
     // we don't dispatch a synthetic message because that would burn LLM
@@ -287,6 +425,6 @@ test.describe("J3: pax interaction loop", () => {
       await page.waitForTimeout(200);
     }
 
-    await checkpoint(page, ctx, "j3-pax-after-overflow");
+    await checkpoint(page, ctx, "j3-pax-after-overflow", testInfo);
   });
 });

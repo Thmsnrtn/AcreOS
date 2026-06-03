@@ -4943,6 +4943,36 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_dispatch_idx" ON "solene_dispatch_results" ("dispatch_id")`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_recorded_idx" ON "solene_dispatch_results" ("recorded_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_results_success_idx" ON "solene_dispatch_results" ("success", "recorded_at")`,
+
+  // ============================================================
+  // Solene — cross-agent coordination layer (Layer 1 capability #2)
+  // ============================================================
+  // solene_agent_claims — each row registers a file-surface claim by
+  // a dispatched agent. The pre-commit hook reads ACTIVE rows + blocks
+  // commits that stage files matching another agent's pattern set.
+  //
+  // dispatch_id is nullable so this capability ships before keystone 1
+  // is universally available; the UNIQUE INDEX uses Postgres NULLs-distinct
+  // semantics so unlimited ad-hoc (null-dispatch) claims are permitted while
+  // real dispatches can only have one active claim row.
+  //
+  // Mirrors shared/schema/solene-agent-claims.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_agent_claims" (
+     "id" serial PRIMARY KEY,
+     "dispatch_id" integer,
+     "agent_role" text NOT NULL,
+     "claimed_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "released_at" timestamp with time zone,
+     "ttl_minutes" integer NOT NULL DEFAULT 60,
+     "file_surface_patterns" text[] NOT NULL DEFAULT '{}',
+     "claim_status" text NOT NULL DEFAULT 'active',
+     "note" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_claims_active_idx" ON "solene_agent_claims" ("claim_status", "claimed_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_claims_status_claimed_idx" ON "solene_agent_claims" ("claim_status", "claimed_at")`,
+  // UNIQUE(dispatch_id) when not null. Postgres default treats NULLs as
+  // distinct so the constraint only fires for real dispatch ids.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_agent_claims_dispatch_unique" ON "solene_agent_claims" ("dispatch_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
