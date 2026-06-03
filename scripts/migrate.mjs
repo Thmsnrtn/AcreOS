@@ -4770,6 +4770,40 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_page_checked_idx" ON "soren_seo_rankings" ("page_path", "checked_at")`,
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_keyword_checked_idx" ON "soren_seo_rankings" ("target_keyword", "checked_at")`,
+
+  // ── Team-improvement opportunity ledger ────────────────────────────────
+  // Persists every gap surfaced by the event-driven detector layer
+  // (server/services/improvement). The 7 signal patterns:
+  //   recurring_gap | pattern_transfer | external_event |
+  //   recurring_dispatch_flag | successful_pattern | volume_threshold |
+  //   capital_concentration
+  // UNIQUE(team_member, signal_pattern, description) keeps the ledger
+  // idempotent — re-runs of the detector cron never produce duplicate
+  // opportunity rows for the same gap.
+  // Mirrors shared/schema/team-improvement.ts. Wired to the cron in
+  // server/jobs/runScheduledJobs.ts → startTeamImprovementDetectorJob.
+  `CREATE TABLE IF NOT EXISTS "team_improvement_opportunities" (
+     "id" serial PRIMARY KEY,
+     "detected_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "team_member" text NOT NULL,
+     "signal_pattern" text NOT NULL,
+     "description" text NOT NULL,
+     "evidence" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "confidence" numeric(4,3) NOT NULL,
+     "estimated_cost_usd" numeric(10,2),
+     "severity" text NOT NULL,
+     "auto_dispatched" boolean NOT NULL DEFAULT false,
+     "dispatched_at" timestamp with time zone,
+     "dispatched_agent_id" text,
+     "resolved_at" timestamp with time zone,
+     "resolution_commit" text
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "team_improvement_opportunities_unique" ON "team_improvement_opportunities" ("team_member", "signal_pattern", "description")`,
+  `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_detected_idx" ON "team_improvement_opportunities" ("detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_member_idx" ON "team_improvement_opportunities" ("team_member", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_severity_idx" ON "team_improvement_opportunities" ("severity", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_dispatched_idx" ON "team_improvement_opportunities" ("auto_dispatched", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "team_improvement_opportunities_resolved_idx" ON "team_improvement_opportunities" ("resolved_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
