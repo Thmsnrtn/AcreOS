@@ -2615,6 +2615,52 @@ function startOfacSdnRefreshJob() {
 // per IRIS_TRACKED_ENDPOINTS, persists per-window p50/p95/p99 rows to
 // iris_perf_samples, then runs the regression detector and logs any findings.
 // Findings are detection-only — no Sentry hook yet, just structured warn logs.
+// ── Krieger — Mobile-feel continuous audit (every 30 minutes) ───────────────
+// Six detectors: touch_target_drift / cross_device_matrix_red / mobile_error_
+// boundary_trip / theme_contract_drift / pwa_install_regression /
+// real_device_gap. High/critical findings auto-enqueue Krieger fix dispatches
+// via the live solene_dispatch_queue.
+function startKriegerMobileFeelAuditJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60;
+  log(
+    'Registering Krieger mobile-feel audit (every 30 minutes)',
+    'krieger-audit',
+  );
+
+  setTimeout(() => {
+    void withJobLock('krieger_mobile_feel_audit', TTL_SECONDS, async () => {
+      const { runMobileFeelAudit } = await import(
+        '../services/krieger/mobileFeelAudit'
+      );
+      const r = await runMobileFeelAudit();
+      log(
+        `[krieger-audit] initial run: detectors=${r.detectorsRun} findings=${r.findingsRecorded} dispatches=${r.dispatchesEnqueued} errors=${r.errors}`,
+        'krieger-audit',
+      );
+    }).catch((err) => {
+      log(`[krieger-audit] initial run failed: ${err}`, 'krieger-audit');
+    });
+  }, 90 * 1000);
+
+  trackInterval(() => {
+    void withJobLock('krieger_mobile_feel_audit', TTL_SECONDS, async () => {
+      const { runMobileFeelAudit } = await import(
+        '../services/krieger/mobileFeelAudit'
+      );
+      const r = await runMobileFeelAudit();
+      if (r.findingsRecorded > 0 || r.errors > 0) {
+        log(
+          `[krieger-audit] run: detectors=${r.detectorsRun} findings=${r.findingsRecorded} dispatches=${r.dispatchesEnqueued} errors=${r.errors}`,
+          'krieger-audit',
+        );
+      }
+    }).catch((err) => {
+      log(`[krieger-audit] run failed: ${err}`, 'krieger-audit');
+    });
+  }, THIRTY_MINUTES);
+}
+
 function startIrisPerfMonitorJob() {
   const THIRTY_MINUTES = 30 * 60 * 1000;
   const TTL_SECONDS = 25 * 60; // slightly less than interval
@@ -3029,6 +3075,10 @@ export async function runScheduledJobs(): Promise<void> {
   // detector against the rolling 7d baseline. Detection-only — findings
   // log at warn level for now.
   startIrisPerfMonitorJob();
+
+  // Krieger — mobile-feel continuous audit (every 30m). 6 detectors with
+  // auto-enqueue to live dispatch queue for high/critical findings.
+  startKriegerMobileFeelAuditJob();
 
   // Soren — daily SEO ranking tracker (06:00 UTC). For each /learn page
   // and its target keywords, fetches the Google SERP, parses the AcreOS
