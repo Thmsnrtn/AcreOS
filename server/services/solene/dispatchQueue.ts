@@ -273,6 +273,36 @@ export async function completeDispatch(
         );
       });
   }
+
+  // L3.11 — confidence-calibrated outputs. Fire-and-forget. recordObservation
+  // parses the final text for confidence signals (explicit %, band, hedge,
+  // uncertainty) and persists a row when the parse yields a non-trivial
+  // signal. Like the code-review hook above, errors are observability-only —
+  // we never let confidence-recording failure propagate back into the
+  // primary completion path. We re-read agent_role here (instead of taking it
+  // as a parameter) to keep the completeDispatch signature unchanged.
+  void (async () => {
+    try {
+      const [row] = await db
+        .select({ agentRole: soleneDispatchQueue.agentRole })
+        .from(soleneDispatchQueue)
+        .where(eq(soleneDispatchQueue.id, id))
+        .limit(1);
+      if (!row) return;
+      const { recordObservation } = await import("./confidenceObservations");
+      await recordObservation({
+        dispatchId: id,
+        agentRole: row.agentRole as SoleneDispatchAgentRole,
+        finalText: result.resultSummary,
+      });
+    } catch (err) {
+      logger.warn(
+        `[dispatchQueue] confidence record failed for dispatch id=${id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  })();
 }
 
 // ----------------------------------------------------------------------------
