@@ -52,7 +52,7 @@ Henrik has no operational coordination — engagement is conversation-only with 
 | **Iris** | Architecture, engineering, deploys, performance | `iris_perf_samples`, `iris_perf_baseline` | `iris_perf_monitor` (regression detector), live |
 | **Soren** | Brand, content, acquisition, SEO | `soren_seo_rankings`, `/learn` content set | `soren_seo_tracker` (daily SERP scrape), live |
 | **Beatrice** | Compliance, legal, security, AI safety | `pax_audit_findings`, `beatrice_reg_events` | `pax_continuous_audit` (6 detectors), live |
-| **Krieger** | Mobile UX, customer-surface parity | `tests/e2e-mobile/*` matrix | `krieger_audit_findings` (6 detectors), to-be-built |
+| **Krieger** | Customer-surface UX (mobile-first AND desktop) | `tests/e2e-mobile/*` matrix + `tests/e2e-desktop/*` (to-be-built) | `krieger_audit_findings` (6 detectors live, 7th desktop-keyboard-nav queued) |
 | **Maren** | Product strategy, customer research, prioritization | n/a (Phase 1) | `maren_audit_findings` (6 detectors), to-be-built |
 | **Lena** | Capital allocation, unit economics, runway | `solene_capital_events` (consumer + author) | `lena_audit_findings` (7 detectors), to-be-built |
 | **Rafe** | Customer success, support, retention | n/a (Phase 2) | `rafe_audit_findings` (7 detectors), to-be-built |
