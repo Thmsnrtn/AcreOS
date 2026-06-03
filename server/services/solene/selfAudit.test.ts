@@ -219,7 +219,9 @@ import {
   checkTeamStateCollision,
   checkBriefContextStaleness,
   checkCapitalOverspend,
+  checkReviewSkeletonStaleness,
   setInFlightFilesForTest,
+  setReviewFilesAccessorForTest,
   SOLENE_DRIFT_THRESHOLDS,
 } from "./selfAudit";
 
@@ -243,6 +245,7 @@ function resetWorld() {
   stub24hSpend = 0;
   decisionsThrowOnInsert = false;
   setInFlightFilesForTest([]);
+  setReviewFilesAccessorForTest(null);
 }
 
 function decisionFixture(opts: Partial<DecisionRow> = {}): DecisionRow {
@@ -729,5 +732,113 @@ describe("SOLENE_DRIFT_THRESHOLDS — exported constants", () => {
     expect(SOLENE_DRIFT_THRESHOLDS.criticalCount).toBe(1);
     expect(SOLENE_DRIFT_THRESHOLDS.failCount).toBe(2);
     expect(SOLENE_DRIFT_THRESHOLDS.warnCount).toBe(5);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 9: review_skeleton_staleness
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkReviewSkeletonStaleness", () => {
+  const NOW = Date.now();
+  const TEN_DAYS_AGO = new Date(NOW - 10 * 24 * 60 * 60 * 1000);
+  const TWO_DAYS_AGO = new Date(NOW - 2 * 24 * 60 * 60 * 1000);
+
+  it("fires when a review file is older than 7d AND has TODO(solene): markers", async () => {
+    setReviewFilesAccessorForTest(() => [
+      {
+        path: "/docs/company/role-development/reviews/2026-04-iris.md",
+        generatedAt: TEN_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+    ]);
+    const f = await checkReviewSkeletonStaleness();
+    expect(f).not.toBeNull();
+    expect(f!.severity).toBe("warn");
+    expect(f!.pattern).toBe("review_skeleton_staleness");
+    expect(f!.matchedPatterns).toContain(
+      "/docs/company/role-development/reviews/2026-04-iris.md",
+    );
+  });
+
+  it("does NOT fire when an old file has no TODO markers (Solene filled it)", async () => {
+    setReviewFilesAccessorForTest(() => [
+      {
+        path: "/docs/company/role-development/reviews/2026-04-iris.md",
+        generatedAt: TEN_DAYS_AGO,
+        hasTodoMarker: false,
+      },
+    ]);
+    const f = await checkReviewSkeletonStaleness();
+    expect(f).toBeNull();
+  });
+
+  it("does NOT fire when a recent file still has TODO markers (inside grace window)", async () => {
+    setReviewFilesAccessorForTest(() => [
+      {
+        path: "/docs/company/role-development/reviews/2026-06-iris.md",
+        generatedAt: TWO_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+    ]);
+    const f = await checkReviewSkeletonStaleness();
+    expect(f).toBeNull();
+  });
+
+  it("does NOT fire when the review directory is empty", async () => {
+    setReviewFilesAccessorForTest(() => []);
+    const f = await checkReviewSkeletonStaleness();
+    expect(f).toBeNull();
+  });
+
+  it("aggregates multiple stale files into a single finding with all paths in matchedPatterns", async () => {
+    setReviewFilesAccessorForTest(() => [
+      {
+        path: "/docs/company/role-development/reviews/2026-04-iris.md",
+        generatedAt: TEN_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+      {
+        path: "/docs/company/role-development/arc/2026-Q1.md",
+        generatedAt: TEN_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+      {
+        path: "/docs/company/role-development/reviews/2026-06-soren.md",
+        generatedAt: TWO_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+    ]);
+    const f = await checkReviewSkeletonStaleness();
+    expect(f).not.toBeNull();
+    expect(f!.matchedPatterns).toHaveLength(2);
+    expect(f!.matchedPatterns).toContain(
+      "/docs/company/role-development/reviews/2026-04-iris.md",
+    );
+    expect(f!.matchedPatterns).toContain(
+      "/docs/company/role-development/arc/2026-Q1.md",
+    );
+  });
+
+  it("contributes a stale finding through runRunLevelChecks when a decision exists", async () => {
+    setReviewFilesAccessorForTest(() => [
+      {
+        path: "/docs/company/role-development/reviews/2026-04-iris.md",
+        generatedAt: TEN_DAYS_AGO,
+        hasTodoMarker: true,
+      },
+    ]);
+    await recordSoleneDecision({
+      type: "dispatch",
+      contextSummary: "ctx",
+      rationale: "r",
+      responseText: "Dispatched and reporting back.",
+    });
+    const r = await runSoleneAudit({ scope: "ad-hoc" });
+    const hasStaleFinding = AUDIT_FINDINGS.some(
+      (f) => f.pattern === "review_skeleton_staleness",
+    );
+    expect(hasStaleFinding).toBe(true);
+    expect(r.findingCount).toBeGreaterThanOrEqual(1);
   });
 });

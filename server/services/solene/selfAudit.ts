@@ -83,6 +83,8 @@
  * her own discipline + memory updates downstream.
  */
 
+import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
+import { resolve as pathResolve, join as pathJoin } from "node:path";
 import { and, desc, gte, sql, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import {
@@ -231,6 +233,8 @@ export const SOLENE_CITATIONS = {
     "feedback_solene_self_development.md (team-state map) — never dispatch onto file surfaces another in-flight agent is mid-flight on",
   brief_context_staleness:
     "feedback_solene_self_development.md (session-start protocol) — invoking the constitution / charter / own brief without freshly reading them",
+  review_skeleton_staleness:
+    "feedback_continuous_improvement_cadence.md — empty skeletons are worse than no skeletons. A generated team-member or arc review whose Solene-filled sections still carry TODO(solene): markers >7d after generation signals the cadence is not real",
 } as const;
 
 export type SoleneDetectorName = keyof typeof SOLENE_CITATIONS;
@@ -666,6 +670,8 @@ async function runRunLevelChecks(
   const out: PendingFinding[] = [];
   const capital = await checkCapitalOverspend(decisions);
   if (capital) out.push(capital);
+  const stale = await checkReviewSkeletonStaleness();
+  if (stale) out.push(stale);
   return out;
 }
 
@@ -709,6 +715,125 @@ export async function checkCapitalOverspend(
   } catch (err) {
     logger.warn(
       "[soleneAudit] capital overspend check failed",
+      err instanceof Error ? err : undefined,
+    );
+    return null;
+  }
+}
+
+// ============================================================================
+// DETECTOR 9 — review_skeleton_staleness (run-level, file-system based)
+//
+// Scans docs/company/role-development/reviews/ and
+// docs/company/role-development/arc/ for review skeletons whose
+// Solene-filled sections still carry `TODO(solene):` markers AND whose
+// generated_at frontmatter is older than the staleness threshold (default
+// 7 days). One finding per run (paths aggregated into matchedPatterns);
+// severity = warn so it contributes to the same warn-count drift
+// threshold as other slow-burn issues. Per the cadence directive in
+// feedback_continuous_improvement_cadence.md, empty skeletons signal
+// the cadence is not real.
+//
+// Detection-only: the audit surfaces the staleness; Solene fills the
+// skeleton or removes the markers downstream.
+// ============================================================================
+
+const REVIEW_SKELETON_STALENESS_DAYS = 7;
+const REVIEW_TODO_MARKER = "TODO(solene):";
+
+// Stubbable file source so tests don't need a real filesystem.
+interface ReviewFileLike {
+  path: string;
+  generatedAt: Date | null;
+  hasTodoMarker: boolean;
+}
+let reviewFilesAccessor: () => ReviewFileLike[] = defaultReviewFilesAccessor;
+
+function defaultReviewFilesAccessor(): ReviewFileLike[] {
+  try {
+    const roots = [
+      pathResolve(process.cwd(), "docs/company/role-development/reviews"),
+      pathResolve(process.cwd(), "docs/company/role-development/arc"),
+    ];
+    const out: ReviewFileLike[] = [];
+    for (const root of roots) {
+      if (!existsSync(root)) continue;
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(root);
+      } catch {
+        continue;
+      }
+      for (const name of entries) {
+        if (!name.endsWith(".md")) continue;
+        const fullPath = pathJoin(root, name);
+        try {
+          if (!statSync(fullPath).isFile()) continue;
+          const body = readFileSync(fullPath, "utf8");
+          out.push({
+            path: fullPath,
+            generatedAt: parseGeneratedAtFromFrontmatter(body),
+            hasTodoMarker: body.includes(REVIEW_TODO_MARKER),
+          });
+        } catch {
+          // best-effort: skip unreadable files
+        }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Parse the `generated_at: <ISO>` line from a YAML frontmatter block. */
+function parseGeneratedAtFromFrontmatter(body: string): Date | null {
+  if (!body.startsWith("---")) return null;
+  const end = body.indexOf("\n---", 3);
+  if (end < 0) return null;
+  const header = body.slice(3, end);
+  const match = header.match(/^\s*generated_at:\s*(.+?)\s*$/m);
+  if (!match) return null;
+  const parsed = new Date(match[1]);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+/**
+ * Inject a custom review-file accessor (tests only). Pass null to reset
+ * to the default filesystem-backed implementation.
+ */
+export function setReviewFilesAccessorForTest(
+  accessor: (() => ReviewFileLike[]) | null,
+): void {
+  reviewFilesAccessor = accessor ?? defaultReviewFilesAccessor;
+}
+
+export async function checkReviewSkeletonStaleness(): Promise<PendingFinding | null> {
+  try {
+    const files = reviewFilesAccessor();
+    if (files.length === 0) return null;
+    const cutoffMs = Date.now() - REVIEW_SKELETON_STALENESS_DAYS * 24 * 60 * 60 * 1000;
+    const stale = files.filter((f) => {
+      if (!f.hasTodoMarker) return false;
+      if (!f.generatedAt) return false;
+      return f.generatedAt.getTime() <= cutoffMs;
+    });
+    if (stale.length === 0) return null;
+    const paths = stale.map((f) => f.path);
+    return {
+      decisionId: null,
+      pattern: "review_skeleton_staleness",
+      severity: "warn",
+      citation: SOLENE_CITATIONS.review_skeleton_staleness,
+      excerpt: truncate(
+        `${stale.length} stale review skeleton(s) with TODO(solene): markers >7d old: ${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ` (+${paths.length - 5} more)` : ""}`,
+        EXCERPT_MAX,
+      ),
+      matchedPatterns: paths,
+    };
+  } catch (err) {
+    logger.warn(
+      "[soleneAudit] review skeleton staleness check failed",
       err instanceof Error ? err : undefined,
     );
     return null;
