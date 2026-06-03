@@ -42,6 +42,7 @@ import {
   DISPATCH_TOOL_SCHEMAS,
   executeDispatchTool,
 } from "./dispatchToolExecutor";
+import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 
 // ----------------------------------------------------------------------------
 // Configuration
@@ -461,6 +462,51 @@ export async function runDispatch(
     timedOut = true;
     logger.warn(`[dispatchRunner] dispatch ${dispatchId} timed out at ${timeoutMs}ms`);
   }, timeoutMs);
+
+  // L6.28 — upstream constitutional pre-call check (Haiku-fast, fail-open).
+  // Runs BEFORE the expensive Opus turn. If the dispatch prompt clearly
+  // directs a violation of one of the 12 immutables, we fail the dispatch
+  // here and skip the main model call entirely. The checker fails open on
+  // any internal error (parse, timeout, throw) — never bricks the worker.
+  const preCallResult = await checkPromptAgainstConstitution({
+    agentRole: row.agentRole,
+    promptText: row.promptText,
+    dispatchId: dispatchId,
+  }).catch((err) => {
+    logger.warn(
+      `[dispatchRunner] pre-call check threw — failing open`,
+      err instanceof Error ? err : undefined,
+    );
+    return null;
+  });
+
+  if (preCallResult && preCallResult.allowed === false) {
+    const msg = `Pre-call constitutional check blocked dispatch ${dispatchId}: immutable #${preCallResult.immutableNumber} — ${preCallResult.reasoning}`;
+    logger.warn(`[dispatchRunner] ${msg}`);
+    await appendTranscript(transcriptPath, {
+      event: "blocked_by_precall_check",
+      immutableNumber: preCallResult.immutableNumber,
+      reasoning: preCallResult.reasoning,
+    });
+    await failDispatch(dispatchId, {
+      errorMessage: msg,
+      resultFullPath: transcriptPath,
+    });
+    clearTimeout(timeoutHandle);
+    return makeResult(
+      dispatchId,
+      false,
+      preCallResult.costUsd,
+      0,
+      0,
+      started,
+      msg,
+      [],
+      [],
+      transcriptPath,
+      "error",
+    );
+  }
 
   try {
     for (let turn = 0; turn < DISPATCH_MAX_TURNS; turn++) {

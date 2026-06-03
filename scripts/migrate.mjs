@@ -5097,6 +5097,41 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_dispatch_idx" ON "solene_constitutional_violations" ("dispatch_id")`,
 
   // ============================================================
+  // Solene — upstream pre-call constitutional decisions (L6.28).
+  // ============================================================
+  // One row per pre-call screen — Haiku reads the dispatch prompt + role
+  // against the 12 immutables BEFORE the expensive Opus turn runs. Blocked
+  // dispatches also land a row in solene_constitutional_violations, whose
+  // id is back-filled into violation_event_id here for join-friendliness.
+  //
+  // prompt_summary is truncated to ≤500 chars before persist (the full
+  // prompt never lands in the DB) so any credential value embedded in
+  // founder-pasted text cannot leak through this surface.
+  //
+  // cost_usd uses (10,6) — Haiku is sub-cent so we want extra fractional
+  // resolution for the per-dispatch capital-tracking math.
+  //
+  // Mirrors shared/schema/solene-pre-call-decisions.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_pre_call_decisions" (
+     "id" serial PRIMARY KEY,
+     "decided_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "dispatch_id" integer,
+     "agent_role" text NOT NULL,
+     "prompt_summary" text NOT NULL,
+     "allowed" boolean NOT NULL,
+     "immutable_number" integer,
+     "immutable_text" text,
+     "reasoning" text NOT NULL,
+     "model_used" text NOT NULL,
+     "latency_ms" integer NOT NULL,
+     "cost_usd" numeric(10,6) NOT NULL,
+     "violation_event_id" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_allowed_idx" ON "solene_pre_call_decisions" ("allowed", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_dispatch_idx" ON "solene_pre_call_decisions" ("dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_imm_idx" ON "solene_pre_call_decisions" ("immutable_number", "decided_at")`,
+
+  // ============================================================
   // Solene — token-economy decision scoring (L5.27)
   // ============================================================
   // solene_decision_score_events — one row per dispatch-scoring decision.
