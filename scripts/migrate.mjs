@@ -5348,6 +5348,43 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_pipelines_stage_updated_idx" ON "solene_pipelines" ("current_stage", "updated_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_pipelines_opportunity_idx" ON "solene_pipelines" ("improvement_opportunity_id")`,
   `CREATE INDEX IF NOT EXISTS "solene_pipelines_dispatch_idx" ON "solene_pipelines" ("dispatch_id")`,
+
+  // ============================================================
+  // Solene — speculative execution (Phase B L4.20)
+  // ============================================================
+  // solene_speculations — agents pre-compute work they predict will be asked
+  // for soon, based on signals they observed. When the predicted ask arrives,
+  // findMatchingSpeculations() (token-overlap Jaccard, threshold 0.3) surfaces
+  // candidates; consumeSpeculation() marks the chosen one used.
+  //
+  // 5-state lifecycle: speculated → consumed | superseded | expired | discarded.
+  // Default 30-day expiry; expireStale() flips overdue rows (cron wire-in
+  // deferred to a follow-up). triggered_by_signal + evidence_refs are
+  // sanitized inline in the service before persistence (sk_live_/pk_/phc_/
+  // phx_/ghp_/AKIA/Bearer prefixes → [REDACTED]).
+  //
+  // Mirrors shared/schema/solene-speculations.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_speculations" (
+     "id" serial PRIMARY KEY,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "created_by_agent_role" text NOT NULL,
+     "triggered_by_signal" text NOT NULL,
+     "predicted_need" text NOT NULL,
+     "speculative_output" text NOT NULL,
+     "output_kind" text NOT NULL,
+     "confidence" numeric(5,4),
+     "status" text NOT NULL DEFAULT 'speculated',
+     "consumed_at" timestamp with time zone,
+     "consumed_by_dispatch_id" integer,
+     "consumed_by_reason" text,
+     "expires_at" timestamp with time zone,
+     "supersedes_speculation_id" integer,
+     "evidence_refs" text[] DEFAULT '{}'::text[]
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_speculations_status_created_idx" ON "solene_speculations" ("status", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_speculations_role_status_idx" ON "solene_speculations" ("created_by_agent_role", "status")`,
+  `CREATE INDEX IF NOT EXISTS "solene_speculations_expires_idx" ON "solene_speculations" ("expires_at") WHERE "expires_at" IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
