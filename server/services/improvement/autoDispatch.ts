@@ -2,10 +2,13 @@
  * IMPROVEMENT — auto-dispatch guardrails for detector-surfaced opportunities.
  *
  * The detector layer (./detector.ts) persists every improvement opportunity
- * it finds. evaluateForAutoDispatch checks four guardrails and, when all
- * pass, marks the opportunity auto-dispatched. When ANY fail, the row is
- * left with auto_dispatched=false — it's queued for Solene-in-the-loop
- * via /api/founder/team-improvement/pending.
+ * it finds. evaluateForAutoDispatch checks five guardrails and, when all
+ * pass, enqueues a real dispatch on the solene_dispatch_queue (the worker
+ * loop in server/services/solene/dispatchRunner.ts drains the queue and
+ * invokes the agent). When ANY guardrail fails — or when the enqueue
+ * itself throws — the opportunity row is left with auto_dispatched=false
+ * so it surfaces in /api/founder/team-improvement/pending for
+ * Solene-in-the-loop review.
  *
  * Guardrails (all must pass — fail-loud, not fail-quiet):
  *
@@ -28,24 +31,26 @@
  *       mentions a schema-changing / migration / constitutional surface go
  *       straight to founder approval. Belt-and-suspenders on top of cost.
  *
- * HONEST CONSTRAINT — the actual Agent-tool primitive that would let the
- * server programmatically dispatch an Anthropic Agent from inside a cron
- * tick does NOT yet exist. For this commit, "auto-dispatch" SIMULATES the
- * dispatch:
+ * Wiring (Phase 2 — landed):
  *
- *   - logger.info emits a structured "would-have-auto-dispatched" event
- *     carrying the prompt that WOULD have been sent.
- *   - The opportunity row is updated: auto_dispatched=true,
- *     dispatched_at=now(), dispatched_agent_id='SIMULATED:<uuid>'.
+ *   - All five guardrails fire BEFORE enqueueDispatch is called.
+ *   - On pass, enqueueDispatch from ../solene/dispatchQueue persists a
+ *     queued row; the production worker drains via dispatchRunner.
+ *   - The opportunity row is then marked auto_dispatched=true with
+ *     dispatched_agent_id='dispatch:<id>' linking back to the queue row.
+ *   - If enqueueDispatch throws (DB unreachable, cost-cap violation at
+ *     the queue layer, etc.) the error is logged and the opportunity row
+ *     is NOT marked dispatched — it surfaces in the founder pending queue
+ *     just like a guardrail failure.
  *
- * Phase 2 of this work wires the real dispatch — either via an Anthropic
- * SDK direct call from a worker, or via a hand-off to Solene-in-the-loop
- * over the page channel. The simulation lets the guardrails be exercised
- * + observable today without the upstream primitive landing.
+ * team_member -> agent_role mapping:
+ *   iris/soren/beatrice/krieger pass through verbatim. 'solene' maps to
+ *   'general-purpose' — Solene orchestrates the team but isn't herself a
+ *   worker role on the dispatch queue (by design). Anything unrecognized
+ *   also falls back to 'general-purpose'.
  */
 
 import { and, eq, gte, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { db } from "../../db";
 import {
   teamImprovementOpportunities,
@@ -53,6 +58,8 @@ import {
   type TeamImprovementMember,
 } from "@shared/schema/team-improvement";
 import { getMonthlyEnvelopeStatus } from "../solene/capitalTracker";
+import { enqueueDispatch } from "../solene/dispatchQueue";
+import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 
 // ============================================================================
@@ -98,14 +105,20 @@ export interface GuardrailEvaluation {
 export interface AutoDispatchResult {
   opportunityId: number;
   dispatched: boolean;
+  /**
+   * Retained on the response shape for backwards-compat with any caller
+   * still keying off it. Always false now that the real queue is wired.
+   */
   simulated: boolean;
   agentId: string | null;
+  dispatchId: number | null;
   evaluation: GuardrailEvaluation;
   promptSummary?: string;
+  enqueueError?: string;
 }
 
 // ============================================================================
-// evaluateForAutoDispatch — guardrail check + (simulated) dispatch.
+// evaluateForAutoDispatch — guardrail check + real enqueueDispatch.
 // ============================================================================
 
 export async function evaluateForAutoDispatch(
@@ -124,6 +137,8 @@ export async function evaluateForAutoDispatch(
       member: TeamImprovementMember,
       cutoff: Date,
     ) => Promise<number>;
+    /** Inject the queue enqueuer for tests. Defaults to the real enqueueDispatch. */
+    enqueue?: typeof enqueueDispatch;
     /** Bypass the side effect of persisting the dispatch (test-only). */
     dryRun?: boolean;
   } = {},
@@ -140,57 +155,127 @@ export async function evaluateForAutoDispatch(
       dispatched: false,
       simulated: false,
       agentId: null,
+      dispatchId: null,
       evaluation,
     };
   }
 
-  // SIMULATED dispatch — see file header for the honest-constraint note.
-  const simulatedAgentId = `SIMULATED:${randomUUID()}`;
-  const promptSummary = buildSimulatedPrompt(opportunity);
+  const promptText = buildDispatchPrompt(opportunity);
+  const agentRole = mapTeamMemberToAgentRole(opportunity.teamMember);
+  const maxCostUsd =
+    opportunity.estimatedCostUsd !== null
+      ? Number(opportunity.estimatedCostUsd)
+      : 25;
+  const priority = opportunity.severity === "urgent" ? 2.0 : 1.0;
+
+  if (opts.dryRun) {
+    return {
+      opportunityId: opportunity.id,
+      dispatched: true,
+      simulated: false,
+      agentId: null,
+      dispatchId: null,
+      evaluation,
+      promptSummary: promptText,
+    };
+  }
+
+  const enqueueFn = opts.enqueue ?? enqueueDispatch;
+  let dispatchId: number;
+  try {
+    dispatchId = await enqueueFn({
+      sourceType: "auto_dispatch",
+      sourceId: `improvement:${opportunity.id}`,
+      agentRole,
+      promptText,
+      maxCostUsd: maxCostUsd > 0 ? maxCostUsd : 25,
+      timeoutMs: 10 * 60 * 1000,
+      priority,
+      enqueuedBy: "autoDispatch",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(
+      `[autoDispatch] enqueueDispatch failed for opportunity ${opportunity.id} member=${opportunity.teamMember} role=${agentRole}: ${message}`,
+      err instanceof Error ? err : undefined,
+    );
+    return {
+      opportunityId: opportunity.id,
+      dispatched: false,
+      simulated: false,
+      agentId: null,
+      dispatchId: null,
+      evaluation,
+      promptSummary: promptText,
+      enqueueError: message,
+    };
+  }
+
+  const agentId = `dispatch:${dispatchId}`;
 
   logger.info(
-    `[autoDispatch] WOULD-HAVE-AUTO-DISPATCHED opportunity ${opportunity.id} member=${opportunity.teamMember} pattern=${opportunity.signalPattern} agent_id=${simulatedAgentId} prompt_chars=${promptSummary.length}`,
+    `[autoDispatch] AUTO-DISPATCHED opportunity ${opportunity.id} member=${opportunity.teamMember} role=${agentRole} pattern=${opportunity.signalPattern} dispatch_id=${dispatchId} prompt_chars=${promptText.length}`,
     {
       metadata: {
         opportunityId: opportunity.id,
         teamMember: opportunity.teamMember,
+        agentRole,
         signalPattern: opportunity.signalPattern,
         confidence: opportunity.confidence,
         estimatedCostUsd: opportunity.estimatedCostUsd,
         severity: opportunity.severity,
-        simulatedAgentId,
-        prompt: promptSummary.slice(0, 2000),
-        autoDispatchSimulated: true,
+        dispatchId,
+        agentId,
+        priority,
       },
     },
   );
 
-  if (!opts.dryRun) {
-    try {
-      await db
-        .update(teamImprovementOpportunities)
-        .set({
-          autoDispatched: true,
-          dispatchedAt: now,
-          dispatchedAgentId: simulatedAgentId,
-        })
-        .where(eq(teamImprovementOpportunities.id, opportunity.id));
-    } catch (err) {
-      logger.warn(
-        `[autoDispatch] failed to persist auto-dispatch for opportunity ${opportunity.id}`,
-        err instanceof Error ? err : undefined,
-      );
-    }
+  try {
+    await db
+      .update(teamImprovementOpportunities)
+      .set({
+        autoDispatched: true,
+        dispatchedAt: now,
+        dispatchedAgentId: agentId,
+      })
+      .where(eq(teamImprovementOpportunities.id, opportunity.id));
+  } catch (err) {
+    logger.warn(
+      `[autoDispatch] failed to persist auto-dispatch row update for opportunity ${opportunity.id} (dispatch_id=${dispatchId} is live regardless)`,
+      err instanceof Error ? err : undefined,
+    );
   }
 
   return {
     opportunityId: opportunity.id,
     dispatched: true,
-    simulated: true,
-    agentId: simulatedAgentId,
+    simulated: false,
+    agentId,
+    dispatchId,
     evaluation,
-    promptSummary,
+    promptSummary: promptText,
   };
+}
+
+// ============================================================================
+// team_member -> agent_role mapping. 'solene' orchestrates, doesn't get
+// dispatched as a worker; she maps to 'general-purpose'.
+// ============================================================================
+
+export function mapTeamMemberToAgentRole(
+  member: string,
+): SoleneDispatchAgentRole {
+  switch (member) {
+    case "iris":
+    case "soren":
+    case "beatrice":
+    case "krieger":
+      return member;
+    case "solene":
+    default:
+      return "general-purpose";
+  }
 }
 
 // ============================================================================
@@ -309,13 +394,12 @@ async function defaultCountMemberDispatchesLast24h(
 }
 
 // ============================================================================
-// PROMPT COMPOSITION — what we WOULD send to the actual agent dispatch
-// primitive when it lands.
+// PROMPT COMPOSITION — payload sent to enqueueDispatch.
 // ============================================================================
 
-function buildSimulatedPrompt(o: TeamImprovementOpportunity): string {
+function buildDispatchPrompt(o: TeamImprovementOpportunity): string {
   return [
-    `[Team-improvement auto-dispatch — SIMULATED]`,
+    `[Team-improvement auto-dispatch]`,
     `Member: ${o.teamMember}`,
     `Signal pattern: ${o.signalPattern}`,
     `Severity: ${o.severity}`,
