@@ -2255,6 +2255,62 @@ function startSoleneTeamStateRegeneratorJob() {
   }, FIFTEEN_MINUTES);
 }
 
+/**
+ * Solene (COO) — weekly retrospective generator.
+ *
+ * Runs scripts/generate-weekly-retro.mjs every Sunday at 23:00 UTC so a
+ * fresh `docs/company/retros/<YYYY-Www>.md` skeleton lands at week-end
+ * with auto-pulled sections (commits + audit findings + capital + dispatch
+ * counts) already populated. Solene then hand-edits the manual sections
+ * (surprises / patterns / founder-visible summary) during her end-of-week
+ * digest pass.
+ *
+ * The 5-minute poll window covers the exact Sunday-23:00-UTC trigger; a
+ * single per-week run is enforced by withJobLock + the script's
+ * file-exists idempotency.
+ */
+async function processSoleneWeeklyRetro(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+  const scriptPath = path.resolve(process.cwd(), "scripts/generate-weekly-retro.mjs");
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (err) => rejectPromise(err));
+    child.on("exit", (code) => {
+      if (code === 0) return resolvePromise();
+      rejectPromise(
+        new Error(`generate-weekly-retro exit ${code}: ${stderr.slice(0, 500)}`),
+      );
+    });
+  });
+}
+
+function startSoleneWeeklyRetroJob() {
+  log(
+    'Registering Solene weekly retro generator (Sundays 23:00 UTC)',
+    'solene-retro',
+  );
+
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  trackInterval(() => {
+    const now = new Date();
+    // Sunday = 0, hour 23, within a 5-minute window so cron drift can't miss it.
+    if (now.getUTCDay() === 0 && now.getUTCHours() === 23 && now.getUTCMinutes() < 5) {
+      withJobLock('solene_weekly_retro', 60 * 60, processSoleneWeeklyRetro).catch((err) => {
+        log(`[solene-retro] weekly run failed: ${err}`, 'solene-retro');
+      });
+    }
+  }, FIVE_MINUTES);
+}
+
 // ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
 // Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
 // rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
@@ -2429,6 +2485,13 @@ export async function runScheduledJobs(): Promise<void> {
   // file Solene loads on session start reflects the current working tree +
   // in-flight agent identities + production state.
   startSoleneTeamStateRegeneratorJob();
+
+  // Solene — weekly retro generator (Sundays 23:00 UTC). Creates the
+  // skeleton at docs/company/retros/<YYYY-Www>.md with auto-pulled
+  // commits / audit findings / capital / dispatch counts; Solene fills
+  // in the manual notes + founder-visible summary during her end-of-week
+  // digest pass.
+  startSoleneWeeklyRetroJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both
