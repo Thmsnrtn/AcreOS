@@ -2758,6 +2758,90 @@ function startNpmWatchJob() {
   }, ONE_HOUR);
 }
 
+// ── External-watch: Anthropic model-upgrade-path backfill (daily 03:30 UTC) ─
+// Layer 4 cap #18. Anthropic-watch's ingest hook already calls
+// processWatchEvent inline on every newly-inserted event. This backfill is
+// belt-and-suspenders: scans for any anthropic_api events lacking a
+// solene_model_upgrade_recommendations row (i.e. the inline hook failed or
+// the event predates the hook landing) and processes them. Idempotent via
+// the UNIQUE(source_event_id) constraint on the recommendations table.
+function startModelUpgradePathBackfillJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering model-upgrade-path backfill (daily 03:30 UTC)',
+    'model-upgrade',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
+      void withJobLock('model_upgrade_backfill', TTL_SECONDS, async () => {
+        const { processUnactionedEvents } = await import(
+          '../services/external-watch/modelUpgradePath'
+        );
+        const r = await processUnactionedEvents();
+        log(
+          `[model-upgrade] backfill: processed=${r.processed} recommended=${r.recommended}`,
+          'model-upgrade',
+        );
+      }).catch((err) => {
+        log(`[model-upgrade] backfill failed: ${err}`, 'model-upgrade');
+      });
+    }
+  }, ONE_HOUR);
+}
+
+// ── Solene — failure-mode library seeder (boot + daily 05:00 UTC) ───────────
+// Layer 3 cap #12. Reads docs/internal/failure-modes/*.md from disk and
+// UPSERTs into solene_failure_modes. Disk is the source of truth; the DB
+// table backs the per-dispatch prompt injection in dispatchRunner. Boot
+// run lands 60s after startup so first-boot prompts get the library
+// immediately. Daily run picks up newly-authored failure-mode docs.
+function startSoleneFailureModeLibrarySeedJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering Solene failure-mode library seeder (boot + daily 05:00 UTC)',
+    'failure-modes',
+  );
+
+  // Initial seed 60s after startup.
+  setTimeout(() => {
+    void withJobLock('solene_failure_modes_seed', TTL_SECONDS, async () => {
+      const { seedFailureModesFromDisk } = await import(
+        '../services/solene/failureModeLibrary'
+      );
+      const r = await seedFailureModesFromDisk();
+      log(
+        `[failure-modes] initial seed: inserted=${r.inserted} skipped=${r.skipped}`,
+        'failure-modes',
+      );
+    }).catch((err) => {
+      log(`[failure-modes] initial seed failed: ${err}`, 'failure-modes');
+    });
+  }, 60 * 1000);
+
+  // Daily refresh at 05:00 UTC — picks up newly-authored docs.
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 5 && now.getUTCMinutes() < 5) {
+      void withJobLock('solene_failure_modes_seed', TTL_SECONDS, async () => {
+        const { seedFailureModesFromDisk } = await import(
+          '../services/solene/failureModeLibrary'
+        );
+        const r = await seedFailureModesFromDisk();
+        log(
+          `[failure-modes] daily seed: inserted=${r.inserted} skipped=${r.skipped}`,
+          'failure-modes',
+        );
+      }).catch((err) => {
+        log(`[failure-modes] daily seed failed: ${err}`, 'failure-modes');
+      });
+    }
+  }, 60 * 60 * 1000);
+}
+
 // ── Beatrice (CRO) — regulatory-news feed (daily 02:00 UTC) ─────────────────
 // Pulls daily RSS from CFPB / FTC / state AGs (TX, CA). Each item is
 // keyword-filtered against BEATRICE_RELEVANCE_KEYWORDS; matches persist
@@ -2967,6 +3051,17 @@ export async function runScheduledJobs(): Promise<void> {
   // Iris owns 7d ack (high) / 24h ack (critical) per
   // docs/internal/npm-watch-discipline.md.
   startNpmWatchJob();
+
+  // Layer 4 cap #18 — model-upgrade-path backfill (daily 03:30 UTC).
+  // Belt-and-suspenders for the inline anthropic-watch hook; processes any
+  // anthropic_api events lacking a solene_model_upgrade_recommendations row.
+  startModelUpgradePathBackfillJob();
+
+  // Layer 3 cap #12 — Solene failure-mode library seeder. Initial run 60s
+  // after boot + daily refresh at 05:00 UTC. Reads
+  // docs/internal/failure-modes/*.md and UPSERTs into solene_failure_modes
+  // so dispatchRunner's prompt injection has the latest library available.
+  startSoleneFailureModeLibrarySeedJob();
 
   // Solene (Layer 1 cap #2) — agent-claims expiry sweep (every 5m). Walks
   // solene_agent_claims rows past their TTL and flips them to 'expired' so
