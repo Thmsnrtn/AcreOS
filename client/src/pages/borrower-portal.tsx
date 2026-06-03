@@ -509,17 +509,18 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const handleGenerateStatement = async () => {
     setIsGeneratingStatement(true);
     try {
-      const params = new URLSearchParams({
-        accessToken,
-        email: verifiedEmail,
-        type: statementType,
-      });
-      
+      // F3.4 fix — credentials no longer in URL. Auth comes from the
+      // borrower_session cookie set during /api/borrower/verify, which
+      // already ran before this dashboard rendered.
+      const params = new URLSearchParams({ type: statementType });
+
       if (statementType === '1098') {
         params.set('year', statementYear.toString());
       }
-      
-      const res = await fetch(`/api/borrower/statements/generate?${params}`);
+
+      const res = await fetch(`/api/borrower/statements/generate?${params}`, {
+        credentials: 'include',
+      });
       
       if (res.ok) {
         const data = await res.json();

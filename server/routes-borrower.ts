@@ -10,6 +10,14 @@ import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
+import { Errors } from "./utils/errors";
+import {
+  exchangeForBorrowerSession,
+  verifyBorrowerSession,
+  SESSION_TTL_SECONDS as STMT_SESSION_TTL_SECONDS,
+  COOKIE_NAME as STMT_COOKIE_NAME,
+  type BorrowerGrantResolver,
+} from "./services/borrower/statementAccess";
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
 // portal endpoints carry it as a URL param) and fall back to IP. Pure IP
@@ -239,6 +247,78 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
   
+  // ─────────────────────────────────────────────────────────────────────
+  // F3.4 fix — borrower-statement creds out of URL.
+  // ─────────────────────────────────────────────────────────────────────
+  // Beatrice's pre-deploy audit (2026-06-03) flagged
+  // `GET /api/borrower/statements/generate?accessToken=...&email=...`
+  // as a credential-in-URL leak: proxy/Sentry/Cloudflare logs all
+  // capture the query string.
+  //
+  // Replacement flow:
+  //   1. Email-link landing page POSTs (accessToken, email) here.
+  //   2. We mint a signed, IP-bound, 30-min cookie ("borrower_stmt_session").
+  //   3. The statement-fetch GET reads the cookie via verifyBorrowerSession;
+  //      returns 401 when absent/invalid/expired.
+  //
+  // Distinct from the DB-backed /api/borrower/verify session — keeps
+  // the statement-access flow self-contained and stateless.
+  api.post("/api/borrower/auth/exchange", async (req, res) => {
+    try {
+      const { accessToken, email } = req.body ?? {};
+      if (
+        typeof accessToken !== "string" ||
+        typeof email !== "string" ||
+        !accessToken ||
+        !email
+      ) {
+        return Errors.badRequest(res, "accessToken and email are required");
+      }
+
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+
+      const resolver: BorrowerGrantResolver = {
+        async resolve({ accessToken, email }) {
+          const note = await storage.getNoteByAccessToken(accessToken);
+          if (!note) return { ok: false, reason: "not_found" };
+          if (!note.borrowerId) return { ok: false, reason: "no_borrower" };
+          const borrower = await storage.getLead(
+            note.organizationId,
+            note.borrowerId,
+          );
+          if (
+            !borrower ||
+            borrower.email?.toLowerCase() !== email.toLowerCase()
+          ) {
+            return { ok: false, reason: "email_mismatch" };
+          }
+          return { ok: true, scope: `note:${note.id}` };
+        },
+      };
+
+      const result = await exchangeForBorrowerSession(
+        { accessToken, email, ip },
+        resolver,
+      );
+
+      if (!result.ok || !result.sessionCookie) {
+        return Errors.unauthorized(res);
+      }
+
+      res.cookie(STMT_COOKIE_NAME, result.sessionCookie, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: STMT_SESSION_TTL_SECONDS * 1000,
+        path: "/",
+      });
+
+      return res.status(204).end();
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   // Check borrower session status
   api.get("/api/borrower/session", validateBorrowerSession, async (req, res) => {
     try {
@@ -946,28 +1026,59 @@ export function registerBorrowerRoutes(app: Express): void {
   // Generate PDF statement for borrower portal
   api.get("/api/borrower/statements/generate", async (req, res) => {
     try {
-      const { accessToken, email, type, year, startDate, endDate } = req.query;
-      
-      if (!accessToken || !email) {
-        return res.status(400).json({ message: "Access token and email are required" });
+      // F3.4 fix — no more accessToken/email in the URL. Two auth
+      // paths accepted:
+      //   (a) DB-backed borrower_session cookie set by /api/borrower/verify
+      //       (the existing post-login flow that real borrowers use)
+      //   (b) signed borrower_stmt_session cookie set by the new
+      //       /api/borrower/auth/exchange endpoint (for email-link
+      //       landing pages that don't go through full /verify first)
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const dbSessionToken =
+        req.cookies?.borrower_session ||
+        (req.headers["x-borrower-session"] as string | undefined);
+      const stmtCookie = req.cookies?.[STMT_COOKIE_NAME];
+
+      let noteIdFromSession: string | null = null;
+
+      if (dbSessionToken) {
+        const dbSession = await storage.getBorrowerSession(dbSessionToken);
+        if (dbSession && new Date(dbSession.expiresAt) >= new Date()) {
+          noteIdFromSession = dbSession.noteId;
+        }
       }
-      
-      const note = await storage.getNoteByAccessToken(accessToken as string);
+
+      if (!noteIdFromSession && stmtCookie) {
+        const verified = verifyBorrowerSession(stmtCookie, ip);
+        if (verified.valid && verified.statementSetScope?.startsWith("note:")) {
+          noteIdFromSession = verified.statementSetScope.slice("note:".length);
+        }
+      }
+
+      if (!noteIdFromSession) {
+        return Errors.unauthorized(res);
+      }
+
+      const { type, year, startDate, endDate } = req.query;
+
+      const [note] = await db
+        .select()
+        .from(notes)
+        .where(eq(notes.id, noteIdFromSession));
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
-      
-      // Verify borrower email
+
+      // Borrower context for the statement payload (no email check —
+      // already done at session-mint time).
       let borrower = null;
       if (note.borrowerId) {
         borrower = await storage.getLead(note.organizationId, note.borrowerId);
-        if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
-          return res.status(403).json({ message: "Unauthorized" });
-        }
-      } else {
-        return res.status(403).json({ message: "Unauthorized" });
       }
-      
+      if (!borrower) {
+        return Errors.notFound(res, "Borrower");
+      }
+
       // Get payments for this note
       const allPayments = await storage.getPayments(note.organizationId, note.id);
       
