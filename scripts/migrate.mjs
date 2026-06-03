@@ -5097,6 +5097,34 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_agent_identity_decisions_revisit_idx" ON "solene_agent_identity_decisions" ("revisit_due_at") WHERE "revisit_due_at" IS NOT NULL`,
 
   // ============================================================
+  // Solene — fine-grain decision rationale traces (Layer 3 L3.16)
+  // ============================================================
+  // solene_decision_traces — append-only step ledger for the reasoning
+  // behind a single decision in solene_agent_identity_decisions. Six step
+  // kinds capture the reasoning lifecycle: observation, hypothesis,
+  // evidence, alternative, choice, uncertainty.
+  //
+  // step_number is monotonic per decision_id (server-side MAX+1 in the
+  // service); the unique constraint is a belt-and-suspenders guard.
+  //
+  // Mirrors shared/schema/solene-decision-traces.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_decision_traces" (
+     "id" serial PRIMARY KEY,
+     "decision_id" integer NOT NULL,
+     "step_number" integer NOT NULL,
+     "recorded_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "step_kind" text NOT NULL,
+     "step_text" text NOT NULL,
+     "evidence_refs" text[],
+     "alternatives_considered" text[],
+     "chosen_path_reason" text,
+     "confidence_at_step" numeric(5,4)
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_decision_traces_decision_step_idx" ON "solene_decision_traces" ("decision_id", "step_number")`,
+  `CREATE INDEX IF NOT EXISTS "solene_decision_traces_kind_recorded_idx" ON "solene_decision_traces" ("step_kind", "recorded_at" DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_decision_traces_decision_step_unique" ON "solene_decision_traces" ("decision_id", "step_number")`,
+
+  // ============================================================
   // Solene — failure-mode library (Layer 3 capability L3.12)
   // ============================================================
   // solene_failure_modes — query-friendly mirror of the disk-backed
