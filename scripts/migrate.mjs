@@ -5610,6 +5610,36 @@ const STATEMENTS = [
   // HNSW over cosine. Safe to skip when pgvector isn't yet installed
   // (release_command classifies "extension not available" as non-fatal).
   `CREATE INDEX IF NOT EXISTS "solene_embedded_records_embedding_hnsw_idx" ON "solene_embedded_records" USING hnsw ("embedding" vector_cosine_ops)`,
+
+  // ============================================================
+  // Solene — L3.10 learning loop audit table
+  // ============================================================
+  // solene_retrieval_events — every RAG query the learningLoop service
+  // issues against solene_embedded_records lands here. Lets the founder
+  // surface answer "is the RAG layer firing? what's the average top
+  // similarity? who's pulling from memory?".
+  //
+  // retrieved_source_refs + similarity_scores are parallel arrays (same
+  // length, same order) so we can reconstruct the ranked retrieval
+  // without joining back to the embeddings table (whose row could have
+  // been re-embedded since this retrieval).
+  //
+  // Mirrors shared/schema/solene-learning-loop.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_retrieval_events" (
+     "id" serial PRIMARY KEY,
+     "queried_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "querying_agent_role" text NOT NULL,
+     "query_dispatch_id" integer,
+     "query_text" text NOT NULL,
+     "query_namespace" text NOT NULL,
+     "top_k" integer NOT NULL,
+     "retrieved_count" integer NOT NULL,
+     "retrieved_source_refs" text[] NOT NULL,
+     "similarity_scores" numeric(5, 4)[] NOT NULL,
+     "latency_ms" integer NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_retrieval_events_agent_recent_idx" ON "solene_retrieval_events" ("querying_agent_role", "queried_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_retrieval_events_namespace_recent_idx" ON "solene_retrieval_events" ("query_namespace", "queried_at" DESC)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
