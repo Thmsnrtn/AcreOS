@@ -31,7 +31,7 @@
  *  problem for the wider scheduler.
  */
 
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, like, inArray, not } from "drizzle-orm";
 import { db } from "../../db";
 import {
   sorenSeoRankings,
@@ -40,8 +40,10 @@ import {
   SOREN_SEO_HOST,
   type InsertSorenSeoRanking,
 } from "@shared/schema/soren-seo";
+import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { LEARN_SEO_TARGETS } from "./seoTargets";
+import { enqueueDispatch } from "../solene/dispatchQueue";
 
 // ============================================================================
 // trackRankings — fetch + parse + persist
@@ -129,6 +131,19 @@ export async function trackRankings(
             },
           },
         );
+
+        // L1-keystone wire-in: drop ≥10 positions on a /learn page →
+        // auto-enqueue a Soren content-iteration dispatch on the live
+        // solene_dispatch_queue. Additive — never blocks the cron, never
+        // mutates the persisted ranking row.
+        await maybeEnqueueSeoIterationDispatch({
+          pagePath: target.pagePath,
+          keyword,
+          priorRank: prior,
+          latestRank: rank,
+          change,
+          trackerRunId: String(now.getTime()),
+        });
       }
     }
   }
@@ -317,6 +332,204 @@ async function getMostRecentRank(
     .orderBy(desc(sorenSeoRankings.checkedAt))
     .limit(1);
   return row?.googleRank ?? null;
+}
+
+// ============================================================================
+// AUTO-ENQUEUE — wire rank-drop ≥10 detector into the live dispatch queue.
+// ============================================================================
+
+/**
+ * Input shape for `buildSeoIterationPrompt`. The prompt that Soren will
+ * receive when it picks up an auto-enqueued content-iteration dispatch.
+ *
+ * All six fields are load-bearing — the prompt asks Soren to read the
+ * actual page + the SERP snapshot, identify the gap, and propose a
+ * minimum-viable iteration (NOT a full rewrite). If the proposed change
+ * would alter the page's core hypothesis, it routes to Maren (CPO).
+ */
+export interface SeoIterationPromptInput {
+  pageSlug: string;
+  keyword: string;
+  previousRank: number | null;
+  currentRank: number | null;
+  rankDropPositions: number;
+  serpSnapshot: string;
+}
+
+/**
+ * Build the content-iteration dispatch prompt. Pure function — testable.
+ * Every input field MUST appear in the prompt body so the dispatch is
+ * self-contained (the worker reads only the prompt, not the producer's
+ * stack frame).
+ */
+export function buildSeoIterationPrompt(
+  input: SeoIterationPromptInput,
+): string {
+  const previous =
+    input.previousRank === null ? "not-in-top-100" : `#${input.previousRank}`;
+  const current =
+    input.currentRank === null ? "not-in-top-100" : `#${input.currentRank}`;
+  return `You are Soren, AcreOS CGO. A SERP-rank drop on a /learn page
+fired the auto-iteration detector. Your job: a minimum-viable content
+change to recover, NOT a full rewrite.
+
+CONTEXT
+- Page slug: ${input.pageSlug}
+- Target keyword: ${input.keyword}
+- Previous rank: ${previous}
+- Current rank: ${current}
+- Rank drop: ${input.rankDropPositions} positions
+- SERP top-3 snapshot (captured by tracker): ${input.serpSnapshot}
+
+STEPS
+1. Read the current content at the page slug.
+2. Read the top-3 SERP results for the keyword above (the snapshot the
+   tracker captured is included in CONTEXT — fetch live if you need more).
+3. Identify what gap might explain the rank drop. Consider: content
+   depth, freshness, structured data, internal links, page speed.
+4. Propose the iteration — the minimum-viable change to recover. Do
+   not rewrite the whole page.
+5. Implement the change OR queue for Maren's review if the proposed
+   change would alter the page's core hypothesis (positioning, target
+   audience, core claim). Hypothesis-shifting changes are CPO territory.
+
+REPORT
+Concise summary of: gap identified, change proposed, files touched (or
+queued for Maren), why this is minimum-viable.`;
+}
+
+/**
+ * Test injection seam — by default uses the real dispatchQueue + db.
+ * The test file substitutes both to exercise the idempotency + error
+ * branches without touching Postgres.
+ */
+export interface SeoIterationEnqueueDeps {
+  enqueueDispatchImpl?: typeof enqueueDispatch;
+  existingDispatchCheckImpl?: (
+    pagePath: string,
+    keyword: string,
+  ) => Promise<boolean>;
+}
+
+export interface MaybeEnqueueArgs {
+  pagePath: string;
+  keyword: string;
+  priorRank: number | null;
+  latestRank: number | null;
+  change: RankChange;
+  trackerRunId: string;
+}
+
+/**
+ * Auto-enqueue a Soren content-iteration dispatch when the detector
+ * confirms a rank drop ≥10 positions on a /learn page.
+ *
+ * Idempotency: skip if a non-terminal dispatch already exists for the
+ * same (pagePath, keyword) tuple (sourceId prefix match).
+ *
+ * Never throws — failures are caught + logged. A missed enqueue is
+ * recoverable on the next tracker run; throwing would break the cron.
+ */
+export async function maybeEnqueueSeoIterationDispatch(
+  args: MaybeEnqueueArgs,
+  deps: SeoIterationEnqueueDeps = {},
+): Promise<{ enqueued: boolean; reason?: string }> {
+  // Only fire on dropped direction with magnitude ≥ threshold AND only
+  // on /learn pages (content surface). 'exited' (fell out of top-100)
+  // does NOT trigger here — that's a separate failure mode (page
+  // de-indexed) that deserves a different dispatch shape.
+  if (args.change.direction !== "dropped") {
+    return { enqueued: false, reason: "not_dropped" };
+  }
+  const drop = Math.abs(args.change.delta);
+  if (drop < SOREN_RANK_CHANGE_THRESHOLD) {
+    return { enqueued: false, reason: "under_threshold" };
+  }
+  if (!args.pagePath.startsWith("/learn/")) {
+    return { enqueued: false, reason: "not_learn_page" };
+  }
+
+  const existsCheck =
+    deps.existingDispatchCheckImpl ?? defaultExistingDispatchCheck;
+  const enqueueImpl = deps.enqueueDispatchImpl ?? enqueueDispatch;
+
+  let alreadyQueued = false;
+  try {
+    alreadyQueued = await existsCheck(args.pagePath, args.keyword);
+  } catch (err) {
+    logger.warn(
+      `[soren-seo] idempotency check failed for ${args.pagePath}/${args.keyword}`,
+      err instanceof Error ? err : undefined,
+    );
+    // Fail-closed on the check itself: don't enqueue if we can't tell.
+    return { enqueued: false, reason: "idempotency_check_failed" };
+  }
+  if (alreadyQueued) {
+    logger.info(
+      `[soren-seo] skip — already-queued dispatch for ${args.pagePath} kw="${args.keyword}"`,
+    );
+    return { enqueued: false, reason: "already_queued" };
+  }
+
+  const prompt = buildSeoIterationPrompt({
+    pageSlug: args.pagePath,
+    keyword: args.keyword,
+    previousRank: args.priorRank,
+    currentRank: args.latestRank,
+    rankDropPositions: drop,
+    serpSnapshot: `prior=${args.priorRank ?? "null"} latest=${args.latestRank ?? "null"} (top-3 snapshot capture deferred to Soren tool-use at dispatch time)`,
+  });
+
+  try {
+    await enqueueImpl({
+      sourceType: "detector",
+      sourceId: `soren-seo-drop:${args.pagePath}:${args.keyword}:${args.trackerRunId}`,
+      agentRole: "soren",
+      promptText: prompt,
+      maxCostUsd: 15,
+      timeoutMs: 8 * 60 * 1000,
+      priority: 1.2,
+      enqueuedBy: "soren-seo-tracker",
+    });
+    return { enqueued: true };
+  } catch (err) {
+    logger.warn(
+      `[soren-seo] enqueue failed for ${args.pagePath} kw="${args.keyword}"`,
+      err instanceof Error ? err : undefined,
+    );
+    return { enqueued: false, reason: "enqueue_failed" };
+  }
+}
+
+/**
+ * Default idempotency check — look for any non-terminal queue row whose
+ * sourceId starts with `soren-seo-drop:<pagePath>:<keyword>:`. The trailing
+ * trackerRunId differs per cron tick, so the LIKE prefix match is what
+ * makes the tuple (pagePath, keyword) idempotency work across runs.
+ */
+async function defaultExistingDispatchCheck(
+  pagePath: string,
+  keyword: string,
+): Promise<boolean> {
+  const prefix = `soren-seo-drop:${pagePath}:${keyword}:`;
+  const rows = await db
+    .select({ id: soleneDispatchQueue.id })
+    .from(soleneDispatchQueue)
+    .where(
+      and(
+        eq(soleneDispatchQueue.sourceType, "detector"),
+        like(soleneDispatchQueue.sourceId, `${prefix}%`),
+        not(
+          inArray(soleneDispatchQueue.status, [
+            "failed",
+            "cancelled",
+            "completed",
+          ]),
+        ),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 // ============================================================================

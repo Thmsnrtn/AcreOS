@@ -7,15 +7,40 @@
  * SERP result page.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../utils/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
+vi.mock("../../db", () => ({
+  db: {
+    select: vi.fn(),
+    insert: vi.fn(),
+  },
+}));
+
+vi.mock("../solene/dispatchQueue", () => ({
+  enqueueDispatch: vi.fn(),
+}));
+
 import {
+  buildSeoIterationPrompt,
   detectRankChange,
+  maybeEnqueueSeoIterationDispatch,
   parseRankFromSerpHtml,
+  type RankChange,
 } from "./seoTracker";
 import {
   SOREN_RANK_CHANGE_THRESHOLD,
   SOREN_SERP_MAX_RANK,
 } from "@shared/schema/soren-seo";
+import { logger } from "../../utils/logger";
 
 describe("detectRankChange", () => {
   it("returns null when both observations are null (still unranked)", () => {
@@ -180,3 +205,212 @@ function buildSerpFixture(urls: string[]): string {
   const padding = "x".repeat(2000);
   return `<html><body>${padding}<div id="results">${anchors}</div></body></html>`;
 }
+
+// ============================================================================
+// buildSeoIterationPrompt — pure-function content check
+// ============================================================================
+
+describe("buildSeoIterationPrompt", () => {
+  it("includes all six load-bearing input fields in the prompt body", () => {
+    const prompt = buildSeoIterationPrompt({
+      pageSlug: "/learn/land-flipping/texas",
+      keyword: "tax delinquent land texas",
+      previousRank: 8,
+      currentRank: 22,
+      rankDropPositions: 14,
+      serpSnapshot: "TOP3-SNAPSHOT-MARKER-XYZ",
+    });
+    // 1. pageSlug
+    expect(prompt).toContain("/learn/land-flipping/texas");
+    // 2. keyword
+    expect(prompt).toContain("tax delinquent land texas");
+    // 3. previousRank
+    expect(prompt).toContain("#8");
+    // 4. currentRank
+    expect(prompt).toContain("#22");
+    // 5. rankDropPositions
+    expect(prompt).toContain("14");
+    // 6. serpSnapshot
+    expect(prompt).toContain("TOP3-SNAPSHOT-MARKER-XYZ");
+  });
+
+  it("renders null ranks as 'not-in-top-100' rather than '#null'", () => {
+    const prompt = buildSeoIterationPrompt({
+      pageSlug: "/learn/note-investing/ohio",
+      keyword: "ohio mortgage note investing",
+      previousRank: null,
+      currentRank: null,
+      rankDropPositions: 0,
+      serpSnapshot: "snap",
+    });
+    expect(prompt).toContain("not-in-top-100");
+    expect(prompt).not.toContain("#null");
+  });
+
+  it("mentions Maren CPO escalation for hypothesis-shifting changes", () => {
+    const prompt = buildSeoIterationPrompt({
+      pageSlug: "/learn/land-flipping/florida",
+      keyword: "florida tax deed land",
+      previousRank: 5,
+      currentRank: 30,
+      rankDropPositions: 25,
+      serpSnapshot: "snap",
+    });
+    expect(prompt.toLowerCase()).toContain("maren");
+  });
+});
+
+// ============================================================================
+// maybeEnqueueSeoIterationDispatch — detector → live queue wire-in
+// ============================================================================
+
+describe("maybeEnqueueSeoIterationDispatch", () => {
+  const baseArgs = {
+    pagePath: "/learn/land-flipping/texas",
+    keyword: "tax delinquent land texas",
+    priorRank: 8,
+    latestRank: 20,
+    change: { delta: -12, direction: "dropped" } as RankChange,
+    trackerRunId: "1717459200000",
+  };
+
+  beforeEach(() => {
+    (logger.info as ReturnType<typeof vi.fn>).mockClear();
+    (logger.warn as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it("rank drop 12 positions on /learn page → enqueueDispatch called with expected shape", async () => {
+    const enqueueMock = vi.fn().mockResolvedValue(4242);
+    const existsMock = vi.fn().mockResolvedValue(false);
+
+    const result = await maybeEnqueueSeoIterationDispatch(baseArgs, {
+      enqueueDispatchImpl: enqueueMock as never,
+      existingDispatchCheckImpl: existsMock,
+    });
+
+    expect(result.enqueued).toBe(true);
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    const call = enqueueMock.mock.calls[0][0];
+    expect(call.sourceType).toBe("detector");
+    expect(call.agentRole).toBe("soren");
+    expect(call.priority).toBe(1.2);
+    expect(call.maxCostUsd).toBe(15);
+    expect(call.timeoutMs).toBe(8 * 60 * 1000);
+    expect(call.enqueuedBy).toBe("soren-seo-tracker");
+    expect(call.sourceId).toContain(baseArgs.pagePath);
+    expect(call.sourceId).toContain(baseArgs.keyword);
+    expect(call.sourceId).toContain(baseArgs.trackerRunId);
+    expect(call.promptText).toContain(baseArgs.pagePath);
+    expect(call.promptText).toContain(baseArgs.keyword);
+  });
+
+  it("rank drop 7 positions → does NOT enqueue (under threshold)", async () => {
+    const enqueueMock = vi.fn();
+    const existsMock = vi.fn().mockResolvedValue(false);
+
+    const result = await maybeEnqueueSeoIterationDispatch(
+      {
+        ...baseArgs,
+        priorRank: 10,
+        latestRank: 17,
+        change: { delta: -7, direction: "dropped" } as RankChange,
+      },
+      {
+        enqueueDispatchImpl: enqueueMock as never,
+        existingDispatchCheckImpl: existsMock,
+      },
+    );
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("under_threshold");
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("already-queued same (pagePath, keyword) tuple → skip", async () => {
+    const enqueueMock = vi.fn();
+    const existsMock = vi.fn().mockResolvedValue(true);
+
+    const result = await maybeEnqueueSeoIterationDispatch(baseArgs, {
+      enqueueDispatchImpl: enqueueMock as never,
+      existingDispatchCheckImpl: existsMock,
+    });
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("already_queued");
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(existsMock).toHaveBeenCalledWith(
+      baseArgs.pagePath,
+      baseArgs.keyword,
+    );
+  });
+
+  it("enqueueDispatch throws → caught + logged, never propagates", async () => {
+    const enqueueMock = vi
+      .fn()
+      .mockRejectedValue(new Error("queue insert failed"));
+    const existsMock = vi.fn().mockResolvedValue(false);
+
+    const result = await maybeEnqueueSeoIterationDispatch(baseArgs, {
+      enqueueDispatchImpl: enqueueMock as never,
+      existingDispatchCheckImpl: existsMock,
+    });
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("enqueue_failed");
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("non-/learn page → does NOT enqueue (out of scope)", async () => {
+    const enqueueMock = vi.fn();
+    const existsMock = vi.fn().mockResolvedValue(false);
+
+    const result = await maybeEnqueueSeoIterationDispatch(
+      { ...baseArgs, pagePath: "/marketing/home" },
+      {
+        enqueueDispatchImpl: enqueueMock as never,
+        existingDispatchCheckImpl: existsMock,
+      },
+    );
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("not_learn_page");
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("'improved' direction → does NOT enqueue even if magnitude ≥ threshold", async () => {
+    const enqueueMock = vi.fn();
+    const existsMock = vi.fn().mockResolvedValue(false);
+
+    const result = await maybeEnqueueSeoIterationDispatch(
+      {
+        ...baseArgs,
+        change: { delta: 20, direction: "improved" } as RankChange,
+      },
+      {
+        enqueueDispatchImpl: enqueueMock as never,
+        existingDispatchCheckImpl: existsMock,
+      },
+    );
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("not_dropped");
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("idempotency check itself throws → fail-closed, no enqueue", async () => {
+    const enqueueMock = vi.fn();
+    const existsMock = vi
+      .fn()
+      .mockRejectedValue(new Error("db connection lost"));
+
+    const result = await maybeEnqueueSeoIterationDispatch(baseArgs, {
+      enqueueDispatchImpl: enqueueMock as never,
+      existingDispatchCheckImpl: existsMock,
+    });
+
+    expect(result.enqueued).toBe(false);
+    expect(result.reason).toBe("idempotency_check_failed");
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+});
