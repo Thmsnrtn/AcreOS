@@ -150,7 +150,6 @@ export async function evaluateForAutoDispatch(
 
   logger.info(
     `[autoDispatch] WOULD-HAVE-AUTO-DISPATCHED opportunity ${opportunity.id} member=${opportunity.teamMember} pattern=${opportunity.signalPattern} agent_id=${simulatedAgentId} prompt_chars=${promptSummary.length}`,
-    undefined,
     {
       metadata: {
         opportunityId: opportunity.id,

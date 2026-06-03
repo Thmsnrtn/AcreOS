@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
@@ -1938,7 +1939,7 @@ export default function CommandCenterPage() {
                   <Settings className="w-4 h-4" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="w-[calc(100vw-2rem)] max-w-md sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5" />
@@ -1948,7 +1949,20 @@ export default function CommandCenterPage() {
                     Configure AI behavior preferences
                   </DialogDescription>
                 </DialogHeader>
-                <AISettings compact={true} />
+                {/* ErrorBoundary protects against a blank dialog when AISettings throws — Tom flagged
+                    this 2026-06-02 ("clicking settings in pax → blank screen"). Root-cause fix is the
+                    dialog-width responsive class above (was `sm:max-w-md` only — no mobile width fallback
+                    so on <640px the content rendered with default Radix width that clipped the content).
+                    Boundary stays as defense-in-depth so future render-time errors don't blank the surface. */}
+                <ErrorBoundary
+                  fallback={
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      AI Settings hit a render error. Refresh the page to try again.
+                    </div>
+                  }
+                >
+                  <AISettings compact={true} />
+                </ErrorBoundary>
               </DialogContent>
             </Dialog>
           </div>
