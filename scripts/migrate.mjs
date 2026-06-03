@@ -4753,6 +4753,23 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "iris_perf_samples_path_window_idx" ON "iris_perf_samples" ("endpoint_path", "window_started_at")`,
   `CREATE INDEX IF NOT EXISTS "iris_perf_samples_window_idx" ON "iris_perf_samples" ("window_started_at")`,
+
+  // ── Soren (CGO) — SEO ranking ledger for /learn pages ─────────────────
+  // One row per (page × keyword × check). google_rank is nullable — null
+  // means the page wasn't in the first 100 SERP results. `source` lets a
+  // future paid-API swap (ValueSERP, DataForSEO) happen without a migration.
+  // Mirrors shared/schema/soren-seo.ts. Wired to the cron in
+  // server/jobs/runScheduledJobs.ts → startSorenSeoTrackerJob.
+  `CREATE TABLE IF NOT EXISTS "soren_seo_rankings" (
+     "id" serial PRIMARY KEY,
+     "page_path" text NOT NULL,
+     "target_keyword" text NOT NULL,
+     "google_rank" integer,
+     "source" text NOT NULL DEFAULT 'serp_scrape',
+     "checked_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_page_checked_idx" ON "soren_seo_rankings" ("page_path", "checked_at")`,
+  `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_keyword_checked_idx" ON "soren_seo_rankings" ("target_keyword", "checked_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
