@@ -4771,6 +4771,37 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_page_checked_idx" ON "soren_seo_rankings" ("page_path", "checked_at")`,
   `CREATE INDEX IF NOT EXISTS "soren_seo_rankings_keyword_checked_idx" ON "soren_seo_rankings" ("target_keyword", "checked_at")`,
 
+  // ── Krieger (Mobile UX) — continuous mobile-feel audit ledger ─────────
+  // Detection-only. One row per (detector × hit). Six detectors:
+  //   touch_target_drift / cross_device_matrix_red / mobile_error_boundary_trip /
+  //   theme_contract_drift / pwa_install_regression / real_device_gap
+  // (theme/pwa/device are stubs pending follow-up infrastructure).
+  //
+  // Auto-enqueue: severity in (high, critical) enqueues a fix dispatch
+  // (sourceType='detector', sourceId='krieger-audit:<id>', agentRole='krieger',
+  // $18 cap, priority 1.6/2.5) — idempotency by sourceId tuple.
+  //
+  // Mirrors shared/schema/krieger-audit.ts. Cron wire-in is deferred.
+  `CREATE TABLE IF NOT EXISTS "krieger_audit_findings" (
+     "id" serial PRIMARY KEY,
+     "detected_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "detector_name" text NOT NULL,
+     "severity" text NOT NULL,
+     "target_route" text,
+     "target_viewport" text,
+     "finding_text" text NOT NULL,
+     "evidence_snippet" text,
+     "recommended_action" text,
+     "review_status" text NOT NULL DEFAULT 'open',
+     "reviewed_at" timestamp with time zone,
+     "reviewed_by" text,
+     "fix_dispatch_id" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "krieger_audit_findings_severity_idx" ON "krieger_audit_findings" ("severity", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "krieger_audit_findings_detector_idx" ON "krieger_audit_findings" ("detector_name", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "krieger_audit_findings_route_idx" ON "krieger_audit_findings" ("target_route")`,
+  `CREATE INDEX IF NOT EXISTS "krieger_audit_findings_review_idx" ON "krieger_audit_findings" ("review_status", "detected_at")`,
+
   // ── Beatrice (CRO) — regulatory-news feed ─────────────────────────────
   // Daily RSS pull from CFPB / FTC / state AGs, keyword-filtered to
   // AcreOS-relevant items. Dedup on (source, source_url). The
