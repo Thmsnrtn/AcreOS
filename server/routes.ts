@@ -217,6 +217,7 @@ import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
 import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
+import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
 import { registerSorenSeoRoutes } from "./routes-soren-seo";
 import { registerBeatriceRegWatchRoutes } from "./routes-beatrice-regwatch";
@@ -2176,6 +2177,10 @@ export async function registerRoutes(
   // Solene (COO) proactive page channel — POST /api/internal/solene/page
   // (shared-secret auth) + GET /api/founder/solene-page/recent (founder).
   registerSolenePageRoutes(app);
+  // Solene — customer-surface ErrorBoundary trip endpoints:
+  // POST /api/client/error-boundary-trip (open, rate-limited per-user-per-route)
+  // GET  /api/founder/error-boundary-trips/recent (founder).
+  registerErrorBoundaryRoutes(app);
   // Iris (CTO) continuous p95 baseline — GET /api/founder/iris-perf/recent.
   registerIrisPerfRoutes(app);
   // Soren (CGO) /learn SEO rank tracker — GET /api/founder/soren-seo/recent.

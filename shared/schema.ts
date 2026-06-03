@@ -16108,3 +16108,8 @@ export * from "./schema/solene-page";
 // SOLENE — team-system audit (overarching team-as-a-system elite-bar audit)
 // ============================================================================
 export * from "./schema/team-system-audit";
+
+// ============================================================================
+// SOLENE — customer-surface ErrorBoundary trip ledger
+// ============================================================================
+export * from "./schema/error-boundary-trips";

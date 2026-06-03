@@ -47,6 +47,42 @@ function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
     },
   });
 
+  // Forward to Solene's customer-surface trip ledger (fire-and-forget).
+  // Surfaces in GET /api/founder/error-boundary-trips/recent + Solene's
+  // morning-brief / daily-pulse aggregator. Failures here are swallowed —
+  // the boundary's primary job is to render the fallback UI, not block on
+  // telemetry. See server/services/customer-surface/errorBoundaryAggregator.ts.
+  try {
+    const routePath =
+      typeof window !== "undefined" ? window.location.pathname : "/";
+    const viewport =
+      typeof window !== "undefined"
+        ? { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio }
+        : null;
+    void fetch("/api/client/error-boundary-trip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      keepalive: true,
+      body: JSON.stringify({
+        errorId,
+        errorName: error.name || "Error",
+        errorMessageExcerpt: (error.message || "").slice(0, 500),
+        routePath,
+        componentStackExcerpt: (errorInfo.componentStack || "").slice(0, 2000),
+        clientMeta: {
+          userAgent: errorReport.userAgent,
+          url: errorReport.url,
+          viewport,
+        },
+      }),
+    }).catch(() => {
+      // Fired-and-forget — boundary already logged via clientLogger + Sentry.
+    });
+  } catch {
+    // window/fetch unavailable in SSR / test envs — swallow silently.
+  }
+
   return errorId;
 }
 
