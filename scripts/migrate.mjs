@@ -5315,6 +5315,39 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "agent_messages_to_role_read_idx" ON "agent_messages" ("to_agent_role", "read_at")`,
   `CREATE INDEX IF NOT EXISTS "agent_messages_correlation_idx" ON "agent_messages" ("correlation_id")`,
   `CREATE INDEX IF NOT EXISTS "agent_messages_in_reply_to_idx" ON "agent_messages" ("in_reply_to_message_id")`,
+
+  // ============================================================
+  // Solene — Discovery → Decision → Dispatch → Delivery pipeline (Phase B L2.9)
+  // ============================================================
+  // solene_pipelines — lightweight join row that links the already-existing
+  // stage tables (improvement_opportunities / plan_proposals /
+  // solene_dispatch_queue / code-review dispatches) by FK plus a current_stage
+  // column so the lifecycle is queryable in one shot. Each stage transition
+  // records the inter-stage duration, surfacing where work piles up.
+  //
+  // Mirrors shared/schema/solene-pipeline.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_pipelines" (
+     "id" serial PRIMARY KEY,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "pipeline_kind" text NOT NULL,
+     "current_stage" text NOT NULL DEFAULT 'discovery',
+     "triggering_source_kind" text,
+     "triggering_source_id" text,
+     "improvement_opportunity_id" integer,
+     "plan_proposal_id" integer,
+     "dispatch_id" integer,
+     "review_dispatch_id" integer,
+     "final_outcome" text,
+     "final_outcome_notes" text,
+     "duration_ms_discovery_to_decision" integer,
+     "duration_ms_decision_to_dispatch" integer,
+     "duration_ms_dispatch_to_delivery" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_pipelines_kind_stage_idx" ON "solene_pipelines" ("pipeline_kind", "current_stage")`,
+  `CREATE INDEX IF NOT EXISTS "solene_pipelines_stage_updated_idx" ON "solene_pipelines" ("current_stage", "updated_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_pipelines_opportunity_idx" ON "solene_pipelines" ("improvement_opportunity_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_pipelines_dispatch_idx" ON "solene_pipelines" ("dispatch_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
