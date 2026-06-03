@@ -2311,6 +2311,136 @@ function startSoleneWeeklyRetroJob() {
   }, FIVE_MINUTES);
 }
 
+/**
+ * Solene (COO) — monthly team-member review generator.
+ *
+ * Cadence: 1st of every month at 09:00 UTC, within a 5-minute window.
+ * Rotation by month % 4 (Iris → Soren → Beatrice → Krieger) is computed
+ * inside the script. Auto-pulled top, Solene-filled bottom.
+ *
+ * Script idempotent: re-running same (month, member) is no-op unless
+ * --force.
+ */
+async function processMonthlyTeamMemberReview(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+  const scriptPath = path.resolve(
+    process.cwd(),
+    "scripts/generate-team-member-review.mjs",
+  );
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (err) => rejectPromise(err));
+    child.on("exit", (code) => {
+      if (code === 0) return resolvePromise();
+      rejectPromise(
+        new Error(
+          `generate-team-member-review exit ${code}: ${stderr.slice(0, 500)}`,
+        ),
+      );
+    });
+  });
+}
+
+function startMonthlyTeamMemberReviewJob() {
+  log(
+    'Registering Solene monthly team-member review (1st of month, 09:00 UTC)',
+    'solene-team-review',
+  );
+
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  trackInterval(() => {
+    const now = new Date();
+    // 1st of month, 09:00 UTC, ±5 minutes
+    if (
+      now.getUTCDate() === 1 &&
+      now.getUTCHours() === 9 &&
+      now.getUTCMinutes() < 5
+    ) {
+      withJobLock(
+        'solene_monthly_team_member_review',
+        60 * 60,
+        processMonthlyTeamMemberReview,
+      ).catch((err) => {
+        log(`[solene-team-review] monthly run failed: ${err}`, 'solene-team-review');
+      });
+    }
+  }, FIVE_MINUTES);
+}
+
+/**
+ * Solene (COO) — quarterly arc-review generator.
+ *
+ * Cadence: 1st of Jan/Apr/Jul/Oct at 09:00 UTC, within a 5-minute window.
+ * Script picks the just-ended quarter via "yesterday's date" so the
+ * 1st-of-month run lands in the prior quarter. Auto-pulled top,
+ * Solene-filled bottom.
+ */
+async function processQuarterlySoleneArcReview(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+  const scriptPath = path.resolve(
+    process.cwd(),
+    "scripts/generate-solene-arc-review.mjs",
+  );
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (err) => rejectPromise(err));
+    child.on("exit", (code) => {
+      if (code === 0) return resolvePromise();
+      rejectPromise(
+        new Error(
+          `generate-solene-arc-review exit ${code}: ${stderr.slice(0, 500)}`,
+        ),
+      );
+    });
+  });
+}
+
+function startQuarterlySoleneArcReviewJob() {
+  log(
+    'Registering Solene quarterly arc review (1st of Jan/Apr/Jul/Oct, 09:00 UTC)',
+    'solene-arc-review',
+  );
+
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  // Months are 0-indexed: 0=Jan, 3=Apr, 6=Jul, 9=Oct.
+  const QUARTER_START_MONTHS = new Set([0, 3, 6, 9]);
+  trackInterval(() => {
+    const now = new Date();
+    if (
+      now.getUTCDate() === 1 &&
+      QUARTER_START_MONTHS.has(now.getUTCMonth()) &&
+      now.getUTCHours() === 9 &&
+      now.getUTCMinutes() < 5
+    ) {
+      withJobLock(
+        'solene_quarterly_arc_review',
+        60 * 60,
+        processQuarterlySoleneArcReview,
+      ).catch((err) => {
+        log(`[solene-arc-review] quarterly run failed: ${err}`, 'solene-arc-review');
+      });
+    }
+  }, FIVE_MINUTES);
+}
+
 // ── Phase 0 hardening — daily OFAC SDN list refresh ────────────────────────
 // Downloads the public Treasury sdn.csv, hashes (name+country) tuples, and
 // rebuilds the sanctions_list table. Runs at 03:30 UTC daily (low-traffic
@@ -2415,6 +2545,40 @@ function startSorenSeoTrackerJob() {
         );
       }).catch((err) => {
         log(`[soren-seo] daily run failed: ${err}`, 'soren-seo');
+      });
+    }
+  }, ONE_HOUR);
+}
+
+// ── Beatrice (CRO) — regulatory-news feed (daily 02:00 UTC) ─────────────────
+// Pulls daily RSS from CFPB / FTC / state AGs (TX, CA). Each item is
+// keyword-filtered against BEATRICE_RELEVANCE_KEYWORDS; matches persist
+// to beatrice_reg_events. ON CONFLICT DO NOTHING on (source, source_url)
+// means re-runs are idempotent. Beatrice triages within 72h per
+// docs/legal/beatrice-regwatch-discipline.md.
+function startBeatriceRegWatchJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering Beatrice regulatory-watch ingest (daily 02:00 UTC)',
+    'beatrice-regwatch',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
+      void withJobLock('beatrice_reg_watch', TTL_SECONDS, async () => {
+        const { fetchRegSources } = await import(
+          '../services/beatrice/regWatch'
+        );
+        const r = await fetchRegSources();
+        const errCount = Object.keys(r.errorsBySource).length;
+        log(
+          `[beatrice-regwatch] daily run: sources=${r.sourcesScanned} fetched=${r.itemsFetched} matched=${r.itemsMatched} persisted=${r.itemsPersisted} dupes=${r.itemsSkippedDuplicate} errors=${errCount}`,
+          'beatrice-regwatch',
+        );
+      }).catch((err) => {
+        log(`[beatrice-regwatch] daily run failed: ${err}`, 'beatrice-regwatch');
       });
     }
   }, ONE_HOUR);
@@ -2575,6 +2739,11 @@ export async function runScheduledJobs(): Promise<void> {
   // rank, persists, and warns on ≥10-position drift vs prior reading.
   startSorenSeoTrackerJob();
 
+  // Beatrice — daily regulatory-news ingest (02:00 UTC). Pulls RSS from
+  // CFPB, FTC, TX-AG, CA-AG; keyword-filters; persists matches. 72h
+  // manual triage SLA per docs/legal/beatrice-regwatch-discipline.md.
+  startBeatriceRegWatchJob();
+
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the
   // file Solene loads on session start reflects the current working tree +
@@ -2587,6 +2756,22 @@ export async function runScheduledJobs(): Promise<void> {
   // in the manual notes + founder-visible summary during her end-of-week
   // digest pass.
   startSoleneWeeklyRetroJob();
+
+  // Solene — monthly team-member review (1st of month, 09:00 UTC).
+  // Rotates Iris → Soren → Beatrice → Krieger by month % 4. Auto-pulls
+  // commits / dispatches / findings / capital / elite-bar snapshot /
+  // last evolution entry; Solene hand-fills the assessment + tranche-N
+  // deliverable + founder-visible paragraph. Stale skeletons (>7d with
+  // TODO(solene): markers) are flagged by the checkReviewSkeletonStaleness
+  // detector in selfAudit.ts.
+  startMonthlyTeamMemberReviewJob();
+
+  // Solene — quarterly arc-review (1st of Jan/Apr/Jul/Oct, 09:00 UTC).
+  // Aggregates 13 weeks of solene_audit_findings + solene_decisions +
+  // solene_capital_events + solene_page_events; Solene hand-fills the
+  // pattern analysis + next-quarter self-development tranche. Same
+  // staleness check applies.
+  startQuarterlySoleneArcReviewJob();
 
   // Autonomy Health — grade recent decision outcomes daily so the
   // learning loop closes (agent trust + autonomy health signal both

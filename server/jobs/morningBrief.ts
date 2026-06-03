@@ -380,7 +380,7 @@ interface ComposedBrief {
 
 async function composeBrief(data: BriefData): Promise<ComposedBrief> {
   const sections = buildSections(data);
-  const stats = buildStatsLine(data);
+  const stats = await buildStatsLineWithImprovements(data);
 
   // Single Opus 4.7 call composes the spoken intro (~200 words). If the
   // LLM is unreachable, we ship the structured artifact anyway with a
@@ -419,6 +419,47 @@ async function composeBrief(data: BriefData): Promise<ComposedBrief> {
   }
 
   return { sections, spoken, modelUsed };
+}
+
+/**
+ * Stats line + best-effort team-improvement opportunity count. Used by
+ * composeBrief() so the morning pulse surfaces detector output without
+ * blocking on a slow query.
+ */
+async function buildStatsLineWithImprovements(data: BriefData): Promise<string> {
+  const base = buildStatsLine(data);
+  try {
+    const openCount = await Promise.race([
+      countOpenImprovementOpportunities(),
+      new Promise<number>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    return `${base}, improvement opportunities: ${openCount} open`;
+  } catch (err) {
+    // Fail-graceful: morning brief is not blocked by an unhealthy
+    // improvement-detector ledger.
+    logger.warn("[morningBrief] improvement-opportunities count failed", {
+      metadata: { err: String(err) },
+    });
+    return base;
+  }
+}
+
+async function countOpenImprovementOpportunities(): Promise<number> {
+  const { teamImprovementOpportunities } = await import(
+    "@shared/schema/team-improvement"
+  );
+  const [row] = await db
+    .select({ n: sql<number>`COUNT(*)::int` })
+    .from(teamImprovementOpportunities)
+    .where(
+      and(
+        eq(teamImprovementOpportunities.autoDispatched, false),
+        sql`${teamImprovementOpportunities.resolvedAt} IS NULL`,
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
 
 function buildStatsLine(data: BriefData): string {
