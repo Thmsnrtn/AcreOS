@@ -31,6 +31,7 @@ import {
   type InsertExternalWatchEvent,
 } from "@shared/schema/external-watch";
 import { logger } from "../../utils/logger";
+import { processWatchEvent } from "./modelUpgradePath";
 
 // ============================================================================
 // fetchAnthropicChangelog — cron entrypoint
@@ -108,6 +109,22 @@ export async function fetchAnthropicChangelog(
         .returning({ id: externalWatchEvents.id });
       if (result.length > 0) {
         itemsPersisted++;
+        // L4.18 hook — fire-and-forget classify+recommend pass for the
+        // newly-inserted event. Guarded so a classifier failure cannot
+        // propagate back to the ingest loop.
+        const newEventId = result[0].id;
+        void (async () => {
+          try {
+            await processWatchEvent(newEventId);
+          } catch (err) {
+            logger.warn(
+              `[anthropicWatch] modelUpgradePath hook failed for event ${newEventId}`,
+              err instanceof Error
+                ? { metadata: { err: err.message } }
+                : { metadata: { err: String(err) } },
+            );
+          }
+        })();
       } else {
         itemsSkippedDuplicate++;
       }
