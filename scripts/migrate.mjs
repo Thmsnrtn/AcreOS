@@ -5640,6 +5640,29 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "solene_retrieval_events_agent_recent_idx" ON "solene_retrieval_events" ("querying_agent_role", "queried_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_retrieval_events_namespace_recent_idx" ON "solene_retrieval_events" ("query_namespace", "queried_at" DESC)`,
+
+  // ============================================================
+  // Solene — L3.14 memory-corpus status (cross-namespace ingest tracking)
+  // ============================================================
+  // solene_memory_corpus_status — one row per namespace handled by the
+  // L3.14 cross-namespace RAG retrieval path. Tracks the last-ingested
+  // source_id so re-running the ingestion script (scripts/ingest-decision-
+  // memory.mjs) resumes from `id > last_ingested_source_id` rather than
+  // re-scanning the whole source table each pass. Counters surface to the
+  // founder visibility surface.
+  //
+  // Mirrors shared/schema/solene-memory-retrieval.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_memory_corpus_status" (
+     "id" serial PRIMARY KEY,
+     "namespace" text NOT NULL,
+     "last_ingested_at" timestamp with time zone,
+     "last_ingested_source_id" integer,
+     "rows_ingested" integer NOT NULL DEFAULT 0,
+     "rows_skipped_unchanged" integer NOT NULL DEFAULT 0,
+     "rows_failed" integer NOT NULL DEFAULT 0,
+     "last_run_summary" text
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_memory_corpus_status_namespace_unique" ON "solene_memory_corpus_status" ("namespace")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
