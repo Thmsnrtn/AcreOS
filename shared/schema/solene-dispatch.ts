@@ -63,6 +63,19 @@ export const soleneDispatchQueue = pgTable(
     resultFullPath: text("result_full_path"),
     // Optional: who/what enqueued this (e.g. opportunity id, founder user id)
     enqueuedBy: text("enqueued_by"),
+    // L2.8 — multi-agent code review
+    // When a code-producing dispatch completes, completeDispatch() auto-enqueues
+    // a sibling review-dispatch (agentRole='code-reviewer'). The columns below
+    // wire the two rows together so reviews are observable + non-recursive.
+    //   review_status        — pending | passed | flagged | skipped (null when the
+    //                          dispatch produced no commits or hasn't completed yet)
+    //   reviewed_by_dispatch_id — id of the review dispatch reviewing THIS row
+    //   original_dispatch_id    — when THIS row IS a review, points back at the
+    //                             reviewed dispatch. Used as a recursion guard
+    //                             (reviews never trigger reviews of themselves).
+    reviewStatus: text("review_status"),
+    reviewedByDispatchId: integer("reviewed_by_dispatch_id"),
+    originalDispatchId: integer("original_dispatch_id"),
   },
   (t) => [
     // Fast worker pull: status + priority + queued_at
@@ -70,6 +83,12 @@ export const soleneDispatchQueue = pgTable(
     index("solene_dispatch_queue_queued_idx").on(t.queuedAt),
     index("solene_dispatch_queue_status_idx").on(t.status, t.queuedAt),
     index("solene_dispatch_queue_source_idx").on(t.sourceType, t.sourceId),
+    // L2.8 — review lookups: find the review for an original; list pending reviews.
+    index("solene_dispatch_queue_original_idx").on(t.originalDispatchId),
+    index("solene_dispatch_queue_review_status_idx").on(
+      t.reviewStatus,
+      t.completedAt,
+    ),
   ],
 );
 
@@ -128,6 +147,7 @@ export const DISPATCH_SOURCE_TYPES = [
   "founder_manual",
   "self_audit_drift",
   "detector",
+  "code_review",
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 
@@ -137,8 +157,23 @@ export const DISPATCH_AGENT_ROLES = [
   "beatrice",
   "krieger",
   "general-purpose",
+  "code-reviewer",
 ] as const;
 export type SoleneDispatchAgentRole = (typeof DISPATCH_AGENT_ROLES)[number];
+
+// L2.8 — review_status lifecycle for solene_dispatch_queue.review_status.
+//   pending  — review dispatch was enqueued; the worker hasn't completed it yet.
+//   passed   — review concluded VERDICT: passed.
+//   flagged  — review concluded VERDICT: flagged (findings present).
+//   skipped  — original dispatch produced no commits; no review was enqueued.
+export const DISPATCH_REVIEW_STATUSES = [
+  "pending",
+  "passed",
+  "flagged",
+  "skipped",
+] as const;
+export type SoleneDispatchReviewStatus =
+  (typeof DISPATCH_REVIEW_STATUSES)[number];
 
 // ============================================
 // COST CAP — the hard ceiling per dispatch.

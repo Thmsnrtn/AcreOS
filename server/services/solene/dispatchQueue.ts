@@ -249,6 +249,23 @@ export async function completeDispatch(
       followUpOpportunities: result.followUpOpportunities ?? {},
     });
   });
+
+  // L2.8 — multi-agent code review. Fire-and-forget. enqueueReviewDispatch
+  // handles all the eligibility checks (commits present, not already a review,
+  // not recursive). We never let a review failure propagate back into the
+  // primary completion path — code-review is an OBSERVABILITY layer, not a
+  // gate, and the worker loop must move on regardless.
+  if ((result.commitsReferenced?.length ?? 0) > 0) {
+    void import("./codeReviewQueue")
+      .then(({ enqueueReviewDispatch }) => enqueueReviewDispatch(id))
+      .catch((err) => {
+        logger.warn(
+          `[dispatchQueue] code-review enqueue failed for dispatch id=${id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+  }
 }
 
 // ----------------------------------------------------------------------------

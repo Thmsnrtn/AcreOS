@@ -4824,6 +4824,31 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "external_watch_events_published_idx" ON "external_watch_events" ("published_at")`,
   `CREATE INDEX IF NOT EXISTS "external_watch_events_ack_status_idx" ON "external_watch_events" ("ack_status", "published_at")`,
 
+  // ── Solene model-upgrade recommendations (L4.18) ───────────────────────
+  // Persists the team's decision in response to each anthropic-watch event:
+  // classification (new_model_available | model_deprecated | pricing_change
+  // | feature_added | rate_limit_change), recommendation (adopt_now |
+  // schedule_eval | flag_only), and (when acted on) the action summary.
+  // Mirrors shared/schema/solene-model-upgrade.ts. Hooked from
+  // server/services/external-watch/anthropicWatch.ts → processWatchEvent.
+  `CREATE TABLE IF NOT EXISTS "solene_model_upgrade_recommendations" (
+     "id" serial PRIMARY KEY,
+     "source_event_id" integer,
+     "detected_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "event_kind" text NOT NULL,
+     "affected_model" text NOT NULL,
+     "current_model_in_use" text NOT NULL,
+     "recommendation" text NOT NULL,
+     "rationale" text NOT NULL,
+     "evaluation_results" jsonb,
+     "acted_on" boolean NOT NULL DEFAULT false,
+     "acted_at" timestamp with time zone,
+     "action_summary" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_model_upgrade_recommendation_idx" ON "solene_model_upgrade_recommendations" ("recommendation", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_model_upgrade_acted_idx" ON "solene_model_upgrade_recommendations" ("acted_on", "detected_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_model_upgrade_source_event_uk" ON "solene_model_upgrade_recommendations" ("source_event_id")`,
+
   // ── Team-improvement opportunity ledger ────────────────────────────────
   // Persists every gap surfaced by the event-driven detector layer
   // (server/services/improvement). The 7 signal patterns:
@@ -4925,6 +4950,17 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_queued_idx" ON "solene_dispatch_queue" ("queued_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_status_idx" ON "solene_dispatch_queue" ("status", "queued_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_source_idx" ON "solene_dispatch_queue" ("source_type", "source_id")`,
+  // L2.8 — multi-agent code review. Additive nullable columns + their indexes.
+  // review_status is one of {pending, passed, flagged, skipped} on the ORIGINAL
+  // dispatch (the row whose work was reviewed). reviewed_by_dispatch_id points
+  // forward to the review row; original_dispatch_id points backward from a
+  // review row to the dispatch it reviews. All three are nullable so existing
+  // rows + non-code-producing dispatches stay untouched.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "review_status" text`,
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "reviewed_by_dispatch_id" integer`,
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "original_dispatch_id" integer`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_original_idx" ON "solene_dispatch_queue" ("original_dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_review_status_idx" ON "solene_dispatch_queue" ("review_status", "completed_at")`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
@@ -4973,6 +5009,92 @@ const STATEMENTS = [
   // UNIQUE(dispatch_id) when not null. Postgres default treats NULLs as
   // distinct so the constraint only fires for real dispatch ids.
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_agent_claims_dispatch_unique" ON "solene_agent_claims" ("dispatch_id")`,
+
+  // ============================================================
+  // Solene — persistent agent identity (Layer 1 capability L1.4)
+  // ============================================================
+  // solene_agent_identity_decisions — append-only ledger of decisions an
+  // agent made during a dispatch. The dispatchRunner reads the N most-recent
+  // rows for the active role and injects them into the system prompt so
+  // Iris-on-Tuesday remembers what Iris-on-Monday decided + why.
+  //
+  // Mirrors shared/schema/solene-agent-identity.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_agent_identity_decisions" (
+     "id" serial PRIMARY KEY,
+     "agent_role" text NOT NULL,
+     "decided_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "decision_kind" text NOT NULL,
+     "summary" text NOT NULL,
+     "rationale" text NOT NULL,
+     "referenced_files" text[] NOT NULL DEFAULT '{}',
+     "dispatch_id" integer,
+     "evidence_url" text,
+     "session_token" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_identity_role_decided_idx" ON "solene_agent_identity_decisions" ("agent_role", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_identity_dispatch_idx" ON "solene_agent_identity_decisions" ("dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_agent_identity_kind_decided_idx" ON "solene_agent_identity_decisions" ("decision_kind", "decided_at")`,
+
+  // ============================================================
+  // Solene — failure-mode library (Layer 3 capability L3.12)
+  // ============================================================
+  // solene_failure_modes — query-friendly mirror of the disk-backed
+  // docs/internal/failure-modes/ ledger. The dispatchRunner reads from
+  // disk (with a short in-process cache) when building the per-dispatch
+  // failure-mode preamble; the table exists for analytics + future
+  // surfaces (e.g. founder UI listing).
+  //
+  // Mirrors shared/schema/solene-failure-modes.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_failure_modes" (
+     "id" serial PRIMARY KEY,
+     "slug" text NOT NULL,
+     "title" text NOT NULL,
+     "severity" text NOT NULL,
+     "category" text NOT NULL,
+     "description" text NOT NULL,
+     "trigger_patterns" text[] NOT NULL DEFAULT '{}',
+     "prevention" text NOT NULL,
+     "example_incident_refs" text[] NOT NULL DEFAULT '{}',
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "retired_at" timestamp with time zone
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_failure_modes_slug_unique" ON "solene_failure_modes" ("slug")`,
+  `CREATE INDEX IF NOT EXISTS "solene_failure_modes_severity_idx" ON "solene_failure_modes" ("severity", "retired_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_failure_modes_category_idx" ON "solene_failure_modes" ("category", "retired_at")`,
+
+  // ============================================================
+  // Solene — constitutional self-defense ledger (L6.29).
+  // ============================================================
+  // One row per blocked / paged / logged constitutional event detected at
+  // the dispatchToolExecutor pre-screen layer (or later, at output review).
+  // trigger_evidence is sanitized by sanitizeEvidence() in
+  // server/services/solene/constitutionalGuard.ts — credential prefixes
+  // (sk_/pk_/phc_/phx_/ghp_/Bearer/AWS access keys) are stripped before
+  // the row lands so the audit table is not itself a leak surface.
+  //
+  // dispatch_id is nullable (output-review hits don't have a dispatch).
+  // page_event_id is nullable (logged_only actions never page).
+  //
+  // Mirrors shared/schema/solene-constitutional-violations.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_constitutional_violations" (
+     "id" serial PRIMARY KEY,
+     "detected_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "dispatch_id" integer,
+     "immutable_number" integer NOT NULL,
+     "immutable_text" text NOT NULL,
+     "trigger_kind" text NOT NULL,
+     "trigger_evidence" text NOT NULL,
+     "tool_name" text,
+     "tool_input_hash" text,
+     "action_taken" text NOT NULL,
+     "severity" text NOT NULL,
+     "page_event_id" integer,
+     "reviewed_at" timestamp with time zone,
+     "reviewer_note" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_imm_idx" ON "solene_constitutional_violations" ("immutable_number", "detected_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_sev_idx" ON "solene_constitutional_violations" ("severity", "reviewed_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_constitutional_violations_dispatch_idx" ON "solene_constitutional_violations" ("dispatch_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
