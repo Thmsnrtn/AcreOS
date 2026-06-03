@@ -218,6 +218,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerIrisPerfRoutes } from "./routes-iris-perf";
+import { registerSorenSeoRoutes } from "./routes-soren-seo";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
@@ -2174,6 +2175,8 @@ export async function registerRoutes(
   registerSolenePageRoutes(app);
   // Iris (CTO) continuous p95 baseline — GET /api/founder/iris-perf/recent.
   registerIrisPerfRoutes(app);
+  // Soren (CGO) /learn SEO rank tracker — GET /api/founder/soren-seo/recent.
+  registerSorenSeoRoutes(app);
   // Panel-300 founder compliance + ops dashboards backend.
   registerFounderComplianceRoutes(app);
   // Buy-and-hold vertical BH-4 — move-in/move-out inspections.

@@ -2387,6 +2387,39 @@ function startIrisPerfMonitorJob() {
   }, THIRTY_MINUTES);
 }
 
+// ── Soren (CGO) — SEO ranking tracker (daily 06:00 UTC) ─────────────────────
+// For each /learn page × target keyword, fetches the Google SERP, parses
+// the AcreOS rank, persists to soren_seo_rankings, and fires a structured
+// logger.warn when rank changes ≥10 positions vs the prior reading.
+// Detection-only — no founder push channel; the cron's drift signal is the
+// only out-of-band notification.
+function startSorenSeoTrackerJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering Soren SEO ranking tracker (daily 06:00 UTC)',
+    'soren-seo',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 6 && now.getUTCMinutes() < 5) {
+      void withJobLock('soren_seo_tracker', TTL_SECONDS, async () => {
+        const { trackRankings } = await import(
+          '../services/soren/seoTracker'
+        );
+        const r = await trackRankings();
+        log(
+          `[soren-seo] daily run: pages=${r.pagesChecked} keywords=${r.keywordsChecked} persisted=${r.rankingsPersisted} changes=${r.rankChangesDetected} errors=${r.errors}`,
+          'soren-seo',
+        );
+      }).catch((err) => {
+        log(`[soren-seo] daily run failed: ${err}`, 'soren-seo');
+      });
+    }
+  }, ONE_HOUR);
+}
+
 // ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
@@ -2536,6 +2569,11 @@ export async function runScheduledJobs(): Promise<void> {
   // detector against the rolling 7d baseline. Detection-only — findings
   // log at warn level for now.
   startIrisPerfMonitorJob();
+
+  // Soren — daily SEO ranking tracker (06:00 UTC). For each /learn page
+  // and its target keywords, fetches the Google SERP, parses the AcreOS
+  // rank, persists, and warns on ≥10-position drift vs prior reading.
+  startSorenSeoTrackerJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the
