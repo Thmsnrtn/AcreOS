@@ -45,7 +45,18 @@ const DialogContent = React.forwardRef<
       className={cn(
         // Position — z-[60] paired with the overlay so dialog content
         // also sits above MobileBottomNav.
-        "fixed left-[50%] top-[50%] z-[60] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
+        //
+        // Sizing default — explicit viewport-relative width with a
+        // mobile-safe minimum. Hardened 2026-06-02 after Tom flagged the
+        // Pax Settings dialog rendering effectively-blank on a 390px
+        // iPhone — the prior `w-full max-w-lg` relied on the portal's
+        // parent sizing which can collapse if the consumer overrides
+        // `max-w` only at the `sm:` breakpoint. `w-[calc(100vw-2rem)]`
+        // is viewport-relative + leaves a 1rem gutter each side;
+        // `min-w-[280px]` is the safety floor — no dialog renders
+        // narrower than this even if a consumer or downstream JSX
+        // tries to collapse it.
+        "fixed left-[50%] top-[50%] z-[60] grid w-[calc(100vw-2rem)] min-w-[280px] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
         // Tahoe Liquid Glass material
         "glass-panel rounded-2xl p-6",
         // Spring animation
