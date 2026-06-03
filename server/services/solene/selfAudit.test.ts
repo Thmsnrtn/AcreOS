@@ -151,11 +151,22 @@ vi.mock("../../db", () => {
       const step: any = {
         _from: null,
         _capitalSumQuery: false,
+        _findingsPatternQuery: false,
         from(t: unknown) {
           step._from = t;
           // Heuristic: if projection had a "sum" field
           if (_projection && typeof _projection === "object" && "sum" in (_projection as any)) {
             step._capitalSumQuery = true;
+          }
+          // Heuristic: predictability_drift selects only { pattern } from
+          // soleneAuditFindings. Detect by projection shape.
+          if (
+            _projection &&
+            typeof _projection === "object" &&
+            "pattern" in (_projection as any) &&
+            !("decidedAt" in (_projection as any))
+          ) {
+            step._findingsPatternQuery = true;
           }
           return step;
         },
@@ -174,8 +185,14 @@ vi.mock("../../db", () => {
         then(onFulfilled: any, onRejected: any) {
           let rows: unknown[] = [];
           if (step._capitalSumQuery) {
-            // Capital-overspend 24h sum query
             rows = [{ sum: String(stub24hSpend) }];
+          } else if (step._findingsPatternQuery) {
+            // Return findings filtered to menu_handing / permission_seeking.
+            rows = AUDIT_FINDINGS.filter(
+              (f) =>
+                f.pattern === "menu_handing" ||
+                f.pattern === "permission_seeking",
+            ).map((f) => ({ pattern: f.pattern }));
           } else {
             // Sample decisions query: order by decidedAt desc, filtered by gte window
             rows = [...DECISIONS].sort(
@@ -220,8 +237,16 @@ import {
   checkBriefContextStaleness,
   checkCapitalOverspend,
   checkReviewSkeletonStaleness,
+  checkPredictabilityDrift,
+  checkInTheMomentSelfCorrection,
+  checkSofteningLanguage,
+  checkStrategicVisionMiss,
+  checkDecisionCompoundingRatio,
+  checkBoundaryRespect,
+  checkTransparency,
   setInFlightFilesForTest,
   setReviewFilesAccessorForTest,
+  setSoleneSurfaceAccessorForTest,
   SOLENE_DRIFT_THRESHOLDS,
 } from "./selfAudit";
 
@@ -246,6 +271,7 @@ function resetWorld() {
   decisionsThrowOnInsert = false;
   setInFlightFilesForTest([]);
   setReviewFilesAccessorForTest(null);
+  setSoleneSurfaceAccessorForTest(() => []);
 }
 
 function decisionFixture(opts: Partial<DecisionRow> = {}): DecisionRow {
@@ -840,5 +866,297 @@ describe("checkReviewSkeletonStaleness", () => {
     );
     expect(hasStaleFinding).toBe(true);
     expect(r.findingCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 10: predictability_drift
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkPredictabilityDrift", () => {
+  it("fires when >1 menu_handing/permission_seeking finding in 14d", async () => {
+    AUDIT_FINDINGS.push(
+      {
+        id: 1,
+        runId: 1,
+        decisionId: null,
+        pattern: "menu_handing",
+        severity: "fail",
+        citation: "x",
+        excerpt: "x",
+        matchedPatterns: [],
+        firedAt: new Date(),
+      },
+      {
+        id: 2,
+        runId: 1,
+        decisionId: null,
+        pattern: "permission_seeking",
+        severity: "fail",
+        citation: "x",
+        excerpt: "x",
+        matchedPatterns: [],
+        firedAt: new Date(),
+      },
+    );
+    const f = await checkPredictabilityDrift();
+    expect(f).not.toBeNull();
+    expect(f!.pattern).toBe("predictability_drift");
+    expect(f!.severity).toBe("warn");
+  });
+
+  it("does NOT fire when only 1 such finding exists", async () => {
+    AUDIT_FINDINGS.push({
+      id: 1,
+      runId: 1,
+      decisionId: null,
+      pattern: "menu_handing",
+      severity: "fail",
+      citation: "x",
+      excerpt: "x",
+      matchedPatterns: [],
+      firedAt: new Date(),
+    });
+    const f = await checkPredictabilityDrift();
+    expect(f).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 11: in_the_moment_self_correction
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkInTheMomentSelfCorrection", () => {
+  it("fires when ≥50% of decisions are post-hoc-caught discipline failures", () => {
+    const decisions = [
+      decisionFixture({
+        id: 1,
+        rationale: "shipping the dispatch",
+        responseText: "Want me to dispatch the audit?",
+      }),
+      decisionFixture({
+        id: 2,
+        rationale: "another dispatch",
+        responseText: "Should I dispatch this one?",
+      }),
+      decisionFixture({
+        id: 3,
+        rationale: "third one",
+        responseText: "do you want me to handle X?",
+      }),
+    ];
+    const f = checkInTheMomentSelfCorrection(decisions);
+    expect(f).not.toBeNull();
+    expect(f!.pattern).toBe("in_the_moment_self_correction");
+    expect(f!.severity).toBe("warn");
+  });
+
+  it("does NOT fire when self-correction markers dominate", () => {
+    const decisions = [
+      decisionFixture({
+        id: 1,
+        rationale: "caught myself reaching for a menu, scrubbed before sending",
+        responseText: "Dispatched and reporting back.",
+      }),
+      decisionFixture({
+        id: 2,
+        rationale: "self-corrected mid-draft",
+        responseText: "Dispatched the audit.",
+      }),
+    ];
+    const f = checkInTheMomentSelfCorrection(decisions);
+    expect(f).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 12: softening_language
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkSofteningLanguage", () => {
+  it("fires info per occurrence when softener+verb co-occur", () => {
+    const findings = checkSofteningLanguage([
+      decisionFixture({
+        id: 1,
+        responseText:
+          "The migration should be working now — probably shipped end to end.",
+      }),
+      decisionFixture({
+        id: 2,
+        responseText: "Mostly verified the deploy.",
+      }),
+    ]);
+    expect(findings.length).toBe(2);
+    for (const f of findings) {
+      expect(f.severity).toBe("info");
+      expect(f.pattern).toBe("softening_language");
+    }
+  });
+
+  it("does NOT fire on clean confident text", () => {
+    const findings = checkSofteningLanguage([
+      decisionFixture({
+        id: 1,
+        responseText: "Shipped and verified end-to-end. Tests pass.",
+      }),
+    ]);
+    expect(findings.length).toBe(0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 13: strategic_vision_miss
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkStrategicVisionMiss", () => {
+  it("fires fail when a Tom-correction signal lands in a decision rationale", () => {
+    const decisions = [
+      decisionFixture({
+        id: 1,
+        rationale: "Dispatched the audit. Tom said: actually you should ship the schema first.",
+      }),
+    ];
+    const f = checkStrategicVisionMiss(decisions);
+    expect(f).not.toBeNull();
+    expect(f!.severity).toBe("fail");
+    expect(f!.pattern).toBe("strategic_vision_miss");
+  });
+
+  it("is silent when no correction signal appears", () => {
+    const decisions = [
+      decisionFixture({
+        id: 1,
+        rationale: "Dispatched the audit, Tom approved the plan upfront.",
+      }),
+    ];
+    expect(checkStrategicVisionMiss(decisions)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 14: decision_compounding_ratio
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkDecisionCompoundingRatio", () => {
+  it("fires warn when <30% of decisions cite compounding rationale", () => {
+    const decisions = Array.from({ length: 10 }, (_, i) =>
+      decisionFixture({
+        id: i + 1,
+        rationale:
+          i === 0
+            ? "shipped a schema migration cadence detector"
+            : "one-shot change",
+      }),
+    );
+    const f = checkDecisionCompoundingRatio(decisions);
+    expect(f).not.toBeNull();
+    expect(f!.severity).toBe("warn");
+    expect(f!.pattern).toBe("decision_compounding_ratio");
+  });
+
+  it("is silent when ≥30% of decisions cite compounding rationale", () => {
+    const decisions = Array.from({ length: 5 }, (_, i) =>
+      decisionFixture({
+        id: i + 1,
+        rationale:
+          i < 3
+            ? "memorialized schema cadence detector infrastructure"
+            : "one-shot",
+      }),
+    );
+    expect(checkDecisionCompoundingRatio(decisions)).toBeNull();
+  });
+
+  it("is silent when fewer than 5 decisions are in the window", () => {
+    const decisions = [
+      decisionFixture({ id: 1, rationale: "one-shot" }),
+      decisionFixture({ id: 2, rationale: "one-shot" }),
+    ];
+    expect(checkDecisionCompoundingRatio(decisions)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 15: boundary_respect
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkBoundaryRespect", () => {
+  it("fires critical when a dispatch touches a strategic-founder-only category without approval", () => {
+    const findings = checkBoundaryRespect([
+      decisionFixture({
+        id: 1,
+        decisionType: "dispatch",
+        rationale: "Updating the soul sentence framing.",
+        contextSummary: "ctx",
+      }),
+    ]);
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe("critical");
+    expect(findings[0].pattern).toBe("boundary_respect");
+  });
+
+  it("does NOT fire when founder approval is paired in rationale", () => {
+    const findings = checkBoundaryRespect([
+      decisionFixture({
+        id: 1,
+        decisionType: "dispatch",
+        rationale: "Updating the soul sentence — founder approved 2026-06-02.",
+      }),
+    ]);
+    expect(findings.length).toBe(0);
+  });
+
+  it("does NOT fire on an 'escalate' decision (correct escalation path)", () => {
+    const findings = checkBoundaryRespect([
+      decisionFixture({
+        id: 1,
+        decisionType: "escalate",
+        rationale: "Soul sentence revision proposed — escalating for founder review.",
+      }),
+    ]);
+    expect(findings.length).toBe(0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// DETECTOR 16: transparency
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("checkTransparency", () => {
+  it("fires warn when decisions exist but no founder-visible surfaces", async () => {
+    const decisions = Array.from({ length: 4 }, (_, i) =>
+      decisionFixture({ id: i + 1, contextSummary: `unique-decision-context-${i}-with-words` }),
+    );
+    setSoleneSurfaceAccessorForTest(() => []);
+    const f = await checkTransparency(decisions);
+    expect(f).not.toBeNull();
+    expect(f!.severity).toBe("warn");
+    expect(f!.pattern).toBe("transparency");
+  });
+
+  it("does NOT fire when surfaces mention the decisions", async () => {
+    const decisions = Array.from({ length: 4 }, (_, i) =>
+      decisionFixture({
+        id: i + 1,
+        contextSummary: `decision-context-${i}-substantive-token`,
+      }),
+    );
+    setSoleneSurfaceAccessorForTest(() => [
+      {
+        path: "/docs/company/retros/2026-W22.md",
+        body:
+          "Retro: covered decision-context-0-substantive-token, decision-context-1-substantive-token, decision-context-2-substantive-token, decision-context-3-substantive-token.",
+        generatedAt: new Date(),
+      },
+    ]);
+    const f = await checkTransparency(decisions);
+    expect(f).toBeNull();
+  });
+
+  it("is silent when too few decisions to assess", async () => {
+    const f = await checkTransparency([
+      decisionFixture({ id: 1, contextSummary: "x" }),
+    ]);
+    expect(f).toBeNull();
   });
 });
