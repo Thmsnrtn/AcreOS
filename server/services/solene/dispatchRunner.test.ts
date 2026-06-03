@@ -61,6 +61,24 @@ vi.mock("./dispatchToolExecutor", () => ({
   executeDispatchTool: vi.fn(),
 }));
 
+// L1.4 identity loader + L3.12 failure-mode preamble are now part of the
+// buildSystemPrompt pipeline. Stub both so the prompt-builder tests can
+// assert ordering + injected content without hitting the DB or disk.
+const loadAgentIdentityBlockMock = vi.fn();
+vi.mock("./agentIdentity", () => ({
+  loadAgentIdentityBlock: (
+    role: string,
+    limit?: number,
+  ) => loadAgentIdentityBlockMock(role, limit),
+}));
+const loadFailureModePreambleForMock = vi.fn();
+vi.mock("./failureModeLibrary", () => ({
+  loadFailureModePreambleFor: (
+    role: string,
+    plannedFiles?: string[],
+  ) => loadFailureModePreambleForMock(role, plannedFiles),
+}));
+
 // ─────────────────────────────────────────────────────────────────────────
 // Test fixtures
 // ─────────────────────────────────────────────────────────────────────────
@@ -98,6 +116,14 @@ beforeEach(async () => {
   await fs.writeFile(fixturePath, FIXTURE_FILE_CONTENTS, "utf8");
   listActiveClaimsMock.mockReset();
   listActiveClaimsMock.mockResolvedValue([]);
+  loadAgentIdentityBlockMock.mockReset();
+  loadAgentIdentityBlockMock.mockResolvedValue(
+    "_No prior decisions on record for this role. Fresh start._",
+  );
+  loadFailureModePreambleForMock.mockReset();
+  loadFailureModePreambleForMock.mockResolvedValue(
+    "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
+  );
   // Reset module cache so the env-driven TEAM_STATE_PATH constant is
   // recomputed for each test (the module reads it at top level).
   vi.resetModules();
@@ -289,7 +315,7 @@ describe("loadActiveClaimsBlock", () => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("buildSystemPrompt", () => {
-  it("emits both preambles + hard-rules + role brief, in order", async () => {
+  it("emits all four preamble blocks + hard-rules + role brief, in order", async () => {
     listActiveClaimsMock.mockResolvedValueOnce([
       fakeClaim({
         id: 1,
@@ -298,6 +324,12 @@ describe("buildSystemPrompt", () => {
         patterns: ["server/services/iris/*"],
       }),
     ]);
+    loadAgentIdentityBlockMock.mockResolvedValueOnce(
+      "- **2026-06-01** (architecture): IRIS_PRIOR_DECISION_X — used pgvector [files: server/db.ts]",
+    );
+    loadFailureModePreambleForMock.mockResolvedValueOnce(
+      "### [CRITICAL] Credential leak (`credential-leak`)\n\n- Triggers: `echo $`\n- Prevention: length-or-hash only.",
+    );
     const mod = await import("./dispatchRunner");
     const prompt = await mod.buildSystemPrompt(
       "IRIS — operate as CTO; ship phase 0 hardening.",
@@ -307,32 +339,88 @@ describe("buildSystemPrompt", () => {
       900_000,
     );
 
-    // All four headings must appear, AND in the documented order.
+    // All six headings must appear, AND in the documented order:
+    //   team-state → claims → identity → failure-modes → hard-rules → brief.
     const teamIdx = prompt.indexOf(
       "# Team-state preamble (auto-generated, 15-min refresh)",
     );
     const claimsIdx = prompt.indexOf(
       "# Active agent claims — DO NOT TOUCH files matching these patterns",
     );
+    const identityIdx = prompt.indexOf(
+      "# Persistent agent identity — your prior decisions on record",
+    );
+    const failureIdx = prompt.indexOf(
+      "# Failure-mode library — patterns to avoid",
+    );
     const modeIdx = prompt.indexOf("# Solene autonomous-dispatch mode");
     const hardRulesIdx = prompt.indexOf("## Hard rules");
     const briefIdx = prompt.indexOf("## Your role brief");
     expect(teamIdx).toBeGreaterThanOrEqual(0);
     expect(claimsIdx).toBeGreaterThan(teamIdx);
-    expect(modeIdx).toBeGreaterThan(claimsIdx);
+    expect(identityIdx).toBeGreaterThan(claimsIdx);
+    expect(failureIdx).toBeGreaterThan(identityIdx);
+    expect(modeIdx).toBeGreaterThan(failureIdx);
     expect(hardRulesIdx).toBeGreaterThan(modeIdx);
     expect(briefIdx).toBeGreaterThan(hardRulesIdx);
 
     // Substantive content from each block must be present.
     expect(prompt).toContain("Auto-generated team state"); // from fixture AUTO block
     expect(prompt).toContain("- **iris** (dispatch #42"); // from claims
+    expect(prompt).toContain("IRIS_PRIOR_DECISION_X"); // from identity stub
+    expect(prompt).toContain("[CRITICAL] Credential leak"); // from failure-mode stub
     expect(prompt).toContain("Cost cap: $2.50"); // hard rules
     expect(prompt).toContain("Dispatch id: 99");
     expect(prompt).toContain("IRIS — operate as CTO"); // role brief
+
+    // The identity + failure-mode loaders must be invoked with the role.
+    expect(loadAgentIdentityBlockMock).toHaveBeenCalledWith("iris", undefined);
+    // failure-mode loader called with role + undefined plannedFiles (the
+    // model decides what to touch via tool_use mid-turn, so plannedFiles
+    // is intentionally unset at the prompt-build layer).
+    expect(loadFailureModePreambleForMock).toHaveBeenCalledWith("iris", undefined);
   });
 
-  it("still emits a prompt with both blocks when both loaders fall back", async () => {
-    // Missing team-state file + no claims → both fallbacks should render.
+  it("renders identity fallback when no prior decisions are on record", async () => {
+    loadAgentIdentityBlockMock.mockResolvedValueOnce(
+      "_No prior decisions on record for this role. Fresh start._",
+    );
+    const mod = await import("./dispatchRunner");
+    const prompt = await mod.buildSystemPrompt(
+      "general-purpose brief",
+      "general-purpose",
+      1,
+      1,
+      60_000,
+    );
+    expect(prompt).toContain(
+      "# Persistent agent identity — your prior decisions on record",
+    );
+    expect(prompt).toContain(
+      "_No prior decisions on record for this role. Fresh start._",
+    );
+  });
+
+  it("renders failure-mode fallback when ledger is empty", async () => {
+    loadFailureModePreambleForMock.mockResolvedValueOnce(
+      "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
+    );
+    const mod = await import("./dispatchRunner");
+    const prompt = await mod.buildSystemPrompt(
+      "soren brief",
+      "soren",
+      1,
+      1,
+      60_000,
+    );
+    expect(prompt).toContain("# Failure-mode library — patterns to avoid");
+    expect(prompt).toContain(
+      "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
+    );
+  });
+
+  it("still emits a coherent prompt when every loader falls back", async () => {
+    // Missing team-state file + no claims + identity fallback + failure-mode fallback.
     await fs.rm(fixturePath);
     listActiveClaimsMock.mockResolvedValueOnce([]);
     const mod = await import("./dispatchRunner");
@@ -348,6 +436,12 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toContain(
       "_No other agents currently in flight. Working tree is yours to claim._",
+    );
+    expect(prompt).toContain(
+      "_No prior decisions on record for this role. Fresh start._",
+    );
+    expect(prompt).toContain(
+      "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
     );
     expect(prompt).toContain("# Solene autonomous-dispatch mode");
     expect(prompt).toContain("general-purpose brief");

@@ -30,6 +30,8 @@ import type {
 import { DISPATCH_MAX_TURNS } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { listActiveClaims } from "./agentClaims";
+import { loadAgentIdentityBlock } from "./agentIdentity";
+import { loadFailureModePreambleFor } from "./failureModeLibrary";
 import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
@@ -211,11 +213,20 @@ export async function buildSystemPrompt(
   maxCostUsd: number,
   timeoutMs: number,
 ): Promise<string> {
-  // Resolve preambles in parallel — both are I/O bound and independent.
-  const [teamStatePreamble, activeClaimsBlock] = await Promise.all([
-    loadTeamStatePreamble(),
-    loadActiveClaimsBlock(dispatchId),
-  ]);
+  // Resolve preambles in parallel — all four are I/O bound and independent.
+  // Order in the rendered prompt:
+  //   team-state → active-claims → identity (L1.4) → failure-modes (L3.12)
+  //     → hard-rules → role brief.
+  // plannedFiles is unavailable at this layer (the model decides what to
+  // touch via tool_use mid-turn), so the failure-mode preamble falls back
+  // to the top-3 critical/high modes for every dispatch.
+  const [teamStatePreamble, activeClaimsBlock, identityBlock, failureModeBlock] =
+    await Promise.all([
+      loadTeamStatePreamble(),
+      loadActiveClaimsBlock(dispatchId),
+      loadAgentIdentityBlock(role),
+      loadFailureModePreambleFor(role, undefined),
+    ]);
 
   return [
     "# Team-state preamble (auto-generated, 15-min refresh)",
@@ -225,6 +236,14 @@ export async function buildSystemPrompt(
     "# Active agent claims — DO NOT TOUCH files matching these patterns",
     "",
     activeClaimsBlock,
+    "",
+    "# Persistent agent identity — your prior decisions on record",
+    "",
+    identityBlock,
+    "",
+    "# Failure-mode library — patterns to avoid",
+    "",
+    failureModeBlock,
     "",
     "# Solene autonomous-dispatch mode",
     "",
@@ -380,12 +399,36 @@ export async function runDispatch(
       "# Active agent claims — DO NOT TOUCH files matching these patterns",
     );
     const blockClose = systemPrompt.indexOf(
-      "# Solene autonomous-dispatch mode",
+      "# Persistent agent identity — your prior decisions on record",
     );
     if (blockOpen === -1 || blockClose === -1) return 0;
     const block = systemPrompt.slice(blockOpen, blockClose);
     // Count rendered claim rows — lines starting with "- **".
     return block.split("\n").filter((l) => l.startsWith("- **")).length;
+  })();
+  const identityDecisionsCount = (() => {
+    const blockOpen = systemPrompt.indexOf(
+      "# Persistent agent identity — your prior decisions on record",
+    );
+    const blockClose = systemPrompt.indexOf(
+      "# Failure-mode library — patterns to avoid",
+    );
+    if (blockOpen === -1 || blockClose === -1) return 0;
+    const block = systemPrompt.slice(blockOpen, blockClose);
+    // Each decision renders as a `- **YYYY-MM-DD** (kind):` line.
+    return block.split("\n").filter((l) => /^- \*\*\d{4}-\d{2}-\d{2}\*\*/.test(l)).length;
+  })();
+  const failureModesIncludedCount = (() => {
+    const blockOpen = systemPrompt.indexOf(
+      "# Failure-mode library — patterns to avoid",
+    );
+    const blockClose = systemPrompt.indexOf(
+      "# Solene autonomous-dispatch mode",
+    );
+    if (blockOpen === -1 || blockClose === -1) return 0;
+    const block = systemPrompt.slice(blockOpen, blockClose);
+    // Each failure mode renders as a `### [SEV] title (slug)` heading.
+    return block.split("\n").filter((l) => /^### \[/.test(l)).length;
   })();
   await appendTranscript(transcriptPath, {
     event: "brief_loaded",
@@ -393,6 +436,8 @@ export async function runDispatch(
     briefBytes: Buffer.byteLength(brief, "utf8"),
     teamStatePreambleBytes,
     activeClaimsCount,
+    identityDecisionsCount,
+    failureModesIncludedCount,
   });
 
   // ── conversation state ─────────────────────────────────────────────────
