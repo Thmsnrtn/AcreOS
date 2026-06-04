@@ -308,6 +308,10 @@ const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
 // /founder is the Atlas chat shell; /founder/bridge is the fused
 // canonical home (chat + telemetry).
 const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+// Phase 3 — iOS-Claude-UX chat surface that consumes the Phase 2 backend
+// at /api/founder/solene-chat/*. This is the face Tom interacts with when
+// he flips the in-app Solene flag on.
+const FounderSoleneChatPage = React.lazy(() => import("@/pages/founder/solene-chat"));
 const FounderBridgePage = React.lazy(() => import("@/pages/founder/bridge"));
 // FounderLegacyDashboard removed (Lens 4) — /founder/dashboard now
 // redirects to /founder/bridge. LegacyNowSurface lives on disk for
@@ -1052,6 +1056,12 @@ function Router() {
           controls whether /founder defaults here. */}
       <Route path="/founder/today">
         {() => <FounderProtectedRoute component={FounderTodayPage} />}
+      </Route>
+      {/* Phase 3 — iOS-Claude-UX chat surface. Consumes the Phase 2 backend
+          at /api/founder/solene-chat/*. Linked from the sidebar "Chat with
+          Solene" CTA and from a compact panel on /founder/today. */}
+      <Route path="/founder/solene-chat">
+        {() => <FounderProtectedRoute component={FounderSoleneChatPage} />}
       </Route>
       {/* Phase 4 — temp stubs for the other 4 doors until Phase 5
           builds them out. Each redirects to the closest existing

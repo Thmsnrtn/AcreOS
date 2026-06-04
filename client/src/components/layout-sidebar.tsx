@@ -1970,8 +1970,8 @@ function NewFounderSidebar({
           )}
         </div>
 
-        {/* Persistent chat CTA — the chat surface itself lives on Today
-            (Phase 3 wires the real chat once Phase 2 backend lands). */}
+        {/* Persistent chat CTA — wired (Phase 3) to the iOS-Claude-UX
+            chat surface that consumes the Phase 2 backend. */}
         <div
           className={cn(
             "border-b border-sidebar-border",
@@ -1982,8 +1982,8 @@ function NewFounderSidebar({
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Link
-                  href="/founder/today"
-                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary/10 text-primary hover:bg-primary/20 transition-colors min-h-[44px]"
+                  href="/founder/solene-chat"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] shadow-sm"
                   aria-label="Chat with Solene"
                   data-testid="button-chat-solene-collapsed"
                 >
@@ -1996,8 +1996,8 @@ function NewFounderSidebar({
             </Tooltip>
           ) : (
             <Link
-              href="/founder/today"
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors min-h-[44px] text-sm font-medium"
+              href="/founder/solene-chat"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
               aria-label="Chat with Solene"
               data-testid="button-chat-solene"
             >

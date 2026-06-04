@@ -25,7 +25,7 @@
  *   - aria-live on async-loaded sections
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sun,
@@ -35,16 +35,23 @@ import {
   MessageSquare,
   ArrowRight,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useSoleneChat } from "@/hooks/useSoleneChat";
+import { useToast } from "@/hooks/use-toast";
+import { clientLogger } from "@/lib/clientLogger";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
+import { createSoleneConversation } from "@/pages/founder/solene-chat";
+import type { ContentBlock } from "@shared/schema/solene-conversations";
 
 // ─── API contracts (provisional; some endpoints are stubs until later phases) ──
 
@@ -360,41 +367,189 @@ function DecisionsWaitingSection() {
   );
 }
 
-// ─── Section: Chat with Solene (stub until Phase 2 + Phase 3) ────────────
+// ─── Section: Chat with Solene (compact panel, Phase 3) ──────────────────
+//
+// Shows the last 2-3 messages of the most recent active conversation (or an
+// invitation to start one), plus a compact input. Sending bootstraps a new
+// conversation when there's no active one, otherwise appends to the latest.
+// Full chat experience lives at /founder/solene-chat.
+
+interface RecentConversation {
+  id: number;
+  title: string | null;
+  lastMessageAt: string;
+}
 
 function ChatWithSoleneSection() {
+  const { toast } = useToast();
+  const [activeConversationId, setActiveConversationId] = useState<
+    number | null
+  >(null);
+  const [draft, setDraft] = useState("");
+  const [bootstrapping, setBootstrapping] = useState(false);
+
+  const { data: convoList, refetch: refetchConvos } = useQuery<{
+    conversations: RecentConversation[];
+  }>({
+    queryKey: ["/api/founder/solene-chat/conversations", "today-panel"],
+    queryFn: async () => {
+      const res = await fetch(
+        "/api/founder/solene-chat/conversations?archived=false&limit=1",
+        { credentials: "include" },
+      );
+      if (!res.ok) return { conversations: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (activeConversationId == null && convoList?.conversations[0]?.id) {
+      setActiveConversationId(convoList.conversations[0].id);
+    }
+  }, [convoList, activeConversationId]);
+
+  const chat = useSoleneChat({
+    conversationId: activeConversationId,
+    onError: (err) => {
+      toast({
+        title: "Chat error",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSend = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    const content: ContentBlock[] = [{ type: "text", text: trimmed }];
+    setDraft("");
+
+    if (activeConversationId == null) {
+      setBootstrapping(true);
+      try {
+        const id = await createSoleneConversation();
+        setActiveConversationId(id);
+        await refetchConvos();
+        // Defer the send by one tick so the hook picks up the new id.
+        setTimeout(() => {
+          void chat.sendMessage(content);
+        }, 0);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        clientLogger.error("[TodayChat] bootstrap failed", error);
+        toast({
+          title: "Couldn't start conversation",
+          description: error.message,
+          variant: "destructive",
+        });
+      } finally {
+        setBootstrapping(false);
+      }
+      return;
+    }
+
+    await chat.sendMessage(content);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      void handleSend();
+    }
+  };
+
+  // Last 3 messages for preview.
+  const recentMessages = chat.messages.slice(-3);
+
   return (
     <Card
       className="border-primary/30 bg-primary/5"
       data-testid="chat-with-solene-section"
     >
-      <CardHeader className="pb-3">
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles
-            className="h-4 w-4 text-primary"
-            aria-hidden="true"
-          />
-          Chat with Solene
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          Solene is here
         </CardTitle>
+        <Button asChild variant="ghost" size="sm">
+          <Link
+            href="/founder/solene-chat"
+            aria-label="Open full chat with Solene"
+            data-testid="link-open-full-chat"
+          >
+            Open full chat
+            <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+          </Link>
+        </Button>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          The in-app Solene chat surface arrives in Phase 3. The backend
-          (Phase 2) is being built in parallel. Until both land, use the
-          Claude Code CLI session you already have open.
-        </p>
-        <Button
-          asChild
-          disabled
-          variant="outline"
-          aria-disabled="true"
-          className="cursor-not-allowed opacity-60"
-        >
-          <span>
-            <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
-            Open chat (Phase 3)
-          </span>
-        </Button>
+        {recentMessages.length === 0 ? (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Ask Solene about the company, dispatches, capital, or anything
+            else on your mind. Sending starts a new conversation.
+          </p>
+        ) : (
+          <div
+            className="space-y-2 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-background/60 p-3"
+            aria-live="polite"
+            aria-label="Recent messages"
+          >
+            {recentMessages.map((m, i) => {
+              const text = m.content
+                .filter(
+                  (b): b is { type: "text"; text: string } => b.type === "text",
+                )
+                .map((b) => b.text)
+                .join(" ");
+              return (
+                <div
+                  key={`${m.id}-${i}`}
+                  className="flex gap-2 text-xs leading-relaxed"
+                >
+                  <span className="font-semibold shrink-0 text-muted-foreground capitalize">
+                    {m.role}:
+                  </span>
+                  <span className="text-foreground line-clamp-2">
+                    {text || (m.isStreaming ? "…" : "(no text)")}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Message Solene… (Cmd+Enter to send)"
+            aria-label="Message Solene"
+            disabled={chat.streaming || bootstrapping}
+            rows={2}
+            className="flex-1 min-h-[44px] resize-none text-sm"
+            data-testid="input-today-solene-chat"
+          />
+          <Button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={
+              chat.streaming || bootstrapping || draft.trim().length === 0
+            }
+            size="icon"
+            aria-label="Send message to Solene"
+            className="min-h-[44px] min-w-[44px] shrink-0"
+            data-testid="button-today-send-solene"
+          >
+            {chat.streaming || bootstrapping ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
