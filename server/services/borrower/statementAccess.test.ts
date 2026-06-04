@@ -220,6 +220,152 @@ describe("statementAccess — exchangeForBorrowerSession", () => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// Phase D3 (Beatrice) — additive coverage for paths the original tests
+// didn't probe. The 15 cases above stay verbatim; these 5 widen the gate.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("statementAccess — D3 additive coverage", () => {
+  let originalSecret: string | undefined;
+
+  beforeEach(() => {
+    originalSecret = process.env.BORROWER_SESSION_SECRET;
+    process.env.BORROWER_SESSION_SECRET = TEST_SECRET;
+  });
+
+  afterEach(() => {
+    if (originalSecret === undefined) {
+      delete process.env.BORROWER_SESSION_SECRET;
+    } else {
+      process.env.BORROWER_SESSION_SECRET = originalSecret;
+    }
+  });
+
+  // (1) Tampered email — exchange path must REJECT case/whitespace
+  // variants that the borrower never typed. The grant resolver does
+  // `.toLowerCase()` on both sides at lookup; what we pin here is that
+  // the SERVICE layer DOES NOT trim/normalize whitespace before handing
+  // off to the resolver. Borrowers shouldn't get an exchange success
+  // for "  borrower@example.com  " — the resolver receives the raw
+  // padded string and must miss. This is "document the current behavior
+  // and lock it" rather than "change it" — a future trim would need to
+  // also revisit this test.
+  it("exchange passes the raw email to the resolver (no service-side trim/normalize)", async () => {
+    let seenEmail: string | undefined;
+    const resolver: BorrowerGrantResolver = {
+      async resolve({ email }) {
+        seenEmail = email;
+        // Simulate the real route handler: case-insensitive compare,
+        // whitespace-strict. Padded input is not the canonical email.
+        if (email.toLowerCase().trim() !== email.toLowerCase()) {
+          return { ok: false, reason: "email_mismatch" };
+        }
+        return { ok: true, scope: "note:abc-123" };
+      },
+    };
+    const out = await exchangeForBorrowerSession(
+      {
+        accessToken: "tok-xyz",
+        email: "  Borrower@Example.com  ",
+        ip: "203.0.113.5",
+      },
+      resolver,
+    );
+    expect(seenEmail).toBe("  Borrower@Example.com  ");
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe("email_mismatch");
+  });
+
+  // (2) Scope-mismatch — a cookie minted for note:42 must NOT verify
+  // when the caller is operating against note:99. The base verify
+  // helper returns the scope; the route is responsible for the final
+  // comparison. We pin that the cookie carries the original scope
+  // verbatim and never leaks an attacker-controlled scope.
+  it("verifySignedSession returns the minted scope verbatim (caller can compare)", () => {
+    const cookieFor42 = signSession({
+      scope: "note:42",
+      expSeconds: 60,
+      ip: "203.0.113.5",
+    });
+    const verified = verifySignedSession(cookieFor42);
+    expect(verified.valid).toBe(true);
+    expect(verified.scope).toBe("note:42");
+    // Caller's comparison against an unrelated scope must fail.
+    expect(verified.scope === "note:99").toBe(false);
+  });
+
+  // (3) signSession determinism — same input fed twice yields the same
+  // output. (The {exp} embedded in the payload uses Date.now(), so the
+  // determinism contract only holds when the wall clock is pinned. We
+  // pin it via a single Date.now() snapshot taken under a vi.useFakeTimers
+  // freeze.)
+  it("signSession is deterministic when the wall clock is frozen", async () => {
+    const { vi } = await import("vitest");
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-06-04T00:00:00.000Z"));
+      const a = signSession({
+        scope: "note:42",
+        expSeconds: 600,
+        ip: "203.0.113.5",
+      });
+      const b = signSession({
+        scope: "note:42",
+        expSeconds: 600,
+        ip: "203.0.113.5",
+      });
+      expect(a).toBe(b);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // (4) Truncated cookie — chopping the last 5 chars of a valid cookie
+  // destroys the signature and must fail verification (no soft-pass
+  // path, no panic).
+  it("verifySignedSession rejects a truncated cookie", () => {
+    const cookie = signSession({
+      scope: "note:42",
+      expSeconds: 60,
+      ip: "203.0.113.5",
+    });
+    const truncated = cookie.slice(0, -5);
+    const out = verifySignedSession(truncated);
+    expect(out.valid).toBe(false);
+  });
+
+  // (5) IP-binding format flexibility — IPv4 vs IPv4-mapped-IPv6 should
+  // compare functionally equal so a borrower whose carrier rewrites the
+  // L7 source isn't 401'd on every fetch. Current implementation does
+  // strict string equality. This test documents that behavior — current
+  // contract is STRICT EQUALITY (the canonicalization is a future fix,
+  // and when it lands this test should flip to assert the relaxed match).
+  //
+  // The corollary: when canonicalization DOES land, the
+  // bind-different-format failure mode is hand-controllable here. For
+  // now we encode the "strict equality" contract so any drift to lossy
+  // canonicalization gets caught.
+  it("IP-binding currently uses strict string equality (IPv4 vs ::ffff:IPv4 mismatch)", () => {
+    const cookie = signSession({
+      scope: "note:42",
+      expSeconds: 60,
+      ip: "127.0.0.1",
+    });
+    // IPv4-mapped-IPv6 form of the same address — functionally equal at
+    // the L3 layer, but textually distinct.
+    const verifiedV6 = verifyBorrowerSession(cookie, "::ffff:127.0.0.1");
+    expect(verifiedV6.valid).toBe(false);
+    expect(verifiedV6.reason).toBe("ip_mismatch");
+    // Truly different IP — also mismatch.
+    const verifiedOther = verifyBorrowerSession(cookie, "198.51.100.7");
+    expect(verifiedOther.valid).toBe(false);
+    expect(verifiedOther.reason).toBe("ip_mismatch");
+    // Exact match still passes.
+    const verifiedExact = verifyBorrowerSession(cookie, "127.0.0.1");
+    expect(verifiedExact.valid).toBe(true);
+  });
+});
+
 describe("statementAccess — fail-closed on missing secret", () => {
   let originalSecret: string | undefined;
 

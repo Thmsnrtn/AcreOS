@@ -1,0 +1,178 @@
+name: Borrower Cookie-Session E2E
+
+# BEATRICE — Phase D3 end-to-end verification of the F3.4 fix
+# (commit 99be388b + type-fix f4f46032). Confirms the cookie-session
+# auth replacement for the borrower-statement surface is intact:
+#
+#   POST /api/borrower/auth/exchange   { accessToken, email }
+#     → 204 + `borrower_stmt_session` cookie (HMAC-signed, IP-bound, 30 min)
+#   GET  /api/borrower/statements/generate (cookie-only; 401 otherwise)
+#
+# Not a high-frequency surface; daily cron is plenty. On red, opens a
+# GitHub issue tagged `borrower-flow-broken` (collapsed-comment dedupe
+# pattern from customer-journey-audit.yml).
+#
+# Required secrets:
+#   TARGET_URL         — production base URL (e.g. https://acreos.io)
+#   E2E_DATABASE_URL   — throwaway test Postgres reachable from CI for the
+#                        seeder; MUST NOT be the production DB. The seeder
+#                        refuses prod-looking hosts unless explicitly forced.
+#   BORROWER_SESSION_SECRET — the server-side signing secret in use at
+#                        TARGET_URL. (Used only by `npm run check` /
+#                        unit-tests — never echoed.)
+
+on:
+  schedule:
+    # Daily at 06:17 UTC. Off-the-hour to dodge GHA top-of-hour queue
+    # contention; offset from the other phase-D audits (customer-journey
+    # :41, customer-surface-monitor :23) so they don't share a runner pool.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override TARGET_URL (defaults to the secret)"
+        required: false
+        type: string
+
+jobs:
+  borrower-cookie-e2e:
+    name: F3.4 borrower cookie-session — end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      # CI-local throwaway Postgres for the seeder. We deliberately do NOT
+      # seed into production — the seeder writes a fixture borrower whose
+      # `(accessToken, email)` is then used to drive the live target URL.
+      # That means TARGET_URL's data layer must also see this fixture. In
+      # practice CI sets E2E_DATABASE_URL to a staging/ephemeral DB that
+      # TARGET_URL also reads from; if no such DB exists, this workflow
+      # must be wired to a staging environment, NOT prod.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: acreos_e2e_borrower
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TARGET_URL: ${{ github.event.inputs.target_url || secrets.TARGET_URL }}
+      DATABASE_URL: ${{ secrets.E2E_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/acreos_e2e_borrower' }}
+      # The signing secret must match TARGET_URL's. Same-domain run is
+      # what unit tests use; never echoed.
+      BORROWER_SESSION_SECRET: ${{ secrets.BORROWER_SESSION_SECRET }}
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate TARGET_URL
+        run: |
+          if [ -z "${TARGET_URL:-}" ]; then
+            echo "::error::TARGET_URL is unset — cannot run borrower cookie-session E2E"
+            exit 1
+          fi
+          echo "Auditing $TARGET_URL"
+
+      - name: Seed test-borrower fixture
+        run: |
+          node scripts/seed-test-borrower.mjs seed
+          if [ ! -f .test-borrower-credentials.json ]; then
+            echo "::error::seeder did not produce .test-borrower-credentials.json"
+            exit 1
+          fi
+
+      - name: Unit tests — statementAccess service
+        run: npx vitest run server/services/borrower/statementAccess.test.ts
+
+      - name: Borrower cookie-session E2E
+        id: e2e
+        run: |
+          npx playwright test \
+            --config=tests/e2e-borrower/playwright.config.ts
+        continue-on-error: true
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: borrower-cookie-e2e-report
+          path: |
+            tests/e2e-borrower/results/
+            playwright-report/
+            test-results/e2e-borrower/
+          retention-days: 14
+
+      - name: Open issue on RED
+        if: steps.e2e.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const title = `borrower-flow RED on ${process.env.TARGET_URL} @ ${new Date().toISOString().slice(0, 10)}`;
+            const body = [
+              `The F3.4 borrower-cookie-session E2E is RED.`,
+              ``,
+              `**Target:** ${process.env.TARGET_URL}`,
+              `**Trigger:** ${context.eventName}`,
+              `**Run:** ${runUrl}`,
+              ``,
+              `Probable surfaces:`,
+              `- POST /api/borrower/auth/exchange (cookie mint)`,
+              `- GET /api/borrower/statements/generate (cookie verify)`,
+              `- server/services/borrower/statementAccess.ts`,
+              ``,
+              `See workflow artifacts (\`borrower-cookie-e2e-report\`) for ` +
+              `the Playwright HTML report + per-case JSON.`,
+              ``,
+              `Auto-opened by .github/workflows/borrower-cookie-e2e.yml.`,
+            ].join("\n");
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              labels: "borrower-flow-broken",
+              per_page: 5,
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.data[0].number,
+                body: `Another RED run: ${runUrl} (trigger=${context.eventName})`,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ["borrower-flow-broken", "urgent"],
+            });
+
+      - name: Re-emit E2E exit code
+        if: steps.e2e.outcome == 'failure'
+        run: |
+          echo "::error::borrower cookie-session E2E exited RED — see issue + artifacts"
+          exit 1
