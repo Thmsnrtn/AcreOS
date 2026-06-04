@@ -234,6 +234,7 @@ import { registerPlanProposalRoutes } from "./routes-plan-proposals";
 import { registerFounderBypassRoutes } from "./routes-founder-bypass";
 import { registerFounderCollabRoutes } from "./routes-founder-collab";
 import { registerOnboardingFunnelRoutes } from "./routes-onboarding-funnel";
+import { registerPaxContextRoutes } from "./routes-pax-context";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
 import { registerInvestorAnalyticsRoutes } from "./routes-investor-analytics";
 import { registerAdminRoutes } from "./routes-admin";
@@ -2221,6 +2222,9 @@ export async function registerRoutes(
   //   GET /api/founder/onboarding-funnel/summary + /orgs + /orgs/:orgId
   //   POST /api/founder/onboarding-funnel/recompute
   registerOnboardingFunnelRoutes(app);
+  // D1 Pax-context capture — PaxContextStep posts here on onboarding submit.
+  //   POST /api/onboarding/pax-context (capture) + GET (read) + opt-out + DELETE.
+  registerPaxContextRoutes(app);
   // Team-improvement detector — GET /api/founder/team-improvement/recent + /pending.
   // Event-driven primary driver per feedback_continuous_improvement_cadence.md.
   registerTeamImprovementRoutes(app);

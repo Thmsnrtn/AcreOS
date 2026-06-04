@@ -25,6 +25,14 @@ import { getIdentityForSend } from "./orgEmailIdentity";
  */
 const UNSUBSCRIBE_MAILTO = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@acreos.io';
 
+// CAN-SPAM §5(a)(5) requires a valid physical postal address in every
+// commercial email. Read at module load + falls back to a clearly-marked
+// placeholder so deliverability monitoring catches if it's never been set.
+// Tom action item: set CAN_SPAM_MAILING_ADDRESS via `fly secrets set`.
+const CAN_SPAM_MAILING_ADDRESS =
+  process.env.CAN_SPAM_MAILING_ADDRESS ||
+  '[PLACEHOLDER — set CAN_SPAM_MAILING_ADDRESS Fly secret before production sends]';
+
 interface AWSCredentials {
   accessKeyId: string;
   secretAccessKey: string;
@@ -472,13 +480,15 @@ export class EmailService {
         });
         const unsubUrl = options.unsubscribeUrl || buildUnsubscribeUrl(unsubToken);
 
-        // CAN-SPAM / GDPR compliance: append unsubscribe footer for campaign/marketing emails
+        // CAN-SPAM / GDPR compliance: append unsubscribe footer for campaign/marketing emails.
+        // §5 requires both (a) a clear opt-out + (b) a valid physical postal address.
         let htmlBody = options.html;
         if (options.isCampaignEmail || options.unsubscribeUrl) {
           htmlBody = `${htmlBody}
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p>You are receiving this email because you are a contact in our CRM system.</p>
   <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>
+  <p style="margin-top:12px;">AcreOS &middot; ${CAN_SPAM_MAILING_ADDRESS}</p>
 </div>`;
         }
         const textBody = options.text || this.htmlToText(htmlBody);
@@ -644,6 +654,10 @@ export class EmailService {
       welcome: {
         subject: 'Welcome to AcreOS',
         html: this.buildWelcomeTemplate(options.templateData),
+        // CAN-SPAM safety: welcome emails carry marketing-ish CTAs (campaigns,
+        // dashboard nudges) so we treat them as commercial and apply the
+        // List-Unsubscribe header + visible-footer pattern via the
+        // isCampaignEmail flag in sendEmail.
       },
       alert: {
         subject: options.templateData.alertTitle || 'Important Alert',
@@ -660,12 +674,19 @@ export class EmailService {
     };
 
     const template = templates[type];
-    
+
+    // CAN-SPAM compliance: welcome + churn_rescue + founder_briefing carry
+    // marketing-shaped CTAs; mark as campaign so the List-Unsubscribe
+    // header + visible-footer wire in. Notification + alert stay transactional.
+    const isCampaignEmail =
+      type === 'welcome' || type === 'churn_rescue' || type === 'founder_briefing';
+
     return this.sendEmail({
       to: options.to,
       subject: options.subject || template.subject,
       html: template.html,
       organizationId: options.organizationId,
+      isCampaignEmail,
     });
   }
 
