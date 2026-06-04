@@ -1,0 +1,173 @@
+name: Customer Journey Audit
+
+# KRIEGER — End-to-end synthetic customer-journey audit.
+#
+# Phase D2. Walks the fresh-signup → onboarding → first-value journey
+# across 9 viewports × 2 themes (18 effective runs per execution) against
+# the live target URL every 6 hours.
+#
+# Distinct from .github/workflows/customer-surface-monitor.yml:
+#   - customer-surface-monitor.yml: blank-screen detector on the 5 doors
+#     (Today/Map/Deals/Finance/Pax) — runs the founder daily loop.
+#   - customer-journey-audit.yml (this file): fresh-signup → first-value
+#     across the FULL 9×2 viewport+theme matrix — the new-user funnel.
+#
+# Required secrets:
+#   TARGET_URL                — live URL to audit (e.g. https://acreos.io).
+#   E2E_TEST_AUTH_TOKEN       — signed token that gates the production
+#                               test-auth bypass header.
+#   SOLENE_PAGE_SECRET        — pages Solene on red.
+#   GITHUB_TOKEN (built-in)   — opens issues on red.
+
+on:
+  schedule:
+    # Every 6 hours, on the 41st minute (off-the-minute on purpose to
+    # dodge GHA's top-of-the-hour scheduling queue contention). Offset
+    # from customer-surface-monitor (cron :23) so they don't fight for
+    # the same shared runner pool.
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override TARGET_URL (defaults to the secret)"
+        required: false
+        type: string
+      project_filter:
+        description: 'Restrict to one project (e.g. "mobile-iphone-12-dark")'
+        required: false
+        type: string
+
+jobs:
+  customer-journey-audit:
+    name: Walk customer journey (9 viewports × 2 themes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      TARGET_URL: ${{ github.event.inputs.target_url || secrets.TARGET_URL }}
+      E2E_TEST_AUTH_TOKEN: ${{ secrets.E2E_TEST_AUTH_TOKEN }}
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Validate TARGET_URL
+        run: |
+          if [ -z "${TARGET_URL:-}" ]; then
+            echo "::error::TARGET_URL is unset — cannot run customer-journey audit"
+            exit 1
+          fi
+          echo "Auditing $TARGET_URL"
+
+      - name: Run customer-journey audit
+        id: audit
+        run: |
+          if [ -n "${{ github.event.inputs.project_filter }}" ]; then
+            node scripts/run-customer-journey-audit.mjs \
+              --project="${{ github.event.inputs.project_filter }}"
+          else
+            node scripts/run-customer-journey-audit.mjs
+          fi
+        continue-on-error: true
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-journey-audit-report
+          path: |
+            tests/e2e-customer-journey/results/
+            docs/internal/customer-journey-results-*.md
+            playwright-report/
+            test-results/customer-journey/
+          retention-days: 14
+
+      # Page Solene on hard red (audit exit code 2).
+      - name: Page Solene on RED
+        if: steps.audit.outcome == 'failure'
+        env:
+          SOLENE_PAGE_SECRET: ${{ secrets.SOLENE_PAGE_SECRET }}
+        run: |
+          if [ -z "${SOLENE_PAGE_SECRET:-}" ]; then
+            echo "SOLENE_PAGE_SECRET unset — skipping page"
+            exit 0
+          fi
+          curl -sS --max-time 8 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Solene-Page-Secret: ${SOLENE_PAGE_SECRET}" \
+            "https://acreos.io/api/internal/solene/page" \
+            -d "$(cat <<EOF
+          {
+            "severity": "urgent",
+            "subject": "customer-journey audit RED",
+            "body": "End-to-end customer journey RED on $TARGET_URL (run=${{ github.run_id }}, trigger=${{ github.event_name }}). Artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )" || echo "page POST failed (non-fatal)"
+
+      # On red: open a GitHub issue tagged customer-journey-broken so the
+      # roadmap captures the regression even if Solene's page misses.
+      - name: Open issue on RED
+        if: steps.audit.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const title = `customer-journey RED on ${process.env.TARGET_URL} @ ${new Date().toISOString().slice(0, 10)}`;
+            const body = [
+              `The customer-journey audit is RED.`,
+              ``,
+              `**Target:** ${process.env.TARGET_URL}`,
+              `**Trigger:** ${context.eventName}`,
+              `**Run:** ${runUrl}`,
+              ``,
+              `See workflow artifacts (\`customer-journey-audit-report\`) for the per-viewport markdown summary and screenshots.`,
+              ``,
+              `Auto-opened by .github/workflows/customer-journey-audit.yml.`,
+            ].join("\n");
+
+            // Check for an open issue with the same label already; collapse
+            // duplicate noise into a comment on the existing issue.
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              labels: "customer-journey-broken",
+              per_page: 5,
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.data[0].number,
+                body: `Another RED run: ${runUrl} (trigger=${context.eventName})`,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ["customer-journey-broken", "urgent"],
+            });
+
+      - name: Re-emit audit exit code
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::error::customer-journey audit exited RED — see issue + artifacts"
+          exit 1
