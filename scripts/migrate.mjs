@@ -4717,6 +4717,19 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_capital_events_type_occurred_idx" ON "solene_capital_events" ("event_type", "occurred_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_capital_events_session_idx" ON "solene_capital_events" ("session_token", "occurred_at")`,
 
+  // ── Solene (Phase 7) — morning-pulse snapshot ledger ──────────────────
+  // Daily 12:00 UTC + 30m continuous tick persist composed
+  // MorningPulseSnapshot blobs here so the founder Today page reads
+  // instantly. Mirrors shared/schema/solene-morning-pulse.ts. Wired to
+  // the cron in server/jobs/runScheduledJobs.ts → startSoleneMorningPulseJob
+  // + startSoleneContinuousTickJob.
+  `CREATE TABLE IF NOT EXISTS "solene_morning_pulse" (
+     "id" serial PRIMARY KEY,
+     "generated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "snapshot" jsonb NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_morning_pulse_generated_idx" ON "solene_morning_pulse" ("generated_at" DESC)`,
+
   // ── Solene (COO) — proactive page-event ledger ─────────────────────────
   // Records every page Solene fires to Tom between sessions (urgent /
   // critical). Per docs/internal/solene-page-discipline.md, page-worthy is

@@ -217,6 +217,7 @@ import { registerPrivacyDsarRoutes } from "./routes-privacy-dsar";
 import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
+import { registerMorningPulseRoutes } from "./routes-morning-pulse";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2183,6 +2184,10 @@ export async function registerRoutes(
   registerPaxAuditRoutes(app);
   // Solene (COO) self-audit + capital tracker founder read endpoints.
   registerSoleneAuditRoutes(app);
+  // Solene (Phase 7) — morning-pulse founder read endpoints. GET cached
+  // snapshot + POST /refresh force re-compute. Backs the Today page's
+  // live one-line; cron-fed by the 12:00 UTC + 30m continuous jobs.
+  registerMorningPulseRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
   // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:

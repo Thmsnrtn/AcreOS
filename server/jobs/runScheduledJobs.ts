@@ -2221,6 +2221,97 @@ function startSoleneAuditJob() {
 }
 
 /**
+ * Solene (Phase 7 — continuous loop) — daily morning pulse.
+ *
+ * Fires at 12:00 UTC (7am ET) once per day. composeMorningPulse() walks
+ * live data (capital tracker / agent identity / founder collab /
+ * dispatch queue / onboarding funnel / Beatrice findings) and persists
+ * a MorningPulseSnapshot to solene_morning_pulse so the Today page
+ * reads the freshest data instantly. Phase 0 cost-aware: runs on the
+ * existing worker process, not a dedicated machine.
+ */
+function startSoleneMorningPulseJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log(
+    'Registering Solene morning pulse (daily 12:00 UTC = 7am ET)',
+    'solene-pulse',
+  );
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 12 && now.getUTCMinutes() < 5) {
+      void withJobLock('solene_morning_pulse', 30 * 60, async () => {
+        const { composeMorningPulse, persistMorningPulse } = await import(
+          '../services/solene/continuousLoop'
+        );
+        const snap = await composeMorningPulse();
+        const persisted = await persistMorningPulse(snap);
+        log(
+          `[solene-pulse] generated id=${persisted.pulseId} oneLine="${snap.oneLine}"`,
+          'solene-pulse',
+        );
+      }).catch((err) =>
+        log(`[solene-pulse] failed: ${err}`, 'solene-pulse'),
+      );
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Solene (Phase 7 — continuous loop) — between-session tick.
+ *
+ * Fires every 30 minutes from the worker. runContinuousTick() scans
+ * open founder asks + recent dispatch terminal states + the code-review
+ * queue, refreshes the morning pulse if older than 6h, and surfaces
+ * counters for cron observability. Enqueue logic for remediation
+ * dispatches stays inside the dedicated queue services so we don't
+ * double-fire alongside their own guardrails.
+ */
+function startSoleneContinuousTickJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60;
+  log(
+    'Registering Solene continuous tick (every 30 minutes)',
+    'solene-continuous',
+  );
+  // First run 120s after boot so other services initialise first.
+  setTimeout(() => {
+    void withJobLock('solene_continuous_tick', TTL_SECONDS, async () => {
+      const { runContinuousTick } = await import(
+        '../services/solene/continuousLoop'
+      );
+      const r = await runContinuousTick();
+      log(
+        `[solene-continuous] tick: signals=${r.signalsScanned} dispatches=${r.dispatchesQueued} asks=${r.asksFiredToFounder} errors=${r.errors}`,
+        'solene-continuous',
+      );
+    }).catch((err) =>
+      log(`[solene-continuous] tick failed: ${err}`, 'solene-continuous'),
+    );
+  }, 120 * 1000);
+  trackInterval(() => {
+    void withJobLock('solene_continuous_tick', TTL_SECONDS, async () => {
+      const { runContinuousTick } = await import(
+        '../services/solene/continuousLoop'
+      );
+      const r = await runContinuousTick();
+      if (
+        r.signalsScanned > 0 ||
+        r.dispatchesQueued > 0 ||
+        r.asksFiredToFounder > 0 ||
+        r.errors > 0
+      ) {
+        log(
+          `[solene-continuous] tick: signals=${r.signalsScanned} dispatches=${r.dispatchesQueued} asks=${r.asksFiredToFounder} errors=${r.errors}`,
+          'solene-continuous',
+        );
+      }
+    }).catch((err) =>
+      log(`[solene-continuous] tick failed: ${err}`, 'solene-continuous'),
+    );
+  }, THIRTY_MINUTES);
+}
+
+/**
  * Solene (COO) — team-state map regenerator.
  *
  * Runs scripts/regenerate-team-state.mjs every 15 minutes so the auto-
@@ -3068,6 +3159,15 @@ export async function runScheduledJobs(): Promise<void> {
   // discipline detectors. Findings persist to solene_audit_findings;
   // drift signals fire via logger.error + Sentry tag solene_audit_drift.
   startSoleneAuditJob();
+
+  // Solene (Phase 7) — continuous between-session loop. Two registrations
+  // share the same continuousLoop.ts service: daily morning-pulse compose
+  // at 12:00 UTC + 30m continuous tick (signal scan, late-pulse refresh
+  // safety net). Both run on the existing worker — Phase 0 cost-aware,
+  // no new Fly machine. Adding a dedicated continuous-Solene machine is a
+  // Phase 1+ consideration when revenue justifies the ops complexity.
+  startSoleneMorningPulseJob();
+  startSoleneContinuousTickJob();
 
   // Iris — continuous p95 baseline (every 30 minutes). Drains the
   // response-time ring buffer for IRIS_TRACKED_ENDPOINTS, persists p50/
