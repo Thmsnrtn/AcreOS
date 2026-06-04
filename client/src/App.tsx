@@ -284,6 +284,8 @@ const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-que
 const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 // L6.32 founder-collab UI — surface for /api/founder/asks (commit 05a2e122).
 const FounderAsksPage = React.lazy(() => import("@/pages/founder/asks"));
+// D2 signup-to-first-value funnel UI — surface for /api/founder/onboarding-funnel.
+const FounderOnboardingFunnelPage = React.lazy(() => import("@/pages/founder/onboarding-funnel"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
 const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
 const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-calibration"));
@@ -1148,6 +1150,9 @@ function Router() {
       </Route>
       <Route path="/founder/dispatches">
         {() => <FounderProtectedRoute component={FounderDispatchesPage} />}
+      </Route>
+      <Route path="/founder/onboarding-funnel">
+        {() => <FounderProtectedRoute component={FounderOnboardingFunnelPage} />}
       </Route>
       <Route path="/founder/asks">
         {() => <FounderProtectedRoute component={FounderAsksPage} />}

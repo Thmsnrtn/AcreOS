@@ -230,6 +230,10 @@ import { registerTeamSystemAuditRoutes } from "./routes-team-system-audit";
 import { registerFounderComplianceRoutes } from "./routes-founder-compliance";
 import { registerMoveInspectionRoutes } from "./routes-move-inspections";
 import { registerRentRollImportRoutes } from "./routes-rent-roll-import";
+import { registerPlanProposalRoutes } from "./routes-plan-proposals";
+import { registerFounderBypassRoutes } from "./routes-founder-bypass";
+import { registerFounderCollabRoutes } from "./routes-founder-collab";
+import { registerOnboardingFunnelRoutes } from "./routes-onboarding-funnel";
 import { registerMaintenanceTicketRoutes } from "./routes-maintenance-tickets";
 import { registerInvestorAnalyticsRoutes } from "./routes-investor-analytics";
 import { registerAdminRoutes } from "./routes-admin";
@@ -2204,6 +2208,19 @@ export async function registerRoutes(
   //   GET /api/founder/external-watch/recent
   //   POST /api/founder/external-watch/:id/ack
   registerExternalWatchRoutes(app);
+  // L2.6 plan-then-execute proposals (founder review surface).
+  //   GET /api/founder/plan-proposals/:id  + POST /:id/approve  + POST /:id/reject
+  registerPlanProposalRoutes(app);
+  // L6.31 founder-mode bypass — Tom directly invokes any agent with full authority.
+  //   POST /api/founder/bypass/dispatch + POST /:id/cancel + GET /recent
+  registerFounderBypassRoutes(app);
+  // L6.32 real-time founder collab — agents page Tom; Tom answers via the dashboard.
+  //   GET /api/founder/asks + GET /:id + POST /:id/answer + POST /:id/supersede
+  registerFounderCollabRoutes(app);
+  // D2 signup-to-first-value funnel — measure + surface per-org TTFV.
+  //   GET /api/founder/onboarding-funnel/summary + /orgs + /orgs/:orgId
+  //   POST /api/founder/onboarding-funnel/recompute
+  registerOnboardingFunnelRoutes(app);
   // Team-improvement detector — GET /api/founder/team-improvement/recent + /pending.
   // Event-driven primary driver per feedback_continuous_improvement_cadence.md.
   registerTeamImprovementRoutes(app);

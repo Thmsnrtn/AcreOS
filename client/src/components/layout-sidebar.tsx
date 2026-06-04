@@ -654,6 +654,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Dispatches", icon: Workflow, href: "/founder/dispatches", description: "Real-time view of the auto-dispatch queue — queued / in-progress / terminal rows + cancel + review status" },
       { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", description: "Real-time questions from agents (L6.32 founder-collab) — answer to unblock a dispatch or supersede if no longer relevant" },
+      { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", description: "Signup-to-first-value time per org with 90s-target indicator + abandonment-by-step + per-org drill-down" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
       // ── Decisions / strategy ───────────────────────────────────────
