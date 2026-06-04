@@ -26,6 +26,7 @@ import { scheduleVerification } from "./outcomeVerifiers";
 import { registerActionUndo } from "./undoRegistry";
 import { isQuietHours, shouldBreakQuietHours } from "./quietHours";
 import { logger } from "../utils/logger";
+import { resolveCodename } from "./agentCodenameAlias";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -639,12 +640,30 @@ export async function governedExecute(ctx: ActionContext): Promise<ActionResult>
  * the result via WebSocket for real-time CEO awareness.
  */
 export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
-  const key = `${ctx.agentCodename}:${ctx.actionName}`;
-  const executor = executors.get(key);
+  // Phase 6: GitHub-style harmonious merge — resolve legacy codenames
+  // (atlas_cto, sophie_csm, forge_revenue, oracle, …) to their modern
+  // canonical destination. Canonical inputs pass through unchanged.
+  //
+  // Lookup precedence:
+  //   1. canonical-keyed executor  (new code registers under canonical names)
+  //   2. original-codename-keyed executor  (legacy executors still work)
+  //
+  // We keep ctx.agentCodename = the original requested codename in the
+  // downstream audit/log/broadcast surface so we retain visibility into
+  // which legacy codenames are still in play during the migration window.
+  const resolved = resolveCodename({
+    requestedCodename: ctx.agentCodename,
+    actionName: ctx.actionName,
+  });
+  const canonicalKey = `${resolved.canonical}:${ctx.actionName}`;
+  const originalKey = `${ctx.agentCodename}:${ctx.actionName}`;
+  const executor = executors.get(canonicalKey) ?? executors.get(originalKey);
 
   if (!executor) {
-    logger.warn(`[ActionExecutor] No executor registered for ${key}`);
-    return { success: false, detail: `No executor for ${key}` };
+    logger.warn(
+      `[ActionExecutor] No executor registered for ${originalKey} (canonical: ${canonicalKey})`,
+    );
+    return { success: false, detail: `No executor for ${originalKey}` };
   }
 
   // Run significant actions through the confidence cascade before executing
