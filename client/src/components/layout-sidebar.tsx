@@ -154,6 +154,14 @@ import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { useOrganization } from "@/hooks/use-organization";
+// Phase 4 of the Solene migration — opt-in flag flips the founder
+// sidebar to the 5-door structure (Today / Team / Customers / Money / Build).
+import { useNewFounderUI } from "@/lib/featureFlags";
+import {
+  FOUNDER_NAV_NEW_5_DOORS,
+  FOUNDER_NAV_SETTINGS_SHORTCUT,
+  type FounderNavDoor,
+} from "@/lib/nav-items";
 
 // ─────────────────────────────────────────────────────────────────────
 // Pax proactive notification badge
@@ -792,6 +800,24 @@ export function Sidebar() {
   const { isCollapsed, setIsCollapsed } = useSidebarCollapsed();
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const { data: organization } = useOrganization();
+
+  // Phase 4 of the Solene migration — when the founder is on a /founder/*
+  // route AND has opted into the new UI, render the compact 5-door sidebar
+  // instead of the 30+ entry full sidebar. Customer-facing routes are
+  // unaffected. We branch here (top of Sidebar) so the rest of the function
+  // is unchanged for the false case (and for non-founder users).
+  const newFounderUI = useNewFounderUI();
+  if (isFounder && newFounderUI && location.startsWith("/founder")) {
+    return (
+      <NewFounderSidebar
+        location={location}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        brandName={brandName}
+        onLogout={() => logout()}
+      />
+    );
+  }
 
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const { investorType } = useContextProfile();
@@ -1861,5 +1887,258 @@ function DesktopNavItem({
       <Icon className={cn("w-4 h-4 shrink-0", iconClass)} />
       <span className="font-medium text-sm">{label}</span>
     </Link>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 4 of the Solene migration — new 5-door founder sidebar
+// ─────────────────────────────────────────────────────────────────────
+// Compact founder navigation: Today / Team / Customers / Money / Build,
+// plus a Settings shortcut and a persistent "Chat with Solene" CTA that
+// routes back to /founder/today (where the chat surface lives). The 31
+// existing /founder/* pages stay routable — Solene opens them inline
+// when relevant; they're listed in FOUNDER_NAV_DEEP_DIVES (nav-items.ts).
+//
+// Rendered by `Sidebar()` only when:
+//   - user is a founder, AND
+//   - useNewFounderUI() === true, AND
+//   - the current route is under /founder/*
+//
+// Krieger-bar A11y discipline: every icon button has aria-label,
+// every link has visible focus, touch targets ≥ 44×44.
+// ─────────────────────────────────────────────────────────────────────
+function NewFounderSidebar({
+  location,
+  isCollapsed,
+  setIsCollapsed,
+  brandName,
+  onLogout,
+}: {
+  location: string;
+  isCollapsed: boolean;
+  setIsCollapsed: (v: boolean) => void;
+  brandName: string;
+  onLogout: () => void;
+}) {
+  const isActive = (href: string) =>
+    href === "/founder/today"
+      ? location === "/founder/today" || location === "/founder"
+      : location === href || location.startsWith(href + "/");
+
+  return (
+    <aside
+      aria-label="Founder navigation"
+      className={cn(
+        "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+        isCollapsed ? "w-[68px]" : "w-64"
+      )}
+      data-testid="new-founder-sidebar"
+    >
+      <div className="flex flex-col h-full vibrancy-sidebar">
+        {/* Header */}
+        <div
+          className={cn(
+            "border-b border-sidebar-border transition-all duration-200",
+            isCollapsed ? "p-3" : "p-4 md:p-5"
+          )}
+        >
+          {isCollapsed ? (
+            <div className="flex justify-center">
+              <AcreosLogo variant="mark" size={32} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 shrink">
+                <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent shrink-0">
+                  {brandName}
+                </h1>
+                <Badge
+                  variant="outline"
+                  className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-micro px-1.5 py-0 shrink-0"
+                  data-testid="badge-founder"
+                >
+                  <Crown className="w-2.5 h-2.5 mr-0.5" />
+                  Founder
+                </Badge>
+              </div>
+            </div>
+          )}
+          {!isCollapsed && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Solene · Chief of Staff
+            </p>
+          )}
+        </div>
+
+        {/* Persistent chat CTA — the chat surface itself lives on Today
+            (Phase 3 wires the real chat once Phase 2 backend lands). */}
+        <div
+          className={cn(
+            "border-b border-sidebar-border",
+            isCollapsed ? "px-2 py-2" : "px-3 py-2"
+          )}
+        >
+          {isCollapsed ? (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/founder/today"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary/10 text-primary hover:bg-primary/20 transition-colors min-h-[44px]"
+                  aria-label="Chat with Solene"
+                  data-testid="button-chat-solene-collapsed"
+                >
+                  <Sparkles className="w-4 h-4" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium">Chat with Solene</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Link
+              href="/founder/today"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors min-h-[44px] text-sm font-medium"
+              aria-label="Chat with Solene"
+              data-testid="button-chat-solene"
+            >
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span className="flex-1 text-left truncate">Chat with Solene</span>
+            </Link>
+          )}
+        </div>
+
+        {/* 5-door nav */}
+        <nav
+          aria-label="Founder doors"
+          className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden"
+        >
+          {FOUNDER_NAV_NEW_5_DOORS.map((door) => (
+            <FounderDoorItem
+              key={door.href}
+              door={door}
+              isActive={isActive(door.href)}
+              isCollapsed={isCollapsed}
+            />
+          ))}
+        </nav>
+
+        {/* Footer — Settings + theme + sign out */}
+        <div className="p-3 border-t border-sidebar-border safe-area-bottom space-y-2">
+          <FounderDoorItem
+            door={FOUNDER_NAV_SETTINGS_SHORTCUT}
+            isActive={isActive(FOUNDER_NAV_SETTINGS_SHORTCUT.href)}
+            isCollapsed={isCollapsed}
+          />
+          {!isCollapsed && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-muted-foreground">Theme</span>
+              <ThemeToggle />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            data-testid="button-collapse-toggle"
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4 shrink-0" />
+            ) : (
+              <>
+                <ChevronLeft className="w-4 h-4 shrink-0" />
+                <span className="font-medium text-sm">Collapse</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={onLogout}
+            data-testid="button-logout"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+            aria-label="Sign out"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            {!isCollapsed && (
+              <span className="font-medium text-sm">Sign out</span>
+            )}
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function FounderDoorItem({
+  door,
+  isActive,
+  isCollapsed,
+}: {
+  door: FounderNavDoor;
+  isActive: boolean;
+  isCollapsed: boolean;
+}) {
+  const Icon = door.icon;
+  if (isCollapsed) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <Link
+            href={door.href}
+            aria-label={door.label}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "flex items-center justify-center w-full p-2.5 rounded-card transition-colors min-h-[44px]",
+              isActive
+                ? "nav-item-active"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            )}
+            data-testid={`founder-door-${door.label.toLowerCase()}`}
+          >
+            <Icon
+              className={cn(
+                "w-4 h-4 shrink-0",
+                isActive ? "text-acr-ink" : "text-muted-foreground"
+              )}
+            />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          <p className="font-medium">{door.label}</p>
+          <p className="text-xs text-muted-foreground max-w-[200px]">
+            {door.description}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip delayDuration={400}>
+      <TooltipTrigger asChild>
+        <Link
+          href={door.href}
+          aria-current={isActive ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors min-h-[44px]",
+            isActive
+              ? "nav-item-active"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          )}
+          data-testid={`founder-door-${door.label.toLowerCase()}`}
+        >
+          <Icon
+            className={cn(
+              "w-4 h-4 shrink-0",
+              isActive ? "text-acr-ink" : "text-muted-foreground"
+            )}
+          />
+          <span className="font-medium text-sm truncate flex-1">
+            {door.label}
+          </span>
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[240px]">
+        <p className="text-xs text-muted-foreground">{door.description}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }

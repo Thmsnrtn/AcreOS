@@ -36,6 +36,30 @@ import {
   Percent,
   Building2,
   TrendingUp,
+  // Phase 4 of the Solene migration — icons used by FOUNDER_NAV_NEW_5_DOORS
+  // and FOUNDER_NAV_DEEP_DIVES below. Keep with the main lucide import block
+  // so dead-import linters don't strip them when only the founder consts
+  // reference them.
+  Sun,
+  Heart,
+  Hammer,
+  Cog,
+  FileCode,
+  History,
+  Crown,
+  Lightbulb,
+  CheckCircle2,
+  Rocket,
+  FlaskConical,
+  Wrench,
+  Eye,
+  LifeBuoy,
+  Megaphone,
+  Workflow as WorkflowIcon,
+  Key,
+  ListChecks,
+  Search,
+  Sliders,
 } from "lucide-react";
 import type { Persona } from "@shared/models/auth";
 
@@ -168,4 +192,170 @@ export function mobileItemsForPersona(persona: Persona | undefined): string[] {
       // Land flipper / unknown — the launch-vertical default.
       return DEFAULT_MOBILE_ITEMS;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 4 — new founder UI (Solene migration)
+// ─────────────────────────────────────────────────────────────────────
+// When the `useNewFounderUI` localStorage flag is true, the founder
+// sidebar collapses from 30+ entries to exactly 5 doors. The remaining
+// 30+ pages stay routable and are listed in FOUNDER_NAV_DEEP_DIVES,
+// grouped by category so Solene can open the right one from chat
+// ("open the engineering deep-dive on telemetry").
+// ─────────────────────────────────────────────────────────────────────
+
+export interface FounderNavDoor {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href: string;
+  description: string;
+}
+
+export interface FounderNavDeepDive {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href: string;
+  category:
+    | "engineering"
+    | "ai"
+    | "customers"
+    | "money"
+    | "strategy"
+    | "ops"
+    | "experimental";
+}
+
+/** The 5 doors Tom approved for the new founder surface. Always visible. */
+export const FOUNDER_NAV_NEW_5_DOORS: FounderNavDoor[] = [
+  {
+    label: "Today",
+    icon: Sun,
+    href: "/founder/today",
+    description:
+      "Morning pulse + active asks + decisions waiting + start a conversation with Solene.",
+  },
+  {
+    label: "Team",
+    icon: Users,
+    href: "/founder/team",
+    description:
+      "12-member roster: who's active, who's dormant, what each is working on.",
+  },
+  {
+    label: "Customers",
+    icon: Heart,
+    href: "/founder/customers",
+    description:
+      "Funnel + lifecycle + Pax interactions (mostly Phase 0 placeholder).",
+  },
+  {
+    label: "Money",
+    icon: DollarSign,
+    href: "/founder/money",
+    description:
+      "Runway + envelope + recent capital events (mostly Phase 0 placeholder).",
+  },
+  {
+    label: "Build",
+    icon: Hammer,
+    href: "/founder/build",
+    description:
+      "Live dispatch queue + agent asks + recent commits + audit-finding summary.",
+  },
+];
+
+/** Settings shortcut — rendered as a separate icon row below the 5 doors. */
+export const FOUNDER_NAV_SETTINGS_SHORTCUT: FounderNavDoor = {
+  label: "Settings",
+  icon: Cog,
+  href: "/founder/settings",
+  description: "Live-apply operational knobs",
+};
+
+/**
+ * The existing 30+ founder pages. NOT shown in the primary 5-door nav —
+ * reachable via direct URL or via Solene opening them from chat.
+ *
+ * Categories let Solene pick the right page when Tom asks an open-ended
+ * question ("how's engineering looking?" → engineering deep-dives).
+ *
+ * Keep this list in sync with the founder routes in App.tsx and the
+ * "Founder business" module overflow in NAV_MODULES (layout-sidebar.tsx).
+ */
+export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
+  // ── Engineering ─────────────────────────────────────────────────────
+  { label: "API telemetry", icon: Activity, href: "/founder/telemetry", category: "engineering" },
+  { label: "AI costs", icon: DollarSign, href: "/founder/ai-costs", category: "engineering" },
+  { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", category: "engineering" },
+  { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", category: "engineering" },
+  { label: "Providers", icon: Database, href: "/founder/providers", category: "engineering" },
+  { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
+  { label: "Event log", icon: FileCode, href: "/event-log", category: "engineering" },
+
+  // ── AI / Agents ─────────────────────────────────────────────────────
+  { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", category: "ai" },
+  { label: "Pax calibration", icon: Target, href: "/founder/pax-calibration", category: "ai" },
+  { label: "Agent traces", icon: FileCode, href: "/founder/traces", category: "ai" },
+  { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", category: "ai" },
+  { label: "Dispatches", icon: WorkflowIcon, href: "/founder/dispatches", category: "ai" },
+  { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", category: "ai" },
+  { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
+  { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
+  { label: "Memory browser", icon: Database, href: "/memory-browser", category: "ai" },
+  { label: "Agent performance", icon: Activity, href: "/agent-performance", category: "ai" },
+  { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", category: "ai" },
+
+  // ── Customers ───────────────────────────────────────────────────────
+  { label: "Customer health", icon: Heart, href: "/founder/customers/health", category: "customers" },
+  { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", category: "customers" },
+  { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", category: "customers" },
+  { label: "Founder feed", icon: Activity, href: "/founder/feed", category: "customers" },
+  { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", category: "customers" },
+  { label: "CMO", icon: Megaphone, href: "/founder/cmo", category: "customers" },
+
+  // ── Money ───────────────────────────────────────────────────────────
+  { label: "Cost", icon: DollarSign, href: "/founder/cost", category: "money" },
+  { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", category: "money" },
+
+  // ── Strategy ────────────────────────────────────────────────────────
+  { label: "Pulse", icon: Activity, href: "/founder", category: "strategy" },
+  { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", category: "strategy" },
+  { label: "Steering", icon: TrendingUp, href: "/founder/steering", category: "strategy" },
+  { label: "Decisions", icon: Shield, href: "/founder/decisions", category: "strategy" },
+  { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", category: "strategy" },
+  { label: "System trends", icon: TrendingUp, href: "/founder/trends", category: "strategy" },
+  { label: "Monthly letter", icon: FileText, href: "/founder/letter", category: "strategy" },
+  { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", category: "strategy" },
+  { label: "Expansion radar", icon: Target, href: "/founder/expansion", category: "strategy" },
+  { label: "Action preview", icon: Eye, href: "/founder/preview", category: "strategy" },
+
+  // ── Ops / admin ─────────────────────────────────────────────────────
+  { label: "Studio", icon: Sliders, href: "/founder/studio", category: "ops" },
+  { label: "Inspector", icon: Search, href: "/founder/inspector/audit", category: "ops" },
+  { label: "System keys", icon: Key, href: "/founder/keys", category: "ops" },
+  { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", category: "ops" },
+  { label: "Founder settings", icon: Settings, href: "/founder/settings", category: "ops" },
+  { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", category: "ops" },
+  { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", category: "ops" },
+  { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", category: "ops" },
+  { label: "Tool proposals", icon: Wrench, href: "/founder/tools", category: "ops" },
+  { label: "Trust graduation", icon: Shield, href: "/founder/trust-graduation", category: "ops" },
+
+  // ── Experimental ────────────────────────────────────────────────────
+  { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", category: "experimental" },
+  { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", category: "experimental" },
+  { label: "Board of directors", icon: Shield, href: "/board-of-directors", category: "experimental" },
+  { label: "Conscious organization", icon: Brain, href: "/conscious-organization", category: "experimental" },
+  { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", category: "experimental" },
+  { label: "Data moat", icon: Database, href: "/data-moat", category: "experimental" },
+  { label: "Reseller program", icon: Store, href: "/reseller", category: "experimental" },
+  { label: "Executive dashboard", icon: BarChart3, href: "/executive-dashboard", category: "experimental" },
+];
+
+/** Resolve all deep-dives within a given category — used by Solene's
+ *  open-page tool when she gets an open-ended question. */
+export function founderDeepDivesByCategory(
+  category: FounderNavDeepDive["category"]
+): FounderNavDeepDive[] {
+  return FOUNDER_NAV_DEEP_DIVES.filter((d) => d.category === category);
 }

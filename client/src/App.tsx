@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useNewFounderUI } from "@/lib/featureFlags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
@@ -296,6 +297,12 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 // pull-first CEO surface at /founder. Replaces the FounderChat shell
 // which was previously served at /founder (now remains at /founder/chat).
 const FounderPulsePage = React.lazy(() => import("@/pages/founder/index"));
+// Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
+// becomes the default landing page when `useNewFounderUI` localStorage flag
+// is true (see client/src/lib/featureFlags.ts). The other 4 doors (team /
+// customers / money / build) are Phase 5; for now they redirect to the
+// closest existing equivalent so the nav doesn't 404.
+const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
 // /founder/bridge. The page file lives on disk pending extraction sweep.
 // /founder is the Atlas chat shell; /founder/bridge is the fused
@@ -1029,7 +1036,35 @@ function Router() {
           /founder-home, /founder/now, /founder/cockpit, /founder/dashboard)
           continues to redirect to /founder/bridge. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderPulsePage} />}
+        {() => {
+          // Phase 4 of Solene migration: when the new-UI flag is on,
+          // /founder is the new Today landing page. Otherwise, the
+          // existing Pulse page (current behavior).
+          const isNewUI = useNewFounderUI();
+          if (isNewUI) {
+            return <FounderProtectedRoute component={FounderTodayPage} />;
+          }
+          return <FounderProtectedRoute component={FounderPulsePage} />;
+        }}
+      </Route>
+      {/* Phase 4 — new 5-door founder Today landing page. Direct URL
+          always resolves regardless of the feature flag; the flag only
+          controls whether /founder defaults here. */}
+      <Route path="/founder/today">
+        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+      </Route>
+      {/* Phase 4 — temp stubs for the other 4 doors until Phase 5
+          builds them out. Each redirects to the closest existing
+          equivalent so the nav doesn't 404.
+          TODO(phase-5): replace each stub with its dedicated page. */}
+      <Route path="/founder/team">
+        {() => <Redirect to="/founder/agent-queue" />}
+      </Route>
+      <Route path="/founder/money">
+        {() => <Redirect to="/founder/cost" />}
+      </Route>
+      <Route path="/founder/build">
+        {() => <Redirect to="/founder/dispatches" />}
       </Route>
       {/* Bridge — fused chat + telemetry surface. Canonical founder home
           per the Lens 4 IA consolidation. */}
