@@ -5746,6 +5746,80 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "onboarding_funnel_measured_date_idx" ON "onboarding_funnel_metrics" ("measured_date")`,
   `CREATE INDEX IF NOT EXISTS "onboarding_funnel_org_idx" ON "onboarding_funnel_metrics" ("org_id")`,
   `CREATE INDEX IF NOT EXISTS "onboarding_funnel_ttfv_idx" ON "onboarding_funnel_metrics" ("time_to_first_value_seconds") WHERE "time_to_first_value_seconds" IS NOT NULL`,
+
+  // 2026-06-04 — Phase 1 of AcreOS-Solene migration: shared-persistence layer.
+  // Three tables — solene_conversations + solene_messages + solene_memory_files
+  // + solene_session_tasks — that let CLI Claude Code + a future in-app
+  // AcreOS Solene chat read/write the same conversation/memory/task state.
+  // Mirrors shared/schema/solene-conversations.ts, solene-memory-files.ts,
+  // solene-session-tasks.ts.
+  `CREATE TABLE IF NOT EXISTS "solene_conversations" (
+     "id" serial PRIMARY KEY,
+     "started_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "started_surface" text NOT NULL,
+     "title" text,
+     "last_message_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "archived" boolean NOT NULL DEFAULT false,
+     "founder_user_id" text,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_conversations_last_message_idx" ON "solene_conversations" ("last_message_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_conversations_founder_archived_last_idx" ON "solene_conversations" ("founder_user_id", "archived", "last_message_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "solene_conversations_surface_started_idx" ON "solene_conversations" ("started_surface", "started_at" DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS "solene_messages" (
+     "id" serial PRIMARY KEY,
+     "conversation_id" integer NOT NULL,
+     "sent_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "role" text NOT NULL,
+     "content" jsonb NOT NULL,
+     "parent_message_id" integer,
+     "tool_call_id" text,
+     "model_used" text,
+     "usage_input_tokens" integer,
+     "usage_output_tokens" integer,
+     "usage_cache_read_tokens" integer,
+     "estimated_cost_usd" numeric(10,6),
+     "error_message" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_messages_conversation_sent_idx" ON "solene_messages" ("conversation_id", "sent_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_messages_conversation_parent_idx" ON "solene_messages" ("conversation_id", "parent_message_id")`,
+  `CREATE INDEX IF NOT EXISTS "solene_messages_tool_call_idx" ON "solene_messages" ("tool_call_id") WHERE "tool_call_id" IS NOT NULL`,
+
+  `CREATE TABLE IF NOT EXISTS "solene_memory_files" (
+     "id" serial PRIMARY KEY,
+     "slug" text NOT NULL,
+     "file_basename" text NOT NULL,
+     "type" text NOT NULL,
+     "description" text,
+     "body" text NOT NULL,
+     "body_sha256" text NOT NULL,
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "last_synced_from_local_at" timestamp with time zone,
+     "last_synced_to_local_at" timestamp with time zone,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_memory_files_slug_unique" ON "solene_memory_files" ("slug")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_memory_files_basename_unique" ON "solene_memory_files" ("file_basename")`,
+  `CREATE INDEX IF NOT EXISTS "solene_memory_files_type_idx" ON "solene_memory_files" ("type")`,
+  `CREATE INDEX IF NOT EXISTS "solene_memory_files_updated_at_idx" ON "solene_memory_files" ("updated_at" DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS "solene_session_tasks" (
+     "id" serial PRIMARY KEY,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "conversation_id" integer,
+     "subject" text NOT NULL,
+     "description" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "active_form" text,
+     "owner" text,
+     "blocked_by" integer[] NOT NULL DEFAULT '{}',
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+   )`,
+  `CREATE INDEX IF NOT EXISTS "solene_session_tasks_status_created_idx" ON "solene_session_tasks" ("status", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "solene_session_tasks_conversation_status_idx" ON "solene_session_tasks" ("conversation_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "solene_session_tasks_owner_status_idx" ON "solene_session_tasks" ("owner", "status")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
