@@ -26,6 +26,27 @@ vi.mock("../../utils/logger", () => ({
   },
 }));
 
+// Mock Voyage so retrieval is deterministic; fallback path is tested
+// explicitly below by toggling `voyageShouldThrow`.
+let voyageShouldThrow = false;
+let voyageCallCount = 0;
+vi.mock("../embeddings/voyageClient", () => ({
+  embedTexts: vi.fn(async (input: { texts: string[]; inputType?: string }) => {
+    voyageCallCount += 1;
+    if (voyageShouldThrow) {
+      throw new Error("simulated voyage failure");
+    }
+    const vec = new Array(1024).fill(0).map((_, i) => (i % 11) / 100);
+    return {
+      embeddings: input.texts.map(() => vec),
+      model: "voyage-3-large",
+      dim: 1024,
+      inputTokens: 1,
+      totalCostUsd: 0.0000018,
+    };
+  }),
+}));
+
 // ============================================================================
 // In-memory DB
 // ============================================================================
@@ -176,6 +197,8 @@ beforeEach(() => {
   throwOnStatusSelect = false;
   throwOnTotalSelect = false;
   totalEmbeddingsRow = 0;
+  voyageShouldThrow = false;
+  voyageCallCount = 0;
 });
 
 afterEach(() => {
@@ -454,6 +477,33 @@ describe("retrieveCrossNamespaceMemories", () => {
     const { retrieveCrossNamespaceMemories } = await import("./memoryRetrieval");
     await retrieveCrossNamespaceMemories({ queryText: "x" });
     expect(RETRIEVAL_EVENTS[0].queryingAgentRole).toBe("system");
+  });
+
+  it("routes the query through Voyage by default (production embedding path)", async () => {
+    voyageCallCount = 0;
+    CORPUS_BY_NS.feedback_memory = [
+      { source_ref: "fm-a", content_snippet: "x", similarity: 0.9 },
+    ];
+    const { retrieveCrossNamespaceMemories } = await import("./memoryRetrieval");
+    const out = await retrieveCrossNamespaceMemories({ queryText: "x" });
+    expect(voyageCallCount).toBe(1);
+    expect(out.retrieved.length).toBeGreaterThan(0);
+  });
+
+  it("falls back to placeholderEmbedding + warn log when Voyage throws", async () => {
+    voyageShouldThrow = true;
+    CORPUS_BY_NS.feedback_memory = [
+      { source_ref: "fm-a", content_snippet: "x", similarity: 0.9 },
+    ];
+    const { retrieveCrossNamespaceMemories } = await import("./memoryRetrieval");
+    const { logger } = await import("../../utils/logger");
+    const out = await retrieveCrossNamespaceMemories({ queryText: "x" });
+    // Retrieval still ran because placeholder is the fail-open fallback.
+    expect(out.retrieved.length).toBe(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "memoryRetrieval.cross.voyage_fallback",
+      expect.any(Object),
+    );
   });
 });
 

@@ -31,18 +31,22 @@
  *     averageTopSimilarity, zeroResultQueries, byAgent.
  *
  * ----------------------------------------------------------------------------
- * Embedding model — Phase 0 placeholder
+ * Embedding model — production Voyage with placeholder fail-open fallback
  * ----------------------------------------------------------------------------
- * `placeholderEmbedding` is a deterministic feature-hash → 1024-dim vector.
- * It is NOT a production-quality embedding — its retrieval recall is poor
- * compared to a real embedding model. The infrastructure (audit log, prompt
- * block, vector store, retrieval path) is end-to-end correct; only the
- * embedding function needs to be swapped.
+ * Production path: Voyage AI (`voyage-3-large`, 1024-dim) via
+ * `../embeddings/voyageClient.embedTexts`. We call with `input_type='query'`
+ * for retrieval — Voyage tunes recall asymmetrically between document and
+ * query embeddings, and using the right side of that distinction is a
+ * measurable recall win at zero cost.
  *
- * When an embeddings provider key (Voyage / Cohere / Anthropic) is
- * available: replace the body of `embedQueryText` with a call to that
- * provider, keep the rest of the service untouched. The
- * `solene_embedded_records.embedding_model` column tracks which model
+ * Fallback path: `placeholderEmbedding` (deterministic feature-hash → 1024-d).
+ * This is the fail-open default — on ANY Voyage failure (missing key, HTTP
+ * error, timeout, malformed response, dim mismatch) we log a warn + return
+ * the placeholder vector so the retrieval surface is never bricked. Recall
+ * degrades but the path keeps working. The placeholder MUST remain in this
+ * file as a function — DO NOT delete it.
+ *
+ * The `solene_embedded_records.embedding_model` column tracks which model
  * produced each stored vector so we can detect and skip cross-model
  * comparisons.
  *
@@ -60,6 +64,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { logger } from "../../utils/logger";
+import { embedTexts } from "../embeddings/voyageClient";
 import {
   soleneRetrievalEvents,
   RETRIEVAL_QUERY_TEXT_MAX_CHARS,
@@ -150,11 +155,20 @@ function placeholderEmbedding(text: string, dim: number = EMBEDDING_DIM): number
 }
 
 /**
- * Resolve a query string to a vector. Exposed as its own function so the
- * production-embedding swap is a single-function change.
+ * Resolve a query string to a vector. Production path: Voyage with
+ * `input_type='query'`. Fail-open fallback: placeholderEmbedding (a warn
+ * log fires so the founder visibility surface notices the degradation).
  */
-function embedQueryText(text: string): number[] {
-  return placeholderEmbedding(text, EMBEDDING_DIM);
+async function embedQueryText(text: string): Promise<number[]> {
+  try {
+    const result = await embedTexts({ texts: [text], inputType: "query" });
+    return result.embeddings[0];
+  } catch (err) {
+    logger.warn("learningLoop.retrieve.voyage_fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return placeholderEmbedding(text, EMBEDDING_DIM);
+  }
 }
 
 /**
@@ -220,7 +234,7 @@ export async function retrieveRelevantMemories(
   let retrieved: RetrievedMemory[] = [];
 
   try {
-    const queryVector = embedQueryText(query.queryText);
+    const queryVector = await embedQueryText(query.queryText);
     const pgLiteral = vectorToPgLiteral(queryVector);
 
     const result = await db.execute<{

@@ -2,30 +2,46 @@
 /**
  * scripts/ingest-feedback-memories.mjs
  *
- * Phase B L3.10 — Walk the feedback_*.md memory corpus, compute a placeholder
- * embedding for each, UPSERT into `solene_embedded_records` so the L3.10
- * learning-loop service has something to retrieve.
+ * Phase B L3.10 — Walk the feedback_*.md memory corpus, compute embeddings
+ * (Voyage AI by default; placeholder fallback), and UPSERT into
+ * `solene_embedded_records` so the L3.10 learning-loop service has
+ * something to retrieve.
  *
  * Usage:
- *   DATABASE_URL=... node scripts/ingest-feedback-memories.mjs ingest
+ *   DATABASE_URL=... VOYAGE_API_KEY=... node scripts/ingest-feedback-memories.mjs
+ *   DATABASE_URL=... node scripts/ingest-feedback-memories.mjs --provider=placeholder
+ *   DATABASE_URL=... node scripts/ingest-feedback-memories.mjs --re-embed-all
  *   DATABASE_URL=... node scripts/ingest-feedback-memories.mjs --dry-run
+ *   node scripts/ingest-feedback-memories.mjs --help
+ *
+ * Flags:
+ *   --provider=voyage|placeholder
+ *       Embedding provider. Default: voyage if VOYAGE_API_KEY is set, else
+ *       placeholder. The Voyage path produces voyage-3-large (1024-dim)
+ *       vectors; the placeholder produces the deterministic feature-hash
+ *       vectors shipped during Phase 0.
+ *   --re-embed-all
+ *       Force re-embedding of every row regardless of content_hash drift.
+ *       Used after a provider swap to refresh the entire corpus. Additionally
+ *       (without this flag) any row whose stored `embedding_model` doesn't
+ *       match the current target model is re-embedded.
+ *   --dry-run
+ *       Compute embeddings + log the plan but write nothing.
+ *   --help
+ *       Print this help text.
  *
  * Override the memory dir via SOLENE_MEMORY_DIR (defaults to
  * $HOME/.claude/projects/-Users-user-AcreOS-AcreOS/memory).
  *
- * Phase 0 placeholder embedding: deterministic feature-hash → 1024-dim,
- * L2-normalized. The same algorithm lives in
- *   server/services/solene/learningLoop.ts :: placeholderEmbedding
- * so the ingestion + query paths produce comparable vectors without sharing
- * a runtime. When a real embeddings provider key (Voyage / Cohere /
- * Anthropic) is available, swap both sites + re-run ingest --force.
+ * Voyage credential discipline:
+ *   - VOYAGE_API_KEY is read at run-time + NEVER printed (only its length).
+ *   - Each text is sanitized for credential-shaped substrings before being
+ *     sent to Voyage (same pattern set as server/services/embeddings/
+ *     voyageClient.ts).
+ *   - Per-chunk failure → fall back to placeholder for that row + continue.
  *
- * Behavior:
- *   - parse `name:` and `description:` from frontmatter (simple regex)
- *   - skip files without `name:` (warn)
- *   - content_hash = sha256 of full body; UPSERT skips when hash matches
- *   - --dry-run computes embeddings but writes nothing
- *   - prints summary: scanned / inserted / updated / skipped / errored
+ * Summary output includes rows-via-voyage, rows-via-placeholder, total
+ * voyage cost estimate, and the count of Voyage errors observed.
  */
 
 import crypto from "node:crypto";
@@ -49,12 +65,50 @@ const EMBEDDING_DIM = (() => {
 const EMBEDDED_SNIPPET_MAX_CHARS = 4000;
 const EMBEDDED_SNIPPET_TRUNCATION_SUFFIX = "… [truncated]";
 const NAMESPACE = "feedback_memory";
-const EMBEDDING_MODEL = "placeholder-feature-hash-v1";
+
+const PLACEHOLDER_MODEL = "placeholder-feature-hash-v1";
+const VOYAGE_MODEL =
+  process.env.VOYAGE_EMBEDDING_MODEL ?? "voyage-3-large";
+const VOYAGE_API_BASE =
+  process.env.VOYAGE_API_BASE ?? "https://api.voyageai.com/v1";
+const VOYAGE_TIMEOUT_MS = (() => {
+  const raw = process.env.VOYAGE_TIMEOUT_MS;
+  if (!raw) return 30_000;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 30_000;
+})();
+const VOYAGE_PRICE_PER_M_TOKENS = (() => {
+  const raw = process.env.VOYAGE_PRICE_PER_M_TOKENS;
+  if (!raw) return 0.18;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 0.18;
+})();
 
 const DEFAULT_MEMORY_DIR = path.join(
   process.env.HOME ?? "",
   ".claude/projects/-Users-user-AcreOS-AcreOS/memory",
 );
+
+// ============================================================================
+// Credential-shaped substring sanitizer — mirrors voyageClient.ts
+// ============================================================================
+const CREDENTIAL_PATTERNS = [
+  /\bsk_[A-Za-z0-9_-]{8,}/g,
+  /\bpk_[A-Za-z0-9_-]{8,}/g,
+  /\bphc_[A-Za-z0-9_-]{8,}/g,
+  /\bphx_[A-Za-z0-9_-]{8,}/g,
+  /\bghp_[A-Za-z0-9_-]{8,}/g,
+  /Bearer\s+[A-Za-z0-9_\-.=]{8,}/g,
+  /\bAKIA[A-Z0-9]{12,}/g,
+  /\bASIA[A-Z0-9]{12,}/g,
+];
+const REDACTED_MARKER = "[redacted-credential]";
+
+function sanitizeForVoyage(text) {
+  let out = text;
+  for (const pat of CREDENTIAL_PATTERNS) out = out.replace(pat, REDACTED_MARKER);
+  return out;
+}
 
 // ============================================================================
 // Placeholder embedding — duplicated from learningLoop.ts on purpose
@@ -85,17 +139,81 @@ function truncateSnippet(text) {
 }
 
 // ============================================================================
+// Voyage helper — self-contained, no project imports
+// ============================================================================
+
+function estimateVoyageCost(tokens) {
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  const usd = (tokens / 1_000_000) * VOYAGE_PRICE_PER_M_TOKENS;
+  return Math.round(usd * 1_000_000) / 1_000_000;
+}
+
+async function embedDocumentsViaVoyage(texts) {
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) throw new Error("VOYAGE_API_KEY not set");
+  const sanitized = texts.map(sanitizeForVoyage);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VOYAGE_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${VOYAGE_API_BASE}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: VOYAGE_MODEL,
+        input: sanitized,
+        input_type: "document",
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err && err.name === "AbortError") {
+      throw new Error(`voyage timeout after ${VOYAGE_TIMEOUT_MS}ms`);
+    }
+    throw new Error(`voyage network error: ${err?.message ?? err}`);
+  }
+  clearTimeout(timer);
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => "");
+    throw new Error(`voyage HTTP ${response.status}: ${bodyText.slice(0, 200)}`);
+  }
+  const json = await response.json();
+  const data = json?.data;
+  if (!Array.isArray(data)) throw new Error("voyage response missing data[]");
+  if (data.length !== sanitized.length) {
+    throw new Error(
+      `voyage response length mismatch: expected ${sanitized.length} got ${data.length}`,
+    );
+  }
+  const embeddings = [];
+  for (let i = 0; i < data.length; i++) {
+    const vec = data[i]?.embedding;
+    if (!Array.isArray(vec)) throw new Error(`voyage data[${i}].embedding missing`);
+    if (vec.length !== EMBEDDING_DIM) {
+      throw new Error(
+        `voyage dim mismatch at data[${i}]: expected ${EMBEDDING_DIM} got ${vec.length}`,
+      );
+    }
+    embeddings.push(vec);
+  }
+  const tokens = json?.usage?.total_tokens ?? 0;
+  return { embeddings, tokens, cost: estimateVoyageCost(tokens) };
+}
+
+// ============================================================================
 // Frontmatter parser — minimal, no external dep
 // ============================================================================
 function parseFrontmatter(raw) {
-  // Match a leading `---\n...frontmatter...\n---\n` block.
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!m) return { fm: {}, body: raw };
   const fmBlock = m[1];
   const body = m[2];
   const fm = {};
   for (const line of fmBlock.split(/\r?\n/)) {
-    // Stop at the first nested key (we only need name + description).
     const kv = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:\s*(.*)$/);
     if (kv) fm[kv[1]] = kv[2].trim();
   }
@@ -103,15 +221,84 @@ function parseFrontmatter(raw) {
 }
 
 // ============================================================================
+// CLI
+// ============================================================================
+
+function printHelp() {
+  console.log(`scripts/ingest-feedback-memories.mjs — feedback-memory ingest
+
+Flags:
+  --provider=voyage|placeholder
+      Embedding provider. Default: voyage if VOYAGE_API_KEY is set, else placeholder.
+  --re-embed-all
+      Force re-embed of every row regardless of content_hash. Used after a
+      provider swap to refresh the entire corpus. Also: without this flag,
+      rows whose embedding_model column doesn't match the current target
+      model are re-embedded automatically.
+  --dry-run
+      Compute embeddings + log the plan but write nothing to the database.
+  --help
+      Print this help text.
+
+Env:
+  DATABASE_URL                Postgres connection string (required unless --dry-run).
+  VOYAGE_API_KEY              Voyage AI key (required for --provider=voyage).
+  VOYAGE_EMBEDDING_MODEL      Override the model id (default: voyage-3-large).
+  VOYAGE_API_BASE             Override the API base URL (default: https://api.voyageai.com/v1).
+  VOYAGE_TIMEOUT_MS           Override the per-call timeout (default: 30000).
+  VOYAGE_PRICE_PER_M_TOKENS   Override the cost estimate rate (default: 0.18).
+  SOLENE_MEMORY_DIR           Override the memory directory.
+`);
+}
+
+function parseArgs(argv) {
+  const args = { dryRun: false, reEmbedAll: false, provider: null, help: false };
+  for (const raw of argv) {
+    if (raw === "--dry-run") args.dryRun = true;
+    else if (raw === "--re-embed-all") args.reEmbedAll = true;
+    else if (raw === "--help" || raw === "-h") args.help = true;
+    else if (raw.startsWith("--provider=")) {
+      args.provider = raw.slice("--provider=".length);
+    }
+  }
+  return args;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 async function main() {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes("--dry-run");
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    printHelp();
+    return;
+  }
+
+  // Resolve provider: explicit flag wins; else auto-detect from VOYAGE_API_KEY.
+  let provider = args.provider;
+  if (!provider) {
+    provider = process.env.VOYAGE_API_KEY ? "voyage" : "placeholder";
+  }
+  if (provider !== "voyage" && provider !== "placeholder") {
+    console.error(
+      `ERROR: --provider=${provider} not in {voyage, placeholder}`,
+    );
+    process.exit(2);
+  }
+  if (provider === "voyage" && !process.env.VOYAGE_API_KEY) {
+    console.error(
+      "ERROR: --provider=voyage requires VOYAGE_API_KEY to be set.",
+    );
+    process.exit(2);
+  }
+
+  const targetModel = provider === "voyage" ? VOYAGE_MODEL : PLACEHOLDER_MODEL;
+  const apiKeyLen = process.env.VOYAGE_API_KEY?.length ?? 0;
+
   const memoryDir = process.env.SOLENE_MEMORY_DIR || DEFAULT_MEMORY_DIR;
 
-  if (!process.env.DATABASE_URL && !dryRun) {
+  if (!process.env.DATABASE_URL && !args.dryRun) {
     console.error("ERROR: DATABASE_URL is required (or pass --dry-run).");
     process.exit(2);
   }
@@ -127,13 +314,56 @@ async function main() {
     .sort();
 
   console.log(
-    `[ingest] memoryDir=${memoryDir} files=${files.length} dryRun=${dryRun} dim=${EMBEDDING_DIM}`,
+    `[ingest] memoryDir=${memoryDir} files=${files.length} ` +
+      `dryRun=${args.dryRun} dim=${EMBEDDING_DIM} ` +
+      `provider=${provider} targetModel=${targetModel} ` +
+      `reEmbedAll=${args.reEmbedAll}` +
+      (provider === "voyage" ? ` voyageKeyLen=${apiKeyLen}` : ""),
   );
 
-  const counts = { scanned: 0, inserted: 0, updated: 0, skipped: 0, errored: 0 };
+  const counts = {
+    scanned: 0,
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    errored: 0,
+    viaVoyage: 0,
+    viaPlaceholder: 0,
+    voyageErrors: 0,
+    voyageTokens: 0,
+    voyageCostUsd: 0,
+  };
+
   let pool = null;
-  if (!dryRun) {
+  if (!args.dryRun) {
     pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+  }
+
+  // Per-row embedder with per-call fallback to placeholder.
+  async function embedRowText(text) {
+    if (provider === "placeholder") {
+      return {
+        vec: placeholderEmbedding(text, EMBEDDING_DIM),
+        usedModel: PLACEHOLDER_MODEL,
+      };
+    }
+    try {
+      const result = await embedDocumentsViaVoyage([text]);
+      counts.viaVoyage += 1;
+      counts.voyageTokens += result.tokens;
+      counts.voyageCostUsd += result.cost;
+      return { vec: result.embeddings[0], usedModel: VOYAGE_MODEL };
+    } catch (err) {
+      counts.voyageErrors += 1;
+      counts.viaPlaceholder += 1;
+      console.warn(
+        `[voyage-fallback] using placeholder for chunk: ${err?.message ?? err}`,
+      );
+      return {
+        vec: placeholderEmbedding(text, EMBEDDING_DIM),
+        usedModel: PLACEHOLDER_MODEL,
+      };
+    }
   }
 
   try {
@@ -150,37 +380,38 @@ async function main() {
         }
         const slug = fm.name;
         const description = fm.description ?? "";
-        // Embed body + description so the retrieval has more signal than the
-        // title-only path.
         const embeddingInput = `${slug}\n${description}\n${body}`;
         const contentHash = crypto
           .createHash("sha256")
           .update(raw, "utf8")
           .digest("hex");
         const snippet = truncateSnippet(`${description}\n\n${body}`);
-        const vec = placeholderEmbedding(embeddingInput, EMBEDDING_DIM);
 
-        if (dryRun) {
+        if (args.dryRun) {
           console.log(
-            `[dry] ${file} → slug=${slug} hash=${contentHash.slice(0, 12)}… dim=${vec.length}`,
+            `[dry] ${file} → slug=${slug} hash=${contentHash.slice(0, 12)}… ` +
+              `provider=${provider} targetModel=${targetModel}`,
           );
-          counts.inserted += 1; // pretend
+          counts.inserted += 1;
+          if (provider === "placeholder") counts.viaPlaceholder += 1;
           continue;
         }
 
-        // Look up existing row for this (namespace, slug) to decide
-        // insert vs update vs skip.
         const existing = await pool.query(
-          `SELECT id, content_hash FROM solene_embedded_records
+          `SELECT id, content_hash, embedding_model FROM solene_embedded_records
            WHERE namespace = $1 AND source_ref = $2`,
           [NAMESPACE, slug],
         );
 
         if (existing.rows.length > 0) {
-          if (existing.rows[0].content_hash === contentHash) {
+          const row = existing.rows[0];
+          const hashMatches = row.content_hash === contentHash;
+          const modelMatches = row.embedding_model === targetModel;
+          if (hashMatches && modelMatches && !args.reEmbedAll) {
             counts.skipped += 1;
             continue;
           }
+          const { vec, usedModel } = await embedRowText(embeddingInput);
           await pool.query(
             `UPDATE solene_embedded_records
                SET content_snippet = $1,
@@ -193,16 +424,17 @@ async function main() {
             [
               snippet,
               contentHash,
-              EMBEDDING_MODEL,
+              usedModel,
               EMBEDDING_DIM,
               vectorToPgLiteral(vec),
               JSON.stringify({ description, file }),
-              existing.rows[0].id,
+              row.id,
             ],
           );
           counts.updated += 1;
-          console.log(`[update] ${slug}`);
+          console.log(`[update] ${slug} model=${usedModel}`);
         } else {
+          const { vec, usedModel } = await embedRowText(embeddingInput);
           await pool.query(
             `INSERT INTO solene_embedded_records
                (namespace, source_ref, content_snippet, content_hash,
@@ -213,14 +445,14 @@ async function main() {
               slug,
               snippet,
               contentHash,
-              EMBEDDING_MODEL,
+              usedModel,
               EMBEDDING_DIM,
               vectorToPgLiteral(vec),
               JSON.stringify({ description, file }),
             ],
           );
           counts.inserted += 1;
-          console.log(`[insert] ${slug}`);
+          console.log(`[insert] ${slug} model=${usedModel}`);
         }
       } catch (err) {
         counts.errored += 1;
@@ -231,7 +463,10 @@ async function main() {
     if (pool) await pool.end();
   }
 
-  console.log("[ingest] summary:", counts);
+  console.log("[ingest] summary:", {
+    ...counts,
+    voyageCostUsd: Math.round(counts.voyageCostUsd * 1_000_000) / 1_000_000,
+  });
   if (counts.errored > 0) process.exit(1);
 }
 

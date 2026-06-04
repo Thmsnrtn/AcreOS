@@ -27,14 +27,17 @@
  *     Pure helpers exported for testability.
  *
  * ----------------------------------------------------------------------------
- * Embedding model — Phase 0 placeholder
+ * Embedding model — production Voyage with placeholder fail-open fallback
  * ----------------------------------------------------------------------------
- * `placeholderEmbedding` is the same deterministic feature-hash → 1024-dim
- * algorithm as L3.10's learningLoop.ts. We re-implement it inline rather
- * than importing from learningLoop.ts because L3.10 is frozen in this wave;
- * a future production-embedding swap MUST update both call sites + the
- * ingest scripts. The shared algorithm guarantees the query path produces
- * vectors comparable to whatever the ingest path stored.
+ * Production path: Voyage AI (`voyage-3-large`, 1024-dim) via
+ * `../embeddings/voyageClient.embedTexts`, called with `input_type='query'`.
+ *
+ * Fallback path: `placeholderEmbedding` (deterministic feature-hash → 1024-d)
+ * is kept in this file as the fail-open default. On ANY Voyage failure
+ * (missing key, HTTP error, timeout, malformed response, dim mismatch) we log
+ * a warn + degrade to the placeholder so the cross-namespace retrieval surface
+ * keeps working even during a Voyage outage. The placeholder MUST remain
+ * here — DO NOT delete it.
  *
  * ----------------------------------------------------------------------------
  * Wire-in to dispatchRunner (DEFERRED)
@@ -50,6 +53,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { logger } from "../../utils/logger";
+import { embedTexts } from "../embeddings/voyageClient";
 import {
   soleneRetrievalEvents,
   RETRIEVAL_QUERY_TEXT_MAX_CHARS,
@@ -132,8 +136,20 @@ function placeholderEmbedding(text: string, dim: number = EMBEDDING_DIM): number
   return vec.map((x) => x / norm);
 }
 
-function embedQueryText(text: string): number[] {
-  return placeholderEmbedding(text, EMBEDDING_DIM);
+/**
+ * Resolve a query string to a vector. Production path: Voyage with
+ * `input_type='query'`. Fail-open fallback: placeholderEmbedding.
+ */
+async function embedQueryText(text: string): Promise<number[]> {
+  try {
+    const result = await embedTexts({ texts: [text], inputType: "query" });
+    return result.embeddings[0];
+  } catch (err) {
+    logger.warn("memoryRetrieval.cross.voyage_fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return placeholderEmbedding(text, EMBEDDING_DIM);
+  }
 }
 
 function vectorToPgLiteral(vec: number[]): string {
@@ -244,7 +260,7 @@ export async function retrieveCrossNamespaceMemories(
   // Build the query vector once — reused across namespaces.
   let pgLiteral: string;
   try {
-    const queryVector = embedQueryText(query.queryText);
+    const queryVector = await embedQueryText(query.queryText);
     pgLiteral = vectorToPgLiteral(queryVector);
   } catch (err) {
     logger.warn("memoryRetrieval.cross.embed_error", {

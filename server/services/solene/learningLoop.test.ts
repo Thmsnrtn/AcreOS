@@ -29,6 +29,28 @@ vi.mock("../../utils/logger", () => ({
   },
 }));
 
+// Mock Voyage so the retrieval path goes through it deterministically; the
+// fallback to placeholderEmbedding is exercised in dedicated tests below.
+let voyageShouldThrow = false;
+let voyageCallCount = 0;
+vi.mock("../embeddings/voyageClient", () => ({
+  embedTexts: vi.fn(async (input: { texts: string[]; inputType?: string }) => {
+    voyageCallCount += 1;
+    if (voyageShouldThrow) {
+      throw new Error("simulated voyage failure");
+    }
+    // 1024-dim deterministic vector — value doesn't matter for the SQL mock.
+    const vec = new Array(1024).fill(0).map((_, i) => (i % 13) / 100);
+    return {
+      embeddings: input.texts.map(() => vec),
+      model: "voyage-3-large",
+      dim: 1024,
+      inputTokens: 1,
+      totalCostUsd: 0.0000018,
+    };
+  }),
+}));
+
 // ============================================================================
 // In-memory DB
 // ============================================================================
@@ -126,6 +148,8 @@ beforeEach(() => {
   throwOnStatsSelect = false;
   statsOverride = null;
   executeMode = "select";
+  voyageShouldThrow = false;
+  voyageCallCount = 0;
 });
 
 afterEach(() => {
@@ -321,6 +345,30 @@ describe("retrieveRelevantMemories", () => {
     const { retrieveRelevantMemories } = await import("./learningLoop");
     await retrieveRelevantMemories({ queryText: "x" });
     expect(RETRIEVAL_EVENTS[0].queryingAgentRole).toBe("system");
+  });
+
+  it("routes the query through Voyage by default (production embedding path)", async () => {
+    voyageCallCount = 0;
+    CORPUS.push({ source_ref: "fm-a", content_snippet: "x", similarity: 0.8 });
+    const { retrieveRelevantMemories } = await import("./learningLoop");
+    const out = await retrieveRelevantMemories({ queryText: "anything" });
+    expect(voyageCallCount).toBe(1);
+    expect(out.retrieved.length).toBe(1);
+  });
+
+  it("falls back to placeholderEmbedding + warn log when Voyage throws", async () => {
+    voyageShouldThrow = true;
+    CORPUS.push({ source_ref: "fm-a", content_snippet: "x", similarity: 0.8 });
+    const { retrieveRelevantMemories } = await import("./learningLoop");
+    const { logger } = await import("../../utils/logger");
+    const out = await retrieveRelevantMemories({ queryText: "anything" });
+    // Retrieval still succeeded via the fallback vector + the (mock) DB.
+    expect(out.retrieved.length).toBe(1);
+    expect(out.retrievalEventId).toBe(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "learningLoop.retrieve.voyage_fallback",
+      expect.any(Object),
+    );
   });
 });
 
