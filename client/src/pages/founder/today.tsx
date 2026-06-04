@@ -70,8 +70,8 @@ interface MorningPulse {
 /** GET /api/founder/asks — already shipped (L6.32). Compact shape. */
 interface FounderAsk {
   id: number;
-  agentRole: string;
-  question: string;
+  askingAgentRole: string;
+  questionSummary: string;
   status: "open" | "answered" | "superseded";
   askedAt: string;
 }
@@ -234,11 +234,11 @@ function ActiveAsksSection() {
                 className="flex items-start gap-3 rounded-md border border-border bg-card p-3 hover:bg-muted/40 transition-colors"
               >
                 <Badge variant="outline" className="text-xs shrink-0 capitalize">
-                  {ask.agentRole}
+                  {ask.askingAgentRole}
                 </Badge>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-foreground line-clamp-2">
-                    {ask.question}
+                    {ask.questionSummary}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {relativeTime(ask.askedAt)}
