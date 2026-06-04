@@ -7,18 +7,28 @@
  * to krieger_audit_findings, and auto-enqueues fix dispatches for any
  * finding with severity ≥ high.
  *
- * Six detectors (see KRIEGER_DETECTOR_NAMES for the canonical list):
+ * Seven detectors (see KRIEGER_DETECTOR_NAMES for the canonical list):
  *
- *   1. touch_target_drift          — heuristic git-log scan for new
- *                                    interactive elements without active:
- *                                    companion classes
- *   2. cross_device_matrix_red     — surfaces the latest CI mobile-matrix
- *                                    failure
- *   3. mobile_error_boundary_trip  — counts recent error-boundary-related
- *                                    dispatches in the queue
- *   4. theme_contract_drift        — TODO (Playwright instrumentation)
- *   5. pwa_install_regression      — TODO (analytics integration)
- *   6. real_device_gap             — TODO (manual-test ledger)
+ *   1. touch_target_drift           — heuristic git-log scan for new
+ *                                     interactive elements without active:
+ *                                     companion classes
+ *   2. cross_device_matrix_red      — surfaces the latest CI mobile-matrix
+ *                                     failure
+ *   3. mobile_error_boundary_trip   — counts recent error-boundary-related
+ *                                     dispatches in the queue
+ *   4. theme_contract_drift         — TODO (Playwright instrumentation)
+ *   5. pwa_install_regression       — TODO (analytics integration)
+ *   6. real_device_gap              — TODO (manual-test ledger)
+ *   7. desktop_keyboard_nav_drift   — Phase D3 scope expansion. Heuristic
+ *                                     git-log scan of recent client/src/
+ *                                     pages/*.tsx commits for raw
+ *                                     <div onClick> patterns without
+ *                                     keyboard handlers / focus-visible.
+ *                                     Severity high for raw divs,
+ *                                     medium for shadcn-wrapped patterns.
+ *                                     Skipped on pages/founder/* routes
+ *                                     (intentionally desktop-only with a
+ *                                     different bar).
  *
  * Auto-enqueue gate: severity in {'high','critical'} → enqueueDispatch with
  *   sourceType='detector'
@@ -141,6 +151,7 @@ export async function runMobileFeelAudit(): Promise<AuditRunResult> {
     { name: "theme_contract_drift", fn: () => DETECTORS.detectThemeContractDrift() },
     { name: "pwa_install_regression", fn: () => DETECTORS.detectPwaInstallRegression() },
     { name: "real_device_gap", fn: () => DETECTORS.detectRealDeviceGap() },
+    { name: "desktop_keyboard_nav_drift", fn: () => DETECTORS.detectDesktopKeyboardNavDrift() },
   ];
 
   const settled = await Promise.allSettled(detectors.map((d) => d.fn()));
@@ -665,6 +676,158 @@ export async function detectRealDeviceGap(): Promise<DetectorFinding[]> {
 }
 
 // ============================================================================
+// DETECTOR 7 — desktop_keyboard_nav_drift  (Phase D3)
+// ============================================================================
+// Heuristic git-log scan: look at the last 24h of commits that touched
+// client/src/pages/*.tsx. For each new interactive element added by the
+// diff, classify by element shape:
+//
+//   - Raw `<div onClick={...}>` (or span/section/article) without
+//     tabIndex / onKeyDown / role="button" → severity HIGH. A keyboard
+//     user literally cannot reach this on desktop; that's an a11y
+//     regression we want auto-enqueued as a fix dispatch.
+//
+//   - shadcn-wrapped pattern (`<Button onClick=...>` or `<Link ...>`)
+//     without an obvious focus-visible class. Severity MEDIUM. The
+//     shadcn Button likely already has a focus ring, but the diff
+//     lacks the visual evidence — worth verifying, not auto-fixing.
+//
+// Skipped surfaces:
+//   - `client/src/pages/founder/*` — the founder surface is intentionally
+//     desktop-only and has a different bar set by the constitution. We
+//     don't want this detector noisy-paging Iris for founder routes.
+//
+// We invoke git via child_process. If git is unavailable (e.g. running
+// in a container without a checkout), we silently emit zero findings.
+
+const RAW_INTERACTIVE_RE =
+  /<(div|span|section|article|li)\s[^>]*onClick=/;
+const SHADCN_WRAPPED_RE = /<(Button|Link|MenuItem|DropdownMenuItem)\s/;
+const FOUNDER_PATH_RE = /client\/src\/pages\/founder\//;
+
+export async function detectDesktopKeyboardNavDrift(): Promise<DetectorFinding[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+
+  try {
+    // Find commits in the last 24h that touched client/src/pages.
+    const { stdout: logOut } = await exec(
+      "git",
+      [
+        "log",
+        "--since=24.hours.ago",
+        "--name-only",
+        "--pretty=format:COMMIT:%H",
+        "--",
+        "client/src/pages",
+      ],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
+
+    if (!logOut.trim()) return [];
+
+    const lines = logOut.split("\n");
+    interface CommitBlock {
+      sha: string;
+      files: string[];
+    }
+    const blocks: CommitBlock[] = [];
+    let current: CommitBlock | null = null;
+    for (const line of lines) {
+      if (line.startsWith("COMMIT:")) {
+        if (current) blocks.push(current);
+        current = { sha: line.slice("COMMIT:".length).trim(), files: [] };
+      } else if (line.trim() && current) {
+        current.files.push(line.trim());
+      }
+    }
+    if (current) blocks.push(current);
+
+    const findings: DetectorFinding[] = [];
+
+    for (const block of blocks.slice(0, 5)) {
+      for (const file of block.files.slice(0, 3)) {
+        if (!file.match(/\.(tsx|jsx)$/)) continue;
+        // Skip founder routes — intentionally desktop-only, different bar.
+        if (FOUNDER_PATH_RE.test(file)) continue;
+
+        let diff = "";
+        try {
+          const { stdout } = await exec(
+            "git",
+            ["show", block.sha, "--", file],
+            { maxBuffer: 2 * 1024 * 1024 },
+          );
+          diff = stdout;
+        } catch {
+          continue;
+        }
+
+        const addedLines = diff
+          .split("\n")
+          .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+
+        // Raw interactive elements — high severity (keyboard unreachable).
+        const rawHits = addedLines.filter((l) => RAW_INTERACTIVE_RE.test(l));
+        // A raw hit is exonerated if the SAME added line also provides
+        // a keyboard escape hatch (tabIndex / onKeyDown / role="button").
+        const rawViolations = rawHits.filter(
+          (l) =>
+            !/tabIndex=/.test(l) &&
+            !/onKeyDown=/.test(l) &&
+            !/role=["']button["']/.test(l),
+        );
+
+        // Shadcn-wrapped interactive — medium severity (likely fine, but
+        // the diff lacks visual focus-visible evidence; worth verifying).
+        const wrappedHits = addedLines.filter((l) => SHADCN_WRAPPED_RE.test(l));
+        const wrappedNeedsVerify = wrappedHits.filter(
+          (l) => !/focus-visible/.test(l) && !/focus:/.test(l),
+        );
+
+        const routeMatch = file.match(/client\/src\/pages\/([^.]+)\.tsx$/);
+        const targetRoute = routeMatch ? `/${routeMatch[1]}` : undefined;
+
+        if (rawViolations.length > 0) {
+          findings.push({
+            detectorName: "desktop_keyboard_nav_drift",
+            severity: "high",
+            targetRoute,
+            targetViewport: "1280x800",
+            findingText: `Commit ${block.sha.slice(0, 7)} added ${rawViolations.length} raw <div onClick> (or span/section) pattern(s) in ${file} without tabIndex / onKeyDown / role="button". Keyboard users cannot reach these interactive elements on desktop.`,
+            evidenceSnippet: rawViolations.slice(0, 3).join("\n"),
+            recommendedAction:
+              "Replace raw <div onClick> with a <Button> (shadcn) OR add role=\"button\" + tabIndex={0} + onKeyDown handler (Enter/Space → onClick).",
+          });
+        } else if (wrappedNeedsVerify.length > 0) {
+          findings.push({
+            detectorName: "desktop_keyboard_nav_drift",
+            severity: "medium",
+            targetRoute,
+            targetViewport: "1280x800",
+            findingText: `Commit ${block.sha.slice(0, 7)} added ${wrappedNeedsVerify.length} shadcn-wrapped interactive element(s) in ${file} without obvious focus-visible classes. Likely safe (shadcn Button has default focus rings), but worth verifying with the desktop-feel C2 contract.`,
+            evidenceSnippet: wrappedNeedsVerify.slice(0, 3).join("\n"),
+            recommendedAction:
+              "Run the desktop-feel C2 focus-ring contract against the target route to confirm the focus indicator renders.",
+          });
+        }
+
+        if (findings.length >= 3) return findings;
+      }
+    }
+
+    return findings;
+  } catch (err) {
+    logger.warn(
+      `[krieger-audit] desktop_keyboard_nav_drift: git unavailable or failed`,
+      err instanceof Error ? err : undefined,
+    );
+    return [];
+  }
+}
+
+// ============================================================================
 // DETECTORS registry — indirection seam for tests
 // ============================================================================
 // The orchestrator dispatches detector calls through this object so
@@ -678,6 +841,7 @@ export const DETECTORS = {
   detectThemeContractDrift,
   detectPwaInstallRegression,
   detectRealDeviceGap,
+  detectDesktopKeyboardNavDrift,
 };
 
 // Silence unused-import warning when callers only use a subset of these.

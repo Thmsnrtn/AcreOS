@@ -117,6 +117,12 @@ export const KRIEGER_DETECTOR_NAMES = [
   "theme_contract_drift",
   "pwa_install_regression",
   "real_device_gap",
+  // Phase D3 — scope expansion to desktop. Heuristic scan of recent
+  // client/src/pages/*.tsx commits for raw <div onClick> patterns
+  // without keyboard handlers / focus-visible. Severity high for raw
+  // divs (likely a11y gap on desktop), medium for shadcn-wrapped
+  // patterns (worth verifying), skipped on pages/founder/* routes.
+  "desktop_keyboard_nav_drift",
 ] as const;
 export type KriegerDetectorName = (typeof KRIEGER_DETECTOR_NAMES)[number];
 

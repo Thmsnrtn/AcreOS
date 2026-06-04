@@ -1,0 +1,170 @@
+name: Desktop-feel Audit
+
+# KRIEGER — Desktop-feel contracts synthetic monitor.
+#
+# Phase D3. Scope expansion from the mobile-only Phase-D1 gate to the
+# full mobile+desktop customer surface. Walks the 7 customer surfaces
+# across 4 desktop viewports × 2 themes (8 effective runs per execution)
+# against the live target URL every 6 hours.
+#
+# Distinct from sibling workflows:
+#   - customer-surface-monitor.yml: blank-screen detector, founder loop.
+#   - customer-journey-audit.yml:   fresh-signup → first-value journey.
+#   - mobile-feel-audit.yml (etc.): the mobile contracts gate.
+#   - desktop-feel-audit.yml (this): the desktop contracts gate.
+#
+# Required secrets:
+#   TARGET_URL                — live URL to audit (e.g. https://acreos.io).
+#   E2E_TEST_AUTH_TOKEN       — signed token gating the test-auth bypass.
+#   SOLENE_PAGE_SECRET        — pages Solene on red.
+#   GITHUB_TOKEN (built-in)   — opens issues on red.
+
+on:
+  schedule:
+    # Every 6 hours, on the 53rd minute. Offset from the other Krieger
+    # audit crons (customer-journey :41, customer-surface :23) so they
+    # don't fight for the same shared runner pool.
+    - cron: "53 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override TARGET_URL (defaults to the secret)"
+        required: false
+        type: string
+      project_filter:
+        description: 'Restrict to one project (e.g. "desktop-laptop-1280-dark")'
+        required: false
+        type: string
+
+jobs:
+  desktop-feel-audit:
+    name: Walk desktop-feel contracts (4 viewports × 2 themes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      TARGET_URL: ${{ github.event.inputs.target_url || secrets.TARGET_URL }}
+      E2E_TEST_AUTH_TOKEN: ${{ secrets.E2E_TEST_AUTH_TOKEN }}
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate TARGET_URL
+        run: |
+          if [ -z "${TARGET_URL:-}" ]; then
+            echo "::error::TARGET_URL is unset — cannot run desktop-feel audit"
+            exit 1
+          fi
+          echo "Auditing $TARGET_URL"
+
+      - name: Run desktop-feel audit
+        id: audit
+        run: |
+          if [ -n "${{ github.event.inputs.project_filter }}" ]; then
+            node scripts/run-desktop-feel-audit.mjs \
+              --project="${{ github.event.inputs.project_filter }}"
+          else
+            node scripts/run-desktop-feel-audit.mjs
+          fi
+        continue-on-error: true
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-feel-audit-report
+          path: |
+            tests/e2e-desktop-feel/results/
+            docs/internal/desktop-feel-results-*.md
+            playwright-report/
+            test-results/desktop-feel/
+          retention-days: 14
+
+      # Page Solene on hard red (audit exit code 2).
+      - name: Page Solene on RED
+        if: steps.audit.outcome == 'failure'
+        env:
+          SOLENE_PAGE_SECRET: ${{ secrets.SOLENE_PAGE_SECRET }}
+        run: |
+          if [ -z "${SOLENE_PAGE_SECRET:-}" ]; then
+            echo "SOLENE_PAGE_SECRET unset — skipping page"
+            exit 0
+          fi
+          curl -sS --max-time 8 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Solene-Page-Secret: ${SOLENE_PAGE_SECRET}" \
+            "https://acreos.io/api/internal/solene/page" \
+            -d "$(cat <<EOF
+          {
+            "severity": "urgent",
+            "subject": "desktop-feel audit RED",
+            "body": "Desktop-feel contracts RED on $TARGET_URL (run=${{ github.run_id }}, trigger=${{ github.event_name }}). Artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )" || echo "page POST failed (non-fatal)"
+
+      # On red: open a GitHub issue tagged desktop-feel-broken so the
+      # roadmap captures the regression even if Solene's page misses.
+      - name: Open issue on RED
+        if: steps.audit.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const title = `desktop-feel RED on ${process.env.TARGET_URL} @ ${new Date().toISOString().slice(0, 10)}`;
+            const body = [
+              `The desktop-feel audit is RED.`,
+              ``,
+              `**Target:** ${process.env.TARGET_URL}`,
+              `**Trigger:** ${context.eventName}`,
+              `**Run:** ${runUrl}`,
+              ``,
+              `See workflow artifacts (\`desktop-feel-audit-report\`) for the per-project markdown summary and screenshots.`,
+              ``,
+              `Auto-opened by .github/workflows/desktop-feel-audit.yml.`,
+            ].join("\n");
+
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              labels: "desktop-feel-broken",
+              per_page: 5,
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.data[0].number,
+                body: `Another RED run: ${runUrl} (trigger=${context.eventName})`,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ["desktop-feel-broken", "urgent"],
+            });
+
+      - name: Re-emit audit exit code
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::error::desktop-feel audit exited RED — see issue + artifacts"
+          exit 1

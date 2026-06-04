@@ -2,7 +2,7 @@
  * Tests for Krieger's mobile-feel continuous-audit service.
  *
  * Coverage:
- *  1. runMobileFeelAudit happy path — all 6 detectors run; findings persist;
+ *  1. runMobileFeelAudit happy path — all 7 detectors run; findings persist;
  *     high/critical → enqueue called with right shape.
  *  2. Sanitization — credential-prefix strings in evidence get replaced with
  *     [REDACTED] before persistence.
@@ -369,7 +369,7 @@ describe("buildMobileFeelFixPrompt", () => {
 });
 
 describe("runMobileFeelAudit — orchestration", () => {
-  it("runs all 6 detectors, persists findings, enqueues for high/critical only", async () => {
+  it("runs all 7 detectors, persists findings, enqueues for high/critical only", async () => {
     const mod = await import("./mobileFeelAudit");
 
     // Stub each detector so the orchestrator gets a deterministic mix.
@@ -399,9 +399,10 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     const result = await mod.runMobileFeelAudit();
-    expect(result.detectorsRun).toBe(6);
+    expect(result.detectorsRun).toBe(7);
     expect(result.findingsRecorded).toBe(3);
     expect(result.dispatchesEnqueued).toBe(2); // high + critical
     expect(result.errors).toBe(0);
@@ -448,6 +449,7 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     await mod.runMobileFeelAudit();
     expect(FINDINGS).toHaveLength(1);
@@ -480,6 +482,7 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     const result = await mod.runMobileFeelAudit();
     expect(result.findingsRecorded).toBe(3);
@@ -510,6 +513,7 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     const result = await mod.runMobileFeelAudit();
     expect(result.findingsRecorded).toBe(1);
@@ -534,6 +538,7 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     // Must not throw.
     const result = await mod.runMobileFeelAudit();
@@ -562,6 +567,7 @@ describe("runMobileFeelAudit — orchestration", () => {
     vi.spyOn(mod.DETECTORS, "detectThemeContractDrift").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectPwaInstallRegression").mockResolvedValue([]);
     vi.spyOn(mod.DETECTORS, "detectRealDeviceGap").mockResolvedValue([]);
+    vi.spyOn(mod.DETECTORS, "detectDesktopKeyboardNavDrift").mockResolvedValue([]);
 
     const result = await mod.runMobileFeelAudit();
     expect(result.errors).toBeGreaterThanOrEqual(1);
@@ -584,5 +590,136 @@ describe("detector stubs (TODOs) — return empty findings", () => {
   it("detectRealDeviceGap returns []", async () => {
     const { detectRealDeviceGap } = await import("./mobileFeelAudit");
     expect(await detectRealDeviceGap()).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Detector 7 — desktop_keyboard_nav_drift (Phase D3)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// We exercise the detector by mocking node:child_process's execFile. The
+// detector calls `git log` (returns commit blocks) then `git show <sha> --
+// <file>` per file. We stage:
+//   - First exec call (git log)  → returns a controlled commit/file list.
+//   - Second exec call (git show)→ returns a controlled diff.
+
+describe("detectDesktopKeyboardNavDrift — Phase D3 scope expansion", () => {
+  // We mock child_process per-test rather than via vi.mock at the top of
+  // the file, so the other 6 detectors' tests aren't affected.
+  let mockExecResponses: Array<{ stdout: string }> = [];
+  let mockExecCallIndex = 0;
+
+  beforeEach(() => {
+    mockExecResponses = [];
+    mockExecCallIndex = 0;
+    vi.doMock("node:child_process", () => ({
+      execFile: (
+        _cmd: string,
+        _args: string[],
+        _opts: unknown,
+        cb: (err: unknown, out: { stdout: string }) => void,
+      ) => {
+        const resp = mockExecResponses[mockExecCallIndex++] ?? { stdout: "" };
+        cb(null, resp);
+      },
+    }));
+    vi.doMock("node:util", () => ({
+      promisify: (fn: any) =>
+        (...args: any[]) =>
+          new Promise((resolve, reject) => {
+            fn(...args, (err: unknown, out: unknown) => {
+              if (err) reject(err);
+              else resolve(out);
+            });
+          }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.doUnmock("node:child_process");
+    vi.doUnmock("node:util");
+    vi.resetModules();
+  });
+
+  it("fires HIGH severity on a raw <div onClick> pattern", async () => {
+    mockExecResponses = [
+      // git log output — one commit touching pages/today.tsx.
+      {
+        stdout: [
+          "COMMIT:abcdef1234567890",
+          "client/src/pages/today.tsx",
+        ].join("\n"),
+      },
+      // git show output — diff adding a raw <div onClick> with no a11y.
+      {
+        stdout: [
+          "diff --git a/client/src/pages/today.tsx b/client/src/pages/today.tsx",
+          "+        <div onClick={() => handleClick()} className=\"card\">",
+          "+          Click me",
+          "+        </div>",
+        ].join("\n"),
+      },
+    ];
+    const { detectDesktopKeyboardNavDrift } = await import("./mobileFeelAudit");
+    const findings = await detectDesktopKeyboardNavDrift();
+    expect(findings.length).toBeGreaterThan(0);
+    const f = findings[0];
+    expect(f.severity).toBe("high");
+    expect(f.detectorName).toBe("desktop_keyboard_nav_drift");
+    expect(f.targetRoute).toBe("/today");
+    expect(f.findingText).toContain("raw <div onClick>");
+    expect(f.evidenceSnippet).toContain("<div onClick");
+  });
+
+  it("does NOT fire on a <Button onClick=...> shadcn-wrapped pattern", async () => {
+    mockExecResponses = [
+      {
+        stdout: [
+          "COMMIT:abcdef1234567890",
+          "client/src/pages/deals.tsx",
+        ].join("\n"),
+      },
+      {
+        stdout: [
+          "diff --git a/client/src/pages/deals.tsx b/client/src/pages/deals.tsx",
+          "+        <Button onClick={() => save()} className=\"focus-visible:ring-2\">",
+          "+          Save",
+          "+        </Button>",
+        ].join("\n"),
+      },
+    ];
+    const { detectDesktopKeyboardNavDrift } = await import("./mobileFeelAudit");
+    const findings = await detectDesktopKeyboardNavDrift();
+    // Wrapped Button with explicit focus-visible class is fully exonerated.
+    expect(findings).toEqual([]);
+  });
+
+  it("skips files under pages/founder/* (different bar per the brief)", async () => {
+    mockExecResponses = [
+      {
+        stdout: [
+          "COMMIT:abcdef1234567890",
+          "client/src/pages/founder/dashboard.tsx",
+        ].join("\n"),
+      },
+      {
+        // Even a clearly-violating raw div in the founder area should NOT
+        // emit a finding — the detector skips the file entirely.
+        stdout: [
+          "diff --git a/client/src/pages/founder/dashboard.tsx b/client/src/pages/founder/dashboard.tsx",
+          "+        <div onClick={() => doThing()}>raw</div>",
+        ].join("\n"),
+      },
+    ];
+    const { detectDesktopKeyboardNavDrift } = await import("./mobileFeelAudit");
+    const findings = await detectDesktopKeyboardNavDrift();
+    expect(findings).toEqual([]);
+  });
+
+  it("is registered in DETECTORS and bumps the orchestrator to 7 detectors", async () => {
+    mockExecResponses = [{ stdout: "" }];
+    const { DETECTORS } = await import("./mobileFeelAudit");
+    expect(DETECTORS).toHaveProperty("detectDesktopKeyboardNavDrift");
+    expect(typeof DETECTORS.detectDesktopKeyboardNavDrift).toBe("function");
   });
 });
