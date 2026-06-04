@@ -653,6 +653,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Agent traces", icon: FileCode, href: "/founder/traces", description: "Raw LLM prompt + response for every agent call" },
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Dispatches", icon: Workflow, href: "/founder/dispatches", description: "Real-time view of the auto-dispatch queue — queued / in-progress / terminal rows + cancel + review status" },
+      { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", description: "Real-time questions from agents (L6.32 founder-collab) — answer to unblock a dispatch or supersede if no longer relevant" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
       // ── Decisions / strategy ───────────────────────────────────────
