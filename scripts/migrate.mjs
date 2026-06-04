@@ -5719,6 +5719,33 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "pax_user_context_user_id_unique" ON "pax_user_context" ("user_id")`,
   `CREATE INDEX IF NOT EXISTS "pax_user_context_org_idx" ON "pax_user_context" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "pax_user_context_active_idx" ON "pax_user_context" ("opted_in_personalization", "last_used_at" DESC) WHERE "opted_in_personalization" = true`,
+
+  // 2026-06-03 — Phase D2 onboarding-funnel instrumentation. One row per
+  // (org, measured_date), derived from lifecycle_events. Mirrors
+  // shared/schema/onboarding-funnel.ts. See firstValueInstrumentation.ts
+  // for the compute/upsert path.
+  `CREATE TABLE IF NOT EXISTS "onboarding_funnel_metrics" (
+     "id" serial PRIMARY KEY,
+     "org_id" text NOT NULL,
+     "measured_date" date NOT NULL,
+     "signup_at" timestamp with time zone NOT NULL,
+     "first_value_at" timestamp with time zone,
+     "time_to_first_value_seconds" integer,
+     "first_value_action" text,
+     "step_1_completed_at" timestamp with time zone,
+     "step_2_completed_at" timestamp with time zone,
+     "step_3_completed_at" timestamp with time zone,
+     "step_4_completed_at" timestamp with time zone,
+     "step_5_completed_at" timestamp with time zone,
+     "abandoned_at_step" integer,
+     "abandoned_reason" text,
+     "vertical" text,
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "onboarding_funnel_org_day_unique" ON "onboarding_funnel_metrics" ("org_id", "measured_date")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_funnel_measured_date_idx" ON "onboarding_funnel_metrics" ("measured_date")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_funnel_org_idx" ON "onboarding_funnel_metrics" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "onboarding_funnel_ttfv_idx" ON "onboarding_funnel_metrics" ("time_to_first_value_seconds") WHERE "time_to_first_value_seconds" IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
