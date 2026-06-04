@@ -1,35 +1,57 @@
 /**
- * /founder/customers — distribution truth surface (Wave 3 / E).
+ * /founder/customers — the third of the five founder doors (Phase 5 of the
+ * Solene migration).
  *
- * Auto-computed view that answers "is the business actually working?":
- *   - Paid / trial / churned-30d counts
- *   - Top UTM sources (last 90 days)
- *   - Recent signups (last 20) with names, persona, city/state, UTM
+ * Rewritten 2026-06-04 from the original Wave 3 distribution table into the
+ * 5-door aesthetic: lean funnel + recent signups + Phase 0 banner for the
+ * Rafe-era customer-health surface. The qualitative narrative still lives in
+ * customers.md at the repo root; this page is the one-screen scannable
+ * companion.
  *
- * Companion to the hand-maintained customers.md at the repo root. The
- * markdown file is the qualitative narrative; this page is the
- * quantitative summary. The two complement each other.
+ * Data source (unchanged from the previous version):
+ *   GET /api/founder/customers → {
+ *     asOf, paidOrgCount, trialOrgCount, churnedLast30d,
+ *     topUtmSources, recentSignups,
+ *   }
+ *
+ * The deeper customer-health surface (per-org churn risk, expansion signal,
+ * Pax interaction quality) ships with Rafe in Phase 2 — this page surfaces
+ * a banner pointing there.
+ *
+ * Krieger-bar A11y discipline mirrors today.tsx / team.tsx / money.tsx /
+ * build.tsx — design tokens only, aria-busy on loading, aria-live on async
+ * sections, ≥44×44 touch targets.
  */
 
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Users, TrendingUp, AlertTriangle, Compass, type LucideIcon } from "lucide-react";
+import {
+  Users,
+  TrendingUp,
+  Heart,
+  Sparkles,
+  ArrowRight,
+  Info,
+  AlertTriangle,
+  Compass,
+} from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { PrefetchLink as Link } from "@/components/prefetch-link";
+import { Button } from "@/components/ui/button";
+
+// ─── API contract — unchanged from the previous customers page ──────────
 
 interface UtmSourceRow {
   source: string;
@@ -54,24 +76,59 @@ interface CustomersResponse {
   recentSignups: RecentSignupRow[];
 }
 
-function fmtTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
+// ─── Helpers ────────────────────────────────────────────────────────────
 
 function fmtRegion(city: string | null, state: string | null): string {
   const parts = [city, state].filter((v): v is string => !!v && v.length > 0);
   return parts.length > 0 ? parts.join(", ") : "—";
 }
 
-function CountCard({
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "—";
+  const diffMs = Math.max(0, Date.now() - then);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+// ─── Phase 0 banner ──────────────────────────────────────────────────────
+
+function RafePhase0Banner() {
+  return (
+    <Card
+      className="border-primary/30 bg-primary/5"
+      data-testid="customers-rafe-banner"
+    >
+      <CardContent className="p-4 md:p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-card bg-primary/10 p-2 shrink-0">
+            <Info className="h-5 w-5 text-primary" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-foreground">
+              Rafe (CCO) activates in Phase 2
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+              Churn predictions, expansion-signal scoring, and per-org customer
+              health land when Rafe comes online (Phase 2: $1k MRR sustained
+              30 days). Until then, this surface is the funnel + signups, with
+              the customer-health workbench reachable for spot checks.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Funnel strip ───────────────────────────────────────────────────────
+
+function FunnelTile({
   label,
   value,
   icon: Icon,
@@ -80,26 +137,29 @@ function CountCard({
 }: {
   label: string;
   value: number;
-  icon: LucideIcon;
-  tone: "brand" | "warn" | "ok";
+  icon: React.ComponentType<{ className?: string }>;
+  tone: "ok" | "brand" | "warn";
   testId: string;
 }) {
-  const toneClass =
+  const iconTone =
     tone === "warn"
       ? "text-acr-warn"
       : tone === "ok"
         ? "text-acr-ok"
         : "text-acr-brand";
   return (
-    <Card className="rounded-card" data-testid={testId}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
+    <Card data-testid={testId}>
+      <CardContent className="p-3 md:p-4">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
             {label}
           </span>
-          <Icon className={`w-4 h-4 ${toneClass}`} aria-hidden={true} />
+          <Icon className={`h-4 w-4 ${iconTone}`} aria-hidden="true" />
         </div>
-        <div className="text-3xl font-semibold tabular-nums" data-testid={`${testId}-value`}>
+        <div
+          className="text-2xl font-semibold tabular-nums text-foreground"
+          data-testid={`${testId}-value`}
+        >
           {value.toLocaleString()}
         </div>
       </CardContent>
@@ -107,226 +167,278 @@ function CountCard({
   );
 }
 
-function CardSkeleton() {
+function FunnelStrip({
+  data,
+  isLoading,
+}: {
+  data: CustomersResponse | null;
+  isLoading: boolean;
+}) {
+  if (isLoading || !data) {
+    return (
+      <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3" aria-busy>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-3 md:p-4 space-y-2">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-16" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
   return (
-    <Card className="rounded-card">
-      <CardContent className="p-4 space-y-3">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-8 w-16" />
+    <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
+      <FunnelTile
+        label="Paying orgs"
+        value={data.paidOrgCount}
+        icon={Users}
+        tone="ok"
+        testId="customers-funnel-paid"
+      />
+      <FunnelTile
+        label="Trial (last 14d)"
+        value={data.trialOrgCount}
+        icon={Compass}
+        tone="brand"
+        testId="customers-funnel-trial"
+      />
+      <FunnelTile
+        label="Churned (last 30d)"
+        value={data.churnedLast30d}
+        icon={AlertTriangle}
+        tone="warn"
+        testId="customers-funnel-churn"
+      />
+    </div>
+  );
+}
+
+// ─── Recent signups ─────────────────────────────────────────────────────
+
+function RecentSignupsSection({
+  data,
+  isLoading,
+}: {
+  data: CustomersResponse | null;
+  isLoading: boolean;
+}) {
+  const signups = (data?.recentSignups ?? []).slice(0, 5);
+
+  return (
+    <Card aria-busy={isLoading} data-testid="customers-recent-section">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Most-recent signups
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {isLoading ? (
+          <div className="space-y-2" aria-label="Loading signups">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : signups.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            headline="No signups yet"
+            subtitle="The first organization to sign up will appear here."
+            // TODO(cta): signups arrive via the landing-page flow — no founder action here
+            cta={{ label: "", _noOp: true }}
+            actionIcon={null}
+            testId="customers-recent-empty"
+          />
+        ) : (
+          <ul className="space-y-2" aria-live="polite">
+            {signups.map((row, idx) => (
+              <li
+                key={`${row.orgName}-${row.createdAt}-${idx}`}
+                className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
+              >
+                <Badge
+                  variant="outline"
+                  className="text-xs shrink-0 capitalize"
+                >
+                  {row.persona}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground truncate">
+                    {row.orgName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {fmtRegion(row.city, row.state)} ·{" "}
+                    {row.utmSource ? `via ${row.utmSource}` : "direct"} ·{" "}
+                    {relativeTime(row.createdAt)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
 }
 
+// ─── Top UTM sources (compact) ───────────────────────────────────────────
+
+function TopUtmSection({
+  data,
+  isLoading,
+}: {
+  data: CustomersResponse | null;
+  isLoading: boolean;
+}) {
+  const sources = (data?.topUtmSources ?? []).slice(0, 5);
+
+  return (
+    <Card aria-busy={isLoading} data-testid="customers-utm-section">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <TrendingUp
+            className="h-4 w-4 text-muted-foreground"
+            aria-hidden="true"
+          />
+          Where they came from
+          <span className="text-xs font-normal text-muted-foreground">
+            (last 90d)
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {isLoading ? (
+          <div className="space-y-2" aria-label="Loading UTM sources">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : sources.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            headline="No UTM data yet"
+            subtitle="Tag campaign URLs with utm_source so this page can tell you what's working."
+            // TODO(cta): UTM tagging is an external campaign-side action
+            cta={{ label: "", _noOp: true }}
+            actionIcon={null}
+            testId="customers-utm-empty"
+          />
+        ) : (
+          <ul className="space-y-1.5" aria-live="polite">
+            {sources.map((row) => (
+              <li
+                key={row.source}
+                className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors"
+              >
+                <span className="text-sm text-foreground truncate">
+                  {row.source}
+                </span>
+                <Badge variant="secondary" className="text-xs tabular-nums shrink-0">
+                  {row.count.toLocaleString()}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────
+
 export default function FounderCustomersPage() {
-  useDocumentTitle("Customers — AcreOS");
+  useDocumentTitle("Customers · Founder");
 
   const { data, isLoading, error, refetch } = useQuery<CustomersResponse>({
     queryKey: ["/api/founder/customers"],
     queryFn: async () => {
-      const r = await fetch("/api/founder/customers", { credentials: "include" });
+      const r = await fetch("/api/founder/customers", {
+        credentials: "include",
+      });
       if (!r.ok) throw new Error(`Failed to load customers (${r.status})`);
       return r.json();
     },
+    staleTime: 60_000,
   });
 
   return (
-    <PageShell label="Customers">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Users className="w-6 h-6 text-acr-brand" aria-hidden={true} />
-          Customers
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Distribution truth surface. Paid / trial / churned counts come
-          straight from <code>organizations.subscription_status</code>. UTM
-          sources come from <code>users.acquisition_utm</code>, captured at
-          signup. Pair this with the qualitative tracker in{" "}
-          <code>customers.md</code> at the repo root.
-        </p>
-        {data && (
-          <p className="text-xs text-muted-foreground mt-2 tabular-nums">
-            As of {new Date(data.asOf).toLocaleString()}
+    <PageShell maxWidth="5xl" label="Founder customers">
+      <div className="space-y-4 md:space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+            Customers
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Funnel, recent signups, and acquisition sources. Deeper health
+            scoring lands with Rafe in Phase 2.
           </p>
-        )}
+        </header>
+
+        {error ? (
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            title="Couldn't load customers"
+            description="The customer snapshot didn't come back. Try again."
+            testId="founder-customers-error"
+          />
+        ) : null}
+
+        <RafePhase0Banner />
+
+        <FunnelStrip data={data ?? null} isLoading={isLoading} />
+
+        <div className="grid gap-4 md:gap-6 md:grid-cols-2">
+          <RecentSignupsSection data={data ?? null} isLoading={isLoading} />
+          <TopUtmSection data={data ?? null} isLoading={isLoading} />
+        </div>
+
+        {/* Deep-dive shortcut — customer-health workbench is already shipped. */}
+        <Card
+          className="border-acr-warn/30 bg-acr-warn/5"
+          data-testid="customers-health-shortcut"
+        >
+          <CardContent className="p-4 md:p-5 flex items-start gap-3">
+            <div className="rounded-card bg-acr-warn/10 p-2 shrink-0">
+              <Heart className="h-5 w-5 text-acr-warn" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-foreground">
+                Spot-check customer health
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                The interim health workbench is up — useful for a one-off
+                review until Rafe's automated scoring lands.
+              </p>
+              <Button asChild className="mt-3" size="sm" variant="outline">
+                <Link
+                  href="/founder/customers/health"
+                  aria-label="Open customer health workbench"
+                  data-testid="link-customers-health"
+                >
+                  Open health workbench
+                  <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="pt-2 text-center">
+          <Link
+            href="/founder/solene-chat"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="link-ask-solene-customers"
+          >
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
+            Ask Solene about customers
+            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </div>
       </div>
-
-      {error && (
-        <QueryErrorState
-          error={error as Error}
-          onRetry={() => refetch()}
-          title="Couldn't load customers"
-          description="We hit a snag computing the customer snapshot. Try again."
-          testId="founder-customers-error"
-        />
-      )}
-
-      {isLoading && (
-        <div data-testid="founder-customers-loading" className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <CardSkeleton />
-            <CardSkeleton />
-            <CardSkeleton />
-          </div>
-          <Card className="rounded-card">
-            <CardContent className="p-4 space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-6 w-full" />
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {!isLoading && !error && data && (
-        <div className="space-y-6">
-          {/* ── Top-level counts ─────────────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <CountCard
-              label="Paying orgs"
-              value={data.paidOrgCount}
-              icon={Users}
-              tone="ok"
-              testId="founder-customers-paid"
-            />
-            <CountCard
-              label="Trial (last 14 days)"
-              value={data.trialOrgCount}
-              icon={Compass}
-              tone="brand"
-              testId="founder-customers-trial"
-            />
-            <CountCard
-              label="Churned (last 30 days)"
-              value={data.churnedLast30d}
-              icon={AlertTriangle}
-              tone="warn"
-              testId="founder-customers-churn"
-            />
-          </div>
-
-          {/* ── UTM sources ──────────────────────────────────────────── */}
-          <Card className="rounded-card" data-testid="founder-customers-utm-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-acr-brand" aria-hidden={true} />
-                Where they came from
-                <span className="text-xs font-normal text-muted-foreground">
-                  (last 90 days)
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {data.topUtmSources.length === 0 ? (
-                <div className="px-4 pb-4">
-                  <EmptyState
-                    icon={TrendingUp}
-                    headline="No UTM data yet"
-                    subtitle="No signups in the last 90 days have a captured UTM source. Tag your campaign URLs with utm_source / utm_medium / utm_campaign so this page can tell you what's working."
-                    // TODO(cta): UTM tagging happens externally on campaign URLs; link to docs when available
-                    cta={{ label: "", _noOp: true }}
-                    actionIcon={null}
-                    testId="founder-customers-utm-empty"
-                  />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead className="text-right">Signups</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.topUtmSources.map((row) => (
-                      <TableRow
-                        key={row.source}
-                        data-testid={`founder-customers-utm-row-${row.source}`}
-                      >
-                        <TableCell className="font-medium">
-                          {row.source}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          <Badge
-                            variant="secondary"
-                            className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums"
-                          >
-                            {row.count.toLocaleString()}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ── Recent signups ───────────────────────────────────────── */}
-          <Card className="rounded-card" data-testid="founder-customers-recent-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-acr-brand" aria-hidden={true} />
-                Recent signups
-                <span className="text-xs font-normal text-muted-foreground">
-                  (last {data.recentSignups.length})
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {data.recentSignups.length === 0 ? (
-                <div className="px-4 pb-4">
-                  <EmptyState
-                    icon={Users}
-                    headline="No signups yet"
-                    subtitle="Nobody has signed up. The first one will land here."
-                    // TODO(cta): signups come from the landing page; a link to the live signup URL would help here
-                    cta={{ label: "", _noOp: true }}
-                    actionIcon={null}
-                    testId="founder-customers-recent-empty"
-                  />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Org</TableHead>
-                      <TableHead>Persona</TableHead>
-                      <TableHead>Where</TableHead>
-                      <TableHead>Signed up</TableHead>
-                      <TableHead>UTM source</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.recentSignups.map((row, idx) => (
-                      <TableRow
-                        key={`${row.orgName}-${row.createdAt}-${idx}`}
-                        data-testid={`founder-customers-recent-row-${idx}`}
-                      >
-                        <TableCell className="font-medium">{row.orgName}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.persona}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {fmtRegion(row.city, row.state)}
-                        </TableCell>
-                        <TableCell className="tabular-nums text-muted-foreground">
-                          {fmtTimestamp(row.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.utmSource ?? (
-                            <span className="italic">direct</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </PageShell>
   );
 }

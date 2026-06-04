@@ -299,10 +299,13 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 const FounderPulsePage = React.lazy(() => import("@/pages/founder/index"));
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
 // becomes the default landing page when `useNewFounderUI` localStorage flag
-// is true (see client/src/lib/featureFlags.ts). The other 4 doors (team /
-// customers / money / build) are Phase 5; for now they redirect to the
-// closest existing equivalent so the nav doesn't 404.
+// is true (see client/src/lib/featureFlags.ts).
 const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
+// Phase 5 — the remaining three doors (team / money / build). The customers
+// door reuses FounderCustomersPage (rewritten in Phase 5).
+const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
+const FounderMoneyPage = React.lazy(() => import("@/pages/founder/money"));
+const FounderBuildPage = React.lazy(() => import("@/pages/founder/build"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
 // /founder/bridge. The page file lives on disk pending extraction sweep.
 // /founder is the Atlas chat shell; /founder/bridge is the fused
@@ -1063,18 +1066,18 @@ function Router() {
       <Route path="/founder/solene-chat">
         {() => <FounderProtectedRoute component={FounderSoleneChatPage} />}
       </Route>
-      {/* Phase 4 — temp stubs for the other 4 doors until Phase 5
-          builds them out. Each redirects to the closest existing
-          equivalent so the nav doesn't 404.
-          TODO(phase-5): replace each stub with its dedicated page. */}
+      {/* Phase 5 of the Solene migration — the remaining three doors next
+          to /founder/today. Each is a lean aggregation view that escapes to
+          Solene chat for any deep action. /founder/customers is registered
+          below at its existing route entry (rewritten in Phase 5). */}
       <Route path="/founder/team">
-        {() => <Redirect to="/founder/agent-queue" />}
+        {() => <FounderProtectedRoute component={FounderTeamPage} />}
       </Route>
       <Route path="/founder/money">
-        {() => <Redirect to="/founder/cost" />}
+        {() => <FounderProtectedRoute component={FounderMoneyPage} />}
       </Route>
       <Route path="/founder/build">
-        {() => <Redirect to="/founder/dispatches" />}
+        {() => <FounderProtectedRoute component={FounderBuildPage} />}
       </Route>
       {/* Bridge — fused chat + telemetry surface. Canonical founder home
           per the Lens 4 IA consolidation. */}
