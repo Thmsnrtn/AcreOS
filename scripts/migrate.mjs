@@ -5633,9 +5633,12 @@ const STATEMENTS = [
      "content_hash" text NOT NULL,
      "embedding_model" text NOT NULL,
      "embedding_dim" integer NOT NULL,
-     "embedding" vector,
+     "embedding" vector(1024),
      "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
    )`,
+  // Ensure existing-deployment columns get the dim added (idempotent).
+  // Safe no-op when already typed; required for HNSW index creation.
+  `DO $$ BEGIN ALTER TABLE "solene_embedded_records" ALTER COLUMN "embedding" TYPE vector(1024); EXCEPTION WHEN others THEN NULL; END $$`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_embedded_records_namespace_source_unique" ON "solene_embedded_records" ("namespace", "source_ref")`,
   `CREATE INDEX IF NOT EXISTS "solene_embedded_records_namespace_created_idx" ON "solene_embedded_records" ("namespace", "created_at" DESC)`,
   // HNSW over cosine. Safe to skip when pgvector isn't yet installed
