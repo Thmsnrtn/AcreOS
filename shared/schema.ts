@@ -16090,6 +16090,11 @@ export * from "./schema/hardening";
 export * from "./schema/pax-audit";
 
 // ============================================================================
+// PHASE D1 — per-user Pax context (vertical / experience / goals / geo)
+// ============================================================================
+export * from "./schema/pax-user-context";
+
+// ============================================================================
 // SOLENE — self-audit ledger (operating-discipline drift detection)
 // ============================================================================
 export * from "./schema/solene-audit";

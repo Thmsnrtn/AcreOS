@@ -5694,6 +5694,31 @@ const STATEMENTS = [
      "last_run_summary" text
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_memory_corpus_status_namespace_unique" ON "solene_memory_corpus_status" ("namespace")`,
+
+  // ── Phase D1 — per-user Pax context (vertical/experience/goals/geo) ────
+  // One row per Clerk user, captured at onboarding by PaxContextStep and
+  // read by server/services/pax/userContext.ts at every Pax turn. Privacy
+  // posture: opted_in_personalization defaults true; flipping to false
+  // makes Pax behave as though no context exists (row stays for re-enable).
+  // deleteUserContext() hard-deletes for §8 (7-day delete) compliance.
+  // Mirrors shared/schema/pax-user-context.ts.
+  `CREATE TABLE IF NOT EXISTS "pax_user_context" (
+     "id" serial PRIMARY KEY,
+     "user_id" text NOT NULL,
+     "organization_id" text NOT NULL,
+     "vertical" text,
+     "experience_level" text,
+     "investment_goals" text[] NOT NULL DEFAULT '{}'::text[],
+     "geographic_focus" text,
+     "displayed_name" text,
+     "captured_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "last_used_at" timestamp with time zone,
+     "opted_in_personalization" boolean NOT NULL DEFAULT true
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pax_user_context_user_id_unique" ON "pax_user_context" ("user_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_user_context_org_idx" ON "pax_user_context" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_user_context_active_idx" ON "pax_user_context" ("opted_in_personalization", "last_used_at" DESC) WHERE "opted_in_personalization" = true`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
