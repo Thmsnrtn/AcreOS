@@ -331,16 +331,21 @@ describe("loadUserContext", () => {
 });
 
 describe("buildUserScopedPromptAppendix", () => {
+  // Assertions use case-insensitive substring checks because the authoritative
+  // persona voice is owned by verticalSystemPrompt.ts (D1-B). The exact wording
+  // there may evolve; these tests check semantic presence, not exact phrasing.
   it("returns the land_investing default when userId is null", async () => {
     const out = await buildUserScopedPromptAppendix(null);
+    const lower = out.toLowerCase();
     expect(out).toContain("[USER CONTEXT — DEFAULT]");
-    expect(out).toContain("land investor");
+    expect(lower).toContain("land invest"); // matches "Land Investing" or "Land Investor"
   });
 
   it("returns the default when no row exists", async () => {
     const out = await buildUserScopedPromptAppendix("user_ghost");
+    const lower = out.toLowerCase();
     expect(out).toContain("[USER CONTEXT — DEFAULT]");
-    expect(out).toContain("land investor");
+    expect(lower).toContain("land invest");
   });
 
   it("returns the default (NOT the user data) when opted out", async () => {
@@ -356,12 +361,14 @@ describe("buildUserScopedPromptAppendix", () => {
     await setPersonalizationOptOut("user_a", true);
 
     const out = await buildUserScopedPromptAppendix("user_a");
+    const lower = out.toLowerCase();
     expect(out).toContain("[USER CONTEXT — DEFAULT]");
     // Critically: NO leakage of the opted-out user's data.
     expect(out).not.toContain("Sam");
     expect(out).not.toContain("Texas");
-    expect(out).not.toContain("note investor");
-    expect(out).not.toContain("expert");
+    expect(lower).not.toContain("note investor");
+    // Default appendix is land-investing; should NOT contain notes-specific terms.
+    expect(lower).not.toContain("upb");
   });
 
   it("composes persona + experience + goals + greeting for opted-in user", async () => {
@@ -375,15 +382,17 @@ describe("buildUserScopedPromptAppendix", () => {
       geographicFocus: "Texas Hill Country",
     });
     const out = await buildUserScopedPromptAppendix("user_a");
+    const lower = out.toLowerCase();
 
     expect(out).toContain("[USER CONTEXT]");
-    // Vertical voice
-    expect(out).toContain("note investor");
-    // Experience tone
-    expect(out).toContain("more than 20 deals");
-    // Goals framing
-    expect(out).toContain("monthly cash flow");
-    expect(out).toContain("passive");
+    // Vertical voice (notes persona — voice owned by verticalSystemPrompt.ts)
+    expect(lower).toContain("notes"); // verticalLabel = "Notes"
+    expect(lower).toContain("yield"); // notes domain terminology
+    // Experience tone (expert)
+    expect(lower).toMatch(/peer|nuance|precision/);
+    // Goals framing (cash_flow + passive_income)
+    expect(lower).toContain("cash flow");
+    expect(lower).toMatch(/hands-off|passive|management/);
     // Greeting line with both name + geo
     expect(out).toContain("Sam");
     expect(out).toContain("Texas Hill Country");
@@ -398,11 +407,14 @@ describe("buildUserScopedPromptAppendix", () => {
       investmentGoals: ["learning"],
     });
     const out = await buildUserScopedPromptAppendix("user_skip");
+    const lower = out.toLowerCase();
     // Still gets persona section (defaulted to land_investing).
     expect(out).toContain("[USER CONTEXT]");
-    expect(out).toContain("land investor");
-    expect(out).toContain("fewer than 3 deals");
-    expect(out).toContain("learning");
+    expect(lower).toContain("land invest");
+    // Beginner tone (D1-B): "explain context before terms" / "plain language"
+    expect(lower).toMatch(/explain|context|pitfalls/);
+    // Learning goal framing (D1-B): "teaching opportunity"
+    expect(lower).toMatch(/teaching|principle|learning/);
   });
 });
 

@@ -41,14 +41,15 @@
  *   - Per-user data NEVER appears in another user's conversation: the
  *     appendix is composed FROM and only FROM the calling user's row.
  *
- * ── D1-B INTEGRATION NOTE ───────────────────────────────────────────────
+ * ── D1-B INTEGRATION (consolidated 2026-06-03) ──────────────────────────
  *
- * The "vertical persona appendix" portion of the output is currently
- * inlined here as `verticalAppendixFor(vertical)`. Once sibling D1-B
- * ships `server/services/pax/verticalSystemPrompt.ts`, this should
- * delegate to `buildVerticalPromptAppendix(vertical)` so the persona
- * voice is owned by one module. The fallback is intentionally minimal
- * so D1-B's richer voice work supersedes it.
+ * Vertical + experience + goals + personalization appendix construction
+ * is now delegated to D1-B's `verticalSystemPrompt.buildVerticalPromptAppendix`
+ * — single source of truth for persona voice. D1-C's earlier inlined
+ * helpers (verticalAppendixFor / experienceAppendixFor / goalsAppendixFor)
+ * were removed; they had drifted semantically from the authoritative
+ * persona (notably: used "parcels" where the land_investing persona
+ * explicitly says "lot (not 'parcel' unless legal context)").
  */
 
 import { eq } from "drizzle-orm";
@@ -65,6 +66,7 @@ import {
   type PaxExperienceLevel,
   type PaxInvestmentGoal,
 } from "@shared/schema/pax-verticals";
+import { buildVerticalPromptAppendix } from "./verticalSystemPrompt";
 import { logger } from "../../utils/logger";
 
 // ── Public types ─────────────────────────────────────────────────────────
@@ -243,67 +245,22 @@ export async function loadUserContext(userId: string): Promise<UserContext | nul
 // ── Prompt composition ───────────────────────────────────────────────────
 
 /**
- * Inlined vertical persona appendix — minimal voice notes per vertical.
- * Once D1-B's verticalSystemPrompt.ts lands, swap this for a delegated
- * call to `buildVerticalPromptAppendix(vertical)`.
- */
-function verticalAppendixFor(vertical: PaxVertical): string {
-  switch (vertical) {
-    case "land_investing":
-      return "You are speaking with a land investor. Use the language of acreage, parcels, APNs, county records, owner-financing, and direct-mail acquisition. Default to raw-land specifics — not residential.";
-    case "single_family_rentals":
-      return "You are speaking with a single-family rental investor. Frame answers around cash flow, occupancy, property management, and BRRRR-style scaling.";
-    case "notes":
-      return "You are speaking with a note investor (owner-financed paper). Use the language of UPB, NPV, yield, performing/non-performing notes, RMLO, and Reg-Z compliance.";
-    case "multi_family":
-      return "You are speaking with a multi-family investor. Frame answers around NOI, cap rates, operating expenses, T-12s, and value-add unit economics.";
-    case "mobile_homes":
-      return "You are speaking with a mobile-home / park investor. Use the language of pad rent, lot fees, infill, and park-level operations.";
-    case "wholesaling":
-      return "You are speaking with a wholesaler. Frame answers around assignments, contracts, buyer lists, and quick-flip economics.";
-    default:
-      // Exhaustiveness check — unreachable with current PAX_VERTICALS.
-      return "";
-  }
-}
-
-function experienceAppendixFor(level: PaxExperienceLevel): string {
-  switch (level) {
-    case "beginner":
-      return "They have closed fewer than 3 deals. Explain mechanics, name jargon when introducing it, and lean on concrete examples over abstract advice.";
-    case "intermediate":
-      return "They have closed 3-20 deals. Skip jargon definitions, focus on optimization and edge cases, and respect that they've seen the basics.";
-    case "expert":
-      return "They have closed more than 20 deals. Treat them as a peer — go deep, be precise, surface nuance and tradeoffs, never explain fundamentals unprompted.";
-  }
-}
-
-const GOAL_LABEL: Record<PaxInvestmentGoal, string> = {
-  cash_flow: "monthly cash flow",
-  appreciation: "long-term appreciation",
-  passive_income: "passive / hands-off income",
-  value_add: "value-add (improve to increase value)",
-  tax_advantages: "tax advantages (depreciation, 1031, etc.)",
-  learning: "learning / still exploring",
-};
-
-function goalsAppendixFor(goals: PaxInvestmentGoal[]): string {
-  if (goals.length === 0) return "";
-  const phrased = goals.map((g) => GOAL_LABEL[g]).join(", ");
-  return `Their stated investment goals: ${phrased}. Frame recommendations against those goals first.`;
-}
-
-/**
  * The default appendix used when:
  *   - userId is null (system / anonymous surface),
  *   - no row exists for the user,
  *   - the user opted out of personalization.
  *
- * Returns the land_investing voice — Pax's primary vertical — so the
- * assistant stays in voice even with zero context.
+ * Delegates to D1-B's authoritative builder with the DEFAULT_VERTICAL
+ * (land_investing). The "[USER CONTEXT — DEFAULT]" marker is prepended
+ * so Pax can detect anonymous-vs-personalized in its system prompt.
  */
 function defaultAppendix(): string {
-  return ["[USER CONTEXT — DEFAULT]", verticalAppendixFor(DEFAULT_VERTICAL)].join("\n");
+  const block = buildVerticalPromptAppendix({
+    vertical: DEFAULT_VERTICAL,
+    experienceLevel: null,
+    investmentGoals: [],
+  });
+  return ["[USER CONTEXT — DEFAULT]", block].join("\n");
 }
 
 /**
@@ -329,35 +286,19 @@ export async function buildUserScopedPromptAppendix(
   if (!ctx || !ctx.optedInPersonalization) return defaultAppendix();
 
   const vertical = ctx.vertical ?? DEFAULT_VERTICAL;
-  const parts: string[] = ["[USER CONTEXT]"];
 
-  // 1. Vertical voice
-  parts.push(verticalAppendixFor(vertical));
+  // Delegate the rich appendix construction (vertical + experience tone +
+  // goals framing + personalization) to D1-B's authoritative builder.
+  // Single source of truth for persona voice.
+  const block = buildVerticalPromptAppendix({
+    vertical,
+    experienceLevel: ctx.experienceLevel,
+    investmentGoals: ctx.investmentGoals,
+    userDisplayName: ctx.displayedName ?? undefined,
+    geographicFocus: ctx.geographicFocus ?? undefined,
+  });
 
-  // 2. Experience tone
-  if (ctx.experienceLevel) {
-    parts.push(experienceAppendixFor(ctx.experienceLevel));
-  }
-
-  // 3. Goals framing
-  const goalsLine = goalsAppendixFor(ctx.investmentGoals);
-  if (goalsLine) parts.push(goalsLine);
-
-  // 4. Greeting line (name + geo)
-  const greetingBits: string[] = [];
-  if (ctx.displayedName) greetingBits.push(`You're speaking with ${ctx.displayedName}`);
-  if (ctx.geographicFocus) {
-    greetingBits.push(
-      ctx.displayedName
-        ? `who focuses on ${ctx.geographicFocus}`
-        : `You're speaking with a user who focuses on ${ctx.geographicFocus}`,
-    );
-  }
-  if (greetingBits.length > 0) {
-    parts.push(`${greetingBits.join(" ")}.`);
-  }
-
-  return parts.join("\n");
+  return ["[USER CONTEXT]", block].join("\n");
 }
 
 // ── Opt-out + delete ─────────────────────────────────────────────────────
