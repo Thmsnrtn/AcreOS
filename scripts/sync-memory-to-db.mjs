@@ -148,7 +148,9 @@ async function runSync({ dryRun, memoryDir }) {
 
   const files = fs
     .readdirSync(memoryDir)
-    .filter((f) => f.endsWith(".md"))
+    // Skip macOS resource-fork files (`._foo.md`) which contain binary
+    // extended-attribute data that fails UTF-8 encoding in Postgres.
+    .filter((f) => f.endsWith(".md") && !f.startsWith("._"))
     .sort();
 
   console.log(
