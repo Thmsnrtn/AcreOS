@@ -3,6 +3,16 @@ import type { Config } from "tailwindcss";
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  // Scope every `hover:` Tailwind class behind `@media (hover: hover)`
+  // so they only apply when the device actually supports hovering. On
+  // iOS Safari (no hover), the first tap no longer activates a hover
+  // state — taps register as clicks immediately. Without this flag every
+  // `hover:bg-muted`, `hover:opacity-100`, etc requires a double-tap on
+  // touch devices (the Apple-documented "first tap reveals hover state,
+  // second tap commits the click" behavior).
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   theme: {
     extend: {
       borderRadius: {

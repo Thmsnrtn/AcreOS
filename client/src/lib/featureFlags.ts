@@ -24,17 +24,29 @@ const NEW_FOUNDER_UI_STORAGE_KEY = "useNewFounderUI";
  * (Today / Team / Customers / Money / Build) + Today is the default
  * landing page at /founder.
  *
- * When false, the existing 30+ founder pages remain the primary nav
- * (existing behavior unchanged).
+ * When false, the existing 30+ founder pages remain the primary nav.
  *
- * SSR-safe: returns false when `window` is undefined.
+ * As of 2026-06-05 the new UI is the DEFAULT — only an explicit
+ * `localStorage["useNewFounderUI"] = "false"` reverts to the old
+ * surface. Wave 2 of the Solene migration shipped the new UI as
+ * production-ready; gating it behind an opt-in flag meant Tom had to
+ * use desktop devtools to even see his own new founder surface. The
+ * old UI remains reachable via `?ui=old` as the escape hatch.
+ *
+ * SSR-safe: returns false when `window` is undefined (server render
+ * never sees the founder surface anyway — Clerk gates it client-side).
  */
 export function useNewFounderUI(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(NEW_FOUNDER_UI_STORAGE_KEY) === "true";
+    const explicit = window.localStorage.getItem(NEW_FOUNDER_UI_STORAGE_KEY);
+    // explicit === "false" → user opted out. Anything else (null,
+    // "true", missing) → new UI. This makes the new UI the default
+    // without forcing every founder to flip a flag they can't reach
+    // from mobile Safari.
+    return explicit !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -46,9 +58,14 @@ export function setNewFounderUI(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
     if (enabled) {
+      // Default is also enabled, but write the explicit "true" so the
+      // value is observable in devtools + survives the opt-out branch.
       window.localStorage.setItem(NEW_FOUNDER_UI_STORAGE_KEY, "true");
     } else {
-      window.localStorage.removeItem(NEW_FOUNDER_UI_STORAGE_KEY);
+      // Explicit opt-out. Stored as "false" (not removed) so the
+      // useNewFounderUI() default-on behavior doesn't override the
+      // user's deliberate choice to go back to the old UI.
+      window.localStorage.setItem(NEW_FOUNDER_UI_STORAGE_KEY, "false");
     }
   } catch {
     /* localStorage may be unavailable in private modes — silently ignore. */
