@@ -14,6 +14,14 @@ import { capturePendingUtm } from "./lib/acquisition-utm";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
 import { installVersionCheck } from "./lib/version-check";
+import { applyUiFlagFromUrl } from "@/lib/featureFlags";
+
+// Mobile-friendly flag flip: ?ui=new or ?ui=old → mutate localStorage +
+// reload. Runs before React mounts so the flip is visible on the very
+// first paint, not on a second navigation. iOS Safari has no devtools
+// UI for setting localStorage, so without this Tom can't flip his own
+// founder-UI flag from his phone.
+applyUiFlagFromUrl();
 
 // Install CSRF header interceptor before any fetch fires.
 installCsrfFetchInterceptor();

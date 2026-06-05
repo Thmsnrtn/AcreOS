@@ -54,3 +54,34 @@ export function setNewFounderUI(enabled: boolean): void {
     /* localStorage may be unavailable in private modes — silently ignore. */
   }
 }
+
+/**
+ * Mobile-friendly flag flip via URL query string. Reads `?ui=new` or
+ * `?ui=old`, mutates localStorage, strips the param from the URL, and
+ * reloads. Called once at app boot before React mounts so the flip
+ * takes effect on the very first render.
+ *
+ * Why this exists: iOS Safari has no devtools UI for setting
+ * localStorage. Without this Tom can't flip his own flag from his
+ * phone — he'd have to use desktop devtools every time. With this he
+ * just types `acreos.io/?ui=new` into the address bar.
+ *
+ * Safe to call in SSR contexts (no-ops when window is undefined).
+ */
+export function applyUiFlagFromUrl(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    const ui = url.searchParams.get("ui");
+    if (ui !== "new" && ui !== "old") return;
+    setNewFounderUI(ui === "new");
+    url.searchParams.delete("ui");
+    // Replace the URL without reloading first — the SW + version-check
+    // can then take over for any reload coordination. We use a hard
+    // reload below to guarantee a fresh React tree picks up the flag.
+    window.history.replaceState({}, "", url.toString());
+    window.location.reload();
+  } catch {
+    /* malformed URL or localStorage unavailable — silently ignore. */
+  }
+}
