@@ -36,12 +36,15 @@ import {
 } from "@shared/schema/solene-chat-config";
 import {
   buildCachedSystemPrompt,
-  streamChatCompletion,
   type ContentBlock,
   type OpenRouterMessage,
   type StreamEvent,
   type ToolUseContentBlock,
 } from "./openRouterClient";
+import {
+  streamChatWithFailover,
+  type ProviderTag,
+} from "./providerSelector";
 import { buildChatContext } from "./contextBuilder";
 import { routeQuery, estimateCost, type ConversationMessage } from "./modelRouter";
 import {
@@ -308,17 +311,25 @@ export async function* runTurn(
       cacheCreationTokens: 0,
     };
     let streamErrored = false;
+    // Provider tag for this completion. Set on the first event we see. If
+    // the primary errors pre-token and we failover, providerSelector emits
+    // its happy-path events tagged with the secondary provider, so we'll
+    // see whichever provider actually produced the response.
+    let providerUsed: ProviderTag | null = null;
 
-    for await (const ev of streamChatCompletion({
+    for await (const ev of streamChatWithFailover({
       model: route.model,
       system: systemBlocks,
       messages,
       tools: CHAT_TOOL_SCHEMAS as unknown as Parameters<
-        typeof streamChatCompletion
+        typeof streamChatWithFailover
       >[0]["tools"],
       max_tokens: CHAT_MAX_OUTPUT_TOKENS,
       signal,
     })) {
+      if (providerUsed === null && "_provider" in ev) {
+        providerUsed = ev._provider as ProviderTag;
+      }
       switch ((ev as StreamEvent).type) {
         case "text_delta": {
           const e = ev as Extract<StreamEvent, { type: "text_delta" }>;
@@ -411,6 +422,12 @@ export async function* runTurn(
         surface: "soleneChat",
         tier: route.tier,
         model: route.model,
+        // Batch 9: per-provider spend tracking. "anthropic_direct" = primary
+        // happy path (bypasses ~5% OpenRouter margin); "openrouter" =
+        // OpenRouter is primary by env override; "openrouter_failover" =
+        // Anthropic was primary and failed pre-token. Grep `[ai-cost]` in
+        // Fly logs and split by `provider` to see the cost shape.
+        provider: providerUsed ?? "unknown",
         conversationId: input.conversationId,
         turnNumber,
         inputTokens: usage.inputTokens,
