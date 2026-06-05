@@ -220,6 +220,9 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     reviewStatus: r.review_status,
     reviewedByDispatchId: r.reviewed_by_dispatch_id,
     originalDispatchId: r.original_dispatch_id,
+    // Batch 5 cost-audit — optional per-dispatch model override
+    // (selectModelForDispatch picks when null).
+    model: r.model ?? null,
   };
 }
 

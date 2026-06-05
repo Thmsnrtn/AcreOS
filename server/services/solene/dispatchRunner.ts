@@ -814,7 +814,7 @@ export async function runDispatch(
       // returns these as `cache_read_input_tokens` on the usage object; the
       // SDK types may not surface that field as strict-typed yet so we
       // read it via index access and Number().
-      const cacheReadRaw = (response.usage as Record<string, unknown> | undefined)?.[
+      const cacheReadRaw = (response.usage as unknown as Record<string, unknown> | undefined)?.[
         "cache_read_input_tokens"
       ];
       const cacheRead = typeof cacheReadRaw === "number" ? cacheReadRaw : 0;

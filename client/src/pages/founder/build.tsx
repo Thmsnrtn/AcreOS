@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
