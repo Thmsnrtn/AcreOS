@@ -48,6 +48,17 @@ import {
   FileText,
   Loader2,
   CheckCircle,
+  Home,
+  Hammer,
+  Key,
+  Palmtree,
+  Building2,
+  Landmark,
+  Lightbulb,
+  Warehouse,
+  Receipt,
+  Truck,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -106,6 +117,29 @@ const CORE_CHOICES = [
     icon: Sparkles,
   },
 ];
+
+// Secondary verticals — collapsed by default. Surfaced via "Show all
+// investor types" disclosure so the first impression isn't a 15-card
+// avalanche. Without this list, wholesalers / fix-and-flippers /
+// landlords / etc were silently mapped to land_investor at signup —
+// flagged by the 2026-06-05 customer audit. Pattern ported from the
+// legacy OnboardingWizard.tsx (no-longer-mounted but kept as the
+// single source of truth for vertical metadata).
+const SECONDARY_CHOICES: { value: BusinessType; label: string; description: string; icon: typeof Map }[] = [
+  { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
+  { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Acquire, renovate, and resell properties for profit." },
+  { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
+  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Acquire and manage Airbnb, VRBO, and vacation rentals." },
+  { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
+  { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
+  { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
+  { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
+  { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
+  { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
+  { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
+];
+
+const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_CHOICES.map((c) => c.value));
 
 // Persona map — mirrors OnboardingWizard.tsx BUSINESS_TYPE_TO_PERSONA.
 // Server /onboarding/complete derives the same map as a safety net.
@@ -224,6 +258,7 @@ export default function OnboardingV2() {
   // Form data
   const [workspaceName, setWorkspaceName] = useState("");
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
+  const [showAllInvestorTypes, setShowAllInvestorTypes] = useState(false);
 
   // Data-path state (Step 2)
   const [dataPath, setDataPath] = useState<"sample" | "csv" | null>(null);
@@ -686,8 +721,56 @@ export default function OnboardingV2() {
                       </label>
                     ))}
                   </RadioGroup>
+                  {/* Secondary verticals — collapsed by default. Auto-opens
+                      if the user previously selected one (e.g. coming back
+                      to edit) so their selection is always visible. */}
+                  <details
+                    style={{ marginTop: 12 }}
+                    open={SECONDARY_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
+                    onToggle={(e) =>
+                      setShowAllInvestorTypes((e.target as HTMLDetailsElement).open)
+                    }
+                    data-testid="details-show-all-investor-types"
+                  >
+                    <summary
+                      className="ob2-hint"
+                      style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}
+                      data-testid="summary-show-all-investor-types"
+                    >
+                      Show all investor types (beta verticals)
+                    </summary>
+                    <RadioGroup
+                      value={businessType}
+                      onValueChange={(v) => setBusinessType(v as BusinessType)}
+                      className="ob2-type-cards"
+                      aria-labelledby="ob2-biztype-label"
+                    >
+                      {SECONDARY_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                        <label
+                          key={value}
+                          htmlFor={`ob2-type-${value}`}
+                          className={cn(
+                            "ob2-type-card",
+                            businessType === value && "ob2-type-card--on",
+                          )}
+                          data-testid={`option-${value}`}
+                        >
+                          <RadioGroupItem
+                            value={value}
+                            id={`ob2-type-${value}`}
+                            className="sr-only"
+                          />
+                          <span className="ob2-type-card-glyph" aria-hidden="true">
+                            <Icon className="w-4 h-4" />
+                          </span>
+                          <span className="ob2-type-card-title">{label}</span>
+                          <span className="ob2-type-card-desc">{description}</span>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                  </details>
                   <p className="ob2-hint">
-                    Land Flipper is primary. Other verticals available in Settings.
+                    Land Flipper is primary. More verticals can be changed in Settings.
                   </p>
                 </motion.div>
               </motion.div>

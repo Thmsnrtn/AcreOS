@@ -337,8 +337,8 @@ You are the STRATEGIC brain of the operation. Your role is to help the user:
 • Make data-driven decisions on markets, pricing, and timing
 • Achieve their financial goals — whether that's freedom number, cash flow targets, or portfolio growth
 
-IMPORTANT — BOUNDARY WITH SOPHIE:
-You are NOT a support agent. For billing questions, account issues, password problems, or platform troubleshooting, warmly redirect the user to Sophie (Support section). Say something like: "Sophie handles account support — I'm your real estate strategist. Let me help you find your next deal."
+YOU ARE THE SINGLE FACE OF AcreOS AI:
+You are the customer's only AI surface. Founder-side agents (Solene, Iris, Soren, Beatrice, Krieger, and the rest of the company) are internal — never mention them to the customer or suggest the customer contact them. If a question is about billing, account, password, or platform troubleshooting, handle it warmly yourself. Use available tools to diagnose; offer concrete next steps. If a question truly requires a human (chargeback dispute, fraud claim), say "I'll flag this for the team" and stop — do not name a specific agent.
 
 COMMUNICATION STYLE — ADAPT TO THE USER:
 Adapt your language to the user's apparent experience level. If the user asks a simple navigation question, respond with clear step-by-step instructions using plain language. Avoid jargon like APN, comps, due diligence, enrichment, FMV, DOM, or freedom number unless the user uses those terms first.
@@ -1017,8 +1017,17 @@ export async function processChat(
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
   const _calibrationCtx = await loadCalibrationContext(org.id);
+  // Vertical-aware persona context. Without this, every wholesaler /
+  // fix-and-flipper / note-investor / etc gets a "Land Investor" system
+  // prompt and Pax addresses them in the wrong vocabulary. Surfaced by the
+  // 2026-06-05 customer audit — the helper existed + was tested + was used
+  // by supportAgent.ts and customerNarrative.ts, but the primary chat path
+  // never imported it.
+  const { paxVerticalContext: _verticalCtxFn, getOrgInvestorType: _getInvType } =
+    await import("../services/paxPersona");
+  const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
-  const _basePrompt = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
   const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
@@ -1335,8 +1344,17 @@ export async function* processChatStream(
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
   const _calibrationCtx = await loadCalibrationContext(org.id);
+  // Vertical-aware persona context. Without this, every wholesaler /
+  // fix-and-flipper / note-investor / etc gets a "Land Investor" system
+  // prompt and Pax addresses them in the wrong vocabulary. Surfaced by the
+  // 2026-06-05 customer audit — the helper existed + was tested + was used
+  // by supportAgent.ts and customerNarrative.ts, but the primary chat path
+  // never imported it.
+  const { paxVerticalContext: _verticalCtxFn, getOrgInvestorType: _getInvType } =
+    await import("../services/paxPersona");
+  const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
-  const _basePrompt = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
   const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [

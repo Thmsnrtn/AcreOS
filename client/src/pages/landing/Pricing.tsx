@@ -135,12 +135,27 @@ export function Pricing() {
                   ? `Billed $${t.a.toLocaleString()} annually`
                   : "Billed monthly"}
               </div>
-              <Link
-                href={t.cta === "Talk to us" ? "/contact" : "/auth?mode=register"}
-                className={`lp-btn ${t.featured ? "lp-btn-primary" : "lp-btn-secondary"} lp-btn-lg lp-tier-cta`}
-              >
-                {t.cta}
-              </Link>
+              {t.cta === "Talk to us" ? (
+                // Solo-founder sales path: mailto opens the user's email
+                // client, eliminates the /contact route 404 that was
+                // dropping the highest-intent leads pre-2026-06-05 audit.
+                // A dedicated /contact page can replace this once there
+                // are enough Scale-tier inquiries to justify it.
+                <a
+                  href="mailto:sales@acreos.io?subject=AcreOS%20Scale%20tier%20inquiry"
+                  className={`lp-btn ${t.featured ? "lp-btn-primary" : "lp-btn-secondary"} lp-btn-lg lp-tier-cta`}
+                  data-testid="cta-scale-mailto"
+                >
+                  {t.cta}
+                </a>
+              ) : (
+                <Link
+                  href="/auth?mode=register"
+                  className={`lp-btn ${t.featured ? "lp-btn-primary" : "lp-btn-secondary"} lp-btn-lg lp-tier-cta`}
+                >
+                  {t.cta}
+                </Link>
+              )}
               <ul className="lp-tier-features">
                 {t.features.map((f, j) => (
                   <li key={j}>
