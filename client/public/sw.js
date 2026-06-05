@@ -1,9 +1,15 @@
-// Bumped to v14 for the day-365 reliability pass (2026-05-29): adds
-// /api/field-scout/quick-add to the offline-queueable allowlist (a
-// DriveMode save in a cellular dead zone was silently dropped), and
-// bumps the IndexedDB version to 2 so we have an exercised migration
-// path before the store fills up in customer-installed SWs.
-const CACHE_NAME = 'acreos-v14';
+// Bumped to v15 for Wave 2 of the AcreOS-Solene migration (2026-06-04):
+// founder UI got a new 5-door surface + Solene chat. Stale-v14 caches
+// were serving customer-installed SWs the pre-migration shell. Bumping
+// the name forces the `activate` handler to delete the v14 caches so
+// the next fetch goes to network and picks up the new bundle.
+//
+// v14 (2026-05-29) added /api/field-scout/quick-add to the
+// offline-queueable allowlist (a DriveMode save in a cellular dead zone
+// was silently dropped), and bumped the IndexedDB version to 2 so we
+// have an exercised migration path before the store fills up in
+// customer-installed SWs.
+const CACHE_NAME = 'acreos-v15';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
