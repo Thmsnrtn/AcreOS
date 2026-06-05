@@ -60,11 +60,31 @@ import type { ContentBlock } from "@shared/schema/solene-conversations";
  * Shape (provisional):
  *   { generatedAt: string, headline: string, body: string[], asOf: string }
  */
-interface MorningPulse {
+// Shape of the response from GET /api/founder/solene/morning-pulse
+// (Phase 7). composeMorningPulse() in server/services/solene/continuousLoop.ts
+// is the source of truth; this is its serialized form.
+interface MorningPulseSnapshot {
   generatedAt: string;
-  headline: string;
-  body: string[];
-  asOf: string;
+  dayLabel: string;
+  oneLine: string;
+  mrr: number;
+  trials: number;
+  uptimePct: number;
+  prodVersion: string;
+  complianceOpenCount: number;
+  weeklySpendUsd: number;
+  decisionsWaitingCount: number;
+  autonomyHorizonDays: number;
+  envelopeStatus: "green" | "amber" | "red";
+  dispatchesCompletedLast24h: number;
+  dispatchesFlaggedLast24h: number;
+  asksOpenCount: number;
+  asksUrgentCount: number;
+}
+
+interface MorningPulseResponse {
+  pulse: MorningPulseSnapshot | null;
+  freshFromCache?: boolean;
 }
 
 /** GET /api/founder/asks — already shipped (L6.32). Compact shape. */
@@ -102,8 +122,9 @@ function relativeTime(iso: string): string {
 
 // ─── Section: Morning Pulse Banner ───────────────────────────────────────
 //
-// Phase 7 will wire /api/founder/solene/morning-pulse. Until then, this
-// renders a clearly-marked TODO with the expected shape documented above.
+// Reads from the Phase 7 endpoint. Fresh GET re-composes if no row exists
+// yet (first-time / post-deploy), so this should almost always render
+// content rather than the empty state.
 
 function MorningPulseBanner() {
   const today = new Date().toLocaleDateString(undefined, {
@@ -113,10 +134,21 @@ function MorningPulseBanner() {
     day: "numeric",
   });
 
-  // TODO(phase-7): replace stub with `useQuery<MorningPulse>` against
-  // /api/founder/solene/morning-pulse. Endpoint comes online in Phase 7.
-  // Explicit annotation keeps TS from narrowing to `never` when literally null.
-  const pulse = null as MorningPulse | null;
+  const { data, isLoading, isError } = useQuery<MorningPulseResponse>({
+    queryKey: ["/api/founder/solene/morning-pulse"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/solene/morning-pulse", {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to load morning pulse: ${res.status}`);
+      }
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const pulse = data?.pulse ?? null;
 
   return (
     <Card
@@ -136,28 +168,59 @@ function MorningPulseBanner() {
               </h2>
               <span className="text-xs text-muted-foreground">{today}</span>
             </div>
-            {pulse ? (
+            {isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+            ) : isError ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Couldn't reach the pulse endpoint. The 7am ET cron will
+                refresh it on the next tick.
+              </p>
+            ) : pulse ? (
               <>
                 <p className="mt-2 text-base font-medium text-foreground">
-                  {pulse.headline}
+                  {pulse.oneLine}
                 </p>
-                {pulse.body.map((line, i) => (
-                  <p
-                    key={i}
-                    className="mt-1 text-sm text-muted-foreground leading-relaxed"
-                  >
-                    {line}
-                  </p>
-                ))}
+                <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <li>
+                    Autonomy: <span className="text-foreground">{pulse.autonomyHorizonDays}d</span>
+                  </li>
+                  <li>
+                    MRR: <span className="text-foreground">${pulse.mrr}</span>
+                  </li>
+                  <li>
+                    Trials: <span className="text-foreground">{pulse.trials}</span>
+                  </li>
+                  <li>
+                    Uptime: <span className="text-foreground">{pulse.uptimePct}%</span>
+                  </li>
+                  <li>
+                    Asks open: <span className="text-foreground">{pulse.asksOpenCount}</span>
+                    {pulse.asksUrgentCount > 0 ? (
+                      <span className="text-acr-warn"> ({pulse.asksUrgentCount} urgent)</span>
+                    ) : null}
+                  </li>
+                  <li>
+                    Envelope:{" "}
+                    <span
+                      className={
+                        pulse.envelopeStatus === "green"
+                          ? "text-acr-success"
+                          : pulse.envelopeStatus === "amber"
+                            ? "text-acr-warn"
+                            : "text-destructive"
+                      }
+                    >
+                      {pulse.envelopeStatus}
+                    </span>
+                  </li>
+                </ul>
               </>
             ) : (
               <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                Solene's daily pulse generator comes online in Phase 7. Until
-                then, this banner stays a placeholder. Expected shape:{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  {`{ headline, body[], asOf }`}
-                </code>{" "}
-                from <code className="text-xs">GET /api/founder/solene/morning-pulse</code>.
+                No pulse posted yet today. The 7am ET cron writes the first
+                row; until it fires, the GET endpoint re-composes live on
+                each request — if you're seeing this the live compose
+                returned null too. Check worker logs.
               </p>
             )}
           </div>

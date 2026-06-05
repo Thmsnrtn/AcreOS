@@ -1291,9 +1291,11 @@
 .card-hover {
   @apply transition-all duration-200 ease-out;
 }
-.card-hover:hover {
-  @apply shadow-lg;
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .card-hover:hover {
+    @apply shadow-lg;
+    transform: translateY(-1px);
+  }
 }
 
 /* Sidebar surface — consolidated alias for .sidebar-vibrancy (Phase 9 block below).
@@ -1375,11 +1377,13 @@
 .hover-elevate {
   @apply transition-all duration-200 ease-out;
 }
-.hover-elevate:hover {
-  @apply bg-foreground/5;
-}
-.dark .hover-elevate:hover {
-  background-color: hsl(var(--foreground) / 0.08);
+@media (hover: hover) {
+  .hover-elevate:hover {
+    @apply bg-foreground/5;
+  }
+  .dark .hover-elevate:hover {
+    background-color: hsl(var(--foreground) / 0.08);
+  }
 }
 
 .active-elevate-2 {
@@ -1402,8 +1406,10 @@
 }
 
 /* Remove default hover/active when needed */
-.no-default-hover-elevate:hover {
-  @apply bg-transparent;
+@media (hover: hover) {
+  .no-default-hover-elevate:hover {
+    @apply bg-transparent;
+  }
 }
 .no-default-active-elevate:active {
   transform: none;
@@ -1534,9 +1540,11 @@ body[data-offline-banner="true"] [data-page-topbar] {
   @apply transition-all duration-200 ease-out;
   will-change: transform;
 }
-.card-glass-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-3);
+@media (hover: hover) {
+  .card-glass-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-3);
+  }
 }
 
 /* Button press micro-interaction */
@@ -1677,11 +1685,13 @@ body[data-offline-banner="true"] [data-page-topbar] {
 .table-row-hover {
   @apply transition-colors duration-100;
 }
-.table-row-hover:hover {
-  background: hsl(var(--primary) / 0.04);
-}
-.dark .table-row-hover:hover {
-  background: hsl(var(--primary) / 0.08);
+@media (hover: hover) {
+  .table-row-hover:hover {
+    background: hsl(var(--primary) / 0.04);
+  }
+  .dark .table-row-hover:hover {
+    background: hsl(var(--primary) / 0.08);
+  }
 }
 
 /* Status badge pulse for active/urgent items */
