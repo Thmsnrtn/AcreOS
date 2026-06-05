@@ -97,7 +97,9 @@ export type StreamEvent =
 // ============================================================================
 
 const DEFAULT_BASE_URL =
-  process.env.SOLENE_CHAT_OPENROUTER_BASE_URL ?? "https://openrouter.ai";
+  process.env.SOLENE_CHAT_OPENROUTER_BASE_URL ??
+  process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL ??
+  "https://openrouter.ai";
 
 const DEFAULT_REFERER =
   process.env.SOLENE_CHAT_OPENROUTER_REFERER ?? "https://acreos.io";
@@ -162,7 +164,14 @@ export function buildCachedSystemPrompt(parts: {
 export async function* streamChatCompletion(
   opts: OpenRouterRequestOpts,
 ): AsyncIterable<StreamEvent> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  // Two names because the Fly secret was provisioned as
+  // AI_INTEGRATIONS_OPENROUTER_API_KEY (legacy naming from the integrations
+  // namespace) but the code+tests use the unprefixed OPENROUTER_API_KEY.
+  // Both resolve to the same upstream key. Surfaced by the 2026-06-05 audit
+  // when the deploy worked but every chat call 500'd with "key not set".
+  const apiKey =
+    process.env.OPENROUTER_API_KEY ??
+    process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
   if (!apiKey || apiKey.length === 0) {
     yield {
       type: "error",
