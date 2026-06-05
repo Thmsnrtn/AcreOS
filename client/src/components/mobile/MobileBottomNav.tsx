@@ -32,9 +32,14 @@ export function MobileBottomNav() {
       >
         <div className="flex justify-around items-center h-[72px] px-1">
           {navItems.map((item) => {
+            // Exact match OR true sub-path under the door's prefix. A bare
+            // prefix-match lit Pax (`/ai`) up for every `/ai-*` sibling
+            // (e.g. `/ai-observatory`, `/ai-ops`); requiring the trailing
+            // slash means only `/ai` and `/ai/...` are "Pax".
             const isActive =
               location === item.href ||
-              (item.href !== "/today" && location.startsWith(item.href));
+              (item.href !== "/today" &&
+                location.startsWith(item.href + "/"));
             const ItemIcon = item.icon;
             return (
               <Link

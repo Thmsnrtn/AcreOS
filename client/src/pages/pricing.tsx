@@ -172,7 +172,10 @@ function FeatureValue({ value }: { value: string | boolean }) {
 }
 
 export default function PricingPage() {
-  const [annual, setAnnual] = useState(false);
+  // Default to annual so this surface matches the landing Pricing section
+  // (landing/Pricing.tsx defaults annual=true). Prospects who saw $41 on the
+  // landing must not see $49 the moment they hit Settings → Billing.
+  const [annual, setAnnual] = useState(true);
   usePageMeta(
     "Pricing",
     "Transparent plans for Land Investors — from the free tier to full-team tooling. CRM, direct mail, automated due diligence, and seller financing in one platform."

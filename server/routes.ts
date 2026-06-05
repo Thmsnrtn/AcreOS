@@ -1647,7 +1647,21 @@ export async function registerRoutes(
   // Phase B of the founder-chat plan; mounts the only new founder-side
   // HTTP surface (the 40 tools live behind this endpoint). Importing
   // the routes module side-effect-registers the tool inventory.
+  //
+  // DEPRECATED 2026-06-05 (wave B1 audit): the canonical founder chat
+  // surface is the Solene chat (registerSoleneChatRoutes). This route
+  // is still mounted because the existing client hooks under
+  // client/src/hooks/use-founder-chat*.ts + components/founder-chat/*
+  // + components/modals/quick-offer-modal.tsx (POST /api/atlas/analyze)
+  // continue to hit it. Migrate those callers, then drop this mount and
+  // the routes-founder-chat.ts file in a follow-up cleanup.
   {
+    app.use("/api/founder/chat", (req, _res, next) => {
+      logger.warn("[founder-chat] legacy route hit — should migrate to Solene chat", {
+        metadata: { path: req.path },
+      });
+      next();
+    });
     const { registerFounderChatRoutes } = await import("./routes-founder-chat");
     registerFounderChatRoutes(app);
   }
