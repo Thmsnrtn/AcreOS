@@ -53,16 +53,9 @@ export function Footer() {
             <a href="#pricing">Pricing</a>
           </div>
           <div className="lp-footer-col">
-            <div className="lp-footer-h">Company</div>
-            <Link href="/careers">Careers</Link>
-            <Link href="/press">Press</Link>
-          </div>
-          <div className="lp-footer-col">
             <div className="lp-footer-h">Resources</div>
-            <Link href="/academy">Academy</Link>
             <a href="https://acreos.substack.com" target="_blank" rel="noreferrer">Field notes</a>
-            <Link href="/calculator">Land deal calculator</Link>
-            <Link href="/api-docs">API docs</Link>
+            <Link href="/tools/calculator">Land deal calculator</Link>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>

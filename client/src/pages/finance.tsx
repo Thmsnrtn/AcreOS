@@ -435,7 +435,7 @@ export default function FinancePage() {
                 <EmptyState
                   icon={FileText}
                   headline="No notes serviced yet"
-                  subtitle="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then dunns on day 11 and emits the 1099-NEC at year-end."
+                  subtitle="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then pings on day 11 and prepares your 1099-NEC at year-end."
                   cta={{
                     label: "Create Your First Note",
                     onClick: () => setIsCreateOpen(true),
