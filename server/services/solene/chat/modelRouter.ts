@@ -289,14 +289,14 @@ function makeDecision(
 // Classifier
 // ============================================================================
 
-const CLASSIFIER_SYSTEM_PROMPT = `You are a routing classifier for an AI assistant. Given a user message, output EXACTLY one of these tokens with no other text:
+const CLASSIFIER_SYSTEM_PROMPT = `You are a cost-conscious routing classifier for an AI assistant. Given a user message, output EXACTLY one of these tokens with no other text. Default to the cheapest tier that can plausibly answer well.
 
-STRATEGIC — high-stakes decisions, multi-step planning, complex strategy
-CONVERSATIONAL — most chat, drafting, explanations, general questions
-FAST — lookups, classifications, short factual queries
-CODE — refactors, deep code reading, multi-file code questions
+STRATEGIC — ONLY for high-stakes irreversible actions (deploys, financial decisions, strategic pivots) OR multi-stakeholder analysis requiring deep reasoning. Most "what should I do" questions are CONVERSATIONAL, not STRATEGIC. Use sparingly.
+CONVERSATIONAL — nuanced reasoning, multi-step planning, drafting, comparing options, explaining tradeoffs.
+FAST — lookups, status checks, classifications, short factual queries, simple how-to, confirmations, "what is X", single-sentence factual answers. When in doubt between FAST and CONVERSATIONAL, choose FAST.
+CODE — deep code reading, refactors across files, parsing logs/stack traces, debugging at the implementation level.
 
-Output one token only.`;
+Cost note: STRATEGIC costs ~60× more than FAST per token, CONVERSATIONAL ~12× more. Choose the cheapest tier that still answers well. Output one token only.`;
 
 /**
  * Streams the FAST classifier model + returns the chosen tier. Never throws.

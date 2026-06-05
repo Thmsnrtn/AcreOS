@@ -28,7 +28,20 @@ interface CacheEntry {
 }
 
 const AI_CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+// In-process response cache for low-temperature (≤0.3), non-COMPLEX queries.
+// 2026-06-05 cost audit O11: raised from 15min → 60min. The cache key is an
+// exact hash of the messages array — entries are only reusable for identical
+// queries, so the longer TTL just amortizes the same answer over more
+// requests. Memory bound is MAX_CACHE_SIZE entries (eviction LRU).
+// Override via AI_CACHE_TTL_MINUTES env without a deploy.
+const CACHE_TTL_MS = (() => {
+  const fromEnv = process.env.AI_CACHE_TTL_MINUTES;
+  if (fromEnv) {
+    const n = Number(fromEnv);
+    if (Number.isFinite(n) && n > 0) return n * 60 * 1000;
+  }
+  return 60 * 60 * 1000;
+})();
 const MAX_CACHE_SIZE = 500;
 
 // Semantic similarity threshold: entries with Jaccard similarity ≥ this score are considered equivalent.
