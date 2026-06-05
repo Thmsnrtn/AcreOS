@@ -2933,6 +2933,28 @@ function startAnthropicWatchJob() {
 // external_watch_events row. Iris owns: 7d ack for high, 24h for critical
 // per docs/internal/npm-watch-discipline.md. Critical vulns auto-page
 // Solene's channel as severity=urgent.
+function startDailyAiCostGuardJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+  log(
+    'Registering daily AI cost guard (00:00 UTC) — sums last-24h spend, emails over $5',
+    'ai-cost-guard',
+  );
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 0 && now.getUTCMinutes() < 30) {
+      void withJobLock('daily_ai_cost_guard', TTL_SECONDS, async () => {
+        const { runDailyAiCostGuard } = await import(
+          '../services/dailyAiCostGuard'
+        );
+        await runDailyAiCostGuard();
+      }).catch((err) => {
+        log(`[ai-cost-guard] daily run failed: ${err}`, 'ai-cost-guard');
+      });
+    }
+  }, ONE_HOUR);
+}
+
 function startNpmWatchJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   const TTL_SECONDS = 30 * 60;
@@ -3266,6 +3288,15 @@ export async function runScheduledJobs(): Promise<void> {
   // Iris owns 7d ack (high) / 24h ack (critical) per
   // docs/internal/npm-watch-discipline.md.
   startNpmWatchJob();
+
+  // Daily AI cost guard (00:00–00:29 UTC). Sums all ai_telemetry_events
+  // for the prior 24h and emails the founder when the total crosses
+  // AI_COST_ALERT_USD_THRESHOLD (default $5). Always logs an
+  // `[ai-cost-summary]` line so spend is greppable in Fly logs. This
+  // closes the loop that let the 2026-06-05 $30/day burn go unnoticed
+  // for weeks — the platform ceiling caps spend in real time, this
+  // surfaces what was spent up to the cap.
+  startDailyAiCostGuardJob();
 
   // Layer 4 cap #18 — model-upgrade-path backfill (daily 03:30 UTC).
   // Belt-and-suspenders for the inline anthropic-watch hook; processes any

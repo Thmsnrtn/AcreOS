@@ -1226,6 +1226,23 @@ export async function routeAITask(
     complexity: task.complexity,
     success: true,
   });
+  // Structured per-call cost line — `[ai-cost]` is the canonical grep
+  // prefix for cost forensics in Fly logs. Tom can `fly logs | grep
+  // [ai-cost]` to see every paid call in real time. Surface tag lets him
+  // attribute spend by surface/provider/model at a glance.
+  logger.info("[ai-cost]", {
+    metadata: {
+      surface: "aiRouter",
+      taskType: task.taskType ?? "unknown",
+      provider,
+      model: finalModel,
+      orgId: config.orgId ?? null,
+      inputTokens: usage?.prompt_tokens || 0,
+      outputTokens: usage?.completion_tokens || 0,
+      costUsd: Number(costEstimate.toFixed(4)),
+      latencyMs,
+    },
+  });
 
   // Pillar 7 — cascade telemetry + financial_ledger debit. Fire-and-forget;
   // any failure logs inside ai-telemetry.ts but never breaks the caller.

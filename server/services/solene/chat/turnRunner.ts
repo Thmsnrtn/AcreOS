@@ -202,6 +202,34 @@ export async function* runTurn(
     },
   };
 
+  // ── 3.5 Constitutional pre-call check ─────────────────────────────────────
+  // L6.28 enforcement on the chat path. The dispatch path has called
+  // checkPromptAgainstConstitution at runDispatch entry since shipping;
+  // the chat path was missing the same guard (flagged by the 2026-06-05
+  // founder audit). Fail-open on transient errors (matches dispatch
+  // behaviour). Hard-block surfaces an error event to the UI.
+  try {
+    const { checkPromptAgainstConstitution } = await import(
+      "../preCallConstitutionalChecker"
+    );
+    const guard = await checkPromptAgainstConstitution({
+      agentRole: "solene",
+      promptText: userText,
+    });
+    if (!guard.allowed) {
+      yield {
+        type: "error",
+        data: {
+          message: `Refused by constitutional pre-call check: ${guard.reasoning}`,
+          immutableNumber: guard.immutableNumber,
+        },
+      };
+      return;
+    }
+  } catch {
+    // Fail-open — never block chat on transient checker errors.
+  }
+
   // ── 4. Platform-wide cost ceiling backstop ────────────────────────────────
   // Every Solene chat turn passes through the hard $X/day platform cap
   // (AI_PLATFORM_DAILY_CEILING_CENTS, default $5/day). Without this, founder
@@ -377,6 +405,21 @@ export async function* runTurn(
       cachedInputTokens: usage.cachedReadTokens,
     });
     cumulativeCostUsd += turnCost;
+    // Structured per-turn cost line — grep `[ai-cost]` in Fly logs.
+    logger.info("[ai-cost]", {
+      metadata: {
+        surface: "soleneChat",
+        tier: route.tier,
+        model: route.model,
+        conversationId: input.conversationId,
+        turnNumber,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedReadTokens: usage.cachedReadTokens,
+        costUsd: Number(turnCost.toFixed(4)),
+        cumulativeUsd: Number(cumulativeCostUsd.toFixed(4)),
+      },
+    });
 
     // Persist assistant message.
     try {
