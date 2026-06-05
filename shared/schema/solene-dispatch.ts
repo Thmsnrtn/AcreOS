@@ -76,6 +76,12 @@ export const soleneDispatchQueue = pgTable(
     reviewStatus: text("review_status"),
     reviewedByDispatchId: integer("reviewed_by_dispatch_id"),
     originalDispatchId: integer("original_dispatch_id"),
+    // 2026-06-05 cost audit (batch 5) — optional per-dispatch model override.
+    // When NULL, dispatchRunner.selectModelForDispatch() picks based on role +
+    // sourceType (strategic → Opus, everything else → Sonnet). When set,
+    // wins outright. Lets escalations, architecture reviews, and founder-mode
+    // bypasses pin Opus without changing the role-default heuristic.
+    model: text("model"),
   },
   (t) => [
     // Fast worker pull: status + priority + queued_at

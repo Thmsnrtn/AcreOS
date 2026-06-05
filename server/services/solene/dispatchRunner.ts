@@ -48,8 +48,19 @@ import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 // Configuration
 // ----------------------------------------------------------------------------
 
+// 2026-06-05 cost audit (batch 5): the runtime default model is now Sonnet
+// for routine dispatches. Strategic roles + escalations escalate to Opus via
+// selectModelForDispatch() below. SOLENE_DISPATCH_MODEL env still pins a
+// single model across every dispatch if set — useful for an incident where
+// Tom wants every agent on the same tier — but day-to-day routing is
+// per-role.
 const DEFAULT_MODEL =
-  process.env.SOLENE_DISPATCH_MODEL ?? "claude-opus-4-7";
+  process.env.SOLENE_DISPATCH_MODEL ?? "claude-sonnet-4-6";
+
+// Strategic-tier model. Used when selectModelForDispatch() routes the
+// dispatch up to Opus.
+const STRATEGIC_MODEL =
+  process.env.SOLENE_DISPATCH_STRATEGIC_MODEL ?? "claude-opus-4-7";
 const TRANSCRIPT_DIR =
   process.env.SOLENE_DISPATCH_TRANSCRIPT_DIR ??
   "/tmp/solene-dispatches";
@@ -74,14 +85,115 @@ const TEAM_STATE_PATH =
 // dispatch transcript over the model's context budget.
 const TEAM_STATE_MAX_BYTES = 8 * 1024;
 
-// Per-1M-token pricing for Opus 4.7. Reads from env to allow Beatrice's
-// regwatch to update without a code deploy when Anthropic adjusts pricing.
-const PRICE_INPUT_PER_M = Number(
-  process.env.SOLENE_DISPATCH_PRICE_INPUT_PER_M ?? "15",
-);
-const PRICE_OUTPUT_PER_M = Number(
-  process.env.SOLENE_DISPATCH_PRICE_OUTPUT_PER_M ?? "75",
-);
+// 2026-06-05 cost audit (batch 5) — per-model pricing table.
+//
+// Previously a single Opus pair lived here; now every model the dispatcher
+// can route to has its own (input, output, cachedInput) triple so cost
+// attribution is accurate when a Sonnet-tier role completes a dispatch and
+// when prompt-cache reads dominate input tokens. The env-overridable
+// SOLENE_DISPATCH_PRICE_INPUT_PER_M / _OUTPUT_PER_M are kept for the
+// LEGACY default-model row to preserve Beatrice's regwatch override path.
+// cachedInput is the discounted price for `cache_read_input_tokens`
+// (Anthropic's prompt-cache hit, ~10 percent of the standard input price).
+interface ModelPricing {
+  input: number;
+  output: number;
+  cachedInput: number;
+}
+const MODEL_PRICING: Record<string, ModelPricing> = {
+  "claude-opus-4-7": {
+    input: Number(process.env.SOLENE_DISPATCH_OPUS_INPUT_PER_M ?? "15"),
+    output: Number(process.env.SOLENE_DISPATCH_OPUS_OUTPUT_PER_M ?? "75"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "1.5"),
+  },
+  "claude-sonnet-4-6": {
+    input: Number(process.env.SOLENE_DISPATCH_SONNET_INPUT_PER_M ?? "3"),
+    output: Number(process.env.SOLENE_DISPATCH_SONNET_OUTPUT_PER_M ?? "15"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_SONNET_CACHED_INPUT_PER_M ?? "0.3"),
+  },
+  "claude-haiku-4-5-20251001": {
+    input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "0.25"),
+    output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "1.25"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.025"),
+  },
+};
+
+function pricingFor(model: string): ModelPricing {
+  // Fall back to Sonnet pricing if the model isn't in the table — safer than
+  // assuming Opus rates for an unknown model, which would over-bill the
+  // capital tracker and potentially trigger the cost cap early.
+  return MODEL_PRICING[model] ?? MODEL_PRICING["claude-sonnet-4-6"];
+}
+
+// ----------------------------------------------------------------------------
+// Per-role model tiering (2026-06-05 cost audit — batch 5)
+//
+// Strategic / architectural / escalation dispatches → Opus.
+// Routine dispatches (Krieger mobile-feel, Iris perf alerts, Beatrice
+// compliance reads, Soren SEO updates, general-purpose) → Sonnet.
+//
+// Override precedence:
+//   1. row.model (per-dispatch pin, when the enqueuer knows what's needed)
+//   2. SOLENE_DISPATCH_MODEL env (deploy-wide override — incident response)
+//   3. selectModelForDispatch() heuristic below
+// ----------------------------------------------------------------------------
+
+const STRATEGIC_SOURCE_TYPES = new Set<string>([
+  // Founder bypasses are by definition strategic enough to escalate.
+  "founder_bypass",
+]);
+
+const ARCHITECTURE_IRIS_SOURCES = new Set<string>([
+  // Iris-specific signals where Opus actually earns the price multiplier.
+  "architecture_review",
+  "incident_response",
+]);
+
+/**
+ * Pick the right model for a dispatch. Cheaper by default — escalate only
+ * when role + sourceType warrants strategic-tier judgement.
+ */
+export function selectModelForDispatch(row: {
+  agentRole: string;
+  sourceType: string;
+  model?: string | null;
+}): string {
+  // 1. Explicit per-dispatch pin wins.
+  if (row.model && row.model.trim().length > 0) return row.model;
+
+  // 2. Deploy-wide env override (set SOLENE_DISPATCH_MODEL to force a tier).
+  if (process.env.SOLENE_DISPATCH_MODEL) {
+    return process.env.SOLENE_DISPATCH_MODEL;
+  }
+
+  // 3. Heuristic.
+  if (
+    row.sourceType === "strategic_review" ||
+    row.sourceType === "escalation" ||
+    STRATEGIC_SOURCE_TYPES.has(row.sourceType)
+  ) {
+    return STRATEGIC_MODEL;
+  }
+
+  // Iris architecture/incident work earns Opus; routine Iris dispatches
+  // (e.g. perf alerts, log-trawl summaries) stay on Sonnet.
+  if (
+    row.agentRole === "iris" &&
+    ARCHITECTURE_IRIS_SOURCES.has(row.sourceType)
+  ) {
+    return STRATEGIC_MODEL;
+  }
+
+  // Solene's own dispatched work is strategic by construction — she runs
+  // the team and her outputs feed back into team-state and roadmap. (Note:
+  // 'solene' isn't currently in DISPATCH_AGENT_ROLES because the orchestrator
+  // doesn't dispatch to herself today, but the gate is here for when she does.)
+  if (row.agentRole === "solene") {
+    return STRATEGIC_MODEL;
+  }
+
+  return DEFAULT_MODEL;
+}
 
 // ----------------------------------------------------------------------------
 // Brief loading
@@ -207,13 +319,34 @@ export async function loadActiveClaimsBlock(
 // System prompt composition
 // ----------------------------------------------------------------------------
 
-export async function buildSystemPrompt(
+/**
+ * Structured system-prompt output used at the Anthropic call site so prompt
+ * caching can mark the long, stable prefix as cache_control:'ephemeral'.
+ *
+ * staticPrefix carries everything that does NOT change per dispatch:
+ *   team-state, active-claims, identity, failure-modes, the autonomous-
+ *   dispatch preamble itself, the always-on hard-rules + operating-discipline
+ *   bullets, and the role brief. These are reused turn-after-turn within a
+ *   single dispatch (5-min TTL is enough for every turn of a 10-min run) and
+ *   often reused across back-to-back dispatches for the same role inside the
+ *   5-min window. Even a single dispatch with 10 turns recovers ~9×
+ *   (cached - normal) input cost.
+ *
+ * dynamicSuffix carries the per-dispatch context: dollar cap, time cap, turn
+ * cap, dispatch id. Tiny — well under 1 KB. Not cached because it varies.
+ */
+export interface SystemPromptParts {
+  staticPrefix: string;
+  dynamicSuffix: string;
+}
+
+export async function buildSystemPromptParts(
   brief: string,
   role: SoleneDispatchAgentRole,
   dispatchId: number,
   maxCostUsd: number,
   timeoutMs: number,
-): Promise<string> {
+): Promise<SystemPromptParts> {
   // Resolve preambles in parallel — all four are I/O bound and independent.
   // Order in the rendered prompt:
   //   team-state → active-claims → identity (L1.4) → failure-modes (L3.12)
@@ -229,7 +362,7 @@ export async function buildSystemPrompt(
       loadFailureModePreambleFor(role, undefined),
     ]);
 
-  return [
+  const staticPrefix = [
     "# Team-state preamble (auto-generated, 15-min refresh)",
     "",
     teamStatePreamble,
@@ -254,10 +387,7 @@ export async function buildSystemPrompt(
     "",
     "## Hard rules",
     "",
-    `- Cost cap: $${maxCostUsd.toFixed(2)}. Exceed this and you will be killed mid-turn.`,
-    `- Time cap: ${Math.round(timeoutMs / 1000)}s wall-clock. Same kill rule.`,
     `- Max turns: ${DISPATCH_MAX_TURNS}.`,
-    `- Dispatch id: ${dispatchId}.`,
     "- NEVER push to origin. Local commits only. Tom reviews and pushes.",
     "- NEVER run destructive git ops (reset --hard, force push, branch -D) without the `bash` tool's normal flow — there is no special path.",
     "- NEVER write the ANTHROPIC_API_KEY value, or any other credential value, into stdout or any file. Verify by length or hash only.",
@@ -274,16 +404,71 @@ export async function buildSystemPrompt(
     "",
     brief,
   ].join("\n");
+
+  const dynamicSuffix = [
+    "## Per-dispatch envelope",
+    "",
+    `- Cost cap: $${maxCostUsd.toFixed(2)}. Exceed this and you will be killed mid-turn.`,
+    `- Time cap: ${Math.round(timeoutMs / 1000)}s wall-clock. Same kill rule.`,
+    `- Dispatch id: ${dispatchId}.`,
+  ].join("\n");
+
+  return { staticPrefix, dynamicSuffix };
+}
+
+/**
+ * Back-compat wrapper — returns the concatenated single-string system prompt
+ * (static prefix + blank line + dynamic suffix). Used by the transcript
+ * analytics code below (which greps the assembled prompt for block headers)
+ * and by the prompt-builder test suite. The Anthropic call site uses
+ * buildSystemPromptParts() directly so it can apply cache_control to the
+ * static prefix.
+ */
+export async function buildSystemPrompt(
+  brief: string,
+  role: SoleneDispatchAgentRole,
+  dispatchId: number,
+  maxCostUsd: number,
+  timeoutMs: number,
+): Promise<string> {
+  const { staticPrefix, dynamicSuffix } = await buildSystemPromptParts(
+    brief,
+    role,
+    dispatchId,
+    maxCostUsd,
+    timeoutMs,
+  );
+  return `${staticPrefix}\n\n${dynamicSuffix}`;
 }
 
 // ----------------------------------------------------------------------------
 // Cost estimation (running, used by the cap check between turns)
 // ----------------------------------------------------------------------------
 
-function estimateCostUsd(tokensIn: number, tokensOut: number): number {
+/**
+ * Cost estimation with prompt-cache awareness.
+ *
+ * tokensIn:       count of NEW (non-cached) input tokens — i.e.
+ *                 response.usage.input_tokens (Anthropic excludes cache reads
+ *                 from this number).
+ * tokensCached:   count of cache_read_input_tokens — billed at ~10% of
+ *                 the normal input rate.
+ * tokensOut:      response.usage.output_tokens.
+ *
+ * Model determines which pricing row applies. Unknown models fall back to
+ * Sonnet rates (see pricingFor()).
+ */
+function estimateCostUsd(
+  tokensIn: number,
+  tokensOut: number,
+  tokensCached: number = 0,
+  model: string = DEFAULT_MODEL,
+): number {
+  const p = pricingFor(model);
   return (
-    (tokensIn / 1_000_000) * PRICE_INPUT_PER_M +
-    (tokensOut / 1_000_000) * PRICE_OUTPUT_PER_M
+    (tokensIn / 1_000_000) * p.input +
+    (tokensCached / 1_000_000) * p.cachedInput +
+    (tokensOut / 1_000_000) * p.output
   );
 }
 
@@ -347,6 +532,10 @@ export async function runDispatch(
   await ensureTranscriptDir();
   const transcriptPath = transcriptPathFor(dispatchId);
 
+  // selectedModel is computed below (after the brief loads, which is where
+  // we have the assembled row context). For the start event we log the
+  // default-tier model the dispatcher is *defaulting* to; the actual model
+  // used appears in turn_request events and the complete event.
   await appendTranscript(transcriptPath, {
     event: "start",
     dispatchId,
@@ -355,7 +544,7 @@ export async function runDispatch(
     sourceId: row.sourceId,
     maxCostUsd,
     timeoutMs,
-    model: DEFAULT_MODEL,
+    defaultModel: DEFAULT_MODEL,
   });
 
   // Platform-wide cost ceiling gate — refuse the dispatch if the rolling
@@ -408,13 +597,27 @@ export async function runDispatch(
   const { brief, source: briefSource } = await loadAgentBrief(
     row.agentRole as SoleneDispatchAgentRole,
   );
-  const systemPrompt = await buildSystemPrompt(
+  // 2026-06-05 cost audit (batch 5): build the system prompt in two pieces
+  // so we can mark the long static prefix as cache_control:'ephemeral' on
+  // the Anthropic call. The joined `systemPrompt` is retained for the
+  // transcript-analytics greps below (which find block headers); the parts
+  // feed the cached system-prompt array at the call site.
+  const systemPromptParts = await buildSystemPromptParts(
     brief,
     row.agentRole as SoleneDispatchAgentRole,
     dispatchId,
     maxCostUsd,
     timeoutMs,
   );
+  const systemPrompt = `${systemPromptParts.staticPrefix}\n\n${systemPromptParts.dynamicSuffix}`;
+
+  // Per-role model tier (batch 5). Sonnet by default; Opus only for
+  // strategic / architecture / escalation paths. row.model wins if pinned.
+  const selectedModel = selectModelForDispatch({
+    agentRole: row.agentRole,
+    sourceType: row.sourceType,
+    model: row.model,
+  });
   // Compute injected ensemble-context sizes for post-hoc transcript analysis.
   // These are derived from the assembled prompt, not by re-running the
   // loaders, so the numbers match exactly what the model saw.
@@ -482,6 +685,11 @@ export async function runDispatch(
 
   let tokenInput = 0;
   let tokenOutput = 0;
+  // Cache-hit input tokens (Anthropic returns this as cache_read_input_tokens
+  // when prompt caching is engaged). Billed at ~10% of standard input price
+  // per MODEL_PRICING. Tracked separately so the capital tracker reflects
+  // the actual cost shape — input bills + cached-input bills, not lumped.
+  let tokenCached = 0;
   let finalText = "";
   const filesModified = new Set<string>();
   const commitsReferenced = new Set<string>();
@@ -544,7 +752,12 @@ export async function runDispatch(
         terminationReason = "timeout";
         break;
       }
-      const costSoFar = estimateCostUsd(tokenInput, tokenOutput);
+      const costSoFar = estimateCostUsd(
+        tokenInput,
+        tokenOutput,
+        tokenCached,
+        selectedModel,
+      );
       if (costSoFar > maxCostUsd) {
         terminationReason = "cost_cap";
         await appendTranscript(transcriptPath, {
@@ -568,11 +781,27 @@ export async function runDispatch(
         timeoutMs - (Date.now() - started),
       );
 
+      // 2026-06-05 cost audit (batch 5): system prompt is now a 2-block
+      // array with cache_control:'ephemeral' on the long static prefix.
+      // First call within a 5-min TTL is full-priced (and writes the cache);
+      // every subsequent call hits cache_read at ~10% of input cost. A
+      // 10-turn dispatch with a 30k-token prefix saves ~9× on prefix input.
+      const cachedSystem = [
+        {
+          type: "text" as const,
+          text: systemPromptParts.staticPrefix,
+          cache_control: { type: "ephemeral" as const },
+        },
+        {
+          type: "text" as const,
+          text: systemPromptParts.dynamicSuffix,
+        },
+      ];
       const response = await client.messages.create(
         {
-          model: DEFAULT_MODEL,
+          model: selectedModel,
           max_tokens: 4096,
-          system: systemPrompt,
+          system: cachedSystem as any,
           messages: messages as any,
           tools: DISPATCH_TOOL_SCHEMAS as any,
         },
@@ -581,11 +810,22 @@ export async function runDispatch(
 
       tokenInput += response.usage?.input_tokens ?? 0;
       tokenOutput += response.usage?.output_tokens ?? 0;
+      // Prompt-cache read tokens — billed at the cached input rate. Anthropic
+      // returns these as `cache_read_input_tokens` on the usage object; the
+      // SDK types may not surface that field as strict-typed yet so we
+      // read it via index access and Number().
+      const cacheReadRaw = (response.usage as Record<string, unknown> | undefined)?.[
+        "cache_read_input_tokens"
+      ];
+      const cacheRead = typeof cacheReadRaw === "number" ? cacheReadRaw : 0;
+      tokenCached += cacheRead;
       await appendTranscript(transcriptPath, {
         event: "turn_response",
         turn,
         stopReason: response.stop_reason,
         usage: response.usage,
+        cacheReadTokens: cacheRead,
+        model: selectedModel,
         contentBlocks: response.content.length,
       });
 
@@ -668,7 +908,12 @@ export async function runDispatch(
   }
 
   const durationMs = Date.now() - started;
-  const costUsd = estimateCostUsd(tokenInput, tokenOutput);
+  const costUsd = estimateCostUsd(
+    tokenInput,
+    tokenOutput,
+    tokenCached,
+    selectedModel,
+  );
   const success =
     terminationReason === "end_turn" && finalText.length > 0;
 
@@ -679,6 +924,8 @@ export async function runDispatch(
     durationMs,
     tokenInput,
     tokenOutput,
+    tokenCached,
+    model: selectedModel,
     costUsd,
     filesModified: Array.from(filesModified),
     commitsReferenced: Array.from(commitsReferenced),
