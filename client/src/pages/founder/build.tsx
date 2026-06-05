@@ -30,6 +30,7 @@ import {
   Sparkles,
   ArrowRight,
   Hammer,
+  DollarSign,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -117,6 +118,123 @@ function CountTile({
         <div className="text-2xl font-semibold tabular-nums text-foreground">
           {value}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── AI cost ceiling fuel-gauge tile ──────────────────────────────────────
+
+interface CeilingStatus {
+  windowHours: number;
+  usedUsd: number;
+  ceilingUsd: number;
+  remainingUsd: number;
+  usedPct: number;
+  alertThresholdUsd: number;
+  atCeiling: boolean;
+  aboveAlert: boolean;
+}
+
+function AiCostCeilingTile() {
+  const { data, isLoading } = useQuery<CeilingStatus>({
+    queryKey: ["/api/founder/ai-cost/ceiling-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/ai-cost/ceiling-status", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Failed to load ceiling status: ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  if (isLoading || !data) {
+    return (
+      <Card data-testid="build-ai-cost-tile">
+        <CardContent className="p-4">
+          <Skeleton className="h-4 w-1/3 mb-2" />
+          <Skeleton className="h-6 w-1/2 mb-3" />
+          <Skeleton className="h-2 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const barColorClass = data.atCeiling
+    ? "bg-destructive"
+    : data.aboveAlert
+      ? "bg-acr-warn"
+      : "bg-acr-success";
+  const statusLabel = data.atCeiling
+    ? "At ceiling"
+    : data.aboveAlert
+      ? "Above alert"
+      : "Within budget";
+
+  return (
+    <Card data-testid="build-ai-cost-tile">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <DollarSign
+              className="h-4 w-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              AI spend, last {data.windowHours}h
+            </span>
+          </div>
+          <Button asChild variant="ghost" size="sm">
+            <Link
+              href="/founder/ai-costs"
+              aria-label="Open AI cost dashboard"
+              data-testid="link-ai-cost-dashboard"
+            >
+              Details
+              <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+        <div className="flex items-baseline gap-2 mb-2">
+          <span
+            className="text-2xl font-semibold tabular-nums text-foreground"
+            data-testid="ai-cost-used-usd"
+          >
+            ${data.usedUsd.toFixed(2)}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            / ${data.ceilingUsd.toFixed(2)} cap
+          </span>
+          <span
+            className={cn(
+              "text-xs ml-auto font-medium",
+              data.atCeiling
+                ? "text-destructive"
+                : data.aboveAlert
+                  ? "text-acr-warn"
+                  : "text-acr-success",
+            )}
+          >
+            {statusLabel}
+          </span>
+        </div>
+        <div
+          className="h-2 w-full bg-muted rounded-full overflow-hidden"
+          aria-label="AI cost usage"
+        >
+          <div
+            className={cn("h-full transition-all", barColorClass)}
+            style={{ width: `${Math.min(100, data.usedPct).toFixed(1)}%` }}
+            data-testid="ai-cost-bar"
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {data.atCeiling
+            ? "AI is paused for the rolling 24h window. Cap clears as old calls roll off."
+            : `${data.usedPct.toFixed(0)}% of daily cap used. ${data.aboveAlert ? "Email alert was sent for this window." : "Threshold for email alert: $" + data.alertThresholdUsd.toFixed(2) + "."}`}
+        </p>
       </CardContent>
     </Card>
   );
@@ -248,6 +366,9 @@ export default function FounderBuildPage() {
             testId="build-count-audit-findings"
           />
         </div>
+
+        {/* ── AI cost ceiling status ──────────────────────────────────── */}
+        <AiCostCeilingTile />
 
         {/* ── In-flight dispatches ────────────────────────────────────── */}
         <Card

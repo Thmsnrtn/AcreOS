@@ -234,4 +234,68 @@ export function registerAiCostRoutes(app: Express): void {
       }
     },
   );
+
+  // ── GET /api/founder/ai-cost/ceiling-status ──────────────────────────────
+  // Real-time rolling-24h ceiling status — matches what
+  // assertWithinPlatformCostCeiling() actually enforces. The /ai-costs
+  // dashboard above shows calendar-day totals (good for trend), this
+  // shows "how close am I right now to the cap?". Surfaces in the
+  // founder Build page as a live $/$5 fuel gauge.
+  app.get(
+    "/api/founder/ai-cost/ceiling-status",
+    isAuthenticated,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        if (!req.isFounder) {
+          return Errors.forbidden(
+            res,
+            "Cost ceiling status is restricted to founders",
+          );
+        }
+        const since24h = new Date(Date.now() - 24 * 3600_000);
+        const [row] = await db
+          .select({
+            cents: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
+          })
+          .from(aiTelemetryEvents)
+          .where(gte(aiTelemetryEvents.createdAt, since24h));
+        const usedCents = Number(row?.cents ?? 0);
+        const ceilingCents = (() => {
+          const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
+          if (fromEnv) {
+            const n = Number(fromEnv);
+            if (Number.isFinite(n) && n > 0) return n;
+          }
+          return 500;
+        })();
+        const alertThresholdUsd = (() => {
+          const fromEnv = process.env.AI_COST_ALERT_USD_THRESHOLD;
+          if (fromEnv) {
+            const n = Number(fromEnv);
+            if (Number.isFinite(n) && n > 0) return n;
+          }
+          return 5;
+        })();
+        return res.json({
+          windowHours: 24,
+          usedUsd: usedCents / 100,
+          ceilingUsd: ceilingCents / 100,
+          remainingUsd: Math.max(0, (ceilingCents - usedCents) / 100),
+          usedPct:
+            ceilingCents > 0
+              ? Math.min(100, (usedCents / ceilingCents) * 100)
+              : 0,
+          alertThresholdUsd,
+          atCeiling: usedCents >= ceilingCents,
+          aboveAlert: usedCents >= alertThresholdUsd * 100,
+        });
+      } catch (err) {
+        logger.error(
+          "[founder/ai-cost/ceiling-status] failed",
+          err instanceof Error ? err : undefined,
+        );
+        return Errors.internal(res, err);
+      }
+    },
+  );
 }
