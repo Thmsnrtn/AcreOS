@@ -25,6 +25,15 @@ interface ConversationSidebarProps {
   activeId: number | null;
   onSelect: (id: number) => void;
   onNew: () => Promise<void>;
+  /**
+   * Visibility class applied to the root <aside>. The desktop call site
+   * passes `"hidden md:flex"` so the component disappears on mobile (where
+   * the Sheet drawer renders its own copy). The Sheet call site passes
+   * `"flex"` so the content renders inside the drawer — without this
+   * override the component's old hard-coded `hidden md:flex` made the
+   * Sheet drawer appear blank on mobile.
+   */
+  visibilityClassName?: string;
 }
 
 function relativeTime(iso: string): string {
@@ -44,6 +53,7 @@ export function ConversationSidebar({
   activeId,
   onSelect,
   onNew,
+  visibilityClassName = "hidden md:flex",
 }: ConversationSidebarProps) {
   const queryClient = useQueryClient();
   const [creating, setCreating] = React.useState(false);
@@ -95,7 +105,10 @@ export function ConversationSidebar({
 
   return (
     <aside
-      className="hidden md:flex flex-col w-64 lg:w-72 border-r border-border bg-muted/20 shrink-0"
+      className={cn(
+        visibilityClassName,
+        "flex-col w-64 lg:w-72 border-r border-border bg-muted/20 shrink-0",
+      )}
       aria-label="Conversations"
     >
       <div className="p-3 border-b border-border">

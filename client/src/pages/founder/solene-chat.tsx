@@ -238,6 +238,7 @@ export default function SoleneChatPage() {
                   setMobileSidebarOpen(false);
                 }}
                 onNew={handleNewConversation}
+                visibilityClassName="flex"
               />
             </SheetContent>
           </Sheet>
