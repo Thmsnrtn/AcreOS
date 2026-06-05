@@ -16,6 +16,7 @@ import { logger } from "../utils/logger";
 import { sanitizePrompt } from "../middleware/promptInjection";
 import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
+import { pickPaxModelForOrg } from "../services/paxModelTier";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -928,7 +929,7 @@ export async function processChat(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
+): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number; tierDowngraded?: boolean; paxTier?: string }> {
   const { agentRole = "executive", files, propertyId } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -1061,13 +1062,46 @@ export async function processChat(
   let provider: AIProvider;
   let model: string;
 
+  // Batch 7 — Pax tier gating. Resolve the org's tier-appropriate model
+  // BEFORE asking the router. The router's complexity-based default does not
+  // know about subscription tier, so without this a Free customer could hit
+  // Opus while a Scale customer could be silently downgraded to Haiku.
+  // `pickPaxModelForOrg` is fail-open (Haiku on any error), so a lookup hiccup
+  // can never block a chat.
+  const paxChoice = await pickPaxModelForOrg(org.id);
+  logger.info("[pax-tier]", {
+    metadata: {
+      orgId: org.id,
+      tier: paxChoice.tier,
+      model: paxChoice.model,
+      reason: paxChoice.reason,
+      isDowngraded: paxChoice.isDowngraded,
+      msgCountThisMonth: paxChoice.msgCountThisMonth,
+      surface: "processChat",
+    },
+  });
+
   try {
     const result = getChatProviderAndModel(complexity);
     client = result.client;
     provider = result.provider;
-    // Apply model override if specified; force vision-capable model for image inputs
+    // Resolution order:
+    //   1. Explicit modelOverride (founder dashboard, eval harness).
+    //   2. Vision: image inputs that aren't already on a vision-capable model
+    //      get bumped to gpt-4o so the image parts don't fall on the floor.
+    //   3. Pax tier choice (Free→Haiku / Pro→Sonnet / Scale→Opus, with the
+    //      monthly soft-cap downgrade applied).
+    //   4. Router default (legacy fallback if something above returns empty).
+    const visionFallback =
+      imageFiles.length > 0
+      && !result.model.includes('gpt-4o')
+      && !result.model.includes('claude')
+        ? 'openai/gpt-4o'
+        : null;
     model = options.modelOverride
-      || (imageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
+      || visionFallback
+      || paxChoice.model
+      || result.model;
   } catch (error: any) {
     logger.error('[AI Chat] Failed to get AI provider', error);
     throw new Error("AI service temporarily unavailable. Please try again.");
@@ -1246,7 +1280,12 @@ export async function processChat(
     provider,
     estimatedCost,
     promptTokens: usage?.prompt_tokens,
-    completionTokens: usage?.completion_tokens
+    completionTokens: usage?.completion_tokens,
+    // Batch 7 — surface the tier-gating decision so the founder dashboard
+    // can render "this customer was downgraded this month" without re-running
+    // the lookup.
+    tierDowngraded: paxChoice.isDowngraded,
+    paxTier: paxChoice.tier,
   };
 }
 
@@ -1385,12 +1424,35 @@ export async function* processChatStream(
   let provider: AIProvider;
   let model: string;
 
+  // Batch 7 — Pax tier gating (same logic as processChat, see comment there).
+  // Fail-open: any lookup error falls back to Haiku and the chat continues.
+  const paxChoice = await pickPaxModelForOrg(org.id);
+  logger.info("[pax-tier]", {
+    metadata: {
+      orgId: org.id,
+      tier: paxChoice.tier,
+      model: paxChoice.model,
+      reason: paxChoice.reason,
+      isDowngraded: paxChoice.isDowngraded,
+      msgCountThisMonth: paxChoice.msgCountThisMonth,
+      surface: "processChatStream",
+    },
+  });
+
   try {
     const result = getChatProviderAndModel(complexity);
     client = result.client;
     provider = result.provider;
+    const visionFallback =
+      streamImageFiles.length > 0
+      && !result.model.includes('gpt-4o')
+      && !result.model.includes('claude')
+        ? 'openai/gpt-4o'
+        : null;
     model = options.modelOverride
-      || (streamImageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
+      || visionFallback
+      || paxChoice.model
+      || result.model;
   } catch (error: any) {
     logger.error('[AI Stream] Failed to get AI provider', error);
     yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
