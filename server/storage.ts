@@ -6080,40 +6080,54 @@ Notary Public</p>
   }
 
   // Job Locks (prevent duplicate execution in multi-instance deployment)
+  //
+  // 2026-06-05 Iris reliability audit fix: the previous implementation read
+  // the existing row, branched on its expiresAt, then issued an UPDATE
+  // without a guard — two workers racing past expiration both saw the same
+  // expired row and both UPDATE'd, both returning true, both running the
+  // job. Could double-fire paid AI work. Rewritten as a single atomic
+  // UPSERT-with-conditional-WHERE: the UPDATE only succeeds for callers
+  // that either own the lock OR find it expired, and we trust the
+  // 0-vs-non-0 rowcount as the acquire signal.
   async acquireJobLock(jobName: string, instanceId: string, ttlSeconds: number): Promise<boolean> {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
-    
+
     try {
-      // Try to insert a new lock or update if expired
-      const [existing] = await db.select().from(jobLocks).where(eq(jobLocks.jobName, jobName));
-      
-      if (!existing) {
-        // No lock exists, create one
+      // Atomic conditional UPDATE: succeeds only if (lock expired OR we
+      // already own it). Returns 1 row on win, 0 rows otherwise. Drizzle
+      // exposes .returning() to detect that.
+      const updated = await db
+        .update(jobLocks)
+        .set({ lockedBy: instanceId, lockedAt: now, expiresAt })
+        .where(
+          and(
+            eq(jobLocks.jobName, jobName),
+            or(
+              lt(jobLocks.expiresAt, now),
+              eq(jobLocks.lockedBy, instanceId),
+            ),
+          ),
+        )
+        .returning({ id: jobLocks.id });
+      if (updated.length > 0) return true;
+
+      // No existing row matched. Try to insert a fresh row.
+      try {
         await db.insert(jobLocks).values({
           jobName,
           lockedBy: instanceId,
           expiresAt,
         });
         return true;
+      } catch (err: any) {
+        // 23505 = unique-constraint violation. Someone inserted between our
+        // UPDATE and INSERT — they own the lock now.
+        if (err?.code === "23505") return false;
+        throw err;
       }
-      
-      // Check if lock is expired or owned by us
-      if (existing.expiresAt < now || existing.lockedBy === instanceId) {
-        // Update the lock
-        await db.update(jobLocks)
-          .set({ lockedBy: instanceId, lockedAt: now, expiresAt })
-          .where(eq(jobLocks.jobName, jobName));
-        return true;
-      }
-      
-      // Lock is held by another instance and not expired
-      return false;
     } catch (error: any) {
-      // Handle unique constraint violation (race condition on insert)
-      if (error.code === '23505') {
-        return false;
-      }
+      if (error.code === "23505") return false;
       throw error;
     }
   }

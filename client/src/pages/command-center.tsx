@@ -2335,7 +2335,11 @@ export default function CommandCenterPage() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{isImageMode ? "Image generation mode" : ""}</span>
-                      <span data-testid="text-cost-ai-chat">$0.02 per message</span>
+                      {/* 2026-06-05 Krieger audit: removed leaked internal
+                          unit-cost ("$0.02 per message"). Customer-facing
+                          cost surface is the PaxDailyCapBadge "X/25 today"
+                          pattern; raw per-message price is internal
+                          telemetry only. */}
                     </div>
                   </div>
                 </div>

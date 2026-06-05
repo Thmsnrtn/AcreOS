@@ -303,7 +303,7 @@ function PropertyIntelligencePanel({
   const trendColor = intel.marketTrend === "up" ? "text-acr-pos" : intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground";
 
   return (
-    <div className="w-80 border-l bg-card overflow-y-auto flex-shrink-0 flex flex-col" style={{ maxHeight: "calc(100vh - 130px)" }}>
+    <div className="w-80 border-l bg-card overflow-y-auto flex-shrink-0 flex flex-col" style={{ maxHeight: "calc(100dvh - 130px - env(safe-area-inset-bottom, 0px))" }}>
       {/* Header */}
       <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-10">
         <div className="min-w-0 flex-1">
@@ -1222,8 +1222,14 @@ export default function MapsPage() {
           hasAnyProperties={properties.length > 0}
         />
 
-        {/* Map + side panel */}
-        <div className="flex" style={{ height: "calc(100vh - 125px)" }}>
+        {/* Map + side panel. 100dvh honors iOS Safari's dynamic toolbar so
+            the map doesn't slide under the 72px mobile bottom nav; also
+            subtract the safe-area inset so the bottom of the map clears
+            the home indicator. Surfaced by the 2026-06-05 Krieger audit. */}
+        <div
+          className="flex"
+          style={{ height: "calc(100dvh - 125px - env(safe-area-inset-bottom, 0px))" }}
+        >
           <div className="flex-1 relative min-w-0">
             {isLoading ? (
               <div className="h-full w-full p-3" aria-busy="true">

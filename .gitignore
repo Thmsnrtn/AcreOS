@@ -67,6 +67,12 @@ coverage/
 tests/e2e-intelligent/runs/_RESUME-HERE.md
 tests/e2e-intelligent/runs/**/_RESUME-HERE.md
 
+# Playwright run outputs — Krieger desktop-feel matrix produces hundreds
+# of attachments per pass. Persisted artifacts live in CI, not the repo.
+tests/e2e-desktop-feel/results/
+tests/e2e-mobile/results/
+test-results/
+
 # Dev founder bypass artifacts (REMOVE_BEFORE_LAUNCH — see Gap 1.1.G)
 # .env.local already gitignored above; .log already gitignored above.
 # Explicit entry for the local secret file:

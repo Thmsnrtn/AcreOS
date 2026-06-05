@@ -6,7 +6,13 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+// 2026-06-05 Krieger audit fix: stock shadcn default is 1,000,000 ms
+// (~16 minutes) — a non-dismissed error toast hangs around forever and
+// under intermittent network the toast pipeline stacks behind TOAST_LIMIT
+// = 1 and silently swallows subsequent toasts. 8 seconds is the calm
+// default; callers that need persistent action-required toasts (auth
+// recovery, etc.) can pass an explicit duration in the toast call.
+const TOAST_REMOVE_DELAY = 8000
 
 type ToasterToast = ToastProps & {
   id: string

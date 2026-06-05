@@ -219,6 +219,7 @@ import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerMorningPulseRoutes } from "./routes-morning-pulse";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
+import { registerFounderMoneyRoutes } from "./routes-founder-money";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2195,6 +2196,12 @@ export async function registerRoutes(
   // chat UI POSTed into a 404 for 24 hours — surfaced by the 2026-06-05
   // founder audit, this restores the route mount.
   registerSoleneChatRoutes(app);
+  // Founder Money page — summary / envelopes / events. Reads
+  // solene_capital_events (the AI cost ledger) + env-configurable infra
+  // knobs (FLY_INFRA_MONTHLY_USD, FOUNDER_CASH_ON_HAND_USD, etc) until
+  // Lena's Phase 1 capital surface lands. Without this, /founder/money
+  // silently 404'd into Phase 0 placeholders.
+  registerFounderMoneyRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
   // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:

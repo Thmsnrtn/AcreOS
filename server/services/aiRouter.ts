@@ -572,6 +572,14 @@ function getOpenRouterClient(): OpenAI | null {
     openrouterClient = new OpenAI({
       apiKey,
       baseURL,
+      // 30s per request + 1 retry. The SDK default is 10 minutes / 2 retries
+      // — under any provider stall that holds the Node socket for up to
+      // 30 minutes per request, exhausting the connection pool. Surfaced by
+      // the 2026-06-05 Iris reliability audit. The failover path in
+      // server/services/solene/chat/providerSelector.ts handles the rest of
+      // resilience; this bound is the per-call hard ceiling.
+      timeout: 30_000,
+      maxRetries: 1,
       defaultHeaders: {
         "HTTP-Referer": "https://acreos.fly.dev",
         "X-Title": "AcreOS",
@@ -589,7 +597,7 @@ function getOpenAIClient(): OpenAI | null {
     if (!apiKey) {
       return null;
     }
-    openaiClient = new OpenAI({ apiKey, baseURL });
+    openaiClient = new OpenAI({ apiKey, baseURL, timeout: 30_000, maxRetries: 1 });
   }
   return openaiClient;
 }
