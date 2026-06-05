@@ -218,6 +218,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerMorningPulseRoutes } from "./routes-morning-pulse";
+import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2188,6 +2189,12 @@ export async function registerRoutes(
   // snapshot + POST /refresh force re-compute. Backs the Today page's
   // live one-line; cron-fed by the 12:00 UTC + 30m continuous jobs.
   registerMorningPulseRoutes(app);
+  // Solene (Phase 2) — chat backend: SSE-streaming /api/founder/solene-chat/*
+  // turn runner over OpenRouter with smart routing + prompt cache + tool
+  // exec. Registration was missing from Wave 2 (shipped 2026-06-04) so the
+  // chat UI POSTed into a 404 for 24 hours — surfaced by the 2026-06-05
+  // founder audit, this restores the route mount.
+  registerSoleneChatRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
   // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:

@@ -51,6 +51,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "https://api.mapbox.com",
     "https://*.clerk.accounts.dev",
     "https://challenges.cloudflare.com",
+    // PostHog ships array.js + config from a CDN subdomain
+    // (us-assets.i.posthog.com) distinct from its event-ingest host
+    // (us.i.posthog.com). Wildcard covers EU + other regions for
+    // cross-region resilience. Without this entry the SDK fails CSP on
+    // every page load — analytics were silently dead pre-audit.
+    "https://*.i.posthog.com",
   ];
 
   if (isDev) {
@@ -77,7 +83,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     // F-D09: Sentry ingest endpoints must be in connect-src or every event
     // POST is refused and the dashboard sees nothing. Whitelist the wildcard
     // (Sentry assigns per-org subdomains like o4511…ingest.us.sentry.io).
-    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io wss: ws:",
+    // PostHog ingest + asset CDN: wildcard covers us/eu/asset subdomains.
+    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io https://*.i.posthog.com wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "object-src 'none'",

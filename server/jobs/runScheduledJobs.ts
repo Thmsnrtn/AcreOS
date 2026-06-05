@@ -2236,23 +2236,37 @@ function startSoleneMorningPulseJob() {
     'Registering Solene morning pulse (daily 12:00 UTC = 7am ET)',
     'solene-pulse',
   );
+  // Fire-window check: the previous `getUTCHours()===12 && getUTCMinutes()<5`
+  // guard depended on the interval landing inside the 12:00–12:04 UTC window
+  // — but trackInterval is anchored to boot time, so a machine that booted
+  // at 14:13 UTC fires every subsequent tick at :13 and never inside the
+  // window. Surfaced by the 2026-06-05 audit (only 3 morning_pulse rows
+  // existed; the 30-min tick was the only thing keeping the table alive).
+  //
+  // New rule: every hour, if it's at least 12:00 UTC AND no pulse has been
+  // persisted yet for today (UTC date), fire. withJobLock idempotently
+  // handles concurrent ticks.
   trackInterval(() => {
     const now = new Date();
-    if (now.getUTCHours() === 12 && now.getUTCMinutes() < 5) {
-      void withJobLock('solene_morning_pulse', 30 * 60, async () => {
-        const { composeMorningPulse, persistMorningPulse } = await import(
-          '../services/solene/continuousLoop'
-        );
-        const snap = await composeMorningPulse();
-        const persisted = await persistMorningPulse(snap);
-        log(
-          `[solene-pulse] generated id=${persisted.pulseId} oneLine="${snap.oneLine}"`,
-          'solene-pulse',
-        );
-      }).catch((err) =>
-        log(`[solene-pulse] failed: ${err}`, 'solene-pulse'),
+    if (now.getUTCHours() < 12) return;
+    void withJobLock('solene_morning_pulse', 30 * 60, async () => {
+      const { composeMorningPulse, persistMorningPulse, getLatestMorningPulse } =
+        await import('../services/solene/continuousLoop');
+      const latest = await getLatestMorningPulse();
+      if (latest) {
+        const latestDay = latest.generatedAt.toISOString().slice(0, 10);
+        const today = now.toISOString().slice(0, 10);
+        if (latestDay === today) return; // already wrote today's row
+      }
+      const snap = await composeMorningPulse();
+      const persisted = await persistMorningPulse(snap);
+      log(
+        `[solene-pulse] generated id=${persisted.pulseId} oneLine="${snap.oneLine}"`,
+        'solene-pulse',
       );
-    }
+    }).catch((err) =>
+      log(`[solene-pulse] failed: ${err}`, 'solene-pulse'),
+    );
   }, ONE_HOUR);
 }
 
@@ -2402,6 +2416,27 @@ function startAgentClaimsExpiryJob() {
 }
 
 function startSoleneTeamStateRegeneratorJob() {
+  // The regenerator script writes to ./docs/internal/ and depends on the
+  // git working tree being present. On Fly machines neither is true:
+  //   - /app has no .git (the Docker build copies source without the
+  //     repo history)
+  //   - /app/docs/internal/ doesn't exist and the runtime user can't
+  //     mkdir under /app
+  // Every interval failed with EACCES + "not a git repository" + emailed
+  // the founder. Surfaced by the 2026-06-05 audit — Tom's inbox had been
+  // getting an alert every 15 minutes since the regenerator was wired.
+  //
+  // Gate off in Fly (FLY_APP_NAME is automatically set on every machine).
+  // The job is meaningful only in environments where the local repo +
+  // writable docs/ tree exist (developer machine, CI before commit).
+  if (process.env.FLY_APP_NAME) {
+    log(
+      'Skipping Solene team-state regenerator (Fly environment — script requires local git + writable docs/)',
+      'solene-team-state',
+    );
+    return;
+  }
+
   const FIFTEEN_MINUTES = 15 * 60 * 1000;
   const TTL_SECONDS = 14 * 60; // slightly less than interval
   log(
