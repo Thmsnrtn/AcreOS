@@ -63,8 +63,14 @@ export const CHAT_PRICING_PER_M_TOKENS: Record<
 /** Max turns within a single runTurn invocation before hard-stop. */
 export const CHAT_DEFAULT_MAX_TURNS = 20;
 
-/** Hard cost cap (USD) per runTurn invocation. */
-export const CHAT_DEFAULT_COST_CAP_USD = 5;
+/**
+ * Hard cost cap (USD) per runTurn invocation. Lowered from $5 → $1 by
+ * the 2026-06-05 cost audit — at $5 a single chat conversation could
+ * have driven the $30/day burn Tom saw. $1 still covers a 20-turn
+ * Sonnet conversation with cache hits comfortably; an Opus turn that
+ * doesn't fit is the audit signal worth seeing.
+ */
+export const CHAT_DEFAULT_COST_CAP_USD = 1;
 
 /** Wall-clock timeout (ms) per runTurn invocation. */
 export const CHAT_DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;

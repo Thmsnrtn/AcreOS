@@ -922,6 +922,25 @@ export async function routeAITask(
     }
   }
 
+  // ── Platform-wide AI cost ceiling (the outer envelope) ─────────────────────
+  // Sums all `ai_telemetry_events.estimated_cost_cents` in the last 24h and
+  // throws AiCostCeilingExceededError if past AI_PLATFORM_DAILY_CEILING_CENTS
+  // (default $5/day). This is the hard backstop that prevents the runaway
+  // $30/day scenario regardless of which surface initiated the call, and
+  // ALWAYS runs (no skipBudget bypass). Per-org ceiling also enforced when
+  // orgId is set.
+  if (!config.skipQuota) {
+    try {
+      const { assertWithinAiCostCeiling } = await import("./aiCostCeiling");
+      await assertWithinAiCostCeiling(config.orgId ?? null);
+    } catch (err) {
+      if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") throw err;
+      logger.warn("[AIRouter] cost ceiling check failed — allowing call", {
+        metadata: { detail: err instanceof Error ? err.message : err },
+      });
+    }
+  }
+
   // ── Frugal Autonomy: platform-wide per-category daily budget gate ───────────
   // Sits in front of the cache check so even cache misses get blocked when
   // the day's spend has exhausted the category. Fail-open on DB hiccups —

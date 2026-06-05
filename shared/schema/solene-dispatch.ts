@@ -194,7 +194,15 @@ export type SoleneDispatchReviewStatus =
 // Above this requires a founder override (which today is "set the row
 // directly with a higher cap"; surface a founder UI in a follow-up).
 // ============================================
-export const DISPATCH_MAX_COST_USD = 100;
-export const DISPATCH_DEFAULT_COST_USD = 25;
+// Lowered by the 2026-06-05 cost audit. Old caps allowed a single
+// dispatch to spend up to $25 (default) or $100 (founder override), and
+// the cap check is "soft" — a turn already in flight that crosses the
+// cap is allowed to complete. With prompt cache not yet wired into the
+// dispatch path, a 50-turn Opus dispatch could realistically burn the
+// whole cap on input tokens alone. New floor: $5 default, $25 max
+// override. Combined with AI_PLATFORM_DAILY_CEILING_CENTS the worst
+// case is bounded.
+export const DISPATCH_MAX_COST_USD = 25;
+export const DISPATCH_DEFAULT_COST_USD = 5;
 export const DISPATCH_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export const DISPATCH_MAX_TURNS = 50;

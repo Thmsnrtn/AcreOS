@@ -328,7 +328,8 @@ export interface RunDispatchResult {
     | "cost_cap"
     | "timeout"
     | "error"
-    | "missing_api_key";
+    | "missing_api_key"
+    | "platform_cost_ceiling";
 }
 
 /**
@@ -356,6 +357,35 @@ export async function runDispatch(
     timeoutMs,
     model: DEFAULT_MODEL,
   });
+
+  // Platform-wide cost ceiling gate — refuse the dispatch if the rolling
+  // 24h spend is already at-or-over AI_PLATFORM_DAILY_CEILING_CENTS
+  // (default $5/day). Same backstop as the chat path; without it a single
+  // dispatch can spend $25 (the per-dispatch cap) regardless of total
+  // daily burn. Fail-open on transient DB errors.
+  try {
+    const { assertWithinAiCostCeiling } = await import("../aiCostCeiling");
+    await assertWithinAiCostCeiling(null);
+  } catch (err) {
+    if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") {
+      const msg = "platform AI cost ceiling reached; refusing dispatch";
+      logger.warn(`[dispatchRunner] ${msg}`, { metadata: { dispatchId } });
+      await appendTranscript(transcriptPath, { event: "rejected", reason: msg });
+      return {
+        dispatchId,
+        success: false,
+        costUsd: 0,
+        tokenInput: 0,
+        tokenOutput: 0,
+        durationMs: Date.now() - started,
+        finalText: msg,
+        filesModified: [],
+        commitsReferenced: [],
+        transcriptPath,
+        terminationReason: "platform_cost_ceiling",
+      };
+    }
+  }
 
   // Credential check — never logs the value.
   const apiKey = process.env.ANTHROPIC_API_KEY;

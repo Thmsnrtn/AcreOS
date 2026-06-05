@@ -75,6 +75,15 @@ async function processLeadNurturing() {
 }
 
 function startLeadNurturingJob() {
+  // 2026-06-05 cost-audit kill-switch. At zero paying orgs the loop is
+  // ~$0/day, but the moment customers exist it can fan-out to
+  // ~$50/day at 100 orgs × 15min × $0.005/call. Set
+  // LEAD_NURTURING_AI_DISABLED=1 to skip registration entirely.
+  if (process.env.LEAD_NURTURING_AI_DISABLED === "1") {
+    log("Skipping lead nurturing job (LEAD_NURTURING_AI_DISABLED=1)", "nurturing");
+    return;
+  }
+
   const FIFTEEN_MINUTES = 15 * 60 * 1000;
   const TTL_SECONDS = 14 * 60; // Lock TTL slightly less than interval
 
@@ -128,6 +137,14 @@ async function processCampaignOptimizations() {
 }
 
 function startCampaignOptimizationJob() {
+  // 2026-06-05 cost-audit kill-switch. Worst-case fan-out: 100 orgs × 24
+  // ticks/day × 3 campaigns × $0.01/call = $72/day. Set
+  // CAMPAIGN_OPTIMIZER_AI_DISABLED=1 to skip registration entirely.
+  if (process.env.CAMPAIGN_OPTIMIZER_AI_DISABLED === "1") {
+    log("Skipping campaign optimization job (CAMPAIGN_OPTIMIZER_AI_DISABLED=1)", "optimizer");
+    return;
+  }
+
   const ONE_HOUR = 60 * 60 * 1000;
   const TTL_SECONDS = 55 * 60; // Lock TTL slightly less than interval
 
@@ -843,6 +860,19 @@ function startFounderWeeklyDigestJob() {
 // Eliminates the need for the founder to ever manually review the inbox.
 // ============================================================================
 function startAutonomousDecisionExecutorJob() {
+  // 2026-06-05 cost-audit kill-switch. This job was identified as the
+  // single most-likely $30/day burn source: 30-min cadence × no per-tick
+  // decision cap × Haiku→Sonnet→Opus tier cascade. A full inbox at any
+  // point during the day cascades to Opus per item. Set
+  // AUTONOMOUS_DECISION_EXECUTOR_DISABLED=1 to skip registration.
+  if (process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1") {
+    log(
+      "Skipping autonomous decision executor (AUTONOMOUS_DECISION_EXECUTOR_DISABLED=1)",
+      "decision-executor",
+    );
+    return;
+  }
+
   const THIRTY_MINUTES = 30 * 60 * 1000;
   const TTL_SECONDS = 25 * 60;
 

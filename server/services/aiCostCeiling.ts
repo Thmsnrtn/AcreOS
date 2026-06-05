@@ -25,6 +25,20 @@ import { logger } from "../utils/logger";
 const PLATFORM_DEFAULT_DAILY_CEILING_CENTS = 5000;
 const PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS = 100_000;
 
+// Platform-wide cap across ALL orgs + platform-internal calls. This is the
+// outer envelope: the per-org ceilings prevent one customer from hogging
+// spend; this prevents the whole platform from quietly billing $30/day at
+// $0 MRR. Settable via env so Tom can ratchet it without a deploy.
+// Default $5/day = 500 cents.
+function getPlatformDailyCeilingCents(): number {
+  const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
+  if (fromEnv) {
+    const n = Number(fromEnv);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 500;
+}
+
 export class AiCostCeilingExceededError extends Error {
   readonly code = "AI_COST_CEILING_EXCEEDED" as const;
   constructor(
@@ -79,6 +93,47 @@ async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number
   return Number(row?.sum ?? 0);
 }
 
+async function sumPlatformCostCentsSince(sinceMs: number): Promise<number> {
+  const since = new Date(Date.now() - sinceMs);
+  const [row] = await db
+    .select({
+      sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
+    })
+    .from(aiTelemetryEvents)
+    .where(gte(aiTelemetryEvents.createdAt, since));
+  return Number(row?.sum ?? 0);
+}
+
+/**
+ * Platform-wide daily ceiling check. Throws AiCostCeilingExceededError
+ * (with orgId=0 sentinel) if the sum of all telemetry across all orgs +
+ * platform-internal calls in the last 24h is at-or-over
+ * AI_PLATFORM_DAILY_CEILING_CENTS. Call this for every paid AI call,
+ * regardless of whether an orgId is available.
+ *
+ * Bypass: `AI_COST_CEILING_BYPASS=1`.
+ */
+export async function assertWithinPlatformCostCeiling(): Promise<void> {
+  if (process.env.AI_COST_CEILING_BYPASS === "1") return;
+
+  const ceilingCents = getPlatformDailyCeilingCents();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  try {
+    const dailyCents = await sumPlatformCostCentsSince(dayMs);
+    if (dailyCents >= ceilingCents) {
+      throw new AiCostCeilingExceededError(0, "daily", dailyCents, ceilingCents);
+    }
+  } catch (err) {
+    if (err instanceof AiCostCeilingExceededError) throw err;
+    // Telemetry read failure is fail-open; log + proceed.
+    logger.warn(
+      "[aiCostCeiling] platform ceiling check failed; falling open",
+      err instanceof Error ? err : undefined,
+    );
+  }
+}
+
 /**
  * Throw if the requesting org has exceeded its daily or monthly AI
  * cost ceiling. Call this BEFORE incurring a paid AI call.
@@ -88,6 +143,11 @@ async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number
  *   - process.env.AI_COST_CEILING_BYPASS === "1" (dev-loop only)
  */
 export async function assertWithinAiCostCeiling(orgId: number | null): Promise<void> {
+  // Platform-wide check ALWAYS runs (including for orgId === null platform
+  // calls). This is the outer envelope that prevents the runaway $30/day
+  // scenario regardless of which surface initiated the call.
+  await assertWithinPlatformCostCeiling();
+
   if (orgId == null) return;
   if (process.env.AI_COST_CEILING_BYPASS === "1") return;
 

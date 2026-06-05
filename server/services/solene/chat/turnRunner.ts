@@ -202,7 +202,30 @@ export async function* runTurn(
     },
   };
 
-  // ── 4. Build system prompt context (cached prefix + dynamic suffix) ───────
+  // ── 4. Platform-wide cost ceiling backstop ────────────────────────────────
+  // Every Solene chat turn passes through the hard $X/day platform cap
+  // (AI_PLATFORM_DAILY_CEILING_CENTS, default $5/day). Without this, founder
+  // chat could quietly blow past the daily budget — Tom's $30/day surprise
+  // surfaced in the 2026-06-05 audit. Founder org id is unknown at this
+  // layer, so we use the platform-only ceiling path (orgId=null).
+  try {
+    const { assertWithinAiCostCeiling } = await import("../../aiCostCeiling");
+    await assertWithinAiCostCeiling(null);
+  } catch (err) {
+    if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") {
+      yield {
+        type: "error",
+        data: {
+          message:
+            "AI is paused for today — the platform daily cost ceiling has been reached. Adjust AI_PLATFORM_DAILY_CEILING_CENTS or wait for the rolling 24h window to clear.",
+        },
+      };
+      return;
+    }
+    // Telemetry-read or other transient failure — fall open and log.
+  }
+
+  // ── 5. Build system prompt context (cached prefix + dynamic suffix) ───────
   const context = await buildChatContext({
     userMessage: userText,
     conversationId: input.conversationId,
