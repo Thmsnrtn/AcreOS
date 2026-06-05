@@ -62,6 +62,12 @@ const PRICE_INPUT_PER_M = Number(
 const PRICE_OUTPUT_PER_M = Number(
   process.env.SOLENE_PRECALL_PRICE_OUTPUT_PER_M ?? "1.25",
 );
+// Cached-input price for Anthropic prompt-cache reads on the precall
+// checker's stable system prefix (the 12 immutables + checker brief). Same
+// ~10% of input ratio Anthropic publishes for Haiku.
+const PRICE_CACHED_INPUT_PER_M = Number(
+  process.env.SOLENE_PRECALL_PRICE_CACHED_INPUT_PER_M ?? "0.025",
+);
 
 // Generous round-trip timeout for the Haiku call. The worst case (timeout +
 // fail-open) still beats the 60s+ cost of an Opus turn that would otherwise
@@ -142,6 +148,15 @@ function severityFor(num: number): ConstitutionalSeverity {
 // Prompt construction
 // ============================================================================
 
+/**
+ * The precall checker's system prompt is 100% stable across every call —
+ * the 12 immutables + the checker brief + the output-format spec never
+ * change. We mark the whole thing as the cache_control:'ephemeral' static
+ * prefix; there's no per-call dynamic suffix (the per-prompt context goes
+ * in the user message, not system). The cached read price is ~10% of the
+ * input price, so after the first call within a 5-min TTL, every subsequent
+ * precall check pays ~10% of what it used to.
+ */
 function buildSystemPrompt(): string {
   const immutablesBlock = TWELVE_IMMUTABLES_VERBATIM
     .map((i) => `${i.number}. ${i.text}`)
@@ -179,9 +194,14 @@ function buildUserMessage(agentRole: string, promptText: string): string {
 // Cost + parsing helpers
 // ============================================================================
 
-function estimateCostUsd(tokensIn: number, tokensOut: number): number {
+function estimateCostUsd(
+  tokensIn: number,
+  tokensOut: number,
+  tokensCached: number = 0,
+): number {
   return (
     (tokensIn / 1_000_000) * PRICE_INPUT_PER_M +
+    (tokensCached / 1_000_000) * PRICE_CACHED_INPUT_PER_M +
     (tokensOut / 1_000_000) * PRICE_OUTPUT_PER_M
   );
 }
@@ -454,17 +474,31 @@ export async function checkPromptAgainstConstitution(
   let parsed: ParsedCheckerOutput | null = null;
   let tokensIn = 0;
   let tokensOut = 0;
+  let tokensCached = 0;
   let modelOutputText = "";
   let callError: Error | null = null;
 
   try {
     const client = await getClient(apiKey);
+    // 2026-06-05 cost audit (batch 5): the precall system prompt is 100%
+    // stable across every call (the 12 immutables + checker brief). Mark
+    // it as cache_control:'ephemeral' so each call after the first within
+    // the 5-min TTL pays the cached-input price (~10% of input). Cheap
+    // per call, but every dispatch pays this — saves real money in
+    // aggregate over a busy day.
+    const cachedSystem = [
+      {
+        type: "text" as const,
+        text: buildSystemPrompt(),
+        cache_control: { type: "ephemeral" as const },
+      },
+    ];
     const response = await client.messages.create(
       {
         model: PRECALL_MODEL,
         max_tokens: 256,
         temperature: 0,
-        system: buildSystemPrompt(),
+        system: cachedSystem as any,
         messages: [
           {
             role: "user",
@@ -477,6 +511,10 @@ export async function checkPromptAgainstConstitution(
 
     tokensIn = response?.usage?.input_tokens ?? 0;
     tokensOut = response?.usage?.output_tokens ?? 0;
+    const cacheReadRaw = (response?.usage as Record<string, unknown> | undefined)?.[
+      "cache_read_input_tokens"
+    ];
+    tokensCached = typeof cacheReadRaw === "number" ? cacheReadRaw : 0;
 
     const content = Array.isArray(response?.content) ? response.content : [];
     for (const block of content) {
@@ -494,7 +532,7 @@ export async function checkPromptAgainstConstitution(
   }
 
   const latencyMs = Date.now() - startedAt;
-  const costUsd = estimateCostUsd(tokensIn, tokensOut);
+  const costUsd = estimateCostUsd(tokensIn, tokensOut, tokensCached);
 
   // Failure paths → fail-open.
   if (callError !== null || parsed === null) {

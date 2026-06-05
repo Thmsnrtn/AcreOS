@@ -75,8 +75,17 @@ export const CHAT_DEFAULT_COST_CAP_USD = 1;
 /** Wall-clock timeout (ms) per runTurn invocation. */
 export const CHAT_DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** Default budget for the system-prompt context (tokens). */
-export const CHAT_CONTEXT_TOKEN_BUDGET = 30_000;
+/**
+ * Default budget for the system-prompt context (tokens).
+ *
+ * 2026-06-05 cost audit: lowered from 30k → 18k. Trades richer always-loaded
+ * context for faster cold-cache turns + cheaper cache-miss cost. Retrieval
+ * can pull the remaining context lazily when the model actually needs it,
+ * rather than pre-loading 12k tokens every turn "just in case." A cold-cache
+ * Sonnet turn at 30k input was $0.09; at 18k it's $0.054 — a 40 percent
+ * drop on every fresh conversation.
+ */
+export const CHAT_CONTEXT_TOKEN_BUDGET = 18_000;
 
 /** How many prior messages to load per turn when reconstructing history. */
 export const CHAT_HISTORY_MESSAGE_LIMIT = 20;

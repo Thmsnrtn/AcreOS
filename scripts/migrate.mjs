@@ -5005,6 +5005,9 @@ const STATEMENTS = [
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "original_dispatch_id" integer`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_original_idx" ON "solene_dispatch_queue" ("original_dispatch_id")`,
   `CREATE INDEX IF NOT EXISTS "solene_dispatch_queue_review_status_idx" ON "solene_dispatch_queue" ("review_status", "completed_at")`,
+  // 2026-06-05 cost audit (batch 5) — optional per-dispatch model override.
+  // NULL means "pick by role + sourceType" (dispatchRunner.selectModelForDispatch).
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "model" text`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
