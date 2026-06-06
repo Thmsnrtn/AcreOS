@@ -39,7 +39,15 @@ export type CreditAction =
   | "letter_presort"
   | "letter_lob"
   | "skip_trace"
-  | "ai_turn_avg";
+  | "ai_turn_avg"
+  // ── Paid data-lookup actions (Lena: close the margin leak) ──
+  // Each fires only when a PAID provider serves a non-cached result. Free
+  // providers and cache hits debit 0 (no weight drawn). Weights track the
+  // 90th-percentile provider cost-to-us per lookup (Regrid 3–8¢, ATTOM 5–20¢).
+  | "parcel_lookup_paid"
+  | "comps_lookup"
+  | "owner_lookup"
+  | "valuation_lookup";
 
 /**
  * Cent-cost weight per metered action. 1 credit = ~$0.01 to AcreOS.
@@ -56,7 +64,46 @@ export const CREDIT_WEIGHTS: Record<CreditAction, number> = {
   letter_lob: 120,
   skip_trace: 30,
   ai_turn_avg: 1.5,
+  // Paid data lookups — p90 provider cost-to-us per category. These are the
+  // FALLBACK weights; the registry passes the real costCents at deduction
+  // time via poolDebit, but these define the credit-pool sizing math and the
+  // founder-recalibration anchor for each action.
+  parcel_lookup_paid: 8, // Regrid parcel up to 8¢
+  comps_lookup: 20, // ATTOM comps up to 20¢
+  owner_lookup: 8, // Regrid/ATTOM owner up to 8¢
+  valuation_lookup: 10, // ATTOM AVM up to 10¢
 };
+
+/**
+ * Map a data-lookup category to its paid-lookup CreditAction, or null when
+ * the category has no paid-lookup weight (e.g. environmental/demographics are
+ * federal/free and never billed). Used by the provider registry to pick the
+ * right action when debiting a paid, non-cached provider success.
+ *
+ * NOTE: imported by `server/services/providers/provider-registry.ts`. Kept as
+ * a pure synchronous map so it's safe to import from either side.
+ */
+export function creditActionForCategory(
+  category: string,
+): CreditAction | null {
+  switch (category) {
+    case "parcel_data":
+    case "property_details":
+    case "structure":
+      return "parcel_lookup_paid";
+    case "comps":
+      return "comps_lookup";
+    case "owner_info":
+      return "owner_lookup";
+    case "valuation":
+      return "valuation_lookup";
+    case "skip_trace":
+      return "skip_trace";
+    default:
+      // environmental / demographics → free federal data, never billed.
+      return null;
+  }
+}
 
 /**
  * Effective credit cost for an action. Reads from `founder_settings`

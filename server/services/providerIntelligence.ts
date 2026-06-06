@@ -33,6 +33,10 @@ export interface LookupRecord {
   costCents?: number;
   errorCode?: string;
   organizationId?: number;
+  /** 2-letter state of the looked-up parcel, for free-miss-by-county rollup. */
+  state?: string;
+  /** County name of the looked-up parcel, for free-miss-by-county rollup. */
+  county?: string;
 }
 
 /**
@@ -52,12 +56,74 @@ export async function recordLookup(record: LookupRecord): Promise<void> {
       costCents: record.costCents ?? 0,
       errorCode: record.errorCode ?? null,
       organizationId: record.organizationId ?? null,
+      state: record.state ?? null,
+      county: record.county ?? null,
     });
   } catch (err: any) {
     logger.warn("[providerIntelligence] record failed (non-blocking)", {
       metadata: { error: err?.message, provider: record.providerName },
     });
   }
+}
+
+/**
+ * Free-miss-by-county telemetry (Iris/Lena: make the eventual paid-data buy
+ * data-driven). Records a synthetic lookup-log row marking that the FREE
+ * provider stack returned nothing for this county + category. The
+ * `freeMissesByCounty` rollup counts these so we can say "Regrid would have
+ * filled 38% of misses in the 12 counties our customers worked last month"
+ * before spending a dollar.
+ */
+export async function recordFreeMiss(args: {
+  category: string;
+  state?: string;
+  county?: string;
+  organizationId?: number;
+}): Promise<void> {
+  try {
+    await db.insert(providerLookupLog).values({
+      providerName: "free-stack",
+      category: args.category,
+      inputType: "free_miss",
+      success: false,
+      cached: false,
+      latencyMs: null,
+      costCents: 0,
+      errorCode: "free_miss",
+      organizationId: args.organizationId ?? null,
+      state: args.state ?? null,
+      county: args.county ?? null,
+    });
+  } catch (err: any) {
+    logger.warn("[providerIntelligence] free-miss record failed (non-blocking)", {
+      metadata: { error: err?.message, category: args.category },
+    });
+  }
+}
+
+/**
+ * Roll up free misses by (state, county, category) over a window. Drives the
+ * paid-data procurement decision: where are the free misses concentrated, and
+ * would a paid provider (Regrid) fill them?
+ */
+export async function freeMissesByCounty(windowDays: number = 30): Promise<
+  Array<{ state: string | null; county: string | null; category: string; misses: number }>
+> {
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const rows = await db.execute(sql`
+    SELECT state, county, category, count(*)::int AS misses
+    FROM provider_lookup_log
+    WHERE error_code = 'free_miss'
+      AND created_at >= ${since}
+    GROUP BY state, county, category
+    ORDER BY misses DESC
+  `);
+  return (rows.rows as any[]).map((r) => ({
+    state: r.state ?? null,
+    county: r.county ?? null,
+    category: r.category,
+    misses: Number(r.misses),
+  }));
 }
 
 /**

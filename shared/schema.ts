@@ -5984,7 +5984,20 @@ export const countyGisEndpoints = pgTable("county_gis_endpoints", {
   sourceUrl: text("source_url"), // URL to the county's GIS website
   notes: text("notes"),
   contributedBy: text("contributed_by"), // Who added this endpoint
-  
+
+  // ── Data licensing (Beatrice, migration 0120) ──
+  // County portal terms vary by jurisdiction. Every row ships
+  // redistributable='review-required' until a human reads the specific
+  // county's terms-of-use and flips it. The registry refuses to
+  // bulk-cache/redistribute anything not 'yes'/'attribution' — un-reviewed
+  // counties are live-passthrough only.
+  license: text("license").default("county-tos"), // public-domain-usgov | cc0 | cc-by | odbl | county-tos | proprietary
+  attribution: text("attribution"), // required attribution string, if any
+  termsUrl: text("terms_url"), // URL to the county's terms-of-use page
+  redistributable: text("redistributable").notNull().default("review-required"), // yes | attribution | no | review-required
+  reviewedAt: timestamp("reviewed_at"), // when a human reviewed the terms
+  reviewedBy: text("reviewed_by"), // who reviewed the terms
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -11882,11 +11895,16 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
   costCents: integer("cost_cents").default(0),
   errorCode: text("error_code"),
   organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  // Free-miss-by-county telemetry (migration 0120) — lets the paid-data buy
+  // decision be data-driven: where are free misses concentrated?
+  state: text("state"),
+  county: text("county"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
   index("provider_lookup_category_idx").on(table.category, table.createdAt),
   index("provider_lookup_created_idx").on(table.createdAt),
+  index("provider_lookup_county_idx").on(table.state, table.county, table.category),
 ]);
 
 export type ProviderLookupLog = typeof providerLookupLog.$inferSelect;

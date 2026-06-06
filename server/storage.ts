@@ -6163,6 +6163,9 @@ Notary Public</p>
 
   async bulkCreateCountyGisEndpoints(endpoints: Array<{ state: string; county: string; baseUrl: string; endpointType: string; fipsCode?: string | null; confidenceScore?: number }>): Promise<{ added: number; skipped: number }> {
     const { countyGisEndpoints } = await import('@shared/schema');
+    // SSRF guard (Beatrice item 5): these baseUrls are auto-contributed by the
+    // discovery scan and fetched server-side. Skip private/loopback/non-https.
+    const { checkOperatorUrl } = await import('./services/providers/ssrf-guard');
     let added = 0;
     let skipped = 0;
 
@@ -6172,6 +6175,11 @@ Notary Public</p>
     for (const ep of endpoints) {
       const key = `${ep.state.toUpperCase()}|${ep.county.toLowerCase()}|${ep.baseUrl.toLowerCase()}`;
       if (existingSet.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      if (!checkOperatorUrl(ep.baseUrl).ok) {
         skipped++;
         continue;
       }

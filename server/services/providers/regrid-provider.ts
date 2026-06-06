@@ -61,6 +61,14 @@ export const regridProvider: DataProvider = {
   categories: SUPPORTED_CATEGORIES,
   supportedInputTypes: ["coordinates", "address", "apn"],
   tierRequired: "starter",
+  // Proprietary feed — contract governs redistribution + cache TTL. Default
+  // conservative: live-passthrough only until a signed contract upgrades it.
+  license: "proprietary",
+  attributionText: "Parcel data: Regrid",
+  redistributable: "no",
+  // Regrid is pay-per-call (no monthly floor) at our stage — passes the
+  // 2%-of-MRR guard. Set explicitly to 0 so the guard reads it as no-floor.
+  minMonthlyCommitCents: 0,
 
   costPerLookupCents(category: DataCategory): number {
     return CATEGORY_COSTS[category] ?? 5;
@@ -147,6 +155,11 @@ export const regridProvider: DataProvider = {
       cached: false,
       latencyMs: Date.now() - start,
       data,
+      source: "Regrid",
+      sourceAsOf: null,
+      // Regrid normalizes parcel-of-record data; treat as authoritative for
+      // parcel/owner, estimate for valuation (it's a derived value).
+      classification: category === "valuation" ? "estimate" : "authoritative",
     };
   },
 

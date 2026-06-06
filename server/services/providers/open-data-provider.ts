@@ -23,12 +23,26 @@ const SUPPORTED_CATEGORIES: DataCategory[] = [
   "parcel_data",
 ];
 
+/**
+ * Authoritative source name + classification per category. Federal open-data
+ * parcel/federal layers are authoritative systems-of-record (Quinn lens).
+ */
+const SOURCE_BY_CATEGORY: Partial<Record<DataCategory, string>> = {
+  environmental: "FEMA NFHL",
+  demographics: "US Census ACS",
+  parcel_data: "County GIS",
+};
+
 export const openDataProvider: DataProvider = {
   name: "open-data",
   displayName: "Open Data (FEMA, Census, USGS, USDA, EPA, BLM)",
   categories: SUPPORTED_CATEGORIES,
   supportedInputTypes: ["coordinates", "address"],
   tierRequired: "free",
+  // Mixed federal sources; all public-domain §105. The per-source attribution
+  // is stamped via LookupResult.source → data-licenses register at render time.
+  license: "public-domain-usgov",
+  redistributable: "yes",
 
   costPerLookupCents(_category: DataCategory): number {
     return 0;
@@ -109,6 +123,12 @@ export const openDataProvider: DataProvider = {
       cached: false,
       latencyMs: Date.now() - start,
       data,
+      source: SOURCE_BY_CATEGORY[category] ?? "Open Data",
+      // Open-data parcel/federal layers are authoritative systems-of-record.
+      // Federal upstreams don't return a single fact-level effective date here,
+      // so sourceAsOf is null (the customer sees "fetched" date instead).
+      sourceAsOf: null,
+      classification: "authoritative",
     };
   },
 

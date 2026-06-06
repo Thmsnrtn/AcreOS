@@ -48,6 +48,12 @@ const POOL_FEATURE_FOR_ACTION: Record<CreditAction, string> = {
   letter_lob: "postcard",
   skip_trace: "skip_trace",
   ai_turn_avg: "ai_tokens",
+  // Paid data lookups share a single "data_lookup" gauge bucket so the founder
+  // sees total paid-data COGS at a glance (Lena cost surface).
+  parcel_lookup_paid: "data_lookup",
+  comps_lookup: "data_lookup",
+  owner_lookup: "data_lookup",
+  valuation_lookup: "data_lookup",
 };
 
 const PROVIDER_HINT_FOR_ACTION: Record<CreditAction, string> = {
@@ -60,6 +66,10 @@ const PROVIDER_HINT_FOR_ACTION: Record<CreditAction, string> = {
   letter_lob: "lob",
   skip_trace: "batchdata",
   ai_turn_avg: "anthropic",
+  parcel_lookup_paid: "data-provider",
+  comps_lookup: "data-provider",
+  owner_lookup: "data-provider",
+  valuation_lookup: "data-provider",
 };
 
 export interface PoolDebitArgs {

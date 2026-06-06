@@ -67,6 +67,15 @@ export async function runCountyEndpointDiscovery(
         continue;
       }
 
+      // SSRF guard (Beatrice item 5): auto-discovered baseUrls are fetched
+      // server-side. Reject private/loopback/link-local/non-https before we
+      // validate or persist them.
+      const { checkOperatorUrl } = await import("./providers/ssrf-guard");
+      if (!checkOperatorUrl(endpoint.baseUrl).ok) {
+        result.failed += 1;
+        continue;
+      }
+
       const validation = await validateEndpoint(endpoint.baseUrl);
       if (!validation.valid || !validation.hasParcelData) {
         result.failed += 1;

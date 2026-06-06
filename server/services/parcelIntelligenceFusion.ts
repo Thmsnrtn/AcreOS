@@ -43,7 +43,10 @@
 import { runAutoDueDiligence } from "./dueDiligenceEngine";
 import { buildCountyAgSnapshot, getCachedLandTrend } from "./usdaNassService";
 import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./censusDataService";
-import { computeCountyOpportunityScore } from "./countyOpportunityScore";
+// NOTE: computeCountyOpportunityScore is intentionally NOT imported/used here.
+// It requires a live market feed; feeding it placeholder constants produced a
+// fabricated score (Quinn data-honesty lens, item 4). Re-introduce it only
+// when a real comps/market source is wired (Phase 2).
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,7 +144,16 @@ export interface LandIntelligenceReport {
 
   // County intelligence
   countyIntel: {
-    opportunityScore: number;
+    /**
+     * County opportunity score (0–100), or null when we lack live market
+     * inputs to compute it honestly. Quinn data-honesty lens: a score built
+     * from hardcoded placeholder market data is "a constant wearing a lab
+     * coat" — when the market inputs are placeholders we return null + an
+     * honest note rather than ship a fabricated number.
+     */
+    opportunityScore: number | null;
+    /** Honest provenance note for the opportunity score. */
+    opportunityScoreNote: string;
     trend: string;
     usdaLandValue: number;
     landValueCagr5Year: number;
@@ -173,8 +185,18 @@ export async function generateLandIntelligenceReport(
   const startTime = Date.now();
   const dataSourcesQueried: string[] = [];
 
-  // Run all checks in parallel for maximum speed
-  const [ddReport, countySnapshot, countyTrend, countyOpportunity, censusProfile] =
+  // Run all checks in parallel for maximum speed.
+  //
+  // Quinn data-honesty lens (item 4): we deliberately DO NOT call
+  // computeCountyOpportunityScore here. That model requires live market data
+  // (price velocity, sales volume, DOM, active listings, investor competition)
+  // which this free-data path does not have — feeding it hardcoded placeholder
+  // constants produced a fixed number dressed up as a "proprietary model"
+  // output. Until we have a live comps/market feed (Phase 2, when paid data
+  // justifies it), countyIntel.opportunityScore is null with an honest note,
+  // and the composite score draws only on the data we actually queried (USDA
+  // baselines + Census demographics + environmental due-diligence).
+  const [ddReport, countySnapshot, countyTrend, censusProfile] =
     await Promise.allSettled([
       // Due diligence checks (FEMA, NWI, EPA, OSM, USDA soil, USGS)
       runAutoDueDiligence(0, 0, input.latitude, input.longitude, input.acres, input.state).then(r => {
@@ -190,32 +212,6 @@ export async function generateLandIntelligenceReport(
       getCachedLandTrend(input.state, input.county).then(r => {
         return r;
       }),
-      // County opportunity score (our proprietary model)
-      computeCountyOpportunityScore({
-        state: input.state,
-        county: input.county,
-        priceVelocity3Mo: 3,
-        priceVelocity12Mo: 5,
-        avgPricePerAcre: 1000,
-        pricePerAcreVs2YrAvg: 0,
-        salesVolume90Days: 5,
-        salesVolume12Months: 20,
-        avgDaysOnMarket: 90,
-        domTrend: -10,
-        activeListings: 15,
-        monthsOfSupply: 6,
-        listingCountTrend: -5,
-        estimatedInvestorMailingCount: 10,
-        recentPriceIncreasePercent: 5,
-        populationGrowthRate: 2,
-        permitCountTrend: 5,
-        distanceToNearestMetroMiles: 80,
-        hasRecentInfrastructureAnnouncement: false,
-        hasRecentEmployerAnnouncement: false,
-        hasLakeOrRiver: false,
-        hasNationalForest: false,
-        hasRecreationalAmenities: false,
-      }),
       // Census demographic profile
       buildCountyOpportunityProfile(input.state, input.county).then(r => {
         dataSourcesQueried.push("US Census ACS", "Census Building Permits");
@@ -227,8 +223,10 @@ export async function generateLandIntelligenceReport(
   const dd = ddReport.status === "fulfilled" ? ddReport.value : null;
   const nassData = countySnapshot.status === "fulfilled" ? countySnapshot.value : null;
   const trend = countyTrend.status === "fulfilled" ? countyTrend.value : null;
-  const countyScore = countyOpportunity.status === "fulfilled" ? countyOpportunity.value : null;
   const census = censusProfile.status === "fulfilled" ? censusProfile.value : null;
+  // No live market feed in the free-data path → no honest county opportunity
+  // score (Quinn item 4). Downstream consumers guard on `if (countyScore)`.
+  const countyScore = null;
 
   // Identify deal killers
   const dealKillers = identifyDealKillers(dd, input);
@@ -257,7 +255,11 @@ export async function generateLandIntelligenceReport(
   );
 
   const countyIntel = {
-    opportunityScore: countyScore?.overallScore || 50,
+    // Honest: no live market data → no opportunity score, with a note that
+    // says what we DO have. Never a fabricated 50 (Quinn item 4).
+    opportunityScore: null,
+    opportunityScoreNote:
+      "County opportunity score needs live market data (sales velocity, days-on-market, active listings) we don't pull on the free tier yet — this assessment is based on USDA land-value baselines and Census demographics only.",
     trend: trend?.trend || "unknown",
     usdaLandValue: nassData?.pasturePerAcre || 0,
     landValueCagr5Year: trend?.cagr5Year || 0,

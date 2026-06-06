@@ -67,6 +67,12 @@ export const batchdataProvider: DataProvider = {
   categories: SUPPORTED_CATEGORIES,
   supportedInputTypes: ["address", "owner", "apn"],
   tierRequired: "starter",
+  // Proprietary skip-trace feed — contract prohibits resale/redistribution.
+  // Pay-per-call (no monthly floor) so it passes the 2%-of-MRR guard.
+  license: "proprietary",
+  attributionText: "Skip-trace data: BatchData",
+  redistributable: "no",
+  minMonthlyCommitCents: 0,
 
   costPerLookupCents(category: DataCategory): number {
     return CATEGORY_COSTS[category] ?? 5;
@@ -130,6 +136,11 @@ export const batchdataProvider: DataProvider = {
       cached: false,
       latencyMs: Date.now() - start,
       data,
+      source: "BatchData",
+      sourceAsOf: null,
+      // Skip-trace contact data is sourced/aggregated, not a system-of-record
+      // legal fact — classify as estimate so the customer sees it as such.
+      classification: "estimate",
     };
   },
 
