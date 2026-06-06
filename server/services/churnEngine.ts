@@ -28,7 +28,7 @@ import {
 } from "@shared/schema";
 import { eq, count, sql, and, isNull, gt } from "drizzle-orm";
 import { logActivity } from "./systemActivityLogger";
-import { emailService } from "./emailService";
+import { sendRegisteredEmail } from "./emailRegistry";
 import { isFounderEmail } from "./founder";
 import { logger } from "../utils/logger";
 
@@ -201,17 +201,17 @@ async function sendMilestoneReferralNudge(
 
   const label = MILESTONE_LABELS[milestone] ?? milestone;
 
-  await emailService.sendTransactionalEmail("churn_rescue", {
-    to: email,
-    templateData: {
+  // Tahoe E10: routed through the typed lifecycle registry. The voice-correct
+  // copy (Land Investors, not "real estate professional") lives in the
+  // milestone_nudge template.
+  await sendRegisteredEmail(
+    "milestone_nudge",
+    {
+      milestoneLabel: label,
       subject: `🎉 Congrats on reaching ${label} with AcreOS!`,
-      preheader: "You're building something real.",
-      headline: `You just hit a milestone: ${label}!`,
-      body: `That's a big deal. It means your real estate business is actually moving forward with AcreOS.\n\nIf you know another real estate professional who could use this kind of traction — share AcreOS with them. You'll both benefit.\n\nHere's how to find your referral link: Settings → Refer & Earn.`,
-      ctaText: "Get your referral link",
-      ctaUrl: `${process.env.APP_URL ?? "https://app.acreos.io"}/settings#referral`,
     },
-  });
+    { to: email, organizationId: orgId },
+  );
 
   await logActivity({
     orgId,
@@ -237,17 +237,18 @@ async function triggerRescue(
   const email = member?.email;
   if (!email || isFounderEmail(email)) return;
 
-  await emailService.sendTransactionalEmail("churn_rescue", {
-    to: email,
-    templateData: {
+  // Tahoe E10: routed through the typed lifecycle registry (churn_rescue kind).
+  await sendRegisteredEmail(
+    "churn_rescue",
+    {
       subject: "We noticed you haven't been around lately",
-      preheader: "Let's see if we can help.",
       headline: "Haven't seen you in a while",
       body: `We noticed you haven't logged into AcreOS recently. We want to make sure you're getting value from the platform.\n\nIs there something you're struggling with? A feature you wish existed? We'd love to hear from you — just reply to this email.\n\nOr log in now to pick up where you left off.`,
       ctaText: "Log back in",
       ctaUrl: `${process.env.APP_URL ?? "https://app.acreos.io"}/today`,
     },
-  });
+    { to: email, organizationId: orgId },
+  );
 
   await db
     .update(organizations)

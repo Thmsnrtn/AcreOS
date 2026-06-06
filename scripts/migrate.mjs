@@ -6130,6 +6130,26 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "nps_prompt_queue_org_status_scheduled_idx" ON "nps_prompt_queue" ("organization_id", "status", "scheduled_for")`,
   `CREATE INDEX IF NOT EXISTS "nps_prompt_queue_user_status_idx" ON "nps_prompt_queue" ("user_id", "status")`,
+
+  // Tahoe E10 — lifecycle email registry → universal outbound substrate.
+  // outbound_email_log is the audit trail for every send routed through
+  // server/services/emailRegistry.ts (the single typed send entrypoint).
+  // Mirrors shared/schema.ts → outboundEmailLog. Migration 0113.
+  `CREATE TABLE IF NOT EXISTS "outbound_email_log" (
+     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer,
+     "kind" text NOT NULL,
+     "category" text NOT NULL,
+     "recipient" text NOT NULL,
+     "subject" text NOT NULL,
+     "status" text NOT NULL,
+     "message_id" text,
+     "error" text,
+     "error_type" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "idx_outbound_email_log_org_kind_created" ON "outbound_email_log" ("organization_id", "kind", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "idx_outbound_email_log_recipient_created" ON "outbound_email_log" ("recipient", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
