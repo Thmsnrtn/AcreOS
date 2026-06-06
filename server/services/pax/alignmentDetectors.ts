@@ -253,6 +253,185 @@ export function makeFounderBypassDetector(
 export const _FOUNDER_BYPASS_REASONING_RX = BYPASS_REASONING_RX;
 
 // ============================================================================
+// DETECTOR 1b — precall-failing-open detector
+// ----------------------------------------------------------------------------
+// Tahoe H2 follow-up (Quinn). The preCallConstitutionalChecker is designed to
+// fail OPEN on infrastructure failure — missing ANTHROPIC_API_KEY, Haiku
+// timeout/error, unparseable JSON. Each of those paths writes a
+// solene_pre_call_decisions row with allowed=true and a `reasoning` value
+// containing a "failing open" marker phrase. The founder-bypass detector's
+// regex (`founder.bypass|founder.override|sovereign.veto`) was scoped to
+// LEGITIMATE bypasses and DOES NOT catch these silent infrastructure
+// fail-opens — they go unsurfaced.
+//
+// This separate detector catches them so the triad
+// (precall + postvalidate + audit) converges on one forensic ledger and
+// silent infrastructure drift becomes visible. Keeping it SEPARATE from the
+// founder-bypass detector avoids conflating two different findings:
+//   - founder_bypass_undocumented = legitimate bypass that wasn't reviewed
+//   - precall_failing_open_spike = infrastructure failure masking screens
+//
+// Threshold reasoning (defensibly tuned for Tom's "no pager noise" stance):
+//   - ABSOLUTE: > 5 fail-open rows in the last 60min
+//   - RATIO:    > 10% of total checker invocations in the last 60min
+//
+// Why both: a single low-traffic hour with 4 fail-opens out of 4 (100%) is
+// catastrophic but trips neither absolute alone (≤5) — the ratio guard
+// catches it. A high-traffic hour with 6 fail-opens out of 600 (1%) trips
+// the absolute alone but is statistically noise on a 1% baseline — the
+// ratio guard makes us prefer surfacing both kinds without one masking the
+// other. We require BOTH to fire OR a single-condition strong signal:
+// the OR semantics in the spec mean we surface a finding when EITHER
+// threshold trips, but the SEVERITY ladder (warn vs critical) tracks how
+// many trip:
+//   - either alone trips → warn
+//   - both trip          → critical
+// This way Quinn's weekly retro gets every fail-open spike but only the
+// "ratio AND absolute together" combinations page-ladder up.
+//
+// Sample-size floor: if fewer than 10 total checker invocations landed in
+// the window, we suppress the finding. A 100% fail-open rate on 2 checks is
+// not actionable signal — the upstream checker is probably idle. Matches
+// the Beatrice MIN_OUTPUTS_FOR_RUN posture used in the refusal-rate
+// detector below.
+// ============================================================================
+
+/**
+ * Marker phrases the precall checker writes into `reasoning` when it fails
+ * open. Sourced from preCallConstitutionalChecker.ts. Keeping the regex here
+ * (and not importing the checker) preserves loose coupling — the detector
+ * is the forensic ledger reader; the checker is the writer. The marker
+ * phrases are a stable interface contract between the two.
+ *
+ * Phrases the checker actually emits today:
+ *   "ANTHROPIC_API_KEY not set; pre-call checker failing open"
+ *   "checker call errored; failing open (...)"
+ *   "checker output unparseable; failing open"
+ *
+ * The regex below intentionally also covers Haiku-specific timeout phrasing
+ * the checker MIGHT add in a future expansion, so the detector doesn't
+ * silently fall behind the checker's error vocabulary.
+ */
+const PRECALL_FAILING_OPEN_REASONING_RX =
+  /\b(fail(?:ing|ed)?[ -]open|haiku[ -]timeout|checker[ -]errored|checker[ -]call[ -]errored|checker[ -]output[ -]unparseable|api[_-]?key not set)\b/i;
+
+export const _PRECALL_FAILING_OPEN_REASONING_RX =
+  PRECALL_FAILING_OPEN_REASONING_RX;
+
+export interface PrecallFailingOpenDetectorOptions {
+  /** Rolling window in minutes. Default 60. */
+  windowMinutes?: number;
+  /** Absolute count threshold per window. Default 5. */
+  absoluteThreshold?: number;
+  /** Ratio threshold (fail-open / total). Default 0.10 (10%). */
+  ratioThreshold?: number;
+  /** Minimum total checker invocations needed to fire. Default 10. */
+  minTotalInvocations?: number;
+}
+
+export function makePrecallFailingOpenDetector(
+  opts: PrecallFailingOpenDetectorOptions = {},
+): Detector {
+  const windowMinutes = opts.windowMinutes ?? 60;
+  const absoluteThreshold = opts.absoluteThreshold ?? 5;
+  const ratioThreshold = opts.ratioThreshold ?? 0.1;
+  const minTotalInvocations = opts.minTotalInvocations ?? 10;
+
+  return {
+    id: "precall_failing_open_spike",
+    scope: "alignment",
+    severityFloor: "warn",
+    // Cites sovereign #1 (HONESTY — no fabrication; silent fail-open is the
+    // checker saying "I screened this" when it didn't) + sovereign #4
+    // (TRANSPARENCY — all state visible and logged; infrastructure failure
+    // that silently bypasses the constitutional gate breaches both).
+    citedImmutables: ["sovereign:1", "sovereign:4"],
+    async run(dbInst, _window) {
+      const findings: DetectorFinding[] = [];
+      const now = Date.now();
+      const cutoff = new Date(now - windowMinutes * 60 * 1000);
+
+      try {
+        // Single query — count total invocations + fail-open invocations in
+        // one pass. The reasoning regex below matches the checker's
+        // fail-open vocabulary; SQL-side regex is Postgres' POSIX `~*`
+        // (case-insensitive). The `\m...\M` word-boundary anchors keep the
+        // match anchored on the actual marker phrase rather than substrings.
+        const rows = await dbInst.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE reasoning ~* '\\m(fail(ing|ed)?.open|haiku.timeout|checker.errored|checker.call.errored|checker.output.unparseable|api.?key not set)\\M'
+            )::int AS failing_open
+          FROM solene_pre_call_decisions
+          WHERE decided_at >= ${cutoff.toISOString()}
+        `);
+
+        const row = (rows as unknown as {
+          rows?: Array<{ total: number; failing_open: number }>;
+        }).rows?.[0];
+        const total = Number(row?.total ?? 0);
+        const failingOpen = Number(row?.failing_open ?? 0);
+
+        // Sample-size floor — a 100% fail-open rate on 2 checks is idle
+        // noise, not a spike.
+        if (total < minTotalInvocations) {
+          return findings;
+        }
+
+        const ratio = total === 0 ? 0 : failingOpen / total;
+        const absoluteTripped = failingOpen > absoluteThreshold;
+        const ratioTripped = ratio > ratioThreshold;
+
+        if (!absoluteTripped && !ratioTripped) {
+          return findings;
+        }
+
+        // Severity ladder: both → critical, single → warn.
+        const severity: DetectorSeverityFloor =
+          absoluteTripped && ratioTripped ? "critical" : "warn";
+
+        // Key bucketed to the hour so re-runs in the same hour are
+        // idempotent — the runner persists one row per (detectorId, key).
+        const hourKey = new Date(
+          Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000),
+        )
+          .toISOString()
+          .slice(0, 13); // "YYYY-MM-DDTHH"
+
+        findings.push({
+          key: `precall_failing_open:${hourKey}`,
+          severity,
+          summary:
+            `Pre-call checker failing-open spike: ` +
+            `${failingOpen}/${total} invocations (${(ratio * 100).toFixed(1)}%) ` +
+            `in the last ${windowMinutes}min ` +
+            `[absolute_tripped=${absoluteTripped} ratio_tripped=${ratioTripped}].`,
+          evidence: {
+            windowMinutes,
+            totalInvocations: total,
+            failingOpenCount: failingOpen,
+            failingOpenRatio: ratio,
+            absoluteThreshold,
+            ratioThreshold,
+            absoluteTripped,
+            ratioTripped,
+            windowStart: cutoff.toISOString(),
+            windowEnd: new Date(now).toISOString(),
+          },
+        });
+      } catch (err) {
+        logger.warn(
+          "[alignmentDetectors] precallFailingOpenDetector query failed",
+          err instanceof Error ? err : undefined,
+        );
+      }
+      return findings;
+    },
+  };
+}
+
+// ============================================================================
 // DETECTOR 2 — refusal-rate-drift detector
 // ----------------------------------------------------------------------------
 // Compares refusal rate (refusals per assistant message) this week vs the
@@ -567,6 +746,7 @@ async function computeSimAndRealCounts(
 
 export const alignmentDetectors: ReadonlyArray<Detector> = Object.freeze([
   makeFounderBypassDetector(),
+  makePrecallFailingOpenDetector(),
   makeRefusalRateDriftDetector(),
   makeSimulatedVsRealDivergenceDetector(),
 ]);
@@ -580,11 +760,13 @@ assertDetectorCitations(alignmentDetectors);
 // the test suite.
 export function buildAlignmentDetectorsForTest(opts: {
   founderBypass?: FounderBypassDetectorOptions;
+  precallFailingOpen?: PrecallFailingOpenDetectorOptions;
   refusalDrift?: RefusalRateDriftDetectorOptions;
   simVsReal?: SimVsRealDetectorOptions;
 }): ReadonlyArray<Detector> {
   const detectors = [
     makeFounderBypassDetector(opts.founderBypass),
+    makePrecallFailingOpenDetector(opts.precallFailingOpen),
     makeRefusalRateDriftDetector(opts.refusalDrift),
     makeSimulatedVsRealDivergenceDetector(opts.simVsReal),
   ];

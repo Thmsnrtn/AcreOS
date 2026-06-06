@@ -33,6 +33,10 @@ interface MockState {
   }>;
   reviewedDispatchIds: Set<number>; // audit_events rows present
 
+  // For precall-failing-open detector:
+  precallTotal: number;
+  precallFailingOpen: number;
+
   // For refusal-rate-drift detector:
   refusalCountsByWindow: Map<string, number>; // key = "start..end"
   assistantMessageCountsByWindow: Map<string, number>;
@@ -45,6 +49,8 @@ interface MockState {
 const STATE: MockState = {
   preCallBypassRows: [],
   reviewedDispatchIds: new Set(),
+  precallTotal: 0,
+  precallFailingOpen: 0,
   refusalCountsByWindow: new Map(),
   assistantMessageCountsByWindow: new Map(),
   simCountsByWindow: new Map(),
@@ -54,6 +60,8 @@ const STATE: MockState = {
 function resetState() {
   STATE.preCallBypassRows = [];
   STATE.reviewedDispatchIds = new Set();
+  STATE.precallTotal = 0;
+  STATE.precallFailingOpen = 0;
   STATE.refusalCountsByWindow = new Map();
   STATE.assistantMessageCountsByWindow = new Map();
   STATE.simCountsByWindow = new Map();
@@ -97,6 +105,21 @@ vi.mock("../../db", () => ({
       const start =
         typeof params[0] === "string" ? (params[0] as string) : "";
       const end = typeof params[1] === "string" ? (params[1] as string) : "";
+      // Match the precall-failing-open detector query — it SELECTs
+      // total + failing_open aggregate columns, not row content.
+      if (
+        text.includes("FROM solene_pre_call_decisions") &&
+        text.includes("failing_open")
+      ) {
+        return {
+          rows: [
+            {
+              total: STATE.precallTotal,
+              failing_open: STATE.precallFailingOpen,
+            },
+          ],
+        };
+      }
       // Match the founder-bypass query (params: only cutoff)
       if (text.includes("FROM solene_pre_call_decisions")) {
         return { rows: STATE.preCallBypassRows };
@@ -361,6 +384,162 @@ describe("refusal-rate-drift detector", () => {
       start: new Date(),
       end: new Date(),
     });
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe("precall-failing-open detector", () => {
+  beforeEach(() => {
+    resetState();
+  });
+
+  it("emits NO finding when fail-open rate is at zero baseline", async () => {
+    STATE.precallTotal = 100;
+    STATE.precallFailingOpen = 0;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("emits NO finding when fail-open count is low and ratio is low", async () => {
+    // 3 fail-opens in 100 checks → 3% — under both 5-absolute and 10%-ratio.
+    STATE.precallTotal = 100;
+    STATE.precallFailingOpen = 3;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("emits NO finding when total invocations are under the sample-size floor", async () => {
+    // 100% fail-open but only 2 checks — idle, not actionable.
+    STATE.precallTotal = 2;
+    STATE.precallFailingOpen = 2;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("emits a finding on absolute spike (> 5 fail-opens) on a low-ratio busy window", async () => {
+    // 6 fail-opens in 600 checks = 1% (below ratio threshold) but absolute
+    // 6 > 5 → still surface. Severity = warn (single condition tripped).
+    STATE.precallTotal = 600;
+    STATE.precallFailingOpen = 6;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe("warn");
+    expect((findings[0].evidence as any).absoluteTripped).toBe(true);
+    expect((findings[0].evidence as any).ratioTripped).toBe(false);
+    expect(findings[0].summary).toMatch(/failing-open spike/);
+  });
+
+  it("emits a finding on ratio spike (> 10%) on a low-traffic but mostly-broken window", async () => {
+    // 5 fail-opens in 20 checks = 25% — absolute equals threshold (NOT
+    // strictly >), so absolute alone does NOT trip; ratio 25% > 10% does.
+    // Severity = warn (single condition tripped).
+    STATE.precallTotal = 20;
+    STATE.precallFailingOpen = 5;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe("warn");
+    expect((findings[0].evidence as any).absoluteTripped).toBe(false);
+    expect((findings[0].evidence as any).ratioTripped).toBe(true);
+  });
+
+  it("emits a CRITICAL finding when both absolute and ratio thresholds trip", async () => {
+    // 50 fail-opens in 100 checks = 50% AND absolute 50 >> 5.
+    STATE.precallTotal = 100;
+    STATE.precallFailingOpen = 50;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe("critical");
+    expect((findings[0].evidence as any).absoluteTripped).toBe(true);
+    expect((findings[0].evidence as any).ratioTripped).toBe(true);
+  });
+
+  it("threshold-edge: 5 absolute is NOT a finding alone (strictly greater-than required)", async () => {
+    // 5 fail-opens in 600 checks → absolute = 5 (NOT > 5), ratio < 10%.
+    // Neither tripped → no finding. Verifies the boundary is strict-greater.
+    STATE.precallTotal = 600;
+    STATE.precallFailingOpen = 5;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("threshold-edge: exactly 10% ratio is NOT a finding alone (strictly greater-than required)", async () => {
+    // 10 fail-opens in 100 checks → ratio exactly 10% (NOT > 10%),
+    // absolute 10 > 5 → absolute alone trips → finding at warn severity.
+    // Validates the ratio threshold is strict-greater (not >=) while
+    // still showing the absolute-alone path is honored.
+    STATE.precallTotal = 100;
+    STATE.precallFailingOpen = 10;
+    const detectors = buildAlignmentDetectorsForTest({});
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    expect(findings.length).toBe(1);
+    expect((findings[0].evidence as any).absoluteTripped).toBe(true);
+    expect((findings[0].evidence as any).ratioTripped).toBe(false);
+  });
+
+  it("custom thresholds: detector wires through overridden options", async () => {
+    STATE.precallTotal = 100;
+    STATE.precallFailingOpen = 11;
+    const detectors = buildAlignmentDetectorsForTest({
+      precallFailingOpen: {
+        absoluteThreshold: 50,
+        ratioThreshold: 0.5,
+        minTotalInvocations: 10,
+      },
+    });
+    const det = detectors.find((d) => d.id === "precall_failing_open_spike")!;
+    const { db } = await import("../../db");
+    const findings = await det.run(db as any, {
+      start: new Date(),
+      end: new Date(),
+    });
+    // 11 < 50 absolute, 11% < 50% ratio → no finding.
     expect(findings).toHaveLength(0);
   });
 });
