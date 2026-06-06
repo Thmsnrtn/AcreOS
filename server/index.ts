@@ -621,6 +621,19 @@ app.use("/api", apiLimiter);
     () => {
       log(`serving on port ${port}`);
 
+      // Tahoe L6 — financial_ledger system-of-record invariant. Loud-log on
+      // failure; never blocks boot (finance must not gate platform reach).
+      void (async () => {
+        try {
+          const { assertFinancialLedgerInvariant } = await import(
+            "./services/financial-ledger-invariant"
+          );
+          await assertFinancialLedgerInvariant();
+        } catch (err) {
+          log(`financial_ledger invariant probe threw: ${err}`, "startup");
+        }
+      })();
+
       // Gate all background jobs behind env flag — they exhaust the DB pool on small instances
       // when run on the customer-facing app machines. The actual catalogue lives in
       // server/jobs/runScheduledJobs.ts and is also booted from server/worker.ts so

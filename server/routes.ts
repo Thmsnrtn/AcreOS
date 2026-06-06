@@ -1637,6 +1637,15 @@ export async function registerRoutes(
     app.use('/api/founder/finance', isAuthenticated, getOrCreateOrg, requireFounder, financeLedgerRouter);
   }
 
+  // Admin Finance — Tahoe L6 system-of-record + reserve floor compliance.
+  // Platform-level (not org-scoped); founder-gated. Mounted distinct from
+  // /api/founder/finance because the surface is "platform admin" — reserve
+  // floor + system-of-record posture probes are not customer-facing.
+  {
+    const adminFinanceRouter = (await import("./routes-admin-finance")).default;
+    app.use('/api/admin/finance', isAuthenticated, getOrCreateOrg, requireFounder, adminFinanceRouter);
+  }
+
   // Pillar R — founder admin for trust-graduation tiers.
   {
     const founderGraduationRouter = (await import("./routes-founder-graduation")).default;

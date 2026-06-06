@@ -778,6 +778,69 @@ function startCustomerUnitEconomicsJob() {
 }
 
 // ============================================================================
+// Tahoe L14 follow-up — api_telemetry_samples nightly rollup + purge.
+//
+// 30-day rolling retention on api_telemetry_samples. Older rows are
+// aggregated into api_telemetry_rollup_monthly (UPSERT) then DELETEd from
+// the source. Idempotent — see server/services/apiTelemetryRollup.ts.
+// Daily wall-clock 01:00 UTC.
+// ============================================================================
+function startApiTelemetryRollupJob() {
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const TTL_SECONDS = 50 * 60;
+
+  log('Registering api_telemetry rollup + purge job (daily 01:00 UTC)', 'api-telemetry-rollup');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 1 && now.getUTCMinutes() < 5) {
+      void withJobLock('api_telemetry_rollup', TTL_SECONDS, async () => {
+        const { runApiTelemetryRollup } = await import('../services/apiTelemetryRollup');
+        const r = await runApiTelemetryRollup();
+        log(
+          `[api-telemetry-rollup] upserted=${r.rollupRowsUpserted} deleted=${r.sourceRowsDeleted} retentionDays=${r.retentionDays}`,
+          'api-telemetry-rollup',
+        );
+      }).catch((err) => {
+        log(`api_telemetry rollup failed: ${err}`, 'api-telemetry-rollup');
+      });
+    }
+  }, ONE_HOUR_MS);
+}
+
+// ============================================================================
+// Tahoe L6 — reserve-floor compliance check.
+//
+// Sums reserve buckets vs trailing-90d revenue. Writes a row to
+// reserve_floor_check; never blocks any work. Daily wall-clock 06:30 UTC
+// (after the daily AI cost guard run at 00:00 so logs interleave cleanly).
+// ============================================================================
+function startReserveFloorCheckerJob() {
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering reserve floor checker job (daily 06:30 UTC)', 'reserve-floor');
+
+  trackInterval(() => {
+    const now = new Date();
+    // Fire in the 06:30-06:34 UTC window so the 5-minute trackInterval
+    // fan-out only matches one tick.
+    if (now.getUTCHours() === 6 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
+      void withJobLock('reserve_floor_check', TTL_SECONDS, async () => {
+        const { recordReserveFloorCheck } = await import('../services/reserveFloorChecker');
+        const r = await recordReserveFloorCheck({ source: 'scheduled' });
+        log(
+          `[reserve-floor] reservesCents=${r.reservesTotalCents} floorCents=${r.floorCents} belowFloor=${r.belowFloor}`,
+          'reserve-floor',
+        );
+      }).catch((err) => {
+        log(`reserve floor check failed: ${err}`, 'reserve-floor');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ============================================================================
 // Wenzeslaus ETL orchestrator — Phase 8 Months 11.
 //
 // Sweeps etl_jobs every 5 minutes and runs every job whose cron cadence
@@ -3183,6 +3246,14 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Wave 10: Per-customer unit economics (daily, self-rescheduling)
   startCustomerUnitEconomicsJob();
+
+  // Tahoe L14 follow-up — daily 01:00 UTC. Roll up + purge older-than-30d
+  // api_telemetry_samples. Idempotent, system-wide.
+  startApiTelemetryRollupJob();
+
+  // Tahoe L6 — daily 06:30 UTC. Reserve floor compliance check against
+  // financial_ledger. Logs to reserve_floor_check; never blocks.
+  startReserveFloorCheckerJob();
 
   // Phase 8 Months 10-11 (Ingrid §1): vision-AI scheduled re-imaging
   // Scans properties on a configurable cadence (default 90 days),

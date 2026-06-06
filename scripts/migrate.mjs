@@ -4187,6 +4187,54 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_route_window_idx" ON "api_telemetry_samples" ("route", "window_start")`,
   `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_window_start_idx" ON "api_telemetry_samples" ("window_start")`,
 
+  // 2026-06-06 (Tahoe L14 follow-up). Monthly rollup of api_telemetry_samples
+  // — after a 30-day rolling purge of the source table, this preserves a
+  // per-route × per-month summary so the founder dashboard can still answer
+  // "what did /api/leads cost in Feb?". UPSERT key is (year, month,
+  // route_key, cost_class). System-wide aggregate (no organization_id) —
+  // matches the shape of api_telemetry_samples.
+  `CREATE TABLE IF NOT EXISTS "api_telemetry_rollup_monthly" (
+     "id" serial PRIMARY KEY,
+     "year" integer NOT NULL,
+     "month" integer NOT NULL,
+     "route_key" text NOT NULL,
+     "cost_class" text,
+     "request_count" bigint NOT NULL DEFAULT 0,
+     "total_duration_ms" bigint NOT NULL DEFAULT 0,
+     "total_cost_cents" bigint NOT NULL DEFAULT 0,
+     "distinct_orgs" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "api_telemetry_rollup_monthly_uidx"
+     ON "api_telemetry_rollup_monthly" ("year", "month", "route_key", "cost_class")`,
+  `CREATE INDEX IF NOT EXISTS "api_telemetry_rollup_monthly_year_month_idx"
+     ON "api_telemetry_rollup_monthly" ("year", "month")`,
+  `CREATE INDEX IF NOT EXISTS "api_telemetry_rollup_monthly_route_idx"
+     ON "api_telemetry_rollup_monthly" ("route_key")`,
+
+  // 2026-06-06 (Tahoe L6). Reserve floor compliance log. Nightly job sums
+  // tax_reserve + refund_reserve + profit_reserve and compares to
+  // RESERVE_FLOOR_RULE.minFraction × trailing-90d revenue. One row per check;
+  // never blocks work — purely a signal for the founder cockpit. System-wide
+  // aggregate (no organization_id) — the reserve floor is platform-level per
+  // the constitutional capital ladder.
+  `CREATE TABLE IF NOT EXISTS "reserve_floor_check" (
+     "id" serial PRIMARY KEY,
+     "reserves_total_cents" bigint NOT NULL,
+     "trailing_revenue_cents" bigint NOT NULL,
+     "floor_cents" bigint NOT NULL,
+     "headroom_cents" bigint NOT NULL,
+     "below_floor" boolean NOT NULL DEFAULT false,
+     "trailing_window_days" bigint NOT NULL,
+     "source" text NOT NULL DEFAULT 'scheduled',
+     "checked_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "reserve_floor_check_checked_at_idx"
+     ON "reserve_floor_check" ("checked_at")`,
+  `CREATE INDEX IF NOT EXISTS "reserve_floor_check_below_floor_idx"
+     ON "reserve_floor_check" ("below_floor", "checked_at")`,
+
   // ── Founder Chat (Atlas) Phase A: schema additions ────────────────────
   // Extend aiConversations with scope + isDefault + threadTitle +
   // pinnedMessageIds. The partial unique index guarantees exactly one

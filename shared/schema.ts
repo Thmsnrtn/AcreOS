@@ -11326,6 +11326,17 @@ export * from "./schema/ai-telemetry";
 export * from "./schema/api-telemetry-samples";
 
 // ============================================================================
+// API TELEMETRY ROLLUP MONTHLY (L14 follow-up — system-wide aggregate after
+// the 30-day rolling purge of api_telemetry_samples).
+// ============================================================================
+export * from "./schema/api-telemetry-rollup-monthly";
+
+// ============================================================================
+// RESERVE FLOOR COMPLIANCE LOG (Tahoe L6 — capital-ladder enforcement).
+// ============================================================================
+export * from "./schema/reserve-floor-checks";
+
+// ============================================================================
 // COMPLIANCE / INVESTOR-VERIFICATION / FEES / TAX-BASIS / ML-REGISTRY —
 // extracted to ./schema/compliance.ts
 // ============================================================================
