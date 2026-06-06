@@ -17,7 +17,9 @@ import {
   Factory,
   Flame,
   Grid3x3,
+  HelpCircle,
   Leaf,
+  Lock,
   Mountain,
   Shield,
   Thermometer,
@@ -27,6 +29,7 @@ import {
   Waves,
   Wheat,
 } from "lucide-react";
+import { DataProvenanceChip, type DataClassification } from "@/components/data-provenance-chip";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +54,14 @@ export interface EnrichmentData {
       effectiveDate?: string;
       status?: string;
     };
+    // Provenance (optional — populated when the data contract carries it).
+    source?: string;
+    sourceAsOf?: string | Date | null;
+    confidence?: number;
+    classification?: DataClassification;
+    // Wetlands can be sourced separately (USFWS NWI) from flood (FEMA NFHL).
+    wetlandsSource?: string;
+    wetlandsSourceAsOf?: string | Date | null;
   };
   environment?: {
     soilType?: string;
@@ -62,6 +73,11 @@ export interface EnrichmentData {
     farmlandClass?: string;
     epaFacilitiesNearby?: number;
     epaRiskLevel?: "low" | "medium" | "high";
+    // Provenance (optional — populated when the data contract carries it).
+    source?: string;
+    sourceAsOf?: string | Date | null;
+    confidence?: number;
+    classification?: DataClassification;
   };
   infrastructure?: {
     nearestHospitalMiles?: number;
@@ -221,6 +237,75 @@ function formatDistance(miles?: number): string {
   return miles < 1 ? `${(miles * 5280).toFixed(0)} ft` : `${miles.toFixed(1)} mi`;
 }
 
+// ─── Honest disclosure ────────────────────────────────────────────────────────
+
+/**
+ * The free open-data sources we query, named for the customer. Naming the
+ * source is what turns "feels cheap" into "feels authoritative" — a customer
+ * trusts "USDA SSURGO" far more than an unattributed number.
+ */
+const FREE_DATA_SOURCES = ["FEMA NFHL", "USDA SSURGO", "USFWS NWI", "USGS 3DEP", "Census ACS", "county GIS"];
+
+/** Decision-grade categories, each tied to the data object that fills it. */
+const DECISION_CATEGORIES: { key: keyof EnrichmentData; label: string }[] = [
+  { key: "hazards", label: "Flood & wetlands" },
+  { key: "environment", label: "Soil & environmental" },
+  { key: "elevation", label: "Elevation & terrain" },
+  { key: "transportation", label: "Road access" },
+  { key: "water", label: "Water access" },
+  { key: "demographics", label: "Area demographics" },
+];
+
+function missingCategories(data: EnrichmentData): string[] {
+  return DECISION_CATEGORIES.filter(({ key }) => {
+    const v = data[key];
+    return v == null || (typeof v === "object" && Object.keys(v).length === 0);
+  }).map(({ label }) => label);
+}
+
+/**
+ * "What we don't know yet" + "what paid data adds". Listing the gaps
+ * paradoxically INCREASES trust in the values we do show, and the paid note is
+ * informational only — no countdown, no fake scarcity, no coercion
+ * (constitution immutable #2). Renders only when something is actually missing.
+ */
+function HonestGaps({ data }: { data: EnrichmentData }) {
+  const missing = missingCategories(data);
+  if (missing.length === 0) return null;
+  return (
+    <Card data-testid="card-honest-gaps" className="border-dashed">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <HelpCircle className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <h4 className="font-semibold text-sm">What we haven't pulled yet</h4>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          AcreOS reads public records of record — {FREE_DATA_SOURCES.join(" · ")} — at no cost.
+          We only show what those sources actually return for this parcel. Still open:
+        </p>
+        <ul className="flex flex-wrap gap-1.5" aria-label="Data categories not yet available">
+          {missing.map((label) => (
+            <li
+              key={label}
+              className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+            >
+              {label}
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-start gap-2 pt-1 border-t text-xs text-muted-foreground">
+          <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" aria-hidden="true" />
+          <p>
+            Some counties publish thin public data. A paid data add-on (when available) can fill
+            parcel boundaries and owner-of-record gaps with broader coverage — the same fields,
+            sourced more completely. We'll never replace a real value with a guess to sell you one.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface Props {
@@ -341,14 +426,36 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                   <span className="text-muted-foreground">Wetlands Present</span>
                   <span className={enrichmentData.hazards.wetlandsPresent ? "text-acr-warn" : "text-acr-pos"}>
                     {enrichmentData.hazards.wetlandsPresent
-                      ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)`
+                      ? enrichmentData.hazards.wetlandsPercentage != null
+                        ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)`
+                        : "Yes"
                       : "No"}
                   </span>
                 </div>
+                {enrichmentData.hazards.wetlandsSource && (
+                  <div className="flex justify-end -mt-1">
+                    <DataProvenanceChip
+                      source={enrichmentData.hazards.wetlandsSource}
+                      sourceAsOf={enrichmentData.hazards.wetlandsSourceAsOf}
+                    />
+                  </div>
+                )}
                 {enrichmentData.hazards.firmPanel?.panelId && (
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">FIRM Panel</span>
                     <span className="font-mono text-xs">{enrichmentData.hazards.firmPanel.panelId}</span>
+                  </div>
+                )}
+                {/* Provenance under the highest-stakes value — flood. Renders
+                    nothing when the source is absent (graceful). */}
+                {enrichmentData.hazards.source && (
+                  <div className="pt-1">
+                    <DataProvenanceChip
+                      source={enrichmentData.hazards.source}
+                      sourceAsOf={enrichmentData.hazards.sourceAsOf ?? enrichmentData.hazards.firmPanel?.effectiveDate}
+                      confidence={enrichmentData.hazards.confidence}
+                      classification={enrichmentData.hazards.classification}
+                    />
                   </div>
                 )}
               </div>
@@ -443,6 +550,16 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     {enrichmentData.environment.epaRiskLevel || "Unknown"}
                   </Badge>
                 </div>
+                {enrichmentData.environment.source && (
+                  <div className="pt-1">
+                    <DataProvenanceChip
+                      source={enrichmentData.environment.source}
+                      sourceAsOf={enrichmentData.environment.sourceAsOf}
+                      confidence={enrichmentData.environment.confidence}
+                      classification={enrichmentData.environment.classification}
+                    />
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1051,6 +1168,10 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
           </CardContent>
         </Card>
       )}
+
+      {/* Honest "what we don't know yet" — names the free sources, lists the
+          open categories, and a non-coercive note on what paid data adds. */}
+      <HonestGaps data={enrichmentData} />
     </div>
   );
 }
