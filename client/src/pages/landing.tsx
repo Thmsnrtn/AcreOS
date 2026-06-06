@@ -23,7 +23,9 @@
  * waitlist for adjacent verticals will live on /verticals/waitlist
  * (Phase 8 Coverage Pass) rather than the public landing.
  */
+import { useEffect } from "react";
 import { usePageDescription } from "@/hooks/use-document-title";
+import { emitMarketingTouch } from "@/lib/marketing-touch";
 import { SkipToContent } from "@/components/skip-to-content";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
@@ -55,6 +57,11 @@ export default function LandingPage() {
   usePageDescription(
     "AcreOS is the operating system for property investors — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing with AI agents that act on your behalf.",
   );
+  // Marketing-touch substrate — record the landing page view (the top of the
+  // acquisition funnel) once per mount. Carries the session's captured UTM.
+  useEffect(() => {
+    emitMarketingTouch({ surface: "landing", eventType: "page_view" });
+  }, []);
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />

@@ -6150,6 +6150,36 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "idx_outbound_email_log_org_kind_created" ON "outbound_email_log" ("organization_id", "kind", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "idx_outbound_email_log_recipient_created" ON "outbound_email_log" ("recipient", "created_at")`,
+
+  // marketing_touch — acquisition event substrate (Soren, 2026-06-06).
+  // See shared/schema.ts (marketingTouch) + migrations/0115_marketing_touch.sql
+  // + docs/internal/marketing-os/03-analytics.md §4. Privacy lock: NO raw IP
+  // (country only), UA hashed. organization_id/user_id populated post-signup
+  // via the anonymous_id JOIN. Idempotent create + indexes.
+  `CREATE TABLE IF NOT EXISTS "marketing_touch" (
+     "id" bigserial PRIMARY KEY,
+     "anonymous_id" text NOT NULL,
+     "occurred_at" timestamptz NOT NULL DEFAULT now(),
+     "surface" text NOT NULL,
+     "event_type" text NOT NULL DEFAULT 'page_view',
+     "source_artifact_id" text,
+     "utm_source" text,
+     "utm_medium" text,
+     "utm_campaign" text,
+     "utm_term" text,
+     "utm_content" text,
+     "referrer" text,
+     "landing_path" text NOT NULL,
+     "device_type" text,
+     "user_agent_hash" text,
+     "ip_country" text,
+     "payload" jsonb,
+     "user_id" text,
+     "organization_id" integer
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_touch_anon_occurred_idx" ON "marketing_touch" ("anonymous_id", "occurred_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_touch_surface_occurred_idx" ON "marketing_touch" ("surface", "occurred_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_touch_org_occurred_idx" ON "marketing_touch" ("organization_id", "occurred_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
