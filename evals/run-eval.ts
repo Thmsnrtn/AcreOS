@@ -35,6 +35,14 @@ import {
   type ToneJudge,
   type ToneResult,
 } from "./score.js";
+// Tahoe E7: reuse the repo's Anthropic client wrapper (via evals/judge.ts)
+// instead of instantiating a fresh `new Anthropic()` here. judge.ts routes
+// Claude calls through server/services/solene/chat/anthropicClient.ts.
+import {
+  generateResponse as anthropicGenerate,
+  makeJudge as makeAnthropicJudge,
+  hasAnthropicKey,
+} from "./judge.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,19 +205,17 @@ async function callModel(opts: {
     { role: "user" as const, content: userPrompt },
   ];
 
-  // Anthropic-native models
+  // Anthropic-native models — route through the repo's wrapper (Tahoe E7).
   if (model.includes("claude") && hasAnthropic) {
     try {
-      const { default: Anthropic } = await import("@anthropic-ai/sdk");
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-      const resp = await client.messages.create({
+      const { output, error } = await anthropicGenerate({
         model: anthropicModelId(model),
-        max_tokens: 800,
-        system: systemPrompt,
-        messages: chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        systemPrompt,
+        userPrompt,
+        history,
       });
-      const textBlock = resp.content.find((b: any) => b.type === "text");
-      return (textBlock as any)?.text ?? "";
+      if (error && output.length === 0) return stubResponse(userPrompt, new Error(error));
+      return output;
     } catch (err) {
       return stubResponse(userPrompt, err as Error);
     }
@@ -302,10 +308,15 @@ function stubResponse(userPrompt: string, err?: Error): string {
 // ---------------------------------------------------------------------------
 
 function makeToneJudge(judgeModel: string): ToneJudge {
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+  const hasAnthropic = hasAnthropicKey();
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
   const hasOpenRouter = !!process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
   if (!hasAnthropic && !hasOpenAI && !hasOpenRouter) return stubToneJudge;
+
+  // Claude judge → reuse the repo Anthropic wrapper (Tahoe E7), no fresh SDK.
+  if (judgeModel.includes("claude") && hasAnthropic) {
+    return makeAnthropicJudge(judgeModel);
+  }
 
   return {
     async judge({ prompt, output, expectedTone }): Promise<ToneResult> {
@@ -322,18 +333,6 @@ EXPECTED TONE:
 ${expectedTone}`;
 
       try {
-        if (judgeModel.includes("claude") && hasAnthropic) {
-          const { default: Anthropic } = await import("@anthropic-ai/sdk");
-          const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-          const resp = await client.messages.create({
-            model: judgeModel,
-            max_tokens: 200,
-            messages: [{ role: "user", content: judgePrompt }],
-          });
-          const textBlock = resp.content.find((b: any) => b.type === "text");
-          const parsed = safeParseJson((textBlock as any)?.text ?? "");
-          return parsed;
-        }
         if (judgeModel.startsWith("gpt") && hasOpenAI) {
           const { default: OpenAI } = await import("openai");
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });

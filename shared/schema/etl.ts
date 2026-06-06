@@ -261,6 +261,53 @@ export const aiTestRuns = pgTable(
 export type AiTestRun = typeof aiTestRuns.$inferSelect;
 export type InsertAiTestRun = typeof aiTestRuns.$inferInsert;
 
+// ─── Tahoe E7 (2026-06-06): prompt-change eval gate, productionized ──────────
+// The eval gate (scripts/eval-gate.mjs) runs the curated Pax golden set
+// through an LLM-judge harness on every prompt change and fails the build
+// when the judge score drops below an absolute threshold. Each invocation —
+// CI or local — writes one row here so the score trend is queryable and the
+// gate's verdicts are auditable rather than ephemeral CI log output.
+//
+// This is a system/CI-scoped table (not org-scoped): a prompt change is a
+// global concern, so there is no organization_id column and no org-leading
+// index requirement (mirrors ai_models / ai_test_cases above).
+export const aiEvalGateRuns = pgTable(
+  "ai_eval_gate_runs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    // Which golden set + Pax prompt version was evaluated.
+    goldenSet: text("golden_set").notNull(), // e.g. 'golden-set-curated.json'
+    paxPromptVersion: text("pax_prompt_version").notNull(), // 'v2' | 'v3'
+    modelKey: text("model_key").notNull(), // model under test
+    judgeModelKey: text("judge_model_key").notNull(), // LLM judge model
+    // Verdict.
+    threshold: numeric("threshold").notNull(), // absolute pass bar, 0-1
+    avgOverall: numeric("avg_overall").notNull(), // aggregate score, 0-1
+    avgShape: numeric("avg_shape"),
+    avgTopics: numeric("avg_topics"),
+    avgTone: numeric("avg_tone"),
+    caseCount: integer("case_count").notNull(),
+    passed: boolean("passed").notNull(),
+    // How the judge ran: 'live' (real LLM) or 'stub' (no API key in env).
+    judgeMode: text("judge_mode").notNull().default("live"),
+    // Per-case failures that pulled the score under threshold (id + reason).
+    failures: jsonb("failures")
+      .$type<Array<{ id: string; reason: string }>>()
+      .notNull()
+      .default([] as any),
+    // Provenance — git ref / CI run so a verdict can be traced to a commit.
+    gitRef: text("git_ref"),
+    ciRunId: text("ci_run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_eval_gate_runs_created_idx").on(table.createdAt),
+    index("ai_eval_gate_runs_model_created_idx").on(table.modelKey, table.createdAt),
+  ],
+);
+export type AiEvalGateRun = typeof aiEvalGateRuns.$inferSelect;
+export type InsertAiEvalGateRun = typeof aiEvalGateRuns.$inferInsert;
+
 export const aiCostCeilingOverrides = pgTable(
   "ai_cost_ceiling_overrides",
   {

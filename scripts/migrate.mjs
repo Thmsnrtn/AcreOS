@@ -3325,6 +3325,31 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "ai_test_runs_case_run_idx" ON "ai_test_runs" ("test_case_id", "run_at")',
   'CREATE INDEX IF NOT EXISTS "ai_test_runs_model_run_idx" ON "ai_test_runs" ("model_key", "run_at")',
 
+  // Tahoe E7 (2026-06-06): prompt-change eval-gate verdict log. One row per
+  // eval-gate invocation (scripts/eval-gate.mjs). System/CI-scoped — no
+  // organization_id, no org-leading index (mirrors ai_test_cases).
+  `CREATE TABLE IF NOT EXISTS "ai_eval_gate_runs" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "golden_set" text NOT NULL,
+     "pax_prompt_version" text NOT NULL,
+     "model_key" text NOT NULL,
+     "judge_model_key" text NOT NULL,
+     "threshold" numeric NOT NULL,
+     "avg_overall" numeric NOT NULL,
+     "avg_shape" numeric,
+     "avg_topics" numeric,
+     "avg_tone" numeric,
+     "case_count" integer NOT NULL,
+     "passed" boolean NOT NULL,
+     "judge_mode" text NOT NULL DEFAULT 'live',
+     "failures" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "git_ref" text,
+     "ci_run_id" text,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_eval_gate_runs_created_idx" ON "ai_eval_gate_runs" ("created_at")',
+  'CREATE INDEX IF NOT EXISTS "ai_eval_gate_runs_model_created_idx" ON "ai_eval_gate_runs" ("model_key", "created_at")',
+
   `CREATE TABLE IF NOT EXISTS "ai_cost_ceiling_overrides" (
      "organization_id" integer PRIMARY KEY,
      "daily_ceiling_cents" integer NOT NULL,

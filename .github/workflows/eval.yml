@@ -8,6 +8,10 @@ on:
       - 'server/services/aiRouter.ts'
       - 'server/services/ai*.ts'
       - 'server/services/*ai*.ts'
+      # Tahoe E7 — the eval gate must fire on actual Pax prompt/persona changes.
+      - 'server/ai/paxPromptVersions.ts'
+      - 'server/services/pax/**'
+      - 'server/services/pax*.ts'
       - '.github/workflows/eval.yml'
   workflow_dispatch:
 
@@ -126,3 +130,32 @@ jobs:
         run: |
           echo "Eval regression > 5% — failing."
           exit 1
+
+  # ─── Tahoe E7 — absolute-threshold prompt-change gate ──────────────────────
+  # The `eval` job above is a RELATIVE PR-vs-main regression check. This job is
+  # the ABSOLUTE gate: it runs the curated golden set through the LLM judge and
+  # fails non-zero (EvalGateRejectedError) when avgOverall drops below the
+  # EVAL_GATE_THRESHOLD floor. With no ANTHROPIC_API_KEY it gracefully skips
+  # (exit 0) so fork PRs without secrets don't false-fail.
+  eval-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+
+      - name: Use Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Run prompt-change eval gate (curated golden set)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_GATE_THRESHOLD: '0.65'
+          # No DATABASE_URL in CI → verdict persistence is skipped (best-effort).
+        run: npm run eval:gate -- --json
