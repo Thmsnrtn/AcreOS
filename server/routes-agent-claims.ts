@@ -16,7 +16,7 @@ import type { Express, Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
-import { listActiveClaims } from "./services/solene/agentClaims";
+import { listActiveClaims } from "@acreos/solene";
 import { logger } from "./utils/logger";
 
 export function registerAgentClaimsRoutes(app: Express): void {

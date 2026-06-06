@@ -1,0 +1,12 @@
+{
+  "name": "@acreos/solene",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Solene COO/dispatch/constitution/self-audit substrate. First monorepo seam (Tahoe E1). The barrel re-exports the canonical Solene surface from its current location under server/services/solene/ — physical relocation is deferred (see README.md).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

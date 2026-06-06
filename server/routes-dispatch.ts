@@ -26,7 +26,7 @@ import {
   enqueueDispatch,
   getDispatchById,
   listDispatches,
-} from "./services/solene/dispatchQueue";
+} from "@acreos/solene";
 import {
   DISPATCH_AGENT_ROLES,
   DISPATCH_SOURCE_TYPES,

@@ -36,6 +36,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@acreos/solene": path.resolve(__dirname, "./packages/solene/src/index.ts"),
       "@shared": path.resolve(__dirname, "./shared"),
       "@": path.resolve(__dirname, "./client/src"),
       "@sovereign": path.resolve(__dirname, "./sovereign-protocol"),
