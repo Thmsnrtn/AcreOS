@@ -24,6 +24,7 @@ import { and, eq } from "drizzle-orm";
 
 import { providerCache, parcelSnapshots } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { recordParcelObservations } from "./data-cache/observation-log";
 import {
   registerEtlHandler,
   type DrizzleDb,
@@ -164,6 +165,25 @@ export const regridEtlHandler: EtlProviderHandler & {
 
   async upsert(record: EtlRecord, tx: DrizzleDb): Promise<{ action: UpsertAction }> {
     const r = record.payload as unknown as RegridParcelRecord;
+
+    // Iyari — the acorn: every fact this ETL sees becomes an immutable
+    // observation. Fire-and-forget; never block or fail the upsert. Read each
+    // fact defensively — provenance fields on the record may not exist.
+    if (r?.apn && r?.state && r?.county) {
+      void recordParcelObservations({
+        apn: r.apn,
+        state: r.state,
+        county: r.county,
+        source: "regrid",
+        facts: {
+          owner: r.owner ?? undefined,
+          owner_address: r.ownerAddress ?? undefined,
+          site_address: r.siteAddress ?? undefined,
+          acres: r.acres ?? undefined,
+        },
+      });
+    }
+
     const [existing] = await tx
       .select({ id: parcelSnapshots.id })
       .from(parcelSnapshots)

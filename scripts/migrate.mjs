@@ -6200,6 +6200,24 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_created_idx" ON "customer_audit_log" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_category_idx" ON "customer_audit_log" ("organization_id", "category")`,
+  // 0121 — Iyari — parcel observation log (append-only, never updated). The
+  // longitudinal system-of-record for parcel facts; parcel_snapshots stays the
+  // derived "current best view" cache. Mirrors shared/schema.ts.
+  `CREATE TABLE IF NOT EXISTS "parcel_observations" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations" ("id"),
+     "apn" text NOT NULL,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "field" text NOT NULL,
+     "value" jsonb,
+     "source" text NOT NULL,
+     "confidence" real,
+     "observed_at" timestamp NOT NULL DEFAULT now(),
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "parcel_observations_org_observed_idx" ON "parcel_observations" ("organization_id", "observed_at")`,
+  `CREATE INDEX IF NOT EXISTS "parcel_observations_apn_field_observed_idx" ON "parcel_observations" ("apn", "field", "observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
