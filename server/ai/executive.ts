@@ -1,7 +1,11 @@
 import OpenAI from "openai";
 import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
-import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole, APPROVAL_REQUIRED_TOOLS } from "./tools";
+import { executeTool, APPROVAL_REQUIRED_TOOLS } from "./tools";
+// Tahoe E8: the Pax tool list is now sourced from the App Intent registry
+// (single source of truth across Pax tool-use, command palette, external
+// agents) rather than a hand-maintained list in tools.ts.
+import { getToolsForRoleFromRegistry } from "../services/appIntents";
 import { aiConversations, aiMessages, agentMemory, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
 import {
   selectProviderAndModel,
@@ -937,7 +941,7 @@ export async function processChat(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = getToolsForRole(normalizedRole);
+  const tools = getToolsForRoleFromRegistry(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
@@ -1302,7 +1306,7 @@ export async function* processChatStream(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = getToolsForRole(normalizedRole);
+  const tools = getToolsForRoleFromRegistry(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 

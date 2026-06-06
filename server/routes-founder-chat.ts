@@ -32,6 +32,7 @@ import { z } from "zod";
 import { and, asc, desc, eq, lt } from "drizzle-orm";
 
 import { db } from "./db";
+import { zodToJsonSchema } from "./utils/zodToJsonSchema";
 import {
   aiConversations,
   aiMessages,
@@ -99,43 +100,8 @@ const createThreadSchema = z.object({
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-/**
- * Minimal Zod → JSON-Schema converter for the shapes Atlas tools use
- * (z.object with primitive / enum / number / string / boolean fields plus
- * z.union of primitives). Kept zero-deps; not a full implementation —
- * just enough for OpenRouter/OpenAI tool param schemas.
- */
-function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  const def: any = (schema as any)._def;
-  if (!def) return { type: "object" };
-  switch (def.typeName) {
-    case "ZodObject": {
-      const shape = def.shape();
-      const properties: Record<string, unknown> = {};
-      const required: string[] = [];
-      for (const [k, v] of Object.entries(shape)) {
-        const childSchema = v as z.ZodTypeAny;
-        const childDef = (childSchema as any)._def;
-        properties[k] = zodToJsonSchema(childSchema);
-        if (childDef.typeName !== "ZodOptional" && childDef.typeName !== "ZodDefault") {
-          required.push(k);
-        }
-      }
-      return { type: "object", properties, required, additionalProperties: false };
-    }
-    case "ZodString":  return { type: "string" };
-    case "ZodNumber":  return { type: "number" };
-    case "ZodBoolean": return { type: "boolean" };
-    case "ZodEnum":    return { type: "string", enum: def.values };
-    case "ZodOptional":
-    case "ZodDefault": return zodToJsonSchema(def.innerType);
-    case "ZodUnion": {
-      const opts = def.options.map((o: z.ZodTypeAny) => zodToJsonSchema(o));
-      return { anyOf: opts };
-    }
-    default:           return { type: "string" };
-  }
-}
+// Zod → JSON-Schema conversion is shared with the App Intent registry; see
+// server/utils/zodToJsonSchema.ts. Imported above.
 
 function toolToOpenAITool(t: FounderTool): OpenAI.ChatCompletionTool {
   return {
