@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
+import DOMPurify from "isomorphic-dompurify";
 import { ArrowLeft, Send, Plus, Eye, Check, X as XIcon } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -267,7 +268,7 @@ function BlastDetail({ blastId }: { blastId: string }) {
           <div className="p-5">
             <h2 className="text-sm font-semibold mb-2">What we sent</h2>
             <Separator className="mb-3" />
-            <div className="text-sm text-muted-foreground whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: blast.bodySnapshot }} />
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(blast.bodySnapshot) }} />
           </div>
         </Card>
       )}

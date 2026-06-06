@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageMeta } from "@/hooks/use-document-title";
+import DOMPurify from "isomorphic-dompurify";
 
 interface Letter {
   id: string;
@@ -76,7 +77,7 @@ export default function LetterDetailPage() {
             )}
             <div
               className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: letter.data.htmlBody }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(letter.data.htmlBody) }}
             />
 
             <Card className="mt-12 border-primary/30 bg-primary/5">
