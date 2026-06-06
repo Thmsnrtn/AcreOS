@@ -146,19 +146,33 @@ function GreetingBanner() {
     },
   });
 
+  // 2026-06-05 Krieger P2: idempotent fire-and-forget ack for users whose
+  // history predates the schema add (server returns isFirstSession=false
+  // + no message). Moved from inside the render branch to a useEffect so
+  // React-18 strict-mode double-renders don't double-fire the POST.
+  useEffect(() => {
+    if (!user || acknowledged) return;
+    if (data && !data.isFirstSession && !data.message) {
+      if (!ackMutation.isPending && !ackMutation.isSuccess) {
+        ackMutation.mutate();
+      }
+    }
+    // ackMutation is stable across renders; we intentionally don't list it
+    // in deps to avoid re-firing on transient state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, acknowledged, data]);
+
   if (!user || acknowledged) {
     return null;
   }
   // Defer rendering until the greeting copy resolves — the server may return
   // isFirstSession=false for users whose history predates the schema add,
   // in which case the banner is suppressed without requiring a click.
+  // 2026-06-05 Krieger P2: previously this branch fired ackMutation during
+  // render. React-18 strict-mode double-renders intentionally, which
+  // double-fired the POST. The effect below moves the fire-and-forget into
+  // commit phase + makes it idempotent against the React lifecycle.
   if (!data?.isFirstSession || !data.message) {
-    // No banner needed, but the disclosure must still be recorded once for
-    // anyone who lands on /pax. Fire-and-forget the POST so the audit row
-    // exists; idempotent server-side.
-    if (!ackMutation.isPending && !ackMutation.isSuccess) {
-      ackMutation.mutate();
-    }
     return null;
   }
 

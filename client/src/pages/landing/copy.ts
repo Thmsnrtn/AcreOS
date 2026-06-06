@@ -45,9 +45,9 @@ export const LANDING_COPY = {
     // owns end-to-end — find, mail, reply, close, service. Nothing
     // else on the market does the last two for a land operator.
     wedge:
-      "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
+      "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and tracks the note after.",
     sub:
-      "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies, and tracks every parcel from cold lead through closed note in one thread. The operator handles judgment calls; the system handles the busy work.",
+      "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies, tracks every parcel from cold lead through closed note in one thread, and turns on automated note servicing once payments are connected. The operator handles judgment calls; the system handles the busy work.",
     cta1: "See Pax run on your county — free for 14 days",
     cta2: "Watch a 90-second demo first",
     ctaSub: "Pax pulls your first list inside 10 minutes.",
