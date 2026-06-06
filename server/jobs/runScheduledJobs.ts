@@ -2260,6 +2260,50 @@ function startPaxContinuousAuditJob() {
 }
 
 /**
+ * Quinn (Chief of Alignment) — nightly transparency report aggregation.
+ *
+ * Tahoe wave E9. Aggregates the rolling 90-day window across
+ * pax_refusal_payloads, pax_decision_appeals, solene_pre_call_decisions
+ * (founder bypass count), and the alignment-detector drift findings.
+ * Upserts a transparency_reports row. Publication (setting published_at) is
+ * a separate manual gesture — this job only refreshes the draft.
+ *
+ * Lock TTL: 15 minutes (the aggregation is cheap — a handful of grouped
+ * counts). Fires at 05:00 UTC, immediately after Beatrice's 04:00 audit so
+ * the report row reflects the latest audit findings.
+ */
+function startTransparencyReportAggregationJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 15 * 60;
+
+  log(
+    'Registering Quinn transparency-report aggregation job (daily 05:00 UTC)',
+    'sovereign',
+  );
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 5) return;
+
+    void withJobLock('transparency_report_aggregation', TTL_SECONDS, async () => {
+      const { runTransparencyReportAggregation } = await import(
+        './transparencyReportAggregator'
+      );
+      const reportId = await runTransparencyReportAggregation();
+      log(
+        `[transparency-report] daily: report_id=${reportId ?? 'null'}`,
+        'sovereign',
+      );
+    }).catch((err) => {
+      log(
+        `[transparency-report] daily failed to acquire lock or run: ${err}`,
+        'sovereign',
+      );
+    });
+  }, ONE_HOUR);
+}
+
+/**
  * Solene (COO) — self-audit cron.
  *
  * Two cadences honoured by one tick function:
@@ -3311,6 +3355,14 @@ export async function runScheduledJobs(): Promise<void> {
   // regulatory detectors. Findings persist to pax_audit_findings; drift
   // signals fire via logger.error + Sentry (when SENTRY_DSN set).
   startPaxContinuousAuditJob();
+
+  // Quinn (Chief of Alignment) — nightly transparency report aggregation
+  // (daily 05:00 UTC, immediately after Beatrice's continuous-audit). Rolls
+  // up refusals + appeals + founder bypasses + alignment-detector drift
+  // findings over the trailing 90 days and upserts a transparency_reports
+  // row. Publication (setting published_at) is a separate manual gesture;
+  // this job only refreshes the draft.
+  startTransparencyReportAggregationJob();
 
   // Solene — self-audit (per-session every 60m, per-week Sunday 23:00 UTC).
   // Samples recent solene_decisions and scores each through eight

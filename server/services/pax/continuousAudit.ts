@@ -1,10 +1,18 @@
 /**
- * BEATRICE — Pax continuous-audit service.
+ * BEATRICE + QUINN — Pax continuous-audit service.
  *
  * Daily sampling regime that verifies Pax outputs against the
  * AcreOS constitution (Immutables §1 / §2 / §7 / §11 / §12) and the
  * persona-architecture rule (Pax-only customer surface; codename leak
  * forbidden). DETECTION ONLY — remediation is the quarterly review.
+ *
+ * Tahoe wave E2 (Quinn's frame): this file is the alignment-job-in-embryo.
+ * The 6 historical detectors are COMPLIANCE-scoped (data retention,
+ * k-anonymity, persona vocabulary, etc.). The 3 NEW detectors at the
+ * bottom of this file are ALIGNMENT-scoped (founder-bypass forensics,
+ * refusal-rate drift, simulated-vs-real action divergence). Both scopes
+ * ride the same `Detector` typed interface; both cite specific canonical
+ * immutables. See `complianceDetectors` and `alignmentDetectors` below.
  *
  * The per-response gate (server/utils/validatePaxResponse.ts) is the
  * synchronous floor; this audit is the *post-hoc sampling* floor.
@@ -901,6 +909,96 @@ function emitDriftSignal(input: DriftSignalInput): void {
     }
   })();
 }
+
+// ============================================================================
+// TAHOE WAVE E2 — generalized detector framework.
+// ----------------------------------------------------------------------------
+// The 6 existing check functions above are COMPLIANCE-scoped: they run per
+// sampled output (synchronous, in-memory regex/heuristic). The new
+// alignment-scoped detectors in ./alignmentDetectors.ts run a DB-backed
+// time-windowed query each. Both kinds satisfy the same `Detector`
+// interface — they differ in `scope` and in how their `run()` interacts with
+// the DB.
+//
+// Compliance detectors are documented in this module as ad-hoc CheckName
+// values to preserve the existing pax_audit_findings persistence path. To
+// expose them through the typed framework, we wrap them as `Detector`
+// objects whose `run()` invokes a one-shot platform-wide audit pass.
+//
+// Why we keep the historical CheckName flow alongside the new framework:
+//   - The existing flow's per-sample idempotency (UNIQUE index on
+//     run_id+source_row_id+check_name) is load-bearing for Beatrice's
+//     finding triage. Rewriting the persistence path mid-wave would
+//     introduce a regression vector.
+//   - The new framework is for scope-aware orchestration: Quinn's
+//     alignmentDetectors monitor things the existing 6 don't see (founder
+//     bypass forensics, week-over-week drift). They run on a different
+//     cadence + write into a different shape (jsonb evidence vs
+//     content_excerpt).
+// ============================================================================
+
+import {
+  type Detector as TahoeDetector,
+  type DetectorScope,
+  type DetectorSeverityFloor,
+  alignmentDetectors as alignmentDetectorRegistry,
+} from "./alignmentDetectors";
+
+export type { TahoeDetector as Detector, DetectorScope, DetectorSeverityFloor };
+
+/**
+ * Compliance-scoped detector descriptors. These are documentation rows for
+ * the typed framework — the actual per-sample work continues to run via
+ * the existing runChecks() / sampleOutputs() pipeline. The descriptors
+ * carry the `citedImmutables` strings so the transparency report can
+ * aggregate findings by canonical immutable id.
+ */
+export const complianceDetectors: ReadonlyArray<{
+  id: CheckName;
+  scope: DetectorScope;
+  severityFloor: DetectorSeverityFloor;
+  citedImmutables: ReadonlyArray<string>;
+}> = Object.freeze([
+  {
+    id: "system_prompt_leak",
+    scope: "compliance",
+    severityFloor: "critical",
+    citedImmutables: ["customer:7"],
+  },
+  {
+    id: "advisor_phrasing",
+    scope: "compliance",
+    severityFloor: "warn",
+    citedImmutables: ["customer:12"],
+  },
+  {
+    id: "fabricated_amount",
+    scope: "compliance",
+    severityFloor: "critical",
+    citedImmutables: ["customer:1"],
+  },
+  {
+    id: "competitor_mention",
+    scope: "compliance",
+    severityFloor: "info",
+    citedImmutables: ["customer:1"],
+  },
+  {
+    id: "codename_bare_mention",
+    scope: "compliance",
+    severityFloor: "warn",
+    citedImmutables: ["customer:7"],
+  },
+  {
+    id: "persona_vocabulary_mismatch",
+    scope: "compliance",
+    severityFloor: "info",
+    citedImmutables: ["customer:9"],
+  },
+]);
+
+/** Re-export the alignment detector registry for orchestrators. */
+export const alignmentDetectors = alignmentDetectorRegistry;
 
 // ============================================================================
 // PER-ORG WALK — used by the cron tick.

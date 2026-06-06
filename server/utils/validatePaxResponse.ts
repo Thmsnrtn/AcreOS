@@ -11,6 +11,8 @@
 
 import { logger } from "./logger";
 import { USER_DATA_OPEN, USER_DATA_CLOSE } from "./sanitizePrompt";
+import { db } from "../db";
+import { paxRefusalPayloads } from "@shared/schema/pax-refusal-payloads";
 
 /**
  * Markers and verbatim strings that indicate a system-prompt leak.
@@ -71,6 +73,10 @@ export interface ValidatePaxResponseOptions {
   fallback?: string;
   /** Org id for structured logging. */
   organizationId?: number | null;
+  /** Optional conversation id (Pax conversation context). */
+  conversationId?: number | null;
+  /** Optional message id (the assistant message being validated). */
+  messageId?: number | null;
 }
 
 /**
@@ -111,9 +117,79 @@ export function validatePaxResponse(
     // logger must never break the response path
   }
 
+  // Tahoe E9 — write a pax_refusal_payloads row so the customer recourse
+  // path has data to surface. Fire-and-forget; the customer's response is
+  // never blocked on the audit-row write.
+  //
+  // Citation: this validator catches prompt-leak / persona-architecture
+  // breaches, which the constitution maps to customer immutable #7 (always
+  // disclose AI use clearly). We use that as the canonical citation.
+  if (opts.organizationId != null) {
+    void recordRefusalPayload({
+      organizationId: opts.organizationId,
+      conversationId: opts.conversationId ?? null,
+      messageId: opts.messageId ?? null,
+      citedImmutableId: "customer:7",
+      refusalText: opts.fallback ?? SAFE_FALLBACK,
+      severity: "critical",
+    }).catch((err) => {
+      try {
+        logger.warn("[validatePaxResponse] refusal-payload write failed", {
+          metadata: { error: err instanceof Error ? err.message : String(err) },
+        });
+      } catch {
+        // never throw out of the response path
+      }
+    });
+  }
+
   return {
     safe: false,
     response: opts.fallback ?? SAFE_FALLBACK,
     matchedPatterns: matched,
   };
+}
+
+// ============================================================================
+// REFUSAL PAYLOAD EMITTER (Tahoe wave E9)
+// ----------------------------------------------------------------------------
+// Single chokepoint for "Pax just refused" rows. Other refusal emitters
+// (the supportBrain validator, executive.ts streaming validator) call this
+// directly so every refusal lands in pax_refusal_payloads with the canonical
+// shape.
+//
+// Fire-and-forget — a failed write never blocks the customer-facing response.
+// ============================================================================
+
+export interface RecordRefusalPayloadInput {
+  organizationId: number;
+  conversationId?: number | null;
+  messageId?: number | null;
+  /** Canonical immutable id (e.g. "customer:7", "sovereign:1"). */
+  citedImmutableId: string;
+  refusalText: string;
+  severity: "info" | "warn" | "critical";
+}
+
+export async function recordRefusalPayload(
+  input: RecordRefusalPayloadInput,
+): Promise<void> {
+  try {
+    await db.insert(paxRefusalPayloads).values({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId ?? null,
+      messageId: input.messageId ?? null,
+      citedImmutableId: input.citedImmutableId,
+      refusalText: input.refusalText,
+      severity: input.severity,
+    });
+  } catch (err) {
+    try {
+      logger.warn("[recordRefusalPayload] db insert failed — refusal not persisted", {
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      });
+    } catch {
+      // never throw — this is best-effort telemetry
+    }
+  }
 }
