@@ -55,6 +55,20 @@ const USGS_TOPO_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGS
 const LAYER_STORAGE_KEY = "property-map-layers";
 const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
 
+// Per-layer load lifecycle. Free federal/state GIS servers (FEMA NFHL, USDA
+// WMS, USGS) flake regularly; a silent failure makes the whole product feel
+// broken. We track loading -> ready -> error per raster SOURCE id so each
+// toggle gets honest feedback + a retry, instead of an overlay that just never
+// appears. Maps a raster source id to its customer-facing name.
+type LayerLoadStatus = "loading" | "ready" | "error";
+const OVERLAY_SOURCE_LABELS: Record<string, string> = {
+  "fema-flood": "FEMA Flood Zones",
+  "zoning-land-use": "Zoning Districts",
+  "usda-cdl": "USDA Cropland",
+  "usda-clu": "USDA Farm Units",
+  "usgs-hillshade": "USGS Hillshade",
+};
+
 type MeasurementMode = "none" | "distance" | "area";
 type MeasurementUnits = "imperial" | "metric";
 
@@ -763,7 +777,11 @@ export function PropertyMap({
   
   const [layerState, setLayerState] = useState<LayerState>(loadLayerState);
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
-  const [femaLoading, setFemaLoading] = useState(false);
+  // Real per-layer status keyed by raster source id (see OVERLAY_SOURCE_LABELS).
+  const [layerStatus, setLayerStatus] = useState<Record<string, LayerLoadStatus>>({});
+  // One error toast per layer per session — carrier-NAT-shared sessions must
+  // not get spammed when a free GIS endpoint flaps.
+  const erroredLayersRef = useRef<Set<string>>(new Set());
   
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>("none");
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPoint[]>([]);
@@ -919,11 +937,19 @@ export function PropertyMap({
       map.current.removeLayer("slope-gradient");
   }, []);
 
+  // Honest per-layer status. Setting "loading" here is truthful (we just asked
+  // for tiles); the map's sourcedata/error events (wired in the init effect)
+  // flip it to "ready" or "error" based on what actually happened — no fake
+  // fixed-duration spinner.
+  const markLayerStatus = useCallback((sourceId: string, status: LayerLoadStatus) => {
+    setLayerStatus((prev) => (prev[sourceId] === status ? prev : { ...prev, [sourceId]: status }));
+  }, []);
+
   const addFemaFloodLayer = useCallback(() => {
     if (!map.current) return;
-    
-    setFemaLoading(true);
-    
+
+    markLayerStatus("fema-flood", "loading");
+
     if (!map.current.getSource("fema-flood")) {
       map.current.addSource("fema-flood", {
         type: "raster",
@@ -934,10 +960,10 @@ export function PropertyMap({
         attribution: "FEMA NFHL"
       });
     }
-    
+
     if (!map.current.getLayer("fema-flood-layer")) {
       const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
-      
+
       map.current.addLayer({
         id: "fema-flood-layer",
         type: "raster",
@@ -948,11 +974,9 @@ export function PropertyMap({
         }
       }, firstSymbolId);
     }
-    
+
     map.current.setLayoutProperty("fema-flood-layer", "visibility", "visible");
-    
-    setTimeout(() => setFemaLoading(false), 1000);
-  }, []);
+  }, [markLayerStatus]);
 
   const removeFemaFloodLayer = useCallback(() => {
     if (!map.current) return;
@@ -984,6 +1008,8 @@ export function PropertyMap({
   const addZoningLayer = useCallback(() => {
     if (!map.current) return;
 
+    markLayerStatus("zoning-land-use", "loading");
+
     if (!map.current.getSource("zoning-land-use")) {
       map.current.addSource("zoning-land-use", {
         type: "raster",
@@ -1006,7 +1032,7 @@ export function PropertyMap({
     }
 
     map.current.setLayoutProperty("zoning-land-use-layer", "visibility", "visible");
-  }, []);
+  }, [markLayerStatus]);
 
   const removeZoningLayer = useCallback(() => {
     if (!map.current) return;
@@ -1097,7 +1123,12 @@ export function PropertyMap({
 
   const addArcGISOverlayLayer = useCallback((id: string, url: string) => {
     if (!map.current) return;
-    if (map.current.getLayer(`${id}-layer`)) return;
+    markLayerStatus(id, "loading");
+    // Re-enabling a layer we previously hid: just make it visible again.
+    if (map.current.getLayer(`${id}-layer`)) {
+      map.current.setLayoutProperty(`${id}-layer`, "visibility", "visible");
+      return;
+    }
     if (!map.current.getSource(id)) {
       map.current.addSource(id, {
         type: "raster",
@@ -1112,12 +1143,68 @@ export function PropertyMap({
       source: id,
       paint: { "raster-opacity": 0.7, "raster-fade-duration": 0 },
     }, firstSymbolId);
-  }, []);
+  }, [markLayerStatus]);
 
   const removeArcGISOverlayLayer = useCallback((id: string) => {
     if (!map.current) return;
     if (map.current.getLayer(`${id}-layer`)) map.current.setLayoutProperty(`${id}-layer`, "visibility", "none");
   }, []);
+
+  // Retry a failed overlay: drop the source/layer so the next add re-fetches
+  // tiles from scratch, clear the one-toast guard, then re-add.
+  const retryLayer = useCallback((sourceId: string) => {
+    if (!map.current) return;
+    erroredLayersRef.current.delete(sourceId);
+    const layerId = `${sourceId}-layer`;
+    if (map.current.getLayer(layerId)) map.current.removeLayer(layerId);
+    if (map.current.getSource(sourceId)) map.current.removeSource(sourceId);
+    markLayerStatus(sourceId, "loading");
+    if (sourceId === "fema-flood") {
+      addFemaFloodLayer();
+    } else if (sourceId === "zoning-land-use") {
+      addZoningLayer();
+    } else if (sourceId === "usda-cdl") {
+      addArcGISOverlayLayer("usda-cdl", USDA_CDL_URL);
+    } else if (sourceId === "usda-clu") {
+      addArcGISOverlayLayer("usda-clu", USDA_CLU_URL);
+    } else if (sourceId === "usgs-hillshade") {
+      addArcGISOverlayLayer("usgs-hillshade", USGS_HILLSHADE_URL);
+    }
+  }, [markLayerStatus, addFemaFloodLayer, addZoningLayer, addArcGISOverlayLayer]);
+
+  /** Honest per-layer status chip: spinner while loading, check when ready,
+   *  a retry button on error. Color from tokens; aria text never color-only. */
+  const renderLayerStatusChip = useCallback((sourceId: string) => {
+    const status = layerStatus[sourceId];
+    if (!status) return null;
+    if (status === "loading") {
+      return (
+        <span className="inline-flex items-center gap-1 text-micro text-muted-foreground" role="status">
+          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          <span className="sr-only">Loading {OVERLAY_SOURCE_LABELS[sourceId]}</span>
+        </span>
+      );
+    }
+    if (status === "ready") {
+      return (
+        <span className="inline-flex items-center gap-1 text-micro text-acr-pos">
+          <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+          <span className="sr-only">{OVERLAY_SOURCE_LABELS[sourceId]} ready</span>
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); retryLayer(sourceId); }}
+        className="inline-flex items-center gap-1 text-micro text-acr-neg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded px-0.5"
+        aria-label={`${OVERLAY_SOURCE_LABELS[sourceId]} failed to load. Retry.`}
+      >
+        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+        Retry
+      </button>
+    );
+  }, [layerStatus, retryLayer]);
 
   const toggle3DExtrude = useCallback(() => {
     if (!map.current || !mapLoaded) return;
@@ -2078,11 +2165,41 @@ export function PropertyMap({
       }
     });
 
+    // Honest per-layer lifecycle. A source we track flips to "ready" once its
+    // tiles actually arrive (not after a fake 1s timer), and to "error" the
+    // moment the free GIS endpoint fails — with a single debounced toast so a
+    // flapping federal server can't spam a carrier-NAT-shared session.
+    map.current.on("sourcedata", (e: any) => {
+      const id = e?.sourceId;
+      if (!id || !(id in OVERLAY_SOURCE_LABELS)) return;
+      if (e.isSourceLoaded) {
+        markLayerStatus(id, "ready");
+        erroredLayersRef.current.delete(id);
+      }
+    });
+
+    map.current.on("error", (e: any) => {
+      const id = e?.sourceId;
+      if (id && id in OVERLAY_SOURCE_LABELS) {
+        markLayerStatus(id, "error");
+        if (!erroredLayersRef.current.has(id)) {
+          erroredLayersRef.current.add(id);
+          toast({
+            title: `${OVERLAY_SOURCE_LABELS[id]} unavailable`,
+            description: "The public data source didn't respond. Tap retry to try again.",
+            variant: "destructive",
+          });
+        }
+      }
+      // Log the real cause; never surface raw GL errors to the customer.
+      clientLogger.warn("[PropertyMap] map error", { sourceId: id, message: e?.error?.message });
+    });
+
     return () => {
       stopFlyover();
       map.current?.remove();
     };
-  }, [properties, initialViewState, interactive, currentStyle, setup3DTerrain, addPropertyLayers, stopFlyover]);
+  }, [properties, initialViewState, interactive, currentStyle, setup3DTerrain, addPropertyLayers, stopFlyover, markLayerStatus, toast]);
 
   if (!isMapEngineConfigured()) {
     // Customer-safe: never render env-var names or engine internals on a
@@ -2516,10 +2633,10 @@ export function PropertyMap({
                           onCheckedChange={(checked) => updateLayerState({ femaFloodZone: !!checked })}
                           data-testid="checkbox-fema-flood"
                         />
-                        <Label htmlFor="fema-flood" className="text-sm flex items-center gap-2 cursor-pointer">
+                        <Label htmlFor="fema-flood" className="text-sm flex items-center gap-2 cursor-pointer flex-1">
                           FEMA Flood Zones
-                          {femaLoading && <Loader2 className="h-3 w-3 animate-spin" data-testid="loader-fema" />}
                         </Label>
+                        {layerState.femaFloodZone && renderLayerStatusChip("fema-flood")}
                       </div>
 
                       <div className="space-y-2">
@@ -2571,9 +2688,10 @@ export function PropertyMap({
                           onCheckedChange={(checked) => handleZoningToggle(!!checked)}
                           data-testid="checkbox-zoning-districts"
                         />
-                        <Label htmlFor="zoning-districts" className="text-sm cursor-pointer text-muted-foreground">
+                        <Label htmlFor="zoning-districts" className="text-sm cursor-pointer text-muted-foreground flex-1">
                           Zoning Districts
                         </Label>
+                        {layerState.zoningDistricts && renderLayerStatusChip("zoning-land-use")}
                       </div>
 
                       <Separator />
@@ -2612,10 +2730,11 @@ export function PropertyMap({
                           onCheckedChange={(checked) => updateLayerState({ usgsHillshade: !!checked })}
                           data-testid="checkbox-usgs-hillshade"
                         />
-                        <Label htmlFor="usgs-hillshade" className="text-sm cursor-pointer flex items-center gap-1">
+                        <Label htmlFor="usgs-hillshade" className="text-sm cursor-pointer flex items-center gap-1 flex-1">
                           <Sun className="h-3 w-3 text-muted-foreground" />
                           USGS Hillshade
                         </Label>
+                        {layerState.usgsHillshade && renderLayerStatusChip("usgs-hillshade")}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -2654,10 +2773,11 @@ export function PropertyMap({
                           onCheckedChange={(checked) => updateLayerState({ usdaCropland: !!checked })}
                           data-testid="checkbox-usda-cropland"
                         />
-                        <Label htmlFor="usda-cropland" className="text-sm cursor-pointer flex items-center gap-1">
+                        <Label htmlFor="usda-cropland" className="text-sm cursor-pointer flex items-center gap-1 flex-1">
                           <Tractor className="h-3 w-3 text-muted-foreground" />
                           Cropland Data Layer
                         </Label>
+                        {layerState.usdaCropland && renderLayerStatusChip("usda-cdl")}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -2667,10 +2787,11 @@ export function PropertyMap({
                           onCheckedChange={(checked) => updateLayerState({ usdaClu: !!checked })}
                           data-testid="checkbox-usda-clu"
                         />
-                        <Label htmlFor="usda-clu" className="text-sm cursor-pointer flex items-center gap-1">
+                        <Label htmlFor="usda-clu" className="text-sm cursor-pointer flex items-center gap-1 flex-1">
                           <TreePine className="h-3 w-3 text-muted-foreground" />
                           Common Land Units
                         </Label>
+                        {layerState.usdaClu && renderLayerStatusChip("usda-clu")}
                       </div>
 
                       <Separator className="my-3" />
@@ -2980,7 +3101,14 @@ export function SinglePropertyMap({
     });
     map.current = mapInstance;
 
-    mapInstance.on("error", () => { /* suppress to avoid console spam */ });
+    // Don't render raw GL errors to the customer, but don't swallow them
+    // silently either — log the real cause so failures are diagnosable.
+    mapInstance.on("error", (e: any) => {
+      clientLogger.warn("[PropertyMap] static map error", {
+        sourceId: e?.sourceId,
+        message: e?.error?.message,
+      });
+    });
 
     let layersAdded = false;
 
