@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import maplibregl from "maplibre-gl";
-import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun, Clock, Wind, Compass, TrendingUp, TrendingDown, Minus as MinusIcon } from "lucide-react";
+import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun, Clock, Wind, Compass, TrendingUp, TrendingDown, Minus as MinusIcon, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2085,16 +2085,30 @@ export function PropertyMap({
   }, [properties, initialViewState, interactive, currentStyle, setup3DTerrain, addPropertyLayers, stopFlyover]);
 
   if (!isMapEngineConfigured()) {
+    // Customer-safe: never render env-var names or engine internals on a
+    // customer surface (a customer seeing VITE_MAPBOX_ACCESS_TOKEN concludes
+    // the product is half-built). The real cause is logged, never shown.
     return (
       <Card className="flex items-center justify-center" style={{ height }}>
         <CardContent className="text-center text-muted-foreground p-6">
-          <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>Map not available</p>
-          <p className="text-sm mt-1">
-            {MAP_ENGINE === "mapbox"
-              ? "Please configure VITE_MAPBOX_ACCESS_TOKEN, or set VITE_MAP_ENGINE=maplibre to use the open-source path."
-              : "MapLibre tiles unavailable — check VITE_STADIA_API_KEY or network."}
-          </p>
+          <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
+          <p>Map temporarily unavailable</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => window.location.reload()}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Retry
+          </Button>
+          {import.meta.env.DEV && (
+            <p className="text-micro mt-3 opacity-70">
+              {MAP_ENGINE === "mapbox"
+                ? "dev: configure VITE_MAPBOX_ACCESS_TOKEN, or set VITE_MAP_ENGINE=maplibre"
+                : "dev: MapLibre tiles unavailable — check VITE_STADIA_API_KEY or network"}
+            </p>
+          )}
         </CardContent>
       </Card>
     );
@@ -3134,8 +3148,8 @@ export function SinglePropertyMap({
     return (
       <div className="flex items-center justify-center bg-muted/30 rounded-md" style={{ height }}>
         <div className="text-center text-muted-foreground p-4">
-          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
-          <p className="text-xs">Configure Mapbox token</p>
+          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" aria-hidden="true" />
+          <p className="text-xs">Map temporarily unavailable</p>
         </div>
       </div>
     );
@@ -3189,8 +3203,8 @@ export function StaticPropertyMap({
     return (
       <div className={cn("flex items-center justify-center bg-muted/30 rounded-md", className)} style={{ height }}>
         <div className="text-center text-muted-foreground p-4">
-          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
-          <p className="text-xs">Configure Mapbox token</p>
+          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" aria-hidden="true" />
+          <p className="text-xs">Map temporarily unavailable</p>
         </div>
       </div>
     );
