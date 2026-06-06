@@ -45,6 +45,7 @@ import { CustomFieldsManager } from "@/components/custom-fields";
 import { NotificationPreferences } from "@/components/notification-preferences";
 import { ImportExportManager } from "@/components/import-export";
 import { ComplianceSettings } from "@/components/compliance-settings";
+import { SecurityActivityLog } from "@/components/security-activity-log";
 import { AISettings } from "@/components/ai-settings";
 import { WorkflowsSettingsTab } from "@/components/workflows-settings-tab";
 import { PaxTasksSettingsTab } from "@/components/pax-tasks-settings-tab";
@@ -2042,6 +2043,7 @@ export default function Settings() {
                 exists — Clerk owns credentials end-to-end. */}
             <TabsContent value="security" className="space-y-6 mt-6" data-testid="tab-content-security">
               <TwoFactorAuthSettings />
+              <SecurityActivityLog />
             </TabsContent>
           </Tabs>
       <ConfirmDialog

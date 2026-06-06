@@ -87,6 +87,9 @@ export const CLASSIFICATION_REGISTRY: Record<string, DataClass> = {
   "leads.last_name": "pii",
   "leads.email": "pii",
   "leads.phone": "pii",
+  "leads.phone_normalized": "pii",
+  "leads.tax_id": "sensitive_financial", // ciphertext of recipient TIN (SSN/EIN)
+  "leads.tax_id_type": "sensitive_financial",
   "leads.mailing_address": "pii",
   "leads.mailing_city": "pii",
   "leads.mailing_state": "internal",
@@ -119,16 +122,24 @@ export const CLASSIFICATION_REGISTRY: Record<string, DataClass> = {
  * column is NOT declared in the registry, the lint test fails — forcing an
  * explicit classification decision rather than silently shipping a PII field.
  */
+// Patterns anchor on `$` (or specific safe prefixes) so that AGGREGATE /
+// DERIVED columns built off a PII name — e.g. `email_opens`, `email_clicks`,
+// `phone_call_count` — are NOT flagged as raw PII. Only columns that are (or
+// end in) the sensitive token itself trip the lint. `email_normalized` /
+// `phone_normalized` are intentionally caught via the `_normalized` allowance.
 export const PII_NAME_PATTERNS: RegExp[] = [
-  /(^|_)ssn(_|$)/i,
+  /(^|_)ssn$/i,
   /social_security/i,
-  /(^|_)email(_|$)/i,
-  /(^|_)phone(_|$)/i,
-  /tax_id(?!_type)/i, // tax_id, tax_id_last4 — but allow explicit type column
-  /(^|_)dob(_|$)/i,
+  /(^|_)email$/i,
+  /(^|_)email_normalized$/i,
+  /(^|_)phone$/i,
+  /(^|_)phone_normalized$/i,
+  /(^|_)tax_id$/i, // tax_id ciphertext — but not tax_id_type / tax_address
+  /(^|_)tax_id_last4$/i,
+  /(^|_)dob$/i,
   /date_of_birth/i,
-  /(^|_)first_name(_|$)/i,
-  /(^|_)last_name(_|$)/i,
+  /(^|_)first_name$/i,
+  /(^|_)last_name$/i,
 ];
 
 /**
