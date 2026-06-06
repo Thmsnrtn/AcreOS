@@ -269,6 +269,18 @@ export const organizations = pgTable("organizations", {
     //   alignmentReviewerNotes?: string;
     [key: string]: unknown;
   }>().notNull().default({}),
+  // ─── Tahoe E5: per-tenant theming (TenantThemeProvider) ──────────────
+  // Distinct from white_label_configs (reseller/Kim tenants on custom
+  // domains). These are first-party org-level brand affordances every org
+  // can set from Settings → Appearance: an accent color, a logo, and a
+  // density preference. Applied client-side by TenantThemeProvider as CSS
+  // custom properties / data-attributes — NEVER hardcoded colors. All
+  // nullable so legacy orgs render the default theme unchanged. The accent
+  // is stored as a hex string ("#2563eb"); the provider converts it to the
+  // HSL component form the design tokens expect.
+  brandAccentColor: text("brand_accent_color"), // hex, e.g. "#2563eb"; null = theme default
+  brandLogoUrl: text("brand_logo_url"),         // absolute URL; shown in nav/topbar when set
+  brandDensity: text("brand_density"),          // 'compact' | 'comfortable' | 'adaptive' | null (default)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4838,6 +4850,35 @@ export type InsertSavedView = z.infer<typeof insertSavedViewSchema>;
 // Type aliases for saved views
 export type SavedViewFilter = NonNullable<SavedView["filters"]>[number];
 export type FilterOperator = "equals" | "not_equals" | "contains" | "gt" | "lt" | "gte" | "lte" | "in" | "not_in" | "is_empty" | "is_not_empty";
+
+// ============================================
+// UI STATE (Tahoe E6 — server-backed useUiState)
+// ============================================
+
+// Server-backed UI preferences keyed by (organization_id, user_id, key).
+// Today most ephemeral UI state — collapsed panels, view toggles, dismissed
+// banners — lives only in localStorage, so it does not follow a user across
+// devices (Tom uses iOS AND desktop). This table is the durable home for
+// that state. The `value` is an opaque jsonb blob; each consumer owns its
+// own shape via the `useUiState<T>` hook. Keys are namespaced "scope:field"
+// (e.g. "sidebar:collapsed", "pax-rail:open") to match the localStorage key
+// conventions in use-local-storage-state.ts.
+export const uiState = pgTable("ui_state", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id").notNull(),
+  key: text("key").notNull(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  // Leading-org composite uniqueness — one row per (org, user, key). The
+  // hook upserts on this constraint; the leading org column also satisfies
+  // the L3 shard-readiness lint (check-org-leading-index.mjs).
+  uniqueIndex("ui_state_org_user_key_idx").on(table.organizationId, table.userId, table.key),
+]);
+
+export type UiState = typeof uiState.$inferSelect;
+export type InsertUiState = typeof uiState.$inferInsert;
 
 // ============================================
 // NOTIFICATION PREFERENCES (15.2)

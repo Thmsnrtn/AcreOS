@@ -132,6 +132,7 @@ import {
   createContext,
   useContext,
 } from "react";
+import { useUiState } from "@/hooks/use-ui-state";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -728,6 +729,10 @@ const NAV_MODULES: NavModule[] = [
 // 2026-05-29 — IDs aligned to the five-door customer surface.
 const DEFAULT_EXPANDED = new Set<string>(["map", "deals", "founder-business"]);
 
+// Tahoe E6: sidebar-collapsed migrated from localStorage to useUiState so the
+// rail's collapsed/expanded state follows the user across devices. The key is
+// unchanged so any existing localStorage value is reused as the first-paint
+// cache until the server value hydrates.
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";
 const HIDDEN_MODULES_KEY = "sidebar-hidden-modules";
@@ -761,20 +766,9 @@ const routePrefetchMap: Record<string, string> = {
 // Provider — wrap app at root so page-shell can consume
 // ─────────────────────────────────────────────────────────────────────
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isCollapsed, setIsCollapsedState] = useState(() => {
-    try {
-      return localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const setIsCollapsed = useCallback((v: boolean) => {
-    setIsCollapsedState(v);
-    try {
-      localStorage.setItem(COLLAPSED_STORAGE_KEY, String(v));
-    } catch {}
-  }, []);
+  // Server-backed (Tahoe E6): collapsed state follows the user across devices.
+  // useUiState keeps the same localStorage key warm for instant first paint.
+  const [isCollapsed, setIsCollapsed] = useUiState<boolean>(COLLAPSED_STORAGE_KEY, false);
 
   return (
     <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
