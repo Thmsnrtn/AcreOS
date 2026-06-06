@@ -17,7 +17,7 @@ import {
   systemMeta,
 } from "@shared/schema";
 import { sql, count, gte, eq, desc } from "drizzle-orm";
-import { emailService } from "./emailService";
+import { sendRegisteredEmail } from "./emailRegistry";
 import { jobSupervisor } from "./jobSupervisor";
 import { logActivity } from "./systemActivityLogger";
 import { getOpenAIClient } from "../utils/openaiClient";
@@ -203,13 +203,15 @@ export async function sendDailyBriefing(): Promise<void> {
   };
 
   for (const email of FOUNDER_EMAILS) {
-    await emailService.sendTransactionalEmail("founder_briefing", {
-      to: email,
-      templateData: {
-        briefingParagraphs: paragraphs,
-        stats: emailStats,
-      },
-    }).catch((err) => {
+    // Tahoe E10: routed through the typed lifecycle email registry. Founder
+    // briefings are operational mail to the founder's own inbox, so bypass the
+    // marketing suppression gate (a founder won't be on the opt-out list, but
+    // we never want an unrelated suppression to silence the daily briefing).
+    await sendRegisteredEmail(
+      "founder_briefing",
+      { briefingParagraphs: paragraphs, stats: emailStats },
+      { to: email, bypassSuppression: true },
+    ).catch((err) => {
       logger.error(`[FounderBriefing] Failed to send to ${email}`, undefined, { metadata: { detail: err?.message } });
     });
   }

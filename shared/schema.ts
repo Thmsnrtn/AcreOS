@@ -416,6 +416,48 @@ export type EmailSuppression = typeof emailSuppressions.$inferSelect;
 export type InsertEmailSuppression = typeof emailSuppressions.$inferInsert;
 
 // ============================================
+// OUTBOUND EMAIL LOG — Tahoe E10 lifecycle email registry
+// ============================================
+// Every send routed through server/services/emailRegistry.ts writes one row
+// here BEFORE delegating to the SES transport. The registry is the single
+// typed entrypoint for all transactional + lifecycle/marketing mail: each
+// send is named (`kind`), categorized (transactional | lifecycle), suppression-
+// checked (for lifecycle sends), and logged. This table is the audit trail —
+// it answers "did we send the trial-ending email to org N, when, did it land".
+export const outboundEmailLog = pgTable(
+  "outbound_email_log",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id"), // nullable: founder-internal mail (briefing) has no org
+    kind: text("kind").notNull(), // registry kind id, e.g. "welcome" | "trial_ending" | "churn_rescue"
+    category: text("category").notNull(), // "transactional" | "lifecycle"
+    recipient: text("recipient").notNull(),
+    subject: text("subject").notNull(),
+    status: text("status").notNull(), // "sent" | "failed" | "suppressed" | "skipped"
+    messageId: text("message_id"),
+    error: text("error"),
+    errorType: text("error_type"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    // Leading-org composite per scripts/check-org-leading-index.mjs — the
+    // founder audit surface filters by org + kind, ordered by recency.
+    byOrgKindCreated: index("idx_outbound_email_log_org_kind_created").on(
+      table.organizationId,
+      table.kind,
+      table.createdAt,
+    ),
+    byRecipientCreated: index("idx_outbound_email_log_recipient_created").on(
+      table.recipient,
+      table.createdAt,
+    ),
+  })
+);
+
+export type OutboundEmailLogRow = typeof outboundEmailLog.$inferSelect;
+export type InsertOutboundEmailLog = typeof outboundEmailLog.$inferInsert;
+
+// ============================================
 // ELEONORA DELIVERABILITY — Phase 1 §10 / Week 7-8
 // ============================================
 // Per-org email identity (DKIM/SPF/DMARC). The keypair is generated server-
