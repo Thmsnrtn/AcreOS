@@ -82,7 +82,29 @@ Top-level fields:
 
 ## CI
 
-[`.github/workflows/eval.yml`](../.github/workflows/eval.yml) runs the harness on every PR, posts the score as a comment, and **fails if `avgOverall` regresses by more than 5%** vs. `main`. The workflow uses encrypted org secrets for API keys; if a fork PR has no secrets, it falls back to the stub path.
+[`.github/workflows/eval.yml`](../.github/workflows/eval.yml) runs **two** gates on every prompt-touching PR:
+
+1. **`eval` job — relative regression check.** Runs the full 50-prompt golden set on the PR head and on `main`, posts the delta as a PR comment, and **fails if `avgOverall` regresses by more than 5%** vs. `main`.
+2. **`eval-gate` job — absolute prompt-change gate (Tahoe E7).** Runs the small **curated** golden set ([`golden-set-curated.json`](./golden-set-curated.json)) through the LLM judge and **fails non-zero when `avgOverall` drops below an absolute floor** (`EVAL_GATE_THRESHOLD`, default `0.65`). A system-prompt leak or PII disclosure on a refusal probe tanks the score and blocks merge.
+
+Both use encrypted org secrets for API keys; if a fork PR has no `ANTHROPIC_API_KEY`, the `eval-gate` job **gracefully skips** (scores stub output, exits 0) so it never false-fails.
+
+## The prompt-change eval gate (Tahoe E7)
+
+The gate turns the eval harness from a trend tracker into a real CI gate:
+
+- **Curated set** — [`golden-set-curated.json`](./golden-set-curated.json): 12 fully-reviewed (`curated:true` / `needsCuration:false`) Land-Investing Pax inputs across deal-analysis, lead-qualification, pax-inbox-draft, legal-disclosure-Q&A, and refusal.
+- **LLM-judge harness** — [`judge.ts`](./judge.ts) **reuses the repo's Anthropic client wrapper** (`server/services/solene/chat/anthropicClient.ts`) instead of instantiating a fresh SDK client. Model under test defaults to `claude-opus-4-8`; the judge defaults to `claude-haiku-4-5` (per the claude-api skill — small/cheap for a 0-1 tone score).
+- **Pure gate logic** — [`gate.ts`](./gate.ts): `evaluateGate()` + `assertGateOrThrow()`, throwing `EvalGateRejectedError` (same `code` discriminant as `server/services/aiEvalHarness.ts`). Unit-tested with a mocked judge in [`gate.test.ts`](./gate.test.ts).
+- **Runner + entrypoint** — [`run-gate.ts`](./run-gate.ts) (tsx) does the work; [`../scripts/eval-gate.mjs`](../scripts/eval-gate.mjs) is the CI entrypoint (`npm run eval:gate`).
+- **Persistence** — when `DATABASE_URL` is set, each verdict writes one `ai_eval_gate_runs` row (judge score, threshold, pass/fail, git ref) so the trend is queryable.
+
+```sh
+npm run eval:gate                                         # needs ANTHROPIC_API_KEY to enforce
+npm run eval:gate -- --threshold 0.7 --json              # override the floor
+```
+
+Without `ANTHROPIC_API_KEY` the gate exits 0 with a `SKIPPED` message (threshold not enforced against stub output).
 
 ## Scoring rules
 
