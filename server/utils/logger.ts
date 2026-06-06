@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { captureException } from "./sentry";
+import { currentTraceContext } from "./traceContext";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
@@ -9,6 +10,10 @@ interface LogEntry {
   message: string;
   source?: string;
   requestId?: string;
+  /** L4 — W3C trace_id (32-char hex). Auto-stamped from AsyncLocalStorage. */
+  traceId?: string;
+  /** L4 — W3C span_id (16-char hex). Auto-stamped from AsyncLocalStorage. */
+  spanId?: string;
   userId?: string;
   organizationId?: number;
   /**
@@ -182,12 +187,25 @@ function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}):
   const safeMessage = piiSafe ? message : redactPII(message);
   const safeMetadata = piiSafe ? options.metadata : (redactValue(options.metadata) as Record<string, unknown> | undefined);
 
+  // L4 — stamp W3C trace context onto every log line. When we're outside a
+  // request (worker, scheduled job, boot) the context is null and these
+  // fields stay absent so consumers can filter on their presence.
+  const trace = currentTraceContext();
+
   const entry: LogEntry = {
     timestamp: formatTimestamp(),
     level,
     message: safeMessage,
     ...options,
     metadata: safeMetadata,
+    ...(trace
+      ? {
+          traceId: trace.traceId,
+          spanId: trace.spanId,
+          // requestId only set if the caller didn't already provide one.
+          ...(options.requestId ? {} : { requestId: trace.correlationId }),
+        }
+      : {}),
   };
 
   const line = serializeEntry(entry);

@@ -4163,6 +4163,30 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "ai_call_log_model_idx" ON "ai_call_log" ("model")`,
   `CREATE INDEX IF NOT EXISTS "ai_call_log_feature_created_idx" ON "ai_call_log" ("feature", "created_at")`,
 
+  // 2026-06-05 (L14 — Tahoe lock-in cluster). Durable backing store for
+  // server/middleware/apiTelemetry.ts. The in-process Map<route, counters>
+  // is flushed here on a tick (every 60s) OR after 1k requests, whichever
+  // comes first. Reader UNIONs current-tick Map + this table for a 30-day
+  // window without an external APM. Retention is open — table is small
+  // (one row per (route, tick-window)); a nightly purge can be layered
+  // later once we have a year of data.
+  `CREATE TABLE IF NOT EXISTS "api_telemetry_samples" (
+     "id" serial PRIMARY KEY,
+     "route" text NOT NULL,
+     "cost_class" text,
+     "window_start" timestamp with time zone NOT NULL,
+     "window_end" timestamp with time zone NOT NULL,
+     "count_2xx" integer NOT NULL DEFAULT 0,
+     "count_4xx" integer NOT NULL DEFAULT 0,
+     "count_5xx" integer NOT NULL DEFAULT 0,
+     "total_ms" integer NOT NULL DEFAULT 0,
+     "p50_ms" integer NOT NULL DEFAULT 0,
+     "p95_ms" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_route_window_idx" ON "api_telemetry_samples" ("route", "window_start")`,
+  `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_window_start_idx" ON "api_telemetry_samples" ("window_start")`,
+
   // ── Founder Chat (Atlas) Phase A: schema additions ────────────────────
   // Extend aiConversations with scope + isDefault + threadTitle +
   // pinnedMessageIds. The partial unique index guarantees exactly one
