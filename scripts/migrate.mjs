@@ -128,6 +128,26 @@ const STATEMENTS = [
   // via Settings → Underwriting (Texas standard 9.9%/120mo/20%/no balloon).
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "underwriting_defaults" jsonb`,
 
+  // 2026-06-06 — Tahoe E11 cancellation 4th rung (pause). Org-elected
+  // pause flag + window + reason on organizations so the mutation-route
+  // 402 gate has authoritative state, plus cancellation_surveys columns
+  // capturing whether pause was offered/accepted so the founder
+  // /founder/customers/cancellation-reasons surface can aggregate save
+  // rate alongside categorized reasons. Composite leading-org index on
+  // cancellation_surveys for the founder aggregation; partial-style
+  // index on organizations (paused-flag-leading) for the
+  // resumeExpiredPauses worker.
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_paused" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_paused_at" timestamp`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_pause_ends_at" timestamp`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_pause_reason" text`,
+  `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
+  `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
+  `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,
+  `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "pause_days" integer`,
+  `CREATE INDEX IF NOT EXISTS "idx_cancellation_surveys_org_created" ON "cancellation_surveys" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "idx_cancellation_surveys_reason_created" ON "cancellation_surveys" ("reason", "created_at" DESC)`,
+
   // 2026-06-05 — Tahoe L11 alignment-preferences schema-bind.
   // Per-tenant constitutional / alignment preferences. Schema landed
   // ahead of any consumer (Quinn's horizon vision is per-tenant

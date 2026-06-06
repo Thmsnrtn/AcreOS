@@ -205,6 +205,20 @@ export const organizations = pgTable("organizations", {
   autopayFrozenAt: timestamp("autopay_frozen_at"),
   autopayFrozenReason: text("autopay_frozen_reason"),
   autopayFrozenUntil: timestamp("autopay_frozen_until"),
+  // ─── Tahoe E11: customer-elected pause (cancellation 4th rung) ──────
+  // When `subscriptionPaused = true`, mutation routes 402 with a
+  // "subscription paused" payload; reads continue to work. Stripe pauses
+  // collection via subscription.pause_collection. Auto-resumes when
+  // `subscriptionPauseEndsAt` passes (the resumeExpiredPauses job clears
+  // the flag and Stripe also fires customer.subscription.resumed).
+  // `subscriptionPausedAt` is the moment the user elected pause;
+  // `subscriptionPauseReason` is a coarse category (matches the
+  // cancellation-survey reasons so the founder surface can co-aggregate
+  // pause vs cancel signal).
+  subscriptionPaused: boolean("subscription_paused").notNull().default(false),
+  subscriptionPausedAt: timestamp("subscription_paused_at"),
+  subscriptionPauseEndsAt: timestamp("subscription_pause_ends_at"),
+  subscriptionPauseReason: text("subscription_pause_reason"),
   // ─── AI cost ceiling (Phase 3 Week 9) ───────────────────────────────────────
   // Per-org daily USD cap on AI spend. Enforced in routeAITask: if
   // sum(ai_usage_daily.totalUsd WHERE org=this AND date=today) >= this cap,
@@ -7714,6 +7728,15 @@ export const cancellationSurveys = pgTable("cancellation_surveys", {
   previousTier: text("previous_tier"),
   offeredDowngrade: boolean("offered_downgrade").default(false),
   acceptedDowngrade: boolean("accepted_downgrade").default(false),
+  // Tahoe E11: 4th-rung pause flow. `offeredPause` is true any time the
+  // cancellation dialog presented the pause option (we always do, but the
+  // column is kept for future A/B variants that hide it). `acceptedPause`
+  // is true when the user clicked Pause instead of Confirm cancellation,
+  // and `pauseDays` records the 30/60/90 choice. When acceptedPause is
+  // true the row represents a SAVE — no actual cancellation happened.
+  offeredPause: boolean("offered_pause").default(false),
+  acceptedPause: boolean("accepted_pause").default(false),
+  pauseDays: integer("pause_days"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
