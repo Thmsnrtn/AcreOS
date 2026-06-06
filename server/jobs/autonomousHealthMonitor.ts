@@ -38,6 +38,7 @@ import {
   aiTelemetryEvents,
   backgroundJobs,
   organizations,
+  type IrSeverity,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sum, sql, lt } from "drizzle-orm";
 import { subHours, subDays, format } from "date-fns";
@@ -96,7 +97,7 @@ interface MonitorRunResult {
 async function createAlert(
   title: string,
   description: string,
-  severity: "info" | "warning" | "critical",
+  severity: IrSeverity,
   category: string = "autonomous_monitor"
 ): Promise<void> {
   try {

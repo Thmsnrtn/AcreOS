@@ -20,6 +20,7 @@ import { Router, type Response } from "express";
 import { type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { stampTraceContext } from "./utils/queueTraceContext";
 import { db } from "./db";
 import { outbox } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -40,10 +41,10 @@ router.post("/run", async (req: AuthenticatedRequest, res: Response) => {
         eventType: "eval_run",
         status: "pending",
         attempts: 0,
-        payload: {
+        payload: stampTraceContext({
           suite: suite ?? "default",
           ...(limit ? { limit } : {}),
-        },
+        }),
       })
       .returning({ id: outbox.id });
 

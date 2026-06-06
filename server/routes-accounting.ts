@@ -17,6 +17,7 @@ import { Router, type Response } from "express";
 import { type AuthenticatedRequest, getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { stampTraceContext } from "./utils/queueTraceContext";
 import { generateTrialBalance } from "./services/trialBalance";
 import { generateGeneralLedgerPdf } from "./services/glPdfExport";
 import { exportLedgerAsIIF, exportLedgerAsQBOJournal } from "./services/qboExport";
@@ -126,13 +127,13 @@ router.post("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Respon
         eventType: "pdf_render",
         status: "pending",
         attempts: 0,
-        payload: {
+        payload: stampTraceContext({
           variant: "general_ledger",
           organizationId: org.id,
           organizationName: org.name,
           fromDate: from,
           toDate: to,
-        },
+        }),
       })
       .returning({ id: outbox.id });
     logger.info("accounting.generalLedger.enqueued", {
@@ -230,10 +231,10 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
           eventType: "1099_batch_generate",
           status: "pending",
           attempts: 0,
-          payload: {
+          payload: stampTraceContext({
             organizationId: org.id,
             taxYear,
-          },
+          }),
         })
         .returning({ id: outbox.id });
       logger.info("accounting.1099Batch.enqueued", {

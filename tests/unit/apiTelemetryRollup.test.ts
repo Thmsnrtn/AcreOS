@@ -32,6 +32,7 @@ type SampleRow = {
   totalMs: number;
   p50Ms: number;
   p95Ms: number;
+  distinctOrgs: number;
   createdAt: Date;
 };
 
@@ -88,6 +89,7 @@ vi.mock("../../server/db", () => {
       cost_class: string | null;
       request_count: number;
       total_duration_ms: number;
+      distinct_orgs: number;
     }>();
     for (const s of store.samples) {
       if (s.windowStart >= cutoff) continue;
@@ -101,9 +103,11 @@ vi.mock("../../server/db", () => {
         cost_class: s.costClass,
         request_count: 0,
         total_duration_ms: 0,
+        distinct_orgs: 0,
       };
       prev.request_count += s.count2xx + s.count4xx + s.count5xx;
       prev.total_duration_ms += s.totalMs;
+      prev.distinct_orgs += s.distinctOrgs ?? 0;
       buckets.set(key, prev);
     }
     return { rows: Array.from(buckets.values()) };
@@ -135,6 +139,7 @@ vi.mock("../../server/db", () => {
         if (existing) {
           existing.requestCount += pending.requestCount;
           existing.totalDurationMs += pending.totalDurationMs;
+          existing.distinctOrgs += pending.distinctOrgs;
           existing.updatedAt = new Date();
         } else {
           const now = new Date();
@@ -185,6 +190,7 @@ function seedSample(args: Partial<SampleRow> & { route: string; windowStart: Dat
     totalMs: args.totalMs ?? 0,
     p50Ms: args.p50Ms ?? 0,
     p95Ms: args.p95Ms ?? 0,
+    distinctOrgs: args.distinctOrgs ?? 0,
     createdAt: new Date(),
   });
 }
@@ -251,6 +257,27 @@ describe("apiTelemetryRollup — aggregateAndUpsert", () => {
     expect(feb?.totalDurationMs).toBe(1100 + 2300);
     expect(mar?.requestCount).toBe(5);
     expect(mar?.totalDurationMs).toBe(500);
+  });
+
+  it("sums per-window distinct_orgs into the monthly rollup", async () => {
+    const cutoff = new Date("2026-05-01T00:00:00Z");
+    setCutoff(cutoff);
+    seedSample({
+      route: "GET /api/leads",
+      costClass: "low",
+      windowStart: new Date("2026-02-01T10:00:00Z"),
+      count2xx: 10, totalMs: 100, distinctOrgs: 3,
+    });
+    seedSample({
+      route: "GET /api/leads",
+      costClass: "low",
+      windowStart: new Date("2026-02-15T03:00:00Z"),
+      count2xx: 20, totalMs: 200, distinctOrgs: 4,
+    });
+    await aggregateAndUpsert(cutoff);
+    const feb = store.rollups.find((r) => r.month === 2);
+    // Upper bound on monthly uniques: sum of per-window distinct counts.
+    expect(feb?.distinctOrgs).toBe(7);
   });
 
   it("UPSERT is idempotent — calling twice does NOT double-count", async () => {

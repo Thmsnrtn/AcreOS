@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { systemAlerts, organizations, leads, type Lead } from '@shared/schema';
+import { systemAlerts, organizations, leads, type Lead, type IrSeverity, coerceIrSeverity } from '@shared/schema';
 import { eq, and, gte, sql, ne, isNotNull } from 'drizzle-orm';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
@@ -19,7 +19,8 @@ export interface AlertRule {
   id: string;
   name: string;
   description: string;
-  severity: 'critical' | 'warning' | 'info';
+  /** Locked to the IR severity ladder (shared/schema/ir-severity.ts). */
+  severity: IrSeverity;
   check: (orgId: number) => Promise<AlertResult | null>;
 }
 
@@ -174,7 +175,7 @@ export class AlertingService {
 
   async createAlert(
     organizationId: number | null,
-    severity: string,
+    severity: IrSeverity,
     alert: AlertResult
   ): Promise<void> {
     const today = new Date();
@@ -217,14 +218,16 @@ export class AlertingService {
       logger.error("[Alerting] Alert policy routing failed", policyErr);
     }
 
-    // Sovereign Company Protocol — Sentinel broadcasts to incidents channel
-    if (severity === "critical" || severity === "high") {
+    // Sovereign Company Protocol — Sentinel broadcasts to incidents channel.
+    // The locked IR ladder tops out at "critical" (there is no "high" rung),
+    // so the broadcast fires on critical alerts only.
+    if (severity === "critical") {
       try {
         const { agentCommsService } = await import("./agentComms");
         await agentCommsService.broadcast({
           from: "sentinel_devops",
           channel: "incidents",
-          priority: severity === "critical" ? "critical" : "high",
+          priority: "critical",
           subject: `Alert: ${alert.title}`,
           body: alert.message,
           data: { alertType: alert.alertType, severity, organizationId },
@@ -353,7 +356,11 @@ export class AlertingService {
         const existingAlert = await this.getExistingLeadAgingAlert(organizationId, lead.id);
         
         if (!existingAlert) {
-          const severityMap = { urgent: 'critical', warning: 'warning', info: 'info' };
+          const severityMap: Record<'urgent' | 'warning' | 'info', IrSeverity> = {
+            urgent: 'critical',
+            warning: 'warning',
+            info: 'info',
+          };
           const titleMap = {
             urgent: 'Hot Lead Going Cold',
             warning: 'Warm Lead Needs Attention',

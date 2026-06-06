@@ -4251,10 +4251,14 @@ const STATEMENTS = [
      "total_ms" integer NOT NULL DEFAULT 0,
      "p50_ms" integer NOT NULL DEFAULT 0,
      "p95_ms" integer NOT NULL DEFAULT 0,
+     "distinct_orgs" integer NOT NULL DEFAULT 0,
      "created_at" timestamp with time zone NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_route_window_idx" ON "api_telemetry_samples" ("route", "window_start")`,
   `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_window_start_idx" ON "api_telemetry_samples" ("window_start")`,
+  // 2026-06-06 (Tahoe Tess) — distinct_orgs added after initial deploy of the
+  // samples table; idempotent ALTER for already-migrated databases.
+  `ALTER TABLE "api_telemetry_samples" ADD COLUMN IF NOT EXISTS "distinct_orgs" integer NOT NULL DEFAULT 0`,
 
   // 2026-06-06 (Tahoe L14 follow-up). Monthly rollup of api_telemetry_samples
   // — after a 30-day rolling purge of the source table, this preserves a

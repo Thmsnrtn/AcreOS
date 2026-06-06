@@ -35,6 +35,7 @@ import {
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { logger } from "./utils/logger";
+import { stampTraceContext } from "./utils/queueTraceContext";
 import { getStorage } from "./services/cmo/storage";
 import { Errors } from "./utils/errors";
 
@@ -170,7 +171,7 @@ export function registerCmoRoutes(app: Express) {
       .insert(outbox)
       .values({
         eventType: "cmo.manual-generate",
-        payload: { intent, count, funnelStage: funnelStage ?? "cold", notes, forcePremium: !!forcePremium },
+        payload: stampTraceContext({ intent, count, funnelStage: funnelStage ?? "cold", notes, forcePremium: !!forcePremium }),
       })
       .returning();
     logger.info(`[cmo:routes] manual generation queued: outbox=${event.id} intent='${intent}' count=${count}`);
@@ -226,7 +227,7 @@ export function registerCmoRoutes(app: Express) {
       for (const renderId of renderIds) {
         await db.insert(outbox).values({
           eventType: "cmo.broadcast",
-          payload: { renderId, platform, bundleId: ctx?.bundleId, inboxItemId },
+          payload: stampTraceContext({ renderId, platform, bundleId: ctx?.bundleId, inboxItemId }),
         });
       }
     }
