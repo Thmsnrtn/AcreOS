@@ -46,6 +46,7 @@ import { pool, db } from "./db";
 import { outbox, outboxDlq } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
 
 // Initialize Sentry early so unhandled errors are reported.
@@ -386,7 +387,15 @@ async function processOne(row: {
       return;
     }
 
-    const result = await handler(row.payload);
+    // L4 — restore the W3C trace context the producer stamped onto the
+    // payload at enqueue time so consumer log lines + downstream outbound
+    // calls continue the SAME distributed trace as the request that
+    // scheduled this job. When the payload carries no trace envelope (e.g.
+    // a scheduled-tick producer with no upstream request), a fresh context
+    // is minted so consumer work is always traceable.
+    const result = await runWithRestoredTraceContext(row.payload, () =>
+      handler(row.payload),
+    );
     await markSent(row.id, result);
     logger.info(`[worker] ${row.eventType} #${row.id} sent`, {
       metadata: { durationMs: Date.now() - started },
