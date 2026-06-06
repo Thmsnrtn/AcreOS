@@ -162,8 +162,8 @@
 - `sign-document.tsx`
 - `deal-room-share.tsx`
 - `parcel-detail.tsx`
-- `letters-archive.tsx`
-- `letter-detail.tsx`
+- `field-notes-archive.tsx` (renamed from `letters-archive.tsx` on 2026-06-06; `/letters` 301s to `/field-notes`)
+- `field-note-detail.tsx` (renamed from `letter-detail.tsx` on 2026-06-06)
 - `account-security.tsx`
 - `inspection-detail.tsx`
 - `investor-directory.tsx`
@@ -286,7 +286,7 @@
 | `matching-engine.tsx` | No nav entry | → /marketplace |
 | `model-training.tsx` | No nav entry, no callers | → /analytics |
 | `multi-vertical-pnl.tsx` | No callers; /money/cross-vertical now redirects | → /money |
-| `my-letter.tsx` | No callers outside App.tsx | → /letters-archive |
+| `my-letter.tsx` | No callers outside App.tsx | → /field-notes (renamed from /letters-archive on 2026-06-06) |
 | `notes-import.tsx` | No nav entry | → /notes |
 | `ops-dashboard.tsx` | No nav entry | → /founder/bridge |
 | `predictions.tsx` | No nav entry, no callers | → /analytics |

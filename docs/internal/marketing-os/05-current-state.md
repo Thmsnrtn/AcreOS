@@ -7,13 +7,17 @@
 
 ---
 
-## 1. The `/letters` surface — voice contradiction
+## 1. The `/letters` surface — voice contradiction — **RESOLVED 2026-06-06 (Option B)**
 
-### 1.1 What ships today
+**Resolution:** Rebranded to `/field-notes`. Server-side 301 from `/letters[/:slug]` to `/field-notes[/:slug]` issued in `server/static.ts` (`LEGACY_LETTERS_301`). DB table unchanged (`community_letters`); founder-gated authoring endpoints unchanged (`/api/founder/letters/*`). Public surface and copy converted to mechanics-first third-person. Posts published before 2026-06-06 render a grandfather banner. New canonical pages: `client/src/pages/field-notes-archive.tsx`, `client/src/pages/field-note-detail.tsx`. New canonical API: `/api/field-notes`, `/api/field-notes/:slug`. Legacy `/api/letters*` retained as JSON alias for cached SPA bundles.
 
-- `client/src/pages/letters-archive.tsx` (114 lines) — public archive at `/letters`. Header copy: "Weekly notes from the AcreOS founder. What we're building, what customers are telling us, and what we're learning along the way." File comment line 1–7 frames it as "Diego's founder-led community as the SMB acquisition flywheel."
+The historical assessment below is preserved for record-keeping.
+
+### 1.1 What shipped before the rebrand
+
+- `client/src/pages/letters-archive.tsx` (114 lines) — public archive at `/letters`. Header copy: "Weekly notes from the AcreOS founder. What we're building, what customers are telling us, and what we're learning along the way." File comment line 1–7 framed it as "Diego's founder-led community as the SMB acquisition flywheel."
 - `client/src/pages/letter-detail.tsx` (102 lines) — single-letter view at `/letters/:slug`. Metadata fallback string: "A founder letter from AcreOS."
-- These two files render content out of `/api/letters` and `/api/letters/:slug`.
+- These two files rendered content out of `/api/letters` and `/api/letters/:slug`.
 
 ### 1.2 The contradiction
 
@@ -116,7 +120,7 @@ Ship the truth-source registry file in W4-1 (separate from the linter). Even wit
 | Area | Honest state | Risk | Severity |
 |---|---|---|---|
 | Landing copy voice | Mostly doctrine-aligned; one drift item (`creative_finance` unnamed) | Customer sees incomplete vertical map | Low |
-| `/letters` surface | Voice-doctrine violation in framing | Doctrine has a hole; can't ship the linter without an exception | High — Tom decision needed |
+| `/letters` surface | **RESOLVED 2026-06-06** — rebranded to `/field-notes` (Option B); 301 from legacy; grandfather banner on legacy posts | — | — |
 | Truth engine | Discipline live; code not | Future copy drift unprotected | Medium |
 | Programmatic SEO | Foundation correct, schema thin, stack non-scalable | Cannot grow past ~500 pages on current stack | Medium |
 | Voice linter | Not built | Drift accumulates between human audits | Medium |

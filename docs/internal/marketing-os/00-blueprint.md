@@ -56,7 +56,7 @@ Every public-facing piece of copy must be defensible against this sentence. If a
 
 ### 2.1 The lock
 
-**Mechanics-first, third-person, present tense.** The system is the subject. The operator is named in role, not in pronoun. No founder voice on customer surfaces. The /letters surface is the one exception and is being reconsidered (see `05-current-state.md` §1).
+**Mechanics-first, third-person, present tense.** The system is the subject. The operator is named in role, not in pronoun. No founder voice on customer surfaces. The legacy /letters carve-out was resolved on 2026-06-06 by rebranding the surface to `/field-notes` (Option B in `05-current-state.md` §1); the voice doctrine now applies uniformly to every customer surface.
 
 ### 2.2 Must-do
 
@@ -85,9 +85,9 @@ Every public-facing piece of copy must be defensible against this sentence. If a
 | "Join 1,200 investors who trust AcreOS." | "Pricing is on the page; trial is 14 days, no card." |
 | "Make $10K per deal with our proven system." | "AcreOS handles list-pull, comp-run, mail-send, reply-draft, close, and note servicing." |
 
-### 2.5 The /letters carve-out — to be resolved
+### 2.5 The /letters carve-out — RESOLVED 2026-06-06
 
-The `/letters` surface today renders past founder-voice letters. Voice doctrine says no founder voice on customer surfaces. `/letters` is a customer surface. This is a contradiction that must be resolved — see `05-current-state.md` §1 and §C of the report-back for the decision Tom owes.
+The `/letters` surface was rebranded to `/field-notes` per Option B in `05-current-state.md` §1. Server-side 301 from `/letters[/:slug]` preserves SEO equity. Posts published before the rebrand date render a grandfather banner explaining the older voice. The voice doctrine now applies uniformly to every customer surface — no carve-out remains.
 
 ---
 
@@ -97,7 +97,7 @@ The `/letters` surface today renders past founder-voice letters. Voice doctrine 
 
 | Band | What lives here | Who owns it | Voice |
 |---|---|---|---|
-| **Top of funnel** (awareness) | Programmatic SEO (state × vertical), editorial blog, social posts, /letters, YouTube (Phase 2+) | Soren | Mechanics-first, education-led |
+| **Top of funnel** (awareness) | Programmatic SEO (state × vertical), editorial blog, social posts, /field-notes, YouTube (Phase 2+) | Soren | Mechanics-first, education-led |
 | **Middle of funnel** (consideration) | Landing pages, /pricing, /trust, /sub-processors, demo video, comparison pages | Soren + Maren (product) | Mechanics-first, capability-led |
 | **Bottom of funnel** (conversion) | /auth, in-product onboarding, lifecycle email, trial nudges | Maren (product) + Soren (copy) | Operator-pragmatic, no-pressure |
 
@@ -117,7 +117,7 @@ The constitution capital ladder governs marketing spend. Each phase has a ceilin
 ### 4.1 Phase 0 — now ($0–$200 MRR sustained)
 
 **Ceiling:** $0/mo external marketing spend. Owned-channel only.
-**Channels:** Landing page, /learn programmatic SEO (current 10 pages → 50), /letters, X (organic), LinkedIn (founder org page — content authored by Soren, never first-person from Tom on customer surfaces).
+**Channels:** Landing page, /learn programmatic SEO (current 10 pages → 50), /field-notes (rebranded from /letters on 2026-06-06), X (organic), LinkedIn (founder org page — content authored by Soren, never first-person from Tom on customer surfaces).
 **Goal:** Lock the substrate. Voice doctrine published. Category positioning declared. First 50 programmatic pages live. First 4 editorial pieces published. Analytics substrate wired.
 **Metric:** Time-to-first-list ≤ 10 minutes for new signups (source: `client/src/pages/landing/copy.ts` hero.ctaSub). Trial → paid conversion rate baseline established.
 
@@ -156,7 +156,7 @@ For each channel: **today's state → 1-year target → 5-year Tahoe target.**
 
 ### 5.2 SEO — editorial
 
-- **Today:** 0 pieces. /letters has founder-voice archive; not editorial in the doctrine sense.
+- **Today:** 0 pieces. /field-notes archive (rebranded from /letters on 2026-06-06) holds legacy founder-voice posts grandfathered with a banner; new pieces ship doctrine-aligned but are not yet editorial in the blueprint sense.
 - **1 year:** 52 editorial pieces (1/week). Mechanics-first, third-person, evergreen. Cross-linked to programmatic.
 - **5-year Tahoe:** 1,000+ piece library; 1 daily editorial post; category-shaping quarterly pieces drive press/inbound conversations.
 
@@ -228,5 +228,5 @@ Everything downstream — editorial, programmatic, analytics, paid — derives f
 - Does not generate any of the 35K programmatic pages (see `01-content-engine.md` — architecture only).
 - Does not wire any analytics events (see `03-analytics.md` — schema only).
 - Does not commit any code (planning round per Tom's directive).
-- Does not retire `/letters` (see `05-current-state.md` — surfaces the decision for Tom).
+- The `/letters` resolution is no longer open — rebranded to `/field-notes` on 2026-06-06 per `05-current-state.md` §1 Option B.
 - Does not rename Pax or any other persona (locked per `project_persona_architecture`).

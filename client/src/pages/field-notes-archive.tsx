@@ -1,9 +1,14 @@
 /**
- * /letters — public community-letter archive (FW-DIEGO-1).
+ * /field-notes — public field-notes archive.
  *
- * Customer-facing top-of-funnel acquisition surface. Anyone (no auth)
- * can read past founder letters before signing up. Diego's "founder-led
- * community as the SMB acquisition flywheel" plays out here.
+ * Customer-facing top-of-funnel surface. Anyone (no auth) can read past
+ * field notes before signing up. Replaces the prior /letters surface;
+ * the voice is now mechanics-first third-person per the marketing-OS
+ * voice doctrine (`docs/internal/marketing-os/00-blueprint.md` §2).
+ *
+ * Old routes (/letters, /letters/:slug) issue a 301 redirect to the
+ * corresponding /field-notes URL at the SPA-shell layer (see
+ * `server/static.ts` LEGACY_LETTERS_301).
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -14,23 +19,23 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageMeta } from "@/hooks/use-document-title";
 
-interface LetterRow {
+interface FieldNoteRow {
   id: string;
   slug: string;
   subject: string;
   publishedAt: string | null;
 }
 
-export default function LettersArchivePage() {
+export default function FieldNotesArchivePage() {
   usePageMeta(
-    "Letters from the AcreOS founder",
-    "Weekly founder letters — what we're building, what customers are telling us, lessons from property investors using AcreOS in the field.",
+    "AcreOS field notes",
+    "AcreOS publishes weekly field notes — what the platform shipped, what the data showed, and what land investors are running into in the field.",
   );
 
-  const letters = useQuery<{ letters: LetterRow[] }>({
-    queryKey: ["/api/letters"],
+  const notes = useQuery<{ letters: FieldNoteRow[] }>({
+    queryKey: ["/api/field-notes"],
     queryFn: async () => {
-      const r = await fetch("/api/letters");
+      const r = await fetch("/api/field-notes");
       if (!r.ok) throw new Error(`Failed (${r.status})`);
       return r.json();
     },
@@ -44,43 +49,43 @@ export default function LettersArchivePage() {
             <ArrowLeft className="w-4 h-4" aria-hidden="true" /> AcreOS
           </Link>
           <Button asChild size="sm" variant="outline">
-            <a href="/auth?utm_source=letters&utm_campaign=archive">Sign up free</a>
+            <a href="/auth?utm_source=field-notes&utm_campaign=archive">Sign up free</a>
           </Button>
         </header>
 
         <div className="mb-8 flex items-start gap-3">
           <Mail className="w-7 h-7 text-primary mt-1" aria-hidden="true" />
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Letters</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Field notes</h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-              Weekly notes from the AcreOS founder. What we're building, what
-              customers are telling us, and what we're learning along the way.
-              Subscribe at the bottom — or just read what's here.
+              AcreOS publishes weekly field notes on what the platform shipped,
+              what the data showed, and what land investors are running into in
+              the field. Subscribe at the bottom — or just read what's here.
             </p>
           </div>
         </div>
 
-        {letters.isLoading ? (
+        {notes.isLoading ? (
           <div className="space-y-4">
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
           </div>
-        ) : letters.data?.letters.length === 0 ? (
+        ) : notes.data?.letters.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No letters published yet. Check back soon.</p>
+              <p className="text-muted-foreground">No field notes published yet. Check back soon.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
-            {letters.data?.letters.map((letter) => (
-              <Card key={letter.id} className="hover-elevate">
-                <Link href={`/letters/${letter.slug}`}>
+            {notes.data?.letters.map((note) => (
+              <Card key={note.id} className="hover-elevate">
+                <Link href={`/field-notes/${note.slug}`}>
                   <CardContent className="py-5 flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-base font-medium truncate">{letter.subject}</div>
-                      {letter.publishedAt && (
+                      <div className="text-base font-medium truncate">{note.subject}</div>
+                      {note.publishedAt && (
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(letter.publishedAt).toLocaleDateString("en-US", {
+                          {new Date(note.publishedAt).toLocaleDateString("en-US", {
                             year: "numeric", month: "long", day: "numeric",
                           })}
                         </div>
@@ -98,11 +103,11 @@ export default function LettersArchivePage() {
           <CardContent className="py-8 text-center">
             <h2 className="text-xl font-semibold mb-2">Want this in your inbox?</h2>
             <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-              Sign up free to get every letter delivered. No marketing spam — the
-              same letter you'd read on this page, sent the day it publishes.
+              Sign up free to get every field note delivered the day it
+              publishes. Same content as the page, no marketing extras.
             </p>
             <Button asChild>
-              <a href="/auth?utm_source=letters&utm_campaign=archive&utm_content=footer_cta">
+              <a href="/auth?utm_source=field-notes&utm_campaign=archive&utm_content=footer_cta">
                 Sign up free
               </a>
             </Button>
