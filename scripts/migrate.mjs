@@ -6184,6 +6184,22 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "marketing_touch_anon_occurred_idx" ON "marketing_touch" ("anonymous_id", "occurred_at")`,
   `CREATE INDEX IF NOT EXISTS "marketing_touch_surface_occurred_idx" ON "marketing_touch" ("surface", "occurred_at")`,
   `CREATE INDEX IF NOT EXISTS "marketing_touch_org_occurred_idx" ON "marketing_touch" ("organization_id", "occurred_at")`,
+  // 0119 — Tahoe / Beatrice — customer-visible security activity log.
+  `CREATE TABLE IF NOT EXISTS "customer_audit_log" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "actor_user_id" text,
+     "actor_email" text,
+     "action" text NOT NULL,
+     "category" text NOT NULL,
+     "target_label" text,
+     "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "ip_address" text,
+     "user_agent" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_created_idx" ON "customer_audit_log" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_category_idx" ON "customer_audit_log" ("organization_id", "category")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

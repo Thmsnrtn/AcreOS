@@ -25,6 +25,7 @@ import {
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import type { Response } from "express";
@@ -589,6 +590,18 @@ export function registerOrganizationRoutes(app: Express): void {
             taxIdLast4: taxIdLast4(taxId),
             legalEntityName,
           },
+        });
+
+        // Tahoe / Beatrice — customer-visible security activity. tax_id_type
+        // is sensitive_financial and legal_entity_name is pii in the registry;
+        // both are reduced to class labels by the writer.
+        void customerAuditFromRequest(req, {
+          organizationId: org.id,
+          action: CustomerAuditActions.SECURITY_TAX_IDENTITY_CHANGED,
+          category: "security",
+          targetLabel: "Tax identity",
+          metadataTable: "organizations",
+          metadata: { tax_id_type: taxIdType, legal_entity_name: legalEntityName },
         });
 
         logger.info("[tax-identity] captured", {
@@ -1181,6 +1194,17 @@ export function registerOrganizationRoutes(app: Express): void {
       },
     });
 
+    // Tahoe / Beatrice — customer-visible security activity. Member name/email
+    // are not included here (only memberId + roles), and metadata is class-
+    // labelled by the writer regardless.
+    void customerAuditFromRequest(req, {
+      organizationId: org.id,
+      action: CustomerAuditActions.MEMBER_ROLE_CHANGED,
+      category: "members",
+      targetLabel: `Member #${memberId}`,
+      metadata: { fromRole: targetMember.role, toRole: role },
+    });
+
     res.json(updated);
   });
 
@@ -1751,6 +1775,17 @@ export function registerOrganizationRoutes(app: Express): void {
           target: { type: "organization", id: org.id },
           metadata: { stage: "invited", invitationId: row.id, email: row.email, role: row.role },
         });
+        // Tahoe / Beatrice — customer-visible security activity. `email` is
+        // PII; the writer reduces it to "[Personal]" via the classification
+        // registry, so the customer sees that an invite was sent + the role
+        // without the raw address being stored in the security log.
+        void customerAuditFromRequest(req, {
+          organizationId: org.id,
+          action: CustomerAuditActions.MEMBER_INVITED,
+          category: "members",
+          targetLabel: `Invitation #${row.id}`,
+          metadata: { email: row.email, role: row.role },
+        });
       }
 
       // Phase 3 Week 14 — Activation telemetry. First team-member invite
@@ -1807,6 +1842,14 @@ export function registerOrganizationRoutes(app: Express): void {
         action: AuditActions.ORG_MEMBER_REMOVED,
         target: { type: "organization", id: org.id },
         metadata: { stage: "invitation_revoked", invitationId: id, email: updated.email },
+      });
+      // Tahoe / Beatrice — customer-visible security activity (member removed).
+      void customerAuditFromRequest(req, {
+        organizationId: org.id,
+        action: CustomerAuditActions.MEMBER_REMOVED,
+        category: "members",
+        targetLabel: `Invitation #${id}`,
+        metadata: { stage: "invitation_revoked", email: updated.email },
       });
       res.json({ ok: true, id });
     } catch (err) {

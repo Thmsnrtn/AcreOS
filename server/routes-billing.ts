@@ -12,6 +12,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { withTransaction } from "./db";
 import { z } from "zod";
 
@@ -241,6 +242,15 @@ export function registerBillingRoutes(app: Express): void {
       await auditFromRequest(req, {
         action: AuditActions.BILLING_AUTOPAY_TOGGLED,
         target: { type: "billing", id: org.id },
+        metadata: { enabled: enabled === true, thresholdCents, amountCents },
+      });
+
+      // Tahoe / Beatrice — customer-visible security activity.
+      void customerAuditFromRequest(req, {
+        organizationId: org.id,
+        action: CustomerAuditActions.BILLING_AUTOPAY_TOGGLED,
+        category: "billing",
+        targetLabel: "Auto top-up",
         metadata: { enabled: enabled === true, thresholdCents, amountCents },
       });
 
@@ -817,6 +827,19 @@ export function registerBillingRoutes(app: Express): void {
       await auditFromRequest(req, {
         action: AuditActions.BILLING_PLAN_SWITCHED,
         target: { type: "billing", id: org.id },
+        metadata: {
+          op: "self_serve_cancel_intent",
+          previousTier: org.subscriptionTier,
+          reason: parsed.data.reason,
+        },
+      });
+
+      // Tahoe / Beatrice — customer-visible security activity.
+      void customerAuditFromRequest(req, {
+        organizationId: org.id,
+        action: CustomerAuditActions.BILLING_SUBSCRIPTION_CANCELLED,
+        category: "billing",
+        targetLabel: "Subscription",
         metadata: {
           op: "self_serve_cancel_intent",
           previousTier: org.subscriptionTier,

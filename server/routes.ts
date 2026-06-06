@@ -155,6 +155,7 @@ import { requireClerkMFA } from "./middleware/requireClerkMFA";
 import { registerDashboardRoutes } from "./routes-dashboard";
 import { registerJobHealthRoutes } from "./routes-job-health";
 import { registerAdminAuditLogRoutes } from "./routes-admin-audit";
+import { registerCustomerAuditRoutes } from "./routes-customer-audit";
 import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
 import { registerTransparencyRoutes } from "./routes-transparency";
 import { registerOrganizationRoutes } from "./routes-organization";
@@ -2090,6 +2091,9 @@ export async function registerRoutes(
   // Kareem §1: admin endpoints to verify the audit_log hash chain. Founder-
   // only; emits its own audit_event for every verification run.
   registerAdminAuditLogRoutes(app);
+  // Tahoe / Beatrice: customer-readable security activity log (org-scoped).
+  // GET /api/audit/log — surfaced behind Settings → Security activity.
+  registerCustomerAuditRoutes(app);
   // Kareem §5 + §7: change-management ledger (deployments) and DR drill
   // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
   // founder records DR drills here after each quarterly run.
