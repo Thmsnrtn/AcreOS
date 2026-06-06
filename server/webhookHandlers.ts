@@ -627,8 +627,27 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
 
+      // Tahoe E11 — Stripe attaches the resumes_at on subscription.pause_collection.
+      // Bind the org-level pause window so middleware can 402 mutations and the
+      // resumeExpiredPauses worker has a target to compare against. Idempotent:
+      // re-firing the event with the same window is a no-op write.
+      const pauseCollection = (subscription as any).pause_collection as
+        | { resumes_at?: number | null; behavior?: string }
+        | null
+        | undefined;
+      const resumesAtUnix = pauseCollection?.resumes_at ?? null;
+      const subscriptionPauseEndsAt = resumesAtUnix
+        ? new Date(resumesAtUnix * 1000)
+        : null;
+
       await storage.updateOrganization(org.id, {
         subscriptionStatus: 'paused',
+        subscriptionPaused: true,
+        // Preserve the originally-elected `subscriptionPausedAt` if already
+        // set by the /api/subscription/pause route — webhook redelivery
+        // shouldn't reset the clock. New pauses default to now().
+        ...(org.subscriptionPausedAt ? {} : { subscriptionPausedAt: new Date() }),
+        ...(subscriptionPauseEndsAt ? { subscriptionPauseEndsAt } : {}),
       });
 
       await storage.logSubscriptionEvent({
@@ -638,7 +657,7 @@ export class WebhookHandlers {
         toTier: null,
       });
 
-      logger.info(`[webhook] Subscription paused: Org ${org.id}`);
+      logger.info(`[webhook] Subscription paused: Org ${org.id} (resumes_at=${resumesAtUnix ?? 'null'})`);
     } catch (err) {
       logger.error('Error processing subscription paused', err instanceof Error ? err : undefined);
     }
@@ -657,6 +676,13 @@ export class WebhookHandlers {
 
       await storage.updateOrganization(org.id, {
         subscriptionStatus: 'active',
+        // Tahoe E11 — clear the org-level pause guard. The mutation
+        // middleware reads `subscriptionPaused`; auto-resume must flip
+        // it back atomically with the status change.
+        subscriptionPaused: false,
+        subscriptionPausedAt: null,
+        subscriptionPauseEndsAt: null,
+        subscriptionPauseReason: null,
       });
 
       await storage.logSubscriptionEvent({

@@ -194,6 +194,49 @@ export class StripeService {
     });
     return subscriptions.data;
   }
+
+  /**
+   * Tahoe E11 — pause the active Stripe subscription with a window-bound
+   * `pause_collection`. `keep_as_draft` defers any invoice generated
+   * during the window so the customer is not double-charged on resume;
+   * `resumes_at` is the unix timestamp at which Stripe will fire
+   * customer.subscription.resumed automatically.
+   *
+   * Deterministic idempotency key includes the subscription id + resumes_at
+   * second so re-trying the same pause for the same window is a no-op,
+   * but a different window length creates a new operation.
+   */
+  async pauseSubscription(subscriptionId: string, resumesAtUnix: number) {
+    const stripe = await getUncachableStripeClient();
+    return await stripeCircuitBreaker.call(() =>
+      stripe.subscriptions.update(
+        subscriptionId,
+        {
+          pause_collection: {
+            behavior: 'keep_as_draft',
+            resumes_at: resumesAtUnix,
+          },
+        } as any,
+        { idempotencyKey: idempotencyKey('pause_subscription', subscriptionId, resumesAtUnix) },
+      ),
+    );
+  }
+
+  /**
+   * Tahoe E11 — clear `pause_collection`. Used by the
+   * resumeExpiredPauses worker as a defensive double-write in case
+   * Stripe missed firing customer.subscription.resumed on its own.
+   */
+  async resumeSubscription(subscriptionId: string) {
+    const stripe = await getUncachableStripeClient();
+    return await stripeCircuitBreaker.call(() =>
+      stripe.subscriptions.update(
+        subscriptionId,
+        { pause_collection: '' } as any,
+        { idempotencyKey: idempotencyKey('resume_subscription', subscriptionId, Date.now()) },
+      ),
+    );
+  }
 }
 
 export const stripeService = new StripeService();

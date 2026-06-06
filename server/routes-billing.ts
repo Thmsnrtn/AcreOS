@@ -778,13 +778,17 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
 
-      // Save survey
+      // Save survey. Tahoe E11: the dialog now always presents the pause
+      // option ahead of confirm-cancel; record offered_pause = true so the
+      // founder save-rate aggregation has the denominator right.
       await db.insert(cancellationSurveys).values({
         organizationId: org.id,
         userId,
         reason: parsed.data.reason,
         feedback: parsed.data.feedback,
         previousTier: org.subscriptionTier,
+        offeredPause: true,
+        acceptedPause: false,
       });
 
       // Renoir audit-log: record the user-initiated cancel intent. The
@@ -836,6 +840,125 @@ export function registerBillingRoutes(app: Express): void {
       Errors.internal(res, err);
     }
   });
+
+  // ============================================
+  // SELF-SERVE PAUSE (Tahoe E11 — cancellation 4th rung)
+  // ============================================
+  //
+  // POST /api/subscription/pause
+  // Body: { days: 30 | 60 | 90, reason: <same enum as cancel>, feedback? }
+  //
+  // The cancellation dialog presents pause BEFORE the confirm-cancel screen
+  // ("Need a break?" before "Are you sure?"). Stripe handles the billing
+  // mechanics via subscription.pause_collection with `keep_as_draft` and a
+  // `resumes_at` matching the end of the chosen window. We also flip an
+  // org-level `subscriptionPaused = true` guard so the mutation-route
+  // middleware can 402 writes in real time — Stripe's collection-pause
+  // alone wouldn't gate API access.
+  //
+  // We log a `cancellation_surveys` row with `accepted_pause = true` so the
+  // /founder/customers/cancellation-reasons surface can show the save rate
+  // (Sub-2 dependency). The row is the canonical SAVE record — no
+  // `recordSubscriptionHistoryEvent('canceled')` is written because the
+  // subscription isn't cancelled.
+  api.post(
+    "/api/subscription/pause",
+    isAuthenticated,
+    getOrCreateOrg,
+    requirePermission("canManageBilling"),
+    idempotencyMiddleware,
+    async (req, res) => {
+      try {
+        const org = req.organization;
+        const userId = req.user?.id;
+
+        const schema = z.object({
+          days: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+          reason: z.enum([
+            "too_expensive",
+            "not_using",
+            "missing_features",
+            "switching_competitor",
+            "other",
+          ]),
+          feedback: z.string().max(2000).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.issues);
+        }
+
+        if (!org.stripeSubscriptionId) {
+          return Errors.badRequest(res, "No active subscription to pause");
+        }
+        if (org.subscriptionPaused) {
+          return Errors.badRequest(res, "Subscription is already paused", {
+            subscriptionPauseEndsAt: org.subscriptionPauseEndsAt,
+          });
+        }
+
+        const now = new Date();
+        const pauseEnds = new Date(now.getTime() + parsed.data.days * 24 * 60 * 60 * 1000);
+        const resumesAtUnix = Math.floor(pauseEnds.getTime() / 1000);
+
+        // Best-effort Stripe pause. If Stripe fails, we don't flip the org
+        // flag — better to leave the user un-paused than to leave us in a
+        // state where billing continues but the app blocks them.
+        try {
+          const { stripeService } = await import("./stripeService");
+          await stripeService.pauseSubscription(org.stripeSubscriptionId, resumesAtUnix);
+        } catch (err) {
+          logger.error(
+            `[subscription/pause] Stripe pause failed for org ${org.id}`,
+            err instanceof Error ? err : undefined,
+          );
+          return Errors.internal(res, err);
+        }
+
+        // Org-level pause guard. The webhook will follow up with
+        // customer.subscription.paused and re-affirm this state with the
+        // Stripe-confirmed `resumes_at`.
+        await storage.updateOrganization(org.id, {
+          subscriptionPaused: true,
+          subscriptionPausedAt: now,
+          subscriptionPauseEndsAt: pauseEnds,
+          subscriptionPauseReason: parsed.data.reason,
+        });
+
+        // Save-rate row for the founder surface. `accepted_pause = true`
+        // marks this as a save; `acceptedDowngrade` stays false.
+        await db.insert(cancellationSurveys).values({
+          organizationId: org.id,
+          userId,
+          reason: parsed.data.reason,
+          feedback: parsed.data.feedback,
+          previousTier: org.subscriptionTier,
+          offeredPause: true,
+          acceptedPause: true,
+          pauseDays: parsed.data.days,
+        });
+
+        await auditFromRequest(req, {
+          action: AuditActions.BILLING_PLAN_SWITCHED,
+          target: { type: "billing", id: org.id },
+          metadata: {
+            op: "self_serve_pause",
+            pauseDays: parsed.data.days,
+            pauseEndsAt: pauseEnds.toISOString(),
+            reason: parsed.data.reason,
+          },
+        });
+
+        return res.json({
+          paused: true,
+          pauseDays: parsed.data.days,
+          pauseEndsAt: pauseEnds.toISOString(),
+        });
+      } catch (err: any) {
+        Errors.internal(res, err);
+      }
+    },
+  );
 
   // ============================================
   // SELF-SERVE REFUND REQUESTS
