@@ -9,6 +9,8 @@ import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { costClass } from "./utils/costClass";
+import type { AuthenticatedRequest } from "./types/request";
+import { getOrganization } from "./types/request";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -116,7 +118,58 @@ export function registerSupportTicketRoutes(app: Express): void {
       Errors.internal(res, error);
     }
   });
-  
+
+  // Tahoe E4 — Pax-Support resolution variant.
+  // Runs the ticket end-to-end through the specialized resolution agent
+  // (server/ai/paxSupportResolver.ts) and applies the confidence gate:
+  //   confidence >= threshold → auto-resolve (reply persisted as Pax, ticket
+  //                             marked resolved/auto)
+  //   confidence <  threshold → escalate to a human (after an optional Opus
+  //                             second-opinion attempt).
+  // SAME Pax identity to the customer — never an internal codename.
+  api.post(
+    "/api/support/tickets/:id/pax-resolve",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      try {
+        const org = getOrganization(req as AuthenticatedRequest);
+        const ticketId = parseInt(req.params.id, 10);
+        if (Number.isNaN(ticketId)) {
+          return Errors.badRequest(res, "Invalid ticket id");
+        }
+
+        const [ticket] = await db
+          .select()
+          .from(supportTickets)
+          .where(eq(supportTickets.id, ticketId));
+        if (!ticket) {
+          return Errors.notFound(res, "Ticket");
+        }
+        // Org-scope guard: a customer may only resolve their own org's tickets.
+        if (ticket.organizationId !== org.id && !org.isFounder) {
+          return Errors.forbidden(res);
+        }
+
+        const { resolveTicketWithPax } = await import("./ai/paxSupportResolver");
+        const result = await resolveTicketWithPax(ticketId, org);
+
+        res.json({
+          autoResolved: result.autoResolved,
+          escalated: result.escalated,
+          confidence: result.confidence,
+          resolutionType: result.resolutionType,
+          response: result.response,
+          toolsUsed: result.toolsUsed,
+          geniusResolved: result.geniusResolved ?? false,
+        });
+      } catch (error: any) {
+        logger.error("[support] Error running Pax resolution", error);
+        Errors.internal(res, error);
+      }
+    },
+  );
+
   // Close/resolve ticket
   api.post("/api/support/tickets/:id/close", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

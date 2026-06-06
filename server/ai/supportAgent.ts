@@ -18,7 +18,7 @@ import { validateCompliance } from "../services/complianceValidator";
 
 const MAX_TOOL_ITERATIONS = 10;
 
-function getOpenAIClient(): OpenAI {
+export function getOpenAIClient(): OpenAI {
   // Support agent shares the platform AI router — OpenRouter-only since
   // 2026-05-20 so the tiered model approach (Haiku for routine support
   // replies, Sonnet for complex troubleshooting) keeps cost down.
@@ -5106,7 +5106,7 @@ export async function executeSupportTool(
   }
 }
 
-const PAX_SYSTEM_PROMPT = `You are Pax, the AcreOS Support Agent. You help customers resolve issues with their AcreOS real estate management platform.
+export const PAX_SYSTEM_PROMPT = `You are Pax, the AcreOS Support Agent. You help customers resolve issues with their AcreOS real estate management platform.
 
 YOUR PERSONALITY:
 - Friendly, patient, and empathetic
