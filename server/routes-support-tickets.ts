@@ -8,6 +8,7 @@ import { inArray, or } from "drizzle-orm";
 import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@shared/schema";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { costClass } from "./utils/costClass";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -140,12 +141,22 @@ export function registerSupportTicketRoutes(app: Express): void {
     }
   });
   
-  // Human resolve ticket (triggers Pax learning and knowledge base update)
+  // Human resolve ticket (triggers Pax learning and knowledge base update).
+  //
+  // Rafe / Tahoe E3 Sub-2 (2026-06-06): the `publishable` flag (preferred
+  // name; `addToKnowledgeBase` retained as legacy alias) now routes the
+  // generated KB article through the *draft queue* (is_draft=true,
+  // draft_status='pending_review') instead of publishing live. A
+  // founder/admin reviews drafts at /founder/support/kb-drafts and clicks
+  // Publish to flip is_published=true. Sanitization (redactPII) runs on
+  // the conversation summary before persisting the draft.
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.id);
       const user = req.user as any;
-      const { resolution, rating, feedback, addToKnowledgeBase } = req.body;
+      const { resolution, rating, feedback, addToKnowledgeBase, publishable } = req.body;
+      // Accept either name; publishable wins when both present.
+      const shouldCreateDraft = publishable === true || addToKnowledgeBase === true;
       
       if (!resolution) {
         return Errors.badRequest(res, "Resolution is required");
@@ -182,33 +193,52 @@ export function registerSupportTicketRoutes(app: Express): void {
         learningResult = await paxLearningService.learnFromHumanResolution(ticketId);
         logger.info(`[support] Pax learned from human resolution: ${JSON.stringify(learningResult)}`);
         
-        // If cross-org learning was created and addToKnowledgeBase is true, create KB article
-        if (addToKnowledgeBase && learningResult?.crossOrgLearning) {
+        // Tahoe E3 Sub-2 — if the resolver marked the resolution as
+        // publishable, persist a *draft* (is_draft=true, is_published=false,
+        // draft_status='pending_review') instead of going live. Founder
+        // reviews at /founder/support/kb-drafts and clicks Publish.
+        if (shouldCreateDraft && learningResult?.crossOrgLearning) {
           const learning = learningResult.crossOrgLearning;
-          const slug = `auto-${ticket.category}-${ticketId}`.toLowerCase().replace(/\s+/g, '-');
-          
+          const slug = `draft-${ticket.category}-${ticketId}`.toLowerCase().replace(/\s+/g, '-');
+
           const existingArticle = await db.select()
             .from(knowledgeBaseArticles)
             .where(eq(knowledgeBaseArticles.slug, slug))
             .limit(1);
-          
+
           if (existingArticle.length === 0) {
+            // Sanitize ticket-derived text through redactPII before
+            // persisting. The conversation summary may contain customer
+            // email/phone; the redactor (server/utils/logger.ts) scrubs
+            // those patterns so the draft never carries raw PII into the
+            // KB review queue.
+            const { redactPII } = await import("./utils/logger");
+            const safeSubject = redactPII(ticket.subject || "");
+            const safePattern = redactPII(learning.issuePattern || "");
+            const safeApproach = redactPII(learning.resolutionApproach || "");
+            const safeLesson = redactPII(learning.lessonLearned || "");
+            const safeResolution = redactPII(resolution || "");
+
             const [article] = await db.insert(knowledgeBaseArticles).values({
-              title: `How to resolve: ${learning.issuePattern?.substring(0, 100) || ticket.subject}`,
+              title: `How to resolve: ${safePattern.substring(0, 100) || safeSubject}`,
               slug,
-              summary: learning.lessonLearned || `Resolution for ${ticket.category} issues`,
-              content: `## Issue Pattern\n${learning.issuePattern}\n\n## Resolution Approach\n${learning.resolutionApproach}\n\n## Key Learnings\n${learning.lessonLearned || 'See resolution approach above.'}`,
+              summary: safeLesson || `Resolution for ${ticket.category} issues`,
+              content: `## Issue Pattern\n${safePattern}\n\n## Resolution Approach\n${safeApproach}\n\n## Steps That Worked\n${safeResolution}\n\n## Key Learnings\n${safeLesson || 'See resolution approach above.'}`,
               category: ticket.category || "general",
               tags: learning.applicableCategories || [],
               keywords: learning.keywords || [],
-              relatedIssues: [ticket.subject],
+              relatedIssues: [safeSubject],
               canAutoFix: learning.isAutoFixable || false,
               autoFixToolName: learning.autoFixAction,
-              isPublished: true
+              // DRAFT — NOT live until founder/admin publishes.
+              isPublished: false,
+              isDraft: true,
+              draftStatus: "pending_review",
+              sourceTicketId: ticketId,
             }).returning();
-            
+
             knowledgeBaseArticle = article;
-            logger.info(`[support] Created KB article from human resolution: ${article.id}`);
+            logger.info(`[support] Created KB draft from human resolution: ${article.id} (ticket=${ticketId})`);
           }
         }
         
@@ -262,9 +292,14 @@ export function registerSupportTicketRoutes(app: Express): void {
     try {
       const { category, search } = req.query;
       
+      // Tahoe E3 Sub-2 — drafts must not surface in the customer-facing
+      // /api/support/knowledge-base read; explicit AND with isDraft=false.
       let query = db.select().from(knowledgeBaseArticles)
-        .where(eq(knowledgeBaseArticles.isPublished, true));
-      
+        .where(and(
+          eq(knowledgeBaseArticles.isPublished, true),
+          or(eq(knowledgeBaseArticles.isDraft, false), sql`${knowledgeBaseArticles.isDraft} IS NULL`),
+        ));
+
       const articles = await query.orderBy(desc(knowledgeBaseArticles.viewCount)).limit(500);
       
       let filtered = articles;
@@ -423,6 +458,128 @@ export function registerSupportTicketRoutes(app: Express): void {
       });
     } catch (error: any) {
       logger.error("[support] Error fetching analytics", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // RAFE — Tahoe E3 Sub-2: KB drafts review queue (founder-only).
+  // ─────────────────────────────────────────────────────────────────
+
+  // List pending KB drafts. Stagger-friendly shape: array of articles
+  // with the source ticket joined in summary form. costClass: low —
+  // single index hit on (draft_status, created_at).
+  api.get("/api/founder/support/kb-drafts", isAuthenticated, getOrCreateOrg, costClass("low"), async (req, res) => {
+    try {
+      const org = req.organization!;
+      if (!org.isFounder) {
+        return Errors.forbidden(res, "Founder access required");
+      }
+
+      const drafts = await db.select({
+        id: knowledgeBaseArticles.id,
+        title: knowledgeBaseArticles.title,
+        slug: knowledgeBaseArticles.slug,
+        summary: knowledgeBaseArticles.summary,
+        content: knowledgeBaseArticles.content,
+        category: knowledgeBaseArticles.category,
+        sourceTicketId: knowledgeBaseArticles.sourceTicketId,
+        createdAt: knowledgeBaseArticles.createdAt,
+      })
+        .from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.draftStatus, "pending_review"))
+        .orderBy(desc(knowledgeBaseArticles.createdAt))
+        .limit(100);
+
+      res.json({ drafts });
+    } catch (error: any) {
+      logger.error("[support] Error fetching KB drafts", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // Publish a KB draft — flips isPublished=true, isDraft=false,
+  // draft_status='published'. The article becomes visible in
+  // /api/support/knowledge-base on the next read.
+  api.post("/api/founder/support/kb-drafts/:id/publish", isAuthenticated, getOrCreateOrg, costClass("low"), async (req, res) => {
+    try {
+      const org = req.organization!;
+      if (!org.isFounder) {
+        return Errors.forbidden(res, "Founder access required");
+      }
+
+      const articleId = parseInt(req.params.id);
+      if (Number.isNaN(articleId)) {
+        return Errors.badRequest(res, "Invalid article id");
+      }
+
+      const [existing] = await db.select()
+        .from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.id, articleId));
+
+      if (!existing) {
+        return Errors.notFound(res, "Article");
+      }
+      if (existing.draftStatus !== "pending_review") {
+        return Errors.badRequest(res, "Article is not a pending draft");
+      }
+
+      await db.update(knowledgeBaseArticles)
+        .set({
+          isPublished: true,
+          isDraft: false,
+          draftStatus: "published",
+          updatedAt: new Date(),
+        })
+        .where(eq(knowledgeBaseArticles.id, articleId));
+
+      logger.info(`[support] KB draft published`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error("[support] Error publishing KB draft", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // Dismiss a KB draft — terminal state, draft_status='dismissed'.
+  // Kept in the table for audit (so we can later mine which drafts
+  // never made the bar).
+  api.post("/api/founder/support/kb-drafts/:id/dismiss", isAuthenticated, getOrCreateOrg, costClass("low"), async (req, res) => {
+    try {
+      const org = req.organization!;
+      if (!org.isFounder) {
+        return Errors.forbidden(res, "Founder access required");
+      }
+
+      const articleId = parseInt(req.params.id);
+      if (Number.isNaN(articleId)) {
+        return Errors.badRequest(res, "Invalid article id");
+      }
+
+      const [existing] = await db.select()
+        .from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.id, articleId));
+
+      if (!existing) {
+        return Errors.notFound(res, "Article");
+      }
+      if (existing.draftStatus !== "pending_review") {
+        return Errors.badRequest(res, "Article is not a pending draft");
+      }
+
+      await db.update(knowledgeBaseArticles)
+        .set({
+          isPublished: false,
+          isDraft: true,
+          draftStatus: "dismissed",
+          updatedAt: new Date(),
+        })
+        .where(eq(knowledgeBaseArticles.id, articleId));
+
+      logger.info(`[support] KB draft dismissed`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error("[support] Error dismissing KB draft", error);
       Errors.internal(res, error);
     }
   });

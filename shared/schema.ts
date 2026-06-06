@@ -10682,13 +10682,24 @@ export const knowledgeBaseArticles = pgTable("knowledge_base_articles", {
   viewCount: integer("view_count").default(0),
   helpfulCount: integer("helpful_count").default(0),
   notHelpfulCount: integer("not_helpful_count").default(0),
-  
+
+  // Tahoe E3 / Rafe — KB auto-publish from resolved tickets.
+  // `isDraft` gates the article from /api/support/knowledge-base reads.
+  // `sourceTicketId` ties the draft back to the resolved ticket so a
+  // reviewer can audit the conversation before publishing. `draftStatus`
+  // is "pending_review" until the founder/admin clicks Publish (→ "published")
+  // or Dismiss (→ "dismissed"). isPublished flips on publish.
+  isDraft: boolean("is_draft").default(false),
+  draftStatus: text("draft_status"), // pending_review | published | dismissed | null (already-live)
+  sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
+
   isPublished: boolean("is_published").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("kb_articles_category_idx").on(table.category),
   index("kb_articles_slug_idx").on(table.slug),
+  index("kb_articles_draft_status_idx").on(table.draftStatus, table.createdAt),
 ]);
 
 // Track AI resolution history for learning
@@ -11493,6 +11504,39 @@ export const npsResponses = pgTable("nps_responses", {
 export const insertNpsResponseSchema = createInsertSchema(npsResponses).omit({ id: true, createdAt: true });
 export type InsertNpsResponse = z.infer<typeof insertNpsResponseSchema>;
 export type NpsResponse = typeof npsResponses.$inferSelect;
+
+// Tahoe E3 / Rafe — NPS prompt queue.
+// A daily scheduler (server/jobs/runScheduledJobs.ts → startNpsPromptSchedulerJob)
+// inserts one row per (org, primary_user) when the cohort gate passes:
+//   - org age >= 21 days since signup
+//   - no NPS response in the last 90 days
+//   - no pending queue row already
+// On next login, /api/nps/pending reads this queue first. When the user
+// submits or dismisses, the row is marked consumed. The dialog hook in
+// AppContent stays unchanged — only the source of truth shifts from
+// "trigger inferred from org.createdAt" to "trigger flagged by the
+// scheduler."
+export const npsPromptQueue = pgTable("nps_prompt_queue", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  trigger: text("trigger").notNull(), // scheduled_21d | scheduled_quarterly | manual
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  status: text("status").notNull().default("pending"), // pending | shown | submitted | dismissed
+  shownAt: timestamp("shown_at"),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  // Leading-org composite per the L3 shard-readiness lint
+  // (scripts/check-org-leading-index.mjs). org_id leads + status +
+  // scheduledFor covers the hot read path on login.
+  index("nps_prompt_queue_org_status_scheduled_idx").on(table.organizationId, table.status, table.scheduledFor),
+  index("nps_prompt_queue_user_status_idx").on(table.userId, table.status),
+]);
+
+export const insertNpsPromptQueueSchema = createInsertSchema(npsPromptQueue).omit({ id: true, createdAt: true });
+export type InsertNpsPromptQueue = z.infer<typeof insertNpsPromptQueueSchema>;
+export type NpsPromptQueue = typeof npsPromptQueue.$inferSelect;
 
 // Job Health Logs — execution records for all background jobs
 export const jobHealthLogs = pgTable("job_health_logs", {

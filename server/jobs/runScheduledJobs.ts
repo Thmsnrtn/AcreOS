@@ -3208,6 +3208,100 @@ function startBeatriceRegWatchJob() {
 }
 
 // ============================================================================
+// Rafe / Tahoe E3 Sub-3 — NPS prompt scheduler.
+//
+// Daily 04:15 UTC. For each active org whose primary user (owner) has:
+//   - org age >= 21 days since signup AND
+//   - no NPS response in the last 90 days AND
+//   - no pending nps_prompt_queue row already
+// enqueue one row. /api/nps/pending reads the queue on next login.
+// The "7 days since last prompt" gate is enforced by the queue itself —
+// a row in status='shown' (set by /pending) blocks another insert until
+// either the user submits / dismisses or the next scheduler tick after
+// the 90-day window passes.
+//
+// Defensive: bounded to 500 orgs per tick to keep the daily fan-out
+// predictable. Self-rescheduling under withJobLock.
+// ============================================================================
+function startNpsPromptSchedulerJob() {
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering NPS prompt scheduler job (daily 04:15 UTC)', 'nps-scheduler');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 4 && now.getUTCMinutes() >= 15 && now.getUTCMinutes() < 20) {
+      void withJobLock('nps_prompt_scheduler', TTL_SECONDS, async () => {
+        const { npsResponses, npsPromptQueue } = await import('@shared/schema');
+        const twentyOneDaysAgo = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        // Eligible orgs: active subscription, owner present, signup >= 21d ago.
+        const eligible = await db
+          .select({ id: organizations.id, ownerId: organizations.ownerId })
+          .from(organizations)
+          .where(sql`
+            ${organizations.subscriptionStatus} = 'active'
+            AND ${organizations.createdAt} <= ${twentyOneDaysAgo}
+            AND ${organizations.ownerId} IS NOT NULL
+          `)
+          .limit(500);
+
+        let enqueued = 0;
+        let skippedRecent = 0;
+        let skippedPending = 0;
+
+        for (const org of eligible) {
+          try {
+            // Recency gate: any NPS response in last 90 days → skip.
+            const recentResponse = await db
+              .select({ id: npsResponses.id })
+              .from(npsResponses)
+              .where(sql`
+                ${npsResponses.organizationId} = ${org.id}
+                AND ${npsResponses.createdAt} >= ${ninetyDaysAgo}
+              `)
+              .limit(1);
+            if (recentResponse.length > 0) { skippedRecent++; continue; }
+
+            // De-dupe: pending or shown row already → skip.
+            const pendingRow = await db
+              .select({ id: npsPromptQueue.id })
+              .from(npsPromptQueue)
+              .where(sql`
+                ${npsPromptQueue.organizationId} = ${org.id}
+                AND ${npsPromptQueue.userId} = ${org.ownerId}
+                AND ${npsPromptQueue.status} IN ('pending', 'shown')
+              `)
+              .limit(1);
+            if (pendingRow.length > 0) { skippedPending++; continue; }
+
+            await db.insert(npsPromptQueue).values({
+              organizationId: org.id,
+              userId: org.ownerId,
+              trigger: 'scheduled_quarterly',
+              scheduledFor: now,
+              status: 'pending',
+            });
+            enqueued++;
+          } catch (rowErr) {
+            log(`[nps-scheduler] org ${org.id} enqueue failed: ${rowErr}`, 'nps-scheduler');
+          }
+        }
+
+        log(
+          `[nps-scheduler] daily run: eligible=${eligible.length} enqueued=${enqueued} skippedRecent=${skippedRecent} skippedPending=${skippedPending}`,
+          'nps-scheduler',
+        );
+      }).catch((err) => {
+        log(`[nps-scheduler] daily run failed: ${err}`, 'nps-scheduler');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
 // briefing / outcome / telemetry / model / self-assessment / evolution /

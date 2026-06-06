@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { insertOrganizationSchema, leads, deals, properties, npsResponses, organizations, type InsertTeamMember } from "@shared/schema";
+import { insertOrganizationSchema, leads, deals, properties, npsResponses, npsPromptQueue, organizations, type InsertTeamMember } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
@@ -1050,7 +1050,7 @@ export function registerOrganizationRoutes(app: Express): void {
         leads: "Leads",
         properties: "Properties",
         notes: "Notes",
-        ai_requests: "Daily AI Requests",
+        ai_requests: "Monthly Pax Messages",
       };
 
       const limits = Object.entries(allUsage.usage).map(([resource, info]) => ({
@@ -2218,6 +2218,21 @@ export function registerOrganizationRoutes(app: Express): void {
         trigger,
       }).returning();
 
+      // Tahoe E3 Sub-3 — mark any pending prompt-queue row as
+      // submitted so we don't double-prompt the same user.
+      try {
+        await db.update(npsPromptQueue)
+          .set({ status: "submitted", consumedAt: new Date() })
+          .where(and(
+            eq(npsPromptQueue.organizationId, orgId),
+            eq(npsPromptQueue.userId, userId),
+            eq(npsPromptQueue.status, "pending"),
+          ));
+      } catch (queueErr) {
+        // Queue write is best-effort; never fail the submit.
+        logger.warn("NPS prompt queue consume failed", { metadata: { detail: String(queueErr) } });
+      }
+
       logger.info("NPS response submitted", { orgId, userId, score, trigger });
       res.json({ success: true, id: inserted.id });
     } catch (err: any) {
@@ -2232,6 +2247,35 @@ export function registerOrganizationRoutes(app: Express): void {
       const authReq = req as AuthenticatedRequest;
       const orgId = getOrganizationId(authReq);
       const userId = String(authReq.user.id);
+
+      // Tahoe E3 Sub-3 — the daily scheduler enqueues prompts in
+      // nps_prompt_queue. If a row is pending for this (org, user)
+      // and is due, surface it immediately and mark shown_at. The
+      // legacy heuristic below (day_14 / upgrade / quarterly) stays
+      // as a safety net for orgs whose first scheduler run hasn't
+      // fired yet.
+      try {
+        const [queued] = await db.select()
+          .from(npsPromptQueue)
+          .where(and(
+            eq(npsPromptQueue.organizationId, orgId),
+            eq(npsPromptQueue.userId, userId),
+            eq(npsPromptQueue.status, "pending"),
+            sql`${npsPromptQueue.scheduledFor} <= now()`,
+          ))
+          .orderBy(desc(npsPromptQueue.scheduledFor))
+          .limit(1);
+
+        if (queued) {
+          await db.update(npsPromptQueue)
+            .set({ status: "shown", shownAt: new Date() })
+            .where(eq(npsPromptQueue.id, queued.id));
+          return res.json({ shouldShow: true, trigger: queued.trigger });
+        }
+      } catch (queueErr) {
+        // Queue read failure should never break NPS — fall through.
+        logger.warn("NPS prompt queue read failed", { metadata: { detail: String(queueErr) } });
+      }
 
       const org = authReq.organization;
       const now = new Date();
