@@ -5273,6 +5273,60 @@ export const auditEvents = pgTable("audit_events", {
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type InsertAuditEvent = typeof auditEvents.$inferInsert;
 
+// ─── Tahoe / Beatrice: customer-visible security activity log ───────────────
+// A per-org, customer-READABLE log of security- and data-significant events:
+// logins, data exports, member invite/remove, role changes, billing changes,
+// subscription pause/cancel, API-key issuance. Distinct from:
+//   - audit_log     (entity CRUD, hash-chained, surfaced to the customer's
+//                    compliance tab as a per-record change history)
+//   - audit_events  (founder/recovery-console internal forensic log, 7-yr)
+// This table is the "Security activity" view the customer sees in Settings.
+// It is org-scoped (every row carries organization_id), append-only by
+// convention (we never UPDATE/DELETE from app code), and its `metadata` is
+// always written through redactByClassification() so PII / financial values
+// are labelled rather than stored in the clear.
+export const customerAuditLog = pgTable("customer_audit_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // The user who performed the action (Clerk/Replit user id) or null for
+  // system-initiated events (e.g. a Stripe-webhook-confirmed cancellation).
+  actorUserId: text("actor_user_id"),
+  actorEmail: text("actor_email"),
+  // Dot-namespaced, mirrors CustomerAuditActions in server/utils/customerAudit.ts
+  // e.g. "auth.login", "member.invited", "billing.autopay_toggled".
+  action: text("action").notNull(),
+  // Short, customer-facing category for grouping/filtering in the UI.
+  category: text("category").notNull(), // auth | members | billing | data | security
+  // Optional human-readable target descriptor, e.g. invited member email.
+  targetLabel: text("target_label"),
+  // Class-labelled metadata — written via redactByClassification(..,{label:true}).
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // Org-leading composite index — customer view filters by org and orders by
+  // recency (check-org-leading-index.mjs requires org as the leading column).
+  byOrgCreated: index("customer_audit_log_org_created_idx").on(
+    table.organizationId,
+    table.createdAt,
+  ),
+  byOrgCategory: index("customer_audit_log_org_category_idx").on(
+    table.organizationId,
+    table.category,
+  ),
+}));
+
+export const insertCustomerAuditLogSchema = createInsertSchema(customerAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CustomerAuditLogEntry = typeof customerAuditLog.$inferSelect;
+export type InsertCustomerAuditLog = z.infer<typeof insertCustomerAuditLogSchema>;
+
 // ─── Phase 3 Week 11: GDPR/CCPA Data Subject Access Requests ──────────────
 // Public DSAR intake; rows are operator-driven post-receipt. Customers can
 // request access, erasure, portability, or rectification. Founder reviews
