@@ -48,6 +48,16 @@ export const apiTelemetrySamples = pgTable("api_telemetry_samples", {
   /** Latency percentile snapshots — sampled from the durations buffer. */
   p50Ms: integer("p50_ms").notNull().default(0),
   p95Ms: integer("p95_ms").notNull().default(0),
+  /**
+   * Count of DISTINCT organisations that hit this route during the window.
+   * The middleware tracks a Set<orgId> per (route) bucket and writes the set
+   * size at flush. Feeds api_telemetry_rollup_monthly.distinct_orgs (summed
+   * across windows in a month — an upper bound on monthly uniques, not a
+   * dedup across windows, which is acceptable for the cost dashboard's
+   * "how many tenants exercise this route" signal). 0 for unauthenticated /
+   * pre-org routes.
+   */
+  distinctOrgs: integer("distinct_orgs").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("api_telemetry_samples_route_window_idx").on(table.route, table.windowStart),

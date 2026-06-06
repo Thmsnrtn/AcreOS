@@ -32,6 +32,14 @@ interface RouteCounters {
   lastSeenMs: number;
   /** L5b — cost class declared at route registration, if any. */
   costClass?: string;
+  /**
+   * Distinct organisation ids that hit this route during the window. Tracked
+   * as a Set so the flush can persist `orgIds.size` into
+   * api_telemetry_samples.distinct_orgs, which the nightly rollup SUMs into
+   * api_telemetry_rollup_monthly.distinct_orgs. Bounded by tenant count, so
+   * unlike `durations` it doesn't need a sliding cap.
+   */
+  orgIds: Set<number>;
 }
 
 const ROUTE_BUCKETS = new Map<string, RouteCounters>();
@@ -105,6 +113,7 @@ async function flushSamples(): Promise<void> {
         totalMs: bucket.totalMs,
         p50Ms: percentile(sorted, 50),
         p95Ms: percentile(sorted, 95),
+        distinctOrgs: bucket.orgIds.size,
       };
     });
     if (rows.length > 0) {
@@ -126,6 +135,7 @@ async function flushSamples(): Promise<void> {
         if (existing.durations.length > MAX_DURATIONS) {
           existing.durations.splice(0, existing.durations.length - MAX_DURATIONS);
         }
+        for (const orgId of bucket.orgIds) existing.orgIds.add(orgId);
         existing.firstSeenMs = Math.min(existing.firstSeenMs, bucket.firstSeenMs);
         existing.lastSeenMs = Math.max(existing.lastSeenMs, bucket.lastSeenMs);
       } else {
@@ -172,12 +182,23 @@ export function apiTelemetry() {
             firstSeenMs: Date.now(),
             lastSeenMs: Date.now(),
             costClass: req.costClass,
+            orgIds: new Set<number>(),
           };
           ROUTE_BUCKETS.set(key, bucket);
         }
         // Latch the cost class once observed (handlers stamp it via the
         // costClass() middleware before res.on("finish") fires).
         if (!bucket.costClass && req.costClass) bucket.costClass = req.costClass;
+
+        // Record the organisation that hit this route. organizationId is set
+        // by getOrCreateOrg (a per-route middleware that runs after this one's
+        // next(), but before the handler resolves) so it's populated by the
+        // time res "finish" fires. Unauthenticated / pre-org routes leave it
+        // undefined — those simply don't contribute to distinct_orgs.
+        const orgId = (req as { organizationId?: number }).organizationId;
+        if (typeof orgId === "number" && Number.isFinite(orgId)) {
+          bucket.orgIds.add(orgId);
+        }
 
         bucket.totalMs += durationMs;
         bucket.lastSeenMs = Date.now();
@@ -214,6 +235,9 @@ export interface RouteSummary {
   firstSeenAt: string;
   lastSeenAt: string;
   costClass?: string;
+  /** Distinct orgs that hit this route (current-tick set size, or summed
+   *  per-window counts over the durable window). */
+  distinctOrgs: number;
 }
 
 /**
@@ -247,6 +271,7 @@ export function getTelemetrySummary(): {
       firstSeenAt: new Date(bucket.firstSeenMs).toISOString(),
       lastSeenAt: new Date(bucket.lastSeenMs).toISOString(),
       costClass: bucket.costClass,
+      distinctOrgs: bucket.orgIds.size,
     });
     total2xx += bucket.count2xx;
     total4xx += bucket.count4xx;
@@ -290,6 +315,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
     totalMs: number;
     p50Ms: number;
     p95Ms: number;
+    distinctOrgs: number;
     firstSeenAt: Date;
     lastSeenAt: Date;
   }> = [];
@@ -307,6 +333,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
         totalMs: sql<number>`COALESCE(SUM(${apiTelemetrySamples.totalMs}), 0)::int`,
         p50Ms: sql<number>`COALESCE(MAX(${apiTelemetrySamples.p50Ms}), 0)::int`,
         p95Ms: sql<number>`COALESCE(MAX(${apiTelemetrySamples.p95Ms}), 0)::int`,
+        distinctOrgs: sql<number>`COALESCE(SUM(${apiTelemetrySamples.distinctOrgs}), 0)::int`,
         firstSeenAt: sql<Date>`MIN(${apiTelemetrySamples.windowStart})`,
         lastSeenAt: sql<Date>`MAX(${apiTelemetrySamples.windowEnd})`,
       })
@@ -327,6 +354,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
     totalMs: number;
     p50Ms: number;
     p95Ms: number;
+    distinctOrgs: number;
     firstSeenMs: number;
     lastSeenMs: number;
     costClass?: string;
@@ -341,6 +369,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
       totalMs: r.totalMs,
       p50Ms: r.p50Ms,
       p95Ms: r.p95Ms,
+      distinctOrgs: r.distinctOrgs,
       firstSeenMs: new Date(r.firstSeenAt).getTime(),
       lastSeenMs: new Date(r.lastSeenAt).getTime(),
       costClass: r.costClass ?? undefined,
@@ -358,6 +387,11 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
       existing.totalMs += bucket.totalMs;
       existing.p50Ms = Math.max(existing.p50Ms, percentile(sorted, 50));
       existing.p95Ms = Math.max(existing.p95Ms, percentile(sorted, 95));
+      // The current-tick set size is the live distinct-org count for the
+      // un-flushed window; durable is the summed per-window counts. MAX keeps
+      // the live view from under-reporting without double-summing the same
+      // tick's orgs into the historical sum.
+      existing.distinctOrgs = Math.max(existing.distinctOrgs, bucket.orgIds.size);
       existing.firstSeenMs = Math.min(existing.firstSeenMs, bucket.firstSeenMs);
       existing.lastSeenMs = Math.max(existing.lastSeenMs, bucket.lastSeenMs);
       if (!existing.costClass && bucket.costClass) existing.costClass = bucket.costClass;
@@ -369,6 +403,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
         totalMs: bucket.totalMs,
         p50Ms: percentile(sorted, 50),
         p95Ms: percentile(sorted, 95),
+        distinctOrgs: bucket.orgIds.size,
         firstSeenMs: bucket.firstSeenMs,
         lastSeenMs: bucket.lastSeenMs,
         costClass: bucket.costClass,
@@ -396,6 +431,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
       firstSeenAt: new Date(m.firstSeenMs).toISOString(),
       lastSeenAt: new Date(m.lastSeenMs).toISOString(),
       costClass: m.costClass,
+      distinctOrgs: m.distinctOrgs,
     });
     total2xx += m.count2xx;
     total4xx += m.count4xx;

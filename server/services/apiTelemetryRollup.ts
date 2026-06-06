@@ -85,7 +85,15 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
         + ${apiTelemetrySamples.count4xx}
         + ${apiTelemetrySamples.count5xx}
       )::bigint AS request_count,
-      SUM(${apiTelemetrySamples.totalMs})::bigint AS total_duration_ms
+      SUM(${apiTelemetrySamples.totalMs})::bigint AS total_duration_ms,
+      -- Sum of per-window distinct-org counts. This is an upper bound on
+      -- monthly uniques (a tenant active across two windows counts twice),
+      -- not a cross-window dedup — acceptable for the dashboard's "how many
+      -- tenants exercise this route" signal, and far cheaper than retaining
+      -- per-org sample rows. Coalesced for rows written before the column
+      -- existed (defaulted to 0 by the migration, so COALESCE is belt-and-
+      -- braces).
+      SUM(COALESCE(${apiTelemetrySamples.distinctOrgs}, 0))::int AS distinct_orgs
     FROM ${apiTelemetrySamples}
     WHERE ${apiTelemetrySamples.windowStart} < ${cutoff}
     GROUP BY 1, 2, 3, 4
@@ -99,6 +107,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
       cost_class: string | null;
       request_count: string | number | bigint;
       total_duration_ms: string | number | bigint;
+      distinct_orgs: string | number | bigint;
     }>;
   };
 
@@ -109,6 +118,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
     cost_class: string | null;
     request_count: string | number | bigint;
     total_duration_ms: string | number | bigint;
+    distinct_orgs: string | number | bigint;
   }>)) ?? [];
 
   if (aggregated.length === 0) return 0;
@@ -121,6 +131,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
   for (const r of aggregated) {
     const requestCount = Number(r.request_count);
     const totalDurationMs = Number(r.total_duration_ms);
+    const distinctOrgs = Number(r.distinct_orgs);
 
     // ON CONFLICT … DO UPDATE — add to existing counts. Idempotency for
     // partial crashes: a re-run will produce zero new aggregated rows
@@ -136,7 +147,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
         requestCount,
         totalDurationMs,
         totalCostCents: 0,
-        distinctOrgs: 0,
+        distinctOrgs,
       })
       .onConflictDoUpdate({
         target: [
@@ -148,6 +159,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
         set: {
           requestCount: sql`${apiTelemetryRollupMonthly.requestCount} + ${requestCount}`,
           totalDurationMs: sql`${apiTelemetryRollupMonthly.totalDurationMs} + ${totalDurationMs}`,
+          distinctOrgs: sql`${apiTelemetryRollupMonthly.distinctOrgs} + ${distinctOrgs}`,
           updatedAt: new Date(),
         },
       });
