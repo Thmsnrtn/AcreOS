@@ -78,3 +78,14 @@ export * from "../../../server/services/solene/chat/anthropicClient";
 export * from "../../../server/services/solene/chat/contextBuilder";
 export * from "../../../server/services/solene/chat/modelRouter";
 export * from "../../../server/services/solene/chat/providerSelector";
+
+// --- Disambiguation (resolve TS2308 star-export collisions) -----------------
+// An explicit named re-export overrides the ambiguity introduced when two
+// `export *` modules above export the same name:
+//   - `getProposal` is defined by BOTH planProposals and capabilityDiscovery
+//     (two distinct async fns). planProposals is canonical for the package API.
+//   - `ContentBlock` is re-exported by both conversationStore and
+//     openRouterClient; both resolve to the same shared SchemaContentBlock, so
+//     the source is equivalent — conversationStore is chosen as canonical.
+export { getProposal } from "../../../server/services/solene/planProposals";
+export type { ContentBlock } from "../../../server/services/solene/conversationStore";
