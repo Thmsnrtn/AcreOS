@@ -61,6 +61,30 @@ const STATEMENTS = [
   // Nullable so existing users transparently get client-side defaults.
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "appearance_preferences" jsonb',
 
+  // Tahoe E5 — per-tenant theming on organizations (migration 0112).
+  // First-party org brand affordances (distinct from white_label_configs):
+  // accent color, logo URL, density. Applied client-side by
+  // TenantThemeProvider as CSS variables / data-attributes. All nullable so
+  // legacy orgs render the default theme unchanged.
+  'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_accent_color" text',
+  'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_logo_url" text',
+  'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_density" text',
+
+  // Tahoe E6 — server-backed UI state (migration 0112). Durable home for
+  // per-user UI preferences (collapsed panels, view toggles, dismissed
+  // banners) keyed by (organization_id, user_id, key) so they follow the
+  // user across devices. Unique composite leads with organization_id to
+  // satisfy the L3 shard-readiness lint.
+  `CREATE TABLE IF NOT EXISTS "ui_state" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "user_id" text NOT NULL,
+     "key" text NOT NULL,
+     "value" jsonb NOT NULL,
+     "updated_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ui_state_org_user_key_idx" ON "ui_state" ("organization_id", "user_id", "key")',
+
   // 2026-05-07 — incident patch. The users-hydration query was 500-ing
   // every ~3s in prod for any authenticated request because Drizzle's
   // .select() includes all 17 declared columns, but prod only had 14.

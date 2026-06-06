@@ -1,5 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { useUiState } from "@/hooks/use-ui-state";
 
+// Tahoe E6: pax-rail-open migrated to useUiState so whether the copilot rail
+// is docked open follows the user across devices. The conversation id stays
+// localStorage-only — it's per-session continuity, not a cross-device pref.
 const STORAGE_KEY = "pax-rail-open";
 const CONV_STORAGE_KEY = "pax-conversation-id";
 
@@ -24,13 +28,8 @@ interface PaxRailContextType {
 const PaxRailContext = createContext<PaxRailContextType | null>(null);
 
 export function PaxRailProvider({ children }: { children: ReactNode }) {
-  const [isOpen, setIsOpenRaw] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  // Server-backed (Tahoe E6): rail-open state follows the user across devices.
+  const [isOpen, setIsOpenRaw] = useUiState<boolean>(STORAGE_KEY, false);
   const [pendingContext, setPendingContext] = useState<RailEntityContext | null>(null);
   const [activeConversationId, setActiveConversationIdRaw] = useState<number | null>(() => {
     try {
@@ -43,10 +42,7 @@ export function PaxRailProvider({ children }: { children: ReactNode }) {
 
   const setOpen = useCallback((v: boolean) => {
     setIsOpenRaw(v);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(v));
-    } catch {}
-  }, []);
+  }, [setIsOpenRaw]);
 
   const toggle = useCallback(() => setOpen(!isOpen), [isOpen, setOpen]);
 

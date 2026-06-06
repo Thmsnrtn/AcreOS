@@ -15,6 +15,7 @@ import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
 import { flushPendingUtm, hasSignupIntent } from "@/lib/acquisition-utm";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { TenantThemeProvider } from "@/contexts/tenant-theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { AccessibilityProvider } from "@/contexts/accessibility-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
@@ -1960,6 +1961,10 @@ function App() {
           <PaxRailProvider>
           <DynamicIslandProvider>
           <QueryClientProvider client={queryClient}>
+            {/* Tahoe E5 — per-org accent/logo/density layered over the
+                personal theme. Inside QueryClientProvider (uses useQuery)
+                and ThemeProvider (defers to personal density). */}
+            <TenantThemeProvider>
             <FeatureFlagsProvider>
             <TooltipProvider>
               <HintsProvider>
@@ -1976,6 +1981,7 @@ function App() {
               </HintsProvider>
             </TooltipProvider>
             </FeatureFlagsProvider>
+            </TenantThemeProvider>
           </QueryClientProvider>
           </DynamicIslandProvider>
           </PaxRailProvider>

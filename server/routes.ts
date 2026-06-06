@@ -77,6 +77,8 @@ import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
 import preferencesRouter from "./routes-preferences";
+import tenantThemeRouter from "./routes-tenant-theme";
+import uiStateRouter from "./routes-ui-state";
 import byokRouter from "./routes-byok";
 import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
@@ -1366,6 +1368,12 @@ export async function registerRoutes(
   // User-scoped appearance preferences (theme/mode/font/density/motion).
   // No org context needed — preferences are user-level.
   app.use('/api/me/preferences', isAuthenticated, preferencesRouter);
+  // Tahoe E5 — per-org first-party theming (accent/logo/density). Needs org
+  // context; reads open to members, writes gated to admin+ inside the router.
+  app.use('/api/tenant-theme', isAuthenticated, getOrCreateOrg, tenantThemeRouter);
+  // Tahoe E6 — server-backed per-user UI state (collapsed panels, view
+  // toggles, dismissed banners). Org context keys each row to (org, user).
+  app.use('/api/ui-state', isAuthenticated, getOrCreateOrg, uiStateRouter);
   app.use('/api/byok', isAuthenticated, getOrCreateOrg, byokRouter);
   // Per-agent autonomy matrix — split off from /preferences in JC#14 so
   // theme writes can't trample agent policy and agents have a narrow read
