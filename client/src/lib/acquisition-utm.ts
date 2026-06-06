@@ -186,18 +186,47 @@ export function clearPendingUtm(): void {
  * Returns the snapshot that was posted (or null if nothing to post), so
  * callers can fold the values into a companion analytics event.
  */
+/**
+ * Read the marketing_touch 1st-party anonymous-id cookie set by
+ * lib/marketing-touch.getAnonymousId(). Read-only here (we never mint one in
+ * this module — minting belongs to the emitter) to keep the dependency one-way
+ * and avoid a circular import.
+ */
+function readMarketingAnonId(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const prefix = "acreos_anon_id=";
+  for (const part of document.cookie.split(";")) {
+    const c = part.trim();
+    if (c.startsWith(prefix)) {
+      const v = decodeURIComponent(c.slice(prefix.length));
+      return v.length >= 8 ? v : undefined;
+    }
+  }
+  return undefined;
+}
+
 export async function flushPendingUtm(): Promise<PendingUtm | null> {
   const snap = readPendingUtm();
-  if (!snap) {
+  // The marketing_touch chain join key — always include it so the server
+  // backfills user_id/org_id onto pre-signup touches even when no UTM was
+  // captured (a visitor with touches but no UTM still wants their chain
+  // joined to the new account). See routes-acquisition-utm.backfillTouchIdentity.
+  // Read the cookie inline (not via lib/marketing-touch) to avoid a circular
+  // import — marketing-touch imports readPendingUtm from this module.
+  const anonymousId = readMarketingAnonId();
+
+  // Nothing to persist (no UTM) AND no anon id to backfill → bail cheaply.
+  if (!snap && !anonymousId) {
     clearPendingUtm();
     return null;
   }
+
   try {
     await fetch("/api/me/acquisition-utm", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(snap),
+      body: JSON.stringify({ ...(snap ?? {}), anonymousId }),
     });
   } catch {
     /* best-effort — don't block the UI on a failed analytics POST */

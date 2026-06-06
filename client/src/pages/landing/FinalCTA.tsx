@@ -14,6 +14,7 @@ import { useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { LANDING_COPY } from "./copy";
 import { SupportFeedbackModal } from "@/components/support-feedback-modal";
+import { emitMarketingTouch } from "@/lib/marketing-touch";
 
 export function FinalCTA() {
   const c = LANDING_COPY.cta;
@@ -26,6 +27,14 @@ export function FinalCTA() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!email) return;
+    // Signup-funnel step — the visitor handed us an email and is heading to
+    // /auth. Recorded as a funnel_step so the substrate can measure
+    // landing → signup-intent conversion.
+    emitMarketingTouch({
+      surface: "landing:final_cta",
+      eventType: "funnel_step",
+      payload: { step: "email_submitted" },
+    });
     const qs = new URLSearchParams({ mode: "register", email });
     setLocation(`/auth?${qs.toString()}`);
   }

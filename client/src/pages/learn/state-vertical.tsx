@@ -23,7 +23,7 @@
  * public (no auth required) so search-engine crawlers can index it.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
@@ -32,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { emitMarketingTouch } from "@/lib/marketing-touch";
 
 import { getLearnContent, listLearnRoutes } from "./registry";
 import type { LearnContent } from "./types";
@@ -155,6 +156,20 @@ export default function StateVerticalLandingPage() {
   );
 
   const allRoutes = useMemo(() => listLearnRoutes(), []);
+
+  // Marketing-touch substrate — record a /learn page view keyed to the
+  // artifact id (learn:<vertical>:<state>) so the per-artifact ROI rollup
+  // (03-analytics.md §5) can attribute downstream signups to this primer.
+  // Guarded by content so a 404 primer doesn't emit a phantom touch.
+  useEffect(() => {
+    if (!content) return;
+    const artifactId = `learn:${content.vertical}:${content.stateSlug}`;
+    emitMarketingTouch({
+      surface: artifactId,
+      eventType: "page_view",
+      sourceArtifactId: artifactId,
+    });
+  }, [content]);
 
   if (!content) {
     return <NotFoundForLearn />;

@@ -23,6 +23,7 @@
 
 import { Link } from "wouter";
 import { LANDING_COPY } from "./copy";
+import { emitMarketingTouch } from "@/lib/marketing-touch";
 
 export function Hero() {
   const c = LANDING_COPY.hero;
@@ -77,7 +78,17 @@ export function Hero() {
         <p className="lp-hero-wedge">{c.wedge}</p>
         <p className="lp-hero-sub">{c.sub}</p>
         <div className="lp-hero-cta">
-          <Link href="/auth?mode=register" className="lp-btn lp-btn-primary lp-btn-lg lp-btn-arrow">
+          <Link
+            href="/auth?mode=register"
+            className="lp-btn lp-btn-primary lp-btn-lg lp-btn-arrow"
+            onClick={() =>
+              emitMarketingTouch({
+                surface: "landing:hero",
+                eventType: "cta_click",
+                payload: { ctaId: "hero_primary" },
+              })
+            }
+          >
             {c.cta1}
           </Link>
           <a href="#how" className="lp-btn lp-btn-secondary lp-btn-lg">

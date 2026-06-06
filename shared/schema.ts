@@ -416,6 +416,71 @@ export type EmailSuppression = typeof emailSuppressions.$inferSelect;
 export type InsertEmailSuppression = typeof emailSuppressions.$inferInsert;
 
 // ============================================
+// MARKETING TOUCH — acquisition event substrate (Soren, 2026-06-06)
+// ============================================
+// Per docs/internal/marketing-os/03-analytics.md §4. The canonical, owned
+// record of every pre-signup marketing/lifecycle touchpoint. Keyed by a
+// 1st-party `anonymous_id` cookie so the pre-signup chain survives the auth
+// handshake (the UTM-loss-at-auth bug). On signup the server JOINs
+// anonymous_id → user_id / organization_id so attribution is preserved.
+//
+// Privacy locks (spec §4 notes + feedback_rate_limit_ip_keying):
+//   - NO raw IP stored. Country-level geo only (`ip_country`).
+//   - User-agent HASHED, not raw (`user_agent_hash`), for cohort grouping.
+//
+// organization_id is nullable (most touches are pre-signup, org-less). It is
+// populated post-signup via the anonymous_id JOIN. The leading-org composite
+// index below satisfies check-org-leading-index.mjs AND accelerates the
+// post-signup "all touches for this org" attribution rollup.
+export const marketingTouch = pgTable(
+  "marketing_touch",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    anonymousId: text("anonymous_id").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+    // 'landing' | 'landing:cta' | 'learn:land-flipping:texas' | 'signup:started' | etc.
+    surface: text("surface").notNull(),
+    // Stable event verb: 'page_view' | 'cta_click' | 'funnel_step' | 'email_open' | 'email_click'
+    eventType: text("event_type").notNull().default("page_view"),
+    sourceArtifactId: text("source_artifact_id"), // marketing_artifact.id when the surface is an artifact
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
+    utmTerm: text("utm_term"),
+    utmContent: text("utm_content"),
+    referrer: text("referrer"),
+    landingPath: text("landing_path").notNull(),
+    deviceType: text("device_type"), // 'mobile' | 'desktop' | 'tablet'
+    userAgentHash: text("user_agent_hash"), // hashed UA, never raw
+    ipCountry: text("ip_country"), // country only, never raw IP
+    payload: jsonb("payload"), // event-specific extras (step, durationMs, ctaId, …)
+    userId: text("user_id"), // nullable; populated on signup-join (users.id is varchar)
+    organizationId: integer("organization_id"), // nullable; populated on signup-join
+  },
+  (table) => ({
+    // Hot path: pre-signup chain reconstruction for a single anon visitor.
+    byAnonOccurred: index("marketing_touch_anon_occurred_idx").on(
+      table.anonymousId,
+      table.occurredAt,
+    ),
+    // Surface-level rollups (touches per artifact / surface over time).
+    bySurfaceOccurred: index("marketing_touch_surface_occurred_idx").on(
+      table.surface,
+      table.occurredAt,
+    ),
+    // Leading-org composite — post-signup attribution rollup per tenant.
+    // Satisfies check-org-leading-index.mjs (org column present → must lead).
+    byOrgOccurred: index("marketing_touch_org_occurred_idx").on(
+      table.organizationId,
+      table.occurredAt,
+    ),
+  }),
+);
+
+export type MarketingTouch = typeof marketingTouch.$inferSelect;
+export type InsertMarketingTouch = typeof marketingTouch.$inferInsert;
+
+// ============================================
 // ELEONORA DELIVERABILITY — Phase 1 §10 / Week 7-8
 // ============================================
 // Per-org email identity (DKIM/SPF/DMARC). The keypair is generated server-

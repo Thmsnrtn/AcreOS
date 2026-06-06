@@ -82,6 +82,7 @@ import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
+import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
 import aiDisclosureRouter from "./routes-ai-disclosure";
 import paxDisclosureRouter from "./routes-pax-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
@@ -604,6 +605,12 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to join waitlist" });
     }
   });
+
+  // Marketing-touch ingest — public, no auth. The write path for the
+  // acquisition event substrate (docs/internal/marketing-os/03-analytics.md).
+  // Keyed by a 1st-party anonymous_id cookie; user_id/org_id backfilled on
+  // signup. See server/routes-marketing-touch.ts.
+  registerMarketingTouchRoutes(app);
 
   app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
     try {

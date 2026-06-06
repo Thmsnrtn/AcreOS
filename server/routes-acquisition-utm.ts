@@ -22,6 +22,7 @@ import { eq, isNull, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { users, type AcquisitionUtm } from "@shared/models/auth";
+import { marketingTouch, teamMembers } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
@@ -50,8 +51,49 @@ const acquisitionUtmSchema = z
     utm_content: utmKey,
     referrer: referrerKey,
     landedAt: landedAtKey,
+    // Marketing-touch substrate join key. When the client includes its
+    // 1st-party anonymous_id, the server backfills user_id/organization_id
+    // onto the pre-signup marketing_touch rows so the touch chain survives
+    // the auth handshake. See docs/internal/marketing-os/03-analytics.md §2.2.
+    anonymousId: z.string().min(8).max(64).optional(),
   })
   .strict();
+
+/**
+ * Backfill the marketing_touch chain for an anonymous_id with the now-known
+ * user_id (and organization_id, if the user already belongs to one). Only
+ * touches the org-less / user-less rows so a re-fire is a cheap no-op.
+ * Best-effort: never throws into the caller — attribution backfill must not
+ * break the signup flow.
+ */
+async function backfillTouchIdentity(
+  anonymousId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    // Resolve the user's org (most-recent membership) if one exists yet.
+    const membership = await db
+      .select({ organizationId: teamMembers.organizationId })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, userId))
+      .limit(1);
+    const organizationId = membership[0]?.organizationId ?? null;
+
+    await db
+      .update(marketingTouch)
+      .set({ userId, organizationId })
+      .where(
+        and(
+          eq(marketingTouch.anonymousId, anonymousId),
+          isNull(marketingTouch.userId),
+        ),
+      );
+  } catch (error) {
+    logger.warn("[acquisition-utm] marketing_touch backfill failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 router.post("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -61,10 +103,21 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
       return Errors.validationFailed(res, parsed.error.issues);
     }
 
+    // Pull the marketing-touch join key out before building the UTM blob —
+    // anonymousId is a substrate join key, not an acquisition_utm field.
+    const { anonymousId, ...utmFields } = parsed.data;
+
+    // Backfill the marketing_touch chain regardless of whether a UTM blob is
+    // present — a visitor with touches but no UTM still wants their chain
+    // joined to the new account. Fire-and-forget (best-effort).
+    if (anonymousId) {
+      void backfillTouchIdentity(anonymousId, userId);
+    }
+
     // Strip empty / undefined keys so we don't persist
     // `{ utm_source: undefined }` shaped rows.
     const cleaned: AcquisitionUtm = {};
-    for (const [k, v] of Object.entries(parsed.data)) {
+    for (const [k, v] of Object.entries(utmFields)) {
       if (typeof v === "string" && v.length > 0) {
         (cleaned as Record<string, string>)[k] = v;
       }
