@@ -38,6 +38,7 @@ export default defineConfig({
     alias: {
       "@shared": path.resolve(__dirname, "./shared"),
       "@": path.resolve(__dirname, "./client/src"),
+      "@sovereign": path.resolve(__dirname, "./sovereign-protocol"),
     },
   },
   // tsconfig sets jsx: "preserve" so vite/SWC can handle JSX in the
