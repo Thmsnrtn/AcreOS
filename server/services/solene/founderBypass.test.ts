@@ -268,24 +268,27 @@ describe("founderBypass.founderDispatch", () => {
     expect(res.bypassedPlanProposalStage).toBe(true);
   });
 
-  it("does NOT set founderOverride when maxCostUsd=$50", async () => {
+  it("does NOT set founderOverride when maxCostUsd=$20 (below the $25 ceiling)", async () => {
     const { founderDispatch } = await import("./founderBypass");
     const res = await founderDispatch({
       agentRole: "iris",
       promptText: "quick lookup",
-      maxCostUsd: 50,
+      maxCostUsd: 20,
     });
     expect(enqueueCalls[0].founderOverride).toBe(false);
     expect(res.bypassedCostCeiling).toBe(false);
     expect(res.bypassedPlanProposalStage).toBe(true);
   });
 
-  it("treats maxCostUsd exactly $100 as NOT bypassed (strict >)", async () => {
+  it("treats maxCostUsd exactly $25 as NOT bypassed (strict > DISPATCH_MAX_COST_USD)", async () => {
+    // DISPATCH_MAX_COST_USD = 25 (shared/schema/solene-dispatch.ts). The ceiling
+    // was tightened $100→$25; bypass uses a strict `>`, so the cap value itself
+    // is the last non-bypassed dollar. $26+ bypasses (see the $50/$200 cases).
     const { founderDispatch } = await import("./founderBypass");
     const res = await founderDispatch({
       agentRole: "iris",
       promptText: "right at the line",
-      maxCostUsd: 100,
+      maxCostUsd: 25,
     });
     expect(res.bypassedCostCeiling).toBe(false);
     expect(enqueueCalls[0].founderOverride).toBe(false);
@@ -325,7 +328,7 @@ describe("founderBypass.founderDispatch", () => {
     await founderDispatch({
       agentRole: "iris",
       promptText: "audit me",
-      maxCostUsd: 75,
+      maxCostUsd: 20,
       reason: "incident response — fast iteration",
     });
 
@@ -335,7 +338,7 @@ describe("founderBypass.founderDispatch", () => {
     expect(auditCall).toBeDefined();
     const payload = auditCall![1] as Record<string, unknown>;
     expect(payload.agentRole).toBe("iris");
-    expect(payload.maxCostUsd).toBe(75);
+    expect(payload.maxCostUsd).toBe(20);
     expect(payload.priority).toBe(3.0);
     expect(payload.bypassedCostCeiling).toBe(false);
     expect(payload.bypassedPlanProposalStage).toBe(true);

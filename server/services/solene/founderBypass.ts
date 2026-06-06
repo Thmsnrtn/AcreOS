@@ -3,8 +3,8 @@
  *
  * Tom's direct-dispatch surface. Bypasses two normal guardrails:
  *
- *   1. The $100 per-dispatch cost ceiling — founderOverride=true lifts it
- *      when the requested maxCostUsd exceeds DISPATCH_MAX_COST_USD.
+ *   1. The per-dispatch cost ceiling (DISPATCH_MAX_COST_USD, currently $25) —
+ *      founderOverride=true lifts it when the requested maxCostUsd exceeds it.
  *   2. The plan-proposal staging — founder invocations skip the propose/
  *      approve dance entirely; they enqueue straight to the worker.
  *
@@ -76,10 +76,10 @@ const PROMPT_PREVIEW_LIMIT = 200;
  * Founder direct-dispatch with full authority. Enqueues via the canonical
  * dispatchQueue with sourceType='founder_bypass'. Priority defaults to 3.0
  * (ahead of auto-dispatch + code-review). founderOverride=true lifts the
- * $100 ceiling whenever maxCostUsd > DISPATCH_MAX_COST_USD.
+ * cost ceiling whenever maxCostUsd > DISPATCH_MAX_COST_USD (currently $25).
  *
  * The bypass surfaces structured audit info for the activity feed:
- *   - bypassedCostCeiling: true when maxCostUsd > $100
+ *   - bypassedCostCeiling: true when maxCostUsd > DISPATCH_MAX_COST_USD
  *   - bypassedPlanProposalStage: always true (the bypass IS the point)
  */
 export async function founderDispatch(
