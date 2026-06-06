@@ -160,7 +160,7 @@ export async function* streamChatCompletionAnthropic(
   try {
     stream = (await client.messages.create(body as any, {
       signal: opts.signal,
-    })) as AsyncIterable<unknown>;
+    })) as unknown as AsyncIterable<unknown>;
   } catch (err) {
     const classified = classifyAnthropicError(err);
     yield {

@@ -78,6 +78,7 @@ import {
   AlertTriangle,
   Paperclip,
   Image as ImageIcon,
+  Square,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
 import { relative, usd } from "@/lib/format";
@@ -1573,6 +1574,11 @@ export default function CommandCenterPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 2026-06-05 Krieger P0 — Pax stream cancellation. The send button used
+  // to spin forever with no way to stop a misfired prompt; an
+  // AbortController per sendMessage call lets the user hit Stop and
+  // reclaim the conversation.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const { data: suggestionsData } = useQuery<SuggestionsResponse>({
     queryKey: ["/api/assistant/suggestions"],
@@ -1698,6 +1704,10 @@ export default function CommandCenterPage() {
     fileInputRef.current?.click();
   };
 
+  const stopStreaming = () => {
+    abortControllerRef.current?.abort();
+  };
+
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isStreaming || isGeneratingImage) return;
 
@@ -1709,6 +1719,10 @@ export default function CommandCenterPage() {
     setPendingToolCalls([]);
     setIsStreaming(true);
     setActiveSkill(null);
+    // Fresh AbortController per send. The previous one (if any) has either
+    // completed or the user explicitly aborted it.
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     try {
       const intentResult = await classifyIntentMutation.mutateAsync(message);
@@ -1763,6 +1777,7 @@ export default function CommandCenterPage() {
           files: fileAttachments.length > 0 ? fileAttachments : undefined,
         }),
         credentials: "include",
+        signal,
       });
 
       if (response.status === 402) {
@@ -1823,9 +1838,19 @@ export default function CommandCenterPage() {
         }
       }
     } catch (error) {
-      clientLogger.error("Streaming error:", error);
-      toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
+      // User-initiated abort is the success path for the Stop button; don't
+      // surface it as an error toast.
+      if (
+        error instanceof DOMException && error.name === "AbortError"
+        || (error as any)?.name === "AbortError"
+      ) {
+        clientLogger.info("Pax stream aborted by user");
+      } else {
+        clientLogger.error("Streaming error:", error);
+        toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setStreamingContent("");
       setPendingToolCalls([]);
@@ -2318,20 +2343,29 @@ export default function CommandCenterPage() {
                         disabled={isStreaming}
                         data-testid="input-message"
                       />
-                      <Button
-                        onClick={sendMessage}
-                        disabled={(!input.trim() && attachments.length === 0) || isStreaming}
-                        size="icon"
-                        className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 shrink-0"
-                        aria-label="Send message"
-                        data-testid="button-send-message"
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                        ) : (
+                      {isStreaming ? (
+                        <Button
+                          onClick={stopStreaming}
+                          variant="destructive"
+                          size="icon"
+                          className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 shrink-0"
+                          aria-label="Stop generating"
+                          data-testid="button-stop-streaming"
+                        >
+                          <Square className="w-3 h-3 fill-current" aria-hidden="true" />
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={sendMessage}
+                          disabled={!input.trim() && attachments.length === 0}
+                          size="icon"
+                          className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 shrink-0"
+                          aria-label="Send message"
+                          data-testid="button-send-message"
+                        >
                           <Send className="w-4 h-4" aria-hidden="true" />
-                        )}
-                      </Button>
+                        </Button>
+                      )}
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{isImageMode ? "Image generation mode" : ""}</span>
