@@ -16171,3 +16171,21 @@ export * from "./schema/error-boundary-trips";
 // SOLENE — real agent-dispatch queue + result ledger (Layer 1 capability #1)
 // ============================================================================
 export * from "./schema/solene-dispatch";
+
+// ============================================================================
+// QUINN + BEATRICE — Pax refusal payload ledger (Tahoe wave E9 — customer
+// recourse substrate). Every customer-facing refusal cites an immutable.
+// ============================================================================
+export * from "./schema/pax-refusal-payloads";
+
+// ============================================================================
+// QUINN + BEATRICE — Pax decision appeals ledger (Tahoe wave E9 — customer
+// recourse lifecycle: open → under_review → upheld | reversed).
+// ============================================================================
+export * from "./schema/pax-decision-appeals";
+
+// ============================================================================
+// QUINN — Transparency report substrate (Tahoe wave E9 — rolling 90-day
+// aggregation; nightly job populates, /transparency surface ships later).
+// ============================================================================
+export * from "./schema/transparency-reports";

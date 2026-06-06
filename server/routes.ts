@@ -149,6 +149,7 @@ import { registerDashboardRoutes } from "./routes-dashboard";
 import { registerJobHealthRoutes } from "./routes-job-health";
 import { registerAdminAuditLogRoutes } from "./routes-admin-audit";
 import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
+import { registerTransparencyRoutes } from "./routes-transparency";
 import { registerOrganizationRoutes } from "./routes-organization";
 import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
@@ -2059,6 +2060,9 @@ export async function registerRoutes(
   // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
   // founder records DR drills here after each quarterly run.
   registerAdminComplianceRoutes(app);
+  // Quinn (Chief of Alignment) — public /transparency stub + schema endpoint.
+  // Tahoe wave E9. UI ships in a future wave; the substrate is live.
+  registerTransparencyRoutes(app);
   registerOrganizationRoutes(app);
   // Phase 5 §5 — team-readiness endpoints (per-seat pricing, lead-assignment
   // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).

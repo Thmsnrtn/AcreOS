@@ -5898,6 +5898,88 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "solene_session_tasks_status_created_idx" ON "solene_session_tasks" ("status", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "solene_session_tasks_conversation_status_idx" ON "solene_session_tasks" ("conversation_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "solene_session_tasks_owner_status_idx" ON "solene_session_tasks" ("owner", "status")`,
+
+  // ============================================================
+  // QUINN + BEATRICE — Pax refusal payload ledger (Tahoe E9).
+  // ============================================================
+  // Every customer-facing refusal cites an immutable. Substrate for the
+  // appeals path (pax_decision_appeals) + the rolling transparency report.
+  //
+  // organization_id is NOT NULL — a refusal always happens in an org scope.
+  // cited_immutable_id format: "customer:N" (prefixed so future
+  // "sovereign:N" refusals can share the column).
+  //
+  // Mirrors shared/schema/pax-refusal-payloads.ts.
+  `CREATE TABLE IF NOT EXISTS "pax_refusal_payloads" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "conversation_id" integer,
+     "message_id" integer,
+     "cited_immutable_id" text NOT NULL,
+     "refusal_text" text NOT NULL,
+     "severity" text NOT NULL,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_created_idx" ON "pax_refusal_payloads" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_imm_created_idx" ON "pax_refusal_payloads" ("organization_id", "cited_immutable_id", "created_at")`,
+
+  // ============================================================
+  // QUINN + BEATRICE — Pax decision appeals ledger (Tahoe E9).
+  // ============================================================
+  // Customer recourse lifecycle. status enum:
+  //   open → under_review → upheld | reversed
+  //
+  // refusal_payload_id is NOT NULL — every appeal must cite a refusal.
+  // appellant_user_id is nullable for external-signer appeals.
+  //
+  // Mirrors shared/schema/pax-decision-appeals.ts.
+  `CREATE TABLE IF NOT EXISTS "pax_decision_appeals" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "conversation_id" integer,
+     "message_id" integer,
+     "refusal_payload_id" integer NOT NULL REFERENCES "pax_refusal_payloads"("id") ON DELETE CASCADE,
+     "appeal_reason" text NOT NULL,
+     "appellant_user_id" varchar,
+     "status" text NOT NULL DEFAULT 'open',
+     "reviewer_user_id" varchar,
+     "review_notes" text,
+     "review_decision_at" timestamp with time zone,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "updated_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_status_created_idx" ON "pax_decision_appeals" ("organization_id", "status", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_created_idx" ON "pax_decision_appeals" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_refusal_idx" ON "pax_decision_appeals" ("refusal_payload_id")`,
+
+  // ============================================================
+  // QUINN — Transparency report substrate (Tahoe E9).
+  // ============================================================
+  // Rolling 90-day aggregation. Nightly job populates this row; the
+  // /transparency public surface (future wave) reads the latest published
+  // row.
+  //
+  // Platform-wide (no organization_id). The unique index on
+  // (period_start, period_end) lets the nightly job upsert idempotently.
+  //
+  // Mirrors shared/schema/transparency-reports.ts.
+  `CREATE TABLE IF NOT EXISTS "transparency_reports" (
+     "id" serial PRIMARY KEY,
+     "period_start" timestamp with time zone NOT NULL,
+     "period_end" timestamp with time zone NOT NULL,
+     "refusal_count" integer NOT NULL DEFAULT 0,
+     "refusal_by_immutable" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "appeal_count" integer NOT NULL DEFAULT 0,
+     "appeals_upheld_count" integer NOT NULL DEFAULT 0,
+     "appeals_reversed_count" integer NOT NULL DEFAULT 0,
+     "founder_bypass_count" integer NOT NULL DEFAULT 0,
+     "demographic_bias_findings" jsonb NOT NULL DEFAULT '{"findings": [], "reviewedAt": null}'::jsonb,
+     "drift_findings" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "published_at" timestamp with time zone
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "transparency_reports_period_unique" ON "transparency_reports" ("period_start", "period_end")`,
+  `CREATE INDEX IF NOT EXISTS "transparency_reports_published_idx" ON "transparency_reports" ("published_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
