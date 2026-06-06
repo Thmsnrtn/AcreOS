@@ -24,9 +24,23 @@
  *   hit founder_settings on every query.
  */
 
+import type { ReadOnlyDb } from "@shared/db/read-only";
+import * as schema from "@shared/schema";
+
 import { db, dbReplica } from "./db";
 import { getSetting } from "./services/settings";
 import { logger } from "./utils/logger";
+
+/**
+ * Unifying read-only surface returned by `dbForReads()` /
+ * `dbForReadsSync()`. Both the primary and the replica satisfy this
+ * shape — the primary structurally because every read method exists on
+ * it, the replica nominally because it was already projected through
+ * `asReadOnlyDb()` in `server/db.ts`. Returning `ReadOnlyDb` here
+ * prevents read-path callers from accidentally writing through the
+ * reader they just received, no matter which physical DB it points at.
+ */
+export type ReadSurface = ReadOnlyDb<typeof schema>;
 
 const SETTING_KEY = "infra.override.readReplica.categories";
 const CACHE_TTL_MS = 60_000;
@@ -148,11 +162,11 @@ export function recordReplicaUsage(
  * the common case where the caller doesn't care about per-category
  * filtering and just wants the replica-or-primary instance.
  */
-export async function dbForReads(category: string): Promise<typeof db> {
+export async function dbForReads(category: string): Promise<ReadSurface> {
   // No replica configured → return primary (no log spam).
   if (!dbReplica) {
     recordRoutingDecision(category, "primary");
-    return db;
+    return db as unknown as ReadSurface;
   }
 
   const filter = await getConfiguredCategories();
@@ -168,7 +182,7 @@ export async function dbForReads(category: string): Promise<typeof db> {
   }
 
   recordRoutingDecision(category, "primary");
-  return db;
+  return db as unknown as ReadSurface;
 }
 
 /**
@@ -178,10 +192,10 @@ export async function dbForReads(category: string): Promise<typeof db> {
  * category-level opt-in/out. Adoption is still recorded against the
  * provided category tag.
  */
-export function dbForReadsSync(category: string): typeof db {
+export function dbForReadsSync(category: string): ReadSurface {
   if (!dbReplica) {
     recordRoutingDecision(category, "primary");
-    return db;
+    return db as unknown as ReadSurface;
   }
   recordRoutingDecision(category, "replica");
   return dbReplica;

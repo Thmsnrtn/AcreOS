@@ -562,6 +562,22 @@ app.use("/api", apiLimiter);
     logger.warn(`[startup] configManager load skipped: ${(e as Error).message}`);
   }
 
+  // Tahoe L12 + L13 — verify the replica connection genuinely behaves as a
+  // read-only Postgres session before we route any reads to it. Soft-warns
+  // by default; throws when DB_REPLICA_RO_ENFORCED=1.
+  try {
+    const { assertReplicaRoleAtBoundary } = await import("./db");
+    await assertReplicaRoleAtBoundary();
+  } catch (e) {
+    if (process.env.DB_REPLICA_RO_ENFORCED === "1") {
+      // Enforced mode: rethrow so the process exits.
+      throw e;
+    }
+    logger.warn(
+      `[startup] replica role boundary check skipped: ${(e as Error).message}`,
+    );
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use(errorLoggingMiddleware);
