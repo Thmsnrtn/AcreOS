@@ -9535,7 +9535,17 @@ export const dealPatterns = pgTable("deal_patterns", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Tahoe L3 shard-readiness composite — every tenant-bound pattern
+  // lookup probes this index first. Pairs with the org-scoped HNSW
+  // candidate set in server/services/dealPatterns/*.
+  index("deal_patterns_org_outcome_created_idx").on(
+    table.organizationId,
+    table.outcome,
+    table.createdAt,
+  ),
+  index("deal_patterns_org_deal_idx").on(table.organizationId, table.dealId),
+]);
 
 // Deal Pattern Matches - when we find similar deals
 export const dealPatternMatches = pgTable("deal_pattern_matches", {
@@ -9572,9 +9582,20 @@ export const dealPatternMatches = pgTable("deal_pattern_matches", {
   insightsApplied: boolean("insights_applied").default(false),
   actualOutcome: text("actual_outcome"),
   insightHelpful: boolean("insight_helpful"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Tahoe L3 shard-readiness composite — match lookups for a tenant
+  // newest-first land on this index.
+  index("deal_pattern_matches_org_created_idx").on(
+    table.organizationId,
+    table.createdAt,
+  ),
+  index("deal_pattern_matches_org_pattern_idx").on(
+    table.organizationId,
+    table.patternId,
+  ),
+]);
 
 export const insertDueDiligenceDossierSchema = createInsertSchema(dueDiligenceDossiers).omit({
   id: true,

@@ -92,6 +92,21 @@ export interface RetrievalQuery {
   queryingAgentRole?: SoleneDispatchAgentRole | "system";
   /** Optional FK back into the dispatch queue. */
   queryDispatchId?: number;
+  /**
+   * Tahoe L2 lock-in — tenant-scope filter.
+   *
+   * When set, the cosine query becomes
+   *   WHERE namespace = $ns
+   *     AND (organization_id = $org OR organization_id IS NULL)
+   * so the caller sees their own corpus + the team-shared (NULL) corpus
+   * but never another tenant's corpus.
+   *
+   * When omitted (system-level callers — founder ad-hoc search, warm-
+   * start audits, team-internal sweeps), no organization filter is
+   * applied and ALL rows are visible. NEVER pass `undefined` from a
+   * customer-facing surface — leave it explicit at the call site.
+   */
+  organizationId?: number;
 }
 
 export interface RetrievedMemory {
@@ -237,6 +252,13 @@ export async function retrieveRelevantMemories(
     const queryVector = await embedQueryText(query.queryText);
     const pgLiteral = vectorToPgLiteral(queryVector);
 
+    // Tahoe L2 — when the caller is tenant-scoped, restrict to their org
+    // + the team-shared (NULL) corpus. Predicate is intentionally
+    // placed BEFORE namespace so the
+    // (organization_id, namespace, created_at) composite index can serve
+    // both the cosine ORDER BY and the filter — pgvector's HNSW pass
+    // happens after the b-tree probe narrows the candidate set.
+    const orgScope = query.organizationId;
     const result = await db.execute<{
       source_ref: string;
       content_snippet: string;
@@ -245,7 +267,10 @@ export async function retrieveRelevantMemories(
       SELECT source_ref, content_snippet,
              1 - (embedding <=> ${pgLiteral}::vector) AS similarity
       FROM solene_embedded_records
-      WHERE namespace = ${namespace}
+      WHERE ${orgScope == null
+        ? sql`TRUE`
+        : sql`(organization_id = ${orgScope} OR organization_id IS NULL)`}
+        AND namespace = ${namespace}
         AND embedding IS NOT NULL
       ORDER BY embedding <=> ${pgLiteral}::vector
       LIMIT ${topK}

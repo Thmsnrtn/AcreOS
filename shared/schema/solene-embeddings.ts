@@ -51,6 +51,7 @@ import {
   customType,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { organizations } from "../schema";
 
 // ============================================================================
 // pgvector custom column type
@@ -90,6 +91,27 @@ export const soleneEmbeddedRecords = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // ------------------------------------------------------------------
+    // Tahoe lock-in L2 — multi-tenancy column.
+    //
+    // NULL = team-internal embedding (feedback-memory corpus, internal
+    // decision traces, audit findings against AcreOS itself). NULL rows
+    // are visible to every retrieval. NON-NULL = tenant-owned embedding
+    // (e.g. future Pax-output corpora, per-org decision summaries). When
+    // a retrieval call passes an organizationId, the predicate becomes
+    //   WHERE (organization_id = $org OR organization_id IS NULL)
+    // so the caller sees their own corpus + the team-shared corpus, but
+    // never another tenant's corpus.
+    //
+    // We add this BEFORE Pax-output volume arrives so the backfill is a
+    // no-op rather than a multi-million-row PII-bearing migration. The
+    // column is nullable on purpose: it would be hostile to insist every
+    // legacy ingest path supply a tenant attribution it never had.
+    // ------------------------------------------------------------------
+    organizationId: integer("organization_id").references(
+      () => organizations.id,
+      { onDelete: "cascade" },
+    ),
     // Consumer category — see EMBEDDING_NAMESPACES below.
     namespace: text("namespace").notNull(),
     // Stable reference into the source domain — slug, "<table>:<id>", URL, …
@@ -115,13 +137,29 @@ export const soleneEmbeddedRecords = pgTable(
       .default(sql`'{}'::jsonb`),
   },
   (t) => [
-    // Natural key: re-embedding the same source updates in place.
-    uniqueIndex("solene_embedded_records_namespace_source_unique").on(
+    // Natural key: re-embedding the same source updates in place. Widened
+    // to include organization_id so two tenants can independently embed
+    // the same source_ref under the same namespace. Postgres treats NULL
+    // as distinct in unique constraints, so legacy team-internal rows
+    // (organization_id IS NULL) continue to be deduped by (namespace,
+    // source_ref) — the original semantic is preserved.
+    uniqueIndex("solene_embedded_records_org_namespace_source_unique").on(
+      t.organizationId,
       t.namespace,
       t.sourceRef,
     ),
+    // Tahoe L3 shard-readiness — every retrieval that's bound to a tenant
+    // should hit this composite index first. Leading on organization_id
+    // also lets us range-partition this table later without a re-index.
+    index("solene_embedded_records_org_namespace_created_idx").on(
+      t.organizationId,
+      t.namespace,
+      t.createdAt,
+    ),
     // Hot path: scan a single namespace newest-first (drift detection,
-    // batch re-embed catch-up, etc.).
+    // batch re-embed catch-up, etc.) regardless of tenant. Kept for the
+    // team-internal sweep job — DO NOT drop without checking
+    // server/jobs/embeddingRefresh.ts and scripts/memory-gc.mjs.
     index("solene_embedded_records_namespace_created_idx").on(
       t.namespace,
       t.createdAt,

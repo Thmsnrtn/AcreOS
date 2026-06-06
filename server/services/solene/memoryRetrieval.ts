@@ -87,6 +87,17 @@ export interface MultiNamespaceQuery {
   minSimilarity?: number;
   queryingAgentRole?: SoleneDispatchAgentRole | "system";
   queryDispatchId?: number;
+  /**
+   * Tahoe L2 lock-in — tenant-scope filter.
+   *
+   * When set, every per-namespace cosine query becomes
+   *   WHERE namespace = $ns
+   *     AND (organization_id = $org OR organization_id IS NULL)
+   * so the caller sees their own corpus + the team-shared (NULL) corpus
+   * but never another tenant's corpus. Omit for system-level callers
+   * (founder ad-hoc search, warm-start audits, team-internal sweeps).
+   */
+  organizationId?: number;
 }
 
 export interface RetrievedItem {
@@ -276,6 +287,10 @@ export async function retrieveCrossNamespaceMemories(
 
   const perNamespace = new Map<MemoryNamespace, RetrievedItem[]>();
 
+  // Tahoe L2 — when the caller is tenant-scoped, every sub-query
+  // restricts to their org + the team-shared (NULL) corpus.
+  const orgScope = query.organizationId;
+
   // One sub-query per namespace. Failures in one don't sink the others.
   for (const ns of namespaces) {
     try {
@@ -287,7 +302,10 @@ export async function retrieveCrossNamespaceMemories(
         SELECT source_ref, content_snippet,
                1 - (embedding <=> ${pgLiteral}::vector) AS similarity
         FROM solene_embedded_records
-        WHERE namespace = ${ns}
+        WHERE ${orgScope == null
+          ? sql`TRUE`
+          : sql`(organization_id = ${orgScope} OR organization_id IS NULL)`}
+          AND namespace = ${ns}
           AND embedding IS NOT NULL
         ORDER BY embedding <=> ${pgLiteral}::vector
         LIMIT ${topKPerNs}
