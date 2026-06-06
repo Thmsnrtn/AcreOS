@@ -533,6 +533,18 @@ export default function PrivacyPolicy() {
                       <td className="py-2">United States</td>
                     </tr>
                     <tr>
+                      <td className="py-2 pr-4 font-medium">OpenRouter</td>
+                      <td className="py-2 pr-4">LLM routing / failover gateway</td>
+                      <td className="py-2 pr-4">Prompt content, lead/property context (routed to underlying LLM provider)</td>
+                      <td className="py-2">United States</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4 font-medium">Voyage AI</td>
+                      <td className="py-2 pr-4">Semantic-search embeddings</td>
+                      <td className="py-2 pr-4">Text content of notes, leads, and documents (embedded as vectors for retrieval)</td>
+                      <td className="py-2">United States</td>
+                    </tr>
+                    <tr>
                       <td className="py-2 pr-4 font-medium">Stripe</td>
                       <td className="py-2 pr-4">Payment processing</td>
                       <td className="py-2 pr-4">Subscription billing, payment card data</td>

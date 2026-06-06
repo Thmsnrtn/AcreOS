@@ -309,6 +309,36 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
       }
 
+      step = "constitutional_check";
+      // Beatrice P1 — customer-side constitutional pre-call gate. The
+      // founder dispatch + chat paths already call this; the customer Pax
+      // path was missing it, leaving a prompt-injection vector. Fail-open
+      // on transient errors (matches founder-side behaviour). Hard-block
+      // surfaces a 403 with the violated immutable.
+      try {
+        const { checkPromptAgainstConstitution } = await import(
+          "./services/solene/preCallConstitutionalChecker"
+        );
+        const guard = await checkPromptAgainstConstitution({
+          agentRole: "pax-customer",
+          promptText: message,
+        });
+        if (!guard.allowed) {
+          return res.status(403).json({
+            error: "ConstitutionalRefusal",
+            message:
+              "This request was refused by the constitutional pre-call check.",
+            immutableNumber: guard.immutableNumber,
+            reasoning: guard.reasoning,
+          });
+        }
+      } catch (err) {
+        logger.warn(
+          "[AI Chat] constitutional checker errored — allowing call",
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       step = "process_chat";
       // P1-41: ops fall-back via `?paxPrompt=v2`. Default v3 (one-line
       // headline + ≤3 bullets shape).
@@ -444,8 +474,42 @@ export function registerAIRoutes(app: Express): void {
       } catch (err) {
         logger.warn("[AI Chat Stream] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
       }
+      step = "constitutional_check";
+      // Beatrice P1 — customer-side constitutional pre-call gate (parity
+      // with the non-streaming /api/ai/chat path above). On hard-block we
+      // emit a single SSE error event then close the stream.
+      try {
+        const { checkPromptAgainstConstitution } = await import(
+          "./services/solene/preCallConstitutionalChecker"
+        );
+        const guard = await checkPromptAgainstConstitution({
+          agentRole: "pax-customer",
+          promptText: message,
+        });
+        if (!guard.allowed) {
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.write(
+            `event: error\ndata: ${JSON.stringify({
+              error: "ConstitutionalRefusal",
+              message:
+                "This request was refused by the constitutional pre-call check.",
+              immutableNumber: guard.immutableNumber,
+            })}\n\n`,
+          );
+          res.end();
+          return;
+        }
+      } catch (err) {
+        logger.warn(
+          "[AI Chat Stream] constitutional checker errored — allowing call",
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       step = "stream_start";
-      
+
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");

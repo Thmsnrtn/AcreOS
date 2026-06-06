@@ -19,24 +19,24 @@ const ITEMS = [
     a: "County assessors, recorder offices, and licensed parcel datasets in all 50 states. We disclose the source on every Pax analysis.",
   },
   {
-    q: "Can I turn off the AI assistant?",
-    a: "Yes. Pax has an autonomy slider per surface — Off, Suggest, Review-then-send, or Auto-send. Default is Suggest. You're always in control.",
+    q: "Can the AI assistant be turned off?",
+    a: "Yes. Pax has an autonomy slider per surface — Off, Suggest, Review-then-send, or Auto-send. Default is Suggest. The operator is always in control.",
   },
   {
-    q: "Does this replace my CRM?",
-    a: "Yes. AcreOS includes a CRM purpose-built for land — pipeline stages, contact records, callback queues, and Pax inbox in one place.",
+    q: "Does this replace an existing CRM?",
+    a: "Yes. AcreOS includes a CRM purpose-built for land — pipeline stages, contact records, callback queues, and a lead inbox with Pax drafts in one place.",
   },
   {
-    q: "What about existing notes / loans?",
+    q: "What about existing notes and loans?",
     a: "AcreOS imports and services notes from Beanstalk, Note Servicing Center, or a CSV. Migration support is included on a 30-min call.",
   },
   {
-    q: "Can I use this with a partner or VA?",
-    a: "Yes. Pro and Scale plans include multi-user with role-based permissions — your VA can't see financials unless you grant it.",
+    q: "Can a partner or VA share access?",
+    a: "Yes. Pro and Scale plans include multi-user with role-based permissions — a VA can't see financials unless explicitly granted.",
   },
   {
-    q: "How fast can I get started?",
-    a: "Same day. Define your buy-box in 4 minutes, and your first list pulls overnight. Mail can go out the next morning.",
+    q: "How fast can a new operator get started?",
+    a: "Same day. Define the buy-box in 4 minutes, and the first list pulls overnight. Mail can go out the next morning.",
   },
   {
     q: "What happens on cancel?",
