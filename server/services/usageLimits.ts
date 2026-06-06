@@ -86,10 +86,23 @@ async function getNoteCount(organizationId: number): Promise<number> {
   return result?.count ?? 0;
 }
 
-async function getDailyAiRequestCount(organizationId: number): Promise<number> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
+/**
+ * Sum of Pax message turns ("ai_request" usage events) inside the current
+ * calendar-month window.
+ *
+ * Window correction (2026-06-06): this used to be a daily window
+ * (`getMonthlyAiRequestCount`) which combined with a 500/day Starter cap
+ * produced a -980% gross margin (~$225/mo COGS at full utilization vs
+ * $16.67/mo billed revenue). The window is now monthly to match the cap
+ * semantics in `TIER_LIMITS[*].ai_requests` and the customer's mental
+ * model of "messages per billing cycle". Rolling 30 days would be more
+ * forgiving but billing cycles are anchored to calendar months on Stripe
+ * subscriptions, so the calendar-month window keeps the two in sync.
+ */
+async function getMonthlyAiRequestCount(organizationId: number): Promise<number> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+
   const [result] = await db
     .select({ total: sum(usageEvents.quantity) })
     .from(usageEvents)
@@ -97,10 +110,10 @@ async function getDailyAiRequestCount(organizationId: number): Promise<number> {
       and(
         eq(usageEvents.organizationId, organizationId),
         eq(usageEvents.eventType, "ai_request"),
-        gte(usageEvents.createdAt, today)
+        gte(usageEvents.createdAt, monthStart)
       )
     );
-  
+
   return Number(result?.total ?? 0);
 }
 
@@ -133,7 +146,7 @@ export async function checkUsageLimit(
       current = await getNoteCount(organizationId);
       break;
     case "ai_requests":
-      current = await getDailyAiRequestCount(organizationId);
+      current = await getMonthlyAiRequestCount(organizationId);
       break;
     default:
       current = 0;
@@ -167,7 +180,7 @@ export async function getAllUsageLimits(
     getLeadCount(organizationId),
     getPropertyCount(organizationId),
     getNoteCount(organizationId),
-    getDailyAiRequestCount(organizationId),
+    getMonthlyAiRequestCount(organizationId),
   ]);
   
   const calculatePercentage = (current: number, limit: number | null): number | null => {
@@ -211,8 +224,8 @@ export class UsageLimitError extends Error {
   public tier: SubscriptionTier;
   
   constructor(result: UsageLimitResult) {
-    const resourceLabel = result.resourceType === "ai_requests" 
-      ? "daily AI requests" 
+    const resourceLabel = result.resourceType === "ai_requests"
+      ? "monthly Pax messages"
       : result.resourceType;
     
     super(

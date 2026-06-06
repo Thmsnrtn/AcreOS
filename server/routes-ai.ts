@@ -57,7 +57,7 @@ export function registerAIRoutes(app: Express): void {
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({
-          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
           current: usageCheck.current,
           limit: usageCheck.limit,
           resourceType: usageCheck.resourceType,
@@ -269,7 +269,7 @@ export function registerAIRoutes(app: Express): void {
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({
-          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
           current: usageCheck.current,
           limit: usageCheck.limit,
           resourceType: usageCheck.resourceType,
@@ -439,7 +439,7 @@ export function registerAIRoutes(app: Express): void {
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({
-          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
           current: usageCheck.current,
           limit: usageCheck.limit,
           resourceType: usageCheck.resourceType,

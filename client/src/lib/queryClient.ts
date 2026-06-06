@@ -87,7 +87,7 @@ interface LimitExceededDetails {
 
 function resourceLabel(resourceType: string | undefined): string {
   if (!resourceType) return "this resource";
-  if (resourceType === "ai_requests") return "AI requests";
+  if (resourceType === "ai_requests") return "Pax messages";
   if (resourceType in TIER_LIMITS.free) return resourceType;
   return resourceType.replace(/_/g, " ");
 }

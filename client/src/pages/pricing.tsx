@@ -109,7 +109,7 @@ const FEATURES: Feature[] = [
     scale: fmtCount(TIER_LIMITS.scale.notes),
   },
   {
-    name: "AI requests / day",
+    name: "Pax messages / month",
     free: fmtCount(TIER_LIMITS.free.ai_requests),
     starter: fmtCount(TIER_LIMITS.starter.ai_requests),
     pro: fmtCount(TIER_LIMITS.pro.ai_requests),

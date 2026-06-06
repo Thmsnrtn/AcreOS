@@ -505,12 +505,16 @@ interface UsageLimitsResponse {
 }
 
 function PaxDailyCapBadge() {
-  // Free tier: always show ("X/25 messages today") so the limit is visible
-  // up-front rather than arriving as a surprise 429.
+  // Free tier: always show ("X/75 messages this month") so the limit is
+  // visible up-front rather than arriving as a surprise 429.
   // Paid (Starter/Pro): show only when usage >= 80% of cap, so the badge
   // becomes a warning instead of constant clutter. At 100% it flips to
   // destructive styling and surfaces an Upgrade CTA.
   // Scale tier has an unlimited cap (limit === null) and is skipped.
+  //
+  // Window correction (2026-06-06): copy used to say "today" / "resets at
+  // midnight" — that was the daily-window mistake. The cap is and has
+  // always been a monthly budget; copy now matches the semantics.
   const { data } = useQuery<UsageLimitsResponse>({
     queryKey: ["/api/usage"],
   });
@@ -559,22 +563,22 @@ function PaxDailyCapBadge() {
 
   const caption = atLimit
     ? isPaid
-      ? `Daily ${tierLabel.toLowerCase()} limit reached — upgrade for more headroom.`
-      : "Daily free-tier limit reached — upgrade for unlimited."
+      ? `Monthly ${tierLabel.toLowerCase()} limit reached — upgrade for more headroom.`
+      : "Monthly free-tier limit reached — upgrade for unlimited."
     : isWarning
-      ? `Approaching daily ${tierLabel.toLowerCase()} limit — resets at midnight.`
-      : "Free tier — resets daily at midnight.";
+      ? `Approaching monthly ${tierLabel.toLowerCase()} limit — resets on the 1st.`
+      : "Free tier — resets on the 1st of the month.";
 
   return (
     <div
       className={containerClass}
       role={atLimit ? "alert" : isWarning ? "status" : undefined}
-      aria-label={`Pax daily usage: ${cap.current} of ${cap.limit} messages today`}
+      aria-label={`Pax monthly usage: ${cap.current} of ${cap.limit} messages this month`}
     >
       <div className="flex items-center gap-2 text-sm">
         <Sparkles className={iconClass} aria-hidden="true" />
         <span className={valueClass}>
-          {cap.current}/{cap.limit} messages today
+          {cap.current}/{cap.limit} messages this month
         </span>
         <span className={captionClass}>{caption}</span>
       </div>

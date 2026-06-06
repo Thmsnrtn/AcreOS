@@ -171,7 +171,10 @@ describe("getOrCreateOrg middleware", () => {
     }
   });
 
-  it("sets 7-day trial for non-founder new users", async () => {
+  it("sets 14-day trial for non-founder new users", async () => {
+    // 2026-06-06 Soren P0 fix: trial duration must match the landing
+    // promise ("free for 14 days" in landing/copy.ts hero.cta1 and the
+    // Stripe trial_period_days in routes-billing.ts). Was 7 prior.
     storage.getOrganizationByOwner.mockResolvedValue(null);
     nextOrgRow = { id: 4 };
 
@@ -185,6 +188,6 @@ describe("getOrCreateOrg middleware", () => {
     const trialDays =
       (orgInsert.trialEndsAt.getTime() - orgInsert.trialStartedAt.getTime()) /
       (1000 * 60 * 60 * 24);
-    expect(trialDays).toBeCloseTo(7, 0);
+    expect(trialDays).toBeCloseTo(14, 0);
   });
 });

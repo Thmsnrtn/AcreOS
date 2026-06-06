@@ -1127,7 +1127,7 @@ export default function Settings() {
                           { key: "leads" as const, label: "Leads", icon: Users, description: "Total leads in your CRM" },
                           { key: "properties" as const, label: "Properties", icon: Home, description: "Properties in your inventory" },
                           { key: "notes" as const, label: "Notes", icon: FileText, description: "Active seller-finance notes" },
-                          { key: "ai_requests" as const, label: "AI requests", icon: Sparkles, description: "Daily AI requests (resets at midnight)" },
+                          { key: "ai_requests" as const, label: "Pax messages", icon: Sparkles, description: "Monthly Pax message turns (resets on the 1st)" },
                         ];
                         
                         const nearLimitItems = usageItems.filter(item => {

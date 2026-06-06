@@ -16,12 +16,29 @@
 
 export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
 
+/**
+ * Resource keys metered by the usage-limits system.
+ *
+ * `ai_requests` is the historical key for "Pax message turns" — the metric
+ * is enforced on a **monthly** window (was daily prior to 2026-06-06; the
+ * daily window produced a -980% margin on Starter at the prior 500/day cap,
+ * see `docs/internal/pricing/alternatives-2026-06-06.md`). The key name is
+ * preserved as a stable contract for Stripe metadata, the usage-events row
+ * `event_type='ai_request'`, and ~15 downstream callers; only the WINDOW
+ * (monthly) and the CAP (rebaselined) changed.
+ */
 export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
 
 export interface TierLimits {
   leads: number | null;
   properties: number | null;
   notes: number | null;
+  /**
+   * Monthly Pax-message-turns cap. See `ResourceType` docstring for the
+   * 2026-06-06 daily→monthly window correction. Display labels everywhere
+   * say "Monthly Pax messages"; only the API identifier remains
+   * `ai_requests` for back-compat.
+   */
   ai_requests: number | null;
   /** null = unlimited */
   campaigns: number | null;
@@ -65,7 +82,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     leads: 50,
     properties: 3,
     notes: 2,
-    ai_requests: 25,
+    // Monthly cap. Free is a permanent evaluation tier; 75 turns/mo gives
+    // ~2-3 turns/day average — enough to feel Pax once before deciding to
+    // pay, not enough to operate a business on.
+    ai_requests: 75,
     campaigns: 0,
     sequences: 0,
     byokSupport: false,
@@ -78,7 +98,12 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     leads: 250,
     properties: 50,
     notes: 25,
-    ai_requests: 500,
+    // Monthly cap. Was 500/DAY, which at ~$0.015/turn × 500 × 30 = $225/mo
+    // COGS vs ~$16.67/mo revenue (-980% margin). At 1,500/mo cap, max COGS
+    // is ~$22.50/mo against $29/mo revenue → positive contribution margin
+    // with headroom for the steady-state user who runs Pax a few dozen
+    // turns/day. See docs/internal/pricing/alternatives-2026-06-06.md.
+    ai_requests: 1500,
     campaigns: 5,
     sequences: 2,
     byokSupport: false,
@@ -91,7 +116,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     leads: 500,
     properties: 100,
     notes: 50,
-    ai_requests: 1000,
+    // Monthly cap. Pro is the workhorse tier; 12,000 turns/mo (~400/day)
+    // supports a single operator running Pax across the full pipeline.
+    // Max COGS ~$180/mo against $41-$49/mo revenue is offset by BYOK
+    // bypass for power users and the credit-pool gate on expensive lanes.
+    ai_requests: 12000,
     campaigns: null,
     sequences: null,
     byokSupport: true,
@@ -104,7 +133,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     leads: null,
     properties: null,
     notes: null,
-    ai_requests: null,
+    // Monthly cap. 50,000/mo (~1,700/day) for multi-seat teams; BYOK is
+    // standard at this tier so most heavy traffic bypasses the AcreOS cap.
+    ai_requests: 50000,
     campaigns: null,
     sequences: null,
     byokSupport: true,

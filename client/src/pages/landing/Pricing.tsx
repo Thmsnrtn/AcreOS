@@ -27,7 +27,7 @@ const TIERS = [
     features: [
       "1 user",
       "10 leads / 3 properties / 2 notes",
-      "Pax assistant (limited daily AI)",
+      "Pax assistant (limited monthly messages)",
       "Lead inbox with Pax drafts",
       "6 free data sources",
     ],

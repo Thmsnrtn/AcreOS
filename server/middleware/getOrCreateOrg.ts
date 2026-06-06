@@ -192,7 +192,14 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     const displayName = user.firstName || user.email || "User";
     const slug = `org-${userId}-${Date.now()}`;
     const now = new Date();
-    const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // Trial duration must match the landing page promise. Landing copy
+    // says "free for 14 days" (client/src/pages/landing/copy.ts hero.cta1)
+    // and the Stripe checkout path already passes `trial_period_days: 14`
+    // (server/routes-billing.ts:319). The in-app trial granted on org
+    // creation was 7 days — a Soren-P0 mismatch that broke the promise
+    // for any user who hit the app before billing.
+    const TRIAL_DURATION_DAYS = 14;
+    const trialEnds = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
     org = await withTransaction(async (tx) => {
       const [newOrg] = await tx.insert(organizations).values({

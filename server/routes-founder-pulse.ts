@@ -22,6 +22,15 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { getBucketBalance } from "./services/financial-ledger";
+import { dbForReads } from "./db-replica";
+import { financialLedger } from "@shared/schema";
+import { and, eq, gte, sum } from "drizzle-orm";
+import {
+  RESERVE_FLOOR_RULE,
+  assembleReserveFloorCheck,
+  type ReserveBucketName,
+} from "@shared/finance/reserve-floor";
 
 // ─── Autonomy Horizon scoring ──────────────────────────────────────────────
 // Charter §"Autonomy Horizon — scoring":
@@ -60,17 +69,140 @@ interface AutonomyHorizon {
   weakestLink: string;
 }
 
-function computeAutonomyHorizon(): AutonomyHorizon {
-  // Phase Zero-Zero honest defaults.
+// ─── Reserves — live read from financial_ledger ───────────────────────────
+//
+// Bug 2 fix (2026-06-06): the Reserves axis used to be a hardcoded score=30.
+// Pulse now reads the real reserve-bucket balances out of `financial_ledger`
+// (the Pillar 1 source-of-truth wired in by Wave H2) and compares them to
+// the constitutional floor in `shared/finance/reserve-floor.ts`. The axis
+// score is now derived from the actual reserves-vs-floor headroom so Pulse
+// becomes a live capital signal instead of a UI stub.
+
+interface ReservesLive {
+  /** Combined balance of (tax_reserve + refund_reserve + profit_reserve), cents. */
+  reservesTotalCents: number;
+  /** Trailing-window revenue (denominator for the floor), cents. */
+  trailingRevenueCents: number;
+  /** Floor target in cents (= trailingRevenue × minFraction). */
+  floorCents: number;
+  /** Headroom (positive) or breach (negative), cents. */
+  headroomCents: number;
+  /** Whether reserves are currently below the constitutional floor. */
+  belowFloor: boolean;
+  /** Percentage of floor — 100 = exactly at floor, <100 = below. */
+  percentOfFloor: number;
+  /** Per-bucket balances for the inspector breakdown. */
+  buckets: Record<ReserveBucketName, number>;
+  /** When reserves were last sampled. */
+  asOf: string;
+}
+
+async function loadReservesLive(): Promise<ReservesLive> {
+  const now = new Date();
+  const windowStart = new Date(
+    now.getTime() - RESERVE_FLOOR_RULE.trailingWindowDays * 24 * 60 * 60 * 1000,
+  );
+
+  // Per-bucket balances, in parallel.
+  const bucketBalances = await Promise.all(
+    RESERVE_FLOOR_RULE.reserveBuckets.map(async (bucket) => {
+      const cents = await getBucketBalance(bucket);
+      return [bucket, cents] as const;
+    }),
+  );
+  const buckets = Object.fromEntries(bucketBalances) as Record<ReserveBucketName, number>;
+  const reservesTotalCents = bucketBalances.reduce((sum, [, cents]) => sum + cents, 0);
+
+  // Trailing-90-day revenue across all orgs. Replica-routed.
+  const reader = await dbForReads("founder-pulse.reserves-trailing-revenue");
+  const [revRow] = await reader
+    .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
+    .from(financialLedger)
+    .where(
+      and(
+        eq(financialLedger.category, "revenue"),
+        gte(financialLedger.postedAt, windowStart),
+      ),
+    );
+  const trailingRevenueCents = revRow?.total ?? 0;
+
+  const check = assembleReserveFloorCheck({
+    reservesTotalCents,
+    trailingRevenueCents,
+  });
+
+  // Percent-of-floor; clamp to 0 when there is no floor (no revenue yet).
+  const percentOfFloor =
+    check.floorCents > 0
+      ? Math.round((reservesTotalCents / check.floorCents) * 100)
+      : reservesTotalCents > 0
+        ? 100
+        : 0;
+
+  return {
+    reservesTotalCents,
+    trailingRevenueCents,
+    floorCents: check.floorCents,
+    headroomCents: check.headroomCents,
+    belowFloor: check.belowFloor,
+    percentOfFloor,
+    buckets,
+    asOf: now.toISOString(),
+  };
+}
+
+/**
+ * Map live reserves → autonomy-horizon axis score (0-100).
+ *
+ * Heuristic:
+ *   - No trailing revenue yet (Phase Zero-Zero, $0 MRR): keep a low honest
+ *     baseline (30) — there's nothing to score against, and the floor is
+ *     trivially satisfied by holding zero reserves against zero revenue.
+ *   - Reserves at-or-above floor (percentOfFloor >= 100): score climbs from
+ *     60 (just at floor) toward 95 (3× floor) as headroom grows.
+ *   - Below floor: score degrades from 60 down to 10 as the breach widens.
+ */
+function reservesAxisScore(live: ReservesLive): {
+  score: number;
+  evidence: string;
+} {
+  if (live.trailingRevenueCents <= 0) {
+    return {
+      score: 30,
+      evidence: `No trailing revenue. Reserves $${(live.reservesTotalCents / 100).toFixed(2)}.`,
+    };
+  }
+  const pct = live.percentOfFloor;
+  let score: number;
+  if (pct >= 100) {
+    // 100 → 60, 200 → 80, 300+ → 95.
+    score = Math.min(95, 60 + Math.round((pct - 100) / 10));
+  } else {
+    // 99 → 59, 50 → 30, 0 → 10.
+    score = Math.max(10, Math.round(10 + (pct / 100) * 50));
+  }
+  return {
+    score,
+    evidence: `Reserves $${(live.reservesTotalCents / 100).toFixed(2)} (${pct}% of $${(live.floorCents / 100).toFixed(2)} floor).`,
+  };
+}
+
+interface ComputeHorizonArgs {
+  reservesLive: ReservesLive;
+}
+
+function computeAutonomyHorizon(args: ComputeHorizonArgs): AutonomyHorizon {
+  // Phase Zero-Zero honest defaults — every axis except Reserves is still
+  // computed from honest stubs because the evidence base isn't wired yet.
   // Stability: product shipped and auth-reset bug is closed, but no 90-day
   //   uptime data yet → 42 (translates to ~25 days).
-  // Reserves: $0 MRR, burn ~$24/mo, but Tom is personally floating infra →
-  //   indefinite in practice, but no formal reserve account → 30 (18 days).
+  // Reserves: NOW LIVE — derived from financial_ledger via Wave H2.
   // Compliance: ToS v1 and Privacy v1 just drafted by Beatrice (latest commit),
   //   no formal audit yet → 35 (21 days).
   // Customer health: 0 paying customers, no churn/NPS data → 20 (12 days).
   // Decision velocity: team is operational but Tom is the only human, so
   //   effectively 0% team-resolved on hard decisions → 25 (15 days).
+  const reservesScored = reservesAxisScore(args.reservesLive);
   const axes = {
     stability: {
       score: 42,
@@ -78,9 +210,9 @@ function computeAutonomyHorizon(): AutonomyHorizon {
       evidence: "Auth-reset closed. No 90-day SLA data yet.",
     },
     reserves: {
-      score: 30,
+      score: reservesScored.score,
       label: "Reserves",
-      evidence: "$0 MRR. Burn ~$24/mo. No formal reserve account.",
+      evidence: reservesScored.evidence,
     },
     compliance: {
       score: 35,
@@ -97,7 +229,7 @@ function computeAutonomyHorizon(): AutonomyHorizon {
       label: "Decision Velocity",
       evidence: "Team operational. Tom is the only human decision-maker.",
     },
-  } as const;
+  };
 
   const axisEntries = Object.entries(axes) as [keyof typeof axes, typeof axes[keyof typeof axes]][];
   const scored = axisEntries.map(([key, ax]) => [key, { ...ax, days: scoreToDays(ax.score) }] as [keyof typeof axes, AxisScore]);
@@ -193,7 +325,8 @@ export function registerFounderPulseRoutes(app: Express) {
         const daysInPhase = getDaysInPhase();
         const recentCommits = getRecentCommits(5);
         const commitsLast24h = getCommitsLast24h();
-        const autonomyHorizon = computeAutonomyHorizon();
+        const reservesLive = await loadReservesLive();
+        const autonomyHorizon = computeAutonomyHorizon({ reservesLive });
 
         // Runway: indefinite at $0 MRR (expense is $24/mo, Tom is funding
         // infra personally). We report it honestly as "funded by founder"
@@ -222,6 +355,26 @@ export function registerFounderPulseRoutes(app: Express) {
 
           // Autonomy Horizon
           autonomyHorizon,
+
+          // Reserves (live from financial_ledger — Pillar 1 / Wave H2).
+          // Independent of the autonomyHorizon.axes.reserves axis so the
+          // founder cockpit can render the raw bucket numbers alongside
+          // the derived score.
+          reserves: {
+            totalCents: reservesLive.reservesTotalCents,
+            total: reservesLive.reservesTotalCents / 100,
+            floorCents: reservesLive.floorCents,
+            floor: reservesLive.floorCents / 100,
+            headroomCents: reservesLive.headroomCents,
+            headroom: reservesLive.headroomCents / 100,
+            percentOfFloor: reservesLive.percentOfFloor,
+            belowFloor: reservesLive.belowFloor,
+            trailingRevenueCents: reservesLive.trailingRevenueCents,
+            trailingRevenue: reservesLive.trailingRevenueCents / 100,
+            trailingWindowDays: RESERVE_FLOOR_RULE.trailingWindowDays,
+            buckets: reservesLive.buckets,
+            asOf: reservesLive.asOf,
+          },
 
           // Phase
           phase: {
