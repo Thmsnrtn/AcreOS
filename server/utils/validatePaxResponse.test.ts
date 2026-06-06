@@ -253,10 +253,17 @@ describe("validatePaxResponse — triad convergence (postvalidate → solene_con
     expect(result.safe).toBe(false);
     expect(result.response).toContain("ran into an issue");
     await flushPromises();
-    // logger.warn should have been called with the violation-write failure.
+    // logger.warn should have been called noting the violation-write failure.
+    // recordPostvalidateViolation catches its own DB error internally (so the
+    // best-effort write never rejects out to the response path), logging
+    // "[recordPostvalidateViolation] db insert failed". The outer
+    // validatePaxResponse .catch() is the backstop for any error that DOES
+    // escape. Either warn satisfies the contract: "a failure was surfaced,
+    // the response path survived."
     const calls = loggerWarn.mock.calls.map((c) => String(c[0] ?? ""));
     expect(
       calls.some((c) =>
+        c.includes("[recordPostvalidateViolation] db insert failed") ||
         c.includes("[validatePaxResponse] constitutional-violation write failed"),
       ),
     ).toBe(true);

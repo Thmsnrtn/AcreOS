@@ -18,7 +18,7 @@
  */
 
 import { db, storage as _storage } from "../storage";
-import { sql, lt } from "drizzle-orm";
+import { sql, lt, eq } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { leadNurturerService } from "../services/leadNurturer";
@@ -3302,6 +3302,68 @@ function startNpsPromptSchedulerJob() {
 }
 
 // ============================================================================
+// Tahoe E11 — resume expired subscription pauses.
+//
+// Hourly defensive double-write alongside the customer.subscription.resumed
+// webhook. Stripe auto-resumes collection when `pause_collection.resumes_at`
+// passes, but if that webhook is missed (or pause was set without a Stripe
+// sub on a manual/trial org), this worker clears the DB pause flag so the
+// subscriptionPauseGate stops 402-ing the customer. Bounded 500/tick.
+// ============================================================================
+function startResumeExpiredPausesJob() {
+  const TTL_SECONDS = 50 * 60;
+  log('Registering resume-expired-pauses job (hourly)', 'pause-resume');
+
+  trackInterval(() => {
+    void withJobLock('resume_expired_pauses', TTL_SECONDS, async () => {
+      const now = new Date();
+      const expired = await db
+        .select({ id: organizations.id, stripeSubscriptionId: organizations.stripeSubscriptionId })
+        .from(organizations)
+        .where(sql`
+          ${organizations.subscriptionPaused} = true
+          AND ${organizations.subscriptionPauseEndsAt} IS NOT NULL
+          AND ${organizations.subscriptionPauseEndsAt} <= ${now}
+        `)
+        .limit(500);
+
+      let resumed = 0;
+      for (const org of expired) {
+        try {
+          if (org.stripeSubscriptionId) {
+            try {
+              const { stripeService } = await import('../stripeService');
+              await stripeService.resumeSubscription(org.stripeSubscriptionId);
+            } catch (stripeErr) {
+              // Stripe resume is best-effort; the DB clear below is what
+              // un-gates the customer. Stripe also auto-resumes on resumes_at.
+              log(`[pause-resume] org ${org.id} stripe resume failed: ${stripeErr}`, 'pause-resume');
+            }
+          }
+          await db.update(organizations)
+            .set({
+              subscriptionPaused: false,
+              subscriptionPausedAt: null,
+              subscriptionPauseEndsAt: null,
+              subscriptionPauseReason: null,
+            })
+            .where(eq(organizations.id, org.id));
+          resumed++;
+        } catch (rowErr) {
+          log(`[pause-resume] org ${org.id} resume failed: ${rowErr}`, 'pause-resume');
+        }
+      }
+
+      if (expired.length > 0) {
+        log(`[pause-resume] hourly run: expired=${expired.length} resumed=${resumed}`, 'pause-resume');
+      }
+    }).catch((err) => {
+      log(`[pause-resume] hourly run failed: ${err}`, 'pause-resume');
+    });
+  }, 60 * 60 * 1000);
+}
+
+// ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
 // briefing / outcome / telemetry / model / self-assessment / evolution /
@@ -3493,6 +3555,16 @@ export async function runScheduledJobs(): Promise<void> {
   // CFPB, FTC, TX-AG, CA-AG; keyword-filters; persists matches. 72h
   // manual triage SLA per docs/legal/beatrice-regwatch-discipline.md.
   startBeatriceRegWatchJob();
+
+  // Rafe / Tahoe E3 Sub-3 — NPS prompt scheduler (daily 04:15 UTC).
+  // Enqueues one nps_prompt_queue row per eligible (org, owner); the
+  // dialog reads the queue on next login via /api/nps/pending.
+  startNpsPromptSchedulerJob();
+
+  // Tahoe E11 — resume expired subscription pauses (hourly). Defensive
+  // double-write alongside the customer.subscription.resumed webhook:
+  // clears subscriptionPaused for any org past subscriptionPauseEndsAt.
+  startResumeExpiredPausesJob();
 
   // External-watch: Anthropic API changelog (daily 03:00 UTC). Layer 1
   // cap #4. Pulls Anthropic release-notes feed; keyword-filters; persists

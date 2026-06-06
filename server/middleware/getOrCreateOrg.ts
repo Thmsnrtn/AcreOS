@@ -9,6 +9,7 @@ import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
 import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
+import { subscriptionPauseGate } from "./subscriptionPauseGate";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -319,7 +320,13 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     ).catch(() => {/* fail-open */});
   } catch {/* fail-open */}
 
-  next();
+  // Tahoe E11 — subscription-pause mutation gate. getOrCreateOrg is the
+  // single chokepoint that sets req.organization across every org-scoped
+  // route, so the pause gate is delegated here rather than mounted globally
+  // (there is no global /api org middleware — org is attached per-route).
+  // The gate no-ops on reads, on the exempt prefix allow-list, and on
+  // un-paused orgs; otherwise it 402s. It either calls next() or responds.
+  return subscriptionPauseGate(req, res, next);
 }
 
 /**
