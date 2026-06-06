@@ -93,6 +93,33 @@ async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number
   return Number(row?.sum ?? 0);
 }
 
+/**
+ * Tahoe Andrei: how many cents of an org's daily AI ceiling remain right now.
+ * Used by the router's pre-call predictCostCents forecast to decide whether the
+ * next call fits under the ceiling — and, if not, to route to a cheaper model
+ * instead of letting the next-but-one call hard-fail with a 429.
+ *
+ * Returns Infinity for platform-internal calls (orgId == null) and on any DB
+ * read error (fail-open — never block a chat on a budget-lookup hiccup).
+ */
+export async function getRemainingDailyBudgetCents(
+  orgId: number | null,
+): Promise<number> {
+  if (orgId == null) return Number.POSITIVE_INFINITY;
+  try {
+    const ceilings = await getEffectiveCeilings(orgId);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const spent = await sumCostCentsSince(orgId, dayMs);
+    return Math.max(0, ceilings.dailyCents - spent);
+  } catch (err) {
+    logger.warn(
+      "[aiCostCeiling] remaining-budget lookup failed; treating as unlimited",
+      err instanceof Error ? err : undefined,
+    );
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
 async function sumPlatformCostCentsSince(sinceMs: number): Promise<number> {
   const since = new Date(Date.now() - sinceMs);
   const [row] = await db

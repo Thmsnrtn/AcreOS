@@ -21,6 +21,7 @@ import { sanitizePrompt } from "../middleware/promptInjection";
 import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
 import { pickPaxModelForOrg } from "../services/paxModelTier";
+import { predictCostCents } from "../services/aiCostRates";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -1117,6 +1118,13 @@ export async function processChat(
   // (>1024 chars including ATLAS core methodology); annotating it with
   // cache_control: ephemeral lets OpenRouter pass the cache breakpoint to
   // Anthropic and discount the cached portion ~90% on read.
+  //
+  // Prefix-match invariant (claude-api skill, shared/prompt-caching.md): the
+  // cached prefix is system (index 0) only; the volatile per-turn user/assistant
+  // messages sit AFTER the cache_control breakpoint, so they never invalidate
+  // the system prefix. The Pax system prompt is reused on every turn of every
+  // conversation for an org, so the cache read discount lands on the bulk of
+  // the input tokens after the first warm-up call.
   const _isAnthropicChatModel = model.startsWith("anthropic/") || model.includes("claude");
   const _systemLen = typeof _systemContent === "string" ? _systemContent.length : 0;
   const _shouldCache = _isAnthropicChatModel && _systemLen >= 1024;
@@ -1125,6 +1133,34 @@ export async function processChat(
         ? ({ ...m, cache_control: { type: "ephemeral" } } as any)
         : m)
     : chatMessages;
+
+  // Tahoe Andrei: pre-call cost forecast on the hot Pax path. Mounts the
+  // centralized predictCostCents so the cost line + per-call usage log reflect
+  // accurate per-model pricing (and the prompt-prefix cache discount) instead
+  // of the old hand-rolled costMultiplier. The cached-input fraction models the
+  // stable system prefix being served from Anthropic's prompt cache on warm
+  // turns — when caching is active we assume the system prefix reads from cache.
+  const _totalInputChars = JSON.stringify(chatMessages).length;
+  const _cachedInputFraction = _shouldCache && _totalInputChars > 0
+    ? Math.min(0.9, _systemLen / _totalInputChars)
+    : 0;
+  const _predictedCents = predictCostCents({
+    model,
+    inputChars: _totalInputChars,
+    maxTokens: 2048,
+    cachedInputFraction: _cachedInputFraction,
+    // gpt-4o style function schemas / Pax tool list add input tokens the raw
+    // char count doesn't capture; pad when tools are attached.
+    toolOverheadTokens: tools.length > 0 ? tools.length * 120 : 0,
+  });
+  // Cache-savings forecast: what the same call would cost with a cold cache.
+  const _predictedColdCents = predictCostCents({
+    model,
+    inputChars: _totalInputChars,
+    maxTokens: 2048,
+    cachedInputFraction: 0,
+    toolOverheadTokens: tools.length > 0 ? tools.length * 120 : 0,
+  });
 
   let response: OpenAI.ChatCompletion;
   try {
@@ -1141,21 +1177,31 @@ export async function processChat(
     if (error instanceof ProviderCreditError) throw error;
     throw new Error("AI request failed. Please try again in a moment.");
   }
-  
+
   try {
     const { storage } = await import('../storage');
-    const estimatedTokens = JSON.stringify(chatMessages).length / 4;
-    const costMultiplier = model.includes('gpt-4o') ? 0.002 : 
-                          model.includes('gpt-4o-mini') ? 0.00015 : 
-                          model.includes('deepseek') ? 0.00014 : 0.001;
-    const estimatedCostCents = Math.ceil(estimatedTokens * costMultiplier / 10);
+    const estimatedTokens = _totalInputChars / 4;
+    // Authoritative estimate from the centralized pricing table. Round UP to a
+    // whole cent for the usage ledger (never log $0 for a real paid call).
+    const estimatedCostCents = Math.max(1, Math.ceil(_predictedCents));
     await storage.logApiUsage({
       organizationId: org.id,
       service: provider,
       action: 'chat_completion',
       count: 1,
       estimatedCostCents,
-      metadata: { model, complexity, provider, estimatedTokens: Math.round(estimatedTokens) },
+      metadata: {
+        model,
+        complexity,
+        provider,
+        estimatedTokens: Math.round(estimatedTokens),
+        // Persist the prompt-prefix cache savings forecast so the founder cost
+        // dashboard can show what caching is buying on the hot Pax path.
+        predictedCents: Number(_predictedCents.toFixed(4)),
+        predictedColdCents: Number(_predictedColdCents.toFixed(4)),
+        predictedCacheSavingsCents: Number((_predictedColdCents - _predictedCents).toFixed(4)),
+        promptCacheActive: _shouldCache,
+      },
     });
   } catch (error) {
     logger.error('[AI Chat] Failed to log API usage', error);
