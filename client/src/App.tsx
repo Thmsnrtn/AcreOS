@@ -357,8 +357,8 @@ const TermsOfService = React.lazy(() => import("@/pages/terms"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const PublicSubProcessorsPage = React.lazy(() => import("@/pages/sub-processors"));
 const DealRoomSharePage = React.lazy(() => import("@/pages/deal-room-share"));
-const LettersArchivePage = React.lazy(() => import("@/pages/letters-archive"));
-const LetterDetailPage = React.lazy(() => import("@/pages/letter-detail"));
+const FieldNotesArchivePage = React.lazy(() => import("@/pages/field-notes-archive"));
+const FieldNoteDetailPage = React.lazy(() => import("@/pages/field-note-detail"));
 const PricingPage = React.lazy(() => import("@/pages/pricing"));
 const WhyPage = React.lazy(() => import("@/pages/why"));
 // Public comparison landers — capture "[competitor] alternative" search
@@ -615,8 +615,23 @@ function Router() {
       <Route path="/legal/privacy" component={PrivacyPolicy} />
       <Route path="/legal/sub-processors" component={PublicSubProcessorsPage} />
       <Route path="/deal-rooms/share/:slug" component={DealRoomSharePage} />
-      <Route path="/letters" component={LettersArchivePage} />
-      <Route path="/letters/:slug" component={LetterDetailPage} />
+      {/* /field-notes — canonical surface (rebranded from /letters on
+          2026-06-06 per marketing-OS voice doctrine). */}
+      <Route path="/field-notes" component={FieldNotesArchivePage} />
+      <Route path="/field-notes/:slug" component={FieldNoteDetailPage} />
+      {/* /letters → /field-notes 301 redirects.
+          The authoritative 301 is issued server-side in server/static.ts
+          (LEGACY_LETTERS_301) before the SPA shell renders, so search
+          engines and direct hits get a real HTTP 301. The wouter
+          Redirects below are a client-side defense-in-depth fallback
+          for in-app navigations that bypass the server (e.g. stale
+          deep links cached by the SPA shell). */}
+      <Route path="/letters/:slug">
+        {(params) => <Redirect to={`/field-notes/${params.slug}`} />}
+      </Route>
+      <Route path="/letters">
+        {() => <Redirect to="/field-notes" />}
+      </Route>
 
         {/* Competitor comparison pages (public, SEO-targeted) */}
 

@@ -1,9 +1,16 @@
 /**
- * FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure.
+ * FW-DIEGO-1 (push-forward 2026-05-08): community-dispatch infrastructure.
  *
- * Diego-Marchetti's lead recommendation: founder-led community as the
- * SMB acquisition flywheel. Async (not Slack/Discord), weekly cadence,
- * one hour of founder time per week.
+ * Originally framed as "founder letters" (Diego-Marchetti's founder-led
+ * community recommendation). Rebranded 2026-06-06 to "field notes" to
+ * conform to the marketing-OS voice doctrine (mechanics-first
+ * third-person; no founder voice on customer surfaces — see
+ * `docs/internal/marketing-os/00-blueprint.md` §2).
+ *
+ * The underlying DB table (`community_letters`) and the founder-gated
+ * authoring routes (`/api/founder/letters/*`) keep their original names
+ * — they are internal surfaces. Only the public-facing surface and copy
+ * were renamed.
  *
  * Endpoints:
  *   POST /api/founder/letters              — founder-gated; create draft
@@ -12,16 +19,21 @@
  *                                            opted-in users
  *   GET  /api/founder/letters              — founder-only; list all
  *                                            (drafts + published)
- *   GET  /api/letters                      — PUBLIC; list published letters
- *                                            (consumed by /letters archive)
- *   GET  /api/letters/:slug                — PUBLIC; one letter by slug
+ *   GET  /api/field-notes                  — PUBLIC; list published notes
+ *                                            (consumed by /field-notes archive)
+ *   GET  /api/field-notes/:slug            — PUBLIC; one note by slug
+ *   GET  /api/letters                      — PUBLIC; legacy alias of
+ *                                            /api/field-notes — kept as
+ *                                            JSON-only backward compat for
+ *                                            stale SPA chunks. Same handler.
+ *   GET  /api/letters/:slug                — PUBLIC; legacy alias.
  *
- * The `/api/letters` surfaces are deliberately public (no isAuthenticated)
+ * The public surfaces are deliberately public (no isAuthenticated)
  * so the archive can serve as a top-of-funnel acquisition surface — anyone
- * can read past founder letters before signing up.
+ * can read past field notes before signing up.
  */
 
-import type { Express, Response } from "express";
+import type { Express, Response, Request } from "express";
 import { z } from "zod";
 import { db } from "./db";
 import { communityLetters, users } from "@shared/schema";
@@ -33,6 +45,7 @@ import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emailService } from "./services/emailService";
+import { costClass } from "./utils/costClass";
 
 const draftSchema = z.object({
   subject: z.string().min(1).max(255),
@@ -184,8 +197,13 @@ export function registerFounderLetterRoutes(app: Express): void {
     },
   );
 
-  // GET /api/letters — PUBLIC archive (only published letters).
-  app.get("/api/letters", async (_req, res: Response) => {
+  // Shared handlers for the public-archive surfaces. Mounted on both
+  // /api/field-notes (canonical, 2026-06-06+) and /api/letters (legacy
+  // alias, preserved so stale SPA bundles cached in browsers continue
+  // to render after the rebrand). The response shape keeps the
+  // `letters` key for backward compatibility with cached client
+  // payloads — the frontend reads `data.letters` in both surfaces.
+  async function listPublicFieldNotes(_req: Request, res: Response) {
     try {
       const rows = await db
         .select({
@@ -202,10 +220,9 @@ export function registerFounderLetterRoutes(app: Express): void {
     } catch (err) {
       return Errors.internal(res, err);
     }
-  });
+  }
 
-  // GET /api/letters/:slug — PUBLIC single letter.
-  app.get("/api/letters/:slug", async (req, res: Response) => {
+  async function getPublicFieldNote(req: Request, res: Response) {
     try {
       const slug = req.params.slug;
       const [row] = await db
@@ -213,10 +230,24 @@ export function registerFounderLetterRoutes(app: Express): void {
         .from(communityLetters)
         .where(and(eq(communityLetters.slug, slug), isNotNull(communityLetters.publishedAt)))
         .limit(1);
-      if (!row) return Errors.notFound(res, "Letter");
+      if (!row) return Errors.notFound(res, "Field note");
       return res.json(row);
     } catch (err) {
       return Errors.internal(res, err);
     }
-  });
+  }
+
+  // GET /api/field-notes — PUBLIC archive (canonical 2026-06-06+).
+  app.get("/api/field-notes", costClass("low"), listPublicFieldNotes);
+
+  // GET /api/field-notes/:slug — PUBLIC single note (canonical).
+  app.get("/api/field-notes/:slug", costClass("low"), getPublicFieldNote);
+
+  // GET /api/letters — legacy JSON alias of /api/field-notes. Preserved
+  // so stale SPA bundles continue to render. HTML-route 301s live in
+  // server/static.ts; the API stays JSON.
+  app.get("/api/letters", listPublicFieldNotes);
+
+  // GET /api/letters/:slug — legacy JSON alias.
+  app.get("/api/letters/:slug", getPublicFieldNote);
 }

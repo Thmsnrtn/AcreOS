@@ -182,14 +182,35 @@ export function serveStatic(app: Express) {
     { rx: /^\/terms(\/|$)/, ttl: 3600 },      // legal — 1 hr (rarely changes)
     { rx: /^\/privacy(\/|$)/, ttl: 3600 },    // 1 hr
     { rx: /^\/legal\//, ttl: 3600 },          // 1 hr
-    { rx: /^\/letters(\/|$)/, ttl: 600 },     // 10 min
+    { rx: /^\/field-notes(\/|$)/, ttl: 600 }, // 10 min
   ];
+
+  // Legacy /letters → /field-notes 301s. Rebranded 2026-06-06 per the
+  // marketing-OS voice doctrine (`docs/internal/marketing-os/00-blueprint.md`
+  // §2). 301 is permanent; search engines transfer SEO equity. This must
+  // run before the SPA-shell catch-all so the redirect happens server-side
+  // (not via in-app wouter <Redirect>), which is what crawlers see.
+  // Path-only check; query strings + fragments are preserved by `res.redirect`.
+  const LEGACY_LETTERS_301 = /^\/letters(?:\/([^/?#]+))?\/?$/;
 
   app.use("{*splat}", (req: Request, res: Response) => {
     if (res.headersSent) return;
     // Don't serve index.html for API routes — if we got here, the API route didn't match
     if (req.originalUrl.startsWith("/api/")) {
       return res.status(404).json({ message: "Not found" });
+    }
+    // 301 legacy /letters[/:slug] → /field-notes[/:slug].
+    {
+      const m = LEGACY_LETTERS_301.exec(req.path);
+      if (m) {
+        const slug = m[1];
+        const search = req.originalUrl.includes("?")
+          ? req.originalUrl.slice(req.originalUrl.indexOf("?"))
+          : "";
+        const target = slug ? `/field-notes/${slug}${search}` : `/field-notes${search}`;
+        res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400");
+        return res.redirect(301, target);
+      }
     }
     // F-D10: Don't fall through to the SPA shell for asset URLs that didn't
     // hit express.static. Without this, a stale lazy-chunk request (post-
