@@ -11514,6 +11514,12 @@ export * from "./schema/api-telemetry-samples";
 export * from "./schema/api-telemetry-rollup-monthly";
 
 // ============================================================================
+// IR SEVERITY LADDER (Tahoe Tess — single source of truth for the
+// incident-response / system_alerts severity ladder; locks free strings).
+// ============================================================================
+export * from "./schema/ir-severity";
+
+// ============================================================================
 // RESERVE FLOOR COMPLIANCE LOG (Tahoe L6 — capital-ladder enforcement).
 // ============================================================================
 export * from "./schema/reserve-floor-checks";

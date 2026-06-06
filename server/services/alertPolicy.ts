@@ -15,7 +15,7 @@
  */
 
 import { db } from "../db";
-import { systemAlerts } from "@shared/schema";
+import { systemAlerts, coerceIrSeverity } from "@shared/schema";
 import { eq, and, gte, desc, sql, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -27,10 +27,19 @@ interface AlertPolicyConfig {
   appUrl: string;
 }
 
-// Map existing severity to priority levels
+// Map existing severity to priority levels.
+//
+// `severity` arrives as a free string from the system_alerts row, so we
+// coerce it onto the locked IR ladder (shared/schema/ir-severity.ts) first.
+// This is the drift backstop: a legacy/external row that stored "warn",
+// "high", or "CRITICAL" is normalised to the canonical rung instead of
+// silently falling through to P3 (log-only) — i.e. a paging-class alert that
+// would otherwise never page.
 export function severityToPriority(severity: string, alertType?: string): AlertPriority {
+  const sev = coerceIrSeverity(severity);
+
   // P0 — critical system failures
-  if (severity === "critical") {
+  if (sev === "critical") {
     const p0Types = new Set([
       "health_check_failure", "database_unreachable", "stripe_webhook_failure",
       "auth_broken", "system_down", "mass_outage",
@@ -40,7 +49,7 @@ export function severityToPriority(severity: string, alertType?: string): AlertP
   }
 
   // P1 — degraded service
-  if (severity === "warning") {
+  if (sev === "warning") {
     const p1Types = new Set([
       "data_source_down", "payment_failure_rate_high", "error_rate_spike",
       "revenue_at_risk", "mass_delinquency", "high_churn_risk",
@@ -50,7 +59,7 @@ export function severityToPriority(severity: string, alertType?: string): AlertP
   }
 
   // P2 — non-urgent issues
-  if (severity === "info") {
+  if (sev === "info") {
     const p2Types = new Set([
       "support_escalation", "usage_approaching_limit", "refund_request",
       "single_payment_failure", "low_credits",
