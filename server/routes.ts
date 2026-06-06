@@ -127,6 +127,10 @@ import { featureGate } from "./middleware/featureGate";
 
 // MCP handler
 import { mcpHandler } from "./mcp-server";
+// MCP Streamable HTTP endpoint (Tahoe E12) — AcreOS as a tool server for
+// external AI agents. Bearer-API-key authed, org-scoped, read-mostly subset
+// of the App Intent registry.
+import { mcpStreamableHttpHandler } from "./mcp/streamableHttp";
 // Named aliases for backwards compatibility
 const apiRateLimit = rateLimiters.default;
 const strictRateLimit = rateLimiters.strict;
@@ -1320,6 +1324,12 @@ export async function registerRoutes(
   // replacing the ~6 parallel fetches the Today page used to fan out.
   app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);
   app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
+  // Tahoe E12: spec-compliant MCP Streamable HTTP endpoint for EXTERNAL AI
+  // agents. Auth is the public API key (Authorization: Bearer ak_...),
+  // resolved inside the handler — NOT session auth — so no isAuthenticated /
+  // getOrCreateOrg middleware here. JSON-RPC: initialize / tools/list /
+  // tools/call against the safe, org-scoped intent subset.
+  app.post('/api/mcp', mcpStreamableHttpHandler);
 
   // Voice pipeline: webhook callbacks (no auth, signature-verified) + authenticated API routes
   // Mount only webhook paths at root — NOT the entire router, which would expose
