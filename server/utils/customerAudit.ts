@@ -41,6 +41,12 @@ export interface CustomerAuditInput {
   category: CustomerAuditCategory;
   targetLabel?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * Optional source table for `metadata`. When set, the classification
+   * registry is consulted by exact `<table>.<column>` key (more precise than
+   * the name heuristic) to decide which metadata values get class-labelled.
+   */
+  metadataTable?: string;
   ipAddress?: string | null;
   userAgent?: string | null;
 }
@@ -77,6 +83,7 @@ export async function customerAudit(input: CustomerAuditInput): Promise<void> {
   try {
     const safeMetadata = redactByClassification(input.metadata ?? {}, {
       label: true,
+      table: input.metadataTable,
     }) as Record<string, unknown>;
 
     await db.insert(customerAuditLog).values({
