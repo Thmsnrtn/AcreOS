@@ -1,5 +1,5 @@
 {
-  "include": ["client/src/**/*", "shared/**/*", "server/**/*", "content/learn/**/*.json", "sovereign-protocol/**/*"],
+  "include": ["client/src/**/*", "shared/**/*", "server/**/*", "content/learn/**/*.json", "sovereign-protocol/**/*", "packages/*/src/**/*"],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "ignoreDeprecations": "6.0",
@@ -21,6 +21,7 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./client/src/*"],
+      "@acreos/solene": ["./packages/solene/src/index.ts"],
       "@shared/*": ["./shared/*"],
       "@content/*": ["./content/*"],
       "@sovereign/*": ["./sovereign-protocol/*"]

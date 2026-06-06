@@ -26,7 +26,7 @@ import {
   listPendingPlans,
   rejectPlan,
   type ApprovePlanEnqueueOptions,
-} from "./services/solene/planProposals";
+} from "@acreos/solene";
 import {
   PLAN_PROPOSAL_STATUSES,
   type PlanProposalStatus,

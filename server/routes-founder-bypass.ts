@@ -28,7 +28,7 @@ import {
   founderDispatch,
   founderCancelDispatch,
   listFounderInvocations,
-} from "./services/solene/founderBypass";
+} from "@acreos/solene";
 import { DISPATCH_AGENT_ROLES } from "@shared/schema/solene-dispatch";
 
 const dispatchBodySchema = z.object({

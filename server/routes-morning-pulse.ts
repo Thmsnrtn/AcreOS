@@ -23,7 +23,7 @@ import {
   composeMorningPulse,
   getLatestMorningPulse,
   persistMorningPulse,
-} from "./services/solene/continuousLoop";
+} from "@acreos/solene";
 import { logger } from "./utils/logger";
 
 export function registerMorningPulseRoutes(app: Express): void {
