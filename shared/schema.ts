@@ -11278,6 +11278,11 @@ export * from "./schema/marketplace";
 export * from "./schema/ai-telemetry";
 
 // ============================================================================
+// API TELEMETRY SAMPLES (L14 — durable backing store for per-route counters).
+// ============================================================================
+export * from "./schema/api-telemetry-samples";
+
+// ============================================================================
 // COMPLIANCE / INVESTOR-VERIFICATION / FEES / TAX-BASIS / ML-REGISTRY —
 // extracted to ./schema/compliance.ts
 // ============================================================================

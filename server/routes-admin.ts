@@ -715,11 +715,21 @@ export function registerAdminRoutes(app: Express): void {
   // per route. Resets on process restart by design — this is a backstop
   // for early-warning observability; persistent telemetry belongs in an
   // APM (Datadog / Honeycomb / etc.).
-  api.get("/api/admin/telemetry", isAuthenticated, isFounderAdmin, async (_req, res) => {
+  api.get("/api/admin/telemetry", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { getTelemetrySummary } = await import("./middleware/apiTelemetry");
-      const summary = getTelemetrySummary();
-      res.json({ ...summary, generatedAt: new Date().toISOString() });
+      // L14 — read the union view by default (durable rows + current-tick
+      // Map). Pass ?currentOnly=1 for the legacy in-process snapshot.
+      const currentOnly = String(req.query.currentOnly ?? "") === "1";
+      const sinceHours = Math.max(1, Math.min(24 * 30, Number(req.query.sinceHours ?? 24)));
+      if (currentOnly) {
+        const { getTelemetrySummary } = await import("./middleware/apiTelemetry");
+        const summary = getTelemetrySummary();
+        res.json({ ...summary, generatedAt: new Date().toISOString(), source: "current-tick" });
+        return;
+      }
+      const { getTelemetrySummaryDurable } = await import("./middleware/apiTelemetry");
+      const summary = await getTelemetrySummaryDurable(sinceHours * 60 * 60 * 1000);
+      res.json({ ...summary, generatedAt: new Date().toISOString(), source: "durable+current-tick", windowHours: sinceHours });
     } catch (err: any) {
       Errors.internal(res, err);
     }

@@ -31,7 +31,7 @@
 
 import { and, gte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { aiCallLog, type InsertAiCallLogRow } from "@shared/schema";
+import { aiCallLog, coerceAiFeature, type AiFeature, type InsertAiCallLogRow } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { postOpexSpent } from "./financial-ledger";
 
@@ -87,11 +87,23 @@ export interface RecordAiCallOpts {
  * Fully fire-and-forget — every failure is logged but never rethrown.
  */
 export async function recordAiCall(opts: RecordAiCallOpts): Promise<void> {
+  // L5a — coerce arbitrary caller-tag strings into the locked AiFeature
+  // enum. Unknown values fall back to "unknown" rather than spawning a
+  // new per-feature dashboard row, and we log a warn so the drift is
+  // surfaced (a new feature should be added to AI_FEATURES rather than
+  // landing here silently).
+  const feature: AiFeature = coerceAiFeature(opts.feature);
+  if (feature === "unknown" && opts.feature && opts.feature !== "unknown") {
+    logger.warn("[ai-telemetry] unknown ai feature — coerced to 'unknown'", {
+      metadata: { rawFeature: opts.feature },
+    });
+  }
+
   const row: InsertAiCallLogRow = {
     organizationId: opts.organizationId ?? null,
     model: opts.model,
     complexityClass: opts.complexityClass,
-    feature: opts.feature,
+    feature,
     promptTokens: opts.promptTokens ?? 0,
     cachedInputTokens: opts.cachedInputTokens ?? 0,
     completionTokens: opts.completionTokens ?? 0,
@@ -122,6 +134,9 @@ export async function recordAiCall(opts: RecordAiCallOpts): Promise<void> {
       const { categoryFor, recordSpend } = await import(
         "./intelligence/budget"
       );
+      // Pass the *original* opts.feature to categoryFor — its prefix
+      // matching (lead_*, cmo_*, etc.) is more precise than the locked
+      // enum and we don't want to lose budget-routing fidelity.
       const category = categoryFor(opts.feature);
       void recordSpend(category, opts.costCents!);
     } catch (err) {

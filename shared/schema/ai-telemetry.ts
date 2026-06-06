@@ -33,6 +33,102 @@ import { organizations, dataSources } from "../schema";
 // AI TELEMETRY
 // ===========================
 
+// ─── L5a — ai feature enum lock ──────────────────────────────────────────────
+// The `feature` column on ai_call_log was a free-string field. The Tahoe
+// horizon audit identified this as the largest 3-5y SRE risk: without a
+// locked enum, per-feature cost dashboards can't enumerate the universe of
+// known features (a typo like "pax_chats" silently becomes its own
+// dashboard row), and capping a runaway feature requires regex over a
+// drifting set of free strings.
+//
+// We use a Zod enum (not a Drizzle pgEnum) because:
+//   (a) no pgEnum exists anywhere in the codebase — pattern is text + Zod;
+//   (b) Drizzle pgEnum requires a DDL migration to add a value, which means
+//       every new feature in code needs a coordinated SQL change. The Zod
+//       approach lets us extend the enum in one place (this constant) and
+//       have insert-time validation catch drift.
+//
+// To add a new feature: add it to AI_FEATURES, then ship. recordAiCall()
+// will accept the new value; previously written rows are unaffected.
+export const AI_FEATURES = [
+  // Pax (customer-facing chat)
+  "pax_chat",
+  // Lead lifecycle
+  "lead_nurturing",
+  "lead_qualification",
+  "lead_scoring",
+  "lead_extraction",
+  // Outreach / direct mail / sms
+  "outreach_personalization",
+  "sms_generation",
+  // CMO / creative
+  "cmo_script_gen",
+  "creative_gen",
+  "ad_copy_gen",
+  // Founder-facing briefings
+  "morning_brief",
+  "founder_brief",
+  "atlas_brief",
+  "agent_report",
+  "company_briefing",
+  // Decision executor + agent loop
+  "executor_inbox_decision",
+  "executive_decision",
+  "agent_initiative",
+  "agent_recommendation",
+  "decision_executor",
+  // Reflective / nightly
+  "self_assessment",
+  "evolution_proposal",
+  "telemetry_optimization",
+  "outcome_analyzer",
+  "retrospective",
+  // Campaign / acquisition
+  "campaign_optimization",
+  // Compliance / regulatory watch
+  "regwatch_summary",
+  // Misc / fallback
+  "ad_hoc",
+  "unknown",
+] as const;
+
+export type AiFeature = (typeof AI_FEATURES)[number];
+
+/**
+ * Zod enum for runtime validation at insert time. Use this in recordAiCall
+ * (and any other path that writes ai_call_log.feature) to reject unknown
+ * features early. Routes that emit AI calls should use a canonical value
+ * from AI_FEATURES; new features must be added here first.
+ */
+export const aiFeatureSchema = z.enum(AI_FEATURES);
+
+/**
+ * Best-effort coercion from arbitrary task_type strings (legacy call sites
+ * still pass dynamic taskType through to recordAiCall) into a known
+ * AiFeature. Unknown inputs fall back to "unknown" so a new feature in
+ * code can't silently grow its own ai_call_log row outside the enum.
+ *
+ * Callers that *know* the feature should pass a canonical AiFeature
+ * directly and skip this coercion.
+ */
+export function coerceAiFeature(input: string | undefined | null): AiFeature {
+  if (!input) return "unknown";
+  // Exact match first.
+  if ((AI_FEATURES as readonly string[]).includes(input)) {
+    return input as AiFeature;
+  }
+  // Soft mapping: agent_brief_<name> → agent_report
+  const lower = input.toLowerCase();
+  if (lower.startsWith("agent_brief")) return "agent_report";
+  if (lower.startsWith("retrospective")) return "retrospective";
+  if (lower.startsWith("script_")) return "cmo_script_gen";
+  if (lower.startsWith("ad_")) return "ad_copy_gen";
+  if (lower.startsWith("cmo_")) return "cmo_script_gen";
+  if (lower.startsWith("outreach_")) return "outreach_personalization";
+  if (lower.startsWith("lead_")) return "lead_nurturing";
+  return "unknown";
+}
+
 // Tracks AI request metrics for cost optimization and observability
 export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   id: serial("id").primaryKey(),
