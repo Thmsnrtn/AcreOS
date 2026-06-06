@@ -79,69 +79,37 @@ const PRECALL_TIMEOUT_MS = Number(
 // ============================================================================
 // The 12 immutables — VERBATIM as presented to the checker.
 //
-// These are intentionally a separate constant from the canonical wording in
-// shared/schema/solene-constitutional-violations.ts. The schema constant is
-// the shorter denormalized snapshot used for DB column storage; this constant
-// is the verbatim full-sentence wording presented to the Haiku checker so
-// the model has the most explicit framing of what to screen against.
+// Canonical source: sovereign-protocol/immutables.json (the `text` field of
+// each customerImmutables item). The schema layer's CONSTITUTIONAL_IMMUTABLES
+// constant uses the `short` denormalized snapshot of the same JSON for DB
+// column storage. The immutable_text column denormalizes THIS verbatim
+// wording so historical pre-call decisions survive any future rewording.
 //
-// The immutable_text column denormalizes THIS wording (not the schema's
-// shorter form) so historical pre-call decisions survive any future
-// rewording of either source.
+// DO NOT redeclare the immutables below — edit immutables.json + update the
+// fixture hash in tests/unit/sovereign-protocol-immutables.test.ts.
 // ============================================================================
+
+import {
+  CUSTOMER_IMMUTABLES,
+  CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS,
+  customerImmutableByNumber,
+} from "@sovereign/immutables";
 
 export const TWELVE_IMMUTABLES_VERBATIM: ReadonlyArray<{
   number: number;
   text: string;
-}> = [
-  {
-    number: 1,
-    text: "Never lie to a customer about a fact, a price, or what Pax did.",
-  },
-  { number: 2, text: "Never use dark patterns." },
-  {
-    number: 3,
-    text: "Never collect data that isn't immediately useful to the customer.",
-  },
-  { number: 4, text: "Always make cancellation as easy as signup." },
-  {
-    number: 5,
-    text: "Never sell, share, or use customer data outside of serving them.",
-  },
-  {
-    number: 6,
-    text: "Never auto-charge without explicit, recent, easily-revoked consent.",
-  },
-  {
-    number: 7,
-    text: "Always disclose AI use clearly to every customer at first interaction.",
-  },
-  { number: 8, text: "Always honor data-deletion requests within 7 days." },
-  {
-    number: 9,
-    text: "Never recommend an action against the customer's interest.",
-  },
-  {
-    number: 10,
-    text: "Never market to vulnerable populations without safeguards.",
-  },
-  { number: 11, text: 'Never generate "get rich quick" content.' },
-  { number: 12, text: "Pax never gives advice that crosses into fiduciary." },
-] as const;
+}> = CUSTOMER_IMMUTABLES.map((i) => ({ number: i.number, text: i.text }));
 
 function immutableTextFor(num: number | null): string | null {
   if (num === null) return null;
-  const found = TWELVE_IMMUTABLES_VERBATIM.find((i) => i.number === num);
+  const found = customerImmutableByNumber(num);
   return found ? found.text : null;
 }
 
-// Critical-severity immutables match the L6.29 (constitutionalGuard) policy:
-// #5 (data misuse), #6 (auto-charge), #11 (get-rich-quick), #12 (fiduciary).
-// Everything else is urgent.
-const CRITICAL_IMMUTABLES = new Set<number>([5, 6, 11, 12]);
-
+// Critical-severity immutables match the L6.29 (constitutionalGuard) policy
+// — sourced from sovereign-protocol/immutables.json criticalSeverityNumbers.
 function severityFor(num: number): ConstitutionalSeverity {
-  return CRITICAL_IMMUTABLES.has(num) ? "critical" : "urgent";
+  return CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS.has(num) ? "critical" : "urgent";
 }
 
 // ============================================================================

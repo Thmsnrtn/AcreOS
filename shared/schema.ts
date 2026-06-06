@@ -233,6 +233,28 @@ export const organizations = pgTable("organizations", {
       balloon: boolean; // true if a balloon payment is required at term end
     };
   }>(),
+  // ─── Per-tenant constitutional / alignment preferences (Tahoe L11) ────
+  // Schema-bind landed ahead of any consumer. Quinn's horizon vision is
+  // per-tenant customization of the 12 customer immutables + per-tenant
+  // tuning of how strictly downstream LLM screeners interpret them (e.g.
+  // a banking-vertical tenant may require stricter #12 fiduciary-advice
+  // screening; a marketing-only tenant may opt into a stricter #11 get-
+  // rich-quick filter for outbound copy). The shape is intentionally a
+  // generic jsonb-bag today; downstream schema migrations can lift
+  // sub-fields into typed columns once the UI consumer ships. Defaults
+  // to '{}' so legacy orgs behave identically (canonical immutables apply
+  // unchanged). NOT NULL with DEFAULT '{}' so consumers can read without
+  // null-checking.
+  alignmentPreferences: jsonb("alignment_preferences").$type<{
+    // Future shape (none of these are read today — schema-bind only):
+    //   immutableOverrides?: Record<number, {
+    //     stricterThanDefault?: boolean;
+    //     additionalContext?: string;       // appended to screener prompt
+    //   }>;
+    //   verticalProfile?: "land" | "notes" | "banking" | "marketing";
+    //   alignmentReviewerNotes?: string;
+    [key: string]: unknown;
+  }>().notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

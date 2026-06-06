@@ -128,6 +128,17 @@ const STATEMENTS = [
   // via Settings → Underwriting (Texas standard 9.9%/120mo/20%/no balloon).
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "underwriting_defaults" jsonb`,
 
+  // 2026-06-05 — Tahoe L11 alignment-preferences schema-bind.
+  // Per-tenant constitutional / alignment preferences. Schema landed
+  // ahead of any consumer (Quinn's horizon vision is per-tenant
+  // customization of the 12 customer immutables). DEFAULT '{}' + NOT
+  // NULL so consumers can read without null-checking; legacy orgs
+  // behave identically (canonical immutables apply unchanged). See
+  // shared/schema.ts (organizations.alignmentPreferences) for the
+  // typed shape and roadmap. Canonical immutables source:
+  // sovereign-protocol/immutables.json.
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "alignment_preferences" jsonb NOT NULL DEFAULT '{}'::jsonb`,
+
   // APN on leads for the CSV importer's dedupe path (migrations/0103).
   // Nullable — manual-add + legacy imports don't carry APN. Indexed
   // per-org because the importer's dedupe queries `WHERE org=$1 AND apn=$2`.

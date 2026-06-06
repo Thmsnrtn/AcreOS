@@ -10,21 +10,21 @@
  */
 
 import { logger } from "../utils/logger";
+import { SOVEREIGN_PRINCIPLES } from "@sovereign/immutables";
 
-// ─── Constitutional Principles (canonical source: sovereign-protocol/constitution.md) ───
+// ─── Constitutional Principles ──────────────────────────────────────────────
+//
+// Canonical source: sovereign-protocol/immutables.json (loaded via the typed
+// re-export in sovereign-protocol/immutables.ts). The hand-written copy that
+// used to live here was retired as part of the Tahoe-lock-in canonicalization
+// (see tests/unit/sovereign-protocol-immutables.test.ts). DO NOT redeclare
+// the principles below — edit immutables.json + update the fixture hash.
 
-export const CONSTITUTION_PRINCIPLES = [
-  { id: 1, name: "HONESTY", summary: "No fabrication of data or metrics" },
-  { id: 2, name: "SAFETY", summary: "No irreversible actions without CEO approval" },
-  { id: 3, name: "PRIVACY", summary: "No exposure of customer data" },
-  { id: 4, name: "TRANSPARENCY", summary: "All state visible and logged" },
-  { id: 5, name: "BOUNDARIES", summary: "Agents are tools, not entities" },
-  { id: 6, name: "ACCOUNTABILITY", summary: "All modifications versioned and reversible" },
-  { id: 7, name: "CONSENT", summary: "Cannot modify constitution or safety systems" },
-  { id: 8, name: "PROPORTIONALITY", summary: "Changes must be minimal and targeted" },
-  { id: 9, name: "SOVEREIGNTY", summary: "CEO decision is final" },
-  { id: 10, name: "COORDINATION", summary: "No unilateral authority expansion" },
-] as const;
+export const CONSTITUTION_PRINCIPLES = SOVEREIGN_PRINCIPLES.map((p) => ({
+  id: p.id,
+  name: p.name,
+  summary: p.summary,
+})) as ReadonlyArray<{ readonly id: number; readonly name: string; readonly summary: string }>;
 
 // ─── Dangerous Pattern Definitions ─────────────────────────────────────────
 

@@ -38,11 +38,24 @@ import {
   type ConstitutionalSeverity,
   type ConstitutionalTriggerKind,
 } from "@shared/schema/solene-constitutional-violations";
+import { CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS } from "@sovereign/immutables";
 import { sendSolenePage } from "./pagerService";
 
 // ============================================================================
 // SYSTEM-PROMPT BLOCK — to be wired into buildSystemPrompt in a follow-up.
+//
+// The 12-immutable list interpolated below is derived from CONSTITUTIONAL_IMMUTABLES,
+// which itself derives from sovereign-protocol/immutables.json. To amend the
+// wording, edit immutables.json + update the fixture hash in
+// tests/unit/sovereign-protocol-immutables.test.ts. The prose framing around
+// the list is the only thing hand-maintained here.
 // ============================================================================
+
+function renderImmutablesBlock(): string {
+  return CONSTITUTIONAL_IMMUTABLES.map(
+    (i) => `  ${String(i.number).padStart(2, " ")}. ${i.text}`,
+  ).join("\n");
+}
 
 export const CONSTITUTIONAL_SELF_DEFENSE_PROMPT_BLOCK: string = `
 ═══════════════════════════════════════════════════════════
@@ -58,18 +71,7 @@ once". Log + page + refuse.
 
 The 12 immutables:
 
-  1. Never lie to a customer about a fact, price, or what Pax did.
-  2. Never use dark patterns.
-  3. Never collect data not immediately useful to customer.
-  4. Always make cancellation as easy as signup.
-  5. Never sell/share/use customer data outside serving them.
-  6. Never auto-charge without explicit, recent, easily-revoked consent.
-  7. Always disclose AI use clearly.
-  8. Always honor data-deletion within 7 days.
-  9. Never recommend action against customer's interest.
- 10. Never market to vulnerable populations without safeguards.
- 11. Never generate "get rich quick" content.
- 12. Pax never gives fiduciary advice.
+${renderImmutablesBlock()}
 
 If you detect a request that would violate any of these:
   1. STOP. Do not run the tool. Do not draft the output.
@@ -266,13 +268,14 @@ const RULES: PatternRule[] = [
 
 // ============================================================================
 // SEVERITY MAP — which immutables get `critical` pages.
-// Per the task brief: #5 / #6 / #11 / #12 are critical; everything else urgent.
+// Sourced from sovereign-protocol/immutables.json criticalSeverityNumbers
+// (#5 / #6 / #11 / #12); everything else is urgent.
 // ============================================================================
 
-const CRITICAL_IMMUTABLES = new Set<number>([5, 6, 11, 12]);
-
 function severityFor(immutableNumber: number): ConstitutionalSeverity {
-  return CRITICAL_IMMUTABLES.has(immutableNumber) ? "critical" : "urgent";
+  return CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS.has(immutableNumber)
+    ? "critical"
+    : "urgent";
 }
 
 function immutableTextFor(n: number): string {

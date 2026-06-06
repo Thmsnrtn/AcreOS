@@ -111,24 +111,19 @@ export type ConstitutionalSeverity =
   (typeof CONSTITUTIONAL_SEVERITIES)[number];
 
 // ============================================================================
-// THE 12 IMMUTABLES (canonical wording from acreos_constitution.md).
-// Exported for both runtime use (denormalized snapshot column) and for tests.
+// THE 12 IMMUTABLES — denormalized snapshot form (shorter wording for DB
+// columns). Canonical source: sovereign-protocol/immutables.json. The
+// `short` field of each customer immutable lands here.
+//
+// DO NOT redeclare the immutables below — edit immutables.json + update the
+// fixture hash in tests/unit/sovereign-protocol-immutables.test.ts.
 // ============================================================================
 
-export const CONSTITUTIONAL_IMMUTABLES = [
-  { number: 1, text: "Never lie to a customer about a fact, price, or what Pax did." },
-  { number: 2, text: "Never use dark patterns." },
-  { number: 3, text: "Never collect data not immediately useful to customer." },
-  { number: 4, text: "Always make cancellation as easy as signup." },
-  { number: 5, text: "Never sell/share/use customer data outside serving them." },
-  { number: 6, text: "Never auto-charge without explicit, recent, easily-revoked consent." },
-  { number: 7, text: "Always disclose AI use clearly." },
-  { number: 8, text: "Always honor data-deletion within 7 days." },
-  { number: 9, text: "Never recommend action against customer's interest." },
-  { number: 10, text: "Never market to vulnerable populations without safeguards." },
-  { number: 11, text: 'Never generate "get rich quick" content.' },
-  { number: 12, text: "Pax never gives fiduciary advice." },
-] as const;
+import { CUSTOMER_IMMUTABLES } from "@sovereign/immutables";
 
-export type ConstitutionalImmutableNumber =
-  (typeof CONSTITUTIONAL_IMMUTABLES)[number]["number"];
+export const CONSTITUTIONAL_IMMUTABLES: ReadonlyArray<{
+  readonly number: number;
+  readonly text: string;
+}> = CUSTOMER_IMMUTABLES.map((i) => ({ number: i.number, text: i.short }));
+
+export type ConstitutionalImmutableNumber = number;
