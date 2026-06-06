@@ -397,9 +397,14 @@ async function main() {
           continue;
         }
 
+        // Feedback memories are TEAM-INTERNAL — organization_id IS NULL.
+        // The natural-key index is (organization_id, namespace, source_ref);
+        // scoping the lookup to IS NULL keeps the upsert idempotent against
+        // any future per-tenant rows under the same (namespace, source_ref).
         const existing = await pool.query(
           `SELECT id, content_hash, embedding_model FROM solene_embedded_records
-           WHERE namespace = $1 AND source_ref = $2`,
+           WHERE organization_id IS NULL
+             AND namespace = $1 AND source_ref = $2`,
           [NAMESPACE, slug],
         );
 

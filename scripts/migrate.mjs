@@ -2797,6 +2797,13 @@ const STATEMENTS = [
   // on the current Fly Postgres image. Only the timestamp + btree ship.
   `ALTER TABLE deal_patterns ADD COLUMN IF NOT EXISTS embedding_refreshed_at timestamp`,
   `CREATE INDEX IF NOT EXISTS deal_patterns_embedding_refreshed_at_idx ON deal_patterns (embedding_refreshed_at NULLS FIRST)`,
+  // Tahoe L3 shard-readiness composites on the embedding-bearing
+  // deal_patterns + deal_pattern_matches tables. Mirrors the inline
+  // index() declarations in shared/schema.ts.
+  `CREATE INDEX IF NOT EXISTS deal_patterns_org_outcome_created_idx ON deal_patterns (organization_id, outcome, created_at)`,
+  `CREATE INDEX IF NOT EXISTS deal_patterns_org_deal_idx ON deal_patterns (organization_id, deal_id)`,
+  `CREATE INDEX IF NOT EXISTS deal_pattern_matches_org_created_idx ON deal_pattern_matches (organization_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS deal_pattern_matches_org_pattern_idx ON deal_pattern_matches (organization_id, pattern_id)`,
 
   // properties: land_status fork (0038) — automation blocker for tribal/trust
   `ALTER TABLE properties ADD COLUMN IF NOT EXISTS land_status TEXT NOT NULL DEFAULT 'unknown'`,
@@ -5643,6 +5650,7 @@ const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "solene_embedded_records" (
      "id" serial PRIMARY KEY,
      "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
      "namespace" text NOT NULL,
      "source_ref" text NOT NULL,
      "content_snippet" text NOT NULL,
@@ -5652,10 +5660,26 @@ const STATEMENTS = [
      "embedding" vector(1024),
      "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
    )`,
+  // Tahoe L2 lock-in — back-add the organization_id column on existing
+  // deployments (idempotent). NULL means "team-internal embedding"
+  // (feedback-memory corpus, internal decision traces); non-NULL means
+  // "tenant-owned embedding" (future Pax-output corpora). See
+  // shared/schema/solene-embeddings.ts for the full rationale. We do
+  // this BEFORE Pax-output volume so the backfill is a no-op.
+  `ALTER TABLE "solene_embedded_records" ADD COLUMN IF NOT EXISTS "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE`,
   // Ensure existing-deployment columns get the dim added (idempotent).
   // Safe no-op when already typed; required for HNSW index creation.
   `DO $$ BEGIN ALTER TABLE "solene_embedded_records" ALTER COLUMN "embedding" TYPE vector(1024); EXCEPTION WHEN others THEN NULL; END $$`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_embedded_records_namespace_source_unique" ON "solene_embedded_records" ("namespace", "source_ref")`,
+  // Drop the old (namespace, source_ref) unique constraint — replaced by
+  // the (organization_id, namespace, source_ref) form below. Postgres
+  // treats NULL as distinct in unique constraints, so legacy team-
+  // internal rows continue to be deduped exactly as before.
+  `DROP INDEX IF EXISTS "solene_embedded_records_namespace_source_unique"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_embedded_records_org_namespace_source_unique" ON "solene_embedded_records" ("organization_id", "namespace", "source_ref")`,
+  // Tahoe L3 shard-readiness composite — every tenant-bound retrieval
+  // probes this index. Leading column is organization_id so we can
+  // range-partition the table later without a re-index migration.
+  `CREATE INDEX IF NOT EXISTS "solene_embedded_records_org_namespace_created_idx" ON "solene_embedded_records" ("organization_id", "namespace", "created_at" DESC)`,
   `CREATE INDEX IF NOT EXISTS "solene_embedded_records_namespace_created_idx" ON "solene_embedded_records" ("namespace", "created_at" DESC)`,
   // HNSW over cosine. Safe to skip when pgvector isn't yet installed
   // (release_command classifies "extension not available" as non-fatal).
