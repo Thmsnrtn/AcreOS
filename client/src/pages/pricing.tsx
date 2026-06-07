@@ -207,11 +207,16 @@ export default function PricingPage() {
         </div>
       </nav>
 
-      {/* Header */}
+      {/* Header — lead with the data narrative (Soren §4): the free tier
+          already runs premium government data; paid data comes when you scale. */}
       <section id="main-content" className="py-16 px-6 text-center">
-        <h1 className="text-4xl font-bold">Simple, transparent pricing</h1>
-        <p className="text-muted-foreground mt-3 max-w-lg mx-auto">
-          Start free. Upgrade when you're ready. Every paid plan includes a <span className="tabular-nums">14</span>-day free trial.
+        <h1 className="text-4xl font-bold">Premium government data, free. Paid data when you scale.</h1>
+        <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
+          The free tier runs flood, soil, elevation, and wetlands checks from
+          government data on every parcel — no card. Reach for paid providers
+          only when your deal volume earns them. Every paid plan includes a{" "}
+          <span className="tabular-nums">14</span>-day free trial and a{" "}
+          <span className="tabular-nums">30</span>-day money-back guarantee.
         </p>
 
         {/* Billing toggle */}
@@ -305,7 +310,13 @@ export default function PricingPage() {
             describes encryption + SOC 2 in flight; surface a one-liner
             at the moment the user is about to give us their card. */}
         <div className="mt-8 mx-auto max-w-2xl text-center text-xs text-muted-foreground">
-          Payments processed by Stripe. Your card never touches our servers.{" "}
+          Payments processed by Stripe. Your card never touches our servers.
+          Every paid plan is backed by a <span className="tabular-nums">30</span>-day
+          money-back guarantee — see our{" "}
+          <Link href="/terms" className="underline hover:text-foreground">
+            terms
+          </Link>{" "}
+          for details.{" "}
           <Link href="/security" className="underline hover:text-foreground">
             How we keep your data safe
           </Link>
