@@ -70,7 +70,36 @@ export type DataCategory =
   | "demographics"
   | "valuation"
   | "structure"
-  | "skip_trace";
+  | "skip_trace"
+  // ── Open-data environmental / land sub-kinds ──────────────────
+  // These map 1:1 onto the DataSourceBroker's LookupCategory values so the
+  // broker can be wrapped as the fetch implementation behind the registry's
+  // single cache / circuit-breaker / provenance contract. They are all
+  // free, federal/open, public-domain sources and are NEVER billed
+  // (creditActionForCategory returns null for them).
+  | "flood_zone"
+  | "wetlands"
+  | "soil"
+  | "tax_assessment"
+  | "market_data"
+  | "zoning"
+  | "satellite"
+  | "infrastructure"
+  | "natural_hazards"
+  | "public_lands"
+  | "transportation"
+  | "water_resources"
+  | "elevation"
+  | "climate"
+  | "agricultural_values"
+  | "land_cover"
+  | "cropland"
+  | "epa_frs"
+  | "storm_history"
+  | "plss"
+  | "watershed"
+  | "fema_nri"
+  | "usda_clu";
 
 // ── Subscription Tiers ────────────────────────────────────────
 

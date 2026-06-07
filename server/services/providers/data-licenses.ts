@@ -142,6 +142,53 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     lastReviewed: "2026-06-06",
     reviewedBy: "Beatrice",
   },
+  "FEMA NRI": {
+    source: "FEMA NRI",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Natural hazard risk: FEMA National Risk Index",
+    termsUrl: "https://www.fema.gov/about/openfema/terms-conditions",
+    lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
+  "USGS": {
+    source: "USGS",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Data: U.S. Geological Survey",
+    termsUrl: "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+    lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
+  "NOAA": {
+    source: "NOAA",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Climate/storm data: NOAA",
+    termsUrl: "https://www.weather.gov/disclaimer",
+    lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
+  "MRLC NLCD": {
+    source: "MRLC NLCD",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Land cover: MRLC National Land Cover Database",
+    termsUrl: "https://www.mrlc.gov",
+    lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
+  // Umbrella name for mixed federal/open delegated lookups whose specific
+  // source the broker does not surface a single canonical name for. All are
+  // public-domain federal works (§105) → redistributable.
+  "Open Data": {
+    source: "Open Data",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Public open-data sources (federal/open)",
+    lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
   "OpenStreetMap": {
     source: "OpenStreetMap",
     license: "odbl",
