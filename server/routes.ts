@@ -85,6 +85,7 @@ import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
 import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
+import publicParcelCheckRouter from "./routes-public-parcel-check";
 import aiDisclosureRouter from "./routes-ai-disclosure";
 import paxDisclosureRouter from "./routes-pax-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
@@ -619,6 +620,12 @@ export async function registerRoutes(
   // Keyed by a 1st-party anonymous_id cookie; user_id/org_id backfilled on
   // signup. See server/routes-marketing-touch.ts.
   registerMarketingTouchRoutes(app);
+
+  // Public parcel-check — no auth. Renders the free open-data moat (FEMA /
+  // USDA / USGS / USFWS / Census) for any address so a stranger can see the
+  // free-tier promise work before signing up. Hard-capped to free providers,
+  // rate-limited by session/parcel NOT raw IP. See routes-public-parcel-check.ts.
+  app.use("/api/public/parcel-check", publicParcelCheckRouter);
 
   app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
     try {
