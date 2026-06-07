@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
 import { clientLogger } from "@/lib/clientLogger";
+import { OverlayLegend } from "@/components/maps/OverlayLegend";
 import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -2606,6 +2607,18 @@ export function PropertyMap({
               </Collapsible>
             </div>
           )}
+
+          {/* Overlay legend — only for layers that successfully loaded. Floats
+              above the layer-panel toggle, bottom-left. */}
+          <div className="absolute bottom-16 left-3 z-10 max-w-[calc(100%-1.5rem)]">
+            <OverlayLegend
+              active={{
+                femaFloodZone: layerState.femaFloodZone && layerStatus["fema-flood"] === "ready",
+                zoningDistricts: layerState.zoningDistricts && layerStatus["zoning-land-use"] === "ready",
+                slopeGradient: layerState.slopeGradient,
+              }}
+            />
+          </div>
 
           <div className="absolute bottom-3 left-3 z-10">
             <Collapsible open={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen}>
