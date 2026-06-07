@@ -9,6 +9,7 @@ import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { costClass } from "./utils/costClass";
+import { notifyFounderOfTicket } from "./services/supportNotifications";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 
@@ -38,7 +39,25 @@ export function registerSupportTicketRoutes(app: Express): void {
         errorContext,
         source: "in_app"
       });
-      
+
+      // RAFE (Tahoe Wave-2): first-response SLA is only possible if a new ticket
+      // actually reaches a human. Pax may auto-resolve, but the founder must be
+      // able to SEE the inbound in real time. Drop a founder-visible system_alert
+      // (the same surface /founder/escalations + the founder pulse already read),
+      // so a brand-new ticket is never silent. Non-fatal — never block the create.
+      try {
+        await notifyFounderOfTicket({
+          orgId: org.id,
+          orgName: org.name,
+          ticketId: ticket.id,
+          subject,
+          priority: priority || "normal",
+          reason: "created",
+        });
+      } catch (notifyErr) {
+        logger.warn("[support] ticket-created founder notification failed", { ticketId: ticket.id, err: String(notifyErr) });
+      }
+
       res.status(201).json(ticket);
     } catch (error: any) {
       logger.error("[support] Error creating ticket", error);
