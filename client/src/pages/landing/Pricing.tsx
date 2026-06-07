@@ -170,7 +170,7 @@ export function Pricing() {
       </div>
 
       <div className="lp-pricing-foot">
-        Every paid plan includes 14 days free, no setup fees, and migration help from a real human.
+        Every paid plan includes 14 days free, a 30-day money-back guarantee, no setup fees, and migration help from a real human.
       </div>
     </section>
   );

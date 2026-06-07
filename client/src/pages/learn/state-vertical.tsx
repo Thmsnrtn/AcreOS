@@ -279,6 +279,22 @@ export default function StateVerticalLandingPage() {
           </div>
         </section>
 
+        <section className="mb-10" data-testid="section-learn-tools">
+          <h2 className="text-xl font-semibold mb-3">Free tools</h2>
+          <p className="text-sm text-muted-foreground mb-3">
+            Run due diligence on a {content.stateName} parcel right now — no
+            signup. Both tools pull from public government data.
+          </p>
+          <nav aria-label="Free tools" className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <Link href="/tools/parcel-check" className="text-primary underline hover:text-foreground">
+              Free Parcel Check — flood, soil, elevation, wetlands
+            </Link>
+            <Link href="/tools/calculator" className="text-primary underline hover:text-foreground">
+              Land Deal Calculator
+            </Link>
+          </nav>
+        </section>
+
         <section className="mb-10" data-testid="section-learn-faq">
           <h2 className="text-2xl font-semibold mb-4">Frequently asked</h2>
           <div className="space-y-5">

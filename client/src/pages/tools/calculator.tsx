@@ -90,6 +90,19 @@ export default function CalculatorPage() {
       </section>
 
       <LandDealCalculator />
+
+      {/* Internal linking — cross-link the public free tools so each funnels
+          into the next (calculator ↔ parcel-check). */}
+      <section className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
+        <nav
+          aria-label="Related free tools"
+          className="flex flex-wrap gap-x-6 gap-y-2 text-sm"
+        >
+          <Link href="/tools/parcel-check" className="text-primary hover:underline">
+            Free Parcel Check — flood, soil, elevation
+          </Link>
+        </nav>
+      </section>
     </main>
   );
 }

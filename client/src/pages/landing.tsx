@@ -42,6 +42,7 @@ import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
 import { DayInLife } from "./landing/DayInLife";
 import { Features } from "./landing/Features";
+import { DataProvenance } from "./landing/DataProvenance";
 import { Quotes } from "./landing/Quotes";
 import { Pricing } from "./landing/Pricing";
 import { FAQ } from "./landing/FAQ";
@@ -84,6 +85,7 @@ export default function LandingPage() {
         <Agents />
         <DayInLife />
         <Features />
+        <DataProvenance />
         <Quotes />
         <Pricing />
         <FAQ />

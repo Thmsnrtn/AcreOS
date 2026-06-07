@@ -197,6 +197,10 @@ const ToolsPage = React.lazy(() => import("@/pages/tools"));
 // route only.
 const CalculatorPage = React.lazy(() => import("@/pages/tools/calculator"));
 const CalculatorEmbedPage = React.lazy(() => import("@/pages/tools/calculator-embed"));
+// Public /tools/parcel-check — no auth. Renders the free open-data moat
+// (FEMA/USDA/USGS/USFWS/Census) for any address so a stranger sees the
+// free-tier promise work before signing up.
+const ParcelCheckPage = React.lazy(() => import("@/pages/tools/parcel-check"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -655,6 +659,9 @@ function Router() {
           Both must precede the authed /tools route registered later. */}
       <Route path="/tools/calculator/embed" component={CalculatorEmbedPage} />
       <Route path="/tools/calculator" component={CalculatorPage} />
+      {/* Public Parcel Check — free open-data moat surface. Must precede the
+          authed /tools route registered later. */}
+      <Route path="/tools/parcel-check" component={ParcelCheckPage} />
       {/* 2026-06-01 cut — GlossaryPage archived; nothing links to it. */}
 
       {/* Public Borrower Portal */}
