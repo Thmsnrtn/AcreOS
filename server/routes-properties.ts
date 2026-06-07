@@ -181,6 +181,61 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
 
+  // ── Land Snapshot — the canonical decision-grade LandProfile ────────────
+  // Cache-first: serves the persisted free-enrichment bundle assembled into a
+  // LandProfile. On a cold parcel (never enriched) it runs the fast
+  // coordinate-only pre-warm live, then assembles. Registered BEFORE /:id so
+  // "land-profile" isn't swallowed as an :id.
+  api.get(
+    "/api/properties/:id/land-profile",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      try {
+        const org = req.organization;
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+          return Errors.notFound(res, "Property");
+        }
+        const property = await storage.getProperty(org.id, id);
+        if (!property) return Errors.notFound(res, "Property");
+
+        const { assembleLandProfile } = await import("./services/landProfile");
+        const lat = property.latitude ? parseFloat(String(property.latitude)) : NaN;
+        const lng = property.longitude ? parseFloat(String(property.longitude)) : NaN;
+
+        // 1) Cache-first: use the persisted enrichment bundle if present.
+        const cached = property.enrichmentData as
+          | (import("./services/propertyEnrichment").EnrichmentResult & {
+              lastEnrichedAt?: string;
+            })
+          | null
+          | undefined;
+        if (cached && (cached.provenance || cached.parcel || cached.hazards)) {
+          return res.json(assembleLandProfile(property, cached, true));
+        }
+
+        // 2) Cold parcel: run the fast coordinate-only pre-warm live, then
+        //    assemble. Falls back to an honest all-gaps profile if no coords.
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          const result = await propertyEnrichmentService.prewarmLandProfile(lat, lng, {
+            organizationId: org.id,
+            propertyId: id,
+            state: property.state || undefined,
+            county: property.county || undefined,
+            apn: property.apn || undefined,
+          });
+          return res.json(assembleLandProfile(property, result, false));
+        }
+
+        // 3) No coordinates — assemble an honest, all-gaps profile.
+        return res.json(assembleLandProfile(property, null, false));
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const id = Number(req.params.id);
@@ -258,11 +313,27 @@ export function registerPropertyRoutes(app: Express): void {
         });
       } catch { /* non-fatal */ }
 
-      // Auto-enrich new properties that have GPS coordinates (fire-and-forget, non-blocking)
+      // Cache-first pre-warm: fire-and-forget the fast coordinate-only
+      // land-profile enrich (flood/soil/elevation/etc. need only lat/lng) so the
+      // first parcel-detail "Land Snapshot" view is warm (<800ms) instead of
+      // cold-fetching ~8 federal endpoints live. The full ~21-category enrich
+      // still runs on demand via /api/properties/:id/enrich.
       if (property.latitude && property.longitude) {
-        propertyEnrichmentService.enrichProperty(org.id, property.id, false).catch((err: Error) => {
-          logger.error(`[AutoEnrich] Background enrichment failed for property ${property.id}: ${err.message}`);
-        });
+        const lat = parseFloat(String(property.latitude));
+        const lng = parseFloat(String(property.longitude));
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          propertyEnrichmentService
+            .prewarmLandProfile(lat, lng, {
+              organizationId: org.id,
+              propertyId: property.id,
+              state: property.state || undefined,
+              county: property.county || undefined,
+              apn: property.apn || undefined,
+            })
+            .catch((err: Error) => {
+              logger.error(`[Prewarm] Background pre-warm failed for property ${property.id}: ${err.message}`);
+            });
+        }
       }
 
       res.status(201).json(property);

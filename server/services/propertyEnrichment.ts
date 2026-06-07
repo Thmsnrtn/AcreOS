@@ -198,7 +198,43 @@ export interface EnrichmentResult {
   completenessScore?: number;
   completenessBreakdown?: Record<string, boolean>;
   errors?: Record<string, string>;
+
+  /**
+   * Per-category provenance captured from the broker result. Keyed by
+   * LookupCategory. The LandProfile assembler reads this to stamp each field
+   * with its source / as-of / freshness. Only populated when a category
+   * lookup succeeds; failed categories appear in `errors` instead.
+   */
+  provenance?: Record<string, EnrichmentProvenance>;
 }
+
+/** Provenance for one successfully-enriched category. */
+export interface EnrichmentProvenance {
+  /** Named authoritative source, e.g. "FEMA NFHL", "USDA NRCS SDA". */
+  source: string;
+  /** ISO date the upstream layer reported the fact as-of (when available). */
+  asOf: string | null;
+  /** True when this category was served from the broker cache (warm path). */
+  fromCache: boolean;
+}
+
+/**
+ * Coordinate-only categories that need ONLY lat/lng (no county seeding) and
+ * feed the LandProfile "Land Snapshot". These are what the pre-warm ETL fetches
+ * so the first parcel-detail view is warm. `parcel_data` is intentionally
+ * excluded — it requires a seeded county GIS endpoint and is the slow/uncertain
+ * path; the snapshot degrades gracefully without it.
+ */
+export const LAND_PROFILE_COORDINATE_CATEGORIES: LookupCategory[] = [
+  "flood_zone",
+  "wetlands",
+  "soil",
+  "elevation",
+  "land_cover",
+  "agricultural_values",
+  "plss",
+  "water_resources",
+];
 
 export class PropertyEnrichmentService {
   async enrichByCoordinates(
@@ -260,7 +296,9 @@ export class PropertyEnrichmentService {
       enrichedAt: new Date(),
       lookupTimeMs: multiResult.totalLookupTimeMs,
     };
-    
+
+    const provenance: Record<string, EnrichmentProvenance> = {};
+
     for (const [category, lookupResult] of Object.entries(multiResult.results)) {
       // Record health for data quality monitoring
       const sourceName = lookupResult.source?.title || category;
@@ -274,9 +312,35 @@ export class PropertyEnrichmentService {
         errors[category] = lookupResult.fallbacksUsed.join("; ") || "Lookup failed";
         continue;
       }
-      
+
       const data = lookupResult.data;
-      
+
+      // Capture provenance for the LandProfile assembler. Prefer the named
+      // source the upstream layer reported (data.source, e.g. "FEMA NFHL")
+      // over the broker's machine title (which is "Cache" on a cache hit).
+      // as-of is the upstream layer's freshness when it exposes one.
+      if (data && typeof data === "object") {
+        const namedSource =
+          (typeof data.source === "string" && data.source) ||
+          (lookupResult.source?.title && lookupResult.source.title !== "Cache"
+            ? lookupResult.source.title
+            : null);
+        const asOfRaw =
+          (typeof data.queryDate === "string" && data.queryDate) ||
+          (typeof data.year === "number" && String(data.year)) ||
+          (typeof data.dataYear === "number" && String(data.dataYear)) ||
+          (lookupResult.fromCache && lookupResult.cachedAt
+            ? new Date(lookupResult.cachedAt).toISOString()
+            : null);
+        if (namedSource) {
+          provenance[category] = {
+            source: namedSource,
+            asOf: asOfRaw || null,
+            fromCache: Boolean(lookupResult.fromCache),
+          };
+        }
+      }
+
       switch (category) {
         case "flood_zone":
           result.hazards = result.hazards || {};
@@ -500,12 +564,69 @@ export class PropertyEnrichmentService {
     }
     
     this.calculateScores(result);
-    
+
+    if (Object.keys(provenance).length > 0) {
+      result.provenance = provenance;
+    }
+
     if (Object.keys(errors).length > 0) {
       result.errors = errors;
     }
-    
+
     return result;
+  }
+
+  /**
+   * Pre-warm ETL — fire-and-forget on property create/import. Enriches ONLY the
+   * coordinate-only LandProfile categories (flood / soil / elevation / etc.,
+   * none of which need a seeded county) so the broker writes them into its cache.
+   * The next parcel-detail "Land Snapshot" view then reads cache-first and is
+   * warm (<800ms target) instead of cold-fetching ~8 federal endpoints live.
+   *
+   * Persists the warmed result onto the property when a propertyId is given so a
+   * read of `enrichmentData` serves the snapshot without any live fetch at all.
+   * Never throws — pre-warm is best-effort and must not break create.
+   */
+  async prewarmLandProfile(
+    latitude: number,
+    longitude: number,
+    options?: {
+      organizationId?: number;
+      propertyId?: number;
+      state?: string;
+      county?: string;
+      apn?: string;
+    }
+  ): Promise<EnrichmentResult | null> {
+    try {
+      const result = await this.enrichByCoordinates(latitude, longitude, {
+        categories: LAND_PROFILE_COORDINATE_CATEGORIES,
+        propertyId: options?.propertyId,
+        state: options?.state,
+        county: options?.county,
+        apn: options?.apn,
+      });
+
+      // Persist the warm bundle so the first view is a DB read, not a fetch.
+      if (options?.organizationId && options?.propertyId) {
+        await this.savePropertyEnrichment(options.organizationId, options.propertyId, result);
+      }
+
+      logger.info(
+        `[Prewarm] Land-profile pre-warm complete for ${
+          options?.propertyId ? `property ${options.propertyId}` : `(${latitude},${longitude})`
+        } — categories=${Object.keys(result.provenance || {}).length}, ${result.lookupTimeMs}ms`
+      );
+      return result;
+    } catch (error) {
+      logger.warn(
+        `[Prewarm] Land-profile pre-warm failed for ${
+          options?.propertyId ? `property ${options.propertyId}` : `(${latitude},${longitude})`
+        }`,
+        error instanceof Error ? error : undefined
+      );
+      return null;
+    }
   }
   
   async enrichProperty(organizationId: number, propertyId: number, forceRefresh = false): Promise<EnrichmentResult> {
