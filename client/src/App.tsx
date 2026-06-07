@@ -263,6 +263,9 @@ const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observa
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
 const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
 const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"));
+// Beatrice/Lena — Launch Legal & Peace-of-Mind Readiness checklist surface.
+// Renders docs/legal/launch-readiness-checklist.md status at a glance.
+const FounderLegalReadinessPage = React.lazy(() => import("@/pages/founder/legal-readiness"));
 const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
 const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
@@ -1131,6 +1134,9 @@ function Router() {
       </Route>
       <Route path="/founder/readiness">
         {() => <FounderProtectedRoute component={FounderReadinessPage} />}
+      </Route>
+      <Route path="/founder/legal-readiness">
+        {() => <FounderProtectedRoute component={FounderLegalReadinessPage} />}
       </Route>
       <Route path="/founder/customers/health">
         {() => <FounderProtectedRoute component={FounderCustomersHealthPage} />}
