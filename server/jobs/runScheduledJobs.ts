@@ -884,6 +884,50 @@ function startEtlOrchestratorJob() {
 }
 
 // ============================================================================
+// Parcel Delta Detector — Iyari #5 — every 6 hours.
+// ----------------------------------------------------------------------------
+// Diffs the latest two observations per (apn, field) in parcel_observations for
+// parcels in each customer's pipeline. On a guard-passing owner/tax change it
+// writes a parcel_alert + emits parcel.owner_changed / parcel.tax_status_changed.
+// The append-only observation log is READ-ONLY here; parcel_alerts is idempotent
+// via its (organization_id, dedupe_key) unique index, so re-runs never duplicate.
+// ============================================================================
+async function processParcelDeltaDetection() {
+  try {
+    const { runParcelDeltaDetector } = await import('../services/parcelDeltaDetector');
+    const result = await runParcelDeltaDetector();
+    if (result.alertsCreated > 0) {
+      log(
+        `Parcel deltas: orgs=${result.orgsScanned} detected=${result.deltasDetected} alerts=${result.alertsCreated}`,
+        'parcel-deltas',
+      );
+    }
+  } catch (err) {
+    log(`Parcel delta detector error: ${err}`, 'parcel-deltas');
+  }
+}
+
+function startParcelDeltaDetectorJob() {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 5 * 60 * 60; // Lock TTL slightly less than interval
+
+  log('Starting parcel delta detector job (every 6 hours)', 'parcel-deltas');
+
+  // First run after a startup delay so it doesn't contend with boot work.
+  setTimeout(() => {
+    withJobLock('parcel_delta_detector', TTL_SECONDS, processParcelDeltaDetection).catch(err => {
+      log(`Initial parcel delta run failed: ${err}`, 'parcel-deltas');
+    });
+  }, 150000); // ~2.5 min after startup
+
+  trackInterval(() => {
+    withJobLock('parcel_delta_detector', TTL_SECONDS, processParcelDeltaDetection).catch(err => {
+      log(`Scheduled parcel delta run failed: ${err}`, 'parcel-deltas');
+    });
+  }, SIX_HOURS);
+}
+
+// ============================================================================
 // Founder Weekly Digest — Mondays at 8 AM CT
 // ============================================================================
 function startFounderWeeklyDigestJob() {
@@ -3718,6 +3762,13 @@ export async function runScheduledJobs(): Promise<void> {
   // is enforced via withJobLock; per-record failures dead-letter to
   // outbox_dlq for /founder/etl replay.
   startEtlOrchestratorJob();
+
+  // Iyari #5 — Parcel delta detector. Every 6h, diff the latest two
+  // observations per (apn, field) in parcel_observations for parcels in
+  // each customer's pipeline; on a guard-passing owner/tax change, write a
+  // parcel_alert + emit the workflow trigger event. Read-only against
+  // observations; idempotent via the alert dedupe key.
+  startParcelDeltaDetectorJob();
 
   // Onboarding journeys — hourly sweeper fires any due step for
   // any org walking the 30-day activation sequence. Each step is
