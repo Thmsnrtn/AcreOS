@@ -205,6 +205,57 @@ describe("computeDraftReturn — top-level package", () => {
   });
 });
 
+describe("buildSelfFilePackage — transcription-ready output", () => {
+  it("renders the disclaimer, figures with basis, and notModeled list", async () => {
+    const { buildSelfFilePackage } = await import("../../server/services/founder/taxPackage");
+    const draft = computeDraftReturn({
+      taxYear: 2025,
+      filingStatus: "married_joint",
+      state: "MA",
+      income: [
+        { sourceType: "w2_self", label: "Day job", amount: 150000, withholdingAtSource: true, federalWithheld: 26000, stateWithheld: 7000 },
+      ],
+    });
+    const pkg = buildSelfFilePackage(draft);
+    expect(pkg.mimeType).toBe("text/markdown");
+    expect(pkg.filename).toMatch(/acreos-tax-draft-2025/);
+    // Honesty: disclaimer + the not-modeled disclosure are present.
+    expect(pkg.content).toMatch(/estimate/i);
+    expect(pkg.content).toMatch(/does not e-file|does NOT model/i);
+    // Both jurisdictions appear.
+    expect(pkg.content).toContain("Form 1040");
+    expect(pkg.content).toContain("Massachusetts");
+    // A known figure is rendered (standard deduction $30,000).
+    expect(pkg.content).toContain("$30,000");
+  });
+});
+
+describe("stored-draft encryption path — the DB never sees a plaintext figure", () => {
+  it("encrypts the full draft JSON payload and round-trips it", async () => {
+    const { encrypt, decrypt, isEncrypted } = await import(
+      "../../server/services/fieldEncryption"
+    );
+    const draft = computeDraftReturn({
+      taxYear: 2025,
+      filingStatus: "married_joint",
+      state: "MA",
+      income: [{ sourceType: "w2_self", label: "Job", amount: 230000, withholdingAtSource: true }],
+    });
+    const json = JSON.stringify(draft);
+    // Sanity: the plaintext JSON DOES contain a tax figure...
+    expect(json).toContain("33828"); // federal income tax
+    const sealed = encrypt(json);
+    // ...but the SEALED payload (what the DB stores) must NOT.
+    expect(isEncrypted(sealed)).toBe(true);
+    expect(sealed.startsWith("enc:v1:")).toBe(true);
+    expect(sealed).not.toContain("33828");
+    expect(sealed).not.toContain("230000");
+    // And it decrypts back to the identical draft.
+    const back = JSON.parse(decrypt(sealed));
+    expect(back.federal.summary.incomeTax).toBe(33828);
+  });
+});
+
 describe("encryptAmount — income amounts are sealed and round-trip", () => {
   it("round-trips a whole-dollar amount through the vault helper", async () => {
     const { encryptAmount, decryptAmount, assertEncrypted } = await import(
