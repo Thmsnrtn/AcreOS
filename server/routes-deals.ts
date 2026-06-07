@@ -1193,6 +1193,79 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     }
   });
 
+  // Maren #6 (Tahoe): confidence-aware diligence checklist annotations.
+  // Runs the free open-data environmental lookups (flood / wetlands / soil /
+  // EPA) and maps each to an honest, advisory annotation ("FEMA says Zone X —
+  // likely clears; verify") with a verdict + confidence + source + vintage.
+  // ANNOTATION ONLY: this NEVER checks off a checklist item — the human still
+  // verifies. Categories with no coordinates return an honest "unknown".
+  api.get(
+    "/api/due-diligence/:propertyId/annotations",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const propertyId = Number(req.params.propertyId);
+        if (!Number.isInteger(propertyId) || propertyId <= 0) {
+          return Errors.badRequest(res, "Invalid property id");
+        }
+
+        const property = await storage.getProperty(orgId, propertyId);
+        if (!property) return Errors.notFound(res, "Property");
+
+        const { dataSourceLookupService } = await import("./services/data-source-lookup");
+        const { annotateEnvironmentalChecklist } = await import("./services/checklistAnnotation");
+
+        // Without coordinates we can't run coordinate-based open data; return
+        // honest "unknown" annotations rather than fabricating anything.
+        if (!property.latitude || !property.longitude) {
+          return res.json({
+            annotations: annotateEnvironmentalChecklist({}),
+            hasCoordinates: false,
+          });
+        }
+
+        const opts = {
+          latitude: Number(property.latitude),
+          longitude: Number(property.longitude),
+          state: property.state || undefined,
+          county: property.county || undefined,
+        };
+
+        // Run the four lookups in parallel; a single failed source must not
+        // sink the whole request — annotate the ones that resolved, mark the
+        // rest unknown (Maren #1: a real "Unknown" beats a fake value).
+        const [flood, wetlands, soil, environmental] = await Promise.allSettled([
+          dataSourceLookupService.lookupFloodZone(opts),
+          dataSourceLookupService.lookupWetlands(opts),
+          dataSourceLookupService.lookupSoilData(opts),
+          dataSourceLookupService.lookupEpaData(opts),
+        ]);
+
+        const annotations = annotateEnvironmentalChecklist({
+          ...(flood.status === "fulfilled" ? { flood: flood.value.data } : {}),
+          ...(wetlands.status === "fulfilled" ? { wetlands: wetlands.value.data } : {}),
+          ...(soil.status === "fulfilled" ? { soil: soil.value.data } : {}),
+          ...(environmental.status === "fulfilled"
+            ? { environmental: environmental.value.data }
+            : {}),
+        });
+
+        res.json({ annotations, hasCoordinates: true });
+      } catch (error: any) {
+        logger.error(
+          "Diligence annotation error",
+          error instanceof Error ? error : undefined,
+        );
+        Errors.internal(
+          res,
+          error instanceof Error ? error : new Error("Failed to build checklist annotations"),
+        );
+      }
+    },
+  );
+
   api.post("/api/due-diligence/:propertyId/lookup/tax", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
