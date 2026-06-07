@@ -255,9 +255,11 @@
   border-radius: 5px;
   cursor: pointer;
 }
-.acr-sugg-dismiss:hover {
-  background: var(--acr-surface-2);
-  color: var(--acr-ink-2);
+@media (hover: hover) {
+  .acr-sugg-dismiss:hover {
+    background: var(--acr-surface-2);
+    color: var(--acr-ink-2);
+  }
 }
 .acr-sugg-title {
   font: 600 14px/1.3 var(--font-display, var(--font-sans));
@@ -307,8 +309,12 @@
 .acr-deal-row:last-child {
   border-bottom: 0;
 }
-.acr-deal-row:hover {
-  background: var(--acr-surface-2);
+@media (hover: hover) {
+  /* Touch (iOS Safari) applies :hover on the first tap of a clickable row and
+     cancels that tap's click — forcing a double tap. Gate to hover pointers. */
+  .acr-deal-row:hover {
+    background: var(--acr-surface-2);
+  }
 }
 .acr-deal-id {
   font: 500 13px/1.2 var(--font-mono, var(--font-sans));
@@ -357,8 +363,10 @@
 .acr-task:last-child {
   border-bottom: 0;
 }
-.acr-task:hover {
-  background: var(--acr-surface-2);
+@media (hover: hover) {
+  .acr-task:hover {
+    background: var(--acr-surface-2);
+  }
 }
 .acr-task-done .acr-task-title {
   color: var(--acr-ink-3);
@@ -379,8 +387,10 @@
   flex-shrink: 0;
   transition: background 0.1s, border-color 0.1s;
 }
-.acr-checkbox:hover {
-  border-color: var(--acr-ink-3);
+@media (hover: hover) {
+  .acr-checkbox:hover {
+    border-color: var(--acr-ink-3);
+  }
 }
 .acr-checkbox-on {
   background: var(--acr-brand);

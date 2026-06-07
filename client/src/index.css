@@ -1784,10 +1784,12 @@ textarea:focus-visible,
   background: hsl(var(--border));
   color: hsl(var(--muted-foreground));
 }
-.sidebar-toggle-btn:hover {
-  background: hsl(var(--primary) / 0.15);
-  color: hsl(var(--primary));
-  transform: scale(1.1);
+@media (hover: hover) {
+  .sidebar-toggle-btn:hover {
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
+    transform: scale(1.1);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1815,11 +1817,19 @@ textarea:focus-visible,
   opacity: 0;
   transition: opacity 0.3s ease;
 }
-.liquid-glass:hover::after,
-.liquid-glass-sm:hover::after,
-.liquid-glass-subtle:hover::after,
-.glass-panel:hover::after {
-  opacity: 1;
+/* Gate the specular-glow :hover to hover-capable pointers. On touch (iOS
+   Safari) an ungated :hover on these app-wide glass surfaces is applied on the
+   FIRST tap — Safari shows the glow ("looks pressed") and CANCELS that tap's
+   click, forcing a second tap to navigate/activate. Restricting to
+   (hover: hover) means touch devices have no hover state to apply, so the
+   click fires on the first tap. Mirrors Tailwind's hoverOnlyWhenSupported. */
+@media (hover: hover) {
+  .liquid-glass:hover::after,
+  .liquid-glass-sm:hover::after,
+  .liquid-glass-subtle:hover::after,
+  .glass-panel:hover::after {
+    opacity: 1;
+  }
 }
 .dark .liquid-glass::after,
 .dark .liquid-glass-sm::after,
