@@ -11959,6 +11959,35 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
 
 export type ProviderLookupLog = typeof providerLookupLog.$inferSelect;
 
+// ── Per-source synthetic-probe health (Tess SRE item 2, migration 0122) ──────
+// The free data sources ARE the product, but a 200 OK from a MapServer root
+// does NOT prove a real flood-zone lookup still works (schemas drift, layers
+// get renumbered). The dataSourceProbe job runs golden parcels through the
+// registry every ~30m and asserts the *shape + a plausible value*, writing the
+// pass/fail + measured latency here. This is the canary that turns "the county
+// changed their API" from a customer ticket into a founder alert. Global infra
+// (no organization_id) — the leading-org-index lint correctly skips it.
+export const providerHealth = pgTable("provider_health", {
+  id: serial("id").primaryKey(),
+  // Probe identity: the registry provider name (e.g. "open-data", "county-gis")
+  // and the golden parcel / category exercised.
+  source: text("source").notNull(),
+  category: text("category").notNull(),
+  // Label of the golden fixture probed, e.g. "travis-tx-flood".
+  probe: text("probe").notNull(),
+  healthy: boolean("healthy").notNull(),
+  latencyMs: integer("latency_ms"),
+  // Why it failed (shape mismatch / implausible value / error) — short string.
+  detail: text("detail"),
+  checkedAt: timestamp("checked_at").notNull().defaultNow(),
+}, (table) => [
+  index("provider_health_source_idx").on(table.source, table.checkedAt),
+  index("provider_health_checked_idx").on(table.checkedAt),
+]);
+
+export type ProviderHealth = typeof providerHealth.$inferSelect;
+export type InsertProviderHealth = typeof providerHealth.$inferInsert;
+
 // Decision experiments — A/B test at the agent-decision layer.
 // Not UI A/B tests; these split how agents *decide* for different
 // organizations. Example: half of past-due customers get 7-day

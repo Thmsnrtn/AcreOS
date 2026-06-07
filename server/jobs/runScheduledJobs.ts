@@ -3364,6 +3364,35 @@ function startResumeExpiredPausesJob() {
 }
 
 // ============================================================================
+// Tess (SRE) — per-source synthetic data-source probe (every 30 minutes).
+// Runs golden parcels through the provider registry on the warm worker and
+// asserts each FREE data source still returns the expected shape + a plausible
+// value. Writes pass/fail to provider_health + the provider lookup log; raises
+// a single data_source_down alert when a source is failing. This is the canary
+// that turns "the county changed their API" from a customer ticket into a
+// founder alert — see server/jobs/dataSourceProbe.ts.
+// ============================================================================
+function startDataSourceProbeJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60; // probes are fast; 10m lock is plenty
+
+  log('Registering data-source probe job (every 30m)', 'data-source-probe');
+
+  const runOnce = () =>
+    import('./dataSourceProbe')
+      .then(({ runAndRecordDataSourceProbes }) =>
+        withJobLock('data_source_probe', TTL_SECONDS, runAndRecordDataSourceProbes).catch((err) =>
+          log(`Data-source probe run failed: ${err}`, 'data-source-probe'),
+        ),
+      )
+      .catch((err) => log(`Data-source probe import failed: ${err}`, 'data-source-probe'));
+
+  // First run 45s after boot (let providers-init + DB settle), then every 30m.
+  setTimeout(runOnce, 45_000);
+  trackInterval(runOnce, THIRTY_MINUTES);
+}
+
+// ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
 // briefing / outcome / telemetry / model / self-assessment / evolution /
@@ -3541,6 +3570,11 @@ export async function runScheduledJobs(): Promise<void> {
   // detector against the rolling 7d baseline. Detection-only — findings
   // log at warn level for now.
   startIrisPerfMonitorJob();
+
+  // Tess (SRE) — per-source synthetic data-source probe (every 30m). Golden
+  // parcels through the registry; asserts each free source returns the expected
+  // shape + a plausible value; canary alert on a county/federal API change.
+  startDataSourceProbeJob();
 
   // Krieger — mobile-feel continuous audit (every 30m). 6 detectors with
   // auto-enqueue to live dispatch queue for high/critical findings.

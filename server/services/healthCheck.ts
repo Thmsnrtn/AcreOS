@@ -250,18 +250,73 @@ class HealthCheckService {
   }
 
   /**
+   * Check the free + paid DATA providers that ARE the product (Tess item 1).
+   *
+   * The map/parcel/flood/soils data is the reason customers pay. Until now the
+   * periodic health loop watched Stripe/Twilio/Lob but NOT a single data
+   * source — so a FEMA outage or a county rate-limit first surfaced as a
+   * customer staring at a blank map ("Twitter found out first"). This folds
+   * `providerRegistry.healthCheckAll()` into the loop.
+   *
+   * Crucially, an unhealthy FREE data source maps to `degraded`, never
+   * `unavailable`, so a flaky public county/federal endpoint can NEVER 503 the
+   * whole app — the stale-while-revalidate cache is our SLA. We surface it so
+   * the founder gets a signal, not so the customer gets an error page.
+   *
+   * `providers-init.ts::initializeProviders()` runs synchronously at
+   * server/index.ts:73 (module-load), before periodic checks start, so the
+   * registry is always populated by the first checkAll().
+   */
+  async checkDataProviders(): Promise<ServiceHealth[]> {
+    try {
+      const { providerRegistry } = await import('./providers/provider-registry');
+      const statuses = await providerRegistry.healthCheckAll();
+      const out: ServiceHealth[] = [];
+
+      for (const [name, status] of statuses.entries()) {
+        // An unhealthy data source maps to `degraded`, NEVER `unavailable`: a
+        // public source outage must not cascade into an app-level critical
+        // failure (only `database` unavailable trips the overall 503 in
+        // calculateOverallStatus). The stale-while-revalidate cache is the SLA;
+        // we surface the degradation as a founder signal, not a customer error.
+        const dataStatus: ServiceStatus = status.healthy ? 'healthy' : 'degraded';
+        out.push(
+          this.createHealth(
+            `data:${name}`,
+            dataStatus,
+            status.latencyMs || undefined,
+            status.message,
+          ),
+        );
+      }
+
+      if (out.length === 0) {
+        // Registry empty — providers-init didn't run. That's a real config bug.
+        return [this.createHealth('data:providers', 'unconfigured', undefined, 'No data providers registered')];
+      }
+      return out;
+    } catch (error: any) {
+      return [this.createHealth('data:providers', 'degraded', undefined, error?.message || 'provider health check failed')];
+    }
+  }
+
+  /**
    * Run all health checks
    */
   async checkAll(): Promise<HealthCheckResult> {
-    const checks = await Promise.all([
-      this.checkDatabase(),
-      this.checkRedis(),
-      this.checkStripe(),
-      this.checkOpenAI(),
-      this.checkTwilio(),
-      this.checkEmail(),
-      this.checkLob(),
+    const [coreChecks, dataChecks] = await Promise.all([
+      Promise.all([
+        this.checkDatabase(),
+        this.checkRedis(),
+        this.checkStripe(),
+        this.checkOpenAI(),
+        this.checkTwilio(),
+        this.checkEmail(),
+        this.checkLob(),
+      ]),
+      this.checkDataProviders(),
     ]);
+    const checks = [...coreChecks, ...dataChecks];
 
     checks.forEach((check: ServiceHealth) => {
       this.lastResults.set(check.name, check);

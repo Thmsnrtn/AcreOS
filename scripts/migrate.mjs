@@ -10,6 +10,20 @@
 
 import pg from "pg";
 
+// ── Dry-run / check mode (Iris item 7 / Tess item 5) ────────────────────────
+// `--dry-run` (alias `--check`) validates every statement against the CURRENT
+// schema snapshot WITHOUT persisting anything. It runs the whole batch inside a
+// single transaction and ROLLBACKs at the end, so:
+//   - every CREATE/ALTER is executed against the real prod-equivalent schema
+//     (catches a typo'd column, a missing dependency, a bad index) — far
+//     stronger than a textual lint;
+//   - nothing is committed, so it is safe to run against a snapshot/replica or
+//     even prod as a pre-deploy gate.
+// The deploy pipeline should run `node scripts/migrate.mjs --dry-run` against a
+// fresh restore (see docs/reliability/dr-runbook-postgres-restore.md) before
+// the real release_command touches prod.
+const DRY_RUN = process.argv.includes("--dry-run") || process.argv.includes("--check");
+
 if (!process.env.DATABASE_URL) {
   console.error("[migrate] DATABASE_URL not set — aborting");
   process.exit(1);
@@ -6235,6 +6249,24 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "parcel_observations_org_observed_idx" ON "parcel_observations" ("organization_id", "observed_at")`,
   `CREATE INDEX IF NOT EXISTS "parcel_observations_apn_field_observed_idx" ON "parcel_observations" ("apn", "field", "observed_at")`,
+
+  // 0122 — Tess (SRE) — per-source synthetic-probe health. The dataSourceProbe
+  // job runs golden parcels through the registry every ~30m and asserts the
+  // shape + a plausible value; pass/fail + latency lands here so a county API
+  // change becomes a founder alert, not a customer ticket. Global infra (no
+  // organization_id). Mirrors shared/schema.ts (providerHealth).
+  `CREATE TABLE IF NOT EXISTS "provider_health" (
+     "id" serial PRIMARY KEY,
+     "source" text NOT NULL,
+     "category" text NOT NULL,
+     "probe" text NOT NULL,
+     "healthy" boolean NOT NULL,
+     "latency_ms" integer,
+     "detail" text,
+     "checked_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "provider_health_source_idx" ON "provider_health" ("source", "checked_at")`,
+  `CREATE INDEX IF NOT EXISTS "provider_health_checked_idx" ON "provider_health" ("checked_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -6269,6 +6301,49 @@ const EXPECTED_FAILURE_PATTERNS = [
 let exitCode = 0;
 const failures = [];
 const skipped = [];
+
+if (DRY_RUN) {
+  // Validate the whole batch inside ONE transaction, then ROLLBACK. Nothing is
+  // persisted; we only learn whether each statement is valid against the live
+  // schema. A single unexpected failure fails the gate (exit 1).
+  console.log(`[migrate:dry-run] validating ${STATEMENTS.length} statement(s) against current schema (no changes will be committed)`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const stmt of STATEMENTS) {
+      try {
+        await client.query(stmt);
+        // Inside an aborted-tx, subsequent statements error with 25P02; a clean
+        // run here means each statement parsed + executed against the snapshot.
+      } catch (err) {
+        const isExpected = EXPECTED_FAILURE_PATTERNS.some((rx) => rx.test(err.message));
+        if (isExpected) {
+          skipped.push({ stmt, message: err.message });
+          console.warn(`[migrate:dry-run] SKIP (dependency missing — non-fatal): ${err.message}`);
+        } else {
+          failures.push({ stmt, message: err.message });
+          exitCode = 1;
+          console.error(`[migrate:dry-run] WOULD FAIL: ${stmt}\n  ${err.message}`);
+        }
+        // A failed statement aborts the postgres transaction; restart it so the
+        // remaining statements are still validated (best-effort full report).
+        await client.query("ROLLBACK").catch(() => {});
+        await client.query("BEGIN").catch(() => {});
+      }
+    }
+    await client.query("ROLLBACK"); // never persist in dry-run
+  } finally {
+    client.release();
+    await pool.end().catch(() => {});
+  }
+  console.log(
+    `[migrate:dry-run] complete — ${STATEMENTS.length - failures.length - skipped.length} ok, ${skipped.length} skipped (missing prereq), ${failures.length} would-fail`,
+  );
+  if (failures.length > 0) {
+    console.error(`[migrate:dry-run] ${failures.length} statement(s) would fail. NOT safe to deploy as-is.`);
+  }
+  process.exit(exitCode);
+}
 
 try {
   for (const stmt of STATEMENTS) {
