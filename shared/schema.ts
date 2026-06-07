@@ -16543,3 +16543,10 @@ export * from "./schema/pax-decision-appeals";
 // aggregation; nightly job populates, /transparency surface ships later).
 // ============================================================================
 export * from "./schema/transparency-reports";
+
+// ============================================================================
+// LENA + IRIS + BEATRICE — Founder Life-Cockpit (FOUNDER-SIDE ONLY).
+// Founder-scoped (founder_user_id), NOT org-scoped customer data. Encrypted
+// personal-tax + income + obligations + document-vault substrate. Migration 0123.
+// ============================================================================
+export * from "./schema/founder-life-cockpit";

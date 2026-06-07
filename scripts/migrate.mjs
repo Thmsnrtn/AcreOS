@@ -6235,6 +6235,72 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "parcel_observations_org_observed_idx" ON "parcel_observations" ("organization_id", "observed_at")`,
   `CREATE INDEX IF NOT EXISTS "parcel_observations_apn_field_observed_idx" ON "parcel_observations" ("apn", "field", "observed_at")`,
+
+  // 0123 — Lena + Iris + Beatrice — Founder Life-Cockpit (FOUNDER-SIDE ONLY).
+  // Founder-scoped (founder_user_id), NOT org-scoped customer data. Sensitive
+  // values (document blobs, dollar amounts) are encrypted at rest by the app
+  // (AES-256-GCM enc:v1: envelope) before they reach these columns. Mirrors
+  // shared/schema/founder-life-cockpit.ts + migrations/0123_founder_life_cockpit.sql.
+  `CREATE TABLE IF NOT EXISTS "founder_tax_profile" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "tax_year" integer NOT NULL,
+     "filing_status" text NOT NULL DEFAULT 'married_joint',
+     "state" text NOT NULL DEFAULT 'MA',
+     "has_spouse" boolean NOT NULL DEFAULT false,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "founder_tax_profile_user_year_uk" ON "founder_tax_profile" ("founder_user_id", "tax_year")`,
+  `CREATE INDEX IF NOT EXISTS "founder_tax_profile_user_idx" ON "founder_tax_profile" ("founder_user_id")`,
+
+  `CREATE TABLE IF NOT EXISTS "founder_documents" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "doc_type" text NOT NULL DEFAULT 'other',
+     "label" text NOT NULL,
+     "tax_year" integer,
+     "encrypted_blob" text NOT NULL,
+     "encryption_kid" text NOT NULL DEFAULT 'default',
+     "file_name" text,
+     "mime_type" text,
+     "byte_size" integer NOT NULL DEFAULT 0,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_documents_user_created_idx" ON "founder_documents" ("founder_user_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "founder_documents_user_type_idx" ON "founder_documents" ("founder_user_id", "doc_type")`,
+  `CREATE INDEX IF NOT EXISTS "founder_documents_user_year_idx" ON "founder_documents" ("founder_user_id", "tax_year")`,
+
+  `CREATE TABLE IF NOT EXISTS "founder_obligations" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "title" text NOT NULL,
+     "obligation_type" text NOT NULL DEFAULT 'tax',
+     "due_date" timestamptz,
+     "status" text NOT NULL DEFAULT 'open',
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_obligations_user_due_idx" ON "founder_obligations" ("founder_user_id", "due_date")`,
+  `CREATE INDEX IF NOT EXISTS "founder_obligations_user_status_idx" ON "founder_obligations" ("founder_user_id", "status")`,
+
+  `CREATE TABLE IF NOT EXISTS "founder_income_sources" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "tax_year" integer NOT NULL,
+     "source_type" text NOT NULL DEFAULT 'w2_self',
+     "label" text NOT NULL,
+     "encrypted_amount" text,
+     "encryption_kid" text NOT NULL DEFAULT 'default',
+     "withholding_at_source" boolean NOT NULL DEFAULT true,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_year_idx" ON "founder_income_sources" ("founder_user_id", "tax_year")`,
+  `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_type_idx" ON "founder_income_sources" ("founder_user_id", "source_type")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
