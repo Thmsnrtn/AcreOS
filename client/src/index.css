@@ -1556,6 +1556,29 @@ body[data-offline-banner="true"] [data-page-topbar] {
   transform: scale(0.96);
 }
 
+/* Touch: a single tap must activate immediately. Without an explicit
+   touch-action, iOS Safari keeps double-tap-to-zoom armed on every tappable
+   element, which makes the first tap a "maybe a zoom gesture" no-op and forces
+   a second tap to navigate/activate. `manipulation` keeps pan + pinch-zoom but
+   drops the double-tap-zoom + its ~300ms delay, so links/buttons fire on the
+   first tap. Scoped to interactive elements so content (maps, etc.) keep their
+   own gestures. */
+a,
+button,
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="menuitem"],
+label,
+summary,
+select,
+input[type="submit"],
+input[type="button"],
+input[type="checkbox"],
+input[type="radio"] {
+  touch-action: manipulation;
+}
+
 /* Shimmer skeleton for loading states */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
