@@ -6454,6 +6454,33 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "land_intelligence_reports_org_key_idx" ON "land_intelligence_reports" ("organization_id", "parcel_key")`,
   `CREATE INDEX IF NOT EXISTS "land_intelligence_reports_apn_computed_idx" ON "land_intelligence_reports" ("apn", "computed_at")`,
+  // 0126 — Lena + Beatrice — Founder Life-Cockpit DRAFT-RETURN engine
+  // (FOUNDER-SIDE ONLY). W-2/1099 withholding-box intake (encrypted) +
+  // founder_tax_returns (computed federal 1040 + MA Form 1 draft, encrypted).
+  // Self-prepared draft software, NOT IRS e-file. Mirrors
+  // shared/schema/founder-life-cockpit.ts + migrations/0126_founder_tax_returns.sql.
+  `ALTER TABLE "founder_income_sources" ADD COLUMN IF NOT EXISTS "encrypted_federal_withheld" text`,
+  `ALTER TABLE "founder_income_sources" ADD COLUMN IF NOT EXISTS "encrypted_state_withheld" text`,
+  `CREATE TABLE IF NOT EXISTS "founder_tax_returns" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "tax_year" integer NOT NULL,
+     "version" integer NOT NULL DEFAULT 1,
+     "filing_status" text NOT NULL DEFAULT 'married_joint',
+     "state" text NOT NULL DEFAULT 'MA',
+     "encrypted_payload" text NOT NULL,
+     "encryption_kid" text NOT NULL DEFAULT 'default',
+     "encrypted_federal_total_tax" text,
+     "encrypted_federal_refund_or_owed" text,
+     "encrypted_state_total_tax" text,
+     "encrypted_state_refund_or_owed" text,
+     "provisional" boolean NOT NULL DEFAULT false,
+     "status" text NOT NULL DEFAULT 'draft',
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_tax_returns_user_year_idx" ON "founder_tax_returns" ("founder_user_id", "tax_year")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "founder_tax_returns_user_year_version_uk" ON "founder_tax_returns" ("founder_user_id", "tax_year", "version")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -149,6 +149,14 @@ export const founderIncomeSources = pgTable(
     encryptionKid: text("encryption_kid").notNull().default("default"),
     // Whether withholding is handled at source (W2) vs. needs quarterly estimates.
     withholdingAtSource: boolean("withholding_at_source").notNull().default(true),
+    // 0126 — W-2/1099 box intake. Federal income tax withheld (W-2 box 2) and
+    // state income tax withheld (W-2 box 17) for THIS source. SENSITIVE → stored
+    // ENCRYPTED (enc:v1: envelope of the rounded whole-dollar amount as a string),
+    // exactly like encryptedAmount. Nullable: a source can be tracked before its
+    // withholding boxes are confirmed. The draft engine reads these to estimate
+    // refund vs. balance due.
+    encryptedFederalWithheld: text("encrypted_federal_withheld"),
+    encryptedStateWithheld: text("encrypted_state_withheld"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -156,6 +164,61 @@ export const founderIncomeSources = pgTable(
   (t) => [
     index("founder_income_sources_user_year_idx").on(t.founderUserId, t.taxYear),
     index("founder_income_sources_user_type_idx").on(t.founderUserId, t.sourceType),
+  ],
+);
+
+// ─── founder_tax_returns ─────────────────────────────────────────────────────
+// 0126 — Stores a COMPUTED draft return (federal 1040 + MA Form 1 estimate)
+// produced by server/services/founder/taxEngine.ts. One row per (founder, tax
+// year, version): re-computing appends a new row so the founder keeps a history
+// and can see when figures changed (e.g. after correcting a W-2 box).
+//
+// The full computed draft is a structured JSON document with line-by-line
+// figures + basis. Those figures are DERIVED from already-encrypted income
+// amounts, so the dollar values are not "new" secrets — but because the draft is
+// nonetheless sensitive personal-tax data, the entire payload is stored
+// ENCRYPTED at rest (enc:v1: envelope of the JSON string) and NEVER logged.
+//
+// `status` tracks the founder's filing workflow:
+//   draft     — freshly computed, under review
+//   reviewed  — founder has eyeballed the figures
+//   filed     — founder has transcribed + filed externally (we never e-file)
+// Every dollar-valued figure (payload + headline numbers) is encrypted; nothing
+// dollar-valued is ever stored in plaintext.
+export const founderTaxReturns = pgTable(
+  "founder_tax_returns",
+  {
+    id: serial("id").primaryKey(),
+    founderUserId: text("founder_user_id").notNull(),
+    taxYear: integer("tax_year").notNull(),
+    // Monotonic per (founder, year): each recompute is a new version.
+    version: integer("version").notNull().default(1),
+    // single | married_joint | ... (snapshot of profile at compute time).
+    filingStatus: text("filing_status").notNull().default("married_joint"),
+    state: text("state").notNull().default("MA"),
+    // The full computed DraftReturn JSON, encrypted at rest.
+    encryptedPayload: text("encrypted_payload").notNull(),
+    encryptionKid: text("encryption_kid").notNull().default("default"),
+    // Encrypted headline figures (whole-dollar strings) for quick list display
+    // without decrypting the whole payload. Still never plaintext.
+    encryptedFederalTotalTax: text("encrypted_federal_total_tax"),
+    encryptedFederalRefundOrOwed: text("encrypted_federal_refund_or_owed"),
+    encryptedStateTotalTax: text("encrypted_state_total_tax"),
+    encryptedStateRefundOrOwed: text("encrypted_state_refund_or_owed"),
+    // True if any rule table used was provisional (unreleased year). Non-secret.
+    provisional: boolean("provisional").notNull().default(false),
+    // draft | reviewed | filed
+    status: text("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("founder_tax_returns_user_year_idx").on(t.founderUserId, t.taxYear),
+    uniqueIndex("founder_tax_returns_user_year_version_uk").on(
+      t.founderUserId,
+      t.taxYear,
+      t.version,
+    ),
   ],
 );
 
@@ -167,3 +230,5 @@ export type FounderObligation = typeof founderObligations.$inferSelect;
 export type InsertFounderObligation = typeof founderObligations.$inferInsert;
 export type FounderIncomeSource = typeof founderIncomeSources.$inferSelect;
 export type InsertFounderIncomeSource = typeof founderIncomeSources.$inferInsert;
+export type FounderTaxReturn = typeof founderTaxReturns.$inferSelect;
+export type InsertFounderTaxReturn = typeof founderTaxReturns.$inferInsert;
