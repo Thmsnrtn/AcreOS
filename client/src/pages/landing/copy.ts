@@ -122,15 +122,34 @@ export const LANDING_COPY = {
     title: "Every tool a Land Investor needs, in one place.",
     sub: "Find, analyze, reach, close, service. No tab-juggling, no per-step subscriptions.",
   },
+  data: {
+    eyebrow: "The data",
+    title: "Premium government data, free.",
+    sub:
+      "AcreOS runs flood, soil, elevation, and wetlands checks on every parcel from public government data — before you ever pay for a data subscription. Paid providers come later, when your deal volume earns them.",
+    // source: server/services/data-source-broker.ts wires each of these
+    // government APIs live (queryFemaFlood / querySoilData / queryElevation /
+    // queryNwiWetlands / queryDemographics).
+    sources: [
+      { agency: "FEMA", what: "National Flood Hazard Layer — flood zone and risk." },
+      { agency: "USDA", what: "SSURGO soil survey — type, capability class, drainage." },
+      { agency: "USGS", what: "3DEP elevation — point elevation and slope context." },
+      { agency: "USFWS", what: "National Wetlands Inventory — mapped wetland presence." },
+      { agency: "Census", what: "ACS tract context — population and median income." },
+    ],
+    promise:
+      "Every parcel gets these checks at no cost. Paid data (parcel ownership, skip-trace) stays behind your own key, so you only pay for it when a deal justifies it.",
+    proofCta: "Run it on any address",
+  },
   quotes: {
     eyebrow: "What the system does",
     title: "Mechanics, not marketing.",
   },
   pricing: {
     eyebrow: "Pricing",
-    title: "Transparent pricing.",
+    title: "Premium government data, free. Paid data when you scale.",
     sub:
-      "Numbers on the page. No \"contact us\" wall. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay.",
+      "Numbers on the page. No \"contact us\" wall. The free tier runs flood, soil, elevation, and wetlands checks from government data on every parcel. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay. Every paid plan is backed by a 30-day money-back guarantee.",
   },
   faq: {
     eyebrow: "Common questions",
