@@ -217,6 +217,8 @@ import { registerPaxTracesRoutes } from "./routes-pax-traces";
 import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerFounderPulseRoutes } from "./routes-founder-pulse";
+import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
+import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
@@ -2225,6 +2227,12 @@ export async function registerRoutes(
   // Pulse home — /api/founder/pulse. Solene's daily one-line as structured
   // data: SHA, health, commits, Autonomy Horizon, capital, phase, decisions.
   registerFounderPulseRoutes(app);
+  // County coverage ledger — /api/founder/coverage. Coverage % of the counties
+  // customers actually touch + the demand-ranked discovery queue (crawl order).
+  registerFounderCoverageRoutes(app);
+  // Customer county-coverage request — /api/county-coverage/* — the "request
+  // this county" CTA (maps surface) that demand-drives discovery-on-miss.
+  registerCountyCoverageRoutes(app);
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
