@@ -16,6 +16,7 @@ import {
   founderObligations,
   founderIncomeSources,
   founderTaxReturns,
+  founderEstimatedPayments,
   type FounderObligation,
 } from "@shared/schema";
 import {
@@ -33,6 +34,12 @@ import {
 } from "./taxEngine";
 import type { FilingStatus } from "./taxRules";
 import { buildSelfFilePackage, type SelfFilePackage } from "./taxPackage";
+import {
+  computeEstimatedTaxRadar,
+  type EstimatedTaxRadar,
+  type PriorYearLiability,
+  type QuarterPaidInput,
+} from "./estimatedTax";
 
 // ─── Tax profile ───────────────────────────────────────────────────────────────
 
@@ -585,4 +592,263 @@ export async function updateReturnStatus(
     )
     .returning({ id: founderTaxReturns.id });
   return updated.length > 0;
+}
+
+// ─── Quarterly estimated-tax radar ─────────────────────────────────────────────
+//
+// The radar reuses computeDraftReturn (current year) + an optional prior-year
+// liability (from the most-recent stored prior-year draft) + any quarters the
+// founder has marked paid, then runs the pure safe-harbor engine. It stays quiet
+// ($0) until there is non-withheld income that withholding doesn't already cover.
+// NOTHING dollar-valued is logged; payments are stored encrypted.
+
+const ESTIMATE_JURISDICTIONS = new Set(["federal", "massachusetts"]);
+
+/**
+ * Derive the prior-year liability (federal + MA total tax + AGI) from the most
+ * recent stored draft for (taxYear − 1), if one exists. Decrypts the headline
+ * figures + the payload's AGI line — authorized founder read only, never logged.
+ */
+export async function getPriorYearLiability(
+  founderUserId: string,
+  taxYear: number,
+): Promise<PriorYearLiability | null> {
+  const rows = await db
+    .select()
+    .from(founderTaxReturns)
+    .where(
+      and(
+        eq(founderTaxReturns.founderUserId, founderUserId),
+        eq(founderTaxReturns.taxYear, taxYear - 1),
+      ),
+    )
+    .orderBy(desc(founderTaxReturns.version))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  const federalTotalTax = decryptAmount(row.encryptedFederalTotalTax);
+  const stateTotalTax = decryptAmount(row.encryptedStateTotalTax);
+
+  // AGI lives only in the full payload; decrypt it to pick the high-income
+  // (110%) safe-harbor multiplier honestly. Falls back to null on any parse miss.
+  let agi: number | null = null;
+  try {
+    const draft = JSON.parse(decrypt(row.encryptedPayload)) as DraftReturn;
+    agi = draft.federal?.summary?.adjustedGrossIncome ?? null;
+  } catch {
+    agi = null;
+  }
+
+  return { federalTotalTax, stateTotalTax, agi };
+}
+
+/** Decrypted quarters the founder has marked paid for the year. Founder read only. */
+export async function listEstimatedPayments(
+  founderUserId: string,
+  taxYear: number,
+): Promise<QuarterPaidInput[]> {
+  const rows = await db
+    .select()
+    .from(founderEstimatedPayments)
+    .where(
+      and(
+        eq(founderEstimatedPayments.founderUserId, founderUserId),
+        eq(founderEstimatedPayments.taxYear, taxYear),
+      ),
+    );
+  return rows
+    .filter((r) => r.jurisdiction === "federal" || r.jurisdiction === "massachusetts")
+    .map((r) => ({
+      quarter: r.quarter,
+      jurisdiction: r.jurisdiction as "federal" | "massachusetts",
+      amountPaid: decryptAmount(r.encryptedAmountPaid) ?? 0,
+      paidAt: r.paidAt ? r.paidAt.toISOString() : null,
+    }));
+}
+
+/**
+ * Mark (or update) a quarter as paid. Upserts on the unique
+ * (founder, year, jurisdiction, quarter) key; amount is stored encrypted.
+ * Pass amountPaid = 0 / null to CLEAR a paid marker (delete the row).
+ */
+export async function markEstimatedPaymentPaid(input: {
+  founderUserId: string;
+  taxYear: number;
+  jurisdiction: string;
+  quarter: number;
+  amountPaid: number | null;
+  paidAt?: Date | null;
+  notes?: string | null;
+}): Promise<boolean> {
+  if (!ESTIMATE_JURISDICTIONS.has(input.jurisdiction)) return false;
+  if (!Number.isInteger(input.quarter) || input.quarter < 1 || input.quarter > 4) return false;
+
+  // Clearing a marker → delete the row so the quarter reverts to upcoming/overdue.
+  if (input.amountPaid === null || input.amountPaid <= 0) {
+    await db
+      .delete(founderEstimatedPayments)
+      .where(
+        and(
+          eq(founderEstimatedPayments.founderUserId, input.founderUserId),
+          eq(founderEstimatedPayments.taxYear, input.taxYear),
+          eq(founderEstimatedPayments.jurisdiction, input.jurisdiction),
+          eq(founderEstimatedPayments.quarter, input.quarter),
+        ),
+      );
+    return true;
+  }
+
+  const now = new Date();
+  await db
+    .insert(founderEstimatedPayments)
+    .values({
+      founderUserId: input.founderUserId,
+      taxYear: input.taxYear,
+      jurisdiction: input.jurisdiction,
+      quarter: input.quarter,
+      encryptedAmountPaid: encryptAmount(input.amountPaid),
+      encryptionKid: currentEncryptionKid(),
+      paidAt: input.paidAt ?? now,
+      notes: input.notes ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        founderEstimatedPayments.founderUserId,
+        founderEstimatedPayments.taxYear,
+        founderEstimatedPayments.jurisdiction,
+        founderEstimatedPayments.quarter,
+      ],
+      set: {
+        encryptedAmountPaid: encryptAmount(input.amountPaid),
+        encryptionKid: currentEncryptionKid(),
+        paidAt: input.paidAt ?? now,
+        notes: input.notes ?? null,
+        updatedAt: now,
+      },
+    });
+  return true;
+}
+
+export interface EstimatedTaxRadarResult {
+  radar: EstimatedTaxRadar;
+  /** True when there is enough captured income to compute a meaningful radar. */
+  ready: boolean;
+  reason?: string;
+}
+
+/**
+ * Compute the quarterly estimated-tax radar for the year. Reuses the draft-return
+ * engine (current year) + prior-year liability + paid markers. When no income is
+ * captured the radar is computed empty (all-zero, quiet) and flagged not-ready so
+ * the UI nudges the founder to capture income first.
+ */
+export async function computeEstimatedTaxRadarForFounder(
+  founderUserId: string,
+  taxYear: number,
+): Promise<EstimatedTaxRadarResult> {
+  const profile = await getTaxProfile(founderUserId, taxYear);
+  const incomeRows = await listIncomeSources(founderUserId, taxYear);
+  const filingStatus = (profile?.filingStatus ?? "married_joint") as FilingStatus;
+  const state = (profile?.state ?? "MA").toUpperCase();
+
+  const usableIncome = incomeRows.filter((r) => (r.amount ?? 0) > 0);
+  const [priorYear, paid] = await Promise.all([
+    getPriorYearLiability(founderUserId, taxYear),
+    listEstimatedPayments(founderUserId, taxYear),
+  ]);
+
+  const engineIncome: TaxEngineIncomeInput[] = usableIncome.map((r) => ({
+    sourceType: r.sourceType,
+    label: r.label,
+    amount: r.amount ?? 0,
+    withholdingAtSource: r.withholdingAtSource,
+    federalWithheld: r.federalWithheld ?? 0,
+    stateWithheld: r.stateWithheld ?? 0,
+  }));
+
+  const draft = computeDraftReturn({ taxYear, filingStatus, state, income: engineIncome });
+  const radar = computeEstimatedTaxRadar({ taxYear, filingStatus, draft, priorYear, paid });
+
+  // Mirror active quarterly estimates into the obligations/Deadlines tab so they
+  // show alongside other deadlines. Idempotent: one obligation per (year,
+  // jurisdiction, quarter), keyed by a stable title prefix. No dollar figures in
+  // the title — amounts live only in the encrypted radar.
+  await syncEstimatedTaxObligations(founderUserId, taxYear, radar);
+
+  return {
+    radar,
+    ready: usableIncome.length > 0,
+    reason:
+      usableIncome.length === 0
+        ? "No income captured for this year yet. Add your income in the Income tab — the radar lights up once there's non-withheld income (an AcreOS draw or side income)."
+        : undefined,
+  };
+}
+
+/**
+ * Keep founder_obligations in sync with the ACTIVE quarterly estimates so they
+ * appear in the Deadlines tab. Creates one open obligation per active, not-yet-
+ * paid quarter (idempotent on a stable title), and removes obligations for
+ * quarters that are no longer due (paid, or radar went quiet). No dollar figure
+ * in any title — only the deadline + jurisdiction + quarter.
+ */
+async function syncEstimatedTaxObligations(
+  founderUserId: string,
+  taxYear: number,
+  radar: EstimatedTaxRadar,
+): Promise<void> {
+  const TITLE_PREFIX = `Estimated tax · ${taxYear} ·`;
+  const jurisdictions = [radar.federal, radar.massachusetts].filter(
+    (j): j is NonNullable<typeof j> => j !== null,
+  );
+
+  // The set of titles that SHOULD exist right now (active + unpaid quarters).
+  const desired = new Map<string, { dueDate: Date }>();
+  for (const j of jurisdictions) {
+    if (!j.active) continue;
+    const jLabel = j.jurisdiction === "federal" ? "Federal" : "MA";
+    for (const q of j.quarters) {
+      if (q.status === "paid" || q.amountDue <= 0) continue;
+      const title = `${TITLE_PREFIX} ${jLabel} ${q.label}`.slice(0, 200);
+      desired.set(title, { dueDate: new Date(`${q.dueDate}T00:00:00Z`) });
+    }
+  }
+
+  // Existing auto-created estimate obligations for this year.
+  const existing = await db
+    .select({ id: founderObligations.id, title: founderObligations.title })
+    .from(founderObligations)
+    .where(eq(founderObligations.founderUserId, founderUserId));
+  const existingByTitle = new Map(
+    existing.filter((o) => o.title.startsWith(TITLE_PREFIX)).map((o) => [o.title, o.id]),
+  );
+
+  // Create the missing ones.
+  for (const [title, { dueDate }] of desired) {
+    if (!existingByTitle.has(title)) {
+      await db.insert(founderObligations).values({
+        founderUserId,
+        title,
+        obligationType: "tax",
+        dueDate,
+        status: "open",
+        notes: "Auto-tracked from the quarterly-estimate radar. Amount is in the Income → radar tab (encrypted).",
+      });
+    }
+  }
+
+  // Delete obligations that no longer apply (paid / radar quiet).
+  for (const [title, id] of existingByTitle) {
+    if (!desired.has(title)) {
+      await db
+        .delete(founderObligations)
+        .where(
+          and(
+            eq(founderObligations.id, id),
+            eq(founderObligations.founderUserId, founderUserId),
+          ),
+        );
+    }
+  }
 }

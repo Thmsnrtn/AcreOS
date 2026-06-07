@@ -222,6 +222,49 @@ export const founderTaxReturns = pgTable(
   ],
 );
 
+// ─── founder_estimated_payments ──────────────────────────────────────────────
+// 0129 — Quarterly estimated-tax RADAR ledger. One row per (founder, tax year,
+// jurisdiction, quarter) the founder has MARKED PAID. Computed amounts-due are
+// derived live from server/services/founder/estimatedTax.ts (the safe-harbor
+// engine) and are NOT stored; this table only records what the founder actually
+// paid so the radar can show paid/upcoming/overdue status and so the deadlines
+// tab stays in sync.
+//
+// `amount_paid` is SENSITIVE → stored ENCRYPTED at rest (enc:v1: envelope of the
+// rounded whole-dollar amount as a string), exactly like founder_income_sources.
+// The DB never sees a plaintext estimated-payment figure. FOUNDER-SCOPED, never
+// org-scoped; never on a customer surface; never trains a customer feature.
+export const founderEstimatedPayments = pgTable(
+  "founder_estimated_payments",
+  {
+    id: serial("id").primaryKey(),
+    founderUserId: text("founder_user_id").notNull(),
+    taxYear: integer("tax_year").notNull(),
+    // federal | massachusetts
+    jurisdiction: text("jurisdiction").notNull().default("federal"),
+    // 1..4 (Q1 Apr 15 / Q2 Jun 15 / Q3 Sep 15 / Q4 Jan 15 of the next year).
+    quarter: integer("quarter").notNull(),
+    // Encrypted whole-dollar amount the founder marked paid (enc:v1: envelope).
+    encryptedAmountPaid: text("encrypted_amount_paid"),
+    encryptionKid: text("encryption_kid").notNull().default("default"),
+    // When the founder recorded the payment (founder-set; non-secret).
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("founder_estimated_payments_user_year_idx").on(t.founderUserId, t.taxYear),
+    // One paid-marker per founder / year / jurisdiction / quarter (upserted).
+    uniqueIndex("founder_estimated_payments_unique_quarter_uk").on(
+      t.founderUserId,
+      t.taxYear,
+      t.jurisdiction,
+      t.quarter,
+    ),
+  ],
+);
+
 export type FounderTaxProfile = typeof founderTaxProfile.$inferSelect;
 export type InsertFounderTaxProfile = typeof founderTaxProfile.$inferInsert;
 export type FounderDocument = typeof founderDocuments.$inferSelect;
@@ -232,3 +275,5 @@ export type FounderIncomeSource = typeof founderIncomeSources.$inferSelect;
 export type InsertFounderIncomeSource = typeof founderIncomeSources.$inferInsert;
 export type FounderTaxReturn = typeof founderTaxReturns.$inferSelect;
 export type InsertFounderTaxReturn = typeof founderTaxReturns.$inferInsert;
+export type FounderEstimatedPayment = typeof founderEstimatedPayments.$inferSelect;
+export type InsertFounderEstimatedPayment = typeof founderEstimatedPayments.$inferInsert;

@@ -152,6 +152,53 @@ interface ReturnHistoryItem {
   createdAt: string;
 }
 
+// ── Estimated-tax radar types (mirror server/services/founder/estimatedTax.ts) ─
+interface SafeHarborTarget {
+  requiredAnnualPayment: number;
+  currentYearLeg: number;
+  priorYearLeg: number | null;
+  chosenLeg: "current_year" | "prior_year";
+  expectedWithholding: number;
+  estimatedShortfall: number;
+  basis: string;
+}
+type QuarterStatus = "upcoming" | "due_soon" | "overdue" | "paid";
+interface QuarterObligation {
+  quarter: number;
+  label: string;
+  dueDate: string;
+  amountDue: number;
+  amountPaid: number;
+  status: QuarterStatus;
+  paidAt: string | null;
+}
+interface JurisdictionRadar {
+  jurisdiction: "federal" | "massachusetts";
+  active: boolean;
+  headline: string;
+  totalTax: number;
+  expectedWithholding: number;
+  deMinimisFloor: number;
+  safeHarbor: SafeHarborTarget;
+  quarters: QuarterObligation[];
+  remainingDue: number;
+}
+interface EstimatedTaxRadar {
+  taxYear: number;
+  filingStatus: string;
+  generatedAt: string;
+  active: boolean;
+  disclaimer: string;
+  federal: JurisdictionRadar;
+  massachusetts: JurisdictionRadar | null;
+}
+interface EstimatesResponse {
+  taxYear: number;
+  radar: EstimatedTaxRadar;
+  ready: boolean;
+  reason?: string;
+}
+
 const BASE = "/api/founder/life-cockpit";
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
@@ -653,28 +700,173 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
       </Card>
 
       {/* Quarterly-estimate radar — lights up when AcreOS pays a draw */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Gauge className="w-4 h-4" aria-hidden /> Quarterly-estimate radar
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {income.some((s) => !s.withholdingAtSource && (s.amount ?? 0) > 0) ? (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-              You have income without withholding at source. Generate a draft in the Taxes tab to
-              see the federal self-employment tax and the estimated balance due — then plan quarterly
-              estimates so you are not surprised at filing. (Estimate — verify before filing.)
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Quiet for now. This radar lights up when AcreOS starts paying you a draw, or when you
-              add side income without withholding — the kinds of income that need quarterly estimates.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <EstimatedTaxRadarPanel taxYear={taxYear} />
     </div>
+  );
+}
+
+// ─── Section: Quarterly estimated-tax radar ──────────────────────────────────
+//
+// Reads /tax/estimates (safe-harbor engine) and shows the four IRS / MA due
+// dates with the amount due + status. Stays QUIET ($0, reassuring) until there
+// is non-withheld income that withholding doesn't cover. Lets the founder mark a
+// quarter paid.
+
+const QUARTER_STATUS_STYLES: Record<QuarterStatus, { label: string; cls: string }> = {
+  paid: { label: "Paid", cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" },
+  overdue: { label: "Overdue", cls: "border-red-500/40 text-red-600 dark:text-red-400" },
+  due_soon: { label: "Due soon", cls: "border-amber-500/40 text-amber-600 dark:text-amber-400" },
+  upcoming: { label: "Upcoming", cls: "border-border/60 text-muted-foreground" },
+};
+
+function JurisdictionRadarCard({
+  radar,
+  taxYear,
+}: {
+  radar: JurisdictionRadar;
+  taxYear: number;
+}) {
+  const { toast } = useToast();
+  const title =
+    radar.jurisdiction === "federal" ? "Federal · Form 1040-ES" : "Massachusetts · Form 1-ES";
+
+  const markPaid = useMutation({
+    mutationFn: async (vars: { quarter: number; amountDue: number; clear: boolean }) => {
+      const res = await apiRequest("PUT", `${BASE}/tax/estimates/payment`, {
+        taxYear,
+        jurisdiction: radar.jurisdiction,
+        quarter: vars.quarter,
+        amountPaid: vars.clear ? null : vars.amountDue,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [BASE, "estimates", taxYear] });
+      toast({ title: "Estimated payment updated" });
+    },
+    onError: () => toast({ title: "Could not update payment", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/40 p-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h4 className="font-semibold text-sm">{title}</h4>
+        {radar.active ? (
+          <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+            {fmtUsd(radar.remainingDue)} remaining
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+            <ShieldCheck className="w-3 h-3 mr-1" aria-hidden /> Covered
+          </Badge>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">{radar.headline}</p>
+
+      {radar.active && (
+        <>
+          <ul className="divide-y divide-border/40" role="list">
+            {radar.quarters.map((q) => {
+              const s = QUARTER_STATUS_STYLES[q.status];
+              return (
+                <li key={q.quarter} className="flex items-center justify-between gap-3 py-2.5">
+                  <div>
+                    <p className="font-medium text-sm">
+                      {q.label} · due {fmtDate(q.dueDate)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {fmtUsd(q.amountDue)}
+                      {q.status === "paid" && q.amountPaid > 0 && ` · paid ${fmtUsd(q.amountPaid)}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={s.cls}>{s.label}</Badge>
+                    {q.status === "paid" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={markPaid.isPending}
+                        onClick={() => markPaid.mutate({ quarter: q.quarter, amountDue: q.amountDue, clear: true })}
+                      >
+                        Undo
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={markPaid.isPending}
+                        onClick={() => markPaid.mutate({ quarter: q.quarter, amountDue: q.amountDue, clear: false })}
+                      >
+                        Mark paid
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-xs text-muted-foreground border-t border-border/40 pt-3">
+            <span className="font-medium text-foreground">How this is figured: </span>
+            {radar.safeHarbor.basis}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EstimatedTaxRadarPanel({ taxYear }: { taxYear: number }) {
+  const { data, isLoading, isError, error, refetch } = useQuery<EstimatesResponse>({
+    queryKey: [BASE, "estimates", taxYear],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `${BASE}/tax/estimates?taxYear=${taxYear}`);
+      return res.json();
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Gauge className="w-4 h-4" aria-hidden /> Quarterly-estimate radar
+        </CardTitle>
+        <CardDescription>
+          The minimum to pay each quarter so an underpayment penalty never surprises you. Estimate — not tax advice.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : isError ? (
+          <QueryErrorState error={error ?? null} onRetry={() => refetch()} />
+        ) : !data ? null : !data.ready ? (
+          <p className="text-sm text-muted-foreground">
+            {data.reason ??
+              "Quiet for now. This radar lights up when AcreOS starts paying you a draw, or when you add side income without withholding."}
+          </p>
+        ) : (
+          <>
+            {!data.radar.active && (
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                <ShieldCheck className="w-4 h-4 mt-0.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                <span>
+                  No estimated tax due — your withholding covers you. The radar lights up the moment a draw
+                  or side income changes that.
+                </span>
+              </div>
+            )}
+            <JurisdictionRadarCard radar={data.radar.federal} taxYear={taxYear} />
+            {data.radar.massachusetts && (
+              <JurisdictionRadarCard radar={data.radar.massachusetts} taxYear={taxYear} />
+            )}
+            <p className="text-xs text-muted-foreground">{data.radar.disclaimer}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

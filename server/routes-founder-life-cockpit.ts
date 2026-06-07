@@ -218,6 +218,64 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
     }
   });
 
+  // ── Quarterly estimated-tax radar ──────────────────────────────────────────
+  // Reuses the draft-return engine + safe-harbor rule to flag the MINIMUM the
+  // founder must pay quarterly to avoid an underpayment penalty. Stays quiet
+  // ($0) until there is non-withheld income that withholding doesn't cover.
+  app.get(`${base}/tax/estimates`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const taxYear = parseYear(req.query.taxYear);
+      const result = await cockpit.computeEstimatedTaxRadarForFounder(getUserId(req), taxYear);
+      res.json({ taxYear, ...result });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Mark a quarter paid (or clear it with amountPaid = null / 0). Upserts on
+  // (founder, year, jurisdiction, quarter). Amount stored ENCRYPTED.
+  app.put(`${base}/tax/estimates/payment`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const b = req.body ?? {};
+      const taxYear = parseYear(b.taxYear);
+      const jurisdiction = String(b.jurisdiction ?? "");
+      if (jurisdiction !== "federal" && jurisdiction !== "massachusetts") {
+        return Errors.badRequest(res, "Invalid jurisdiction");
+      }
+      const quarter = Number.parseInt(String(b.quarter ?? ""), 10);
+      if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) {
+        return Errors.badRequest(res, "Quarter must be 1–4");
+      }
+      const amountRaw = b.amountPaid;
+      const amountPaid =
+        amountRaw === null || amountRaw === undefined || amountRaw === "" ? null : Number(amountRaw);
+      if (amountPaid !== null && !Number.isFinite(amountPaid)) {
+        return Errors.badRequest(res, "Amount paid must be a number");
+      }
+      const ok = await cockpit.markEstimatedPaymentPaid({
+        founderUserId: getUserId(req),
+        taxYear,
+        jurisdiction,
+        quarter,
+        amountPaid,
+        paidAt: parseDate(b.paidAt),
+        notes: b.notes ? String(b.notes).slice(0, 4000) : null,
+      });
+      if (!ok) return Errors.badRequest(res, "Could not record estimated payment");
+      // Log metadata only — NEVER the amount paid.
+      logger.info("[founder-cockpit] estimated payment recorded", {
+        founderUserId: getUserId(req),
+        taxYear,
+        jurisdiction,
+        quarter,
+        cleared: amountPaid === null || amountPaid <= 0,
+      });
+      res.json({ updated: true });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ── Document vault ─────────────────────────────────────────────────────────
   app.get(`${base}/documents`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
