@@ -6,11 +6,11 @@
  * explicit "Request your county" affordance that posts to the coverage agent's
  * request-county API, feeding the demand-weighted discovery queue (Iyari #3).
  *
- * Backend ownership: a parallel agent owns POST /api/coverage/request-county
- * (body: { state, county }). This component is wired DEFENSIVELY — if the
- * endpoint isn't deployed yet (404 / network error) we still acknowledge the
- * request to the customer and log it, so the CTA never renders as broken while
- * the backend lands. Confirm the exact contract once that API ships.
+ * Backend: POST /api/county-coverage/request (body: { state, county }) —
+ * coverageLedger/routes-county-coverage.ts. Returns 202 (queued/discovering)
+ * or 200 (already covered) with { covered, status, ... }. Wired DEFENSIVELY —
+ * if the endpoint errors/network-fails we still acknowledge to the customer and
+ * log it, so the CTA never renders as broken.
  */
 
 import { useState } from "react";
@@ -24,7 +24,7 @@ import { MapPinned, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clientLogger } from "@/lib/clientLogger";
 
-const REQUEST_COUNTY_ENDPOINT = "/api/coverage/request-county";
+const REQUEST_COUNTY_ENDPOINT = "/api/county-coverage/request";
 
 export interface RequestCountyCTAProps {
   /** Prefill when we already know the county the customer was looking at. */
