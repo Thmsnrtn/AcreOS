@@ -6292,6 +6292,53 @@ export type InsertLandIntelligenceReport = z.infer<typeof insertLandIntelligence
 export type LandIntelligenceReportRow = typeof landIntelligenceReports.$inferSelect;
 
 // ============================================
+// PAID-DATA EVAL RESULTS (Iyari #6 + Lena #3)
+// ============================================
+// Persists each run of the paid-data eval harness (server/services/
+// paidDataEvalHarness.ts) so the founder buy-decision surface has a history:
+// "Regrid would have flipped M decisions across N parcels in the counties our
+// customers worked." A run reads the free LIS corpus read-only and produces a
+// field-divergence + decision-flip report; this table is the audit trail of
+// those runs (mock/sample today; real trial-window runs later). Storing it lets
+// the surface show the latest run instantly without recomputing, and lets us
+// compare a real Regrid trial against the mock baseline.
+export const paidDataEvalRuns = pgTable("paid_data_eval_runs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id), // null = whole corpus
+
+  // Which provider produced the paid view ("mock-paid" today; "regrid" later).
+  provider: text("provider").notNull(),
+  // "sample" (dry-run / mock) or "trial" (real paid-window run).
+  mode: text("mode").notNull(),
+
+  // Corpus scoping for this run.
+  stateFilter: text("state_filter"),
+  totalParcels: integer("total_parcels").notNull(),
+  parcelsCompared: integer("parcels_compared").notNull(),
+  errors: integer("errors").notNull().default(0),
+
+  // Headline metrics (denormalized for cheap listing/trend without parsing JSON).
+  decisionFlipCount: integer("decision_flip_count").notNull().default(0),
+  decisionFlipRate: numeric("decision_flip_rate"), // 0–1
+  estTrialCostCents: integer("est_trial_cost_cents").notNull().default(0),
+
+  // The verbatim PaidDataEvalResult (field divergence + flip details + buy rec).
+  result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  // LEADING-org composite (shard-readiness lint): tenant routing is one probe.
+  index("paid_data_eval_runs_org_created_idx").on(table.organizationId, table.createdAt),
+]);
+
+export const insertPaidDataEvalRunSchema = createInsertSchema(paidDataEvalRuns).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPaidDataEvalRun = z.infer<typeof insertPaidDataEvalRunSchema>;
+export type PaidDataEvalRunRow = typeof paidDataEvalRuns.$inferSelect;
+
+// ============================================
 // ACQUISITION: OFFER LETTERS & BLIND OFFERS
 // ============================================
 

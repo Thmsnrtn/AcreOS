@@ -83,7 +83,8 @@
  */
 
 import { dbForReads } from "../db-replica";
-import { landIntelligenceReports } from "@shared/schema";
+import { db } from "../db";
+import { landIntelligenceReports, paidDataEvalRuns } from "@shared/schema";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -662,6 +663,66 @@ export async function runPaidDataEval(opts: {
   });
 
   return evaluateCorpus({ provider: opts.provider, mode: opts.mode, corpus });
+}
+
+/**
+ * Persist a completed eval result to `paid_data_eval_runs` (the audit trail).
+ * Returns the new row id. Non-fatal failures are swallowed by the caller; this
+ * function itself surfaces errors so the route can decide.
+ */
+export async function saveEvalRun(opts: {
+  organizationId?: number | null;
+  stateFilter?: string | null;
+  result: PaidDataEvalResult;
+}): Promise<number> {
+  const r = opts.result;
+  const [row] = await db
+    .insert(paidDataEvalRuns)
+    .values({
+      organizationId: opts.organizationId ?? null,
+      provider: r.provider,
+      mode: r.mode,
+      stateFilter: opts.stateFilter ?? null,
+      totalParcels: r.totalParcels,
+      parcelsCompared: r.parcelsCompared,
+      errors: r.errors,
+      decisionFlipCount: r.decisionFlipCount,
+      decisionFlipRate: String(r.decisionFlipRate),
+      estTrialCostCents: r.estTrialCostCents,
+      result: r as unknown as Record<string, unknown>,
+    })
+    .returning({ id: paidDataEvalRuns.id });
+  return row.id;
+}
+
+/** Read the most recent persisted eval run for an org (or global). */
+export async function getLatestEvalRun(
+  organizationId?: number | null,
+): Promise<PaidDataEvalRunSummary | null> {
+  const reader = await dbForReads("paid-data-eval.latest");
+  const whereClauses = [];
+  if (organizationId != null) {
+    whereClauses.push(eq(paidDataEvalRuns.organizationId, organizationId));
+  }
+  const rows = await reader
+    .select()
+    .from(paidDataEvalRuns)
+    .where(whereClauses.length ? and(...whereClauses) : undefined)
+    .orderBy(desc(paidDataEvalRuns.createdAt))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    result: row.result as unknown as PaidDataEvalResult,
+  };
+}
+
+export interface PaidDataEvalRunSummary {
+  id: number;
+  createdAt: string;
+  result: PaidDataEvalResult;
 }
 
 /** Count the persisted free corpus (for the founder surface's empty state). */

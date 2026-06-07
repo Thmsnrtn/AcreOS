@@ -281,6 +281,7 @@ const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
 const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
 const FounderUnitEconomicsPage = React.lazy(() => import("@/pages/founder/unit-economics"));
+const FounderPaidDataEvalPage = React.lazy(() => import("@/pages/founder/paid-data-eval"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
 // FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
@@ -1189,6 +1190,10 @@ function Router() {
       </Route>
       <Route path="/founder/unit-economics">
         {() => <FounderProtectedRoute component={FounderUnitEconomicsPage} />}
+      </Route>
+      {/* Paid-data eval — would a Regrid/Zamplo/PropGrid trial flip decisions? */}
+      <Route path="/founder/paid-data-eval">
+        {() => <FounderProtectedRoute component={FounderPaidDataEvalPage} />}
       </Route>
       <Route path="/founder/dsar">
         {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
