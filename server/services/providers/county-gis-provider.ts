@@ -38,6 +38,11 @@ export const countyGisProvider: DataProvider = {
   // excluded — they'll route to a paid provider as before.
   supportedInputTypes: ["coordinates", "address", "apn"],
   tierRequired: "free",
+  // County portals: terms vary by jurisdiction. Default conservative —
+  // redistribution is "review-required" per Beatrice's policy until a human
+  // reviews the specific county's terms (tracked per-row on county_gis_endpoints).
+  license: "county-tos",
+  redistributable: "review-required",
 
   costPerLookupCents(): number {
     return 0;
@@ -107,6 +112,11 @@ export const countyGisProvider: DataProvider = {
       cached: false,
       latencyMs: Date.now() - start,
       data: result.parcel,
+      source: "County GIS",
+      // County assessor records are systems-of-record; freshness lags by tax
+      // year. The upstream doesn't expose a per-fact effective date here.
+      sourceAsOf: null,
+      classification: "authoritative",
     };
   },
 

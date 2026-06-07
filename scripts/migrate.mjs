@@ -6200,6 +6200,22 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_created_idx" ON "customer_audit_log" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "customer_audit_log_org_category_idx" ON "customer_audit_log" ("organization_id", "category")`,
+
+  // 0120 — Open-data provenance + licensing register + free-miss telemetry.
+  // First-customer readiness keystone (Iris / Lena / Beatrice / Quinn).
+  // county_gis_endpoints: per-county license/redistribution columns. Default
+  // redistributable='review-required' → registry treats un-reviewed counties
+  // as live-passthrough only until a human reviews portal terms.
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "license" text DEFAULT 'county-tos'`,
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "attribution" text`,
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "terms_url" text`,
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "redistributable" text NOT NULL DEFAULT 'review-required'`,
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "reviewed_at" timestamp`,
+  `ALTER TABLE "county_gis_endpoints" ADD COLUMN IF NOT EXISTS "reviewed_by" text`,
+  // provider_lookup_log: free-miss-by-county telemetry (data-driven paid buy).
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "state" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "county" text`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_county_idx" ON "provider_lookup_log" ("state", "county", "category")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

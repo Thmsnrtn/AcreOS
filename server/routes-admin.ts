@@ -1234,7 +1234,15 @@ export function registerAdminRoutes(app: Express): void {
       if (!state || !county || !baseUrl) {
         return Errors.badRequest(res, "state, county, and baseUrl are required");
       }
-      
+
+      // SSRF guard (Beatrice item 5): operator-contributed baseUrl is fetched
+      // server-side. Reject private/loopback/link-local addresses + non-https.
+      const { checkOperatorUrl } = await import('./services/providers/ssrf-guard');
+      const ssrf = checkOperatorUrl(baseUrl);
+      if (!ssrf.ok) {
+        return Errors.badRequest(res, ssrf.reason ?? "baseUrl rejected by SSRF guard");
+      }
+
       const endpoint = await db.insert(countyGisEndpoints).values({
         state: state.toUpperCase(),
         county,

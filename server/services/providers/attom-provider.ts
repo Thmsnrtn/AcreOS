@@ -120,6 +120,13 @@ export const attomProvider: DataProvider = {
   categories: SUPPORTED_CATEGORIES,
   supportedInputTypes: ["coordinates", "address"],
   tierRequired: "pro",
+  // Proprietary feed — contract governs. Live-passthrough only by default
+  // (Beatrice item 7); upgrade redistributable + set a cache TTL ≤ contract
+  // max only after a signed contract populates the register.
+  license: "proprietary",
+  attributionText: "Property data: ATTOM Data",
+  redistributable: "no",
+  minMonthlyCommitCents: 0,
 
   costPerLookupCents(category: DataCategory): number {
     return CATEGORY_COSTS[category] ?? 10;
@@ -141,20 +148,29 @@ export const attomProvider: DataProvider = {
       throw new Error(`ATTOM does not support input type: ${input.type}`);
     }
 
-    // Check cache first
+    // Check cache first — only if the contract permits cache-and-reserve.
+    // ATTOM ships redistributable="no" by default (Beatrice item 7), so this
+    // legacy provider-internal cache stays disabled until a signed contract
+    // upgrades the register and sets a TTL ≤ contract max.
+    const mayCache = this.redistributable === "yes" || this.redistributable === "attribution";
     const cacheKey = makeCacheKey(category, input);
-    const cached = await getCached(cacheKey);
-    if (cached) {
-      return {
-        provider: "attom",
-        category,
-        confidence: 90,
-        costCents: 0, // Cached = no cost
-        fetchedAt: new Date(),
-        cached: true,
-        latencyMs: Date.now() - start,
-        data: cached,
-      };
+    if (mayCache) {
+      const cached = await getCached(cacheKey);
+      if (cached) {
+        return {
+          provider: "attom",
+          category,
+          confidence: 90,
+          costCents: 0, // Cached = no cost
+          fetchedAt: new Date(),
+          cached: true,
+          latencyMs: Date.now() - start,
+          data: cached,
+          source: "ATTOM Data",
+          sourceAsOf: null,
+          classification: "authoritative",
+        };
+      }
     }
 
     const locationParam =
@@ -237,8 +253,10 @@ export const attomProvider: DataProvider = {
         throw new Error(`ATTOM does not support category: ${category}`);
     }
 
-    // Cache the result
-    await setCache(cacheKey, "attom", category, data, costCents);
+    // Cache the result — only if the contract permits redistribution.
+    if (mayCache) {
+      await setCache(cacheKey, "attom", category, data, costCents);
+    }
 
     return {
       provider: "attom",
@@ -249,6 +267,10 @@ export const attomProvider: DataProvider = {
       cached: false,
       latencyMs: Date.now() - start,
       data,
+      source: "ATTOM Data",
+      sourceAsOf: null,
+      // AVM valuation is a model estimate; the rest are property-of-record facts.
+      classification: category === "valuation" ? "estimate" : "authoritative",
     };
   },
 
