@@ -639,7 +639,7 @@ export default function FounderLifeCockpitPage() {
   useDocumentTitle("Life-Cockpit");
   const taxYear = CURRENT_YEAR;
 
-  const { data, isLoading, isError, refetch } = useQuery<OverviewResponse>({
+  const { data, isLoading, isError, error, refetch } = useQuery<OverviewResponse>({
     queryKey: [BASE, "overview", taxYear],
     queryFn: async () => {
       const res = await apiRequest("GET", `${BASE}/overview?taxYear=${taxYear}`);
@@ -664,7 +664,7 @@ export default function FounderLifeCockpitPage() {
             <Skeleton className="h-32 w-full" />
           </div>
         ) : isError ? (
-          <QueryErrorState onRetry={() => refetch()} />
+          <QueryErrorState error={error ?? null} onRetry={() => refetch()} />
         ) : (
           <motion.div variants={staggerItem}>
             <Tabs defaultValue="taxes">
