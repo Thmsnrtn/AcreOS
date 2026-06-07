@@ -6481,6 +6481,26 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "founder_tax_returns_user_year_idx" ON "founder_tax_returns" ("founder_user_id", "tax_year")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "founder_tax_returns_user_year_version_uk" ON "founder_tax_returns" ("founder_user_id", "tax_year", "version")`,
+  // 0129 — Lena — Founder Life-Cockpit quarterly estimated-tax RADAR
+  // (FOUNDER-SIDE ONLY). Ledger of estimated-tax payments the founder MARKED
+  // PAID; amounts-due are derived live from estimatedTax.ts (safe-harbor) and
+  // NOT stored. amount_paid is encrypted at rest. Mirrors
+  // shared/schema/founder-life-cockpit.ts + migrations/0129_founder_estimated_payments.sql.
+  `CREATE TABLE IF NOT EXISTS "founder_estimated_payments" (
+     "id" serial PRIMARY KEY,
+     "founder_user_id" text NOT NULL,
+     "tax_year" integer NOT NULL,
+     "jurisdiction" text NOT NULL DEFAULT 'federal',
+     "quarter" integer NOT NULL,
+     "encrypted_amount_paid" text,
+     "encryption_kid" text NOT NULL DEFAULT 'default',
+     "paid_at" timestamptz,
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "founder_estimated_payments_user_year_idx" ON "founder_estimated_payments" ("founder_user_id", "tax_year")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "founder_estimated_payments_unique_quarter_uk" ON "founder_estimated_payments" ("founder_user_id", "tax_year", "jurisdiction", "quarter")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
