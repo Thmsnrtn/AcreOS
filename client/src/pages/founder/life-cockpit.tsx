@@ -93,6 +93,8 @@ interface IncomeSource {
   label: string;
   amount: number | null;
   withholdingAtSource: boolean;
+  federalWithheld: number | null;
+  stateWithheld: number | null;
   notes: string | null;
 }
 interface OverviewResponse {
@@ -101,6 +103,53 @@ interface OverviewResponse {
   documents: VaultDocument[];
   obligations: Obligation[];
   income: IncomeSource[];
+}
+
+// ── Draft-return types (mirror server/services/founder/taxEngine.ts) ──────────
+interface ReturnLine {
+  key: string;
+  formRef: string;
+  label: string;
+  amount: number;
+  basis: string;
+}
+interface JurisdictionEstimate {
+  jurisdiction: string;
+  taxYear: number;
+  rulesYearUsed: number;
+  exactYearMatch: boolean;
+  provisional: boolean;
+  rulesSource: string;
+  lines: ReturnLine[];
+}
+interface DraftReturn {
+  taxYear: number;
+  filingStatus: string;
+  state: string;
+  generatedAt: string;
+  disclaimer: string;
+  provisional: boolean;
+  notModeled: string[];
+  federal: JurisdictionEstimate;
+  massachusetts: JurisdictionEstimate | null;
+}
+interface DraftResponse {
+  taxYear: number;
+  draft: DraftReturn;
+  returnId: number | null;
+  version: number;
+  status: string;
+  ready: boolean;
+  reason?: string;
+}
+interface ReturnHistoryItem {
+  id: number;
+  version: number;
+  filingStatus: string;
+  state: string;
+  provisional: boolean;
+  status: string;
+  createdAt: string;
 }
 
 const BASE = "/api/founder/life-cockpit";
@@ -237,24 +286,234 @@ function TaxesSection({ profile, taxYear }: { profile: TaxProfile | null; taxYea
         </CardContent>
       </Card>
 
-      {/* Draft-return seam — NEXT wave */}
-      <Card className="border-dashed">
+      {/* Draft-return engine */}
+      <DraftReturnPanel taxYear={taxYear} />
+    </div>
+  );
+}
+
+// ─── Section: Draft return + self-file package ────────────────────────────────
+
+function fmtSignedUsd(n: number): string {
+  const abs = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Math.abs(n));
+  return n < 0 ? `−${abs}` : abs;
+}
+
+function JurisdictionTable({ est, title }: { est: JurisdictionEstimate; title: string }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h4 className="font-semibold text-sm">{title} · {est.taxYear}</h4>
+        {est.provisional && (
+          <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+            Provisional {est.rulesYearUsed} figures
+          </Badge>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{est.rulesSource}</p>
+      <div className="overflow-x-auto rounded-lg border border-border/40">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/40 bg-muted/30 text-left text-xs text-muted-foreground">
+              <th className="px-3 py-2 font-medium">Line</th>
+              <th className="px-3 py-2 font-medium">Item</th>
+              <th className="px-3 py-2 font-medium text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {est.lines.map((line) => (
+              <tr key={line.key} className="border-b border-border/20 last:border-0 align-top">
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{line.formRef}</td>
+                <td className="px-3 py-2">
+                  <p className="font-medium">{line.label}</p>
+                  <p className="text-xs text-muted-foreground">{line.basis}</p>
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">
+                  {fmtSignedUsd(line.amount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DraftReturnPanel({ taxYear }: { taxYear: number }) {
+  const { toast } = useToast();
+
+  const draftQuery = useQuery<DraftResponse>({
+    queryKey: [BASE, "tax/draft", taxYear],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `${BASE}/tax/draft?taxYear=${taxYear}`);
+      return res.json();
+    },
+  });
+
+  const history = useQuery<{ returns: ReturnHistoryItem[] }>({
+    queryKey: [BASE, "tax/returns", taxYear],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `${BASE}/tax/returns?taxYear=${taxYear}`);
+      return res.json();
+    },
+  });
+
+  const generate = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `${BASE}/tax/draft`, { taxYear });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [BASE, "tax/draft", taxYear] });
+      queryClient.invalidateQueries({ queryKey: [BASE, "tax/returns", taxYear] });
+      toast({ title: "Draft generated", description: "A new draft version was saved. Review and verify before filing." });
+    },
+    onError: () => toast({ title: "Could not generate draft", variant: "destructive" }),
+  });
+
+  const setStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `${BASE}/tax/returns/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [BASE, "tax/returns", taxYear] });
+      toast({ title: "Status updated" });
+    },
+  });
+
+  if (draftQuery.isLoading) {
+    return (
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base text-muted-foreground">
-            <FileText className="w-4 h-4" aria-hidden /> Draft return
-          </CardTitle>
+          <Skeleton className="h-5 w-40" />
         </CardHeader>
-        <CardContent>
-          <EmptyState
-            icon={MessageCircleHeart}
-            headline="Lena will prepare your draft return here"
-            subtitle="Upload your W-2s, 1099s, and prior return in the Vault, then capture your tax profile above. The prep + self-file package engine lands in the next wave."
-            cta={{ label: "", _noOp: true }}
-            tone="default"
-          />
+        <CardContent className="space-y-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-48 w-full" />
         </CardContent>
       </Card>
-    </div>
+    );
+  }
+  if (draftQuery.isError) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <QueryErrorState error={draftQuery.error ?? null} onRetry={() => draftQuery.refetch()} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const result = draftQuery.data;
+  const draft = result?.draft;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileText className="w-4 h-4" aria-hidden /> Draft return · {taxYear}
+        </CardTitle>
+        <CardDescription>
+          A computed federal 1040 + Massachusetts Form 1 estimate. Self-prepared draft — AcreOS does not e-file.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Honesty banner — always visible */}
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <p className="font-semibold flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden />
+            Estimate — review &amp; verify before filing
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {draft?.disclaimer ??
+              "These figures are a draft to help you transcribe into IRS Free File Fillable Forms / MassTaxConnect or hand to a CPA. AcreOS Life-Cockpit is self-prepared tax software, not tax advice."}
+          </p>
+        </div>
+
+        {result && !result.ready ? (
+          <EmptyState
+            icon={Wallet}
+            headline="Capture your income to generate a draft"
+            subtitle={result.reason ?? "Add your W-2 / 1099 amounts in the Income tab, then generate your draft return here."}
+            cta={{ label: "", _noOp: true }}
+          />
+        ) : draft ? (
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
+                <FileText className="w-4 h-4 mr-1.5" aria-hidden />
+                {generate.isPending ? "Generating…" : "Generate & save draft"}
+              </Button>
+              {draft.provisional && (
+                <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+                  Uses provisional (not-yet-final) figures
+                </Badge>
+              )}
+            </div>
+
+            <JurisdictionTable est={draft.federal} title="Federal — Form 1040" />
+            {draft.massachusetts && (
+              <JurisdictionTable est={draft.massachusetts} title="Massachusetts — Form 1" />
+            )}
+
+            <div className="rounded-lg border border-border/40 p-3 text-sm">
+              <p className="font-medium mb-1.5">Not modeled in this estimate</p>
+              <ul className="list-disc pl-5 space-y-0.5 text-xs text-muted-foreground">
+                {draft.notModeled.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </>
+        ) : null}
+
+        {/* Saved versions + self-file package downloads */}
+        <div className="space-y-2 border-t border-border/40 pt-4">
+          <p className="font-medium text-sm">Saved drafts</p>
+          {history.data && history.data.returns.length > 0 ? (
+            <ul className="divide-y divide-border/40" role="list">
+              {history.data.returns.map((r) => (
+                <li key={r.id} className="flex items-center justify-between py-2.5 gap-2 flex-wrap">
+                  <div>
+                    <p className="font-medium text-sm">
+                      Version {r.version}
+                      {r.provisional && <span className="text-amber-600 dark:text-amber-400"> · provisional</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {FILING_LABELS[r.filingStatus] ?? r.filingStatus} · {r.state} · {fmtDate(r.createdAt)} · <span className="capitalize">{r.status}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {r.status !== "filed" && (
+                      <Select value={r.status} onValueChange={(status) => setStatus.mutate({ id: r.id, status })}>
+                        <SelectTrigger className="h-8 w-[120px]" aria-label={`Status for version ${r.version}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="reviewed">Reviewed</SelectItem>
+                          <SelectItem value="filed">Filed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {r.status === "filed" && <Badge variant="secondary">Filed</Badge>}
+                    <a href={`${BASE}/tax/returns/${r.id}/package`} aria-label={`Download self-file package for version ${r.version}`}>
+                      <Button variant="outline" size="sm">
+                        <Download className="w-4 h-4 mr-1.5" aria-hidden /> Package
+                      </Button>
+                    </a>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No saved drafts yet. Generate one above — each generation saves a version you can download as a transcription-ready package.
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -265,6 +524,10 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
   const [sourceType, setSourceType] = React.useState("w2_self");
   const [label, setLabel] = React.useState("");
   const [amount, setAmount] = React.useState("");
+  const [federalWithheld, setFederalWithheld] = React.useState("");
+  const [stateWithheld, setStateWithheld] = React.useState("");
+
+  const isW2 = sourceType.startsWith("w2");
 
   const add = useMutation({
     mutationFn: async () => {
@@ -273,7 +536,9 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
         sourceType,
         label,
         amount: amount === "" ? null : Number(amount),
-        withholdingAtSource: sourceType.startsWith("w2"),
+        withholdingAtSource: isW2,
+        federalWithheld: federalWithheld === "" ? null : Number(federalWithheld),
+        stateWithheld: stateWithheld === "" ? null : Number(stateWithheld),
       });
       return res.json();
     },
@@ -281,6 +546,8 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
       queryClient.invalidateQueries({ queryKey: [BASE, "overview"] });
       setLabel("");
       setAmount("");
+      setFederalWithheld("");
+      setStateWithheld("");
       toast({ title: "Income source added" });
     },
     onError: () => toast({ title: "Could not add income source", variant: "destructive" }),
@@ -321,6 +588,8 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
                     <p className="text-xs text-muted-foreground">
                       {INCOME_LABELS[s.sourceType] ?? s.sourceType}
                       {!s.withholdingAtSource && " · needs quarterly estimates"}
+                      {(s.federalWithheld ?? 0) > 0 && ` · fed w/h ${fmtUsd(s.federalWithheld)}`}
+                      {(s.stateWithheld ?? 0) > 0 && ` · state w/h ${fmtUsd(s.stateWithheld)}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -339,31 +608,46 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
             </ul>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_2fr_1fr_auto] sm:items-end border-t border-border/40 pt-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="income-type">Type</Label>
-              <Select value={sourceType} onValueChange={setSourceType}>
-                <SelectTrigger id="income-type" aria-label="Income source type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(INCOME_LABELS).map(([v, l]) => (
-                    <SelectItem key={v} value={v}>{l}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-3 border-t border-border/40 pt-4">
+            <p className="text-xs text-muted-foreground">
+              Enter the box values from your W-2 / 1099. Federal withheld is W-2 box 2; state withheld is W-2 box 17. Withholding lets the draft estimate refund vs. balance due.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_2fr] sm:items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="income-type">Type</Label>
+                <Select value={sourceType} onValueChange={setSourceType}>
+                  <SelectTrigger id="income-type" aria-label="Income source type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(INCOME_LABELS).map(([v, l]) => (
+                      <SelectItem key={v} value={v}>{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="income-label">Label</Label>
+                <Input id="income-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Day job — Acme Corp" />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="income-label">Label</Label>
-              <Input id="income-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Day job — Acme Corp" />
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="income-amount">Annual $ (box 1)</Label>
+                <Input id="income-amount" type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="income-fed-wh">Federal withheld (box 2)</Label>
+                <Input id="income-fed-wh" type="number" inputMode="numeric" value={federalWithheld} onChange={(e) => setFederalWithheld(e.target.value)} placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="income-state-wh">State withheld (box 17)</Label>
+                <Input id="income-state-wh" type="number" inputMode="numeric" value={stateWithheld} onChange={(e) => setStateWithheld(e.target.value)} placeholder="0" />
+              </div>
+              <Button onClick={() => add.mutate()} disabled={add.isPending || !label.trim()}>
+                <Plus className="w-4 h-4 mr-1.5" aria-hidden /> Add
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="income-amount">Annual $</Label>
-              <Input id="income-amount" type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-            </div>
-            <Button onClick={() => add.mutate()} disabled={add.isPending || !label.trim()}>
-              <Plus className="w-4 h-4 mr-1.5" aria-hidden /> Add
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -378,8 +662,9 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
         <CardContent>
           {income.some((s) => !s.withholdingAtSource && (s.amount ?? 0) > 0) ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-              You have income without withholding at source. Massachusetts + federal quarterly
-              estimates will be computed here once the draft-return engine ships next wave.
+              You have income without withholding at source. Generate a draft in the Taxes tab to
+              see the federal self-employment tax and the estimated balance due — then plan quarterly
+              estimates so you are not surprised at filing. (Estimate — verify before filing.)
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
