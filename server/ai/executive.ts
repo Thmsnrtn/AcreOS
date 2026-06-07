@@ -21,6 +21,10 @@ import { sanitizePrompt } from "../middleware/promptInjection";
 import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
 import { pickPaxModelForOrg } from "../services/paxModelTier";
+// Tahoe Andrei (#7): cost-aware task-type model routing (distinct from the
+// subscription-tier router above — this clamps the tier ceiling DOWN to the
+// cheapest eval-green model for the turn type).
+import { routePaxModelForTurn } from "./paxModelTier";
 import { predictCostCents } from "../services/aiCostRates";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
@@ -1095,7 +1099,13 @@ export async function processChat(
     //   2. Vision: image inputs that aren't already on a vision-capable model
     //      get bumped to gpt-4o so the image parts don't fall on the floor.
     //   3. Pax tier choice (Free→Haiku / Pro→Sonnet / Scale→Opus, with the
-    //      monthly soft-cap downgrade applied).
+    //      monthly soft-cap downgrade applied) — the TIER CEILING.
+    //   3b. Tahoe Andrei (#7): COST-AWARE TASK-TYPE ROUTING. Given the tier
+    //       ceiling, route the cheapest model whose data-grounding eval is
+    //       green for THIS turn type (extraction/restatement/formatting →
+    //       Haiku/Sonnet; multi-parcel reasoning stays at the ceiling).
+    //       Gated on DATA_GROUNDING_EVAL_GREEN; fully reversible. Never
+    //       exceeds the ceiling, never applies when vision/override won.
     //   4. Router default (legacy fallback if something above returns empty).
     const visionFallback =
       imageFiles.length > 0
@@ -1103,9 +1113,19 @@ export async function processChat(
       && !result.model.includes('claude')
         ? 'openai/gpt-4o'
         : null;
+    // Apply cost-aware task-type routing to the tier ceiling only. If the tier
+    // lookup returned nothing we leave it null so the router default still wins.
+    const costRoutedCeiling = paxChoice.model
+      ? routePaxModelForTurn({
+          organizationId: org.id,
+          tierCeilingModel: paxChoice.model,
+          userText: message,
+          surface: "processChat",
+        }).model
+      : paxChoice.model;
     model = options.modelOverride
       || visionFallback
-      || paxChoice.model
+      || costRoutedCeiling
       || result.model;
   } catch (error: any) {
     logger.error('[AI Chat] Failed to get AI provider', error);
@@ -1499,9 +1519,20 @@ export async function* processChatStream(
       && !result.model.includes('claude')
         ? 'openai/gpt-4o'
         : null;
+    // Tahoe Andrei (#7): cost-aware task-type routing on the tier ceiling
+    // (same logic as processChat). Reserves Opus for multi-parcel reasoning;
+    // routes extraction/restatement turns to the cheapest eval-green model.
+    const costRoutedCeiling = paxChoice.model
+      ? routePaxModelForTurn({
+          organizationId: org.id,
+          tierCeilingModel: paxChoice.model,
+          userText: message,
+          surface: "processChatStream",
+        }).model
+      : paxChoice.model;
     model = options.modelOverride
       || visionFallback
-      || paxChoice.model
+      || costRoutedCeiling
       || result.model;
   } catch (error: any) {
     logger.error('[AI Stream] Failed to get AI provider', error);
