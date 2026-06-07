@@ -208,6 +208,7 @@ import { registerFeedbackRoutes } from "./routes-feedback";
 import { registerRosyRiverRoutes } from "./routes-rosy-river";
 import { registerAgentPrereqsRoute } from "./routes-agent-prereqs";
 import { registerPublicTrustRoutes } from "./routes-public-trust";
+import { registerDataSourcesRoutes } from "./routes-data-sources";
 import { registerIncidentRoutes } from "./routes-incidents";
 import { registerErrorBudgetRoute } from "./routes-error-budget";
 import { registerCohortRetentionRoutes } from "./routes-cohort-retention";
@@ -669,6 +670,10 @@ export async function registerRoutes(
   // above. The registerPublicTrustRoutes call later (after Clerk) becomes
   // a no-op since these handlers are already bound.
   registerPublicTrustRoutes(app);
+  // Quinn item #5 — public "How AcreOS sources data" disclosure. Mounted here
+  // (before Clerk) so prospective customers can read our sourcing posture
+  // without a session, same as the other /api/trust/* endpoints.
+  registerDataSourcesRoutes(app);
 
   // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
   // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
