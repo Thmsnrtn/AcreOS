@@ -13,7 +13,7 @@ By accessing or using the AcreOS platform ("Service"), you ("Customer," "you," o
 
 If you are accepting these Terms on behalf of a company, organization, or other legal entity, you represent and warrant that you have authority to bind that entity to these Terms, and "you" refers to that entity.
 
-The Service is operated by AcreOS, Inc. ("AcreOS," "we," "us," or "our"), a Delaware corporation.
+The Service is operated by AcreOS ("AcreOS," "we," "us," or "our"), a sole proprietorship of Thomas Norton based in Massachusetts. A Massachusetts limited liability company is being formed; these Terms will be updated to name it once it is formed.
 
 ---
 
@@ -54,13 +54,37 @@ You are responsible for:
 
 ## 5. Payment Terms and Subscription
 
-Paid subscription plans are billed in advance, monthly or annually, as selected at checkout. Payment is processed by Stripe. By subscribing to a paid plan, you authorize recurring charges.
+Paid subscription plans are billed in advance, monthly or annually, as selected at checkout. Payment is processed by Stripe.
+
+**Automatic renewal — plain English.** Your subscription renews automatically at the end of each billing period (every month for monthly plans, every year for annual plans) and your saved payment method is charged the then-current rate for that plan, until you cancel. By subscribing, you authorize these recurring charges. You can cancel anytime in account settings (Section 7); cancellation stops the next renewal. For annual plans, we will email you a reminder before each renewal. There are no cancellation fees, and the 30-day money-back guarantee in Section 5A applies to your initial purchase.
 
 We will provide at least **30 days' advance notice** before implementing any price increase. Continued use of the Service after the effective date of a price change constitutes acceptance.
 
 Credit-based services (direct mail, skip tracing, AI credits) are charged on a per-use basis per current published rates.
 
-**Refunds:** Refunds for subscription fees are issued at AcreOS's discretion. Credits for unused prepaid periods may be issued upon cancellation. Refunds exceeding $1,000 require escalation per internal policy.
+**Refunds:** Your initial purchase is covered by our 30-day money-back guarantee — see Section 5A below.
+
+---
+
+## 5A. Refund Policy — 30-Day Money-Back Guarantee
+
+**Try AcreOS for 30 days. If it is not for you, ask for your money back — no questions asked.**
+
+If you are not satisfied with your **initial paid subscription**, you may request a full refund of the subscription fee you paid within **30 days** of the date of that first charge. We do not ask you to justify the request, and we will not make you jump through hoops to get your money back.
+
+**How to request a refund.** Email support@acreos.io from your account email, or use the support form in the app, and tell us you'd like a refund. We will process approved refunds to your original payment method within **5–10 business days**. We'll also cancel your subscription so you aren't charged again.
+
+**What's covered.** The 30-day money-back guarantee covers the subscription fee for your first billing period after your initial purchase (monthly or annual).
+
+**Fair-use exclusions.** So the guarantee stays honest for everyone, a few things are handled differently:
+
+- **Pay-per-use credits that were already spent.** Direct mail, skip tracing, and AI credits are consumable services delivered the moment you use them. Credits you have *already spent* (for example, mail we have already sent on your behalf) are non-refundable, because the underlying work and third-party cost have already been incurred. Any *unused* credit balance is refundable as part of your guarantee request.
+- **Renewals after the first 30 days.** The guarantee applies to your initial purchase. Later renewals are not automatically covered — but you can cancel anytime before a renewal to avoid the next charge (Section 7), and we review renewal refund requests in good faith and case by case.
+- **Accounts terminated for abuse.** If your account is terminated for fraud, illegal use, or material breach of these Terms (Sections 7 and 8), the money-back guarantee does not apply.
+
+**Beyond 30 days.** After the guarantee window, refunds are considered on a case-by-case basis. You can always cancel to stop future charges (Section 7), and you can always export your data (Section 7).
+
+This policy does not limit any non-waivable refund or cancellation rights you may have under the consumer-protection laws of your state.
 
 ---
 
@@ -169,7 +193,7 @@ Neither party will be liable for any failure or delay in performance of its obli
 
 **14.3 Exceptions.** Either party may seek injunctive or other equitable relief from a court of competent jurisdiction to prevent actual or threatened infringement, misappropriation, or violation of intellectual property rights.
 
-**14.4 Arbitration Location and Procedure.** Arbitration will be conducted in Delaware or, at your election, by telephone or videoconference. The arbitrator will apply Delaware law and these Terms, and may award any relief available in court on an individual basis. The arbitrator's decision is final and binding and may be entered as a judgment in any court of competent jurisdiction.
+**14.4 Arbitration Location and Procedure.** Arbitration will be conducted in Massachusetts or, at your election, by telephone or videoconference. The arbitrator will apply Massachusetts law and these Terms, and may award any relief available in court on an individual basis. The arbitrator's decision is final and binding and may be entered as a judgment in any court of competent jurisdiction.
 
 **14.5 Costs.** JAMS filing fees are as set forth in JAMS's fee schedule. AcreOS will pay JAMS arbitration fees for claims under $10,000 unless the arbitrator determines the claim is frivolous. You are responsible for your own attorneys' fees unless applicable law provides otherwise.
 
@@ -179,9 +203,9 @@ Neither party will be liable for any failure or delay in performance of its obli
 
 ## 15. Governing Law and Venue
 
-These Terms are governed by the laws of the State of Delaware, without regard to its conflict of law principles. **Justification for Delaware:** AcreOS, Inc. is incorporated in Delaware; Delaware has a well-developed body of commercial contract law; the Court of Chancery provides specialized commercial dispute resolution; and Delaware choice-of-law clauses are routinely enforced by courts across the United States.
+These Terms are governed by the laws of the Commonwealth of Massachusetts, without regard to its conflict of law principles. **Justification for Massachusetts:** AcreOS is operated from Massachusetts, and Massachusetts choice-of-law clauses are routinely enforced by courts across the United States. (This will be revisited if and when the entity converts to a Delaware corporation — see docs/founder/ma-llc-formation-checklist.md and the C-corp deferral in the Tahoe H1 decisions.)
 
-For any dispute that is not subject to arbitration (including injunctive relief proceedings), you and AcreOS consent to the exclusive jurisdiction and venue of the state and federal courts located in the State of Delaware.
+For any dispute that is not subject to arbitration (including injunctive relief proceedings), you and AcreOS consent to the exclusive jurisdiction and venue of the state and federal courts located in the Commonwealth of Massachusetts.
 
 ---
 
@@ -221,6 +245,6 @@ Registered agent address: [To be confirmed upon LLC formation — registered age
 
 ---
 
-*AcreOS, Inc. · Delaware corporation · acreos.io*
+*AcreOS · operated by Thomas Norton (sole proprietor, Massachusetts) · acreos.io*
 
 *v1.0 — 2026-05-31 — Drafted by Beatrice Whitfield, CRO. Not yet reviewed by outside counsel. Counsel review required before public deployment.*

@@ -3,7 +3,7 @@
 **Effective date:** 2026-06-01  
 **Last updated:** 2026-05-31
 
-*AcreOS, Inc. ("AcreOS," "we," "us," or "our") is committed to protecting the privacy of our customers and their contacts. This Privacy Policy explains how we collect, use, disclose, and protect personal data in connection with our land investor platform ("Service").*
+*AcreOS ("AcreOS," "we," "us," or "our") is committed to protecting the privacy of our customers and their contacts. This Privacy Policy explains how we collect, use, disclose, and protect personal data in connection with our land investor platform ("Service").*
 
 *We will never sell your data.*
 
@@ -241,6 +241,6 @@ For EU/EEA residents: If you believe we have processed your personal data in vio
 
 ---
 
-*AcreOS, Inc. · Delaware corporation · acreos.io*
+*AcreOS · operated by Thomas Norton (sole proprietor, Massachusetts) · acreos.io*
 
 *v1.0 — 2026-05-31 — Drafted by Beatrice Whitfield, CRO. Not yet reviewed by outside counsel. Counsel review required before public deployment. This document supersedes the Privacy Policy previously published at acreos.io/privacy (last updated March 2026).*
