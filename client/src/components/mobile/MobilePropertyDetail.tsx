@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { LandSnapshot } from "@/components/parcels/land-snapshot";
 
 interface PropertyDetail {
   id: number;
@@ -301,6 +302,9 @@ export function MobilePropertyDetail({ propertyId }: Props) {
             </div>
           )}
         </Card>
+
+        {/* Land Snapshot — bundled, decision-grade free open-data view. */}
+        <LandSnapshot propertyId={data.id} />
 
         {/* Land status */}
         {(data.utilities || data.roadAccess || data.terrain) && (

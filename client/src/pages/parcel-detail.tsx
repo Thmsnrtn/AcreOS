@@ -67,6 +67,7 @@ import {
 import type { Property, LandStatus } from "@shared/schema";
 import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
+import { LandSnapshot } from "@/components/parcels/land-snapshot";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -311,6 +312,10 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
+            {/* Land Snapshot — the bundled, decision-grade view assembled from
+                free open data. Top of the overview: one answer, not nine cards. */}
+            <LandSnapshot propertyId={property.id} />
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
