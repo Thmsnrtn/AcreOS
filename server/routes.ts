@@ -36,6 +36,7 @@ import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
 import todayRouter from "./routes-today";
+import parcelAlertsRouter from "./routes-parcel-alerts";
 import voiceRouter from "./routes-voice";
 import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
@@ -1339,6 +1340,9 @@ export async function registerRoutes(
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
   app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);
+  // Iyari #5 — Parcel alerts (owner-change / tax-status deltas) surfaced behind
+  // the Today door. Detector writes them; this router is read + mark-read only.
+  app.use('/api/parcel-alerts', isAuthenticated, getOrCreateOrg, parcelAlertsRouter);
   app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
   // Tahoe E12: spec-compliant MCP Streamable HTTP endpoint for EXTERNAL AI
   // agents. Auth is the public API key (Authorization: Bearer ak_...),

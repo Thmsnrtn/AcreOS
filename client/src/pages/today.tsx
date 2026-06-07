@@ -35,6 +35,7 @@ import { DecisionQueue, type DecisionItem } from "@/components/today/DecisionQue
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
+import { ParcelAlerts } from "@/components/today/ParcelAlerts";
 import "./today.css";
 
 // Consolidated /api/today payload (server/routes-today.ts).
@@ -496,7 +497,13 @@ export default function TodayPage() {
         />
       )}
 
-      {/* ── Section 4: Activity feed ─────────────────────────────────── */}
+      {/* ── Section 4: Parcel alerts (Iyari #5) ──────────────────────── */}
+      {/* Owner-change / tax-status deltas detected on parcels in the
+          pipeline, derived free from county records. Owns its own query
+          + mark-read; behind the Today door per the five-doors rule. */}
+      {!showEmptyState && !todayError && <ParcelAlerts />}
+
+      {/* ── Section 5: Activity feed ─────────────────────────────────── */}
       {/* Kept as a standalone component — it owns its own infinite-scroll
           pagination, so it is intentionally not merged into /api/today. */}
       {!showEmptyState && !todayError && <TodayActivityFeed />}
