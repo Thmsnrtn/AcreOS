@@ -1,5 +1,5 @@
 import { useId, useState, useMemo, useCallback, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -47,6 +47,8 @@ import {
   Sparkles,
   Activity,
   Star,
+  Loader2,
+  HelpCircle,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -57,6 +59,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { Property } from "@shared/schema";
 import { PersonaMapStrip } from "@/components/maps/PersonaMapStrip";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
 import { usePersona } from "@/hooks/use-persona";
 import {
   AreaChart,
@@ -167,29 +171,6 @@ interface DealWithProperty {
 
 // ─── Property Intelligence Panel ───────────────────────────────────────────────
 
-interface PropertyIntelligence {
-  estimatedValue?: number;
-  valueConfidence?: number;
-  pricePerAcre?: number;
-  marketTrend?: "up" | "down" | "flat";
-  marketTrendPct?: number;
-  slopeGrade?: number;
-  slopeRisk?: "low" | "moderate" | "high";
-  solarScore?: number;
-  floodZone?: string;
-  floodRisk?: "minimal" | "moderate" | "high";
-  soilQuality?: number;
-  waterAccess?: boolean;
-  roadAccess?: boolean;
-  powerAccess?: boolean;
-  zoningCode?: string;
-  zoningDescription?: string;
-  opportunityScore?: number;
-  daysOnMarket?: number;
-  lastAssessedValue?: number;
-  annualTaxes?: number;
-}
-
 function getRiskColor(risk: "low" | "moderate" | "high"): string {
   const map = { low: "text-acr-pos", moderate: "text-acr-warn", high: "text-acr-neg" };
   return map[risk] ?? "text-muted-foreground";
@@ -198,6 +179,44 @@ function getRiskColor(risk: "low" | "moderate" | "high"): string {
 function getRiskBg(risk: "low" | "moderate" | "high"): string {
   const map = { low: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos", moderate: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn", high: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" };
   return map[risk] ?? "bg-muted";
+}
+
+/**
+ * Honest "we haven't looked this up" affordance. Renders in place of a
+ * fabricated number. Never shows a value — only an invitation to pull real data.
+ */
+function UnknownValue({
+  onCheck,
+  checking,
+  compact,
+}: {
+  onCheck?: () => void;
+  checking?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+      <span className={cn("text-micro", compact && "sr-only")}>Not yet pulled</span>
+      {!compact && <span aria-hidden="true" className="text-muted-foreground/60">·</span>}
+      {onCheck ? (
+        <button
+          type="button"
+          onClick={onCheck}
+          disabled={checking}
+          className="inline-flex items-center gap-1 text-micro font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded px-0.5 disabled:opacity-60"
+        >
+          {checking ? (
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+          ) : (
+            <Search className="w-3 h-3" aria-hidden="true" />
+          )}
+          {checking ? "Checking…" : "Check now"}
+        </button>
+      ) : (
+        <span className="text-micro" aria-hidden="true">—</span>
+      )}
+    </span>
+  );
 }
 
 function IntelligenceRow({ label, value, icon: Icon, iconClass }: { label: string; value: React.ReactNode; icon?: React.ElementType; iconClass?: string }) {
@@ -247,8 +266,6 @@ function PropertyIntelligencePanel({
   property: Property;
   onClose: () => void;
 }) {
-  const lat = parseFloat(String(property.latitude ?? 0));
-  const lng = parseFloat(String(property.longitude ?? 0));
   const acres = parseFloat(String(property.sizeAcres || "0"));
 
   // Fetch AI-powered property intelligence from AVM endpoint
@@ -273,31 +290,40 @@ function PropertyIntelligencePanel({
     staleTime: 10 * 60 * 1000,
   });
 
-  const intel: PropertyIntelligence = useMemo(() => {
-    const avm = avmData?.valuation;
-    return {
-      estimatedValue: avm?.estimatedValue ?? (acres > 0 && property.listPrice ? parseFloat(String(property.listPrice)) : undefined),
-      valueConfidence: avm?.confidence ?? 72,
-      pricePerAcre: avm?.pricePerAcre ?? (acres > 0 && property.listPrice ? parseFloat(String(property.listPrice)) / acres : undefined),
-      marketTrend: avm?.marketTrend ?? "up",
-      marketTrendPct: avm?.marketTrendPct ?? 4.2,
-      slopeGrade: avm?.slopeGrade ?? (lat ? Math.abs(Math.sin(lat * 0.1) * 15) : 5),
-      slopeRisk: avm?.slopeRisk ?? "low",
-      solarScore: avm?.solarScore ?? 78,
-      floodZone: avm?.floodZone ?? "X",
-      floodRisk: avm?.floodRisk ?? "minimal",
-      soilQuality: avm?.soilQuality ?? 65,
-      waterAccess: avm?.waterAccess ?? false,
-      roadAccess: avm?.roadAccess ?? true,
-      powerAccess: avm?.powerAccess ?? false,
-      zoningCode: property.zoning ?? avm?.zoningCode ?? "AG",
-      zoningDescription: avm?.zoningDescription ?? "Agricultural",
-      opportunityScore: avm?.opportunityScore ?? 71,
-      daysOnMarket: avm?.daysOnMarket,
-      lastAssessedValue: avm?.lastAssessedValue,
-      annualTaxes: avm?.annualTaxes,
-    };
-  }, [avmData, property, acres, lat]);
+  // "Check now" — trigger a real enrichment lookup, then refresh the AVM query.
+  // This pulls actual data (or honestly fails); it NEVER fabricates a value.
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const checkNow = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/broker/enrich-property", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId: property.id, forceRefresh: true }),
+      });
+      if (!res.ok) throw new Error(`Lookup failed (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/avm", property.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/comps", property.id, "mini"] });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't reach the data source",
+        description: "The public records lookup didn't respond. Try again in a moment.",
+        variant: "destructive",
+      });
+    },
+  });
+  const handleCheckNow = useCallback(() => checkNow.mutate(), [checkNow]);
+  const checking = checkNow.isPending;
+
+  const intel: PropertyIntelligence = useMemo(
+    () => deriveIntel(avmData, property),
+    [avmData, property],
+  );
 
   const TrendIcon = intel.marketTrend === "up" ? ArrowUpRight : intel.marketTrend === "down" ? ArrowDownRight : Minus;
   const trendColor = intel.marketTrend === "up" ? "text-acr-pos" : intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground";
@@ -350,18 +376,25 @@ function PropertyIntelligencePanel({
                 <span className="text-2xl font-bold text-primary tabular-nums">
                   {usd(intel.estimatedValue, { noCents: true })}
                 </span>
-                <div className={cn("flex items-center gap-0.5 text-xs font-medium mb-0.5", trendColor)}>
-                  <TrendIcon className="w-3.5 h-3.5" />
-                  {intel.marketTrendPct?.toFixed(1)}% YoY
-                </div>
+                {intel.marketTrendPct !== undefined && (
+                  <div className={cn("flex items-center gap-0.5 text-xs font-medium mb-0.5", trendColor)}>
+                    <TrendIcon className="w-3.5 h-3.5" />
+                    {intel.marketTrendPct.toFixed(1)}% YoY
+                  </div>
+                )}
               </div>
+              {intel.estimatedValueIsListPrice && (
+                <p className="text-micro text-muted-foreground mt-0.5">
+                  Your list price · run an AVM for a modeled estimate
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-0.5">
                 {intel.pricePerAcre && (
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {usd(intel.pricePerAcre, { noCents: true })}/ac
                   </span>
                 )}
-                {intel.valueConfidence && (
+                {intel.valueConfidence !== undefined && (
                   <div className="flex items-center gap-1">
                     <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
                       <div
@@ -381,50 +414,73 @@ function PropertyIntelligencePanel({
               )}
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              No valuation data yet
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Activity className="w-4 h-4" aria-hidden="true" />
+                No valuation pulled yet
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs shrink-0"
+                onClick={handleCheckNow}
+                disabled={checking}
+              >
+                {checking ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Search className="w-3 h-3 mr-1" aria-hidden="true" />
+                )}
+                {checking ? "Checking…" : "Look up"}
+              </Button>
             </div>
           )}
         </div>
 
-        {/* Intelligence Score Rings */}
-        <div className="p-3 border-b">
-          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Property Intelligence</p>
-          <div className="flex items-center justify-around">
-            <ScoreRing
-              score={intel.opportunityScore ?? 0}
-              label="Opportunity"
-              color="hsl(var(--primary))"
-            />
-            <ScoreRing
-              score={intel.solarScore ?? 0}
-              label="Solar"
-              color="var(--acr-heat-warm)"
-            />
-            <ScoreRing
-              score={intel.soilQuality ?? 0}
-              label="Soil"
-              color="var(--acr-pos)"
-            />
-            {intel.floodRisk && (
-              <ScoreRing
-                score={intel.floodRisk === "minimal" ? 90 : intel.floodRisk === "moderate" ? 50 : 20}
-                label="Flood Safe"
-                color={
-                  intel.floodRisk === "minimal"
-                    ? "var(--acr-pos)"
-                    : intel.floodRisk === "moderate"
-                    ? "var(--acr-heat-warm)"
-                    : "var(--acr-heat-hot)"
-                }
-              />
-            )}
-          </div>
-        </div>
+        {/* Intelligence Score Rings — only render scores we actually have. */}
+        {(() => {
+          const rings: { score: number; label: string; color: string }[] = [];
+          if (intel.opportunityScore !== undefined)
+            rings.push({ score: intel.opportunityScore, label: "Opportunity", color: "hsl(var(--primary))" });
+          if (intel.solarScore !== undefined)
+            rings.push({ score: intel.solarScore, label: "Solar", color: "var(--acr-heat-warm)" });
+          if (intel.soilQuality !== undefined)
+            rings.push({ score: intel.soilQuality, label: "Soil", color: "var(--acr-pos)" });
+          if (intel.floodRisk)
+            rings.push({
+              score: intel.floodRisk === "minimal" ? 90 : intel.floodRisk === "moderate" ? 50 : 20,
+              label: "Flood Safe",
+              color:
+                intel.floodRisk === "minimal"
+                  ? "var(--acr-pos)"
+                  : intel.floodRisk === "moderate"
+                  ? "var(--acr-heat-warm)"
+                  : "var(--acr-heat-hot)",
+            });
+          return (
+            <div className="p-3 border-b" data-testid="intel-score-rings">
+              <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Property Intelligence</p>
+              {rings.length > 0 ? (
+                <div className="flex items-center justify-around">
+                  {rings.map((r) => (
+                    <ScoreRing key={r.label} score={r.score} label={r.label} color={r.color} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 text-muted-foreground" data-testid="intel-scores-empty">
+                  <span className="text-xs flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    Scores haven't been pulled for this parcel
+                  </span>
+                  <UnknownValue onCheck={handleCheckNow} checking={checking} />
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
-        {/* Market Trend Sparkline */}
-        {intel.estimatedValue && (
+        {/* Market Trend Sparkline — only when a real trend was returned. */}
+        {intel.estimatedValue && intel.marketTrendPct !== undefined && (
           <div className="p-3 border-b">
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">
@@ -445,7 +501,7 @@ function PropertyIntelligencePanel({
                 intel.estimatedValue,
                 acres,
                 intel.marketTrend ?? "flat",
-                intel.marketTrendPct ?? 0
+                intel.marketTrendPct ?? 0,
               );
               if (data.length < 2) return null;
               const style = getComputedStyle(document.documentElement);
@@ -492,68 +548,80 @@ function PropertyIntelligencePanel({
           </div>
         )}
 
-        {/* Environmental Risk Radar */}
-        <div className="p-3 border-b">
-          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Environmental Risk Radar
-          </p>
-          {(() => {
-            const floodScore = intel.floodRisk === "minimal" ? 92 :
-              intel.floodRisk === "moderate" ? 55 : 20;
-            const slopeScore = intel.slopeRisk === "low" ? 90 :
-              intel.slopeRisk === "moderate" ? 60 : 25;
-            const radarData = [
-              { axis: "Flood Safe", value: floodScore },
-              { axis: "Slope Safe", value: slopeScore },
-              { axis: "Soil Quality", value: intel.soilQuality ?? 65 },
-              { axis: "Solar Score", value: intel.solarScore ?? 70 },
-              { axis: "Opportunity", value: intel.opportunityScore ?? 70 },
-              { axis: "Road Access", value: intel.roadAccess ? 95 : 20 },
-            ];
-            return (
-              <div role="img" aria-label={`Environmental risk radar across 6 dimensions: ${radarData.map(d => `${d.axis} ${d.value}`).join(", ")}`}>
-              <ResponsiveContainer width="100%" height={130}>
-                <RadarChart data={radarData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-                  <PolarGrid stroke="hsl(var(--border))" />
-                  <PolarAngleAxis
-                    dataKey="axis"
-                    tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <Radar
-                    name="Score"
-                    dataKey="value"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary))"
-                    fillOpacity={0.2}
-                    strokeWidth={1.5}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-              </div>
-            );
-          })()}
-        </div>
+        {/* Environmental Risk Radar — built only from dimensions we actually
+            pulled. A radar of invented scores is the exact trust bomb we're
+            killing, so we render it only when ≥3 real dimensions exist. */}
+        {(() => {
+          const radarData: { axis: string; value: number }[] = [];
+          if (intel.floodRisk)
+            radarData.push({ axis: "Flood Safe", value: intel.floodRisk === "minimal" ? 92 : intel.floodRisk === "moderate" ? 55 : 20 });
+          if (intel.slopeRisk)
+            radarData.push({ axis: "Slope Safe", value: intel.slopeRisk === "low" ? 90 : intel.slopeRisk === "moderate" ? 60 : 25 });
+          if (intel.soilQuality !== undefined)
+            radarData.push({ axis: "Soil Quality", value: intel.soilQuality });
+          if (intel.solarScore !== undefined)
+            radarData.push({ axis: "Solar Score", value: intel.solarScore });
+          if (intel.opportunityScore !== undefined)
+            radarData.push({ axis: "Opportunity", value: intel.opportunityScore });
+          if (intel.roadAccess !== undefined)
+            radarData.push({ axis: "Road Access", value: intel.roadAccess ? 95 : 20 });
 
-        {/* Terrain & Physical Attributes */}
+          // A radar needs ≥3 axes to be a shape; below that, be honest.
+          if (radarData.length < 3) return null;
+          return (
+            <div className="p-3 border-b">
+              <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Environmental Risk Radar
+              </p>
+              <div role="img" aria-label={`Environmental risk radar across ${radarData.length} dimensions: ${radarData.map(d => `${d.axis} ${d.value}`).join(", ")}`}>
+                <ResponsiveContainer width="100%" height={130}>
+                  <RadarChart data={radarData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis
+                      dataKey="axis"
+                      tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }}
+                    />
+                    <Radar
+                      name="Score"
+                      dataKey="value"
+                      stroke="hsl(var(--primary))"
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.2}
+                      strokeWidth={1.5}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Terrain & Physical Attributes. Every value is real-or-honest:
+            a missing field renders "Not yet pulled · Check now", never a
+            fabricated number or a default flood zone. */}
         <div className="p-3 border-b">
           <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Terrain & Physical</p>
           <div className="space-y-0">
-            {intel.slopeGrade !== undefined && (
-              <IntelligenceRow
-                label="Avg Slope Grade"
-                icon={Mountain}
-                iconClass="text-muted-foreground"
-                value={
+            <IntelligenceRow
+              label="Avg Slope Grade"
+              icon={Mountain}
+              iconClass="text-muted-foreground"
+              value={
+                intel.slopeGrade !== undefined ? (
                   <span className={getRiskColor(intel.slopeRisk ?? "low")}>
                     {intel.slopeGrade.toFixed(1)}°
                     {intel.slopeRisk && (
                       <span className="ml-1 text-micro opacity-70">({intel.slopeRisk})</span>
                     )}
                   </span>
-                }
-              />
-            )}
-            {intel.slopeGrade !== undefined && (
+                ) : (
+                  <UnknownValue onCheck={handleCheckNow} checking={checking} />
+                )
+              }
+            />
+            {/* Slope Aspect: ONLY shown when real terrain data carries a true
+                azimuth. The old coordinate-hash fabrication is deleted. */}
+            {intel.slopeAspect !== undefined && (
               <IntelligenceRow
                 label="Slope Aspect"
                 icon={Navigation}
@@ -562,12 +630,12 @@ function PropertyIntelligencePanel({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help font-mono text-micro bg-muted px-1.5 py-0.5 rounded">
-                        {getSlopeAspectLabel(((lat * 13.7 + lng * 7.3) % 360 + 360) % 360).icon}{" "}
-                        {getSlopeAspectLabel(((lat * 13.7 + lng * 7.3) % 360 + 360) % 360).label}
+                        {getSlopeAspectLabel(intel.slopeAspect).icon}{" "}
+                        {getSlopeAspectLabel(intel.slopeAspect).label}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="left" className="text-xs">
-                      {getSlopeAspectLabel(((lat * 13.7 + lng * 7.3) % 360 + 360) % 360).full}
+                      {getSlopeAspectLabel(intel.slopeAspect).full}
                       {" — affects solar exposure, drainage & microclimate"}
                     </TooltipContent>
                   </Tooltip>
@@ -579,48 +647,77 @@ function PropertyIntelligencePanel({
               icon={Sun}
               iconClass="text-acr-warn"
               value={
-                <span className="flex items-center gap-1">
-                  {intel.solarScore ?? "—"}/100
-                  {intel.solarScore && intel.solarScore >= 70 && (
-                    <CheckCircle2 className="w-3 h-3 text-acr-pos" />
-                  )}
-                </span>
+                intel.solarScore !== undefined ? (
+                  <span className="flex items-center gap-1">
+                    {intel.solarScore}/100
+                    {intel.solarScore >= 70 && (
+                      <CheckCircle2 className="w-3 h-3 text-acr-pos" aria-hidden="true" />
+                    )}
+                  </span>
+                ) : (
+                  <UnknownValue onCheck={handleCheckNow} checking={checking} />
+                )
               }
             />
-            <IntelligenceRow
-              label="Flood Zone"
-              icon={Droplets}
-              iconClass="text-acr-accent"
-              value={
-                <span className={cn("font-mono text-micro px-1.5 py-0.5 rounded",
-                  intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos" :
-                  intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn" :
-                  "bg-acr-neg-soft text-acr-neg"
-                )}>
-                  FEMA {intel.floodZone ?? "X"}
-                </span>
-              }
-            />
-            <IntelligenceRow
-              label="Soil Quality"
-              icon={TreePine}
-              iconClass="text-acr-pos"
-              value={
-                <div className="flex items-center gap-1.5">
-                  <div className="h-1.5 w-14 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-acr-pos"
-                      style={{ width: `${intel.soilQuality ?? 0}%` }}
-                    />
-                  </div>
-                  <span>{intel.soilQuality ?? "—"}</span>
+            <div className="py-1.5 border-b border-border/50">
+              <IntelligenceRow
+                label="Flood Zone"
+                icon={Droplets}
+                iconClass="text-acr-accent"
+                value={
+                  intel.floodZone ? (
+                    <span className={cn("font-mono text-micro px-1.5 py-0.5 rounded",
+                      intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos" :
+                      intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn" :
+                      intel.floodRisk === "high" ? "bg-acr-neg-soft text-acr-neg" :
+                      "bg-muted text-foreground"
+                    )}>
+                      FEMA {intel.floodZone}
+                    </span>
+                  ) : (
+                    <UnknownValue onCheck={handleCheckNow} checking={checking} />
+                  )
+                }
+              />
+              {intel.floodZone && intel.source && (
+                <div className="flex justify-end -mt-0.5">
+                  <DataProvenanceChip
+                    source={intel.source}
+                    sourceAsOf={intel.sourceAsOf}
+                    confidence={intel.valueConfidence}
+                    classification={intel.classification}
+                  />
                 </div>
-              }
-            />
+              )}
+            </div>
+            <div className="py-1.5">
+              <IntelligenceRow
+                label="Soil Quality"
+                icon={TreePine}
+                iconClass="text-acr-pos"
+                value={
+                  intel.soilQuality !== undefined ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-14 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-acr-pos"
+                          style={{ width: `${intel.soilQuality}%` }}
+                        />
+                      </div>
+                      <span>{intel.soilQuality}</span>
+                    </div>
+                  ) : (
+                    <UnknownValue onCheck={handleCheckNow} checking={checking} />
+                  )
+                }
+              />
+            </div>
           </div>
         </div>
 
-        {/* Utilities & Access */}
+        {/* Utilities & Access — tri-state. An UNPULLED flag reads "Unknown",
+            never "None": we don't imply a parcel lacks road/water/power when
+            we simply haven't looked it up. */}
         <div className="p-3 border-b">
           <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Utilities & Access</p>
           <div className="grid grid-cols-3 gap-1.5">
@@ -633,15 +730,15 @@ function PropertyIntelligencePanel({
                 key={label}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-md p-2 text-center",
-                  ok
+                  ok === true
                     ? "bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft dark:border-acr-pos-soft"
                     : "bg-muted/50 border border-border"
                 )}
               >
-                <Icon className={cn("w-4 h-4", ok ? "text-acr-pos" : "text-muted-foreground")} />
+                <Icon className={cn("w-4 h-4", ok === true ? "text-acr-pos" : "text-muted-foreground")} aria-hidden="true" />
                 <span className="text-micro font-medium">{label}</span>
-                <span className={cn("text-[9px]", ok ? "text-acr-pos" : "text-muted-foreground")}>
-                  {ok ? "Available" : "None"}
+                <span className={cn("text-[9px]", ok === true ? "text-acr-pos" : "text-muted-foreground")}>
+                  {ok === true ? "Available" : ok === false ? "None" : "Unknown"}
                 </span>
               </div>
             ))}
