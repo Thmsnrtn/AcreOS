@@ -221,6 +221,7 @@ import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerFounderPulseRoutes } from "./routes-founder-pulse";
 import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
+import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-eval";
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
@@ -2246,6 +2247,10 @@ export async function registerRoutes(
   // County coverage ledger — /api/founder/coverage. Coverage % of the counties
   // customers actually touch + the demand-ranked discovery queue (crawl order).
   registerFounderCoverageRoutes(app);
+  // Paid-data eval harness — /api/founder/paid-data-eval. Runs the persisted
+  // free LIS corpus against a paid provider (mock today) and reports field
+  // divergence + decision-flip rate so a paid-data trial is bought surgically.
+  registerFounderPaidDataEvalRoutes(app);
   // Customer county-coverage request — /api/county-coverage/* — the "request
   // this county" CTA (maps surface) that demand-drives discovery-on-miss.
   registerCountyCoverageRoutes(app);

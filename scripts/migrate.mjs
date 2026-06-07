@@ -6533,6 +6533,27 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "parcel_alerts_org_created_idx" ON "parcel_alerts" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "parcel_alerts_org_unread_idx" ON "parcel_alerts" ("organization_id", "is_read", "created_at")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "parcel_alerts_org_dedupe_uk" ON "parcel_alerts" ("organization_id", "dedupe_key")`,
+
+  // 0132 — Iyari #6 + Lena #3 — paid-data eval run history. Audit trail of the
+  // paid-data eval harness (server/services/paidDataEvalHarness.ts) runs so the
+  // founder buy-decision surface shows the latest field-divergence + decision-
+  // flip report instantly. Mirrors shared/schema.ts (paidDataEvalRuns).
+  `CREATE TABLE IF NOT EXISTS "paid_data_eval_runs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations" ("id"),
+     "provider" text NOT NULL,
+     "mode" text NOT NULL,
+     "state_filter" text,
+     "total_parcels" integer NOT NULL,
+     "parcels_compared" integer NOT NULL,
+     "errors" integer NOT NULL DEFAULT 0,
+     "decision_flip_count" integer NOT NULL DEFAULT 0,
+     "decision_flip_rate" numeric,
+     "est_trial_cost_cents" integer NOT NULL DEFAULT 0,
+     "result" jsonb NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "paid_data_eval_runs_org_created_idx" ON "paid_data_eval_runs" ("organization_id", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
