@@ -274,16 +274,16 @@ class HealthCheckService {
       const out: ServiceHealth[] = [];
 
       for (const [name, status] of statuses.entries()) {
-        // Free data sources degrade, never go "unavailable" — a public source
-        // outage must not cascade into an app-level critical failure. Paid
-        // providers (configured, contractual) may report unavailable.
-        const status_: ServiceStatus = status.healthy
-          ? 'healthy'
-          : 'degraded';
+        // An unhealthy data source maps to `degraded`, NEVER `unavailable`: a
+        // public source outage must not cascade into an app-level critical
+        // failure (only `database` unavailable trips the overall 503 in
+        // calculateOverallStatus). The stale-while-revalidate cache is the SLA;
+        // we surface the degradation as a founder signal, not a customer error.
+        const dataStatus: ServiceStatus = status.healthy ? 'healthy' : 'degraded';
         out.push(
           this.createHealth(
             `data:${name}`,
-            status_,
+            dataStatus,
             status.latencyMs || undefined,
             status.message,
           ),
