@@ -74,8 +74,8 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
   );
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent 
+    <Drawer open={open} onOpenChange={onOpenChange} handleOnly>
+      <DrawerContent
         className="max-h-[85vh]"
         data-testid="mobile-command-drawer"
       >

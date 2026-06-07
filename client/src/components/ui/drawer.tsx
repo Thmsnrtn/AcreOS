@@ -48,7 +48,11 @@ const DrawerContent = React.forwardRef<
       )}
       {...props}
     >
-      <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
+      {/* Real Vaul Handle (not a plain div) so a drawer can opt into
+          `handleOnly` — restricting drag-to-dismiss to this handle frees taps
+          on content children (links/buttons) to fire on the FIRST tap instead
+          of being swallowed by Vaul's drag detection. */}
+      <DrawerPrimitive.Handle className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
       {children}
     </DrawerPrimitive.Content>
   </DrawerPortal>
