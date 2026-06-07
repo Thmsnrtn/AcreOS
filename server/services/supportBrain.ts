@@ -539,6 +539,30 @@ In the meantime, is there anything else I can help you with?`;
       entityType: "support_case",
       entityId: String(supportCase.id),
     }).catch(() => {});
+
+    // RAFE (Tahoe Wave-2): an escalation that only flips status="escalated" +
+    // logs activity is NOT human-visible — the founder would never know Pax
+    // handed off. Drop a founder-visible system_alerts row (the surface
+    // /founder/escalations + the founder pulse read) so the handoff produces a
+    // real queue entry and first-response SLA stays possible. Best-effort.
+    try {
+      const { notifyFounderOfTicket } = await import("./supportNotifications");
+      const casePriority = typeof supportCase.priority === "number" ? supportCase.priority : 1;
+      await notifyFounderOfTicket({
+        orgId: supportCase.organizationId,
+        ticketId: supportCase.id,
+        subject: supportCase.subject,
+        priority: casePriority >= 4 ? "high" : "normal",
+        reason: "escalated",
+        escalationReason: reason,
+      });
+    } catch (notifyErr) {
+      logger.warn("[support-brain] escalation founder notification failed", {
+        caseId: supportCase.id,
+        err: String(notifyErr),
+      });
+    }
+
     return { response, actionsTaken: [], escalated: true };
   }
 

@@ -152,10 +152,10 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     }
 
     const { db } = await import("./storage");
-    const { leads, campaigns, deals, payments } = await import("@shared/schema");
-    const { eq, sql } = await import("drizzle-orm");
+    const { leads, campaigns, deals, payments, properties, activationEvents } = await import("@shared/schema");
+    const { eq, sql, and, inArray } = await import("drizzle-orm");
 
-    const [leadResult, importResult, campaignResult, dealResult, notePaymentResult] = await Promise.all([
+    const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult] = await Promise.all([
       // hasLead: org has >= 1 lead
       db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.organizationId, orgId)).then(r => r[0]?.count > 0),
       // hasImport: any lead with source = 'csv_import' or 'import'
@@ -170,6 +170,21 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       db.select({ count: sql<number>`count(*)` }).from(payments)
         .where(eq(payments.organizationId, orgId))
         .then(r => r[0]?.count > 0),
+      // RAFE (Tahoe Wave-2): hasPropertyLookup — the parcel-data "aha" is the
+      // single most differentiated free-tier moment (soils/flood/wetlands on a
+      // real parcel). It completes when the org has a property whose enrichment
+      // actually ran, OR an activation event recorded the first enrichment/parcel.
+      Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(properties).where(
+          sql`${properties.organizationId} = ${orgId} AND ${properties.enrichmentStatus} = 'completed'`
+        ).then(r => r[0]?.count > 0),
+        db.select({ count: sql<number>`count(*)` }).from(activationEvents).where(
+          and(
+            eq(activationEvents.organizationId, orgId),
+            inArray(activationEvents.eventName, ["first_lead_enriched", "first_property_added"]),
+          )
+        ).then(r => r[0]?.count > 0),
+      ]).then(([byProperty, byEvent]) => byProperty || byEvent),
     ]);
 
     res.json({
@@ -178,6 +193,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       hasCampaign: campaignResult,
       hasDeal: dealResult,
       hasNotePayment: notePaymentResult,
+      hasPropertyLookup: propertyLookupResult,
     });
   } catch (err) {
     Errors.internal(res, err);

@@ -2279,6 +2279,20 @@ export function registerAdminRoutes(app: Express): void {
         categoriesEnriched: Object.keys(result).filter(k => result[k as keyof typeof result] !== undefined && k !== 'propertyId' && k !== 'latitude' && k !== 'longitude'),
       });
 
+      // RAFE (Tahoe Wave-2): the parcel-data "aha" is the differentiated
+      // free-tier moment. Record it as an activation event (idempotent on
+      // org+event) so the getting-started "Look up your first property" step
+      // and the /founder/activation funnel both light up on the first lookup.
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId: (req.user as any)?.id ?? null,
+          eventName: "first_lead_enriched",
+          eventValue: { propertyId, source: "maps_lookup" },
+        });
+      } catch { /* non-fatal — telemetry only */ }
+
       res.json(result);
     } catch (err: any) {
       logger.error("Property enrichment error", { error: err.message, propertyId: req.body?.propertyId });

@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { Users, Upload, Megaphone, Handshake, Banknote, CheckCircle2, ArrowRight, X, Sparkles } from "lucide-react";
+import { Users, Upload, Megaphone, Handshake, Banknote, CheckCircle2, ArrowRight, X, Sparkles, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChecklistStatus {
@@ -15,6 +15,7 @@ interface ChecklistStatus {
   hasCampaign: boolean;
   hasDeal: boolean;
   hasNotePayment: boolean;
+  hasPropertyLookup: boolean;
 }
 
 interface ChecklistItem {
@@ -32,8 +33,25 @@ interface ChecklistItem {
 // operator type. Land-investors care about leads → campaign → deal;
 // note-investors care about notes → payments → portfolio; "both" /
 // wholesaler-shaped operators get the hybrid view.
+//
+// RAFE (Tahoe Wave-2): the single most differentiated, "I can't get this
+// anywhere else for free" moment we own is opening a parcel on the Map door
+// and watching soils + flood + wetlands + elevation light up — all from free
+// federal/state open data (FEMA NFHL, USDA SSURGO, USFWS NWI, USGS 3DEP).
+// That data-aha was buried behind the CRM funnel. For land + hybrid operators
+// it now leads the checklist, ahead of add-lead/send-mailer. Completion is
+// driven by hasPropertyLookup (server records `first_lead_enriched` on the
+// first real /api/broker/enrich-property lookup). Note-investors keep their
+// notes-first aha — a soil map is not their wow-moment.
 const PERSONA_CHECKLISTS: Record<"land" | "notes" | "both", Omit<ChecklistItem, "isComplete">[]> = {
   land: [
+    {
+      id: "propertyLookup",
+      title: "Look up your first property",
+      description: "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data",
+      icon: MapPin,
+      href: "/maps",
+    },
     {
       id: "lead",
       title: "Add your first lead",
@@ -81,6 +99,13 @@ const PERSONA_CHECKLISTS: Record<"land" | "notes" | "both", Omit<ChecklistItem, 
   ],
   both: [
     {
+      id: "propertyLookup",
+      title: "Look up your first property",
+      description: "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data",
+      icon: MapPin,
+      href: "/maps",
+    },
+    {
       id: "lead",
       title: "Add your first lead or note",
       description: "Import a CSV — leads, notes, or both. Same pipeline, different surfaces",
@@ -105,6 +130,7 @@ const PERSONA_CHECKLISTS: Record<"land" | "notes" | "both", Omit<ChecklistItem, 
 };
 
 const STATUS_KEYS: Record<string, keyof ChecklistStatus> = {
+  propertyLookup: "hasPropertyLookup",
   lead: "hasLead",
   import: "hasImport",
   campaign: "hasCampaign",
