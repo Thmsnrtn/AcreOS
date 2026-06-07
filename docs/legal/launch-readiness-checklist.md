@@ -26,16 +26,23 @@ Each item answers three questions:
 
 | # | Item | Status | Owner |
 |---|---|---|---|
-| 1.1 | Form the operating entity (LLC) | 🟡 / 🟦 | Tom + lawyer/formation service |
+| 1.0 | Entity-language honesty fix (remove false "AcreOS, Inc.") | ✅ | Beatrice — DONE 2026-06-06 |
+| 1.1 | Form the MA LLC — **timed to just before first customer** | 🟡 (gated) | Tom — runbook ready: [[ma-llc-formation-checklist]] |
 | 1.2 | Operating Agreement | 🟦 | Lawyer / formation service |
 | 1.3 | EIN (federal tax ID) | ⬜ | Tom (free, IRS.gov) |
-| 1.4 | Registered agent | 🟦 | Vendor (Northwest / formation service) |
+| 1.4 | Registered agent (MA resident agent) | 🟦 | Vendor (Northwest / formation service) |
 | 1.5 | C-corp / Delaware conversion | 🟡 (deferred) | Tom — DEFERRED per [[tahoe-h1-decisions-2026-06-06]] |
 
-**1.1 — Form the LLC.**
-- *Why it matters:* This is the single most important thing on the list. Until an entity exists, **you personally are AcreOS** — every contract, every customer dollar, every liability runs straight to your name and your personal assets. The LLC is the wall between "the business got sued" and "Tom got sued." The ToS and Privacy Policy already say "AcreOS, Inc., a Delaware corporation" — that is currently aspirational; the entity must actually exist before customers sign those terms or it weakens the liability shield.
-- *What to do:* Decide formation state (see 1.5), then form. For a single-member software LLC, a service like Northwest Registered Agent or Stripe Atlas handles formation + registered agent + EIN in one pass for a few hundred dollars. A lawyer is not strictly required to *form*, but is worth one hour to review the operating agreement (1.2).
-- *Who owns it:* **Tom** decides; a formation service executes. **Flag:** the docs reference "AcreOS, Inc. (Delaware corporation)" while H1 deferred the C-corp. Resolve the mismatch — either form an LLC now and update the docs to say "AcreOS LLC," or accept the C-corp now. **This is a Tom decision (🟡).**
+**1.0 — Entity-language honesty fix. ✅ DONE (Beatrice, 2026-06-06).**
+- *What was wrong:* The ToS, Privacy Policy, DPA, and landing footer all claimed "AcreOS, Inc., a Delaware corporation" — an entity that does not exist. Claiming a non-existent entity is materially false and *weakens* the liability shield rather than strengthening it.
+- *What was done:* Replaced everywhere with the truthful current status — **AcreOS is operated by Thomas Norton as a sole proprietor (Massachusetts), with a Massachusetts LLC formation pending.** Governing law / arbitration venue moved from Delaware (false) to Massachusetts (true). The entity name is now **centralized in `client/src/lib/legal-entity.ts`**, so the future LLC swap is a one-line edit (`ENTITY_STATUS: "sole-proprietor"` → `"llc"`).
+- *Cost:* $0. This was the only real entity-related exposure before a customer exists, and it is now closed.
+
+**1.1 — Form the MA LLC (timed to just before the first customer).**
+- *Decision (Tom, 2026-06-06):* Form a **Massachusetts LLC**, **timed to just before the first paying customer** — not now. MA LLC costs $500 to file + $500/yr; the liability shield does nothing until there's a customer relationship that can create liability. The false entity language (the only real pre-customer exposure) is already fixed (1.0).
+- *Why it matters:* Once a customer pays, the LLC is the wall between "the business got sued" and "Tom got sued." Form it the week before S13 (first customer), not the day of, so the EIN and bank account exist before money moves.
+- *What to do:* Run the same-day runbook — **[[ma-llc-formation-checklist]]** (`docs/founder/ma-llc-formation-checklist.md`). It's name-check → file Certificate of Organization ($500) → free EIN → operating agreement → bank/Stripe → flip the one-line doc-string → set the annual-report reminder.
+- *Who owns it:* **Tom** (organizer of record); a formation service can execute steps. **Gated: do not run until the first customer is imminent.**
 
 **1.2 — Operating Agreement.**
 - *Why it matters:* Even a single-member LLC needs one. It's what courts look at to confirm the LLC is a real, separate entity (reinforcing the liability shield — see Section 11 on "piercing the veil"). Without it, the "it's just Tom" argument gets easier for a plaintiff.
@@ -54,7 +61,7 @@ Each item answers three questions:
 
 **1.5 — C-corp / Delaware conversion.**
 - *Status:* 🟡 **DEFERRED** by Tom's 2026-06-06 decision (D2 in [[tahoe-h1-decisions-2026-06-06]]). No entity-structure action this quarter. The QSBS 5-year clock starting later is a knowing tradeoff Tom accepted.
-- *What to do:* Nothing now. Resurface only if (a) a VC conversation starts, (b) MRR crosses a phase threshold, or (c) Tom asks. **Note the doc mismatch in 1.1 still needs resolving regardless of this deferral** — the public docs should not claim a corporate form that doesn't exist.
+- *What to do:* Nothing now. Resurface only if (a) a VC conversation starts, (b) MRR crosses a phase threshold, or (c) Tom asks. **The earlier doc-mismatch concern is now resolved** (see 1.0) — the public docs no longer claim a corporate form that doesn't exist; they state the truthful sole-proprietor-with-MA-LLC-pending status.
 
 ---
 
@@ -139,7 +146,7 @@ Each item answers three questions:
 | 5.1 | Stripe as processor (no card data stored) | ✅ | Privacy §2; ToS §5 |
 | 5.2 | Auto-renewal clear-and-conspicuous disclosure | 🟡 verify | Iris/Soren (audit Surface 2) |
 | 5.3 | Easy cancellation (as easy as signup) | ✅ constitutional | Constitution #4 |
-| 5.4 | Refund policy stated | ⬜ / 🟡 | Beatrice drafts + Tom decides terms |
+| 5.4 | Refund policy stated (30-day money-back) | ✅ | Beatrice — DONE; ToS §5A |
 | 5.5 | Dunning / failed-payment flow | ⬜ | Iris/Lena |
 | 5.6 | SaaS sales-tax / economic-nexus posture | 🟦 | Tom + accountant |
 
@@ -151,10 +158,10 @@ Each item answers three questions:
 
 **5.3 — Cancellation.** Constitution Immutable #4 requires cancellation as easy as signup; #2 bans hidden cancellation. This is both a constitutional commitment and increasingly a legal one (FTC "click to cancel"). ✅ — keep it true.
 
-**5.4 — Refund policy.**
-- *Why it matters:* A stated refund policy reduces chargebacks and disputes, and several states require subscription refund terms to be disclosed. It's also a trust signal.
-- *What to do:* Decide the policy (e.g., pro-rated / no-refund-on-monthly / 14-day money-back). **The terms are a Tom business decision (🟡)**; Beatrice drafts the language once decided.
-- *Who owns it:* Tom decides terms; Beatrice drafts.
+**5.4 — Refund policy. ✅ DONE (Beatrice, 2026-06-06).**
+- *Decision (Tom, 2026-06-06):* **30-day money-back guarantee** — full refund of the initial subscription fee within 30 days, no questions asked.
+- *What was done:* Drafted and shipped as **ToS §5A** ("Refund policy — 30-day money-back guarantee"): full refund within 30 days of the initial charge; how to request (email/support form); 5–10 business-day processing; honest fair-use exclusions (already-spent pay-per-use credits, post-30-day renewals, abuse terminations); explicit preservation of non-waivable state consumer rights. The §5 payment section now carries an FTC-Negative-Option-compliant auto-renewal disclosure that points to the guarantee. (Mirrored in `docs/legal/terms-of-service.md`.) Soren can reference this policy from the pricing marketing page.
+- *Who owns it:* Done. The annual-renewal email reminder referenced in §5 is an implementation item for Iris/Lena (ties to 5.5 dunning).
 
 **5.5 — Dunning.** A failed-payment retry + notice flow (vs. silent service cutoff) is both good UX and avoids "you charged me with no warning" disputes. Confirm Stripe dunning + customer notice is wired. ⬜ Iris/Lena.
 
@@ -298,8 +305,8 @@ None of these are existential if items 1, 4, 7, and 8 are handled. **That is the
 - Foreign-entity registration (9.4)
 
 **Only Tom can decide (🟡):**
-- LLC-now vs. accept-C-corp (and fixing the "AcreOS, Inc." doc mismatch) (1.1, 1.5)
-- Refund policy terms (5.4)
+- ~~LLC-now vs. accept-C-corp (and the "AcreOS, Inc." doc mismatch)~~ — **DECIDED 2026-06-06:** form a MA LLC timed to just before the first customer; the false entity language is fixed now (1.0, 1.1, 1.5).
+- ~~Refund policy terms~~ — **DECIDED 2026-06-06:** 30-day money-back guarantee, now live in ToS §5A (5.4).
 - Budget + timing for lawyer/accountant/insurance engagement
 - Whether to launch before vs. after counsel reviews the docs (the team recommends: form the entity and run the breach runbook + WISP before the first customer; the lawyer doc-review can be a fast-follow if budget is tight, since the drafts are already strong)
 
