@@ -47,6 +47,49 @@ export function useDueDiligenceChecklist(propertyId: number) {
   });
 }
 
+// Maren #6 (Tahoe): confidence-aware checklist annotations. Advisory only —
+// the data informs the human, it never checks the box.
+export type ChecklistAnnotationVerdict =
+  | "likely_clears"
+  | "needs_attention"
+  | "flagged"
+  | "unknown";
+
+export interface ChecklistAnnotation {
+  itemId: "env-flood" | "env-wetlands" | "env-soil" | "env-epa";
+  summary: string;
+  verdict: ChecklistAnnotationVerdict;
+  confidence: "high" | "medium" | "low" | "none";
+  source: string | null;
+  asOf: string | null;
+  requiresVerification: boolean;
+}
+
+export interface ChecklistAnnotationsResponse {
+  annotations: Record<string, ChecklistAnnotation>;
+  hasCoordinates: boolean;
+}
+
+/**
+ * Fetch the open-data annotations for a property's environmental checklist
+ * items. Lazy by default (`enabled` controls when it runs) so we don't fire
+ * the slow open-data lookups until the panel is actually shown.
+ */
+export function useChecklistAnnotations(propertyId: number, options?: { enabled?: boolean }) {
+  return useQuery<ChecklistAnnotationsResponse>({
+    queryKey: ["/api/due-diligence", propertyId, "annotations"],
+    queryFn: async () => {
+      const res = await fetch(`/api/due-diligence/${propertyId}/annotations`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch checklist annotations");
+      return res.json();
+    },
+    enabled: !!propertyId && (options?.enabled ?? true),
+    staleTime: 5 * 60 * 1000, // open data is slow-changing; cache 5 min
+  });
+}
+
 export function useUpdateDueDiligenceChecklist() {
   // Optimistic checklist update — toggling flood-zone status, wetlands
   // assessment, etc. should feel instant. The cache here is a single

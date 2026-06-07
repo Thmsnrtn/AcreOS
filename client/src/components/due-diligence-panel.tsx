@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { clientLogger } from "@/lib/clientLogger";
-import { 
-  useDueDiligenceChecklist, 
+import {
+  useDueDiligenceChecklist,
   useUpdateDueDiligenceChecklist,
   useLookupFloodZone,
   useLookupWetlands,
@@ -10,6 +10,8 @@ import {
   useLookupEnvironmental,
   useRequestAIDossier,
   useAIDossier,
+  useChecklistAnnotations,
+  type ChecklistAnnotation,
 } from "@/hooks/use-due-diligence";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -47,6 +49,9 @@ import {
   TrendingUp,
   ShieldCheck,
   ShieldAlert,
+  Sparkles,
+  Info,
+  HelpCircle,
 } from "lucide-react";
 
 interface DueDiligencePanelProps {
@@ -98,7 +103,18 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   const { mutateAsync: lookupSoil, isPending: isLookingUpSoil } = useLookupSoilData();
   const { mutateAsync: lookupEnvironmental, isPending: isLookingUpEnvironmental } = useLookupEnvironmental();
   const { toast } = useToast();
-  
+
+  // Maren #6: confidence-aware annotations. Lazy — only fetched once the user
+  // opts in (the open-data lookups are slow), and rendered read-only. They
+  // never check off an item; the human still verifies.
+  const [annotationsEnabled, setAnnotationsEnabled] = useState(false);
+  const {
+    data: annotationData,
+    isFetching: isAnnotating,
+    isError: annotationError,
+  } = useChecklistAnnotations(propertyId, { enabled: annotationsEnabled });
+  const annotations = annotationData?.annotations ?? {};
+
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [runningAll, setRunningAll] = useState(false);
   
@@ -307,6 +323,45 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
     );
   };
 
+  // Maren #6: advisory open-data annotation rendered under an item. Read-only
+  // text (not a tooltip) so screen readers get it; honest "verify" framing; it
+  // never mutates the checklist status.
+  const AnnotationChip = ({ annotation }: { annotation: ChecklistAnnotation }) => {
+    const verdictStyle: Record<ChecklistAnnotation["verdict"], { icon: typeof Info; className: string }> = {
+      likely_clears: { icon: ShieldCheck, className: "text-acr-pos" },
+      needs_attention: { icon: AlertTriangle, className: "text-acr-warn" },
+      flagged: { icon: ShieldAlert, className: "text-acr-neg" },
+      unknown: { icon: HelpCircle, className: "text-muted-foreground" },
+    };
+    const { icon: VIcon, className } = verdictStyle[annotation.verdict];
+    const confidenceLabel =
+      annotation.confidence === "none" ? null : `${annotation.confidence} confidence`;
+    return (
+      <div
+        className="mt-2 flex items-start gap-2 rounded-md border border-dashed bg-muted/40 px-2 py-1.5"
+        data-testid={`annotation-${annotation.itemId}`}
+        role="note"
+        aria-label={`Open-data annotation for this item: ${annotation.summary}`}
+      >
+        <VIcon className={`w-4 h-4 mt-0.5 shrink-0 ${className}`} aria-hidden="true" />
+        <div className="min-w-0 text-xs">
+          <p className="text-foreground">{annotation.summary}</p>
+          {(annotation.source || confidenceLabel || annotation.asOf) && (
+            <p className="text-muted-foreground mt-0.5">
+              {[
+                annotation.source,
+                annotation.asOf ? `as of ${annotation.asOf.slice(0, 10)}` : null,
+                confidenceLabel,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card data-testid="due-diligence-panel">
       <CardHeader className="pb-3">
@@ -317,24 +372,58 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               <span className="tabular-nums">{checklist.completedPercent}</span>% complete
             </Badge>
           </CardTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={runAllLookups}
-            disabled={runningAll || isLookingUpFlood || isLookingUpWetlands || isLookingUpTax || isLookingUpSoil || isLookingUpEnvironmental}
-            aria-busy={runningAll}
-            aria-label={runningAll ? "Running all lookups" : "Run all due-diligence lookups"}
-            data-testid="button-run-all-lookups"
-          >
-            {runningAll ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
-            ) : (
-              <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-            )}
-            Run all lookups
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAnnotationsEnabled(true)}
+              disabled={isAnnotating}
+              aria-busy={isAnnotating}
+              aria-label={
+                isAnnotating
+                  ? "Pre-flagging environmental items from open data"
+                  : "Auto-annotate environmental items from free open data"
+              }
+              data-testid="button-annotate-checklist"
+            >
+              {isAnnotating ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" aria-hidden="true" />
+              )}
+              Auto-annotate
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={runAllLookups}
+              disabled={runningAll || isLookingUpFlood || isLookingUpWetlands || isLookingUpTax || isLookingUpSoil || isLookingUpEnvironmental}
+              aria-busy={runningAll}
+              aria-label={runningAll ? "Running all lookups" : "Run all due-diligence lookups"}
+              data-testid="button-run-all-lookups"
+            >
+              {runningAll ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+              ) : (
+                <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+              )}
+              Run all lookups
+            </Button>
+          </div>
         </div>
+        {annotationsEnabled && (
+          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5" data-testid="annotation-disclaimer">
+            <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            Open-data annotations are advisory — they inform your review but never check an item off. Always verify.
+          </p>
+        )}
+        {annotationsEnabled && annotationError && (
+          <p className="text-xs text-acr-warn mt-2" role="alert" data-testid="annotation-error">
+            Couldn't load open-data annotations — your checklist is unchanged. Run individual lookups instead.
+          </p>
+        )}
         <Progress
           value={checklist.completedPercent || 0}
           className="h-2 mt-2"
@@ -817,6 +906,9 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                             </div>
                             {item.notes && (
                               <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
+                            )}
+                            {annotations[item.id] && (
+                              <AnnotationChip annotation={annotations[item.id]} />
                             )}
                           </div>
                           {(item.id === "env-flood" || item.id === "env-wetlands" || item.id === "env-soil" || item.id === "env-epa" || item.id === "tax-history") && (() => {
