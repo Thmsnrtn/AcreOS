@@ -1611,10 +1611,22 @@
 /* ───────────────────────────────────────────────────── POSITIONING BAND */
 
 .lp-positioning {
+  /* This band is a fixed cream "island" even when the landing renders in dark
+     mode. The theme's ink ramp resolves LIGHT in dark mode, which produced
+     light-text-on-cream (unreadable). Pin the ink/surface ramp to the
+     light-theme values here so the whole band is always dark-on-cream
+     regardless of the page theme — heading, body, and chips all inherit it. */
+  --acr-ink: #1F1810;
+  --acr-ink-2: #3D2F1F;
+  --acr-ink-3: #6B5C42;
+  --acr-surface: #FFFBF1;
+  --acr-surface-1: #FAF4E8;
+  --acr-line-soft: rgba(60, 40, 20, 0.12);
+  --acr-border: rgba(80, 40, 15, 0.12);
   width: 100%;
   background: var(--acr-surface-1, #FAF4E8);
-  border-top: 1px solid var(--acr-border, rgba(80, 40, 15, 0.08));
-  border-bottom: 1px solid var(--acr-border, rgba(80, 40, 15, 0.08));
+  border-top: 1px solid var(--acr-border, rgba(80, 40, 15, 0.12));
+  border-bottom: 1px solid var(--acr-border, rgba(80, 40, 15, 0.12));
 }
 .lp-positioning-inner {
   max-width: 1080px;
