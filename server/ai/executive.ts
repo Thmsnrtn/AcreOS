@@ -1746,29 +1746,111 @@ export async function* processChatStream(
 
   // Pillar F / F1 — hallucination guard. Catches fabricated numbers,
   // unreasonable ARVs, and (most importantly) claimed lead/parcel/deal
-  // IDs that don't belong to this org. Warnings travel with the message
-  // via toolCalls metadata so the client can render them as a banner.
+  // IDs that don't belong to this org. Andrei 2026-06-06: the guard is now
+  // fed the actual source context from this turn's tool results
+  // (sourceNumbers + claimed entity IDs), so the numeric check has a baseline
+  // to compare against and the cross-org entity-existence check can fire —
+  // previously it was called with only {organizationId, output} and was
+  // effectively dormant. `warning`-severity results render as an advisory
+  // banner via toolCalls metadata; `error`-severity (guard.safe === false)
+  // triggers a single corrective regeneration so we never persist a confident
+  // wrong data claim.
   let hallucinationWarnings: unknown[] = [];
   try {
     const { guardPaxOutput } = await import("../services/paxHallucinationGuard");
-    const guarded = await guardPaxOutput({
+    const { extractSourceContext } = await import("./paxSourceExtraction");
+    const sourceCtx = extractSourceContext(toolCallsExecuted);
+
+    let guarded = await guardPaxOutput({
       organizationId: org.id,
       output: fullResponse,
+      sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
+      claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
+      claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
+      claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
     });
     hallucinationWarnings = guarded.warnings;
+
     if (guarded.warnings.length > 0) {
       try {
-        const { logger } = await import("../utils/logger");
         logger.warn("[pax] hallucination warnings on assistant reply", {
           source: "pax",
           metadata: {
             organizationId: org.id,
             conversationId: conversation.id,
             warningCount: guarded.warnings.length,
+            safe: guarded.safe,
             kinds: guarded.warnings.map((w) => w.kind),
+            sourceNumberCount: sourceCtx.sourceNumbers.length,
+            claimedPropertyIdCount: sourceCtx.claimedPropertyIds.length,
           },
         });
       } catch { /* logger optional */ }
+    }
+
+    // Block-and-retry on error severity: an error-severity warning means Pax
+    // stated a number with no source backing, or referenced an entity that
+    // isn't in this org — the high-stakes "confident wrong claim" shape. We
+    // regenerate ONCE with a corrective instruction (non-streamed), re-guard,
+    // and replace the streamed answer via a `correction` event. If the retry
+    // still isn't safe, we fall back to a plain honest deflection rather than
+    // persisting the unsafe text.
+    if (!guarded.safe) {
+      const errorDetails = guarded.warnings
+        .filter((w) => w.severity === "error")
+        .map((w) => w.detail)
+        .join("; ");
+      const correctionInstruction =
+        `Your previous draft contained unsupported claims and was NOT sent. ` +
+        `Issues: ${errorDetails}. ` +
+        `Rewrite your answer using ONLY facts present in the tool results from this turn. ` +
+        `Do not state any number, parcel fact (flood zone, soil, acreage, zoning, owner), ` +
+        `or entity you cannot ground in those results. If you don't have a value, say so plainly ` +
+        `and offer the paid-tier lookup path instead of guessing.`;
+      try {
+        const correctionResponse = await client.chat.completions.create({
+          model,
+          messages: [
+            ...chatMessages,
+            { role: "assistant", content: fullResponse },
+            { role: "user", content: correctionInstruction },
+          ],
+          max_tokens: 1024,
+        });
+        const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
+        if (corrected) {
+          const reguarded = await guardPaxOutput({
+            organizationId: org.id,
+            output: corrected,
+            sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
+            claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
+            claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
+            claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
+          });
+          if (reguarded.safe) {
+            fullResponse = corrected;
+            hallucinationWarnings = reguarded.warnings;
+            guarded = reguarded;
+            yield { type: "correction", content: corrected } as any;
+          }
+        }
+      } catch (retryErr) {
+        logger.warn("[pax] hallucination corrective retry failed", {
+          source: "pax",
+          metadata: { organizationId: org.id, conversationId: conversation.id },
+        });
+      }
+
+      // If still unsafe after the retry, deflect honestly rather than persist a
+      // confident-wrong answer.
+      if (!guarded.safe) {
+        const deflection =
+          "I don't have verified data to answer that confidently right now. " +
+          "I can pull the underlying records first — want me to run that lookup?";
+        fullResponse = deflection;
+        hallucinationWarnings = guarded.warnings;
+        yield { type: "correction", content: deflection } as any;
+      }
     }
   } catch {
     /* guard is advisory — never block reply persistence on its failure */
