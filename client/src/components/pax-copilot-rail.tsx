@@ -181,6 +181,36 @@ interface RailMessage {
   thinkingContent?: string;
   isThinking?: boolean;
   approvalRequired?: { toolCallId: string; toolName: string; args: any };
+  /** Set when the server's hallucination guard replaced the streamed text with a corrected version. */
+  wasCorrected?: boolean;
+}
+
+// ─── Pax stream text reducer ─────────────────────────────────────────────────
+// Pure helper for the assistant-text portion of the SSE stream. Extracted so the
+// hallucination-guard `correction` handling is unit-testable in isolation.
+//
+// Behaviour:
+//   • `content` events append their delta to the accumulated text.
+//   • a `correction` event REPLACES the accumulated text with the corrected
+//     version, marks the turn corrected, and locks it — any later `content`
+//     deltas from the pre-correction turn are ignored (no flash of stale text).
+export interface PaxTextStreamState {
+  content: string;
+  corrected: boolean;
+}
+
+export function reducePaxTextEvent(
+  state: PaxTextStreamState,
+  event: { type?: string; content?: unknown },
+): PaxTextStreamState {
+  if (event.type === "content" && typeof event.content === "string" && event.content) {
+    if (state.corrected) return state;
+    return { ...state, content: state.content + event.content };
+  }
+  if (event.type === "correction" && typeof event.content === "string") {
+    return { content: event.content, corrected: true };
+  }
+  return state;
 }
 
 // ─── Approval args formatter ─────────────────────────────────────────────────
@@ -701,6 +731,10 @@ export function PaxCopilotRail() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      // Once the server's hallucination guard sends a `correction` event we lock
+      // the message to the corrected text and ignore any further content deltas
+      // from the pre-correction turn (avoids a flash of duplicate/stale text).
+      let corrected = false;
       const pendingToolIds: Record<string, string> = {};
 
       if (reader) {
@@ -726,11 +760,20 @@ export function PaxCopilotRail() {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, isThinking: false } : m
                 ));
-              } else if (data.type === "content" && data.content) {
-                accumulated += data.content;
-                setMessages((prev) => prev.map((m) =>
-                  m.id === asstId ? { ...m, content: accumulated } : m
-                ));
+              } else if (data.type === "content" || data.type === "correction") {
+                const justCorrected = data.type === "correction" && !corrected;
+                const next = reducePaxTextEvent({ content: accumulated, corrected }, data);
+                // Only re-render if the reducer actually changed the text — a
+                // post-correction content delta is dropped silently.
+                if (next.content !== accumulated || next.corrected !== corrected) {
+                  accumulated = next.content;
+                  corrected = next.corrected;
+                  setMessages((prev) => prev.map((m) =>
+                    m.id === asstId
+                      ? { ...m, content: accumulated, ...(justCorrected ? { wasCorrected: true } : {}) }
+                      : m
+                  ));
+                }
               } else if (data.type === "tool_start" && data.toolCall) {
                 const toolName = data.toolCall.name as string;
                 const evtId = `te-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -805,7 +848,7 @@ export function PaxCopilotRail() {
         }
       }
 
-      if (!accumulated) {
+      if (!accumulated && !corrected) {
         setMessages((prev) => prev.map((m) =>
           m.id === asstId ? { ...m, content: "How can I help?", isStreaming: false } : m
         ));
@@ -1544,6 +1587,20 @@ export function PaxCopilotRail() {
                                 <span className="inline-block w-0.5 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                               )}
                             </div>
+                          )}
+                          {/* Hallucination-guard correction affordance — honest, not alarming */}
+                          {msg.wasCorrected && msg.role !== "error" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 mt-1 text-caption text-muted-foreground">
+                                  <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" aria-hidden="true" />
+                                  Updated for accuracy
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Pax revised this reply to keep it grounded in your data.
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                           {/* Pre-approval card */}
                           {msg.approvalRequired && (
