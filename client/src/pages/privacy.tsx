@@ -8,6 +8,7 @@ import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { SITE } from "@/lib/jsonld-schemas";
+import { LEGAL_ENTITY_NAME, LEGAL_ENTITY_FOOTER } from "@/lib/legal-entity";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/privacy-policy.md.
@@ -60,9 +61,9 @@ export default function PrivacyPolicy() {
                 <span className="tabular-nums">{lastUpdated}</span>
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                AcreOS, Inc. ("AcreOS," "we," "us," or "our") is committed to protecting the privacy of
-                our customers and their contacts. This Privacy Policy explains how we collect, use,
-                disclose, and protect personal data in connection with our land investor platform
+                {LEGAL_ENTITY_NAME} ("AcreOS," "we," "us," or "our") is committed to protecting the
+                privacy of our customers and their contacts. This Privacy Policy explains how we collect,
+                use, disclose, and protect personal data in connection with our land investor platform
                 ("Service").
               </p>
               <p className="text-muted-foreground leading-relaxed font-medium">
@@ -869,7 +870,7 @@ export default function PrivacyPolicy() {
 
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                AcreOS, Inc. · Delaware corporation · acreos.io · v1.0 — 2026-05-31
+                {LEGAL_ENTITY_FOOTER} · v1.0 — 2026-05-31
               </p>
             </div>
           </CardContent>

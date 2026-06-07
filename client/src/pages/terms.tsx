@@ -8,6 +8,11 @@ import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { SITE } from "@/lib/jsonld-schemas";
+import {
+  LEGAL_ENTITY_OPERATED_BY,
+  LEGAL_ENTITY_FOOTER,
+  LEGAL_GOVERNING_STATE,
+} from "@/lib/legal-entity";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/terms-of-service.md.
@@ -75,8 +80,7 @@ export default function TermsOfService() {
                 "you" refers to that entity.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                The Service is operated by AcreOS, Inc. ("AcreOS," "we," "us," or "our"), a Delaware
-                corporation.
+                {LEGAL_ENTITY_OPERATED_BY}
               </p>
             </section>
 
@@ -164,8 +168,16 @@ export default function TermsOfService() {
               <h2 className="text-xl font-semibold">5. Payment terms and subscription</h2>
               <p className="text-muted-foreground leading-relaxed">
                 Paid subscription plans are billed in advance, monthly or annually, as selected at
-                checkout. Payment is processed by Stripe. By subscribing to a paid plan, you authorize
-                recurring charges.
+                checkout. Payment is processed by Stripe.
+              </p>
+              <p className="text-muted-foreground leading-relaxed font-medium">
+                Automatic renewal — plain English. Your subscription renews automatically at the end
+                of each billing period (every month for monthly plans, every year for annual plans) and
+                your saved payment method is charged the then-current rate for that plan, until you
+                cancel. By subscribing, you authorize these recurring charges. You can cancel anytime in
+                account settings (Section 7); cancellation stops the next renewal. For annual plans, we
+                will email you a reminder before each renewal. There are no cancellation fees, and the
+                30-day money-back guarantee in Section 5A applies to your initial purchase.
               </p>
               <p className="text-muted-foreground leading-relaxed">
                 We will provide at least{" "}
@@ -178,9 +190,76 @@ export default function TermsOfService() {
                 basis per current published rates.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                <strong>Refunds:</strong> Refunds for subscription fees are issued at AcreOS's discretion.
-                Credits for unused prepaid periods may be issued upon cancellation. Refunds exceeding
-                $1,000 require escalation per internal policy.
+                <strong>Refunds:</strong> Your initial purchase is covered by our 30-day money-back
+                guarantee — see Section 5A below.
+              </p>
+            </section>
+
+            {/* ── 5A. Refund Policy / 30-day money-back ── */}
+            <section className="space-y-4" data-testid="section-refund-policy">
+              <h2 className="text-xl font-semibold">5A. Refund policy — 30-day money-back guarantee</h2>
+              <p className="text-muted-foreground leading-relaxed font-medium">
+                Try AcreOS for 30 days. If it is not for you, ask for your money back — no questions
+                asked.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                If you are not satisfied with your <strong>initial paid subscription</strong>, you may
+                request a full refund of the subscription fee you paid within{" "}
+                <span className="tabular-nums">30</span> days of the date of that first charge. We do not
+                ask you to justify the request, and we will not make you jump through hoops to get your
+                money back.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                <strong>How to request a refund.</strong> Email{" "}
+                <a
+                  href="mailto:support@acreos.io"
+                  className="underline-offset-2 hover:underline text-primary"
+                >
+                  support@acreos.io
+                </a>{" "}
+                from your account email, or use the support form in the app, and tell us you'd like a
+                refund. We will process approved refunds to your original payment method within{" "}
+                <span className="tabular-nums">5</span>–<span className="tabular-nums">10</span>{" "}
+                business days. We'll also cancel your subscription so you aren't charged again.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                <strong>What's covered.</strong> The 30-day money-back guarantee covers the
+                subscription fee for your first billing period after your initial purchase (monthly or
+                annual).
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                <strong>Fair-use exclusions.</strong> So the guarantee stays honest for everyone, a few
+                things are handled differently:
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
+                <li>
+                  <strong>Pay-per-use credits that were already spent.</strong> Direct mail, skip
+                  tracing, and AI credits are consumable services delivered the moment you use them.
+                  Credits you have <em>already spent</em> (for example, mail we have already sent on your
+                  behalf) are non-refundable, because the underlying work and third-party cost have
+                  already been incurred. Any <em>unused</em> credit balance is refundable as part of
+                  your guarantee request.
+                </li>
+                <li>
+                  <strong>Renewals after the first 30 days.</strong> The guarantee applies to your
+                  initial purchase. Later renewals are not automatically covered — but you can cancel
+                  anytime before a renewal to avoid the next charge (Section 7), and we review renewal
+                  refund requests in good faith and case by case.
+                </li>
+                <li>
+                  <strong>Accounts terminated for abuse.</strong> If your account is terminated for
+                  fraud, illegal use, or material breach of these Terms (Sections 7 and 8), the
+                  money-back guarantee does not apply.
+                </li>
+              </ul>
+              <p className="text-muted-foreground leading-relaxed">
+                <strong>Beyond 30 days.</strong> After the guarantee window, refunds are considered on a
+                case-by-case basis. You can always cancel to stop future charges (Section 7), and you can
+                always export your data (Section 7).
+              </p>
+              <p className="text-muted-foreground leading-relaxed text-sm">
+                This policy does not limit any non-waivable refund or cancellation rights you may have
+                under the consumer-protection laws of your state.
               </p>
             </section>
 
@@ -402,10 +481,11 @@ export default function TermsOfService() {
               </p>
               <h3 className="text-base font-semibold text-foreground">14.4 Location and procedure</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Arbitration will be conducted in Delaware or, at your election, by telephone or
-                videoconference. The arbitrator will apply Delaware law and these Terms, and may award any
-                relief available in court on an individual basis. The arbitrator's decision is final and
-                binding and may be entered as a judgment in any court of competent jurisdiction.
+                Arbitration will be conducted in {LEGAL_GOVERNING_STATE} or, at your election, by
+                telephone or videoconference. The arbitrator will apply {LEGAL_GOVERNING_STATE} law and
+                these Terms, and may award any relief available in court on an individual basis. The
+                arbitrator's decision is final and binding and may be entered as a judgment in any court
+                of competent jurisdiction.
               </p>
               <h3 className="text-base font-semibold text-foreground">14.5 Costs</h3>
               <p className="text-muted-foreground leading-relaxed">
@@ -426,16 +506,15 @@ export default function TermsOfService() {
             <section className="space-y-4" data-testid="section-governing-law">
               <h2 className="text-xl font-semibold">15. Governing law and venue</h2>
               <p className="text-muted-foreground leading-relaxed">
-                These Terms are governed by the laws of the State of Delaware, without regard to its
-                conflict of law principles. AcreOS, Inc. is incorporated in Delaware; Delaware has a
-                well-developed body of commercial contract law; the Court of Chancery provides specialized
-                commercial dispute resolution; and Delaware choice-of-law clauses are routinely enforced
-                by courts across the United States.
+                These Terms are governed by the laws of the Commonwealth of{" "}
+                {LEGAL_GOVERNING_STATE}, without regard to its conflict of law principles. AcreOS is
+                operated from {LEGAL_GOVERNING_STATE}, and {LEGAL_GOVERNING_STATE} choice-of-law clauses
+                are routinely enforced by courts across the United States.
               </p>
               <p className="text-muted-foreground leading-relaxed">
                 For any dispute that is not subject to arbitration (including injunctive relief
                 proceedings), you and AcreOS consent to the exclusive jurisdiction and venue of the state
-                and federal courts located in the State of Delaware.
+                and federal courts located in the Commonwealth of {LEGAL_GOVERNING_STATE}.
               </p>
             </section>
 
@@ -525,7 +604,7 @@ export default function TermsOfService() {
 
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                AcreOS, Inc. · Delaware corporation · acreos.io · v1.0 — 2026-05-31
+                {LEGAL_ENTITY_FOOTER} · v1.0 — 2026-05-31
               </p>
             </div>
           </CardContent>

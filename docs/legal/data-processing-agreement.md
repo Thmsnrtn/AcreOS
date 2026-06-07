@@ -3,7 +3,7 @@
 **Effective date:** 2026-06-01  
 **Last updated:** 2026-05-31
 
-*This Data Processing Agreement ("DPA") is entered into by and between AcreOS, Inc. ("Processor") and the Customer identified in the applicable AcreOS subscription agreement ("Controller"), and is incorporated into and governed by the AcreOS Terms of Service ("Agreement"). Capitalized terms not defined here have the meanings given in the Agreement and the Privacy Policy.*
+*This Data Processing Agreement ("DPA") is entered into by and between AcreOS — a sole proprietorship of Thomas Norton based in Massachusetts (a Massachusetts limited liability company is being formed) — ("Processor") and the Customer identified in the applicable AcreOS subscription agreement ("Controller"), and is incorporated into and governed by the AcreOS Terms of Service ("Agreement"). Capitalized terms not defined here have the meanings given in the Agreement and the Privacy Policy.*
 
 *This DPA applies to the extent that AcreOS processes Personal Data on behalf of the Controller in connection with providing the Service, and the processing is subject to the General Data Protection Regulation (EU) 2016/679 ("GDPR"), the UK GDPR, the California Consumer Privacy Act as amended by the CPRA ("CCPA"), or any other applicable data protection law.*
 
@@ -15,7 +15,7 @@ For purposes of this DPA:
 
 **"Controller"** means the Customer who determines the purposes and means of the processing of Personal Data (the land investor, note investor, or their organization using AcreOS).
 
-**"Processor"** means AcreOS, Inc., which processes Personal Data on behalf of the Controller pursuant to the Agreement.
+**"Processor"** means AcreOS (a sole proprietorship of Thomas Norton, Massachusetts; a Massachusetts limited liability company is being formed), which processes Personal Data on behalf of the Controller pursuant to the Agreement.
 
 **"Personal Data"** means any information relating to an identified or identifiable natural person, including but not limited to: lead names, email addresses, postal addresses, phone numbers, property-owner identifying information, and any other information within the Service that constitutes personal data under applicable law.
 
@@ -198,7 +198,7 @@ Customers requiring a signed DPA for regulatory or procurement purposes may requ
 ---
 
 **Processor:**  
-AcreOS, Inc.  
+AcreOS (a sole proprietorship of Thomas Norton, Massachusetts; Massachusetts LLC formation pending)  
 legal@acreos.io  
 [Registered agent address — to be confirmed upon LLC formation]
 

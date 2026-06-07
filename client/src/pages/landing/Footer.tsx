@@ -18,6 +18,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { SupportFeedbackModal } from "@/components/support-feedback-modal";
+import { LEGAL_ENTITY_NAME } from "@/lib/legal-entity";
 
 export function Footer() {
   // 2026-05-11: replaced dead `mailto:` contact link with the
@@ -79,7 +80,7 @@ export function Footer() {
         defaultCategory="question"
       />
       <div className="lp-footer-bottom">
-        <span>© {new Date().getFullYear()} AcreOS, Inc.</span>
+        <span>© {new Date().getFullYear()} {LEGAL_ENTITY_NAME}</span>
         <span className="lp-footer-fine">
           <Link href="/privacy">Privacy</Link>
           {" · "}
