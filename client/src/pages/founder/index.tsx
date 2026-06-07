@@ -501,6 +501,12 @@ const DEEP_TOOLS: DeepToolLink[] = [
     description: "Predicted vs. realized accept-rate reliability diagram",
     icon: Target,
   },
+  {
+    label: "Life-Cockpit",
+    href: "/founder/life-cockpit",
+    description: "Your personal taxes, income, deadlines + encrypted document vault",
+    icon: Heart,
+  },
 ];
 
 function DeepToolsPanel() {

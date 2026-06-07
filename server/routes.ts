@@ -218,6 +218,7 @@ import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerFounderPulseRoutes } from "./routes-founder-pulse";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
+import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
 import { registerLifecycleRoutes } from "./routes-lifecycle";
@@ -2227,6 +2228,9 @@ export async function registerRoutes(
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
+  // Founder Life-Cockpit — /api/founder/life-cockpit/* — FOUNDER-SIDE personal
+  // ops (taxes, encrypted document vault, income, obligations). Founder-only.
+  registerFounderLifeCockpitRoutes(app);
   // FW-MIREILLE-1 (push-forward 2026-05-08): public deal-room view (growth loop).
   registerPublicDealRoomRoute(app);
   // FW-MARISOL-2: ASC 606 recognition + /founder/financials backend.
