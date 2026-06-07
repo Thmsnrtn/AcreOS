@@ -10,6 +10,7 @@ import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
+import { recordParcelObservations } from "./data-cache/observation-log";
 
 interface RegridParcel {
   type: "Feature";
@@ -451,9 +452,29 @@ function snapshotToResult(snapshot: {
 /**
  * Store parcel result in cache
  */
-async function cacheParcelResult(result: ParcelLookupResult, state: string, county: string): Promise<void> {
+async function cacheParcelResult(result: ParcelLookupResult, state: string, county: string, organizationId?: number): Promise<void> {
   if (!result.found || !result.parcel) return;
-  
+
+  // Iyari — the acorn: append every fact this lookup resolved as an immutable
+  // observation BEFORE we overwrite the snapshot cache. Fire-and-forget; never
+  // block or fail the cache write. Read each fact defensively.
+  if (result.parcel.apn && state && county) {
+    const d = result.parcel.data ?? ({} as NonNullable<ParcelLookupResult["parcel"]>["data"]);
+    void recordParcelObservations({
+      apn: result.parcel.apn,
+      state: state.toUpperCase(),
+      county,
+      source: result.source ?? "unknown",
+      organizationId: organizationId ?? null,
+      facts: {
+        owner: d.owner && d.owner !== "Unknown" ? d.owner : undefined,
+        owner_address: d.ownerAddress || undefined,
+        tax_amount: d.taxAmount || undefined,
+        acres: d.acres ?? undefined,
+      },
+    });
+  }
+
   try {
     const snapshotData: InsertParcelSnapshot = {
       apn: result.parcel.apn,
@@ -468,7 +489,7 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
       acres: result.parcel.data.acres?.toString() || null,
       taxAmount: result.parcel.data.taxAmount || null,
     };
-    
+
     await storage.upsertParcelSnapshot(snapshotData);
     logger.info("[ParcelCache] Cached parcel", { metadata: { apn: result.parcel.apn, county, state } });
   } catch (error) {
@@ -511,7 +532,7 @@ export async function lookupParcelByAPN(
     const countyResult = await lookupFromCountyGIS(apn, state, county);
     if (countyResult?.found) {
       logger.info("[Parcel] Found via County GIS (FREE)");
-      await cacheParcelResult(countyResult, state, county);
+      await cacheParcelResult(countyResult, state, county, organizationId);
       return countyResult;
     }
   }
@@ -521,7 +542,7 @@ export async function lookupParcelByAPN(
     const rapidApiResult = await lookupFromRapidAPI(apn, state, county, organizationId);
     if (rapidApiResult?.found) {
       logger.info("[Parcel] Found via RapidAPI Property Lines (CHEAP BYOK)");
-      await cacheParcelResult(rapidApiResult, state, county);
+      await cacheParcelResult(rapidApiResult, state, county, organizationId);
       return rapidApiResult;
     }
   }
@@ -532,7 +553,7 @@ export async function lookupParcelByAPN(
   
   // Cache Regrid results too
   if (regridResult.found && state && county) {
-    await cacheParcelResult(regridResult, state, county);
+    await cacheParcelResult(regridResult, state, county, organizationId);
   }
   
   return regridResult;

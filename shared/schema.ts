@@ -6078,6 +6078,56 @@ export type InsertParcelSnapshot = z.infer<typeof insertParcelSnapshotSchema>;
 export type ParcelSnapshot = typeof parcelSnapshots.$inferSelect;
 
 // ============================================
+// PARCEL OBSERVATION LOG (Iyari — the acorn)
+// --------------------------------------------
+// Append-only, NEVER updated. Every time any path (lookup, ETL, fusion,
+// customer edit) sees a fact about a parcel, we write an immutable row.
+// `parcel_snapshots` stays the fast "current best view" cache; observations
+// become the longitudinal system-of-record the cache is derived from.
+//
+// The strategic bet: longitudinal parcel facts (assessed value, owner, tax
+// status over time) are the one asset you cannot buy retroactively. Capturing
+// them costs one async insert per fact today; backfilling later is impossible.
+// Rows are written fire-and-forget via server/services/data-cache/observation-log.ts
+// and must never block or fail a parcel response.
+// ============================================
+export const parcelObservations = pgTable("parcel_observations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id), // null = global/shared observation
+
+  // Parcel identity (denormalized — observations outlive any snapshot row)
+  apn: text("apn").notNull(),
+  state: text("state").notNull(), // 2-letter state code
+  county: text("county").notNull(),
+
+  // The fact: one row per (field) observed at observedAt
+  field: text("field").notNull(), // e.g. "owner", "assessed_value", "tax_status", "acres"
+  value: jsonb("value").$type<unknown>(), // text/number/object — whatever the field carries
+
+  // Provenance
+  source: text("source").notNull(), // county_gis, regrid, rapidapi, fema, fusion, manual, ...
+  confidence: real("confidence"), // 0..1, optional
+
+  // When the fact was observed (defaults to insert time)
+  observedAt: timestamp("observed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  // LEADING-org composite (shard-readiness lint): tenant routing is a single
+  // index probe. Org-scoped rows scan only this tenant's history.
+  index("parcel_observations_org_observed_idx").on(table.organizationId, table.observedAt),
+  // Query index for the future owner-change / tax-status delta detector:
+  // "latest N observations per (apn, field)" ordered by time.
+  index("parcel_observations_apn_field_observed_idx").on(table.apn, table.field, table.observedAt),
+]);
+
+export const insertParcelObservationSchema = createInsertSchema(parcelObservations).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertParcelObservation = z.infer<typeof insertParcelObservationSchema>;
+export type ParcelObservation = typeof parcelObservations.$inferSelect;
+
+// ============================================
 // ACQUISITION: OFFER LETTERS & BLIND OFFERS
 // ============================================
 

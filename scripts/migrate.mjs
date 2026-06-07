@@ -6216,6 +6216,25 @@ const STATEMENTS = [
   `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "state" text`,
   `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "county" text`,
   `CREATE INDEX IF NOT EXISTS "provider_lookup_county_idx" ON "provider_lookup_log" ("state", "county", "category")`,
+
+  // 0121 — Iyari — parcel observation log (append-only, never updated). The
+  // longitudinal system-of-record for parcel facts; parcel_snapshots stays the
+  // derived "current best view" cache. Mirrors shared/schema.ts.
+  `CREATE TABLE IF NOT EXISTS "parcel_observations" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations" ("id"),
+     "apn" text NOT NULL,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "field" text NOT NULL,
+     "value" jsonb,
+     "source" text NOT NULL,
+     "confidence" real,
+     "observed_at" timestamp NOT NULL DEFAULT now(),
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "parcel_observations_org_observed_idx" ON "parcel_observations" ("organization_id", "observed_at")`,
+  `CREATE INDEX IF NOT EXISTS "parcel_observations_apn_field_observed_idx" ON "parcel_observations" ("apn", "field", "observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
