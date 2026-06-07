@@ -6384,6 +6384,35 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_year_idx" ON "founder_income_sources" ("founder_user_id", "tax_year")`,
   `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_type_idx" ON "founder_income_sources" ("founder_user_id", "source_type")`,
+
+  // 0127 — Iyari (Chief of Future) #2 — Persist the Land Intelligence Report.
+  // The LIS report is otherwise a cold recompute against ~8 external APIs on
+  // every view. Persist the computed report + per-field provenance + a
+  // staleAfter policy so a re-opened parcel renders from store in <100ms and we
+  // only recompute once stale. Also seeds the eval corpus (Iyari #6). Wraps the
+  // fusion COMPUTATION (store-read/store-write) WITHOUT changing fusion math.
+  // Mirrors shared/schema.ts (landIntelligenceReports) + migrations/0127_*.sql.
+  `CREATE TABLE IF NOT EXISTS "land_intelligence_reports" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations" ("id"),
+     "parcel_key" text NOT NULL,
+     "apn" text,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "latitude" numeric,
+     "longitude" numeric,
+     "acres" numeric,
+     "report" jsonb NOT NULL,
+     "field_provenance" jsonb,
+     "land_intelligence_score" integer,
+     "recommendation" text,
+     "computed_at" timestamp NOT NULL DEFAULT now(),
+     "stale_after" timestamp NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "land_intelligence_reports_org_key_idx" ON "land_intelligence_reports" ("organization_id", "parcel_key")`,
+  `CREATE INDEX IF NOT EXISTS "land_intelligence_reports_apn_computed_idx" ON "land_intelligence_reports" ("apn", "computed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -252,20 +252,52 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
 router.post("/parcel-intelligence", async (req: Request, res: Response) => {
   try {
     const { generateLandIntelligenceReport } = await import("./services/parcelIntelligenceFusion");
+    // Iyari #2: persist the report; serve fresh re-opens from store in <100ms
+    // instead of a cold ~8-API recompute. Wraps the fusion COMPUTATION
+    // (store-read/store-write) WITHOUT changing the fusion math.
+    const {
+      parcelKeyFor, readStoredReport, writeStoredReport, isReportFresh,
+    } = await import("./services/data-cache/land-intelligence-store");
     const {
       latitude, longitude, acres, state, county, address, apn,
       askingPrice, assessedValue, ownerName, ownerState,
       taxDelinquent, taxDelinquentAmount, yearsOwned,
+      forceRefresh,
     } = req.body;
 
     if (!latitude || !longitude || !state || !county) {
       return Errors.badRequest(res, "latitude, longitude, state, and county are required");
     }
 
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const parsedAcres = parseFloat(acres) || 1;
+    const organizationId = (req as AuthenticatedRequest).organization?.id ?? null;
+
+    const identity = {
+      apn: apn ?? null,
+      state,
+      county,
+      latitude: lat,
+      longitude: lng,
+      acres: parsedAcres,
+    };
+    const parcelKey = parcelKeyFor(identity);
+
+    // 1) Store-read: serve a fresh stored report immediately (<100ms).
+    if (!forceRefresh) {
+      const stored = await readStoredReport(parcelKey, organizationId);
+      if (stored && isReportFresh(stored)) {
+        res.setHeader("X-LIS-Cache", "hit");
+        return res.json(stored.report);
+      }
+    }
+
+    // 2) Miss / stale / forced: recompute (unchanged fusion math).
     const report = await generateLandIntelligenceReport({
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      acres: parseFloat(acres) || 1,
+      latitude: lat,
+      longitude: lng,
+      acres: parsedAcres,
       state,
       county,
       address,
@@ -279,6 +311,10 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
       yearsOwned: yearsOwned ? parseInt(yearsOwned) : undefined,
     });
 
+    // 3) Store-write (best-effort, never blocks the response on failure).
+    void writeStoredReport({ parcelKey, organizationId, identity, report });
+
+    res.setHeader("X-LIS-Cache", "miss");
     res.json(report);
   } catch (err: any) {
     Errors.internal(res, err);

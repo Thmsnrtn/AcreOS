@@ -6128,6 +6128,77 @@ export type InsertParcelObservation = z.infer<typeof insertParcelObservationSche
 export type ParcelObservation = typeof parcelObservations.$inferSelect;
 
 // ============================================
+// LAND INTELLIGENCE REPORTS (Iyari #2 — persist the report; seed the corpus)
+// --------------------------------------------
+// The LIS report (generateLandIntelligenceReport) is otherwise a cold recompute
+// against ~8 external APIs on every view. We persist the computed report + its
+// per-field provenance + a staleAfter policy so a re-opened parcel renders from
+// our store in <100ms, and we ONLY recompute once the report is stale.
+//
+// Two payoffs for first customers: (a) speed on revisit (investors revisit
+// deals across the pipeline), (b) trust — every field already carries its
+// {source, fetchedAt} provenance. This store ALSO quietly becomes the eval
+// corpus (Iyari #6): a labeled set of free-data reports to diff against paid
+// data when MRR justifies a trial.
+//
+// IMPORTANT: this table wraps the fusion COMPUTATION (store-read / store-write)
+// without changing the fusion math. The report column is the verbatim
+// LandIntelligenceReport JSON the fusion produced.
+// ============================================
+export const landIntelligenceReports = pgTable("land_intelligence_reports", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id), // null = global/shared
+
+  // Stable parcel identity / cache key. parcelKey is a normalized hash of the
+  // parcel identity (apn+state+county when an apn exists, else rounded
+  // lat/lng+acres) so the same parcel maps to one row per org.
+  parcelKey: text("parcel_key").notNull(),
+  apn: text("apn"),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  latitude: numeric("latitude"),
+  longitude: numeric("longitude"),
+  acres: numeric("acres"),
+
+  // The verbatim computed report (LandIntelligenceReport shape).
+  report: jsonb("report").$type<Record<string, unknown>>().notNull(),
+
+  // Per-field provenance lifted from report.fieldProvenance for fast,
+  // index-free staleness inspection without parsing the whole report.
+  // Shape: { [field]: { source, fetchedAt, classification } }
+  fieldProvenance: jsonb("field_provenance").$type<Record<string, {
+    source: string;
+    fetchedAt: string;
+    classification: string;
+  }>>(),
+
+  // Composite score snapshot (denormalized for cheap longitudinal queries —
+  // "this parcel scored 82 in March and 71 now" without parsing report JSON).
+  landIntelligenceScore: integer("land_intelligence_score"),
+  recommendation: text("recommendation"),
+
+  // Staleness policy: serve from store while now() < staleAfter; recompute past it.
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+  staleAfter: timestamp("stale_after").notNull(),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  // LEADING-org composite (shard-readiness lint): tenant routing is one probe.
+  index("land_intelligence_reports_org_key_idx").on(table.organizationId, table.parcelKey),
+  // Longitudinal lookups for a parcel across time (score-over-time / corpus).
+  index("land_intelligence_reports_apn_computed_idx").on(table.apn, table.computedAt),
+]);
+
+export const insertLandIntelligenceReportSchema = createInsertSchema(landIntelligenceReports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertLandIntelligenceReport = z.infer<typeof insertLandIntelligenceReportSchema>;
+export type LandIntelligenceReportRow = typeof landIntelligenceReports.$inferSelect;
+
+// ============================================
 // ACQUISITION: OFFER LETTERS & BLIND OFFERS
 // ============================================
 
