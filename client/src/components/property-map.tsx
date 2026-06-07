@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
 import { clientLogger } from "@/lib/clientLogger";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { OverlayLegend } from "@/components/maps/OverlayLegend";
 import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -54,6 +55,30 @@ const USGS_HILLSHADE_URL = "https://carto.nationalmap.gov/arcgis/rest/services/U
 const USGS_TOPO_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer";
 
 const LAYER_STORAGE_KEY = "property-map-layers";
+
+// Mobile overlay perf budget (Krieger #6): stacking FEMA + NLCD + CDL +
+// hillshade rasters on a throttled phone blows the LCP/TTI budget. Cap the
+// number of concurrently-active HEAVY raster overlays on mobile; when a toggle
+// would exceed it, evict the oldest-enabled raster (FIFO) and tell the
+// customer "showing N of M". Desktop is uncapped.
+const MOBILE_MAX_ACTIVE_RASTERS = 3;
+
+// The heavy raster overlays subject to the mobile budget. propertyHeatmap is a
+// lightweight fill; terrainContours/osmBuildings are vector — none count here.
+const HEAVY_RASTER_LAYERS = [
+  "femaFloodZone",
+  "zoningDistricts",
+  "usdaCropland",
+  "usdaClu",
+  "usgsHillshade",
+  "hypsometricHillshade",
+  "slopeGradient",
+] as const;
+type HeavyRasterLayer = (typeof HEAVY_RASTER_LAYERS)[number];
+
+function isHeavyRaster(key: string): key is HeavyRasterLayer {
+  return (HEAVY_RASTER_LAYERS as readonly string[]).includes(key);
+}
 const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
 
 // Per-layer load lifecycle. Free federal/state GIS servers (FEMA NFHL, USDA
@@ -803,7 +828,10 @@ export function PropertyMap({
   
   const compMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const dynamicLayerIdsRef = useRef<Set<string>>(new Set());
-  
+  // FIFO activation order of heavy raster overlays — drives mobile eviction.
+  const rasterActivationOrderRef = useRef<HeavyRasterLayer[]>([]);
+
+  const { isMobile } = useIsMobile();
   const { toast } = useToast();
   
   const {
@@ -836,10 +864,56 @@ export function PropertyMap({
   const updateLayerState = useCallback((updates: Partial<LayerState>) => {
     setLayerState(prev => {
       const newState = { ...prev, ...updates };
+
+      // Mobile overlay perf budget (Krieger #6): cap concurrently-active heavy
+      // raster overlays. When a toggle-ON would exceed the cap, evict the
+      // oldest-enabled raster (FIFO) so the newest stays, and toast the hint.
+      // Keep the activation-order ref in sync on every toggle (both devices) so
+      // eviction is correct the moment a session crosses the budget on mobile.
+      const order = rasterActivationOrderRef.current;
+      for (const key of Object.keys(updates) as (keyof LayerState)[]) {
+        if (!isHeavyRaster(key)) continue;
+        const turningOn = newState[key] === true;
+        const idx = order.indexOf(key);
+        if (turningOn && idx === -1) order.push(key);
+        else if (!turningOn && idx !== -1) order.splice(idx, 1);
+      }
+
+      if (isMobile) {
+        let active = HEAVY_RASTER_LAYERS.filter((k) => newState[k]);
+        if (active.length > MOBILE_MAX_ACTIVE_RASTERS) {
+          const evicted: HeavyRasterLayer[] = [];
+          // Evict oldest-first until within budget. Don't evict a layer we just
+          // turned on in THIS update — evict the older ones instead.
+          const justTurnedOn = new Set(
+            (Object.keys(updates) as (keyof LayerState)[]).filter(
+              (k) => isHeavyRaster(k) && newState[k] === true,
+            ) as HeavyRasterLayer[],
+          );
+          for (const key of [...order]) {
+            if (active.length <= MOBILE_MAX_ACTIVE_RASTERS) break;
+            if (justTurnedOn.has(key)) continue;
+            if (!newState[key]) continue;
+            (newState as Record<string, unknown>)[key] = false;
+            evicted.push(key);
+            const oi = order.indexOf(key);
+            if (oi !== -1) order.splice(oi, 1);
+            active = HEAVY_RASTER_LAYERS.filter((k) => newState[k]);
+          }
+          if (evicted.length > 0) {
+            toast({
+              title: `Showing ${MOBILE_MAX_ACTIVE_RASTERS} of ${HEAVY_RASTER_LAYERS.length} data layers`,
+              description:
+                "To keep the map fast on mobile, we turned off the oldest layer. Toggle layers off to add more.",
+            });
+          }
+        }
+      }
+
       saveLayerState(newState);
       return newState;
     });
-  }, []);
+  }, [isMobile, toast]);
 
   // ── Sky / Solar update ──────────────────────────────────────────────────────
   const updateSkyForTime = useCallback((hour: number) => {

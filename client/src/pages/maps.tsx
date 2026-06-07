@@ -63,6 +63,8 @@ import { SampleParcelPreview } from "@/components/maps/SampleParcelPreview";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
 import { usePersona } from "@/hooks/use-persona";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import {
   AreaChart,
   Area,
@@ -263,11 +265,22 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
 function PropertyIntelligencePanel({
   property,
   onClose,
+  variant = "desktop",
 }: {
   property: Property;
   onClose: () => void;
+  /**
+   * "desktop" renders the fixed w-80 side panel.
+   * "mobile" renders the same content body inside a bottom Sheet (the Sheet
+   * shell, grabber, and Close button are owned by the parent — this variant
+   * drops the side-panel chrome + the panel's own close button to avoid
+   * duplicate close affordances). Driving-for-dollars is the #1 mobile path,
+   * so the pin-tap detail must be a bottom sheet, never a 320px side panel.
+   */
+  variant?: "desktop" | "mobile";
 }) {
   const acres = parseFloat(String(property.sizeAcres || "0"));
+  const isMobile = variant === "mobile";
 
   // Fetch AI-powered property intelligence from AVM endpoint
   const { data: avmData, isLoading: avmLoading } = useQuery({
@@ -330,7 +343,20 @@ function PropertyIntelligencePanel({
   const trendColor = intel.marketTrend === "up" ? "text-acr-pos" : intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground";
 
   return (
-    <div className="w-80 border-l bg-card overflow-y-auto flex-shrink-0 flex flex-col" style={{ maxHeight: "calc(100dvh - 130px - env(safe-area-inset-bottom, 0px))" }}>
+    <div
+      className={cn(
+        "bg-card flex flex-col",
+        isMobile
+          ? // Inside a bottom Sheet: fill its height, let the body scroll.
+            "h-full min-h-0 overflow-hidden"
+          : "w-80 border-l overflow-y-auto flex-shrink-0",
+      )}
+      style={
+        isMobile
+          ? undefined
+          : { maxHeight: "calc(100dvh - 130px - env(safe-area-inset-bottom, 0px))" }
+      }
+    >
       {/* Header */}
       <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-10">
         <div className="min-w-0 flex-1">
@@ -353,14 +379,19 @@ function PropertyIntelligencePanel({
             {property.apn && <> · APN: {property.apn}</>}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close property intelligence panel"
-          className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-        >
-          <X className="w-4 h-4" aria-hidden="true" />
-        </button>
+        {/* On mobile the Sheet shell owns the close affordance (top-right X +
+            swipe-down + scrim tap), so we suppress the panel's own button to
+            avoid a duplicate. Desktop keeps its 44px close target. */}
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close property intelligence panel"
+            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <div className="overflow-y-auto flex-1">
@@ -891,6 +922,7 @@ export default function MapsPage() {
   // The dock label "Map" stays the same (five fixed doors); only
   // the content behind the door changes.
   const persona = usePersona();
+  const { isMobile } = useIsMobile();
   const personaDefaultMode: "properties" | "deals" =
     persona === "note_investor" || persona === "note_servicer" || persona === "fix_flipper" || persona === "subdivider"
       ? "deals"
@@ -1387,6 +1419,11 @@ export default function MapsPage() {
                         </Link>
                       </Button>
                     </div>
+                    {/* Krieger: turn a coverage dead-end into a coverage
+                        signal. If the customer's county isn't covered yet,
+                        let them request it (feeds the demand-weighted
+                        discovery queue, Iyari #3). */}
+                    <RequestCountyCTA className="mt-4 w-full text-left" />
                   </div>
                 </div>
               </div>
@@ -1404,15 +1441,52 @@ export default function MapsPage() {
             )}
           </div>
 
-          {/* Enhanced Property Intelligence Panel */}
-          {selectedProperty && (
+          {/* Enhanced Property Intelligence Panel — desktop only.
+              Driving-for-dollars is the #1 mobile path, so on phones the
+              pin-tap detail renders in a bottom Sheet (below) instead of this
+              320px side panel, which is unusable under ~700px. */}
+          {!isMobile && selectedProperty && (
             <PropertyIntelligencePanel
               property={selectedProperty}
               onClose={() => setSelectedPropertyId(undefined)}
+              variant="desktop"
             />
           )}
         </div>
       </div>
+
+      {/* Mobile selected-pin experience — bottom Sheet (Krieger #3).
+          Snaps to ~55dvh and drags up to full height; honors the home
+          indicator + 72px bottom nav via env(safe-area-inset-bottom). */}
+      {isMobile && (
+        <Sheet
+          open={Boolean(selectedProperty)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedPropertyId(undefined);
+          }}
+        >
+          <SheetContent
+            side="bottom"
+            // Snap height: ~55dvh, drag-to-expand up to 92dvh. Clears the
+            // home indicator + bottom nav with safe-area padding.
+            className="h-[55dvh] max-h-[92dvh] p-0 pt-0 rounded-t-2xl flex flex-col"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Property intelligence</SheetTitle>
+            </SheetHeader>
+            {selectedProperty && (
+              <div className="flex-1 min-h-0 overflow-hidden mt-2">
+                <PropertyIntelligencePanel
+                  property={selectedProperty}
+                  onClose={() => setSelectedPropertyId(undefined)}
+                  variant="mobile"
+                />
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* RAFE (Tahoe Wave-2): "See a sample" preview — real free-data lookup on
           a curated, data-rich parcel so the parcel-data aha never lands empty. */}
