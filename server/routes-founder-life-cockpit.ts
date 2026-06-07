@@ -65,6 +65,21 @@ function parseDate(raw: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * Parse an optional whole-dollar amount from a request body.
+ * Returns:
+ *   - `undefined` when the key was absent (PATCH: don't touch it),
+ *   - `null` when explicitly cleared (empty string / null),
+ *   - a finite number when present,
+ *   - `NaN` when present-but-invalid (caller rejects with 400).
+ */
+function parseOptionalAmount(raw: unknown, present: boolean): number | null | undefined {
+  if (!present) return undefined;
+  if (raw === null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 // Vault upload: up to 15MB, PDF/image/document/text only (W2/1099/returns).
 const vaultUpload = createUploadMiddleware({
   maxSizeMB: 15,
@@ -128,16 +143,79 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
     }
   });
 
-  // ── Tax draft seam (NEXT wave — computation/return engine) ─────────────────
-  app.get(`${base}/tax/draft`, ...guard, async (_req: AuthenticatedRequest, res: Response) => {
-    // Explicit foundation-wave seam. The draft-return generation engine
-    // (prep + self-file package; NOT regulated IRS MeF e-file) is the next
-    // founder wave. This endpoint exists so the UI has a stable contract.
-    res.json({
-      status: "not_yet_available",
-      message:
-        "Lena will prepare your draft return here. Upload your W2s, 1099s, and prior return, then capture your tax profile — the draft-return engine lands in the next wave.",
-    });
+  // ── Tax draft (computed federal 1040 + MA Form 1 estimate) ─────────────────
+  // GET computes from current data WITHOUT persisting a new version (opening the
+  // tab shouldn't spam history). Self-prepared DRAFT software — never e-file.
+  app.get(`${base}/tax/draft`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const taxYear = parseYear(req.query.taxYear);
+      const result = await cockpit.computeAndStoreDraft(getUserId(req), taxYear, false);
+      res.json({ taxYear, ...result });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // POST computes AND persists a new draft version (founder hit "Generate").
+  app.post(`${base}/tax/draft`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const taxYear = parseYear((req.body ?? {}).taxYear);
+      const result = await cockpit.computeAndStoreDraft(getUserId(req), taxYear, true);
+      if (!result.ready) return Errors.badRequest(res, result.reason ?? "Not enough data to compute a draft");
+      // Log metadata only — NEVER any tax figure.
+      logger.info("[founder-cockpit] tax draft computed", {
+        founderUserId: getUserId(req),
+        taxYear,
+        version: result.version,
+        provisional: result.draft.provisional,
+      });
+      res.status(201).json({ taxYear, ...result });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // History of stored draft versions (metadata only — never decrypts figures).
+  app.get(`${base}/tax/returns`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const taxYear = parseYear(req.query.taxYear);
+      const returns = await cockpit.listReturnHistory(getUserId(req), taxYear);
+      res.json({ taxYear, returns });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Download a stored draft as a transcription-ready self-file package (markdown).
+  app.get(`${base}/tax/returns/:id/package`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = parseId(req.params.id);
+      if (id === null) return Errors.badRequest(res, "Invalid return id");
+      const stored = await cockpit.getStoredDraft(getUserId(req), id);
+      if (!stored) return Errors.notFound(res, "Tax draft");
+      res.setHeader("Content-Type", stored.package.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${stored.package.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
+      );
+      res.send(stored.package.content);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Update a stored draft's workflow status (draft | reviewed | filed).
+  app.patch(`${base}/tax/returns/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = parseId(req.params.id);
+      if (id === null) return Errors.badRequest(res, "Invalid return id");
+      const status = String((req.body ?? {}).status ?? "");
+      const ok = await cockpit.updateReturnStatus(getUserId(req), id, status);
+      if (!ok) return Errors.badRequest(res, "Invalid status or return not found");
+      res.json({ updated: true, status });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
   });
 
   // ── Document vault ─────────────────────────────────────────────────────────
@@ -313,6 +391,14 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
       if (amount !== null && !Number.isFinite(amount)) {
         return Errors.badRequest(res, "Amount must be a number");
       }
+      const federalWithheld = parseOptionalAmount(b.federalWithheld, b.federalWithheld !== undefined);
+      if (Number.isNaN(federalWithheld)) {
+        return Errors.badRequest(res, "Federal withheld must be a number");
+      }
+      const stateWithheld = parseOptionalAmount(b.stateWithheld, b.stateWithheld !== undefined);
+      if (Number.isNaN(stateWithheld)) {
+        return Errors.badRequest(res, "State withheld must be a number");
+      }
       const income = await cockpit.createIncomeSource({
         founderUserId: getUserId(req),
         taxYear: parseYear(b.taxYear),
@@ -321,6 +407,8 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
         amount,
         withholdingAtSource:
           b.withholdingAtSource === undefined ? true : Boolean(b.withholdingAtSource),
+        federalWithheld: federalWithheld ?? null,
+        stateWithheld: stateWithheld ?? null,
         notes: b.notes ? String(b.notes).slice(0, 4000) : null,
       });
       res.status(201).json({ income });
@@ -344,12 +432,22 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
           return Errors.badRequest(res, "Amount must be a number");
         }
       }
+      const federalWithheld = parseOptionalAmount(b.federalWithheld, b.federalWithheld !== undefined);
+      if (Number.isNaN(federalWithheld)) {
+        return Errors.badRequest(res, "Federal withheld must be a number");
+      }
+      const stateWithheld = parseOptionalAmount(b.stateWithheld, b.stateWithheld !== undefined);
+      if (Number.isNaN(stateWithheld)) {
+        return Errors.badRequest(res, "State withheld must be a number");
+      }
       const income = await cockpit.updateIncomeSource(getUserId(req), id, {
         sourceType: b.sourceType !== undefined ? String(b.sourceType) : undefined,
         label: b.label !== undefined ? String(b.label).slice(0, 200) : undefined,
         amount,
         withholdingAtSource:
           b.withholdingAtSource !== undefined ? Boolean(b.withholdingAtSource) : undefined,
+        federalWithheld,
+        stateWithheld,
         notes: b.notes !== undefined ? (b.notes ? String(b.notes).slice(0, 4000) : null) : undefined,
       });
       if (!income) return Errors.notFound(res, "Income source");
