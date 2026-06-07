@@ -11,6 +11,7 @@ import { eq, and, ilike } from "drizzle-orm";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
 import { recordParcelObservations } from "./data-cache/observation-log";
+import { fetchGeo } from "./providers/fetchGeo";
 
 interface RegridParcel {
   type: "Feature";
@@ -287,10 +288,12 @@ async function queryArcGISEndpoint(
       const url = `${baseUrl}/${layerId}/query?${params.toString()}`;
       logger.debug("[CountyGIS] Querying", { metadata: { url: url.substring(0, 100) } });
       
-      const response = await fetch(url, {
+      // Free county/state GIS endpoint: timeout + bounded retry + per-host
+      // limiter + SSRF guard + contactable UA via the shared geo fetch helper.
+      const response = await fetchGeo(url, {
         headers: { "Accept": "application/json" },
       });
-      
+
       if (!response.ok) continue;
       
       const data = await response.json() as ArcGISResponse;
@@ -729,8 +732,10 @@ async function lookupFromRegrid(
       
       logger.debug("[Regrid] Trying APN lookup", { metadata: { apnVariant } });
       logger.debug("[Regrid] URL", { metadata: { url: url.replace(token, 'REDACTED') } });
-      
-      const response = await fetch(url);
+
+      // Timeout + bounded retry + per-host limiter. host pinned so the token
+      // in the query string never becomes part of the limiter key.
+      const response = await fetchGeo(url, { host: "app.regrid.com" });
       logger.debug("[Regrid] Response status", { metadata: { status: response.status } });
       
       if (response.ok) {
@@ -829,8 +834,8 @@ export async function lookupParcelByCoordinates(
   
   try {
     const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&token=${token}&return_geometry=true`;
-    
-    const response = await fetch(url);
+
+    const response = await fetchGeo(url, { host: "app.regrid.com" });
     
     if (!response.ok) {
       throw new Error(`Regrid API error: ${response.status}`);
@@ -1694,8 +1699,9 @@ export async function getNearbyParcelsFromCountyGIS(
 
     logger.debug("[NearbyParcels] Querying", { metadata: { county: endpoint.county, state: endpoint.state, queryUrl } });
     
-    const response = await fetch(`${queryUrl}?${params.toString()}`);
-    
+    // Free county/state GIS ArcGIS endpoint — hardened fetch.
+    const response = await fetchGeo(`${queryUrl}?${params.toString()}`);
+
     if (!response.ok) {
       logger.warn("[NearbyParcels] Query failed", { metadata: { status: response.status } });
       return { parcels: [], source: "error", count: 0 };
