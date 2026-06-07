@@ -104,6 +104,51 @@
       "name": "Texas Tax Code — appraisal records availability",
       "citation": "Tex. Tax Code §25.027",
       "url": "https://statutes.capitol.texas.gov/Docs/TX/htm/TX.25.htm"
+    },
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "Texas high point Guadalupe Peak 8,751 ft; low point Gulf of Mexico 0 ft",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS Texas — The Soil Orders of Texas",
+      "citation": "Alfisols most extensive statewide; Vertisols, Mollisols, Aridisols, Entisols also dominant",
+      "url": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "Special Flood Hazard Area mapping; Gulf-coast and riverine floodplains carry the highest risk",
+      "url": "https://www.fema.gov/flood-maps"
     }
-  ]
+  ],
+  "dataSnapshot": {
+    "scope": "Statewide reference, sampled from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "0 ft to 8,751 ft",
+        "note": "Texas runs from Gulf sea level to Guadalupe Peak — coastal and Hill Country parcels carry very different flood and drainage profiles, so the per-parcel 3DEP read matters more here than the statewide range.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Alfisols & Vertisols",
+        "note": "Vertisols are expansive shrink-swell clays common across central and coastal Texas — foundation and septic feasibility are the buyer's diligence cost, and AcreOS surfaces the SSURGO map unit per parcel.",
+        "source": "USDA NRCS Texas — The Soil Orders of Texas",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Coastal & riverine floodplains",
+        "note": "Texas flood risk concentrates along the Gulf coast and river systems; AcreOS pulls the FEMA NFHL zone for any parcel so a coastal or bottomland flag shows up before you buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are statewide reference values from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  }
 }

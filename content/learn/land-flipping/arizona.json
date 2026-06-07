@@ -104,6 +104,51 @@
       "name": "Arizona Revised Statutes — Real Estate Brokers",
       "citation": "A.R.S. §32-2121",
       "url": "https://www.azleg.gov/arsDetail/?title=32"
+    },
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "Arizona high point Humphreys Peak 12,633 ft; low point Colorado River ≈ 70 ft",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "citation": "Aridisols and Entisols dominate Arizona's arid-zone soil cover",
+      "url": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "Special Flood Hazard Area mapping; flood risk concentrated in mapped washes and floodplains",
+      "url": "https://www.fema.gov/flood-maps"
     }
-  ]
+  ],
+  "dataSnapshot": {
+    "scope": "Statewide reference, sampled from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "≈ 70 ft to 12,633 ft",
+        "note": "Arizona spans Colorado River desert lows to Humphreys Peak — a buy-box in Cochise, Navajo, or Apache county sits well above flood stage, but slope and access cut both ways on resale.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Aridisols & Entisols",
+        "note": "Arizona's dominant arid-zone orders mean low organic matter and frequent caliche — perc tests and septic feasibility are the buyer's real diligence cost on un-permitted parcels.",
+        "source": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Mapped washes & floodplains",
+        "note": "Arizona flood risk concentrates in FEMA-mapped washes and floodplains rather than broad coastal zones; AcreOS pulls the NFHL zone for any parcel so you check it before, not after, the buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are statewide reference values from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  }
 }

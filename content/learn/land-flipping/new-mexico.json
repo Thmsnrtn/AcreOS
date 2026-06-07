@@ -104,6 +104,51 @@
       "name": "New Mexico Statutes — Real Estate Brokers",
       "citation": "NMSA §61-29-2",
       "url": "https://nmonesource.com/nmos/nmsa/en/nav_date.do"
+    },
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "New Mexico high point Wheeler Peak 13,161 ft; low point Red Bluff Reservoir ≈ 2,840 ft",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "citation": "Aridisols and Entisols dominate New Mexico's arid-zone soil cover",
+      "url": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "Special Flood Hazard Area mapping; flood risk concentrated in arroyos and riverine floodplains",
+      "url": "https://www.fema.gov/flood-maps"
     }
-  ]
+  ],
+  "dataSnapshot": {
+    "scope": "Statewide reference, sampled from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "≈ 2,840 ft to 13,161 ft",
+        "note": "Even New Mexico's low point sits near 2,840 ft — high-desert parcels are well above flood stage, but slope, access, and water rights are where the real diligence lives.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Aridisols & Entisols",
+        "note": "Arid-zone Aridisols and Entisols mean low organic matter and frequent caliche layers — perc-test and septic feasibility are the buyer's diligence cost, and AcreOS surfaces the SSURGO map unit per parcel.",
+        "source": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Arroyos & riverine floodplains",
+        "note": "New Mexico flood risk concentrates in arroyos and river floodplains rather than broad coastal zones; AcreOS pulls the FEMA NFHL zone for any parcel so a flash-flood corridor shows up before you buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are statewide reference values from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  }
 }

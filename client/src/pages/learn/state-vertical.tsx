@@ -35,6 +35,7 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 
 import { getLearnContent, listLearnRoutes } from "./registry";
+import { DataSnapshotBand } from "./DataSnapshotBand";
 import type { LearnContent } from "./types";
 
 const SITE_URL = "https://acreos.io";
@@ -231,6 +232,13 @@ export default function StateVerticalLandingPage() {
             {content.mechanics}
           </p>
         </section>
+
+        {content.dataSnapshot && (
+          <DataSnapshotBand
+            snapshot={content.dataSnapshot}
+            placeName={content.stateName}
+          />
+        )}
 
         <section className="mb-10" data-testid="section-learn-statutes">
           <h2 className="text-2xl font-semibold mb-4">Statutes that change the playbook</h2>

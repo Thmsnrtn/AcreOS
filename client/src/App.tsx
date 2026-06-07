@@ -379,6 +379,10 @@ const AcreosVsDealmachinePage = React.lazy(() => import("@/pages/compare/acreos-
 // /learn/<vertical>/<state> — programmatic SEO surface for state×vertical
 // long-tail queries. Public, lazy-loaded so it doesn't weigh on first paint.
 const StateVerticalLearnPage = React.lazy(() => import("@/pages/learn/state-vertical"));
+// /learn/county/<state>/<county> — data-first programmatic SEO surface for
+// county-level long-tail queries. Public, lazy-loaded. Pages are only emitted
+// by the county-rollup generator when free-data completeness clears the bar.
+const CountyLearnPage = React.lazy(() => import("@/pages/learn/county"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
@@ -650,6 +654,10 @@ function Router() {
       <Route path="/why" component={WhyPage} />
       <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />
       <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />
+      {/* Programmatic SEO — county data primers. Registered before the
+          state×vertical route: the 4-segment path is more specific, and
+          first-match order keeps the two from colliding. */}
+      <Route path="/learn/county/:state/:county" component={CountyLearnPage} />
       {/* Programmatic SEO — state×vertical primers */}
       <Route path="/learn/:vertical/:state" component={StateVerticalLearnPage} />
       <Route path="/status" component={StatusPage} />

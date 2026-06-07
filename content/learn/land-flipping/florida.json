@@ -113,6 +113,51 @@
       "name": "Florida Statutes — Recording Fees",
       "citation": "F.S. §28.24",
       "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0028/0028.html"
+    },
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "Florida high point Britton Hill 345 ft; low point Atlantic Ocean 0 ft",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS / UF-IFAS — Agricultural Soils of Florida",
+      "citation": "Spodosols most extensive statewide, followed by Entisols and Ultisols",
+      "url": "https://ask.ifas.ufl.edu/publication/SS655"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "Special Flood Hazard Area mapping; low statewide elevation puts large areas in mapped flood zones",
+      "url": "https://www.fema.gov/flood-maps"
     }
-  ]
+  ],
+  "dataSnapshot": {
+    "scope": "Statewide reference, sampled from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "0 ft to 345 ft",
+        "note": "Britton Hill is the lowest U.S. state high point. Florida's flat, low profile is exactly why the per-parcel FEMA flood read is the single most important check before you buy.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Spodosols & Entisols",
+        "note": "Florida's flatwood Spodosols and sandy Entisols mean high water tables and drainage constraints — the buyer's septic and fill cost is real, and AcreOS surfaces the SSURGO map unit per parcel.",
+        "source": "USDA NRCS / UF-IFAS — Agricultural Soils of Florida",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://ask.ifas.ufl.edu/publication/SS655"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Broad coastal & inland zones",
+        "note": "Low statewide elevation puts large areas in FEMA-mapped flood zones; AcreOS pulls the NFHL zone for any parcel so the flood flag and insurance implication surface before, not after, the buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are statewide reference values from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  }
 }

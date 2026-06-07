@@ -104,6 +104,51 @@
       "name": "Arkansas Code — Real Estate License",
       "citation": "Ark. Code §17-42-103",
       "url": "https://advance.lexis.com/container?config=00JAA2NjRkOGI5OS1lYTUwLTRiYzgtYWEzNi1lODYwOTllYzI0NjEKAFBvZENhdGFsb2dlnJ6cYwOFm0eAaUEgZcil"
+    },
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "Arkansas high point Mount Magazine 2,753 ft; low point Ouachita River ≈ 55 ft",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS / Encyclopedia of Arkansas — Soils",
+      "citation": "Ultisols most extensive statewide; Alfisols dominate the lower Mississippi Alluvial Plain",
+      "url": "https://encyclopediaofarkansas.net/entries/soils-5141/"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "Special Flood Hazard Area mapping; Mississippi Alluvial Plain and Delta carry the highest risk",
+      "url": "https://www.fema.gov/flood-maps"
     }
-  ]
+  ],
+  "dataSnapshot": {
+    "scope": "Statewide reference, sampled from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "≈ 55 ft to 2,753 ft",
+        "note": "Arkansas runs from the Ouachita River lowlands to Mount Magazine. Delta-region parcels near the 55 ft floor are where the FEMA flood read matters most.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Ultisols & Alfisols",
+        "note": "Interior-highland Ultisols are clay-rich and low-fertility; Delta Alfisols are more fertile but sit in flood-prone bottomland — AcreOS surfaces the SSURGO map unit per parcel either way.",
+        "source": "USDA NRCS / Encyclopedia of Arkansas — Soils",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://encyclopediaofarkansas.net/entries/soils-5141/"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Delta & alluvial floodplains",
+        "note": "Arkansas flood risk concentrates in the Mississippi Alluvial Plain and Delta; AcreOS pulls the FEMA NFHL zone for any parcel so a bottomland flag surfaces before you buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-06",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are statewide reference values from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  }
 }

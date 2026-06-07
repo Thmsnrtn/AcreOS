@@ -1,0 +1,75 @@
+{
+  "stateSlug": "texas",
+  "stateName": "Texas",
+  "countySlug": "brewster",
+  "countyName": "Brewster",
+  "headline": "Brewster County land due diligence: flood, soil, and elevation from free public data",
+  "metaDescription": "What the free government data shows for Brewster County, Texas — FEMA flood-zone read, dominant SSURGO soils, and elevation band for land investors, with named sources.",
+  "intro": "Before you buy vacant land in Brewster County, three free federal datasets tell you most of what kills a resale: the FEMA flood zone, the dominant soil order (which drives septic feasibility), and the elevation band. AcreOS runs all three on every parcel — here is the county-level read, with sources.",
+  "centroid": {
+    "latitude": 29.8119,
+    "longitude": -103.2517
+  },
+  "dataSnapshot": {
+    "scope": "Brewster County reference read, sampled at the county centroid from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "≈ 1,700 ft to 7,825 ft",
+        "note": "Brewster is the largest county in Texas, rough and mountainous up to Emory Peak — parcels are remote, and access plus slope are the real resale constraints, not flood.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Aridisols & Entisols",
+        "note": "Trans-Pecos arid-zone soils are thin and rocky; the practical diligence is water access and road access, not agricultural capability.",
+        "source": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Rio Grande & arroyo floodplains",
+        "note": "Flood risk concentrates along the Rio Grande corridor and mapped arroyos rather than broadly; pull the parcel's NFHL zone before you buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are a Brewster County reference read from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  },
+  "faq": [
+    {
+      "q": "Is land in Brewster County in a flood zone?",
+      "a": "It depends on the parcel. Flood risk concentrates along the Rio Grande corridor and mapped arroyos rather than broadly; pull the parcel's NFHL zone before you buy. The only reliable answer is the parcel's own FEMA NFHL zone, which the free AcreOS parcel check pulls in seconds."
+    },
+    {
+      "q": "What kind of soil does Brewster County have?",
+      "a": "Trans-Pecos arid-zone soils are thin and rocky; the practical diligence is water access and road access, not agricultural capability. For a specific parcel, the SSURGO map unit gives you the exact soil series and its septic-suitability rating."
+    },
+    {
+      "q": "Do I need to pay for data to do diligence in Brewster County?",
+      "a": "No. The flood, soil, and elevation reads above come from free federal datasets (FEMA, USDA NRCS, USGS). AcreOS runs them on every parcel at no cost; you only reach for paid data providers once your deal volume earns it."
+    }
+  ],
+  "sources": [
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "USGS — Elevations and Distances in the United States",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "citation": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "url": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "FEMA — National Flood Hazard Layer (NFHL)",
+      "url": "https://www.fema.gov/flood-maps"
+    }
+  ],
+  "generatedAt": "2026-06-07T15:02:56.468Z"
+}

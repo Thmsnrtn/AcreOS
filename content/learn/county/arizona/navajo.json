@@ -1,0 +1,75 @@
+{
+  "stateSlug": "arizona",
+  "stateName": "Arizona",
+  "countySlug": "navajo",
+  "countyName": "Navajo",
+  "headline": "Navajo County land due diligence: flood, soil, and elevation from free public data",
+  "metaDescription": "What the free government data shows for Navajo County, Arizona — FEMA flood-zone read, dominant SSURGO soils, and elevation band for land investors, with named sources.",
+  "intro": "Before you buy vacant land in Navajo County, three free federal datasets tell you most of what kills a resale: the FEMA flood zone, the dominant soil order (which drives septic feasibility), and the elevation band. AcreOS runs all three on every parcel — here is the county-level read, with sources.",
+  "centroid": {
+    "latitude": 35.0743,
+    "longitude": -110.174
+  },
+  "dataSnapshot": {
+    "scope": "Navajo County reference read, sampled at the county centroid from the same free federal datasets AcreOS runs on every parcel",
+    "figures": [
+      {
+        "label": "Elevation band",
+        "value": "High plateau, dropping at the Mogollon Rim",
+        "note": "Navajo County runs from high Colorado Plateau down across the Mogollon Rim — elevation and access swing widely, and many cheap parcels are pre-1976 wildcat splits with no recorded road easement.",
+        "source": "USGS — Elevations and Distances in the United States",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+      },
+      {
+        "label": "Dominant soil orders (SSURGO)",
+        "value": "Aridisols & Entisols",
+        "note": "Northern Arizona's arid-zone orders mean thin, low-organic soils; septic feasibility and water access are the buyer's diligence cost on un-permitted parcels.",
+        "source": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+      },
+      {
+        "label": "Flood-risk read",
+        "value": "Mapped washes & riverine floodplains",
+        "note": "Flood risk concentrates in FEMA-mapped washes and the Little Colorado drainage; pull the parcel's NFHL zone before you buy.",
+        "source": "FEMA — National Flood Hazard Layer (NFHL)",
+        "asOf": "2026-06-07",
+        "sourceUrl": "https://www.fema.gov/flood-maps"
+      }
+    ],
+    "disclaimer": "Figures are a Navajo County reference read from public federal datasets and do not replace a parcel-level lookup. Coverage and currency vary by county GIS; always pull the parcel's own FEMA NFHL zone, SSURGO map unit, and 3DEP elevation before relying on these."
+  },
+  "faq": [
+    {
+      "q": "Is land in Navajo County in a flood zone?",
+      "a": "It depends on the parcel. Flood risk concentrates in FEMA-mapped washes and the Little Colorado drainage; pull the parcel's NFHL zone before you buy. The only reliable answer is the parcel's own FEMA NFHL zone, which the free AcreOS parcel check pulls in seconds."
+    },
+    {
+      "q": "What kind of soil does Navajo County have?",
+      "a": "Northern Arizona's arid-zone orders mean thin, low-organic soils; septic feasibility and water access are the buyer's diligence cost on un-permitted parcels. For a specific parcel, the SSURGO map unit gives you the exact soil series and its septic-suitability rating."
+    },
+    {
+      "q": "Do I need to pay for data to do diligence in Navajo County?",
+      "a": "No. The flood, soil, and elevation reads above come from free federal datasets (FEMA, USDA NRCS, USGS). AcreOS runs them on every parcel at no cost; you only reach for paid data providers once your deal volume earns it."
+    }
+  ],
+  "sources": [
+    {
+      "name": "USGS — Elevations and Distances in the United States",
+      "citation": "USGS — Elevations and Distances in the United States",
+      "url": "https://www.usgs.gov/educational-resources/highest-and-lowest-elevations"
+    },
+    {
+      "name": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "citation": "USDA NRCS — The Twelve Orders of Soil Taxonomy",
+      "url": "https://www.nrcs.usda.gov/resources/education-and-teaching-materials/the-twelve-orders-of-soil-taxonomy"
+    },
+    {
+      "name": "FEMA — National Flood Hazard Layer (NFHL)",
+      "citation": "FEMA — National Flood Hazard Layer (NFHL)",
+      "url": "https://www.fema.gov/flood-maps"
+    }
+  ],
+  "generatedAt": "2026-06-07T15:02:56.468Z"
+}
