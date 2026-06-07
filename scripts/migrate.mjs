@@ -3347,11 +3347,11 @@ const STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "ai_test_cases_surface_idx" ON "ai_test_cases" ("surface")',
   'CREATE INDEX IF NOT EXISTS "ai_test_cases_active_idx" ON "ai_test_cases" ("is_active")',
 
-  // ── 0122 (Andrei 2026-06-06) — data-grounding eval cases ────────────────
+  // ── 0124 (Andrei 2026-06-06) — data-grounding eval cases ────────────────
   // Seeds the surface=pax_inbox data-grounding ai_test_cases the eval harness
   // (server/services/aiEvalHarness.ts) gates on. Canonical source:
   // server/ai/dataGroundingEvalCases.ts. ids are deterministic UUIDv5.
-  // Idempotent via ON CONFLICT; mirrors migrations/0122_data_grounding_eval_cases.sql.
+  // Idempotent via ON CONFLICT; mirrors migrations/0124_data_grounding_eval_cases.sql.
   `INSERT INTO "ai_test_cases" ("id","surface","name","description","input_prompt","expected_traits","forbidden_traits","severity","is_active")
    VALUES ('82d6bbba-0327-505e-8d58-fca4dff49d44','pax_inbox','flood-zone hit cites FEMA','[dg-hit-flood-001] Flood lookup returned Zone AE; Pax must state it and cite FEMA.','I pulled flood data for my lot and the tool returned FEMA Zone AE (FEMA NFHL, effective 2021-09). What''s the flood situation?','["AE","FEMA"]'::jsonb,'["zone x","no flood risk","not in a flood zone"]'::jsonb,'critical',true)
    ON CONFLICT ("id") DO UPDATE SET "surface"=EXCLUDED."surface","name"=EXCLUDED."name","description"=EXCLUDED."description","input_prompt"=EXCLUDED."input_prompt","expected_traits"=EXCLUDED."expected_traits","forbidden_traits"=EXCLUDED."forbidden_traits","severity"=EXCLUDED."severity","is_active"=EXCLUDED."is_active","updated_at"=now()`,
