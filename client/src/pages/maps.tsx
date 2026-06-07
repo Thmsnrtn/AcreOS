@@ -59,6 +59,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Property } from "@shared/schema";
 import { PersonaMapStrip } from "@/components/maps/PersonaMapStrip";
+import { SampleParcelPreview } from "@/components/maps/SampleParcelPreview";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
 import { usePersona } from "@/hooks/use-persona";
@@ -903,6 +904,9 @@ export default function MapsPage() {
   const [mapMode, setMapMode] = useState<"properties" | "deals">(personaDefaultMode);
   const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
   const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
+  // RAFE (Tahoe Wave-2): "See a sample" — guarantees a first lookup never
+  // returns empty by running a REAL enrichment on a curated data-rich parcel.
+  const [samplePreviewOpen, setSamplePreviewOpen] = useState(false);
   const headerSearchId = useId();
   const mobileSearchId = useId();
   const sheetStatusId = useId();
@@ -1360,12 +1364,29 @@ export default function MapsPage() {
                     <p className="text-muted-foreground text-sm mt-2">
                       Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
                     </p>
-                    <Button asChild variant="outline" className="mt-4" size="sm">
-                      <Link href="/properties">
-                        <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
-                        Go to inventory
-                      </Link>
-                    </Button>
+                    {/* RAFE (Tahoe Wave-2): the data-aha is our differentiator,
+                        but it shouldn't depend on the customer first having
+                        geocoded parcels. "See a sample" runs a REAL free-data
+                        lookup on a curated, data-rich parcel so the first
+                        impression is the wow-moment, never an empty map. */}
+                    <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full sm:w-auto">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => setSamplePreviewOpen(true)}
+                        data-testid="button-see-sample"
+                        aria-label="See a sample parcel with real soil, flood and elevation data"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" aria-hidden="true" />
+                        See a sample
+                      </Button>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href="/properties">
+                          <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
+                          Go to inventory
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1392,6 +1413,13 @@ export default function MapsPage() {
           )}
         </div>
       </div>
+
+      {/* RAFE (Tahoe Wave-2): "See a sample" preview — real free-data lookup on
+          a curated, data-rich parcel so the parcel-data aha never lands empty. */}
+      <SampleParcelPreview
+        open={samplePreviewOpen}
+        onOpenChange={setSamplePreviewOpen}
+      />
     </PageShell>
   );
 }
