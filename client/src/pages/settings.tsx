@@ -2026,6 +2026,33 @@ export default function Settings() {
                 <PrivacyDataSettings />
               </div>
 
+              {/* How AcreOS sources data (Quinn item #5 — transparency surface) */}
+              <div className="pt-4 border-t" data-testid="tab-content-account-data-sources">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Database className="w-5 h-5" aria-hidden="true" />
+                      How AcreOS sources data
+                    </CardTitle>
+                    <CardDescription>
+                      See every data source behind the numbers in AcreOS — what
+                      each is on record for, how often it updates, its license,
+                      and how to read facts versus estimates.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      onClick={() => setLocation("/data-sources")}
+                      data-testid="button-view-data-sources"
+                    >
+                      View data sources
+                      <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
               {/* Refer & earn */}
               <div className="pt-4 border-t" data-testid="tab-content-account-referral">
                 <ReferralSettings />

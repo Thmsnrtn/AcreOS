@@ -122,6 +122,7 @@ const BuyerAnalyticsPage = React.lazy(() => import("@/pages/buyer-analytics"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
 const InboxPage = React.lazy(() => import("@/pages/inbox"));
 const SettingsPage = React.lazy(() => import("@/pages/settings"));
+const DataSourcesPage = React.lazy(() => import("@/pages/data-sources"));
 const TasksPage = React.lazy(() => import("@/pages/tasks"));
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics"));
 const HelpPage = React.lazy(() => import("@/pages/help"));
@@ -1562,6 +1563,11 @@ function Router() {
       </Route>
       <Route path="/settings/pax">
         {() => <ProtectedRoute component={PaxControlsPage} />}
+      </Route>
+      {/* Quinn item #5 — "How AcreOS sources data" disclosure. Linked from
+          Settings and from each datum's provenance "i" affordance. */}
+      <Route path="/data-sources">
+        {() => <ProtectedRoute component={DataSourcesPage} />}
       </Route>
       <Route path="/usage">
         {/* 2026-06-01 cut — UsageQuotaPage archived; no nav entry. */}
