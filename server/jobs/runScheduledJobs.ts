@@ -4392,6 +4392,72 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import discovery-on-miss queue drain: ${err}`, "data");
   });
 
+  // ─── Maren/Iris — LandProfile cache pre-warm backfill (15m) ──────────
+  // Belt-and-suspenders for the property-create pre-warm hook: catches
+  // imported / bulk-added parcels (and any create whose fire-and-forget
+  // pre-warm was lost to a cold-machine restart) that have coordinates but no
+  // enrichment yet. Warms the fast coordinate-only LandProfile categories
+  // (flood/soil/elevation/etc. — no county seeding needed) into the broker
+  // cache + persists onto the property, so the first "Land Snapshot" view is a
+  // cache hit (<800ms) instead of a cold ~8-endpoint live fetch. Bounded to a
+  // small batch per tick to stay polite to the free federal endpoints.
+  import("@shared/schema").then(({ properties }) => {
+    import("../services/propertyEnrichment").then(({ propertyEnrichmentService }) => {
+      import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+        log("LandProfile pre-warm backfill registered (self-rescheduling, 15m)", "data");
+        scheduleSelfRescheduling({
+          name: "land_profile_prewarm",
+          intervalMs: 15 * 60 * 1000,
+          initialDelayMs: 3 * 60 * 1000,
+          run: async () => {
+            await withJobLock("land_profile_prewarm", 13 * 60, async () => {
+              // Recently-created (last 7d), has coords, never enriched.
+              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+              const pending = await db
+                .select({
+                  id: properties.id,
+                  organizationId: properties.organizationId,
+                  latitude: properties.latitude,
+                  longitude: properties.longitude,
+                  state: properties.state,
+                  county: properties.county,
+                  apn: properties.apn,
+                })
+                .from(properties)
+                .where(sql`
+                  ${properties.latitude} IS NOT NULL
+                  AND ${properties.longitude} IS NOT NULL
+                  AND ${properties.enrichedAt} IS NULL
+                  AND ${properties.createdAt} >= ${sevenDaysAgo}
+                `)
+                .limit(10);
+
+              let warmed = 0;
+              for (const p of pending) {
+                const lat = p.latitude ? parseFloat(String(p.latitude)) : NaN;
+                const lng = p.longitude ? parseFloat(String(p.longitude)) : NaN;
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+                const r = await propertyEnrichmentService.prewarmLandProfile(lat, lng, {
+                  organizationId: p.organizationId,
+                  propertyId: p.id,
+                  state: p.state || undefined,
+                  county: p.county || undefined,
+                  apn: p.apn || undefined,
+                });
+                if (r) warmed++;
+              }
+              if (pending.length > 0) {
+                log(`[land-profile-prewarm] candidates=${pending.length} warmed=${warmed}`, "data");
+              }
+            });
+          },
+        });
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to register LandProfile pre-warm backfill: ${err}`, "data");
+  });
+
   // ─── Pillar T — Stripe drift detector (daily 6:10am UTC) ─────────────
   // Compares the live Stripe account against shared/billing/tier-pricing.ts.
   // Surfaces missing tiers, price drift, and orphan acreos_product
