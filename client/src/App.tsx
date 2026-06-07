@@ -268,6 +268,7 @@ const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/grow
 const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
 const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
+const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
 const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
 const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
@@ -1158,6 +1159,10 @@ function Router() {
       {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
       <Route path="/founder/cost">
         {() => <FounderProtectedRoute component={FounderCostPage} />}
+      </Route>
+      {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
+      <Route path="/founder/life-cockpit">
+        {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
       </Route>
       <Route path="/founder/ai-costs">
         {() => <FounderProtectedRoute component={FounderAiCostsPage} />}
