@@ -6221,6 +6221,83 @@ export type InsertParcelObservation = z.infer<typeof insertParcelObservationSche
 export type ParcelObservation = typeof parcelObservations.$inferSelect;
 
 // ============================================
+// PARCEL ALERTS (Iyari #5 — owner-change & tax-status delta detector surface)
+// --------------------------------------------
+// The scheduled diff job (server/services/parcelDeltaDetector.ts) compares the
+// latest two observations per (apn, field) in parcel_observations for parcels in
+// a customer's pipeline. When a tracked field meaningfully changes — and clears
+// the false-positive guard — it writes ONE immutable alert row here and emits the
+// matching workflow trigger event (parcel.owner_changed / parcel.tax_status_changed).
+//
+// This turns the passive observation log into a PROACTIVE lead engine: the
+// customer surface ("Owner changed on a parcel in your pipeline") renders from
+// this table behind the Today door. Each row carries the before/after values so
+// the surface needs no recompute, plus a dedupe key so re-running the job never
+// double-fires for the same (apn, field, transition).
+//
+// Migration 0131. Mirrors scripts/migrate.mjs STATEMENTS.
+export const parcelAlerts = pgTable("parcel_alerts", {
+  id: serial("id").primaryKey(),
+  // Org-scoped — leading-org composite index for shard-readiness.
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+
+  // Parcel identity (denormalized — alerts outlive any snapshot/lead row)
+  apn: text("apn").notNull(),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+
+  // What kind of change this alert represents.
+  //   "owner_changed"      — owner / owner_address transitioned
+  //   "tax_status_changed" — tax_status / tax_amount transitioned (e.g. delinquent)
+  alertType: text("alert_type").notNull(),
+  // The underlying observation field that changed (owner, owner_address,
+  // tax_status, tax_amount). Disambiguates within an alertType.
+  field: text("field").notNull(),
+
+  // Before/after snapshot so the surface renders with zero recompute.
+  previousValue: jsonb("previous_value").$type<unknown>(),
+  currentValue: jsonb("current_value").$type<unknown>(),
+
+  // Provenance + confidence carried from the observations that produced it.
+  source: text("source"), // county_gis, regrid, ...
+  confidence: real("confidence"), // 0..1 — false-positive guard score
+
+  // Link back to the pipeline entity that put this parcel on the radar.
+  // Either may be null (a parcel can be tracked as a lead and/or a property).
+  leadId: integer("lead_id"),
+  propertyId: integer("property_id"),
+
+  // Idempotency: stable hash of (apn, field, previous→current transition) so a
+  // re-run of the detector never writes a duplicate alert for the same change.
+  dedupeKey: text("dedupe_key").notNull(),
+
+  // Read state — customer can mark an alert read.
+  isRead: boolean("is_read").notNull().default(false),
+  readAt: timestamp("read_at"),
+
+  // When the underlying change was observed, and when we detected it.
+  observedAt: timestamp("observed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  // LEADING-org composite (shard-readiness lint): tenant routing is one probe;
+  // the customer alert list reads this tenant's newest alerts first.
+  index("parcel_alerts_org_created_idx").on(table.organizationId, table.createdAt),
+  // Unread-first read path for the badge/count and the "new alerts" list.
+  index("parcel_alerts_org_unread_idx").on(table.organizationId, table.isRead, table.createdAt),
+  // Idempotency lookup so the detector can skip already-emitted transitions.
+  uniqueIndex("parcel_alerts_org_dedupe_uk").on(table.organizationId, table.dedupeKey),
+]);
+
+export const insertParcelAlertSchema = createInsertSchema(parcelAlerts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertParcelAlert = z.infer<typeof insertParcelAlertSchema>;
+export type ParcelAlert = typeof parcelAlerts.$inferSelect;
+
+// ============================================
 // LAND INTELLIGENCE REPORTS (Iyari #2 — persist the report; seed the corpus)
 // --------------------------------------------
 // The LIS report (generateLandIntelligenceReport) is otherwise a cold recompute
@@ -8311,6 +8388,15 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "lease.renewal_countdown_60d",
   "maintenance.request_received",
   "rent.received",
+  // Iyari (Chief of Future) #5 — Owner-change & tax-status delta detector.
+  // Derived FREE from the append-only parcel_observations log (migration 0121)
+  // by a scheduled diff job (server/services/parcelDeltaDetector.ts). Fires when
+  // a tracked parcel fact (owner / owner_address / tax_status / tax_amount)
+  // meaningfully changes between the latest two observations for a parcel in a
+  // customer's pipeline. This is the killer app of owning longitudinal county-GIS
+  // history — the proactive lead signal investors pay PropStream/PropGrid for.
+  "parcel.owner_changed",
+  "parcel.tax_status_changed",
 ] as const;
 
 export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
