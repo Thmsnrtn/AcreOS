@@ -109,11 +109,32 @@ export interface BlindOfferAnalysis {
   pricingNotes: string[];
 }
 
+/**
+ * Per-field provenance (Quinn item 5): the authoritative source + fetch time
+ * for each due-diligence datum, so the customer-facing card can render a
+ * "FEMA NFHL · fetched 2026-06-06" chip per field rather than one blanket
+ * "sources queried" footnote. classification is "authoritative" for the
+ * federal systems-of-record we query directly.
+ */
+export interface FieldProvenance {
+  source: string;
+  fetchedAt: string; // ISO; this is WHEN WE pulled it (no per-fact asOf upstream)
+  classification: "authoritative" | "estimate" | "modeled" | "unknown";
+}
+
 export interface LandIntelligenceReport {
   // Metadata
   generatedAt: string;
   dataSourcesQueried: string[];
   processingTimeMs: number;
+  /**
+   * Per-field provenance for the dueDiligence block (flood/wetlands/
+   * environmental/roadAccess/soil/elevation). Absent fields = not pulled.
+   */
+  fieldProvenance: Partial<Record<
+    "floodZone" | "wetlands" | "environmental" | "roadAccess" | "soil" | "elevation",
+    FieldProvenance
+  >>;
 
   // The most critical output
   recommendation: "buy_aggressively" | "buy_selectively" | "conduct_due_diligence" |
@@ -280,10 +301,25 @@ export async function generateLandIntelligenceReport(
   const nextSteps = buildNextSteps(recommendation, dealKillers, opportunitySignals, input);
   const warningFlags = buildWarningFlags(dd, input, nassData);
 
+  // Per-field provenance (Quinn item 5). Only stamped when the DD pass actually
+  // ran — an absent field means "not pulled", never a fabricated default.
+  const nowIso = new Date().toISOString();
+  const fieldProvenance: LandIntelligenceReport["fieldProvenance"] = dd
+    ? {
+        floodZone: { source: "FEMA NFHL", fetchedAt: nowIso, classification: "authoritative" },
+        wetlands: { source: "USFWS NWI", fetchedAt: nowIso, classification: "authoritative" },
+        environmental: { source: "EPA ECHO", fetchedAt: nowIso, classification: "authoritative" },
+        roadAccess: { source: "OpenStreetMap", fetchedAt: nowIso, classification: "authoritative" },
+        soil: { source: "USDA WSS", fetchedAt: nowIso, classification: "authoritative" },
+        elevation: { source: "USGS 3DEP", fetchedAt: nowIso, classification: "authoritative" },
+      }
+    : {};
+
   return {
     generatedAt: new Date().toISOString(),
     dataSourcesQueried: [...new Set(dataSourcesQueried)],
     processingTimeMs: Date.now() - startTime,
+    fieldProvenance,
     recommendation,
     confidenceScore: Math.round(lis * 0.8 + (dd ? 20 : 0)),
     landIntelligenceScore: lis,
