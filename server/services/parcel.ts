@@ -238,6 +238,19 @@ export async function lookupFromCountyGIS(
     
     if (!matchingEndpoint) {
       logger.debug("[CountyGIS] No endpoint found", { metadata: { county, state, endpointsChecked: endpoints.length } });
+      // Demand-driven discovery-on-miss (Iris/Iyari): a miss for an unseeded
+      // county enqueues it for background ArcGIS discovery so the next lookup
+      // for this county hits free instead of falling through to paid Regrid.
+      // Fire-and-forget — never block or fail the lookup on the enqueue.
+      void import("./coverageLedger")
+        .then(({ enqueueCountyForDiscovery }) =>
+          enqueueCountyForDiscovery(normalizedState, normalizedCounty),
+        )
+        .catch((err) =>
+          logger.warn("[CountyGIS] discovery enqueue failed", {
+            metadata: { county, state, error: err instanceof Error ? err.message : String(err) },
+          }),
+        );
       return null;
     }
     

@@ -6384,6 +6384,47 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_year_idx" ON "founder_income_sources" ("founder_user_id", "tax_year")`,
   `CREATE INDEX IF NOT EXISTS "founder_income_sources_user_type_idx" ON "founder_income_sources" ("founder_user_id", "source_type")`,
+
+  // 0125 — Iris + Iyari — demand-driven county-GIS coverage growth.
+  // Two tables that turn every parcel-lookup miss into a compounding coverage
+  // gain at $0: a global discovery work queue (drained by a worker job that
+  // probes ArcGIS + auto-populates field mappings + inserts the endpoint
+  // isActive=false / redistributable='review-required' until it returns a real
+  // feature for a test APN) and a per-org request ledger fed by the
+  // customer-facing "request this county" CTA. Mirrors shared/schema.ts.
+  `CREATE TABLE IF NOT EXISTS "county_discovery_queue" (
+     "id" serial PRIMARY KEY,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "demand_count" integer NOT NULL DEFAULT 1,
+     "priority" integer NOT NULL DEFAULT 0,
+     "first_requested_by" integer REFERENCES "organizations" ("id"),
+     "status" text NOT NULL DEFAULT 'pending',
+     "attempts" integer NOT NULL DEFAULT 0,
+     "max_attempts" integer NOT NULL DEFAULT 5,
+     "last_attempt_at" timestamp,
+     "last_result" text,
+     "resolved_endpoint_id" integer REFERENCES "county_gis_endpoints" ("id"),
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "county_discovery_queue_state_county_uidx" ON "county_discovery_queue" ("state", "county")`,
+  `CREATE INDEX IF NOT EXISTS "county_discovery_queue_drain_idx" ON "county_discovery_queue" ("status", "priority", "demand_count")`,
+
+  `CREATE TABLE IF NOT EXISTS "county_coverage_requests" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "requested_by_user_id" text,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "queue_id" integer REFERENCES "county_discovery_queue" ("id"),
+     "notified_at" timestamp,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "county_coverage_requests_org_created_idx" ON "county_coverage_requests" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "county_coverage_requests_org_state_county_idx" ON "county_coverage_requests" ("organization_id", "state", "county")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

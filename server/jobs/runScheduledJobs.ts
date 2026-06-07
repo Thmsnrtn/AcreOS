@@ -4358,6 +4358,40 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import county discovery cron: ${err}`, "data");
   });
 
+  // ─── Iris/Iyari — demand-driven discovery-on-miss queue drain (30m) ───
+  // The weekly cron above does a broad ArcGIS sweep. THIS job drains the
+  // county_discovery_queue — the (state, county) pairs enqueued on real
+  // parcel-lookup misses + customer "request this county" CTAs — in
+  // demand+priority order. For each it probes ArcGIS, inserts the endpoint
+  // as isActive=false / redistributable='review-required', and flips active
+  // only after a real feature comes back for a test APN. $0, compounding:
+  // every miss makes the next customer's lookup for that county hit free.
+  import("../services/coverageLedger").then(({ runDiscoveryQueueDrain }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Discovery-on-miss queue drain registered (self-rescheduling, 30m)", "data");
+      scheduleSelfRescheduling({
+        name: "county_discovery_queue_drain",
+        intervalMs: 30 * 60 * 1000,
+        initialDelayMs: 5 * 60 * 1000,
+        run: async () => {
+          await withJobLock("county_discovery_queue_drain", 25 * 60, async () => {
+            const r = await runDiscoveryQueueDrain(5);
+            if (r.drained > 0) {
+              log(
+                `[discovery-on-miss] drained=${r.drained} activated=${r.activated} ` +
+                  `reviewPending=${r.reviewPending} noCandidate=${r.noCandidate} ` +
+                  `exhausted=${r.exhausted} errors=${r.errors}`,
+                "data",
+              );
+            }
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import discovery-on-miss queue drain: ${err}`, "data");
+  });
+
   // ─── Pillar T — Stripe drift detector (daily 6:10am UTC) ─────────────
   // Compares the live Stripe account against shared/billing/tier-pricing.ts.
   // Surfaces missing tiers, price drift, and orphan acreos_product

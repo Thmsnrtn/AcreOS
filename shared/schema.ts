@@ -6011,6 +6011,99 @@ export type InsertCountyGisEndpoint = z.infer<typeof insertCountyGisEndpointSche
 export type CountyGisEndpoint = typeof countyGisEndpoints.$inferSelect;
 
 // ============================================
+// COUNTY DISCOVERY QUEUE (Iris/Iyari — demand-driven coverage growth)
+// ============================================
+//
+// When a parcel lookup misses for an unseeded county, we enqueue that
+// (state, county) here. A background worker job drains the queue: runs the
+// ArcGIS discovery search, probes a candidate /query endpoint for an
+// APN-shaped field, auto-populates field mappings, inserts the
+// county_gis_endpoints row as isActive=false + redistributable='review-required'
+// (Beatrice rule — un-reviewed counties are live-passthrough only), and flips
+// isActive only after the endpoint returns a real feature for a test APN.
+//
+// GLOBAL infra table (no organization_id) — coverage is shared across all
+// orgs, so the work queue is not tenant-scoped. demandCount is incremented on
+// every additional miss/request so the worker crawls the counties customers
+// are actually in, not alphabetically. The customer-facing "request this
+// county" CTA also bumps demandCount + flips priority.
+export const countyDiscoveryQueue = pgTable("county_discovery_queue", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(), // 2-letter state code, uppercased
+  county: text("county").notNull(), // normalized county name (lowercased, no " county" suffix)
+
+  // Demand signal — drives the crawl order.
+  demandCount: integer("demand_count").notNull().default(1), // # of misses/requests seen
+  priority: integer("priority").notNull().default(0), // 0 = normal, higher = jump the queue (customer-requested)
+  firstRequestedBy: integer("first_requested_by").references(() => organizations.id), // org that first triggered (nullable — system misses have none)
+
+  // Lifecycle: pending → in_progress → (resolved | failed | exhausted)
+  // resolved   = an active county_gis_endpoints row now exists for this county
+  // failed     = last attempt errored (will retry with backoff)
+  // exhausted  = maxAttempts reached, no working endpoint found
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+
+  lastAttemptAt: timestamp("last_attempt_at"),
+  lastResult: text("last_result"), // human-readable outcome of the last attempt
+  resolvedEndpointId: integer("resolved_endpoint_id").references(() => countyGisEndpoints.id), // set when status=resolved
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  // One queue row per (state, county) — enqueue is an upsert that bumps demand.
+  uniqueIndex("county_discovery_queue_state_county_uidx").on(table.state, table.county),
+  // Worker drain order: pending first, highest priority + demand first.
+  index("county_discovery_queue_drain_idx").on(table.status, table.priority, table.demandCount),
+]);
+
+export const insertCountyDiscoveryQueueSchema = createInsertSchema(countyDiscoveryQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCountyDiscoveryQueue = z.infer<typeof insertCountyDiscoveryQueueSchema>;
+export type CountyDiscoveryQueue = typeof countyDiscoveryQueue.$inferSelect;
+
+// ============================================
+// COUNTY COVERAGE REQUEST (customer-facing "request this county" CTA)
+// ============================================
+//
+// Captures a customer's explicit (state, county) coverage request on a
+// no-endpoint miss. The maps agent renders the CTA that POSTs to the
+// request-county API; this is the org-scoped audit trail of who asked for
+// what, so we can (a) prioritise discovery against real demand, and
+// (b) notify the org when their county comes online later. The actual
+// discovery work is tracked in county_discovery_queue (global); this table is
+// the per-org request ledger.
+export const countyCoverageRequests = pgTable("county_coverage_requests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  requestedByUserId: text("requested_by_user_id"), // who clicked the CTA
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  // Mirrors the queue lifecycle so the org can be told "pending" vs "covered".
+  status: text("status").notNull().default("pending"), // pending | covered | unavailable
+  queueId: integer("queue_id").references(() => countyDiscoveryQueue.id), // link to the global discovery work
+  notifiedAt: timestamp("notified_at"), // when we told the org their county came online
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  // Leading-org composite index (L3 shard-readiness lint).
+  index("county_coverage_requests_org_created_idx").on(table.organizationId, table.createdAt),
+  index("county_coverage_requests_org_state_county_idx").on(table.organizationId, table.state, table.county),
+]);
+
+export const insertCountyCoverageRequestSchema = createInsertSchema(countyCoverageRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCountyCoverageRequest = z.infer<typeof insertCountyCoverageRequestSchema>;
+export type CountyCoverageRequest = typeof countyCoverageRequests.$inferSelect;
+
+// ============================================
 // PARCEL SNAPSHOTS (Centralized Parcel Cache)
 // ============================================
 
