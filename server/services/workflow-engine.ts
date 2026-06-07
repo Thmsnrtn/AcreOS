@@ -1483,7 +1483,7 @@ export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;
   entityId: number;
-  entityType: "lead" | "property" | "deal" | "payment";
+  entityType: "lead" | "property" | "deal" | "payment" | "parcel";
   data: Record<string, any>;
   previousData?: Record<string, any>;
 };
@@ -1932,5 +1932,25 @@ export function emitPaymentEvent(
     entityId: paymentId,
     entityType: "payment",
     data,
+  });
+}
+
+// Iyari #5 — parcel delta events. entityId is the parcel_alerts row id (the
+// system-of-record for the detected change). data carries apn/state/county/field
+// + before/after values so workflow conditions can match on them.
+export function emitParcelEvent(
+  event: "parcel.owner_changed" | "parcel.tax_status_changed",
+  organizationId: number,
+  alertId: number,
+  data: Record<string, any>,
+  previousData?: Record<string, any>
+): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId: alertId,
+    entityType: "parcel",
+    data,
+    previousData,
   });
 }

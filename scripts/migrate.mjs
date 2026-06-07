@@ -6501,6 +6501,38 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "founder_estimated_payments_user_year_idx" ON "founder_estimated_payments" ("founder_user_id", "tax_year")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "founder_estimated_payments_unique_quarter_uk" ON "founder_estimated_payments" ("founder_user_id", "tax_year", "jurisdiction", "quarter")`,
+  // 0131 — Iyari (Chief of Future) #5 — Parcel Alerts (owner-change &
+  // tax-status delta detector surface). The scheduled diff job
+  // (server/services/parcelDeltaDetector.ts) compares the latest two
+  // observations per (apn, field) in parcel_observations for parcels in a
+  // customer's pipeline and, when a tracked field meaningfully changes AND
+  // clears the false-positive guard, writes ONE immutable alert row here +
+  // emits the matching workflow trigger event. Turns the passive observation
+  // log into a proactive lead engine. Org-scoped, leading-org index.
+  // Mirrors shared/schema.ts (parcelAlerts) + migrations/0131_parcel_alerts.sql.
+  `CREATE TABLE IF NOT EXISTS "parcel_alerts" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "apn" text NOT NULL,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "alert_type" text NOT NULL,
+     "field" text NOT NULL,
+     "previous_value" jsonb,
+     "current_value" jsonb,
+     "source" text,
+     "confidence" real,
+     "lead_id" integer,
+     "property_id" integer,
+     "dedupe_key" text NOT NULL,
+     "is_read" boolean NOT NULL DEFAULT false,
+     "read_at" timestamp,
+     "observed_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "parcel_alerts_org_created_idx" ON "parcel_alerts" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "parcel_alerts_org_unread_idx" ON "parcel_alerts" ("organization_id", "is_read", "created_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "parcel_alerts_org_dedupe_uk" ON "parcel_alerts" ("organization_id", "dedupe_key")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
