@@ -49,27 +49,89 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 // ─── API contracts (provisional — Lena's surfaces land in Phase 1) ────────
 
 /**
- * GET /api/founder/money/summary (Lena).
+ * GET /api/founder/money/summary (Lena #1).
  *
- * IMPORTANT — this is an honest single-point ESTIMATE, not a model.
- * `runwayMonths` = founder-declared cash ÷ trailing 30-day burn, and is
- * `null` whenever cash hasn't been declared (so we never show a fabricated
- * "0 mo"). The three-scenario runway model is a later elevation item; this
- * surface labels the estimate as such and never implies a forecast.
+ * Now backed by the REAL three-scenario runway model
+ * (server/services/finance/runwayModel.ts). `runwayMonths` is the BASE
+ * scenario's months-to-zero (null only when there's no cash basis at all).
+ * `scenarios` carries base / downside / upside, each with months-to-zero +
+ * a week-over-week trend delta.
  */
+interface RunwayScenario {
+  monthsToZero: number | null;
+  netMonthlyBurnUsd: number;
+  monthlyCostsUsd: number;
+  mrrUsd: number;
+  monthsToZeroPriorWeek: number | null;
+  wowDeltaMonths: number | null;
+}
+
 interface MoneySummary {
   asOf: string;
   cashOnHandUsd: number;
   monthlyBurnUsd: number;
   runwayMonths: number | null;
-  /** "estimate" until the three-scenario model ships. */
   method?: string;
-  /** Human-readable method, e.g. "founder-declared cash ÷ trailing 30-day burn". */
   basis?: string;
-  /** False until the real runway model lands — never present as modeled. */
+  /** True — the surface is now a model, not an estimate. */
   isModeled?: boolean;
-  /** True once cash on hand is declared; gates the runway figure. */
+  /** True when the founder-declared override fed the cash basis. */
   cashDeclared?: boolean;
+  /** "ledger" | "founder-declared". */
+  cashBasis?: "ledger" | "founder-declared";
+  scenarios?: {
+    base: RunwayScenario;
+    downside: RunwayScenario;
+    upside: RunwayScenario;
+  };
+}
+
+/** GET /api/founder/money/unit-economics (Lena #3). */
+interface UnitEconomics {
+  asOf: string;
+  blendedGrossMarginPct: number;
+  blendedGrossMarginUsd: number;
+  totalMrrUsd: number;
+  payingCustomerCount: number;
+  cohortContribution: Array<{
+    cohort: string;
+    customers: number;
+    mrrUsd: number;
+    contributionUsd: number;
+    contributionPerCustomerUsd: number;
+  }>;
+  cacAvailable: boolean;
+  ltvCacRatio: number | null;
+  paybackMonths: number | null;
+  thresholds: {
+    grossMarginFloorPct: number;
+    ltvCacFloor: number;
+    paybackCeilingMonths: number;
+  };
+  note: string;
+}
+
+/** GET /api/founder/money/paid-data-readiness (Lena #6). */
+interface PaidDataReadiness {
+  asOf: string;
+  provider: string;
+  justified: boolean;
+  verdict: string;
+  gate: {
+    allowed: boolean;
+    reason: string;
+    trailingMrrDollars: number;
+    mrrGateDollars: number;
+    commitCeilingCents: number;
+    minMonthlyCommitCents: number;
+  };
+  eval: {
+    hasRun: boolean;
+    ranAt: string | null;
+    decisionFlipCount: number | null;
+    decisionFlipRate: number | null;
+    parcelsCompared: number | null;
+  };
 }
 
 /**
@@ -127,11 +189,49 @@ function relativeTime(iso: string): string {
 
 // ─── Phase 0 banner ──────────────────────────────────────────────────────
 
-function LenaPhase0Banner() {
+/**
+ * The CFO's position — a single dated narrative synthesising runway, the
+ * paid-data verdict, and the one money decision in front of the founder. Reads
+ * the same endpoints the cards below render, so the banner is never out of sync
+ * with the numbers. This is the "state a position, not six dashboards" surface.
+ */
+function CfoPositionBanner({
+  summary,
+  readiness,
+}: {
+  summary?: MoneySummary | null;
+  readiness?: PaidDataReadiness | null;
+}) {
+  const base = summary?.scenarios?.base;
+  const downside = summary?.scenarios?.downside;
+  const trend =
+    base?.wowDeltaMonths == null
+      ? "stable WoW"
+      : base.wowDeltaMonths > 0
+        ? `+${base.wowDeltaMonths.toFixed(1)}mo WoW`
+        : base.wowDeltaMonths < 0
+          ? `${base.wowDeltaMonths.toFixed(1)}mo WoW`
+          : "stable WoW";
+
+  const runwayLine =
+    base?.monthsToZero != null
+      ? `Runway ${fmtMonths(base.monthsToZero)} base${
+          downside?.monthsToZero != null
+            ? ` / ${fmtMonths(downside.monthsToZero)} downside`
+            : ""
+        }, ${trend}.`
+      : "Runway not yet modelable — no cash basis on the ledger.";
+
+  const decisionLine = readiness
+    ? readiness.justified
+      ? `Decision: ${readiness.verdict}`
+      : `Decision pending: ${readiness.verdict}`
+    : null;
+
   return (
     <Card
       className="border-primary/30 bg-primary/5"
-      data-testid="money-lena-banner"
+      data-testid="money-cfo-position"
     >
       <CardContent className="p-4 md:p-5">
         <div className="flex items-start gap-3">
@@ -140,12 +240,16 @@ function LenaPhase0Banner() {
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-foreground">
-              Lena (CFO) activates in Phase 1
+              Lena&apos;s position
+              {summary?.asOf ? (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  as of {new Date(summary.asOf).toLocaleDateString()}
+                </span>
+              ) : null}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-              The deeper money analysis — capital allocation, unit economics,
-              founder draw schedule, envelope drift — lands when Lena comes
-              online. Until then, this surface is read-only placeholders.
+              {runwayLine}
+              {decisionLine ? <> {decisionLine}</> : null}
             </p>
           </div>
         </div>
@@ -154,18 +258,122 @@ function LenaPhase0Banner() {
   );
 }
 
-// ─── Runway + cash KPIs ──────────────────────────────────────────────────
+// ─── Runway + cash KPIs (three scenarios) ────────────────────────────────
 
-function RunwaySection() {
-  const { data, isLoading } = useQuery<MoneySummary | null>({
-    queryKey: ["/api/founder/money/summary"],
+function ScenarioCard({
+  label,
+  scenario,
+  tone,
+}: {
+  label: string;
+  scenario?: RunwayScenario;
+  tone: "base" | "downside" | "upside";
+}) {
+  const border =
+    tone === "downside"
+      ? "border-acr-warn/40"
+      : tone === "upside"
+        ? "border-acr-pos/40"
+        : "border-border";
+  const delta = scenario?.wowDeltaMonths;
+  return (
+    <Card className={border} data-testid={`money-scenario-${tone}`}>
+      <CardContent className="p-4">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+          {label}
+        </div>
+        <div className="text-3xl font-semibold tabular-nums text-foreground">
+          {scenario?.monthsToZero != null ? fmtMonths(scenario.monthsToZero) : "—"}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          {scenario
+            ? `${fmtUsd(scenario.monthlyCostsUsd)}/mo costs · ${fmtUsd(
+                scenario.mrrUsd,
+              )}/mo MRR`
+            : "wiring up"}
+          {delta != null && delta !== 0 ? (
+            <span
+              className={
+                delta > 0 ? "text-acr-pos ml-1" : "text-acr-warn ml-1"
+              }
+            >
+              · {delta > 0 ? "+" : ""}
+              {delta.toFixed(1)}mo WoW
+            </span>
+          ) : delta === 0 ? (
+            <span className="ml-1">· stable WoW</span>
+          ) : null}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunwaySection({
+  data,
+  isLoading,
+}: {
+  data?: MoneySummary | null;
+  isLoading: boolean;
+}) {
+  return (
+    <section aria-busy={isLoading} data-testid="money-runway-section">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Runway to zero
+        </h2>
+        <span className="text-[10px] font-medium text-muted-foreground/80 border border-border rounded px-1.5 py-0.5">
+          {data?.isModeled ? "modeled" : "estimate"}
+        </span>
+      </div>
+      {isLoading ? (
+        <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
+            <ScenarioCard
+              label="Base"
+              tone="base"
+              scenario={data?.scenarios?.base}
+            />
+            <ScenarioCard
+              label="Downside (flat rev · +20% cost)"
+              tone="downside"
+              scenario={data?.scenarios?.downside}
+            />
+            <ScenarioCard
+              label="Upside (growth continues)"
+              tone="upside"
+              scenario={data?.scenarios?.upside}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Cash {data ? fmtUsd(data.cashOnHandUsd) : "—"}
+            {data?.cashBasis ? ` (${data.cashBasis})` : ""} ·{" "}
+            {data?.basis ?? "three-scenario model off the financial ledger"}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ─── Unit economics: gross margin + LTV:CAC (honest) ─────────────────────
+
+function UnitEconomicsSection() {
+  const { data, isLoading } = useQuery<UnitEconomics | null>({
+    queryKey: ["/api/founder/money/unit-economics"],
     queryFn: async () => {
-      const res = await fetch("/api/founder/money/summary", {
+      const res = await fetch("/api/founder/money/unit-economics", {
         credentials: "include",
       });
       if (!res.ok) return null;
       try {
-        return (await res.json()) as MoneySummary;
+        return (await res.json()) as UnitEconomics;
       } catch {
         return null;
       }
@@ -175,64 +383,144 @@ function RunwaySection() {
   });
 
   return (
-    <div
-      className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2"
+    <Card aria-busy={isLoading} data-testid="money-unit-economics">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <DollarSign
+            className="h-4 w-4 text-muted-foreground"
+            aria-hidden="true"
+          />
+          Unit economics
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        {isLoading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Blended gross margin
+                </div>
+                <div className="text-2xl font-semibold tabular-nums text-foreground">
+                  {data ? `${data.blendedGrossMarginPct.toFixed(1)}%` : "—"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  floor {data?.thresholds.grossMarginFloorPct ?? 70}% (charter)
+                </p>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  LTV : CAC
+                </div>
+                <div className="text-2xl font-semibold tabular-nums text-muted-foreground">
+                  N/A
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  no CAC data yet
+                </p>
+              </div>
+            </div>
+            {data && data.cohortContribution.length > 0 ? (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Cohort contribution (per customer / mo)
+                </div>
+                <ul className="space-y-1">
+                  {data.cohortContribution.map((c) => (
+                    <li
+                      key={c.cohort}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-foreground">
+                        {c.cohort}{" "}
+                        <span className="text-muted-foreground">
+                          ({c.customers})
+                        </span>
+                      </span>
+                      <span className="tabular-nums font-medium">
+                        {fmtUsd(c.contributionPerCustomerUsd)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {data?.note ??
+                  "Cohort contribution appears once paying customers land."}
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Paid-data readiness verdict ─────────────────────────────────────────
+
+function PaidDataReadinessSection({
+  data,
+  isLoading,
+}: {
+  data?: PaidDataReadiness | null;
+  isLoading: boolean;
+}) {
+  const border = data?.justified
+    ? "border-acr-pos/40"
+    : "border-border";
+  return (
+    <Card
+      className={border}
       aria-busy={isLoading}
-      data-testid="money-runway-section"
+      data-testid="money-paid-data-readiness"
     >
-      <Card>
-        <CardContent className="p-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 inline-flex items-center gap-1">
-            Runway
-            {/* Honesty marker: this is a single-point estimate, not a model. */}
-            <span className="normal-case tracking-normal text-[10px] font-medium text-muted-foreground/80 border border-border rounded px-1 py-0.5">
-              estimate
-            </span>
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-9 w-24" />
-          ) : (
-            <div className="text-3xl font-semibold tabular-nums text-foreground">
-              {data && data.runwayMonths != null
-                ? fmtMonths(data.runwayMonths)
-                : "—"}
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <DollarSign
+            className="h-4 w-4 text-muted-foreground"
+            aria-hidden="true"
+          />
+          Paid-data readiness
+          {data ? (
+            <Badge
+              variant={data.justified ? "default" : "outline"}
+              className="text-xs ml-auto"
+            >
+              {data.justified ? "Justified" : "Not yet"}
+            </Badge>
+          ) : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-2">
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : data ? (
+          <>
+            <p className="text-sm text-foreground leading-relaxed">
+              {data.verdict}
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <span>
+                MRR {fmtUsd(data.gate.trailingMrrDollars)} / gate{" "}
+                {fmtUsd(data.gate.mrrGateDollars)}
+              </span>
+              <span>
+                {data.eval.hasRun
+                  ? `${data.eval.decisionFlipCount ?? 0} decision flips`
+                  : "no eval run yet"}
+              </span>
             </div>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            {!data
-              ? "wired up in Phase 1"
-              : data.runwayMonths != null
-                ? `${fmtUsd(data.monthlyBurnUsd)} / mo burn · ${
-                    data.basis ?? "founder-declared cash ÷ 30-day burn"
-                  }`
-                : "Declare cash on hand to estimate runway"}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Readiness verdict wiring up.
           </p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="p-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            Cash on hand
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-9 w-24" />
-          ) : (
-            <div className="text-3xl font-semibold tabular-nums text-foreground">
-              {data && data.cashDeclared ? fmtUsd(data.cashOnHandUsd) : "—"}
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            {!data
-              ? "wired up in Phase 1"
-              : data.cashDeclared
-                ? `founder-declared · as of ${new Date(
-                    data.asOf,
-                  ).toLocaleDateString()}`
-                : "Not declared yet"}
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -466,6 +754,41 @@ function RecentEventsSection() {
 export default function FounderMoneyPage() {
   useDocumentTitle("Money · Founder");
 
+  // Lifted to the page so the position banner + runway cards read one fetch.
+  const summaryQuery = useQuery<MoneySummary | null>({
+    queryKey: ["/api/founder/money/summary"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/money/summary", {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      try {
+        return (await res.json()) as MoneySummary;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  const readinessQuery = useQuery<PaidDataReadiness | null>({
+    queryKey: ["/api/founder/money/paid-data-readiness"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/money/paid-data-readiness", {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      try {
+        return (await res.json()) as PaidDataReadiness;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
   return (
     <PageShell maxWidth="5xl" label="Founder money">
       <div className="space-y-4 md:space-y-6">
@@ -474,13 +797,27 @@ export default function FounderMoneyPage() {
             Money
           </h1>
           <p className="text-sm text-muted-foreground">
-            Runway, envelopes, and recent capital events.
+            Runway, unit economics, the paid-data verdict, and capital events.
           </p>
         </header>
 
-        <LenaPhase0Banner />
+        <CfoPositionBanner
+          summary={summaryQuery.data}
+          readiness={readinessQuery.data}
+        />
 
-        <RunwaySection />
+        <RunwaySection
+          data={summaryQuery.data}
+          isLoading={summaryQuery.isLoading}
+        />
+
+        <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-2">
+          <UnitEconomicsSection />
+          <PaidDataReadinessSection
+            data={readinessQuery.data}
+            isLoading={readinessQuery.isLoading}
+          />
+        </div>
 
         <EnvelopesSection />
 

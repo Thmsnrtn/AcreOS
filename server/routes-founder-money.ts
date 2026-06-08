@@ -19,12 +19,15 @@
  *     OTHER_INFRA_MONTHLY_USD) for non-AI burn
  *   - env-configurable cash position (FOUNDER_CASH_ON_HAND_USD)
  *
- * Honesty note (Lena): the summary endpoint does NOT present a runway
- * *model*. It returns an explicitly-labeled single-point estimate
- * (founder-declared cash ÷ trailing 30-day burn) and refuses to emit a
- * runway number at all when cash is undeclared. The three-scenario
- * runway engine (base/downside/upside) is a later elevation item; until
- * it ships, nothing here may be dressed up as a computed forecast.
+ * Honesty note (Lena, 2026-06-08): the summary endpoint now presents the REAL
+ * three-scenario runway model (`server/services/finance/runwayModel.ts`),
+ * replacing the honest-but-crude P0 placeholder (founder-declared cash ÷
+ * trailing 30-day burn). Cash is read off the real reserve buckets on the
+ * financial_ledger; burn off opex_spent rows + solene_capital_events; MRR off
+ * live paying orgs. The founder-declared env cash remains ONLY as a labeled
+ * override when it exceeds the ledger balance. The legacy single-point fields
+ * (`runwayMonths`, `method`, `basis`) are kept for UI back-compat, fed from the
+ * base scenario, and `isModeled` is now true.
  */
 
 import type { Express, Response } from "express";
@@ -40,6 +43,18 @@ import {
 } from "@shared/schema/solene-capital";
 import { and, desc, gte, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { computeRunway } from "./services/finance/runwayModel";
+import { readUnitEconomicsRollup } from "./services/unitEconomics";
+import { getContributionMargin } from "./services/financial-ledger";
+import { organizations } from "@shared/schema";
+import { monthlyRevenueCentsFor, tierForSubscriptionTier } from "@shared/billing/tier-pricing";
+import type { BillingInterval } from "@shared/billing/tier-pricing";
+import {
+  evaluatePaidProviderGate,
+  MIN_MRR_FOR_PAID_DATA_DOLLARS,
+} from "@shared/billing/data-procurement-policy";
+import { getLatestEvalRun } from "./services/paidDataEvalHarness";
+import { regridProvider } from "./services/providers/regrid-provider";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -77,58 +92,43 @@ export function registerFounderMoneyRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        // HONESTY CONTRACT (Lena, 2026-06-07):
-        // This is NOT a forecast model — it is a single-point estimate:
-        //   founder-declared cash ÷ trailing-30-day burn.
-        // The three-scenario runway engine (base/downside/upside) is a later
-        // elevation item. Until it ships we MUST NOT dress this estimate up as
-        // a computed model — we sell customers a provenance contract that
-        // refuses unsourced numbers, so our own surface must do the same.
-        // Therefore the response:
-        //   - labels the method explicitly (`method`, `basis`, `isModeled`)
-        //   - marks cash as founder-declared (an env override, not measured)
-        //   - returns `runwayMonths: null` when cash is unset, so the UI shows
-        //     "—" rather than a fabricated figure derived from a $0 assumption.
-        //
-        // Burn IS partly real: `aiBurnLast30dUsd` is the actual summed cost of
-        // logged capital events over the trailing 30 days. Infra lines are env
-        // knobs (Tom's self-reported fixed costs) and are flagged as such.
-        const aiBurnLast30d = await sumCapitalSinceDays(30);
-        const flyInfraUsd = envFloat("FLY_INFRA_MONTHLY_USD", 24);
-        const otherInfraUsd = envFloat("OTHER_INFRA_MONTHLY_USD", 0);
-        const monthlyBurnUsd = aiBurnLast30d + flyInfraUsd + otherInfraUsd;
+        // REAL three-scenario runway model (Lena #1). Reads cash off the
+        // reserve buckets, burn off the ledger + solene_capital_events, MRR off
+        // live paying orgs. The founder-declared env cash is a labeled override
+        // only (used when it exceeds the ledger). This IS a model now.
+        const runway = await computeRunway();
 
-        const cashDeclared = !!process.env.FOUNDER_CASH_ON_HAND_USD;
-        const cashOnHandUsd = envFloat("FOUNDER_CASH_ON_HAND_USD", 0);
-
-        // Only compute a runway figure when cash has actually been declared.
-        // Dividing an undeclared (defaulted-to-0) cash position by burn yields
-        // a misleading "0 months" — refuse to present that as a number.
-        const runwayMonths =
-          cashDeclared && monthlyBurnUsd > 0
-            ? cashOnHandUsd / monthlyBurnUsd
-            : null;
+        const base = runway.scenarios.base;
+        // Legacy single-point fields kept for UI back-compat — fed from base.
+        // monthlyBurnUsd is the GROSS base costs (pre-MRR-offset) so the old
+        // "$X / mo burn" label still reads as total spend.
+        const monthlyBurnUsd = base.monthlyCostsUsd;
+        // runwayMonths is the base scenario's months-to-zero; null only when
+        // there's no cash basis at all (so the UI shows "—", never a fake 0).
+        const runwayMonths = base.monthsToZero;
 
         return res.json({
-          asOf: new Date().toISOString(),
-          cashOnHandUsd,
+          asOf: runway.asOf,
+          cashOnHandUsd: runway.cashOnHandUsd,
           monthlyBurnUsd,
-          runwayMonths:
-            runwayMonths !== null && Number.isFinite(runwayMonths)
-              ? runwayMonths
-              : null,
-          // Explicit honesty metadata so the surface never implies a model.
-          method: "estimate",
-          basis: "founder-declared cash ÷ trailing 30-day burn",
-          isModeled: false,
-          cashDeclared,
+          runwayMonths,
+          // The model now stands behind these numbers.
+          method: "model",
+          basis: "three-scenario runway off the financial ledger (base shown)",
+          isModeled: true,
+          cashDeclared: runway.cashBasis === "founder-declared",
+          cashBasis: runway.cashBasis,
+          // The full three-scenario block + transparency inputs.
+          scenarios: runway.scenarios,
+          inputs: runway.inputs,
           source: {
-            aiBurnLast30dUsd: aiBurnLast30d,
-            flyInfraMonthlyUsd: flyInfraUsd,
-            otherInfraMonthlyUsd: otherInfraUsd,
-            // "founder-declared" when set via env, "unset" otherwise — never
-            // presented as a measured/computed cash balance.
-            cashSource: cashDeclared ? "founder-declared" : "unset",
+            ledgerCashUsd: runway.inputs.ledgerCashUsd,
+            founderDeclaredCashUsd: runway.inputs.founderDeclaredCashUsd,
+            monthlyOpexUsd: runway.inputs.monthlyOpexUsd,
+            monthlyAiBurnUsd: runway.inputs.monthlyAiBurnUsd,
+            fixedInfraMonthlyUsd: runway.inputs.fixedInfraMonthlyUsd,
+            mrrUsd: runway.inputs.mrrUsd,
+            cashSource: runway.cashBasis,
           },
         });
       } catch (err) {
@@ -221,6 +221,196 @@ export function registerFounderMoneyRoutes(app: Express): void {
       } catch (err) {
         logger.error(
           "[founder/money/events] failed",
+          err instanceof Error ? err : undefined,
+        );
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Unit economics: LTV : CAC : payback (Lena #3, honest) ───────────────
+  //
+  // Blended gross margin (from the nightly rollup) + cohort contribution
+  // margin keyed by signup-month (from the financial ledger). LTV:CAC and
+  // payback are reported "N/A (no CAC data yet)" — there is no marketing-spend
+  // numerator on the ledger, and we never fabricate a metric we can't source.
+  // The day a `marketing_spend` ledger feature exists, `cacAvailable` flips
+  // true and these compute for real; until then the surface tells the truth.
+  app.get(
+    "/api/founder/money/unit-economics",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const rollup = await readUnitEconomicsRollup();
+
+        // Cohort contribution margin: group paying active orgs by signup month
+        // and sum each cohort's trailing-window contribution off the ledger.
+        const orgs = await db
+          .select({
+            id: organizations.id,
+            tier: organizations.subscriptionTier,
+            status: organizations.subscriptionStatus,
+            interval: organizations.billingInterval,
+            createdAt: organizations.createdAt,
+          })
+          .from(organizations);
+
+        const cohortMap = new Map<
+          string,
+          { customers: number; mrrUsd: number; contributionUsd: number }
+        >();
+        for (const o of orgs) {
+          if (o.status !== "active") continue;
+          if (tierForSubscriptionTier(o.tier) === null) continue; // free → skip
+          const created = o.createdAt ? new Date(o.createdAt) : null;
+          const cohort = created
+            ? `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, "0")}`
+            : "unknown";
+          const mrrUsd =
+            monthlyRevenueCentsFor(
+              o.tier,
+              (o.interval as BillingInterval) ?? "monthly",
+            ) / 100;
+          const cm = await getContributionMargin(o.id, 30);
+          const entry =
+            cohortMap.get(cohort) ?? { customers: 0, mrrUsd: 0, contributionUsd: 0 };
+          entry.customers += 1;
+          entry.mrrUsd += mrrUsd;
+          entry.contributionUsd += cm.marginCents / 100;
+          cohortMap.set(cohort, entry);
+        }
+
+        const cohortContribution = Array.from(cohortMap.entries())
+          .map(([cohort, v]) => ({
+            cohort,
+            customers: v.customers,
+            mrrUsd: Math.round(v.mrrUsd * 100) / 100,
+            contributionUsd: Math.round(v.contributionUsd * 100) / 100,
+            contributionPerCustomerUsd:
+              v.customers > 0
+                ? Math.round((v.contributionUsd / v.customers) * 100) / 100
+                : 0,
+          }))
+          .sort((a, b) => a.cohort.localeCompare(b.cohort));
+
+        return res.json({
+          asOf: new Date().toISOString(),
+          blendedGrossMarginPct: rollup.totals.grossMarginPct,
+          blendedGrossMarginUsd: rollup.totals.grossMarginUsd,
+          totalMrrUsd: rollup.totals.totalMrrUsd,
+          payingCustomerCount: rollup.totals.payingCustomerCount,
+          cohortContribution,
+          // Honesty: no CAC numerator exists yet (no marketing_spend feature).
+          cacAvailable: false,
+          ltvCacRatio: null,
+          paybackMonths: null,
+          // Phase-gate reference lines for the eventual chart.
+          thresholds: {
+            grossMarginFloorPct: 70, // charter: ≥70% sustained
+            ltvCacFloor: 3, // charter: ≥3:1 at Phase 3
+            paybackCeilingMonths: 12, // charter: <12mo at Phase 2
+          },
+          note: "LTV:CAC and payback are N/A until a marketing_spend ledger feature provides a CAC numerator. Gross margin + cohort contribution are real.",
+        });
+      } catch (err) {
+        logger.error(
+          "[founder/money/unit-economics] failed",
+          err instanceof Error ? err : undefined,
+        );
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Paid-Data Readiness (Lena #6) ───────────────────────────────────────
+  //
+  // The self-announcing buy trigger. Combines the live gate
+  // (evaluatePaidProviderGate, fed real trailing MRR off the ledger) + the
+  // latest no-spend eval run's decision-flip count + Regrid's per-provider
+  // monthly commit → a single "Regrid is / isn't justified yet" verdict.
+  app.get(
+    "/api/founder/money/paid-data-readiness",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        // Trailing MRR (dollars) from live paying orgs — the same basis the
+        // runway model uses, so the gate reads the real number.
+        const orgs = await db
+          .select({
+            tier: organizations.subscriptionTier,
+            status: organizations.subscriptionStatus,
+            interval: organizations.billingInterval,
+          })
+          .from(organizations);
+        let mrrCents = 0;
+        for (const o of orgs) {
+          if (o.status !== "active") continue;
+          mrrCents += monthlyRevenueCentsFor(
+            o.tier,
+            (o.interval as BillingInterval) ?? "monthly",
+          );
+        }
+        const trailingMrrDollars = mrrCents / 100;
+
+        const minMonthlyCommitCents = regridProvider.minMonthlyCommitCents ?? 0;
+        const gate = evaluatePaidProviderGate({
+          trailingMrrDollars,
+          minMonthlyCommitCents,
+        });
+
+        const latestRun = await getLatestEvalRun(null);
+        const decisionFlipCount = latestRun?.result.decisionFlipCount ?? null;
+        const decisionFlipRate = latestRun?.result.decisionFlipRate ?? null;
+        const parcelsCompared = latestRun?.result.parcelsCompared ?? null;
+
+        // Justified only when BOTH the financial gate clears AND the eval shows
+        // at least one decision actually flips (buying data that changes no
+        // decision is waste, regardless of MRR).
+        const evalShowsValue =
+          decisionFlipCount != null && decisionFlipCount > 0;
+        const justified = gate.allowed && evalShowsValue;
+
+        let verdict: string;
+        if (!gate.allowed) {
+          verdict = gate.reason;
+        } else if (latestRun == null) {
+          verdict =
+            "Financial gate clears — but no eval run yet. Run the paid-data eval to confirm decisions actually flip before buying.";
+        } else if (!evalShowsValue) {
+          verdict =
+            "Financial gate clears, but the latest eval shows 0 decision flips — free data already nails these parcels. Not justified.";
+        } else {
+          const pct =
+            decisionFlipRate != null ? Math.round(decisionFlipRate * 1000) / 10 : 0;
+          verdict = `Regrid pay-per-call is now justified — ${pct}% of worked parcels (${decisionFlipCount}/${parcelsCompared}) would flip a decision, gate cleared.`;
+        }
+
+        return res.json({
+          asOf: new Date().toISOString(),
+          provider: regridProvider.displayName,
+          justified,
+          verdict,
+          gate: {
+            allowed: gate.allowed,
+            reason: gate.reason,
+            trailingMrrDollars: Math.round(trailingMrrDollars * 100) / 100,
+            mrrGateDollars: MIN_MRR_FOR_PAID_DATA_DOLLARS,
+            commitCeilingCents: gate.commitCeilingCents,
+            minMonthlyCommitCents,
+          },
+          eval: {
+            hasRun: latestRun != null,
+            ranAt: latestRun?.createdAt ?? null,
+            decisionFlipCount,
+            decisionFlipRate,
+            parcelsCompared,
+          },
+        });
+      } catch (err) {
+        logger.error(
+          "[founder/money/paid-data-readiness] failed",
           err instanceof Error ? err : undefined,
         );
         return Errors.internal(res, err);
