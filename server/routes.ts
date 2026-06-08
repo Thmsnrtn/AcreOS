@@ -215,6 +215,7 @@ import { registerPublicTrustRoutes } from "./routes-public-trust";
 import { registerDataSourcesRoutes } from "./routes-data-sources";
 import { registerIncidentRoutes } from "./routes-incidents";
 import { registerErrorBudgetRoute } from "./routes-error-budget";
+import { registerWorkerHeartbeatRoute } from "./routes-worker-heartbeat";
 import { registerCohortRetentionRoutes } from "./routes-cohort-retention";
 import { registerCustomerHealthRoutes } from "./routes-customer-health";
 import { registerCohortLtvRoutes } from "./routes-cohort-ltv";
@@ -2236,6 +2237,8 @@ export async function registerRoutes(
   registerIncidentRoutes(app);
   // 2026-05-13 — Pillar D / D6 error-budget endpoint.
   registerErrorBudgetRoute(app);
+  // Tess #5 — auth-free worker liveness endpoint for the external eye.
+  registerWorkerHeartbeatRoute(app);
   // 2026-05-13 — Pillar E / E3 cohort retention endpoint.
   registerCohortRetentionRoutes(app);
   // 2026-05-13 — Pillar E / E4+E9 customer health endpoints.

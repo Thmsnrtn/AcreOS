@@ -12164,6 +12164,33 @@ export const insertJobHealthLogSchema = createInsertSchema(jobHealthLogs).omit({
 export type InsertJobHealthLog = z.infer<typeof insertJobHealthLogSchema>;
 export type JobHealthLog = typeof jobHealthLogs.$inferSelect;
 
+// ── Worker heartbeat (Tess #5) ───────────────────────────────────────────────
+// The worker process runs every scheduled job AND originates every alert
+// (autonomousHealthMonitor, dataSourceProbe, the burn-rate monitor). If the
+// worker dies we lose background processing *and* the ability to tell anyone we
+// lost it — "the watchman watches everyone but no one watches the watchman."
+//
+// This single-row table is the watchman's pulse: server/worker.ts bumps
+// updatedAt on every outbox poll loop. An *external* eye (the Cloudflare probe,
+// or any uptime monitor) reads GET /api/health/worker-heartbeat — an auth-free
+// endpoint like /api/healthz — and pages if the heartbeat is stale. That is the
+// only correct topology: the thing that detects "alerting is down" lives OUTSIDE
+// alerting. Single row, pinned to id=1 (an UPSERT keeps it singleton).
+export const workerHeartbeat = pgTable("worker_heartbeat", {
+  id: integer("id").primaryKey().default(1),
+  // Stable identifier of the worker process that last wrote the pulse — useful
+  // when debugging which machine is (or isn't) alive.
+  instanceId: text("instance_id"),
+  // Build SHA the live worker is running, so a stale heartbeat after a deploy is
+  // attributable to a specific release.
+  gitSha: text("git_sha"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertWorkerHeartbeatSchema = createInsertSchema(workerHeartbeat).omit({ updatedAt: true });
+export type InsertWorkerHeartbeat = z.infer<typeof insertWorkerHeartbeatSchema>;
+export type WorkerHeartbeat = typeof workerHeartbeat.$inferSelect;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),
