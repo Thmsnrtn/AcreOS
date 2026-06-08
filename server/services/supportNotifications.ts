@@ -21,6 +21,7 @@
  * creation or a customer-facing escalation response).
  */
 
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { systemAlerts } from "@shared/schema";
 import { logger } from "../utils/logger";
@@ -93,6 +94,70 @@ export async function notifyFounderOfTicket(args: NotifyFounderOfTicketArgs): Pr
   } catch (err) {
     logger.warn("[support-notify] failed to create founder alert", {
       metadata: { orgId, ticketId, reason, error: (err as Error).message },
+    });
+  }
+}
+
+interface NotifyFounderOfDetractorArgs {
+  orgId: number;
+  /** The detractor NPS score (0–6 is a detractor; ≤3 is critical). */
+  score: number;
+  /** The verbatim free-text comment — attach it, not just the score. */
+  comment?: string | null;
+  /** Which survey triggered this (day_14 / quarterly / scheduled_21d / adhoc …). */
+  surveyTrigger?: string | null;
+}
+
+/**
+ * Create a founder-visible alert for a detractor NPS score (≤6). Mirrors
+ * notifyFounderOfTicket: drops a `system_alerts` row — the canonical founder
+ * notification surface (/founder/escalations, founder pulse, alert-policy
+ * router) — so a detractor REACHES the founder instead of just sitting in a
+ * stats table. Severity scales with the score: ≤3 is critical, ≤6 is high
+ * ("warning"). The verbatim comment is attached so a "3, no comment" and a
+ * "3, your county data was wrong" read as the different emergencies they are.
+ *
+ * Best-effort: logs and swallows on failure so the customer's NPS submit is
+ * never blocked by a notification write.
+ */
+export async function notifyFounderOfDetractor(args: NotifyFounderOfDetractorArgs): Promise<void> {
+  const { orgId, score, comment, surveyTrigger } = args;
+  // Only detractors page the founder. Promoters/passives are stats, not alerts.
+  if (score > 6) return;
+  try {
+    const { organizations } = await import("@shared/schema");
+    const [org] = await db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    const who = org?.name ? org.name : `org #${orgId}`;
+    const severity: "warning" | "critical" = score <= 3 ? "critical" : "warning";
+    const trimmed = comment?.trim() || null;
+
+    await db.insert(systemAlerts).values({
+      type: "nps_detractor",
+      alertType: "high_churn",
+      severity,
+      organizationId: orgId,
+      title: `Detractor NPS (${score}/10) — ${who}`,
+      message: `${who} scored ${score}/10${trimmed ? `: "${trimmed}"` : " (no comment)"}. Trigger a same-day personal touch.`,
+      relatedEntityType: "organization",
+      relatedEntityId: orgId,
+      status: "new",
+      metadata: {
+        score,
+        comment: trimmed,
+        surveyTrigger: surveyTrigger ?? null,
+      },
+    });
+
+    logger.info("[support-notify] detractor founder alert created", {
+      metadata: { orgId, score, severity },
+    });
+  } catch (err) {
+    logger.warn("[support-notify] failed to create detractor founder alert", {
+      metadata: { orgId, score, error: (err as Error).message },
     });
   }
 }

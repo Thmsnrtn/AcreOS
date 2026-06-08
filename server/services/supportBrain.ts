@@ -514,7 +514,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       escalationReason: reason,
     });
 
-    const response = `I've reviewed your case and believe it would be best handled by our team directly. I've escalated this to a human support agent who will review it shortly. You'll receive a response within 24 hours.
+    const response = `I've reviewed your case and believe it's best handled by our team directly, so I've escalated it to a human. A human will be on this shortly — typically within minutes during business hours, and within a few hours otherwise.
 
 In the meantime, is there anything else I can help you with?`;
 
