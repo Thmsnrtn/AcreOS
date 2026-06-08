@@ -1,10 +1,12 @@
 import { useLocation, Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { MoreHorizontal } from "lucide-react";
+import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useState } from "react";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
 import { NAV_ITEM_MAP, MOBILE_DOORS, type MasterNavItem } from "@/lib/nav-items";
+import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
 
 export function MobileBottomNav() {
   const [location] = useLocation();
@@ -54,11 +56,16 @@ export function MobileBottomNav() {
                 )}
                 data-testid={`mobile-nav-item-${item.id}`}
               >
-                <div className={cn(
-                  "flex items-center justify-center w-full h-8 rounded-full transition-colors",
-                  isActive && "bg-primary/15"
-                )}>
-                  <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
+                <div className="relative flex items-center justify-center w-full h-8 rounded-full">
+                  {isActive && (
+                    <motion.div
+                      layoutId={NAV_INDICATOR_LAYOUT_IDS.customerBottomNav}
+                      className="absolute inset-0 rounded-full bg-primary/15"
+                      transition={navIndicatorSpring}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <ItemIcon className={cn("relative w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
                 </div>
                 <span className={cn(
                   "text-caption font-medium truncate",
