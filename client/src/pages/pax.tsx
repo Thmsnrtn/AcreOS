@@ -26,6 +26,7 @@ import {
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
+import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 // The conversation is the primary surface. CommandCenterPage (~2,264 LOC) is
@@ -771,6 +772,11 @@ export default function PaxPage() {
           <Suspense fallback={<ChatFallback />}>
             <CommandCenterPage />
           </Suspense>
+          {/* Standing AI-disclosure rail — always present beneath the composer
+              on the Pax door. "Tool, not advisor" (doctrine pillar #1 +
+              customer immutable #7). Calm, non-dismissible, copy sourced from a
+              single constant in pax-disclosure-rail.tsx. */}
+          <PaxDisclosureRail className="mt-3" />
         </AiChatGuard>
       </div>
     </PageShell>
