@@ -47,6 +47,15 @@ jobs:
       - name: Truth-engine audit (learn pages)
         run: npm run truth-engine:audit-learn
 
+      # Sitemap freshness — client/public/sitemap.xml is generated from the
+      # public-route source-of-truth (App.tsx static routes + content/learn/*
+      # JSON). A new /learn or /compare page, or a retired public route, that
+      # doesn't regenerate the sitemap fails here so crawlers never get a stale
+      # map (the way /glossary lingered after it was archived). Fix locally with
+      # `node scripts/generate-sitemap.mjs`.
+      - name: Sitemap freshness check
+        run: node scripts/generate-sitemap.mjs --check
+
       - name: Coverage report
         run: npm run test:coverage
 
