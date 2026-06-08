@@ -280,8 +280,11 @@ export function stripePriceEnvVarName(tier: Tier, interval: BillingInterval): st
  * "is this tier purchasable yet?" question has one answer.
  */
 export function stripePriceIdFor(tier: Tier, interval: BillingInterval): string | undefined {
-  const pricing = TIER_PRICES_CENTS[tier];
-  return interval === "yearly" ? pricing.stripePriceIdYearly : pricing.stripePriceIdMonthly;
+  // Read the backing env var LIVE rather than the value captured into
+  // TIER_PRICES_CENTS at module load. Load-time capture meant a STRIPE_PRICE_*
+  // secret set after import (a fresh Fly secret, or a test) had no effect until
+  // a full restart — and made "is this tier purchasable yet?" untestable.
+  return envPriceId(stripePriceEnvVarName(tier, interval));
 }
 
 /** True when a tier+interval has a configured Stripe price ID and can be checked out. */
