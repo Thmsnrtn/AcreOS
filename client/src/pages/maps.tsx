@@ -66,16 +66,11 @@ import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import {
-  AreaChart,
-  Area,
   RadarChart,
   Radar,
   PolarGrid,
   PolarAngleAxis,
   ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
 } from "recharts";
 
 // ── Slope Aspect Helper ────────────────────────────────────────────────────────
@@ -94,32 +89,6 @@ function getSlopeAspectLabel(azimuth: number): { label: string; full: string; ic
   return dirs[idx];
 }
 
-// Generate a synthetic but deterministic price history sparkline from property data
-function generatePriceTrendData(
-  listPrice: number | null | undefined,
-  acres: number,
-  marketTrend: "up" | "down" | "flat",
-  marketTrendPct: number
-): { month: string; value: number }[] {
-  const base = listPrice ?? (acres * 5000 || 50000);
-  if (!base || base <= 0) return [];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const now = new Date();
-  const result = [];
-  const annualGrowth = marketTrend === "up" ? marketTrendPct / 100 : marketTrend === "down" ? -marketTrendPct / 100 : 0;
-  const monthlyGrowth = annualGrowth / 12;
-  let v = base * (1 - annualGrowth * 0.5); // start 6 months ago
-
-  for (let i = 5; i >= 0; i--) {
-    const mIdx = (now.getMonth() - i + 12) % 12;
-    // Add slight noise
-    const noise = 1 + (Math.sin(mIdx * 2.7 + base * 0.001) * 0.02);
-    v = v * (1 + monthlyGrowth) * noise;
-    result.push({ month: months[mIdx], value: Math.round(v) });
-  }
-  return result;
-}
-
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "prospect", label: "Prospect" },
@@ -130,21 +99,6 @@ const STATUS_OPTIONS = [
   { value: "listed", label: "Listed" },
   { value: "sold", label: "Sold" },
 ];
-
-/** Build a tiny synthetic boundary polygon around a lat/lng point */
-function syntheticBoundary(lat: number, lng: number) {
-  const d = 0.003;
-  return {
-    type: "Polygon" as const,
-    coordinates: [[
-      [lng - d, lat - d],
-      [lng + d, lat - d],
-      [lng + d, lat + d],
-      [lng - d, lat + d],
-      [lng - d, lat - d],
-    ]],
-  };
-}
 
 // Deal-status colors — now resolved at render time from CSS vars so they
 // respond to theme + dark-mode switches. Cannot use Tailwind here because
@@ -511,74 +465,10 @@ function PropertyIntelligencePanel({
           );
         })()}
 
-        {/* Market Trend Sparkline — only when a real trend was returned. */}
-        {intel.estimatedValue && intel.marketTrendPct !== undefined && (
-          <div className="p-3 border-b">
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">
-                6-Month Value Trend
-              </p>
-              <div className={cn("flex items-center gap-0.5 text-micro font-semibold",
-                intel.marketTrend === "up" ? "text-acr-pos" :
-                intel.marketTrend === "down" ? "text-acr-neg" : "text-muted-foreground"
-              )}>
-                {intel.marketTrend === "up" ? <TrendingUp className="w-3 h-3" aria-hidden="true" /> :
-                 intel.marketTrend === "down" ? <TrendingDown className="w-3 h-3" aria-hidden="true" /> :
-                 <Minus className="w-3 h-3" aria-hidden="true" />}
-                {intel.marketTrendPct?.toFixed(1)}% YoY
-              </div>
-            </div>
-            {(() => {
-              const data = generatePriceTrendData(
-                intel.estimatedValue,
-                acres,
-                intel.marketTrend ?? "flat",
-                intel.marketTrendPct ?? 0,
-              );
-              if (data.length < 2) return null;
-              const style = getComputedStyle(document.documentElement);
-              const color = intel.marketTrend === "up"
-                ? style.getPropertyValue("--acr-pos").trim()
-                : intel.marketTrend === "down"
-                ? style.getPropertyValue("--acr-heat-hot").trim()
-                : style.getPropertyValue("--acr-accent").trim();
-              return (
-                <div role="img" aria-label={`Price-per-acre sparkline trending ${intel.marketTrend ?? "flat"} ${intel.marketTrendPct ?? 0}% over ${data.length} months`}>
-                <ResponsiveContainer width="100%" height={52}>
-                  <AreaChart data={data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                    <defs>
-                      <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={color} stopOpacity={0.35} />
-                        <stop offset="95%" stopColor={color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="month" hide />
-                    <YAxis domain={["auto", "auto"]} hide />
-                    <RechartsTooltip
-                      content={({ active, payload, label }) =>
-                        active && payload?.length ? (
-                          <div className="bg-background border rounded px-2 py-1 text-micro shadow">
-                            <div className="font-semibold">{label}</div>
-                            <div className="tabular-nums">{usd(Number(payload[0].value), { noCents: true })}</div>
-                          </div>
-                        ) : null
-                      }
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke={color}
-                      strokeWidth={1.5}
-                      fill="url(#sparkGrad)"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        {/* Honesty: no fabricated price-history sparkline. The single honest
+            estimated value + YoY figure is rendered above with its provenance;
+            we never synthesize a per-month price curve. See the no-synthetic-series
+            CI contract (scripts/check-no-synthetic-series.mjs). */}
 
         {/* Environmental Risk Radar — built only from dimensions we actually
             pulled. A radar of invented scores is the exact trust bomb we're
@@ -1012,11 +902,19 @@ export default function MapsPage() {
       status = deal?.status || status;
     }
 
+    // Honesty: never fabricate an authoritative parcel outline. We only ever
+    // hand the map a *real* surveyed boundary. When we don't have one, we omit
+    // the polygon entirely (the map still locates the parcel via its centroid)
+    // and flag it approximate, rather than drawing a synthetic square that
+    // reads as a surveyed lot line. `isApproximate` is carried so the map layer
+    // can style an estimated extent distinctly if/when it supports it.
+    const realBoundary = (p.parcelBoundary as any) || undefined;
     return {
       id: p.id,
       apn: p.apn,
       name: `${p.county}, ${p.state}`,
-      boundary: (p.parcelBoundary as any) || syntheticBoundary(lat, lng),
+      boundary: realBoundary,
+      isApproximate: !realBoundary,
       centroid: (p.parcelCentroid as any) || { lat, lng },
       status,
     };

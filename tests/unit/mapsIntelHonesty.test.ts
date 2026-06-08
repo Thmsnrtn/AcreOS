@@ -12,7 +12,13 @@
  * yield ZERO fabricated numeric scores and NO default flood zone.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { deriveIntel, INTEL_NUMERIC_FIELDS, type PropertyIntelligence } from "../../client/src/pages/maps-intel";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const MAPS_TSX = resolve(__dirname, "../../client/src/pages/maps.tsx");
 
 const NO_DATA_PROPERTY = {
   listPrice: null,
@@ -82,6 +88,40 @@ describe("deriveIntel — customer-supplied facts are honest, not fabricated", (
     const intel = deriveIntel(null, { listPrice: null, sizeAcres: "5", zoning: "RR-1" });
     expect(intel.zoningCode).toBe("RR-1");
     expect(intel.zoningDescription).toBeUndefined();
+  });
+});
+
+/**
+ * no-synthetic-series source contract.
+ *
+ * The Map door once rendered a fabricated 6-month price-per-acre AreaChart
+ * built from `Math.sin()` noise (`generatePriceTrendData`) with a per-month
+ * dollar tooltip that read as real history, plus a `syntheticBoundary()`
+ * polygon drawn as an authoritative surveyed lot line. Both are deleted. This
+ * scans the source so they cannot regress: no fabricated time-series may be
+ * synthesized and charted on the parcel-intel surface.
+ */
+describe("maps.tsx — no-synthetic-series contract", () => {
+  const src = readFileSync(MAPS_TSX, "utf8");
+
+  it("does not synthesize a price-history / trend series", () => {
+    expect(src).not.toMatch(/generatePriceTrendData/);
+    expect(src).not.toMatch(/Math\.sin/);
+  });
+
+  it("does not render a fabricated AreaChart sparkline", () => {
+    expect(src).not.toMatch(/<AreaChart/);
+    expect(src).not.toMatch(/\bAreaChart\b/);
+  });
+
+  it("does not fabricate an authoritative parcel boundary polygon", () => {
+    expect(src).not.toMatch(/syntheticBoundary/);
+  });
+
+  it("only hands the map a real boundary, flagging the rest approximate", () => {
+    // The mapped property object must carry an explicit `isApproximate` flag and
+    // must NOT fall back to a fabricated polygon when the real one is missing.
+    expect(src).toMatch(/isApproximate/);
   });
 });
 
