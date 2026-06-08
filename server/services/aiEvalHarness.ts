@@ -26,6 +26,7 @@ import { db } from "../db";
 import { aiTestCases, aiTestRuns } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { DATA_GROUNDING_EVAL_CASES } from "../ai/dataGroundingEvalCases";
 
 /**
  * Panel-300 G1 — eval-as-gate. Throws when a generated output fails
@@ -107,6 +108,92 @@ export async function gateOutputOrThrow(opts: {
   if (failures.length > 0) {
     throw new EvalGateRejectedError(opts.surface, opts.modelKey, failures);
   }
+}
+
+/**
+ * Andrei (2026-06-07) — runtime forbidden-trait gate for the LIVE Pax turn.
+ *
+ * `gateOutputOrThrow` (above) is the model-rollout gate: it queries
+ * `ai_test_cases`, checks expected AND forbidden traits, and throws. That gate
+ * runs in CI / model-promotion, NOT on the live customer turn. The strongest
+ * net we built — the critical `pax_inbox` forbidden-trait cases — therefore
+ * never ran on a real reply, so a paraphrased hallucination ("minimal flood
+ * risk" after a flood-zone MISS) cleared both the heuristic guard and the
+ * substring eval and sailed to the customer.
+ *
+ * This function closes that gap with an in-process, network-free check:
+ *
+ *  - It reuses the SAME forbidden-trait substring matching the harness uses
+ *    against the code-resident `pax_inbox` CRITICAL cases
+ *    (server/ai/dataGroundingEvalCases.ts), so the live turn is held to the
+ *    same assertions CI uses. No DB round-trip and no LLM call — it's
+ *    deterministic and cheap, safe to run off the streaming hot loop on the
+ *    assembled response.
+ *
+ *  - It checks ONLY forbidden traits, never expected traits. A live customer
+ *    turn isn't bound to one test case's `inputPrompt`, so an expected-trait
+ *    check ("the answer must contain 'don't have'") would false-positive on
+ *    every normal reply. Forbidden traits are the phrasing-agnostic patterns
+ *    that must NEVER appear regardless of the question — naming a flood
+ *    zone/soil class after a miss, "you should buy", "guaranteed to double".
+ *    That is exactly the paraphrased-hallucination shape.
+ *
+ *  - It DOES NOT throw. The caller (executive.ts live Pax loop) folds a hit
+ *    into the existing correction/deflection machinery, so a tripped case is
+ *    rewritten or honestly deflected — never persisted as-is.
+ */
+export interface LiveGateResult {
+  /** True when no critical forbidden trait was found (response is clear). */
+  clear: boolean;
+  /** Matched forbidden traits, with the originating case for traceability. */
+  hits: Array<{ caseId: string; caseName: string; trait: string }>;
+}
+
+/**
+ * Not every forbidden trait is safe to apply CONTEXT-BLIND on a live turn.
+ *
+ * The DB harness pairs each forbidden trait with a specific MISS/HIT
+ * `inputPrompt`: "zone ae" is forbidden in the flood-MISS case because the
+ * lookup returned nothing. But on a live turn where the lookup actually HIT,
+ * "FEMA Zone AE" is the correct, required answer — matching it would force a
+ * deflection on a good reply. So the live gate must skip these bare data-class
+ * tokens (short zone / soil-class / ssurgo identifiers, and the cross-org
+ * `#id` literal echoes — the latter are already covered by the hallucination
+ * guard's entity-existence check, which knows the org's real parcels).
+ *
+ * What REMAINS — and is what the live gate enforces — are the phrasing-agnostic
+ * judgment / hedge / guess / directive / guarantee patterns that are
+ * unconditionally unsafe regardless of hit-vs-miss: "minimal flood risk",
+ * "not in a flood zone", "the owner is", "likely owned by", "you should buy",
+ * "guaranteed to double". That is exactly the paraphrased-hallucination shape
+ * the live gate exists to catch.
+ */
+function isContextDependentFactToken(trait: string): boolean {
+  const t = trait.toLowerCase().trim();
+  // Bare FEMA zone tokens: "zone x", "zone a", "zone ae" (but NOT phrases like
+  // "not in a flood zone" / "no flood risk", which are judgments).
+  if (/^zone [a-z0-9]{1,3}$/.test(t)) return true;
+  // Bare USDA/SSURGO soil-class tokens: "class i".."class iii", "ssurgo class".
+  if (/^class [ivx]{1,4}$/.test(t)) return true;
+  if (t === "ssurgo class") return true;
+  // Cross-org `#id` literal echoes — entity existence is the guard's job.
+  if (t.includes("#")) return true;
+  return false;
+}
+
+export function evaluateLivePaxOutput(output: string): LiveGateResult {
+  const lower = output.toLowerCase();
+  const hits: LiveGateResult["hits"] = [];
+  for (const tc of DATA_GROUNDING_EVAL_CASES) {
+    if (tc.surface !== "pax_inbox" || tc.severity !== "critical") continue;
+    for (const trait of tc.forbiddenTraits) {
+      if (isContextDependentFactToken(trait)) continue;
+      if (lower.includes(trait.toLowerCase())) {
+        hits.push({ caseId: tc.id, caseName: tc.name, trait });
+      }
+    }
+  }
+  return { clear: hits.length === 0, hits };
 }
 
 export interface EvalRunResult {
