@@ -277,11 +277,13 @@ export default function TodayPage() {
   // Cash strip + pipeline aggregates now arrive pre-computed from /api/today.
   const cash = today?.cash;
 
-  // ── Vertical Today (Maren CPO #3) ──────────────────────────────────────
-  // The vertical's most fiduciary obligation leads the day: note investors see
-  // payments-due + delinquency, tax-lien operators see the redemption clock.
-  // Generic stays the default. The lede composes data the page already has —
-  // no extra fetch — and is rendered above the Decision Queue.
+  // ── Persona Today (Maren CPO #3 / Krieger UX) ──────────────────────────
+  // Each persona's actual JOB leads the day, not a relabeled clone: land
+  // investors see sourcing/offer momentum, note investors the tape they own,
+  // note originators the origination pipeline, note servicers the servicing
+  // queue, tax-lien operators the redemption clock. Generic stays the default.
+  // The lede composes data the page already has — no extra fetch — and is
+  // rendered above the Decision Queue.
   const persona = usePersona();
   const todayLayout = getTodayLayout(persona);
 
@@ -560,15 +562,18 @@ export default function TodayPage() {
           what happened overnight. The slider now lives at /settings/pax. */}
       {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
 
-      {/* ── Vertical lede (Maren CPO #3) ─────────────────────────────── */}
-      {/* The vertical's most fiduciary obligation, surfaced first: payments-
-          due/delinquency for note investors, the redemption clock for tax-
-          lien operators. Generic verticals render nothing here. */}
+      {/* ── Persona lede (Maren CPO #3 / Krieger UX) ─────────────────── */}
+      {/* Each persona's own job, surfaced first: sourcing momentum (land),
+          the owned tape (note investor), the origination pipeline (note
+          originator), the servicing queue (note servicer), the redemption
+          clock (tax-lien). Generic verticals render nothing here. */}
       {!showEmptyState && !todayError && todayLayout.Lede && (
         <todayLayout.Lede
           data={{
             pendingPayments30: cash?.pendingPayments30 ?? 0,
             lateCount: cash?.lateCount ?? 0,
+            openDealsCount: cash?.openDealsCount ?? 0,
+            openDealsValue: cash?.openDealsValue ?? 0,
           }}
         />
       )}
