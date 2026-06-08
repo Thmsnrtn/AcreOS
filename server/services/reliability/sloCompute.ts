@@ -37,6 +37,17 @@
  * the window's ACTUAL failures as a percentage of that monthly allowance:
  *   - fast:  ≥ 2% of the monthly error budget burned in 1h   → page (P0/P1)
  *   - slow:  ≥ 10% of the monthly error budget burned in 6h  → warn (finding)
+ *
+ * ## Honest-data note (Tess lens #6)
+ *
+ * Every count here is read from the DURABLE Postgres tables — `aiTelemetryEvents`,
+ * `jobHealthLogs`, `incidents` — NOT from the in-memory prom-client counters in
+ * `server/metrics.ts`. Those prom counters reset to zero on every Fly
+ * suspend/resume (the `min_machines_running=0` topology), so a burn-rate alert
+ * built on them would be amnesiac across exactly the idle windows we designed
+ * for. Anything a human is paged on must come from a survives-a-restart source;
+ * that is why these queries hit the DB, not the registry. If you ever surface a
+ * raw prom counter to a founder, label it "since process start (resets on idle)".
  */
 
 import { db } from "../../db";

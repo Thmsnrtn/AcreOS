@@ -3478,6 +3478,38 @@ function startDataSourceProbeJob() {
 }
 
 // ============================================================================
+// Burn-rate SLO monitor — Tess #3 — every 5 minutes.
+// ----------------------------------------------------------------------------
+// The push half of the SLO story. routes-error-budget.ts is pull-only (computes
+// consumption when the founder opens the page); this watches the SAME SLOs
+// against rolling windows so the SLOs defend themselves. Fast burn (≥2% of the
+// monthly budget in 1h) pages via notifyOnCall + auto-opens an incidents row
+// (detectionSource:"burn_rate") + auto-attaches the post-mortem template; slow
+// burn (≥10% in 6h) records a non-paging 'reliability' finding. Open-incident
+// dedupe means one sustained outage rings the phone once, not every 5 minutes.
+// See server/services/reliability/burnRateMonitor.ts.
+// ============================================================================
+function startBurnRateMonitorJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const TTL_SECONDS = 4 * 60; // fast job; lock just under the interval
+
+  log('Registering burn-rate SLO monitor job (every 5m)', 'burn-rate');
+
+  const runOnce = () =>
+    import('../services/reliability/burnRateMonitor')
+      .then(({ runBurnRateMonitor }) =>
+        withJobLock('burn_rate_monitor', TTL_SECONDS, runBurnRateMonitor).catch((err) =>
+          log(`Burn-rate monitor run failed: ${err}`, 'burn-rate'),
+        ),
+      )
+      .catch((err) => log(`Burn-rate monitor import failed: ${err}`, 'burn-rate'));
+
+  // First run 90s after boot (let telemetry tables + providers settle), then 5m.
+  setTimeout(runOnce, 90_000);
+  trackInterval(runOnce, FIVE_MINUTES);
+}
+
+// ============================================================================
 // runScheduledJobs — concatenation of the two former gate-blocks from
 // server/index.ts:1032-1660 (main block) + 1706-1735 (supervisor + churn /
 // briefing / outcome / telemetry / model / self-assessment / evolution /
@@ -3663,6 +3695,9 @@ export async function runScheduledJobs(): Promise<void> {
   // parcels through the registry; asserts each free source returns the expected
   // shape + a plausible value; canary alert on a county/federal API change.
   startDataSourceProbeJob();
+
+  // Tess #3 — burn-rate SLO monitor (every 5m): self-defending SLOs.
+  startBurnRateMonitorJob();
 
   // Krieger — mobile-feel continuous audit (every 30m). 6 detectors with
   // auto-enqueue to live dispatch queue for high/critical findings.
