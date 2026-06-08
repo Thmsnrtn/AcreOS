@@ -92,6 +92,6 @@ describe("AI Router - Caching", () => {
   it("has reasonable defaults", () => {
     const stats = getAICacheStats();
     expect(stats.maxSize).toBe(500);
-    expect(stats.ttlMs).toBe(15 * 60 * 1000);
+    expect(stats.ttlMs).toBe(60 * 60 * 1000);
   });
 });
