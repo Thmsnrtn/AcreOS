@@ -27,6 +27,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
 import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
+import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 // The conversation is the primary surface. CommandCenterPage (~2,264 LOC) is
@@ -134,16 +135,44 @@ function GreetingBanner() {
     enabled: !!user && !acknowledged,
   });
 
-  const ackMutation = useMutation({
+  // Optimistic disclosure-ack: dismissing the banner stamps
+  // `paxDisclosureAcknowledgedAt` into the auth-user cache the instant the
+  // user taps, so the banner slides away without waiting on the round-trip
+  // (which gates the banner via `acknowledged`). On error we restore the
+  // pre-tap snapshot and the banner reappears; onSuccess swaps in the
+  // server's canonical payload. The server set is idempotent, so a late
+  // success after optimistic dismiss is harmless.
+  const ackMutation = useMutation<
+    unknown,
+    unknown,
+    void,
+    { previousUser: unknown }
+  >({
     mutationFn: async () => {
       const resp = await apiRequest("POST", "/api/pax/acknowledge-disclosure", {});
       return resp.json();
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["/api/auth/user"] });
+      const previousUser = queryClient.getQueryData(["/api/auth/user"]);
+      queryClient.setQueryData(["/api/auth/user"], (prev: unknown) =>
+        prev && typeof prev === "object"
+          ? { ...(prev as Record<string, unknown>), paxDisclosureAcknowledgedAt: new Date().toISOString() }
+          : prev,
+      );
+      return { previousUser };
+    },
     onSuccess: (updatedUser) => {
-      // Update the cache directly with the canonical payload returned by
+      // Replace the optimistic stamp with the canonical payload returned by
       // the server, then invalidate so any other consumers re-read it.
       queryClient.setQueryData(["/api/auth/user"], updatedUser);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+    onError: (_err, _vars, context) => {
+      // Restore the banner — the dismiss didn't land.
+      if (context) {
+        queryClient.setQueryData(["/api/auth/user"], context.previousUser);
+      }
     },
   });
 
@@ -730,6 +759,21 @@ function SuggestedPrompts() {
 export default function PaxPage() {
   useDocumentTitle("Pax");
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
+  // A pull at the top re-pulls the queries the Pax door renders: the insights
+  // panel, the monthly usage cap badge, the conversation list (which gates
+  // the suggested prompts), and the cached AI-health probe. No-ops on
+  // pointer/desktop. Haptic fires inside PullToRefresh at the threshold.
+  const handlePullRefresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["/api/pax/insights"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/usage"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/health/cached"] }),
+    ]);
+  };
   useEffect(() => {
     if (!user) return;
     if (user.paxDisclosureAcknowledgedAt != null) return;
@@ -750,21 +794,28 @@ export default function PaxPage() {
   // isFounder. Customers see Pax, not the dozen-agent roster underneath.
   return (
     <PageShell label="Pax">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-hero" data-testid="text-ai-hub-title">
-            Pax
-          </h1>
-          <p className="text-sm text-acr-ink-2 mt-1">
-            Ask anything about your portfolio, deals, or leads.
-          </p>
+      {/* Pull-to-refresh wraps only the header + disclosure banner — the
+          natural top-of-page pull zone — so it re-pulls Pax's sibling
+          queries (insights / usage cap / conversation list / health) without
+          fighting the chat composer's own scroll + input handling below.
+          No-ops on pointer/desktop. */}
+      <PullToRefresh onRefresh={handlePullRefresh}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-hero" data-testid="text-ai-hub-title">
+              Pax
+            </h1>
+            <p className="text-sm text-acr-ink-2 mt-1">
+              Ask anything about your portfolio, deals, or leads.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+          </div>
         </div>
-        <div className="shrink-0">
-          <PaxOverflowMenu insightsContent={<InsightsPanel />} />
-        </div>
-      </div>
 
-      <GreetingBanner />
+        <GreetingBanner />
+      </PullToRefresh>
 
       <div data-testid="pax-conversation">
         <AiChatGuard>

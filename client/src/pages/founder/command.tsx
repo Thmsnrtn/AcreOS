@@ -32,6 +32,7 @@ import { ShieldCheck, RefreshCw } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { staggerContainer } from "@/lib/animations";
@@ -40,8 +41,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 import {
+  type AuditFinding,
   type AuditFindingsResponse,
   type DomainSummary,
+  type FindingStatus,
   summarizeAllDomains,
   companyStatus,
   totalsBySeverity,
@@ -128,33 +131,62 @@ export default function FounderCommandPage() {
         })
       : undefined;
 
-  const actionMutation = useMutation({
-    mutationFn: async (vars: {
-      id: string;
-      kind: "acknowledge" | "resolve";
-    }) => {
-      setPendingAction(vars);
+  // Optimistic acknowledge/resolve: the finding's new status is reflected in
+  // the cache the instant the founder taps, so the tile grid re-rollups and
+  // the detail row updates without waiting on the round-trip. On error we
+  // restore the pre-mutation snapshot and toast; onSettled re-syncs with the
+  // server's resolution ledger. `acknowledge` keeps the finding active (it
+  // drops out of "open" but still counts toward status); `resolve` clears it.
+  const actionMutation = useMutation<
+    { id: string; kind: "acknowledge" | "resolve" },
+    unknown,
+    { id: string; kind: "acknowledge" | "resolve" },
+    { previous?: AuditFindingsResponse }
+  >({
+    mutationFn: async (vars) => {
       await apiRequest(
         "POST",
         `/api/founder/audit-findings/${vars.id}/${vars.kind}`,
       );
       return vars;
     },
-    onSuccess: async (vars) => {
+    onMutate: async (vars) => {
+      setPendingAction(vars);
+      await queryClient.cancelQueries({ queryKey: FINDINGS_KEY });
+      const previous =
+        queryClient.getQueryData<AuditFindingsResponse>(FINDINGS_KEY);
+      if (previous) {
+        const nextStatus: FindingStatus =
+          vars.kind === "resolve" ? "resolved" : "acknowledged";
+        queryClient.setQueryData<AuditFindingsResponse>(FINDINGS_KEY, {
+          ...previous,
+          findings: previous.findings.map((f: AuditFinding) =>
+            f.id === vars.id ? { ...f, status: nextStatus } : f,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onSuccess: (vars) => {
       toast({
         title:
           vars.kind === "resolve" ? "Finding resolved" : "Finding acknowledged",
       });
-      await queryClient.invalidateQueries({ queryKey: FINDINGS_KEY });
     },
-    onError: (err: unknown, vars) => {
+    onError: (err: unknown, vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(FINDINGS_KEY, context.previous);
+      }
       toast({
         title: `Couldn't ${vars.kind} finding`,
         description: err instanceof Error ? err.message : "Please try again.",
         variant: "destructive",
       });
     },
-    onSettled: () => setPendingAction(null),
+    onSettled: () => {
+      setPendingAction(null);
+      void queryClient.invalidateQueries({ queryKey: FINDINGS_KEY });
+    },
   });
 
   const handleAcknowledge = (id: string) =>
@@ -176,6 +208,16 @@ export default function FounderCommandPage() {
               Every domain's continuous audit, in one glance. Is the company
               green right now?
             </p>
+            {!isLoading && !error && totalOpen > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                <AnimatedCounter
+                  value={totalOpen}
+                  className="font-semibold text-foreground"
+                />{" "}
+                open finding{totalOpen === 1 ? "" : "s"} need
+                {totalOpen === 1 ? "s" : ""} a look.
+              </p>
+            ) : null}
           </div>
           <Button
             type="button"
