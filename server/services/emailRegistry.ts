@@ -118,6 +118,15 @@ export interface EmailKindProps {
     stats?: Record<string, string | number>;
   };
   password_reset: { name?: string; resetUrl: string; expiresIn?: string };
+  // Quinn + Rafe — close-the-loop notification when an appeal of a Pax
+  // refusal is resolved. Transactional (a direct response to the customer's
+  // action), so it always sends. Honest by construction: "upheld" says the
+  // decision stands, "reversed" says we got it wrong.
+  appeal_outcome: {
+    firstName?: string;
+    decision: "upheld" | "reversed";
+    outcomeMessage: string;
+  };
 }
 
 export type EmailKind = keyof EmailKindProps;
@@ -146,6 +155,30 @@ export const EMAIL_KINDS: EmailKindRegistry = {
         ctaColor: "#0ea5e9",
       }),
     }),
+  },
+
+  appeal_outcome: {
+    category: "transactional",
+    render: (p) => {
+      const reversed = p.decision === "reversed";
+      const heading = reversed
+        ? "We reviewed your appeal — you were right"
+        : "We reviewed your appeal";
+      return {
+        subject: reversed
+          ? "Your appeal was upheld — we reversed Pax's decision"
+          : "An update on your appeal",
+        html: shell({
+          heading,
+          bodyHtml: paragraphs(
+            `Hi ${p.firstName ?? "there"},\n\nYou appealed a decision Pax made, and a person reviewed it. Here's where it landed:\n\n${p.outcomeMessage}`,
+          ),
+          ctaText: "Open Pax",
+          ctaUrl: `${APP_URL}/pax`,
+          ctaColor: reversed ? "#16a34a" : "#0ea5e9",
+        }),
+      };
+    },
   },
 
   kb_reply: {
