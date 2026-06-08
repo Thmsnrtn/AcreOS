@@ -6,6 +6,10 @@ import { executeTool, APPROVAL_REQUIRED_TOOLS } from "./tools";
 // (single source of truth across Pax tool-use, command palette, external
 // agents) rather than a hand-maintained list in tools.ts.
 import { getToolsForRoleFromRegistry } from "../services/appIntents";
+// Andrei E5: land-knowledge retrieval is gated behind a synchronous env flag
+// (PAX_LAND_KNOWLEDGE_ENABLED) so the hot Pax path never pays a per-turn DB
+// read to decide whether the tool is exposed.
+import { isLandKnowledgeEnabled } from "../services/pax/landKnowledge/corpus";
 import { aiConversations, aiMessages, agentMemory, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
 import {
   selectProviderAndModel,
@@ -40,6 +44,18 @@ import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 // set to `false` and the live gate is fully bypassed (the heuristic guard still
 // runs). Keyed to the same eval set/version (dg-v1, surface=pax_inbox).
 export const PAX_LIVE_GATE_ENABLED = true;
+
+// Andrei E5: build the Pax tool list for a role, then drop the land-knowledge
+// retrieval tool when its feature flag is off. Synchronous + cheap (env read),
+// safe to call on every turn. Centralized so processChat + processChatStream
+// stay in sync.
+function buildPaxToolList(
+  role: string,
+): ReturnType<typeof getToolsForRoleFromRegistry> {
+  const tools = getToolsForRoleFromRegistry(role);
+  if (isLandKnowledgeEnabled()) return tools;
+  return tools.filter((t) => t.function?.name !== "retrieve_land_knowledge");
+}
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -960,7 +976,7 @@ export async function processChat(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = getToolsForRoleFromRegistry(normalizedRole);
+  const tools = buildPaxToolList(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
@@ -1386,7 +1402,7 @@ export async function* processChatStream(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = getToolsForRoleFromRegistry(normalizedRole);
+  const tools = buildPaxToolList(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 

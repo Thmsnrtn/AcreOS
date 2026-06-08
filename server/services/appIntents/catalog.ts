@@ -106,6 +106,8 @@ const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | null }> =
 
   // ── Pax (agent-native meta capabilities) ─────────────────────────────────
   spawn_subagent: { door: "pax", scope: null },
+  // Andrei E5 — general land-knowledge retrieval (read-only; no parcel writes).
+  retrieve_land_knowledge: { door: "pax", scope: null },
 };
 
 /**

@@ -897,6 +897,29 @@ export const toolDefinitions = {
       required: ["prompt"],
     },
   },
+
+  // ── Land-knowledge retrieval tool (Andrei E5) ──────────────────────────────
+
+  retrieve_land_knowledge: {
+    name: "retrieve_land_knowledge",
+    description:
+      "Retrieve GENERAL land-investing knowledge cards (with citations) to EXPLAIN a land concept — e.g. \"what does FEMA Zone AE mean for building?\", \"how does a perc test affect septic?\", \"how does a contract for deed work?\", \"what is a landlocked parcel?\". Call this for EXPLANATORY questions about how land mechanics work (flood zones, soils/perc, seller financing, usury, easements/access, mineral severance, title, zoning, diligence traps). This is DISTINCT from parcel-fact lookups (research_property / get_property_enrichment): it returns general domain knowledge, NEVER facts about a specific parcel. Each card returns its source citation — attribute the explanation to it, and never present a card's general statement as a fact about the customer's specific parcel.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "The explanatory question or land concept to look up, in natural language (e.g. 'what does Zone AE mean for building a house').",
+        },
+        topK: {
+          type: "number",
+          description: "Max cards to return (default 3, max 8).",
+        },
+      },
+      required: ["query"],
+    },
+  },
 };
 
 // Tools that require user approval before execution (communication + payment tools)
@@ -2254,6 +2277,30 @@ export async function executeTool(
           subAgentDepth: currentDepth + 1,
         });
         return { success: true, data: { response: subResult.response, conversationId: subResult.conversationId } };
+      }
+
+      // ── Land-knowledge retrieval (Andrei E5) ───────────────────────────────────
+
+      case "retrieve_land_knowledge": {
+        const { isLandKnowledgeEnabled } = await import(
+          "../services/pax/landKnowledge/corpus"
+        );
+        if (!isLandKnowledgeEnabled()) {
+          // Belt-and-suspenders: the executive tool-list builder already
+          // filters this tool out when the flag is off, but if it's ever
+          // invoked anyway, refuse rather than answer ungrounded.
+          return {
+            success: false,
+            error:
+              "Land-knowledge retrieval is not enabled. Answer from retrieved parcel facts only.",
+          };
+        }
+        const { retrieveLandKnowledge, buildLandKnowledgePayload } =
+          await import("../services/pax/landKnowledge/retrieval");
+        const query = typeof args.query === "string" ? args.query : "";
+        const topK = typeof args.topK === "number" ? args.topK : undefined;
+        const retrieved = await retrieveLandKnowledge(query, { topK });
+        return { success: true, data: buildLandKnowledgePayload(retrieved) };
       }
 
       // ── Connector tools ──────────────────────────────────────────────────────

@@ -45,6 +45,24 @@ export const LAND_KNOWLEDGE_NAMESPACE = "land_knowledge";
 /** Corpus version — bump when cards are added/edited so re-ingest is detectable. */
 export const LAND_KNOWLEDGE_CORPUS_VERSION = "lk-v1";
 
+/** DB feature-flag key controlling the retrieve_land_knowledge Pax tool. */
+export const LAND_KNOWLEDGE_FLAG_KEY = "feature.pax-land-knowledge";
+
+/**
+ * Synchronous kill switch for the land-knowledge retrieval tool, mirroring the
+ * DATA_GROUNDING_EVAL_GREEN env-switch pattern. The tool is gated on BOTH this
+ * env flag AND the founder-only DB feature flag (LAND_KNOWLEDGE_FLAG_KEY): the
+ * env flag is the synchronous, hot-path-cheap gate the executive tool-list
+ * builder reads (no per-turn DB round-trip), and the DB flag is the founder-
+ * dashboard-controllable rollout surface. Default OFF until the retrieval-
+ * recall eval is green and the founder flips it on. Set
+ * PAX_LAND_KNOWLEDGE_ENABLED=1 (or "true") to enable.
+ */
+export function isLandKnowledgeEnabled(): boolean {
+  const raw = (process.env.PAX_LAND_KNOWLEDGE_ENABLED ?? "").toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 /**
  * A single land-knowledge card.
  *
