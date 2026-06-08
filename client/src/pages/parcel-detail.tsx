@@ -68,6 +68,7 @@ import type { Property, LandStatus } from "@shared/schema";
 import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
 import { LandSnapshot } from "@/components/parcels/land-snapshot";
+import { ParcelBiography } from "@/components/parcels/parcel-biography";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -315,6 +316,12 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
             {/* Land Snapshot — the bundled, decision-grade view assembled from
                 free open data. Top of the overview: one answer, not nine cards. */}
             <LandSnapshot propertyId={property.id} />
+
+            {/* Biography — the longitudinal story mined from parcel_observations
+                (Iyari #1): assessed-value sparkline, owner-tenure clock, tax
+                recurrence. "PropStream shows you today; AcreOS shows you the
+                story." Renders only real ≥2-point series; honest empty state otherwise. */}
+            <ParcelBiography propertyId={property.id} />
 
             <Card>
               <CardHeader>
