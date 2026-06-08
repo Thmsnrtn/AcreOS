@@ -13,11 +13,15 @@
  * outperforms a fake number; gaps are shown, never filled with defaults.
  */
 
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { SPRINGS, useReducedMotionPreference, respectReducedMotion } from "@/lib/motion-tokens";
+import { lightImpact } from "@/lib/haptics";
 import { usd } from "@/lib/format";
 import { Layers, HelpCircle, CheckCircle2, MinusCircle, XCircle } from "lucide-react";
 import {
@@ -31,6 +35,49 @@ import {
 
 interface LandSnapshotProps {
   propertyId: number;
+}
+
+/**
+ * Per-tile reveal interval (ms) for the staged "snapshot assembling" feel — the
+ * same source-by-source choreography the public /tools/parcel-check streams,
+ * applied here once the assembled profile lands. Tight enough to feel alive,
+ * slow enough that each tile registers as its own arrival.
+ */
+const REVEAL_STEP_MS = 110;
+
+/**
+ * useStaggeredReveal — advance a "revealed up to" index one tile per tick,
+ * firing a lightImpact() as each tile lands so the customer FEELS the snapshot
+ * assemble. Under reduced motion it reveals everything instantly with no haptic.
+ * The reveal restarts whenever `resetKey` changes (a new parcel) or `count`
+ * grows.
+ */
+function useStaggeredReveal(count: number, reduced: boolean, resetKey: unknown): number {
+  const [revealed, setRevealed] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (reduced || count <= 0) {
+      setRevealed(count);
+      return;
+    }
+    // Reveal the first tile immediately, then march the rest in.
+    setRevealed(count > 0 ? 1 : 0);
+    let i = 1;
+    const tick = () => {
+      i += 1;
+      setRevealed(Math.min(i, count));
+      lightImpact();
+      if (i < count) timer.current = setTimeout(tick, REVEAL_STEP_MS);
+    };
+    if (count > 1) timer.current = setTimeout(tick, REVEAL_STEP_MS);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [count, reduced, resetKey]);
+
+  return revealed;
 }
 
 /** Format a single field's value for display, by field key. */
@@ -67,16 +114,26 @@ const GAP_REASON_ICON: Record<LandProfileGap["reason"], typeof MinusCircle> = {
   lookup_failed: XCircle,
 };
 
-/** One field tile: label, value, and provenance chip. */
+/**
+ * One field tile: label, value, and provenance chip. Springs in when its turn
+ * in the staged reveal arrives (SPRINGS.smooth); collapses to instant under
+ * reduced motion. Same choreography language as the public streaming widget.
+ */
 function FieldTile({
   fieldKey,
   field,
+  reduced,
 }: {
   fieldKey: keyof LandProfileFields;
   field: LandField<unknown>;
+  reduced: boolean;
 }) {
   return (
-    <div
+    <motion.div
+      layout
+      initial={reduced ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={respectReducedMotion(SPRINGS.smooth, reduced)}
       className="rounded-lg border border-border bg-card p-3 flex flex-col gap-1"
       data-testid={`land-snapshot-field-${fieldKey}`}
     >
@@ -92,11 +149,12 @@ function FieldTile({
         confidence={field.confidence}
         classification={field.classification}
       />
-    </div>
+    </motion.div>
   );
 }
 
 export function LandSnapshot({ propertyId }: LandSnapshotProps) {
+  const reduced = useReducedMotionPreference();
   const {
     data: profile,
     isLoading,
@@ -109,6 +167,17 @@ export function LandSnapshot({ propertyId }: LandSnapshotProps) {
     // don't refetch aggressively (it can trigger a live fetch on a cold parcel).
     staleTime: 5 * 60 * 1000,
   });
+
+  const populatedFields = profile
+    ? LAND_PROFILE_FIELD_ORDER.filter(
+        (key) => (profile as LandProfileFields)[key] !== undefined,
+      )
+    : [];
+
+  // Staged reveal — tiles spring in one-by-one with a haptic per arrival, the
+  // same "watch the snapshot assemble" choreography the public widget streams.
+  // Keyed on propertyId so navigating to a new parcel replays the reveal.
+  const revealed = useStaggeredReveal(populatedFields.length, reduced, propertyId);
 
   if (isLoading) {
     return (
@@ -141,10 +210,6 @@ export function LandSnapshot({ propertyId }: LandSnapshotProps) {
     );
   }
 
-  const populatedFields = LAND_PROFILE_FIELD_ORDER.filter(
-    (key) => (profile as LandProfileFields)[key] !== undefined,
-  );
-
   return (
     <Card data-testid="land-snapshot">
       <CardHeader>
@@ -162,11 +227,12 @@ export function LandSnapshot({ propertyId }: LandSnapshotProps) {
       <CardContent className="space-y-4">
         {populatedFields.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {populatedFields.map((key) => (
+            {populatedFields.slice(0, revealed).map((key) => (
               <FieldTile
                 key={key}
                 fieldKey={key}
                 field={(profile as LandProfileFields)[key] as LandField<unknown>}
+                reduced={reduced}
               />
             ))}
           </div>
@@ -212,15 +278,22 @@ export function LandSnapshot({ propertyId }: LandSnapshotProps) {
           </div>
         )}
 
-        {profile.gaps.length === 0 && populatedFields.length > 0 && (
-          <p
-            className="flex items-center gap-1.5 text-sm text-acr-pos"
-            data-testid="land-snapshot-complete"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-            Every tracked land field is populated from free open data.
-          </p>
-        )}
+        {/* Hold the celebration until the staged reveal finishes so it lands as
+            the payoff of watching every tile arrive, not a premature flash. */}
+        {profile.gaps.length === 0 &&
+          populatedFields.length > 0 &&
+          revealed >= populatedFields.length && (
+            <motion.p
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={respectReducedMotion(SPRINGS.smooth, reduced)}
+              className="flex items-center gap-1.5 text-sm text-acr-pos"
+              data-testid="land-snapshot-complete"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+              Every tracked land field is populated from free open data.
+            </motion.p>
+          )}
       </CardContent>
     </Card>
   );
