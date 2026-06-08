@@ -201,31 +201,16 @@ class TaxResearcherService {
   }
 
   private generateMockAuctionData(county: string, state: string): Partial<InsertTaxSaleAuction>[] {
-    const now = new Date();
-    const baseDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
-    
-    const stateInfo = this.getStateAuctionInfo(state);
-    
-    return [
-      {
-        county,
-        state,
-        auctionType: stateInfo.type,
-        auctionDate: baseDate,
-        auctionEndDate: new Date(baseDate.getTime() + 5 * 24 * 60 * 60 * 1000),
-        registrationDeadline: new Date(baseDate.getTime() - 14 * 24 * 60 * 60 * 1000),
-        auctionFormat: "online",
-        auctionUrl: COUNTY_AUCTION_SOURCES[`${county.toLowerCase().replace(/\s+/g, "_")}_${state.toLowerCase()}`],
-        minimumBid: "100",
-        depositRequired: "500",
-        interestRate: stateInfo.interestRate.toString(),
-        redemptionPeriodMonths: stateInfo.redemptionPeriod,
-        parcelCount: Math.floor(Math.random() * 200) + 50,
-        status: "scheduled",
-        scrapeStatus: "success",
-        lastScrapedAt: new Date(),
-      },
-    ];
+    // HONESTY — constitution truth-immutable. This previously fabricated an
+    // auction (random parcelCount, invented dates/deposit) stamped
+    // scrapeStatus:"success" — falsely claiming a real scrape — and the caller
+    // PERSISTED it into tax_sale_auctions. Disabled: auctions come only from the
+    // real browser-automation scrape job. Until that returns for a county we
+    // return nothing rather than an invented "scheduled" auction.
+    logger.info(
+      `[tax-researcher] auction fabrication disabled — 0 returned for ${county}, ${state}`,
+    );
+    return [];
   }
 
   private getStateAuctionInfo(state: string): {
@@ -616,37 +601,18 @@ class TaxResearcherService {
     state: string,
     count: number
   ): Partial<InsertTaxSaleListing>[] {
-    const stateInfo = this.getStateAuctionInfo(state);
-    const properties: Partial<InsertTaxSaleListing>[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const taxOwed = Math.floor(Math.random() * 15000) + 500;
-      const assessedValue = taxOwed * (Math.random() * 30 + 5);
-      const acreage = Math.random() * 40 + 0.5;
-
-      properties.push({
-        apn: `${county.substring(0, 3).toUpperCase()}-${String(Math.floor(Math.random() * 900000) + 100000)}`,
-        county,
-        state,
-        saleType: stateInfo.type,
-        taxYearsDelinquent: ["2022", "2023"],
-        totalTaxOwed: taxOwed.toString(),
-        penalties: (taxOwed * 0.1).toString(),
-        interest: (taxOwed * 0.05).toString(),
-        totalAmountDue: (taxOwed * 1.15).toString(),
-        minimumBid: taxOwed.toString(),
-        assessedValue: Math.round(assessedValue).toString(),
-        acreage: acreage.toFixed(2),
-        propertyType: ["vacant_land", "residential", "agricultural"][Math.floor(Math.random() * 3)],
-        ownerIsOutOfState: Math.random() > 0.6,
-        ownerIsCorporate: Math.random() > 0.8,
-        redemptionPeriodMonths: stateInfo.redemptionPeriod,
-        interestRate: stateInfo.interestRate.toString(),
-        status: "available",
-      });
-    }
-
-    return properties;
+    // HONESTY — constitution truth-immutable. This previously fabricated parcels
+    // with Math.random() (APN, tax owed, assessed value, owner-out-of-state /
+    // corporate flags) and the caller PERSISTED them into tax_sale_listings as
+    // real opportunities. Because founders bypass every feature gate, those
+    // invented foreclosure parcels could reach production. Disabled: real
+    // tax-delinquent data flows only from the browser-automation ingestion path
+    // (the 3 seeded COUNTY_AUCTION_SOURCES today). Until a county is genuinely
+    // ingested we return nothing — never an invented listing.
+    logger.info(
+      `[tax-researcher] delinquent fabrication disabled — 0 returned for ${county}, ${state} (requested ${count})`,
+    );
+    return [];
   }
 
   private calculateOpportunityScore(
