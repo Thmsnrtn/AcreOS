@@ -307,8 +307,15 @@ async function processDomainAudits() {
     const { runDomainAudits, staleFindings } = await import('../services/audit/domainAudit');
     const { taxReserveDetector } = await import('../services/audit/detectors/taxReserveDetector');
     const { observationRateDetector } = await import('../services/audit/detectors/observationRateDetector');
+    // Andrei (domain "ai") — Pax quality-drift detectors: hallucination-flag-rate
+    // spike (load-bearing), eval-pass-rate regression, cost-per-interaction creep.
+    const { aiQualityDetectors } = await import('../services/andrei/aiQualityAudit');
 
-    const result = await runDomainAudits([taxReserveDetector, observationRateDetector]);
+    const result = await runDomainAudits([
+      taxReserveDetector,
+      observationRateDetector,
+      ...aiQualityDetectors,
+    ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
 
