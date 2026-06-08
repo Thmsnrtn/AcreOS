@@ -43,9 +43,10 @@ import { GlossaryTerm } from "@/components/Glossary";
 import {
   Plus, MapPin, Calendar, FileText, Trash2, Loader2, Calculator, ClipboardCheck,
   Upload, AlertTriangle, CheckSquare, Square, Clock, Package, Play, Eye, FolderPlus,
-  Sparkles, Flame, Snowflake, Minus, CheckCircle, X,
+  Sparkles, Flame, Snowflake, Minus, CheckCircle, X, Banknote, ArrowRight,
 } from "lucide-react";
-import type { Deal, Property, DealChecklistItem, DocumentPackage } from "@shared/schema";
+import { CarryNoteDialog } from "@/components/carry-note-dialog";
+import type { Deal, Property, DealChecklistItem, DocumentPackage, Note } from "@shared/schema";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -201,6 +202,18 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
     }
   }, [packagesError, toast]);
 
+  // Close & Carry — reverse link: the note (if any) originated from this deal.
+  const [isCarryOpen, setIsCarryOpen] = useState(false);
+  const { data: carriedNote } = useQuery<{ note: Note | null }>({
+    queryKey: ["/api/notes/from-deal", deal.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/notes/from-deal/${deal.id}`, { credentials: 'include' });
+      if (!response.ok) throw new Error(`Failed to load originated note (${response.status})`);
+      return response.json();
+    },
+  });
+  const originatedNote = carriedNote?.note ?? null;
+
   const generateAllMutation = useMutation({
     mutationFn: async ({ id, variables }: { id: number; variables?: Record<string, any> }) => {
       return apiRequest("POST", `/api/document-packages/${id}/generate-all`, { variables });
@@ -328,6 +341,47 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   )}
                 </CardContent>
               </Card>
+
+              {/* Close & Carry — bridge the closed deal into a serviced note. */}
+              {deal.status === 'closed' && (
+                <Card className="glass-panel border-acr-pos/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Banknote className="w-4 h-4 text-acr-pos" aria-hidden="true" /> Carry the note
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {originatedNote ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          This deal originated a serviced note.
+                        </p>
+                        <Button asChild variant="outline" size="sm" className="min-h-[44px] gap-1.5">
+                          <Link href="/finance" data-testid="link-originated-note">
+                            View originated note <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                          </Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          Originate the serviced note from this deal — no re-keying.
+                        </p>
+                        <Button
+                          size="sm"
+                          className="min-h-[44px] gap-1.5"
+                          onClick={() => setIsCarryOpen(true)}
+                          data-testid="button-carry-note"
+                        >
+                          <Banknote className="w-4 h-4" aria-hidden="true" /> Carry this note
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <CarryNoteDialog deal={deal} open={isCarryOpen} onOpenChange={setIsCarryOpen} />
 
               <div className="grid grid-cols-2 gap-4">
                 <Card className="glass-panel">

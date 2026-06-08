@@ -6554,6 +6554,15 @@ const STATEMENTS = [
      "created_at" timestamp NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS "paid_data_eval_runs_org_created_idx" ON "paid_data_eval_runs" ("organization_id", "created_at")`,
+
+  // ── 0133 — Maren (CPO) #1 "Close & Carry" — Deal→Note lifecycle bridge ──────
+  // Stamp the originating deal onto a serviced note so a closed seller-finance
+  // deal one-click-originates the note with no re-keying. ON DELETE SET NULL:
+  // deleting the deal never destroys a live note. Leading-org composite index
+  // for the reverse deal→note probe. Mirrors shared/schema.ts (notes) +
+  // migrations/0133_notes_originating_deal.sql.
+  `ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "originating_deal_id" integer REFERENCES "deals" ("id") ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS "notes_org_originating_deal_idx" ON "notes" ("organization_id", "originating_deal_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

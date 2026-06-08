@@ -1439,6 +1439,17 @@ export const notes = pgTable("notes", {
   // Entity ownership tracking
   owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
 
+  // ── Close & Carry — Deal→Note lifecycle bridge ─────────────────────────────
+  // The deal that originated this note. When a seller-financed deal closes in
+  // the Deals door, "Carry this note" one-click-originates the serviced note
+  // (POST /api/notes/from-deal/:dealId) and stamps the originating deal here so
+  // the two halves of the lifecycle stay one continuous object — no re-keying.
+  // The reverse view (deal → originated note) resolves by querying notes WHERE
+  // originating_deal_id = deal.id (org-scoped). ON DELETE SET NULL: deleting the
+  // deal must never cascade-destroy a live serviced note — the ledger outlives
+  // its origination record.
+  originatingDealId: integer("originating_deal_id").references(() => deals.id, { onDelete: "set null" }),
+
   // ── ATR (Ability-to-Repay) safe-harbor attestation ─────────────────────
   // Reg-Z §1026.43(c): for every consumer-purpose closed-end credit secured
   // by a dwelling, the creditor must make a reasonable, good-faith
@@ -1510,6 +1521,9 @@ export const notes = pgTable("notes", {
   index("notes_org_idx").on(table.organizationId),
   index("notes_status_idx").on(table.status),
   index("notes_borrower_idx").on(table.borrowerId),
+  // Close & Carry: leading-org composite so "find this org's note originated
+  // from deal X" (the reverse deal→note link) is a single index probe.
+  index("notes_org_originating_deal_idx").on(table.organizationId, table.originatingDealId),
 ]);
 
 // Payment transactions

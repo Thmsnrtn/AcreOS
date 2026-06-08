@@ -25,10 +25,15 @@ import {
   noteLossMitActions,
   LOSS_MIT_STATUS,
   LOSS_MIT_ACTION_TYPES,
+  // The seller-finance servicing book (the `notes` table, ~schema 1356) — the
+  // Close & Carry bridge originates into THIS, distinct from acquiredNotes.
+  notes as sellerFinanceNotes,
 } from "@shared/schema";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
+import { storage, calculateMonthlyPayment } from "./storage";
+import type { InsertNote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
@@ -179,6 +184,147 @@ export function computeAmortization(input: {
   }
 
   return out;
+}
+
+// ─── Close & Carry — deal → note field mapping ───────────────────────────────
+//
+// The lifecycle bridge: a closed seller-finance deal one-click-originates the
+// serviced note with NO re-keying. This pure function is the contract — given a
+// deal (its accepted/offer amount + saved ROI analysis) plus any operator
+// edits from the one-confirm screen, it produces the `notes`-table insert
+// payload. Kept framework-free so the field mapping (the thing a customer
+// notices in week one) is unit-testable without a DB.
+//
+// Money on the deal/note tables is stored as decimal strings (numeric columns),
+// NOT cents — matching the seller-finance `notes` table and POST /api/notes.
+
+/** The deal fields the carry flow reads. Subset of the full Deal row. */
+export interface CarryableDeal {
+  id: number;
+  organizationId: number;
+  propertyId: number | null;
+  status: string;
+  type: string;
+  offerAmount: string | null;
+  acceptedAmount: string | null;
+  closingDate: Date | string | null;
+  analysisResults: {
+    downPayment?: number;
+    interestRate?: number;
+    holdingPeriodMonths?: number;
+    financedAmount?: number;
+  } | null;
+}
+
+/** Operator edits from the one-confirm screen. All optional → deal supplies the default. */
+export interface CarryOverrides {
+  borrowerId?: number | null;
+  salePrice?: number; // total sale price (dollars)
+  downPayment?: number; // dollars
+  interestRate?: number; // annual percent
+  termMonths?: number;
+  firstPaymentDate?: string; // ISO date
+}
+
+export interface MappedNoteFields {
+  organizationId: number;
+  propertyId: number | null;
+  borrowerId: number | null;
+  originatingDealId: number;
+  originalPrincipal: string;
+  currentBalance: string;
+  interestRate: string;
+  termMonths: number;
+  monthlyPayment: string;
+  downPayment: string;
+  startDate: Date;
+  firstPaymentDate: Date;
+  status: string;
+}
+
+const DEFAULT_TERM_MONTHS = 120; // 10yr — the common land-contract default
+const DEFAULT_INTEREST_RATE = 0; // operator must set a real rate on the confirm screen
+
+/**
+ * Add `months` calendar months to a date, clamping the day for short months.
+ * Mirrors the amortization due-date clamp above.
+ */
+function addCalendarMonths(base: Date, months: number): Date {
+  const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + months, 1));
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(base.getUTCDate(), lastDay));
+  return d;
+}
+
+/**
+ * Map a closed seller-finance deal (+ operator edits) → the `notes` insert
+ * payload. Pure: no DB, no side effects.
+ *
+ * - Sale price: override.salePrice ?? deal.acceptedAmount ?? deal.offerAmount
+ * - Down payment: override.downPayment ?? analysisResults.downPayment ?? 0
+ * - Financed principal: salePrice - downPayment (never negative)
+ * - Rate / term: override ?? analysisResults ?? sensible default
+ * - Start date: deal.closingDate ?? now
+ * - First payment: override ?? one month after start (clamped)
+ *
+ * monthlyPayment is computed from (principal, rate, term) — never taken from the
+ * client. amortizationSchedule + maturityDate are derived downstream by
+ * storage.createNote, so they are intentionally not set here.
+ */
+export function mapDealToNoteFields(
+  deal: CarryableDeal,
+  overrides: CarryOverrides,
+  now: Date = new Date(),
+): MappedNoteFields {
+  const salePrice =
+    overrides.salePrice ??
+    (deal.acceptedAmount != null ? Number(deal.acceptedAmount) : null) ??
+    (deal.offerAmount != null ? Number(deal.offerAmount) : null) ??
+    0;
+
+  const downPayment = Math.max(
+    0,
+    overrides.downPayment ?? deal.analysisResults?.downPayment ?? 0,
+  );
+
+  const financedPrincipal = Math.max(0, salePrice - downPayment);
+
+  const interestRate =
+    overrides.interestRate ??
+    deal.analysisResults?.interestRate ??
+    DEFAULT_INTEREST_RATE;
+
+  const termMonths =
+    overrides.termMonths ??
+    deal.analysisResults?.holdingPeriodMonths ??
+    DEFAULT_TERM_MONTHS;
+
+  const startDate = deal.closingDate ? new Date(deal.closingDate) : new Date(now);
+
+  const firstPaymentDate = overrides.firstPaymentDate
+    ? new Date(overrides.firstPaymentDate)
+    : addCalendarMonths(startDate, 1);
+
+  const monthlyPayment = calculateMonthlyPayment(financedPrincipal, interestRate, termMonths);
+
+  return {
+    organizationId: deal.organizationId,
+    propertyId: deal.propertyId,
+    borrowerId: overrides.borrowerId ?? null,
+    originatingDealId: deal.id,
+    originalPrincipal: String(financedPrincipal),
+    currentBalance: String(financedPrincipal),
+    interestRate: String(interestRate),
+    termMonths,
+    monthlyPayment: String(monthlyPayment),
+    downPayment: String(downPayment),
+    startDate,
+    firstPaymentDate,
+    // Always land 'pending' so origination runs through the audited Reg-Z
+    // chokepoint (POST /api/notes/:id/originate). The carry pre-fills; the
+    // operator originates.
+    status: "pending",
+  };
 }
 
 // ─── Yield math ──────────────────────────────────────────────────────────────
@@ -1774,6 +1920,156 @@ export function registerNoteRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("notes.amortization failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Close & Carry — POST /api/notes/from-deal/:dealId ──────────────────────
+  //
+  // The lifecycle bridge. A closed seller-finance deal one-click-originates the
+  // serviced `notes` row with NO re-keying: buyer (operator-confirmed), sale
+  // price, down payment, rate, term, first-payment date all pre-filled from the
+  // deal. Links deal.id ↔ note.id (notes.originatingDealId). The deal's document
+  // package stays the note's origination folder — reachable through the deal
+  // link, so nothing is copied/duplicated.
+  //
+  // Acts on the seller-finance `notes` table (via storage.createNote), NOT the
+  // acquired-notes vertical that the rest of this file serves — the carry flow
+  // is about notes the operator ORIGINATES, not notes they buy.
+  app.post(
+    "/api/notes/from-deal/:dealId",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const userId = getUserId(req);
+        const dealId = Number(req.params.dealId);
+        if (!Number.isInteger(dealId) || dealId <= 0) {
+          return Errors.badRequest(res, "Invalid deal id");
+        }
+
+        const overridesSchema = z.object({
+          borrowerId: z.number().int().positive().nullable().optional(),
+          salePrice: z.number().nonnegative().optional(),
+          downPayment: z.number().nonnegative().optional(),
+          interestRate: z.number().min(0).max(100).optional(),
+          termMonths: z.number().int().min(1).max(1200).optional(),
+          firstPaymentDate: z.string().min(1).optional(),
+        });
+        const parsed = overridesSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.flatten());
+        }
+        const overrides = parsed.data;
+
+        // Org-scoped load + ownership check.
+        const deal = await storage.getDeal(orgId, dealId);
+        if (!deal) {
+          return Errors.notFound(res, "Deal");
+        }
+
+        // Only closed deals can be carried. (A deal that hasn't closed has no
+        // settled terms to originate against.)
+        if (deal.status !== "closed") {
+          return Errors.badRequest(
+            res,
+            "Only a closed deal can be carried into a note",
+            { dealStatus: deal.status },
+          );
+        }
+
+        // Idempotency: a deal originates at most one note. If one already
+        // exists, return it (200) instead of creating a duplicate. Org-scoped
+        // probe on the leading-org composite index (notes_org_originating_deal).
+        const [existing] = await db
+          .select()
+          .from(sellerFinanceNotes)
+          .where(
+            and(
+              eq(sellerFinanceNotes.organizationId, orgId),
+              eq(sellerFinanceNotes.originatingDealId, dealId),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          return res.status(200).json({ note: existing, alreadyCarried: true });
+        }
+
+        // If the operator named a borrower, it must be a lead in THIS org.
+        if (overrides.borrowerId != null) {
+          const lead = await storage.getLead(orgId, overrides.borrowerId);
+          if (!lead) {
+            return Errors.badRequest(res, "borrowerId does not match a lead in this organization");
+          }
+        }
+
+        const mapped = mapDealToNoteFields(
+          {
+            id: deal.id,
+            organizationId: deal.organizationId,
+            propertyId: deal.propertyId,
+            status: deal.status,
+            type: deal.type,
+            offerAmount: deal.offerAmount,
+            acceptedAmount: deal.acceptedAmount,
+            closingDate: deal.closingDate,
+            analysisResults: deal.analysisResults ?? null,
+          },
+          overrides,
+        );
+
+        const note = await storage.createNote(mapped as unknown as InsertNote);
+
+        logger.info("notes.carried_from_deal", {
+          orgId,
+          userId,
+          dealId,
+          noteId: note.id,
+        });
+
+        return res.status(201).json({ note, originatingDealId: dealId });
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return Errors.badRequest(res, err.issues[0].message);
+        }
+        logger.error("notes.from_deal failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Reverse link — GET /api/notes/from-deal/:dealId ────────────────────────
+  // Resolves the note (if any) that was originated from a deal, so the deal
+  // surface can show an "originated note" link. Returns { note: null } when the
+  // deal hasn't been carried yet. Org-scoped probe on the leading-org composite.
+  app.get(
+    "/api/notes/from-deal/:dealId",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const dealId = Number(req.params.dealId);
+        if (!Number.isInteger(dealId) || dealId <= 0) {
+          return Errors.badRequest(res, "Invalid deal id");
+        }
+        const [note] = await db
+          .select()
+          .from(sellerFinanceNotes)
+          .where(
+            and(
+              eq(sellerFinanceNotes.organizationId, orgId),
+              eq(sellerFinanceNotes.originatingDealId, dealId),
+            ),
+          )
+          .limit(1);
+        return res.json({ note: note ?? null });
+      } catch (err) {
+        logger.error("notes.from_deal_lookup failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },
