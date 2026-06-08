@@ -824,11 +824,21 @@ export async function registerRoutes(
       });
 
       // ── Email delivery ───────────────────────────────────────────────────
-      const hasEmail = env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.AWS_REGION;
+      // These are exactly the vars getPlatformCredentials() requires to send.
+      // Region is NOT required (it defaults to us-east-1 in the send path), so
+      // it is not gated here. AWS_SES_FROM_EMAIL *is* required and must be
+      // reported by name so the founder knows precisely what's missing.
+      const missingEmailVars: string[] = [];
+      if (!env.AWS_ACCESS_KEY_ID) missingEmailVars.push("AWS_ACCESS_KEY_ID");
+      if (!env.AWS_SECRET_ACCESS_KEY) missingEmailVars.push("AWS_SECRET_ACCESS_KEY");
+      if (!env.AWS_SES_FROM_EMAIL) missingEmailVars.push("AWS_SES_FROM_EMAIL");
+      const hasEmail = missingEmailVars.length === 0;
       checks.push({
         name: "Email delivery (AWS SES)",
         status: hasEmail ? "pass" : "warn",
-        detail: hasEmail ? "AWS SES credentials configured" : "AWS SES not configured — transactional emails (signup confirmation, password reset) will not send",
+        detail: hasEmail
+          ? `AWS SES configured — transactional + campaign sends active (region: ${env.AWS_SES_REGION || env.AWS_REGION || "us-east-1 default"})`
+          : `AWS SES not configured — transactional emails (signup confirmation, password reset) will not send. Missing: ${missingEmailVars.join(", ")}`,
       });
 
       // ── Security ─────────────────────────────────────────────────────────

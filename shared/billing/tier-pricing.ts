@@ -262,6 +262,71 @@ export function monthlyRevenueCentsFor(
 export const TIERS: readonly Tier[] = ["starter", "pro", "scale"] as const;
 
 /**
+ * The env-var NAME that backs a (tier, interval) Stripe price ID. Exposed so
+ * checkout guards and the integration-readiness summary can report exactly
+ * which secret to set — by NAME only, never the value. Returns the legacy
+ * SOLO/OPERATOR/EMPIRE env names (see the comment on TIER_PRICES_CENTS).
+ */
+export function stripePriceEnvVarName(tier: Tier, interval: BillingInterval): string {
+  const legacy: Record<Tier, string> = { starter: "SOLO", pro: "OPERATOR", scale: "EMPIRE" };
+  const suffix = interval === "yearly" ? "YEARLY" : "MONTHLY";
+  return `STRIPE_PRICE_${legacy[tier]}_${suffix}`;
+}
+
+/**
+ * Resolve the configured Stripe price ID for a (tier, interval) pair, or
+ * `undefined` when the backing `STRIPE_PRICE_*` env var is unset. Use this in
+ * checkout code instead of reaching into TIER_PRICES_CENTS directly so the
+ * "is this tier purchasable yet?" question has one answer.
+ */
+export function stripePriceIdFor(tier: Tier, interval: BillingInterval): string | undefined {
+  const pricing = TIER_PRICES_CENTS[tier];
+  return interval === "yearly" ? pricing.stripePriceIdYearly : pricing.stripePriceIdMonthly;
+}
+
+/** True when a tier+interval has a configured Stripe price ID and can be checked out. */
+export function isTierPurchasable(tier: Tier, interval: BillingInterval): boolean {
+  return Boolean(stripePriceIdFor(tier, interval));
+}
+
+/**
+ * Error thrown when a checkout is attempted for a tier whose Stripe price ID
+ * is not configured. The message names the missing env var (never a value) so
+ * route handlers can surface an honest 503 rather than handing `undefined` to
+ * the Stripe API and producing a silent broken checkout.
+ */
+export class StripePriceNotConfiguredError extends Error {
+  readonly tier: Tier;
+  readonly interval: BillingInterval;
+  readonly envVarName: string;
+  constructor(tier: Tier, interval: BillingInterval) {
+    const envVarName = stripePriceEnvVarName(tier, interval);
+    super(
+      `Stripe checkout is not configured for the ${TIER_PRICES_CENTS[tier].displayName} ` +
+        `(${interval}) plan — set the ${envVarName} secret before charging for this tier.`,
+    );
+    this.name = "StripePriceNotConfiguredError";
+    this.tier = tier;
+    this.interval = interval;
+    this.envVarName = envVarName;
+  }
+}
+
+/**
+ * Resolve a Stripe price ID for checkout, throwing {@link StripePriceNotConfiguredError}
+ * when the backing env var is unset. Checkout route handlers should call this
+ * and translate the thrown error into a 503 ("billing not configured") rather
+ * than letting an `undefined` price ID reach Stripe.
+ */
+export function requireStripePriceId(tier: Tier, interval: BillingInterval): string {
+  const priceId = stripePriceIdFor(tier, interval);
+  if (!priceId) {
+    throw new StripePriceNotConfiguredError(tier, interval);
+  }
+  return priceId;
+}
+
+/**
  * Per-seat add-on price (cents) for the tier, honoring billing interval.
  * Returns 0 when the tier is single-user only or seatCount <= 1.
  *

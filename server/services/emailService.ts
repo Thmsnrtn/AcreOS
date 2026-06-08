@@ -26,12 +26,63 @@ import { getIdentityForSend } from "./orgEmailIdentity";
 const UNSUBSCRIBE_MAILTO = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@acreos.io';
 
 // CAN-SPAM §5(a)(5) requires a valid physical postal address in every
-// commercial email. Read at module load + falls back to a clearly-marked
-// placeholder so deliverability monitoring catches if it's never been set.
+// commercial email. We read CAN_SPAM_MAILING_ADDRESS at module load. If it is
+// unset we NEVER ship a literal placeholder to a recipient — instead the
+// footer falls back to the sending org's own mailing address (taxAddress) when
+// available, and otherwise omits the address line entirely. A single
+// structured WARN is emitted once at startup so the founder knows the platform
+// default is unset.
 // Tom action item: set CAN_SPAM_MAILING_ADDRESS via `fly secrets set`.
-const CAN_SPAM_MAILING_ADDRESS =
-  process.env.CAN_SPAM_MAILING_ADDRESS ||
-  '[PLACEHOLDER — set CAN_SPAM_MAILING_ADDRESS Fly secret before production sends]';
+const CAN_SPAM_MAILING_ADDRESS = process.env.CAN_SPAM_MAILING_ADDRESS?.trim() || null;
+
+if (!CAN_SPAM_MAILING_ADDRESS) {
+  logger.warn(
+    '[EmailService] CAN_SPAM_MAILING_ADDRESS unset — campaign footers will use the sending org address as fallback, or omit the address line if none is on file. Set the Fly secret to ship a platform-wide postal address.',
+    { source: 'email-config', metadata: { __pii_safe: true } },
+  );
+}
+
+/**
+ * Format an organization's stored tax/mailing address into a single CAN-SPAM
+ * compliant address line, e.g. "123 Main St, Suite 4, Austin, TX 78701".
+ * Returns null when there isn't enough on file to form a meaningful line.
+ */
+export function formatOrgMailingAddress(
+  addr: { line1?: string; line2?: string; city?: string; state?: string; zip?: string; country?: string } | null | undefined,
+): string | null {
+  if (!addr) return null;
+  const street = [addr.line1?.trim(), addr.line2?.trim()].filter(Boolean).join(', ');
+  const cityStateZip = [
+    [addr.city?.trim(), addr.state?.trim()].filter(Boolean).join(', '),
+    addr.zip?.trim(),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const line = [street, cityStateZip, addr.country?.trim()].filter(Boolean).join(', ');
+  return line.length > 0 ? line : null;
+}
+
+/**
+ * Resolve the CAN-SPAM postal address to render in a campaign footer.
+ * Preference order:
+ *   1. The platform-wide CAN_SPAM_MAILING_ADDRESS secret (if set).
+ *   2. The sending organization's own mailing address (taxAddress).
+ *   3. null — caller MUST omit the address line entirely (never a placeholder).
+ */
+async function resolveCanSpamAddress(orgId?: number): Promise<string | null> {
+  if (CAN_SPAM_MAILING_ADDRESS) return CAN_SPAM_MAILING_ADDRESS;
+  if (!orgId) return null;
+  try {
+    const org = await storage.getOrganization(orgId);
+    return formatOrgMailingAddress(org?.taxAddress);
+  } catch (error) {
+    logger.error('[EmailService] Failed to resolve org mailing address for CAN-SPAM footer', error, {
+      source: 'email-config',
+      metadata: { orgId },
+    });
+    return null;
+  }
+}
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -100,7 +151,12 @@ function categorizeError(error: any): EmailErrorType {
   if (errorName === 'LimitExceededException' || errorMessage.includes('quota') || errorMessage.includes('limit exceeded')) {
     return 'quota_exceeded';
   }
-  if (errorName === 'ConfigurationSetDoesNotExistException' || errorMessage.includes('configuration')) {
+  if (
+    errorName === 'ConfigurationSetDoesNotExistException' ||
+    errorMessage.includes('configuration') ||
+    errorMessage.includes('not configured') ||
+    errorMessage.includes('credentials not')
+  ) {
     return 'configuration_error';
   }
   if (errorName.includes('ECONNRESET') || errorName.includes('ETIMEDOUT') || errorName.includes('ENOTFOUND')) {
@@ -484,11 +540,16 @@ export class EmailService {
         // §5 requires both (a) a clear opt-out + (b) a valid physical postal address.
         let htmlBody = options.html;
         if (options.isCampaignEmail || options.unsubscribeUrl) {
+          // CAN-SPAM §5: render a real postal address when we have one, and
+          // NEVER ship a literal placeholder. If no address is resolvable we
+          // render only the brand name on that line.
+          const postalAddress = await resolveCanSpamAddress(options.organizationId);
+          const brandLine = postalAddress ? `AcreOS &middot; ${postalAddress}` : 'AcreOS';
           htmlBody = `${htmlBody}
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p>You are receiving this email because you are a contact in our CRM system.</p>
   <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>
-  <p style="margin-top:12px;">AcreOS &middot; ${CAN_SPAM_MAILING_ADDRESS}</p>
+  <p style="margin-top:12px;">${brandLine}</p>
 </div>`;
         }
         const textBody = options.text || this.htmlToText(htmlBody);

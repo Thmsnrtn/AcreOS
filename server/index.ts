@@ -40,6 +40,11 @@ initSentry();
 import { validateSecrets } from "./middleware/secretsValidation";
 validateSecrets();
 
+// One-glance summary of which customer-critical integrations (SES / Stripe /
+// Mapbox) are LIVE vs DARK. Logs NAMES only — never secret values.
+import { logIntegrationReadiness } from "./services/integrationReadiness";
+logIntegrationReadiness();
+
 // F-A09-2: PII masking console interceptor — masks phone, email, SSN, CC in all log output
 import { installConsoleInterceptor } from "./middleware/piiMasking";
 installConsoleInterceptor();
