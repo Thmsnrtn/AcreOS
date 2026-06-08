@@ -6102,10 +6102,14 @@ const STATEMENTS = [
      "conversation_id" integer,
      "message_id" integer,
      "cited_immutable_id" text NOT NULL,
+     "cited_immutable_text" text,
      "refusal_text" text NOT NULL,
      "severity" text NOT NULL,
      "created_at" timestamp with time zone NOT NULL DEFAULT now()
    )`,
+  // Quinn alignment fix (migration 0133) — plain-language snapshot of the
+  // cited immutable, for the appeal UI. Additive + idempotent for existing DBs.
+  `ALTER TABLE "pax_refusal_payloads" ADD COLUMN IF NOT EXISTS "cited_immutable_text" text`,
   `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_created_idx" ON "pax_refusal_payloads" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_imm_created_idx" ON "pax_refusal_payloads" ("organization_id", "cited_immutable_id", "created_at")`,
 

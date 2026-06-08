@@ -16,7 +16,10 @@ import { USER_DATA_OPEN, USER_DATA_CLOSE } from "./sanitizePrompt";
 import { db } from "../db";
 import { paxRefusalPayloads } from "@shared/schema/pax-refusal-payloads";
 import { soleneConstitutionalViolations } from "@shared/schema/solene-constitutional-violations";
-import { customerImmutableByNumber } from "@sovereign/immutables";
+import {
+  customerImmutableByNumber,
+  sovereignPrincipleById,
+} from "@sovereign/immutables";
 
 /**
  * Markers and verbatim strings that indicate a system-prompt leak.
@@ -203,6 +206,39 @@ export interface RecordRefusalPayloadInput {
   severity: "info" | "warn" | "critical";
 }
 
+/**
+ * Resolve a canonical immutable id ("customer:N" / "sovereign:N") to its
+ * PLAIN-LANGUAGE wording, snapshotted into the refusal row at write time.
+ *
+ * Why snapshot rather than re-derive at render time (Quinn alignment fix):
+ * the appeal UI shows the customer WHY Pax refused. If the wording were
+ * re-derived from the id when the appeal is viewed, a later constitutional
+ * amendment that changes the text would retroactively rewrite what a PAST
+ * refusal appears to have told the customer. Freezing the text here keeps the
+ * appeal record faithful to what the customer actually received.
+ *
+ * Returns null when the id is malformed or doesn't resolve to a known
+ * immutable — the column is nullable, and a null is honest ("we couldn't
+ * snapshot the wording") rather than a fabricated string.
+ *
+ * Exported for the test suite.
+ */
+export function resolveCitedImmutableText(
+  citedImmutableId: string,
+): string | null {
+  const match = /^(customer|sovereign):(\d+)$/.exec(citedImmutableId.trim());
+  if (!match) return null;
+  const num = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(num)) return null;
+  if (match[1] === "customer") {
+    // Prefer the fuller `text` (what LLM screeners see); fall back to `short`.
+    const imm = customerImmutableByNumber(num);
+    return imm ? imm.text ?? imm.short ?? null : null;
+  }
+  const principle = sovereignPrincipleById(num);
+  return principle ? principle.text ?? principle.summary ?? null : null;
+}
+
 export async function recordRefusalPayload(
   input: RecordRefusalPayloadInput,
 ): Promise<void> {
@@ -212,6 +248,9 @@ export async function recordRefusalPayload(
       conversationId: input.conversationId ?? null,
       messageId: input.messageId ?? null,
       citedImmutableId: input.citedImmutableId,
+      // Snapshot the plain-language wording at write time — see
+      // resolveCitedImmutableText for the alignment rationale.
+      citedImmutableText: resolveCitedImmutableText(input.citedImmutableId),
       refusalText: input.refusalText,
       severity: input.severity,
     });

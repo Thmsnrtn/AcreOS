@@ -40,6 +40,16 @@
 //                          number. We use the prefixed string form so that
 //                          future sovereign-principle refusals
 //                          ("sovereign:N") can share the column.
+//   cited_immutable_text text NULLABLE — the PLAIN-LANGUAGE wording of the
+//                          cited immutable, snapshotted at write time. Quinn
+//                          alignment fix: the future appeal UI shows the
+//                          customer WHY Pax refused. Persisting the text at
+//                          write time (rather than re-deriving from the id at
+//                          render time) means a later constitutional amendment
+//                          that changes the wording cannot retroactively alter
+//                          what a past refusal told the customer. Nullable
+//                          because the id may not resolve to a known immutable
+//                          (defensive), and legacy rows predate the column.
 //   refusal_text         text — the verbatim user-facing message Pax
 //                          returned. This is what the customer saw.
 //   severity             enum: info | warn | critical — matches the
@@ -79,6 +89,10 @@ export const paxRefusalPayloads = pgTable(
     conversationId: integer("conversation_id"),
     messageId: integer("message_id"),
     citedImmutableId: text("cited_immutable_id").notNull(),
+    // Plain-language wording of the cited immutable, snapshotted at write
+    // time so the appeal UI never re-derives it (and can't drift from a
+    // later constitutional amendment). Nullable: defensive + legacy rows.
+    citedImmutableText: text("cited_immutable_text"),
     refusalText: text("refusal_text").notNull(),
     severity: text("severity").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
