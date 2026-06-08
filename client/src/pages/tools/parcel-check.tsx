@@ -18,14 +18,22 @@
  */
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Search, MapPin } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Search, MapPin, Loader2 } from "lucide-react";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { OpenGraph } from "@/components/seo/OpenGraph";
-import { DataProvenanceChip, type DataClassification } from "@/components/data-provenance-chip";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { SPRINGS, useReducedMotionPreference, respectReducedMotion } from "@/lib/motion-tokens";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 import { getAnonymousId } from "@/lib/marketing-touch";
 import { listLearnRoutes } from "@/pages/learn/registry";
+import { useParcelStream } from "@/components/parcels/use-parcel-stream";
+import {
+  streamMeter,
+  type ParcelStreamCategory,
+  type StreamedSource,
+  type TileState,
+} from "@/components/parcels/parcel-stream-reducer";
 
 const TITLE = "Free Parcel Check";
 const DESCRIPTION =
@@ -54,49 +62,27 @@ const JSON_LD = {
 } as const;
 
 // ─── Response shapes (mirror server/routes-public-parcel-check.ts) ──────────
+// The per-source shape now lives in the stream reducer (StreamedSource), shared
+// between the streamed and batch paths so a tile is identical either way.
 
-type Category = "flood_zone" | "soil" | "elevation" | "wetlands" | "demographics";
-
-interface CategoryResult {
-  category: Category;
-  available: boolean;
-  data: Record<string, unknown> | null;
-  source: string | null;
-  sourceAsOf: string | null;
-  classification: DataClassification;
-  confidence: number | null;
-  fromCache: boolean;
-}
-
-interface ResolvedResponse {
-  resolved: true;
-  coordinates: { lat: number; lng: number };
-  matchedAddress: string | null;
-  results: CategoryResult[];
-  meta: { lookupTimeMs: number; successCount: number; failureCount: number };
-}
-
-interface UnresolvedResponse {
-  resolved: false;
-  reason: string;
-  message: string;
-  results: [];
-}
-
-type ParcelCheckResponse = ResolvedResponse | UnresolvedResponse;
+type Category = ParcelStreamCategory;
+type CategoryResult = StreamedSource;
 
 // Display metadata per category — title + the human summary renderer. Each
 // renderer reads only fields the broker actually returns and degrades to null
 // (the empty state) when the headline field is missing.
+// `querying` is the named source the tile announces WHILE it resolves — the
+// whole point of the bet: the customer watches "Querying FEMA NFHL…" become a
+// real value, source by named source.
 const CATEGORY_META: Record<
   Category,
-  { label: string; blurb: string }
+  { label: string; blurb: string; querying: string }
 > = {
-  flood_zone: { label: "FEMA flood zone", blurb: "National Flood Hazard Layer" },
-  soil: { label: "USDA soil", blurb: "SSURGO survey" },
-  elevation: { label: "USGS elevation", blurb: "3DEP / National Map" },
-  wetlands: { label: "USFWS wetlands", blurb: "National Wetlands Inventory" },
-  demographics: { label: "Census context", blurb: "ACS 5-Year tract" },
+  flood_zone: { label: "FEMA flood zone", blurb: "National Flood Hazard Layer", querying: "FEMA NFHL" },
+  soil: { label: "USDA soil", blurb: "SSURGO survey", querying: "USDA SSURGO" },
+  elevation: { label: "USGS elevation", blurb: "3DEP / National Map", querying: "USGS 3DEP" },
+  wetlands: { label: "USFWS wetlands", blurb: "National Wetlands Inventory", querying: "USFWS NWI" },
+  demographics: { label: "Census context", blurb: "ACS 5-Year tract", querying: "U.S. Census" },
 };
 
 function summarize(r: CategoryResult): { headline: string; detail: string | null } | null {
@@ -147,47 +133,100 @@ function summarize(r: CategoryResult): { headline: string; detail: string | null
   }
 }
 
-function ResultCard({ r }: { r: CategoryResult }) {
-  const meta = CATEGORY_META[r.category];
-  const summary = summarize(r);
+/**
+ * StreamingTile — one source tile across the streaming lifecycle. While
+ * `querying` it shows "Querying FEMA NFHL…" with a soft spinner; when its
+ * source lands it cross-fades to the real value (or honest "no data") + the
+ * provenance chip on SPRINGS.smooth. The arrival haptic is fired by the stream
+ * hook, not here, so a re-render never double-buzzes.
+ */
+function StreamingTile({ tile }: { tile: TileState }) {
+  const meta = CATEGORY_META[tile.category];
+  const reduced = useReducedMotionPreference();
+  const isResolved = tile.status !== "querying" && tile.result != null;
+
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <motion.div
+      layout
+      className="rounded-lg border border-border bg-card p-4"
+      data-testid={`parcel-check-tile-${tile.category}`}
+      data-status={tile.status}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{meta.label}</h3>
         <span className="text-micro text-muted-foreground">{meta.blurb}</span>
       </div>
-      {summary ? (
-        <>
-          <p className="mt-2 text-lg font-medium text-foreground leading-tight">{summary.headline}</p>
-          {summary.detail && (
-            <p className="mt-0.5 text-sm text-muted-foreground">{summary.detail}</p>
-          )}
-        </>
-      ) : (
-        // Honest empty state — source still named so the absence is attributable.
-        <p className="mt-2 text-sm text-muted-foreground italic">
-          No data at this point.{" "}
-          {r.source ? `${r.source} returned no record here.` : "Source unavailable for this location."}
-        </p>
-      )}
-      <div className="mt-3">
-        <DataProvenanceChip
-          source={r.source}
-          sourceAsOf={r.sourceAsOf}
-          confidence={r.confidence}
-          classification={r.classification}
-        />
-      </div>
-    </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        {!isResolved ? (
+          <motion.p
+            key="querying"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={respectReducedMotion(SPRINGS.smooth, reduced)}
+            className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"
+            aria-live="polite"
+          >
+            <Loader2
+              className={reduced ? "h-3.5 w-3.5" : "h-3.5 w-3.5 animate-spin"}
+              aria-hidden="true"
+            />
+            Querying {meta.querying}…
+          </motion.p>
+        ) : (
+          <motion.div
+            key="resolved"
+            initial={reduced ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={respectReducedMotion(SPRINGS.smooth, reduced)}
+          >
+            {(() => {
+              const summary = tile.result ? summarize(tile.result) : null;
+              return summary ? (
+                <>
+                  <p className="mt-2 text-lg font-medium text-foreground leading-tight">
+                    {summary.headline}
+                  </p>
+                  {summary.detail && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">{summary.detail}</p>
+                  )}
+                </>
+              ) : (
+                // Honest empty state — source still named so the absence is attributable.
+                <p className="mt-2 text-sm text-muted-foreground italic">
+                  No data at this point.{" "}
+                  {tile.result?.source
+                    ? `${tile.result.source} returned no record here.`
+                    : "Source unavailable for this location."}
+                </p>
+              );
+            })()}
+            <div className="mt-3">
+              <DataProvenanceChip
+                source={tile.result?.source ?? null}
+                sourceAsOf={tile.result?.sourceAsOf ?? null}
+                confidence={tile.result?.confidence ?? null}
+                classification={tile.result?.classification ?? "unknown"}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
 export default function ParcelCheckPage() {
   usePageMeta(TITLE, DESCRIPTION);
   const [address, setAddress] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ParcelCheckResponse | null>(null);
+  const { state: stream, start: startStream } = useParcelStream();
+  const meter = streamMeter(stream);
+  const reduced = useReducedMotionPreference();
+  // The whole pull is "active" from connecting through the last tile landing.
+  const loading =
+    stream.phase === "connecting" || stream.phase === "streaming";
   // Stable session id for rate-limit keying (NOT a credential). Reuses the
   // 1st-party anonymous id so the limit follows the visitor, not the NAT IP.
   const sidRef = useRef<string>(getAnonymousId());
@@ -209,48 +248,36 @@ export default function ParcelCheckPage() {
     emitMarketingTouch({ surface: "tools:parcel-check", eventType: "page_view" });
   }, []);
 
-  async function runCheck(e: React.FormEvent) {
+  // Emit the resolved funnel touch exactly once, when the stream completes.
+  const resolvedEmittedRef = useRef(false);
+  useEffect(() => {
+    if (stream.phase === "done" && !resolvedEmittedRef.current) {
+      resolvedEmittedRef.current = true;
+      emitMarketingTouch({
+        surface: "tools:parcel-check",
+        eventType: "funnel_step",
+        payload: { step: "lookup_resolved", successCount: stream.resolvedCount },
+      });
+    }
+  }, [stream.phase, stream.resolvedCount]);
+
+  function runCheck(e: React.FormEvent) {
     e.preventDefault();
     const q = address.trim();
     if (q.length < 3) {
       setError("Enter a full street address.");
       return;
     }
-    setLoading(true);
     setError(null);
-    setResult(null);
+    resolvedEmittedRef.current = false;
     emitMarketingTouch({
       surface: "tools:parcel-check",
       eventType: "funnel_step",
       payload: { step: "lookup_submitted" },
     });
-    try {
-      const params = new URLSearchParams({ address: q, sid: sidRef.current });
-      const res = await fetch(`/api/public/parcel-check?${params.toString()}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (res.status === 429) {
-        setError("You've run a lot of checks in a short window. Give it a minute and try again.");
-        return;
-      }
-      if (!res.ok) {
-        setError("Something went wrong running that check. Try again in a moment.");
-        return;
-      }
-      const data = (await res.json()) as ParcelCheckResponse;
-      setResult(data);
-      if (data.resolved) {
-        emitMarketingTouch({
-          surface: "tools:parcel-check",
-          eventType: "funnel_step",
-          payload: { step: "lookup_resolved", successCount: data.meta.successCount },
-        });
-      }
-    } catch {
-      setError("Could not reach the data service. Check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
+    // Open the SSE stream — each source flips its tile in as it lands. The hook
+    // falls back to the batch endpoint if EventSource is unsupported.
+    startStream({ address: q, sid: sidRef.current });
   }
 
   return (
@@ -329,85 +356,98 @@ export default function ParcelCheckPage() {
           </button>
         </form>
 
-        {error && (
+        {(error || stream.phase === "error") && (
           <p className="mt-4 text-sm text-destructive" role="alert">
-            {error}
+            {error ?? stream.message ?? "Something went wrong running that check. Try again in a moment."}
           </p>
         )}
 
-        {/* Loading skeletons matching the result-card shape (CLAUDE.md). */}
-        {loading && (
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="rounded-lg border border-border bg-card p-4">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="mt-3 h-6 w-40" />
-                <Skeleton className="mt-2 h-3 w-24" />
-                <Skeleton className="mt-4 h-3 w-28" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Unresolved (address not found / APN needs coords) — honest message. */}
-        {result && !result.resolved && (
+        {/* Unresolved (address not found / APN needs coords / rate-limited) —
+            honest message, streamed terminally. */}
+        {stream.phase === "unresolved" && (
           <div className="mt-6 rounded-lg border border-border bg-muted/40 p-5">
-            <p className="text-sm text-foreground">{result.message}</p>
+            <p className="text-sm text-foreground">{stream.message}</p>
           </div>
         )}
 
-        {/* Resolved results. */}
-        {result && result.resolved && (
+        {/* The streaming pull. Tiles appear the moment `meta` lands and flip
+            from "Querying FEMA NFHL…" to their value source-by-named-source.
+            The meter counts federal sources arriving in real time. */}
+        {(loading || stream.phase === "done") && stream.tiles.length > 0 && (
           <div className="mt-6 space-y-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="text-sm text-muted-foreground">
-                {result.matchedAddress ? (
+                {stream.matchedAddress ? (
                   <>
                     Showing data for{" "}
-                    <span className="font-medium text-foreground">{result.matchedAddress}</span>
+                    <span className="font-medium text-foreground">{stream.matchedAddress}</span>
                   </>
-                ) : (
+                ) : stream.coordinates ? (
                   <>
-                    Showing data for {result.coordinates.lat.toFixed(4)},{" "}
-                    {result.coordinates.lng.toFixed(4)}
+                    Showing data for {stream.coordinates.lat.toFixed(4)},{" "}
+                    {stream.coordinates.lng.toFixed(4)}
                   </>
-                )}
+                ) : null}
               </p>
-              <p className="text-micro text-muted-foreground">
-                {result.meta.successCount} of {result.results.length} sources returned data
+              {/* Running "N federal sources · 1.2s" meter. */}
+              <p
+                className="flex items-center gap-1.5 text-micro text-muted-foreground tabular-nums"
+                aria-live="polite"
+                data-testid="parcel-check-meter"
+              >
+                {!meter.complete && (
+                  <Loader2
+                    className={reduced ? "h-3 w-3" : "h-3 w-3 animate-spin"}
+                    aria-hidden="true"
+                  />
+                )}
+                {meter.arrived} {meter.total != null ? `of ${meter.total} ` : ""}
+                federal source{meter.arrived === 1 ? "" : "s"}
+                {stream.lookupTimeMs != null && (
+                  <> · {(stream.lookupTimeMs / 1000).toFixed(1)}s</>
+                )}
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {result.results.map((r) => (
-                <ResultCard key={r.category} r={r} />
+              {stream.tiles.map((tile) => (
+                <StreamingTile key={tile.category} tile={tile} />
               ))}
             </div>
 
-            {/* Signup CTA — the natural next step after seeing it work. */}
-            <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
-              <h2 className="text-lg font-semibold text-foreground">
-                Want this on every parcel in your buy-box?
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                AcreOS runs these checks automatically on every lead that matches
-                your criteria — flood, soil, elevation, wetlands, and more — from
-                free government data. Sign up and point it at your county.
-              </p>
-              <Link
-                href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_result_cta"
-                onClick={() =>
-                  emitMarketingTouch({
-                    surface: "tools:parcel-check",
-                    eventType: "cta_click",
-                    payload: { ctaId: "result_signup" },
-                  })
-                }
-                className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                Sign up free
-              </Link>
-            </div>
+            {/* Signup CTA — revealed once the full pull settles. */}
+            <AnimatePresence>
+              {stream.phase === "done" && (
+                <motion.div
+                  initial={reduced ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={respectReducedMotion(SPRINGS.smooth, reduced)}
+                  className="rounded-lg border border-border bg-muted/30 p-6 text-center"
+                >
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Want this on every parcel in your buy-box?
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    AcreOS runs these checks automatically on every lead that matches
+                    your criteria — flood, soil, elevation, wetlands, and more — from
+                    free government data. Sign up and point it at your county.
+                  </p>
+                  <Link
+                    href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_result_cta"
+                    onClick={() =>
+                      emitMarketingTouch({
+                        surface: "tools:parcel-check",
+                        eventType: "cta_click",
+                        payload: { ctaId: "result_signup" },
+                      })
+                    }
+                    className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    Sign up free
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
