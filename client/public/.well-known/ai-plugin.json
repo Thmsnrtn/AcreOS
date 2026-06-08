@@ -1,0 +1,21 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "AcreOS",
+  "name_for_model": "acreos",
+  "description_for_human": "Land-investor platform: leads, property inventory, deals, seller-financed notes, and open-data parcel enrichment.",
+  "description_for_model": "Read-mostly access to an AcreOS organization's land-investment data (leads, properties, deals, notes, dashboards) plus open-data parcel research. Org and scopes are resolved from the bearer API key on every call. Write, send, generate, and approval-gated tools are not exposed.",
+  "api": {
+    "type": "mcp",
+    "transport": "streamable-http",
+    "url": "https://acreos.io/api/mcp",
+    "protocol": "jsonrpc-2.0"
+  },
+  "auth": {
+    "type": "user_http",
+    "authorization_type": "bearer",
+    "instructions": "Send Authorization: Bearer <api-key>. Create an API key in AcreOS Settings; the key determines the organization and the readable scopes."
+  },
+  "openapi_url": "https://acreos.io/api/docs/openapi.json",
+  "contact_email": "support@acreos.io",
+  "legal_info_url": "https://acreos.io/terms"
+}
