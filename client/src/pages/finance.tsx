@@ -205,7 +205,7 @@ export default function FinancePage() {
               the entry point. For note_investor / wholesaler / flipper
               the hero is the entry point and the area chart is
               suppressed in favor of the persona-shaped representation. */}
-          <PersonaFinanceHero />
+          <PersonaFinanceHero notes={enrichedNotes} />
 
           {/* Portfolio Cash Flow Chart — kept for the default
               land_investor persona only. Note-investor sees the
