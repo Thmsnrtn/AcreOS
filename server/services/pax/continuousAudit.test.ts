@@ -240,10 +240,23 @@ vi.mock("../../db", () => {
                 };
               });
           } else {
-            // organizations.subscriptionStatus = 'active' query
-            rows = ORGS.filter((o) => o.subscriptionStatus === "active").map((o) => ({
-              id: o.id,
-            }));
+            // walkAllOrgsForAudit org-selection query. Production selects orgs
+            // "active in the window": subscriptionStatus = 'active' OR EXISTS a
+            // Pax assistant message in the window. The mock mirrors that union
+            // so a churned org with recent output is still considered (Quinn
+            // alignment fix). 24h matches DEFAULT_WINDOW_HOURS.
+            const recentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            rows = ORGS.filter((o) => {
+              if (o.subscriptionStatus === "active") return true;
+              return MESSAGES.some((m) => {
+                if (m.role !== "assistant") return false;
+                if (m.createdAt < recentCutoff) return false;
+                const conv = CONVERSATIONS.find(
+                  (c) => c.id === m.conversationId,
+                );
+                return conv?.organizationId === o.id;
+              });
+            }).map((o) => ({ id: o.id }));
           }
           return Promise.resolve(rows).then(onFulfilled, onRejected);
         },
@@ -695,18 +708,27 @@ describe("multi-tenant safety", () => {
     }
   });
 
-  it("walkAllOrgsForAudit only walks active orgs", async () => {
+  it("walkAllOrgsForAudit walks orgs active in the window — incl. a churned org with recent output", async () => {
+    // Quinn alignment fix: a just-churned customer's last window still gets
+    // audited. Org 3 is cancelled but produced Pax output in the window, so
+    // it must be considered. Org 4 is cancelled AND silent in the window, so
+    // it is correctly skipped.
     seedOrg(1, "land", "active");
     seedOrg(2, "land", "active");
-    seedOrg(3, "land", "cancelled");
+    seedOrg(3, "land", "cancelled"); // churned but recently active
+    seedOrg(4, "land", "cancelled"); // churned + silent in window
     seedConv(1, 1);
     seedConv(2, 2);
     seedConv(3, 3);
+    seedConv(4, 4);
     for (let i = 1; i <= 6; i++) seedAssistantMessage(i, 1, "clean", new Date());
     for (let i = 10; i <= 15; i++) seedAssistantMessage(i, 2, "clean", new Date());
     for (let i = 20; i <= 25; i++) seedAssistantMessage(i, 3, "clean", new Date());
+    // Org 4's only output is well outside the window (5 days old).
+    const stale = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    for (let i = 30; i <= 35; i++) seedAssistantMessage(i, 4, "clean", stale);
     const result = await walkAllOrgsForAudit();
-    expect(result.orgsConsidered).toBe(2); // only orgs 1 + 2
+    expect(result.orgsConsidered).toBe(3); // orgs 1 + 2 + churned-but-recent 3
   });
 });
 

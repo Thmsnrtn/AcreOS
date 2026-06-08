@@ -1002,9 +1002,21 @@ export const alignmentDetectors = alignmentDetectorRegistry;
 
 // ============================================================================
 // PER-ORG WALK — used by the cron tick.
-// Picks every active org with ≥MIN_OUTPUTS_FOR_RUN outputs in the window
-// and fires runPaxAudit for each. Orgs with insufficient outputs are
-// skipped + logged at info level (the run row's skipReason captures why).
+// Picks every org "active in the window" — currently subscriptionStatus=
+// 'active' OR producing ≥1 Pax assistant message in the audit window — and
+// fires runPaxAudit for each. Orgs with insufficient outputs are skipped +
+// logged at info level (the run row's skipReason captures why).
+//
+// Why "active in window" and not just subscriptionStatus='active' (Quinn,
+// alignment lens): a customer who churns this week still generated Pax
+// outputs we owed them honest, constitutional answers for. A refusal we owed
+// an explanation for, or a fabricated-amount breach in their last session,
+// does not stop mattering the moment they cancel. Auditing only currently-
+// active orgs would silently drop a churned customer's final window from the
+// constitutional audit — a blind spot precisely where accountability is most
+// load-bearing (a departing customer is the most likely to scrutinise or
+// complain). So we union the active set with any org that has output in the
+// window. runPaxAudit still self-skips orgs under MIN_OUTPUTS_FOR_RUN.
 // ============================================================================
 
 export interface WalkAllOrgsResult {
@@ -1026,14 +1038,31 @@ export async function walkAllOrgsForAudit(
     errors: [],
   };
 
-  const activeOrgs = await db
+  // "Active in window" = currently-active OR produced ≥1 Pax assistant
+  // message since the window cutoff. The second arm keeps a just-churned
+  // org's final window inside the constitutional audit (see header).
+  const windowHours = opts.windowHours ?? DEFAULT_WINDOW_HOURS;
+  const windowCutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+  const orgsActiveInWindow = await db
     .select({ id: organizations.id })
     .from(organizations)
-    .where(sql`${organizations.subscriptionStatus} = 'active'`);
+    .where(
+      sql`${organizations.subscriptionStatus} = 'active'
+        OR EXISTS (
+          SELECT 1
+          FROM ${aiConversations}
+          JOIN ${aiMessages}
+            ON ${aiMessages.conversationId} = ${aiConversations.id}
+          WHERE ${aiConversations.organizationId} = ${organizations.id}
+            AND ${aiMessages.role} = 'assistant'
+            AND ${aiMessages.createdAt} >= ${windowCutoff.toISOString()}
+        )`,
+    );
 
-  result.orgsConsidered = activeOrgs.length;
+  result.orgsConsidered = orgsActiveInWindow.length;
 
-  for (const org of activeOrgs) {
+  for (const org of orgsActiveInWindow) {
     try {
       const auditResult = await runPaxAudit({
         orgId: org.id,

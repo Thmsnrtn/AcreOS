@@ -39,6 +39,31 @@ interface AggregationCounts {
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
+ * Honest demographic-bias finding for the pre-customer / low-volume regime.
+ *
+ * The /transparency schema advertises a `demographicBiasFindings` field. We
+ * deliberately do NOT collect protected-class data (customer immutable #3),
+ * and pre-customer we lack the volume to compute even a proxy fairness
+ * signal. Shipping a bare `{ findings: [] }` would read as "we audited and
+ * found no bias" — a fabricated clean-bill-of-health, which is exactly the
+ * lying-by-omission (immutable #1) the alignment surface exists to prevent.
+ *
+ * So until a real fairness detector (Quinn elevation idea #1) populates
+ * `findings`, we emit an explicit `notMeasurableReason`. The report asserts
+ * only what it can stand behind: "not yet measurable", never "clean".
+ */
+const NOT_MEASURABLE_BIAS_FINDINGS: {
+  findings: unknown[];
+  reviewedAt: string | null;
+  notMeasurableReason: string | null;
+} = {
+  findings: [],
+  reviewedAt: null,
+  notMeasurableReason:
+    "pre-customer: insufficient volume to compute fairness signal",
+};
+
+/**
  * Run the aggregation pass over the rolling 90-day window ending at `endAt`.
  * Returns the upserted row's id, or null on failure.
  */
@@ -65,7 +90,7 @@ export async function runTransparencyReportAggregation(opts: {
         appealsUpheldCount: counts.appealsUpheldCount,
         appealsReversedCount: counts.appealsReversedCount,
         founderBypassCount: counts.founderBypassCount,
-        demographicBiasFindings: { findings: [], reviewedAt: null },
+        demographicBiasFindings: NOT_MEASURABLE_BIAS_FINDINGS,
         driftFindings,
       })
       .onConflictDoUpdate({
@@ -77,6 +102,9 @@ export async function runTransparencyReportAggregation(opts: {
           appealsUpheldCount: counts.appealsUpheldCount,
           appealsReversedCount: counts.appealsReversedCount,
           founderBypassCount: counts.founderBypassCount,
+          // Refresh on re-aggregation too — never leave a stale bare `[]`
+          // behind on a window that was first written before this fix.
+          demographicBiasFindings: NOT_MEASURABLE_BIAS_FINDINGS,
           driftFindings,
         },
       })

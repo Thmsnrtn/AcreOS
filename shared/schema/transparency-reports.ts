@@ -31,10 +31,14 @@
 //   appeals_reversed_count      integer
 //   founder_bypass_count        integer — preCallConstitutionalChecker
 //                                 founder bypasses observed in the window.
-//   demographic_bias_findings   jsonb — { findings: [...], reviewedAt }
-//                                 (placeholder shape; future Andrei/Quinn
-//                                 work fills the actual bias-detector
-//                                 output).
+//   demographic_bias_findings   jsonb — { findings: [...], reviewedAt,
+//                                 notMeasurableReason }. When we cannot
+//                                 compute a fairness signal, the aggregator
+//                                 sets notMeasurableReason (e.g.
+//                                 "pre-customer: insufficient volume…") so
+//                                 the report never ASSERTS a clean bias
+//                                 audit it never ran. findings is filled by
+//                                 future Andrei/Quinn fairness-detector work.
 //   drift_findings              jsonb — { refusalRateDrift: ..., simRealDivergence: ... }
 //   created_at                  timestamptz
 //   published_at                timestamptz nullable — when the row was
@@ -73,10 +77,22 @@ export const transparencyReports = pgTable(
     appealsUpheldCount: integer("appeals_upheld_count").notNull().default(0),
     appealsReversedCount: integer("appeals_reversed_count").notNull().default(0),
     founderBypassCount: integer("founder_bypass_count").notNull().default(0),
+    // `notMeasurableReason` is load-bearing for honesty: when we cannot
+    // compute a fairness signal (e.g. pre-customer, insufficient volume),
+    // the report must SAY SO rather than ship a bare `findings: []` that
+    // reads as "we audited and found nothing." An empty findings array with
+    // a null reason is a fabricated clean-bill-of-health — exactly the
+    // lying-by-omission the alignment surface exists to prevent.
     demographicBiasFindings: jsonb("demographic_bias_findings")
-      .$type<{ findings: unknown[]; reviewedAt: string | null }>()
+      .$type<{
+        findings: unknown[];
+        reviewedAt: string | null;
+        notMeasurableReason: string | null;
+      }>()
       .notNull()
-      .default(sql`'{"findings": [], "reviewedAt": null}'::jsonb`),
+      .default(
+        sql`'{"findings": [], "reviewedAt": null, "notMeasurableReason": null}'::jsonb`,
+      ),
     driftFindings: jsonb("drift_findings")
       .$type<Record<string, unknown>>()
       .notNull()

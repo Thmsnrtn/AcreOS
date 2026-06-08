@@ -12,6 +12,16 @@
  *   GET /transparency/schema — declared shape of a published report row.
  *                              Lets the future UI codegen its types from a
  *                              single source.
+ *
+ * House-style note (CLAUDE.md): these are DELIBERATELY public, unauthenticated
+ * endpoints — the whole point of a transparency surface is that anyone (a
+ * regulator, a journalist, a prospect) can read it without a login. So we do
+ * NOT use `AuthenticatedRequest` here: there is no `user`/`organization` on
+ * the request, and `getOrganization(req)` would (correctly) throw. We DO honor
+ * the rest of the house style — every failure path goes through `Errors.*`
+ * rather than a raw `res.status().json()`. Success returns plain `res.json`
+ * because there is no `Errors.ok()` helper and these payloads carry no
+ * org-scoped data.
  */
 
 import type { Express, Request, Response } from "express";
@@ -33,6 +43,11 @@ export interface PublishedTransparencyReportShape {
   demographicBiasFindings: {
     findings: unknown[];
     reviewedAt: string | null;
+    // Honest accountability: when we cannot compute a fairness signal, this
+    // carries the reason (e.g. "pre-customer: insufficient volume…") so the
+    // surface never ASSERTS a clean bias audit it never ran. Mirrors the
+    // jsonb shape in shared/schema/transparency-reports.ts.
+    notMeasurableReason: string | null;
   };
   driftFindings: Record<string, unknown>;
 }
@@ -73,7 +88,12 @@ export function registerTransparencyRoutes(app: Express): void {
           appealsUpheldCount: 0,
           appealsReversedCount: 0,
           founderBypassCount: 0,
-          demographicBiasFindings: { findings: [], reviewedAt: null },
+          demographicBiasFindings: {
+            findings: [],
+            reviewedAt: null,
+            notMeasurableReason:
+              "pre-customer: insufficient volume to compute fairness signal",
+          },
           driftFindings: {},
         };
         res.json({ shape, note: "example shape only — no real data" });
