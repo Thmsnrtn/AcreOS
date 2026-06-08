@@ -1,0 +1,88 @@
+# AcreOS
+
+> AcreOS is a software platform for land investors: it manages leads, property
+> inventory, deals, and seller-financed notes, and enriches parcels with public
+> open data (flood zone, soil, demographics, comps). Each datum carries a
+> provenance label naming its source.
+
+This file is for AI agents. It describes the parts of AcreOS an agent can read
+or call, and where to find the machine-readable contracts.
+
+## Public, no sign-in required
+
+- Parcel check widget: https://acreos.io/tools/parcel-check
+  Runs a single parcel through the open-data due-diligence checks (flood, soil,
+  zoning signals, basic comps) and returns a structured result. Backed by the
+  public JSON endpoint GET https://acreos.io/api/public/parcel-check.
+
+## Machine-readable API contract
+
+- OpenAPI spec (JSON): https://acreos.io/api/docs/openapi.json
+- Swagger UI: https://acreos.io/api/docs
+  The spec is reflected from the live route set and merged with hand-curated
+  schemas. Most routes require an authenticated session or an API key.
+
+## Data provenance
+
+- How AcreOS sources data: https://acreos.io/data-sources
+  Names each external data source and how it is used. Requires sign-in.
+
+## MCP endpoint (callable by other agents)
+
+- Endpoint: POST https://acreos.io/api/mcp
+- Transport: Model Context Protocol over JSON-RPC 2.0 (single HTTP endpoint).
+- Auth: Authorization: Bearer <api-key>. The organization and the key's scopes
+  are resolved from the key on every request; the org is never passed as a tool
+  argument.
+- Methods: initialize, ping, tools/list, tools/call.
+- Scope: read-mostly. The exposed tools are the read-only, non-approval subset
+  of the App Intent registry; create/update/send/generate tools and
+  founder-only tools are not reachable here. Each call is rejected unless the
+  key holds a scope that satisfies the tool.
+
+### Read-mostly tools exposed over MCP (34)
+
+- batch_leads_skip_trace — Skip trace a lead via BatchLeads to find phone numbers and contact info
+- calculate_amortization — Calculate loan amortization schedule given principal, rate, and term
+- calculate_payment_schedule — Generate an amortization schedule for seller financing or loan analysis. Shows monthly payment, total interest, and payment breakdown
+- calculate_roi — Calculate ROI and financial metrics for a potential investment. Computes profit, ROI percentage, annualized return, and cash-on-cash return
+- generate_offer — Generate offer suggestions for a property including market analysis, pricing strategies, and AI reasoning. Uses comparable sales data to determine fair offer prices
+- get_cashflow_summary — Get monthly cashflow summary from all active notes
+- get_dashboard_stats — Get key business metrics: total properties, active notes, pipeline value, monthly cashflow
+- get_deals — Get all deals in the pipeline with their status and amounts
+- get_drive_file — Get metadata and view link for a specific Google Drive file
+- get_lead_details — Get detailed information about a specific lead including notes and timeline
+- get_leads — Get all leads in the CRM pipeline. Returns lead name, status, source, and contact info
+- get_mls_comps — Get comparable sold listings from MLS for a given property address
+- get_notes — Get seller financing notes with payment schedules and balances
+- get_pipeline_summary — Get CRM pipeline summary with lead counts by status
+- get_properties — Get property inventory list with acreage, price, and status
+- get_property_details — Get full details for a specific property including location, price, and history
+- get_property_enrichment — Retrieve previously stored enrichment data for a property (flood zone, soil, demographics, hazards, scores, etc.) without making new API calls. Faster than research_property when enrichment has already been run
+- get_stale_leads — Find leads that haven't been contacted recently. Queries leads to find those with no activity in N days and returns a list with lead names and last contact dates
+- get_stripe_customer — Look up a customer in Stripe by email or customer ID
+- get_system_context — Get a comprehensive overview of the entire system including leads, properties, deals, notes, tasks, campaigns, and finance. Use this to understand the current state of the business before taking actions across any module
+- get_tasks — Get tasks with optional filtering. Works from any page
+- list_calendar_events — List upcoming Google Calendar events. Use to check schedule before booking showings or closings
+- list_stripe_payments — List recent Stripe charges/payments. Can filter by customer
+- propstream_comps — Pull comparable sales from PropStream for a given address
+- propstream_lookup — Look up owner info, equity, liens, and property history via PropStream
+- recall_facts — Recall previously remembered facts and preferences for this organization. Use before answering questions where context from past conversations might be relevant
+- remember_fact — Permanently remember an important fact, preference, decision, or insight for this organization. Use proactively when the user states preferences, makes key decisions, or shares important context that should persist across conversations
+- research_property — Research comprehensive property data using ALL available data sources: flood zone, wetlands, soil, environmental, infrastructure proximity, demographics, public lands, transportation access, water resources, elevation, climate, agricultural values, land cover, cropland, PLSS section/township, watershed, FEMA NRI risk scores, and USDA CLU farm data. Use this for deep property due diligence
+- run_comps — Find comparable sales for a property to estimate market value. Queries properties table for similar properties in the same county/state, calculates median price per acre, and returns a comp analysis summary
+- run_comps_analysis — Run a comparable sales analysis for a property. Finds nearby sold properties to estimate market value and provide pricing insights
+- search_drive — Search Google Drive for property documents, contracts, or due diligence files
+- search_gmail — Search the user's Gmail inbox. Use to find emails from leads, sellers, or about specific properties
+- search_mls_listings — Search MLS listings via RESO API. Find active listings or sold comps
+- spawn_subagent — Spawn a sub-agent to handle an independent subtask and return its result. Use for parallelizable research tasks, e.g. analyzing multiple properties or markets simultaneously. Max depth: 2
+
+## Notes
+
+- AcreOS is an operations platform, not a public bulk-data API. The parcel-check
+  widget and OpenAPI spec are the open surfaces; everything else needs auth.
+- Security disclosure: https://acreos.io/.well-known/security.txt
+
+# Generated by scripts/generate-llms-txt.mjs from the live App Intent registry.
+# Do not hand-edit — run the script so the tool list stays in sync with the
+# MCP endpoint. Run `node scripts/generate-llms-txt.mjs --check` in CI.

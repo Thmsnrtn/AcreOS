@@ -7,6 +7,7 @@ import path from "path";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { registerWellKnownRoutes } from "./routes-well-known";
 import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
 import { recordStripeWebhookFailure } from "./metrics";
@@ -559,6 +560,12 @@ app.use("/api", apiLimiter);
       "Policy: https://acreos.fly.dev/terms",
     ].join("\n") + "\n");
   });
+
+  // Agentic-web discovery — /.well-known/llms.txt + ai-plugin.json. Same
+  // reason these need explicit routes as security.txt above: express.static
+  // ignores dotfile paths, so /.well-known/* would otherwise fall through to
+  // the SPA shell. Registered before serveStatic.
+  registerWellKnownRoutes(app);
 
   // Prometheus scrape endpoint — serves collected metrics in text exposition format
   app.get("/metrics", metricsHandler);
