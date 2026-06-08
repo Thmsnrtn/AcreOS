@@ -296,3 +296,14 @@ export function featureEngineeringJob(redisConnection: any): Worker {
 
   return worker;
 }
+
+/**
+ * Worker-substrate entrypoint (no BullMQ / Redis required).
+ *
+ * The Postgres-job-lock scheduler in server/jobs/runScheduledJobs.ts calls
+ * this directly under withJobLock. processFeatureEngineeringJob only reads
+ * job.id for the backgroundJobs audit row, so we synthesize a stable id.
+ */
+export async function runFeatureEngineering(): Promise<void> {
+  await processFeatureEngineeringJob({ id: `scheduler-${Date.now()}` } as Job);
+}

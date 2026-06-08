@@ -1016,6 +1016,91 @@ function startFounderWeeklyDigestJob() {
 // Processes all pending founder inbox items using Opus 4.6.
 // Eliminates the need for the founder to ever manually review the inbox.
 // ============================================================================
+
+// Tess (SRE) cost guardrail (2026-06): per-tick spend bound on the executor.
+// The 30-min cadence × Haiku→Sonnet→Opus cascade × full-inbox burst was the
+// identified ~$30/day burn source and had NO per-tick ceiling. We add a bound
+// at the SCHEDULER layer (executor behaviour itself is unchanged):
+//   • PRE-tick: if the trailing-window AI spend already exceeds the ceiling,
+//     skip this tick entirely (a hot inbox burning > the cap pauses the
+//     cascade until spend drains) — this is the enforcing bound.
+//   • POST-tick: re-measure spend incurred + decisions processed; if either
+//     ceiling was crossed, log a structured warn so the breach is greppable.
+// Both ceilings are env-tunable with sensible defaults.
+const AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK = (() => {
+  const raw = Number(process.env.AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1.0;
+})();
+const AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK = (() => {
+  const raw = Number(process.env.AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 10;
+})();
+const DECISION_EXECUTOR_TICK_WINDOW_MS = 30 * 60 * 1000;
+
+// Sum estimated AI spend (USD) recorded since `since`, across all orgs.
+// Reads the indexed ai_telemetry_events.created_at + estimated_cost_cents.
+// On any error we return null so the caller fails OPEN (never blocks the
+// executor purely because telemetry was momentarily unreadable).
+async function sumAiSpendUsdSince(since: Date): Promise<number | null> {
+  try {
+    const { aiTelemetryEvents } = await import("@shared/schema");
+    const { gte } = await import("drizzle-orm");
+    const [row] = await db
+      .select({
+        cents: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
+      })
+      .from(aiTelemetryEvents)
+      .where(gte(aiTelemetryEvents.createdAt, since));
+    return Number(row?.cents ?? 0) / 100;
+  } catch (err) {
+    log(`[decision-executor] AI spend read failed (failing open): ${err}`, "decision-executor");
+    return null;
+  }
+}
+
+// Runs one executor tick under the per-tick cost bound. Imported lazily by the
+// job so the cap lives at the scheduler layer, not in the executor service.
+async function runDecisionExecutorTickBounded(): Promise<void> {
+  const tickStart = new Date();
+  const windowStart = new Date(tickStart.getTime() - DECISION_EXECUTOR_TICK_WINDOW_MS);
+
+  // PRE-tick enforcing bound: if recent spend already blew the ceiling, defer.
+  const recentSpend = await sumAiSpendUsdSince(windowStart);
+  if (recentSpend !== null && recentSpend >= AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK) {
+    log(
+      `[decision-executor] per-tick spend cap hit — skipping tick. ` +
+        `trailing-${Math.round(DECISION_EXECUTOR_TICK_WINDOW_MS / 60000)}m spend=$${recentSpend.toFixed(2)} ` +
+        `>= cap=$${AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK.toFixed(2)} ` +
+        `(AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK)`,
+      "decision-executor",
+    );
+    return;
+  }
+
+  const { runAutonomousDecisionExecutor } = await import("../services/autonomousDecisionExecutor");
+  const result = await runAutonomousDecisionExecutor();
+
+  // POST-tick bound: surface a breach so a runaway tick is greppable even
+  // though we let the in-flight items finish (we never kill mid-tick).
+  const incurred = await sumAiSpendUsdSince(tickStart);
+  if (incurred !== null && incurred > AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK) {
+    log(
+      `[decision-executor] per-tick spend ceiling exceeded: this tick spent $${incurred.toFixed(2)} ` +
+        `> cap=$${AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK.toFixed(2)} ` +
+        `across ${result.itemsProcessed} items — next tick will defer until spend drains`,
+      "decision-executor",
+    );
+  }
+  if (result.itemsProcessed > AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK) {
+    log(
+      `[decision-executor] per-tick decision cap exceeded: processed ${result.itemsProcessed} ` +
+        `> cap=${AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK} ` +
+        `(AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK)`,
+      "decision-executor",
+    );
+  }
+}
+
 function startAutonomousDecisionExecutorJob() {
   // 2026-06-05 cost-audit kill-switch. This job was identified as the
   // single most-likely $30/day burn source: 30-min cadence × no per-tick
@@ -1033,24 +1118,25 @@ function startAutonomousDecisionExecutorJob() {
   const THIRTY_MINUTES = 30 * 60 * 1000;
   const TTL_SECONDS = 25 * 60;
 
-  log('Registering autonomous decision executor job (every 30 minutes)', 'decision-executor');
+  log(
+    `Registering autonomous decision executor job (every 30 minutes; ` +
+      `per-tick cap $${AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK.toFixed(2)} / ` +
+      `${AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK} decisions)`,
+    'decision-executor',
+  );
 
   // Run once 2 minutes after startup (let other services initialize first)
   setTimeout(() => {
-    import('../services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
-      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
-        log(`Autonomous decision executor startup run failed: ${err}`, 'decision-executor');
-      });
-    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+    withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
+      log(`Autonomous decision executor startup run failed: ${err}`, 'decision-executor');
+    });
   }, 2 * 60 * 1000);
 
   // Then every 30 minutes
   trackInterval(() => {
-    import('../services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
-      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
-        log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
-      });
-    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+    withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
+      log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
+    });
   }, THIRTY_MINUTES);
 }
 
@@ -3008,6 +3094,127 @@ function startSanctionsListEntriesSyncJob() {
   }, 5 * 60 * 1000);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Tess (SRE) — dark-job activation. Six fully-implemented jobs lived in
+// server/jobs/ + server/services/ but were never wired into this scheduler, so
+// they never ran in production. They follow the canonical OFAC pattern below:
+// a 5-minute trackInterval poll, a UTC time-of-day fire window (drift-tolerant),
+// and the shared Postgres-backed withJobLock so the multi-instance worker never
+// double-runs. Each is idempotent. Staggered into the low-traffic 01:00–08:00
+// UTC band so they don't collide with each other or the 03:30/04:00 OFAC jobs.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Tess #1 — DB index analyzer (daily ~02:00 UTC) ─────────────────────────
+// Pure pg_stat_statements / pg_stat_user_tables read. Surfaces slow queries +
+// sequential-scan-heavy tables + index suggestions; persists the report. No
+// external dep, no AI. Auto-apply stays opt-in via OTEL_AUTO_INDEX inside the
+// service. Idempotent — each run just rebuilds the latest report row.
+function startIndexAnalyzerJob() {
+  log('Registering DB index analyzer (daily ~02:00 UTC)', 'index-analyzer');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 2 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    void withJobLock('index_analyzer', 23 * 60 * 60, async () => {
+      const { runIndexAnalysis } = await import('./indexAnalyzer');
+      const report = await runIndexAnalysis();
+      log(
+        `Index analysis: slowQueries=${report.slowQueries.length} seqScans=${report.sequentialScans.length} suggestions=${report.suggestions.length}`,
+        'index-analyzer',
+      );
+    }).catch((err) => {
+      log(`Index analyzer run failed: ${err}`, 'index-analyzer');
+    });
+  }, 5 * 60 * 1000);
+}
+
+// ── Tess #2 — land credit-score recalculation (daily ~01:00 UTC) ───────────
+// Pure compute: finds properties with stale land-credit scores and recomputes
+// them, flagging >10pt drops. Idempotent — re-running on fresh scores is a
+// no-op. Writes a backgroundJobs audit row per run via the service.
+function startLandCreditScoreRecalcJob() {
+  log('Registering land credit-score recalculation (daily ~01:00 UTC)', 'land-credit-recalc');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 1 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    void withJobLock('land_credit_score_recalc', 23 * 60 * 60, async () => {
+      const { runLandCreditScoreRecalculation } = await import('./landCreditScoreRecalculation');
+      await runLandCreditScoreRecalculation();
+      log('Land credit-score recalculation complete', 'land-credit-recalc');
+    }).catch((err) => {
+      log(`Land credit-score recalc run failed: ${err}`, 'land-credit-recalc');
+    });
+  }, 5 * 60 * 1000);
+}
+
+// ── Tess #3 — feature-engineering precompute (weekly Sun ~02:30 UTC) ────────
+// Pure compute: precomputes location + market ML features per property (capped
+// at 1000/run). Weekly cadence keeps the rolling cost bounded; idempotent —
+// each run overwrites the stored feature row. Sits 30m after the index
+// analyzer so the two heavy Sunday reads don't overlap.
+function startFeatureEngineeringJob() {
+  log('Registering feature-engineering precompute (weekly Sun ~02:30 UTC)', 'feature-engineering');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCDay() !== 0 || now.getUTCHours() !== 2 || now.getUTCMinutes() < 30 || now.getUTCMinutes() >= 35) {
+      return;
+    }
+    void withJobLock('feature_engineering', 6 * 60 * 60, async () => {
+      const { runFeatureEngineering } = await import('./featureEngineeringJob');
+      await runFeatureEngineering();
+      log('Feature-engineering precompute complete', 'feature-engineering');
+    }).catch((err) => {
+      log(`Feature-engineering run failed: ${err}`, 'feature-engineering');
+    });
+  }, 5 * 60 * 1000);
+}
+
+// ── Tess #4 — DB backup (daily ~07:00 UTC, config-gated) ───────────────────
+// Wired but DORMANT until S3 creds land: runDbBackupIfConfigured() checks
+// DB_BACKUP_S3_BUCKET at run time and logs a structured INFO skip + no-ops if
+// unset (a dump to ephemeral container /tmp is worthless across deploys). Lock
+// TTL covers a long pg_dump. Never crashes the scheduler.
+function startDbBackupJob() {
+  log('Registering DB backup (daily ~07:00 UTC, config-gated on DB_BACKUP_S3_BUCKET)', 'dbBackup');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 7 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    void withJobLock('db_backup', 60 * 60, async () => {
+      const { runDbBackupIfConfigured } = await import('./dbBackup');
+      await runDbBackupIfConfigured();
+    }).catch((err) => {
+      log(`DB backup run failed: ${err}`, 'dbBackup');
+    });
+  }, 5 * 60 * 1000);
+}
+
+// ── Tess #5 — course-completion check (daily ~08:00 UTC, config-gated) ──────
+// Wired but DORMANT until email creds land: runCourseCompletionCheck() checks
+// AWS_SES_FROM_EMAIL at run time and logs a structured INFO skip + no-ops if
+// unset (the completion path issues certificates AND emails learners — we don't
+// want to mutate enrollment state we can't notify on). Idempotent — completed
+// enrollments are filtered out. Never crashes the scheduler.
+function startCourseCompletionCheckJob() {
+  log('Registering course-completion check (daily ~08:00 UTC, config-gated on AWS_SES_FROM_EMAIL)', 'course-completion');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 8 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    void withJobLock('course_completion_check', 55 * 60, async () => {
+      const { runCourseCompletionCheck } = await import('./courseCompletionCheck');
+      await runCourseCompletionCheck();
+    }).catch((err) => {
+      log(`Course-completion check run failed: ${err}`, 'course-completion');
+    });
+  }, 5 * 60 * 1000);
+}
+
 // ── Iris (CTO) — continuous p95 baseline sampler (every 30m) ────────────────
 // Drains the response-time ring buffer (server/middleware/responseTimeRing.ts)
 // per IRIS_TRACKED_ENDPOINTS, persists per-window p50/p95/p99 rows to
@@ -3747,6 +3954,18 @@ export async function runScheduledJobs(): Promise<void> {
   // detector against the rolling 7d baseline. Detection-only — findings
   // log at warn level for now.
   startIrisPerfMonitorJob();
+
+  // Tess (SRE) — dark-job activation. Six fully-built jobs that were never
+  // registered (and so never ran). All lock-guarded + idempotent + staggered
+  // across the low-traffic 01:00–08:00 UTC band; the two cred-dependent ones
+  // (backup / course-completion) self-skip cleanly until creds land.
+  startLandCreditScoreRecalcJob();   // daily ~01:00 UTC
+  startIndexAnalyzerJob();           // daily ~02:00 UTC
+  startFeatureEngineeringJob();      // weekly Sun ~02:30 UTC
+  startDbBackupJob();                // daily ~07:00 UTC (dormant w/o DB_BACKUP_S3_BUCKET)
+  startCourseCompletionCheckJob();   // daily ~08:00 UTC (dormant w/o AWS_SES_FROM_EMAIL)
+  // Note: fairLendingAudit (monthly) is ALREADY registered below via
+  // scheduleSelfRescheduling("fair_lending_audit") — not re-wired here.
 
   // Tess (SRE) — per-source synthetic data-source probe (every 30m). Golden
   // parcels through the registry; asserts each free source returns the expected

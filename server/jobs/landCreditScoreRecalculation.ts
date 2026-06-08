@@ -219,3 +219,14 @@ export function landCreditScoreRecalculationJob(redisConnection: any): Worker {
 
   return worker;
 }
+
+/**
+ * Worker-substrate entrypoint (no BullMQ / Redis required).
+ *
+ * The Postgres-job-lock scheduler in server/jobs/runScheduledJobs.ts calls
+ * this directly under withJobLock. processLandCreditRecalcJob only reads
+ * job.id for the backgroundJobs audit row, so we synthesize a stable id.
+ */
+export async function runLandCreditScoreRecalculation(): Promise<void> {
+  await processLandCreditRecalcJob({ id: `scheduler-${Date.now()}` } as Job);
+}
