@@ -37,8 +37,8 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { createRateLimiter } from "./middleware/rateLimit";
-import { dataSourceBroker } from "./services/data-source-broker";
 import type { LookupCategory } from "./services/data-source-broker";
+import { resolveParcel } from "./services/parcel/resolveParcel";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
@@ -224,23 +224,31 @@ router.get("/", ipCeiling, sessionLimiter, async (req: Request, res: Response) =
       return Errors.badRequest(res, "Could not resolve coordinates");
     }
 
-    // Free-tier ONLY. The broker filters out paid/byok sources at maxTier.
-    const multi = await dataSourceBroker.lookupMultiple(PUBLIC_CATEGORIES, {
-      latitude: lat,
-      longitude: lng,
-      maxTier: "free",
-    });
+    // Free-tier ONLY, through the unified parcel spine. resolveParcel delegates
+    // to the provider registry (its cache / circuit / provenance) as the primary
+    // path and the broker only for categories the registry doesn't yet cover —
+    // so this public widget now shares ONE cache + circuit story with every
+    // other door. maxTier:"free" keeps paid/byok sources unreachable, identical
+    // to the prior broker contract. The public honesty overrides below
+    // (SOURCE_AS_OF, classificationFor) are preserved verbatim, so the response
+    // shape and values are unchanged.
+    const resolved = await resolveParcel(
+      { type: "coordinates", latitude: lat, longitude: lng },
+      {
+        categories: PUBLIC_CATEGORIES,
+        orgTier: "free",
+        maxTier: "free",
+      },
+    );
 
     const results: PublicCategoryResult[] = PUBLIC_CATEGORIES.map((category) => {
-      const r = multi.results[category];
-      const ok = !!r && r.success && r.data != null;
-      const sourceTitle =
-        (ok && (r.data as { source?: string })?.source) || (ok ? r.source.title : null) || null;
+      const r = resolved.results[category];
+      const ok = !!r && r.available && r.data != null;
       return {
         category,
         available: ok,
         data: ok ? r.data : null,
-        source: sourceTitle,
+        source: ok ? r.source : null,
         sourceAsOf: SOURCE_AS_OF[category] ?? null,
         classification: classificationFor(category),
         confidence: null,
@@ -254,9 +262,9 @@ router.get("/", ipCeiling, sessionLimiter, async (req: Request, res: Response) =
       matchedAddress,
       results,
       meta: {
-        lookupTimeMs: multi.totalLookupTimeMs,
-        successCount: multi.successCount,
-        failureCount: multi.failureCount,
+        lookupTimeMs: resolved.meta.lookupTimeMs,
+        successCount: resolved.meta.successCount,
+        failureCount: resolved.meta.failureCount,
       },
     });
   } catch (error) {
