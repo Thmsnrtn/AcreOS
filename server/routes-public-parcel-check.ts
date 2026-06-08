@@ -173,6 +173,218 @@ const ipCeiling = createRateLimiter(
   (req: Request) => `parcelcheck:ipceil:${req.ip || req.socket.remoteAddress || "unknown"}`,
 );
 
+/**
+ * Resolve coordinates from the parsed query, mirroring the non-streaming path.
+ * Returns either coordinates (+ optional matchedAddress) or an honest unresolved
+ * reason the caller can emit verbatim. Never throws — degrades honestly.
+ */
+async function resolveCoordinates(
+  parsed: z.infer<typeof querySchema>,
+): Promise<
+  | { ok: true; lat: number; lng: number; matchedAddress: string | null }
+  | { ok: false; reason: string; message: string; query: Record<string, unknown> }
+> {
+  const { address, apn, lat: rawLat, lng: rawLng } = parsed;
+
+  if (!address && rawLat === undefined && rawLng === undefined) {
+    if (apn) {
+      return {
+        ok: false,
+        reason: "apn_needs_coordinates",
+        message:
+          "Looking up by parcel number (APN) needs the parcel's location, which paid providers supply. Paste the property address instead, or sign up to run APN lookups inside your buy-box.",
+        query: { apn },
+      };
+    }
+    return {
+      ok: false,
+      reason: "missing_input",
+      message: "Provide an address or coordinates.",
+      query: {},
+    };
+  }
+
+  let lat = rawLat;
+  let lng = rawLng;
+  let matchedAddress: string | null = null;
+
+  if ((lat === undefined || lng === undefined) && address) {
+    const geo = await geocodeAddress(address);
+    if (!geo) {
+      return {
+        ok: false,
+        reason: "address_not_found",
+        message:
+          "Could not locate that address in the Census geocoder. Try a more complete street address, or paste coordinates.",
+        query: { address },
+      };
+    }
+    lat = geo.lat;
+    lng = geo.lng;
+    matchedAddress = geo.matchedAddress;
+  }
+
+  if (lat === undefined || lng === undefined) {
+    return {
+      ok: false,
+      reason: "coordinates_unresolved",
+      message: "Could not resolve coordinates.",
+      query: {},
+    };
+  }
+
+  return { ok: true, lat, lng, matchedAddress };
+}
+
+/**
+ * Map a single broker ResolvedCategory into the public response shape, applying
+ * the public honesty overrides (SOURCE_AS_OF, classificationFor) verbatim — so
+ * the streaming tile and the batch tile are byte-identical for the same source.
+ */
+function toPublicResult(
+  category: LookupCategory,
+  r:
+    | {
+        available: boolean;
+        data: unknown;
+        source: string | null;
+        fromCache: boolean;
+      }
+    | undefined,
+): PublicCategoryResult {
+  const ok = !!r && r.available && r.data != null;
+  return {
+    category,
+    available: ok,
+    data: ok ? r!.data : null,
+    source: ok ? r!.source : null,
+    sourceAsOf: SOURCE_AS_OF[category] ?? null,
+    classification: classificationFor(category),
+    confidence: null,
+    fromCache: ok ? r!.fromCache : false,
+  };
+}
+
+/**
+ * GET /api/public/parcel-check/stream — the streaming variant (Krieger, the
+ * boldest UX bet). Emits each free source's result over Server-Sent Events AS
+ * IT RESOLVES, rather than all-then-return, so the customer WATCHES the
+ * diligence pull happen source-by-named-source — the felt embodiment of the
+ * honest-data thesis on the exact surface a stranger hits pre-signup.
+ *
+ * Wire protocol (named SSE events, JSON data):
+ *   event: meta       — { coordinates, matchedAddress, categories: [...] }   (once, first)
+ *   event: source     — a PublicCategoryResult, one per category as it resolves
+ *   event: done       — { successCount, failureCount, lookupTimeMs }         (once, last)
+ *   event: unresolved — { reason, message, query }  (terminal, replaces meta+source+done)
+ *   event: error      — { message }                  (terminal, on internal failure)
+ *
+ * Semantics are identical to the batch endpoint: same resolveParcel spine, same
+ * cache/circuit/provenance, same free-tier cap, same honesty overrides. The only
+ * difference is WHEN each tile arrives. A source that misses streams an honest
+ * "not available" tile (available:false), never a fabricated value.
+ *
+ * Each category is resolved through its own resolveParcel call. enrichAll already
+ * runs categories sequentially against a shared spine, so per-category resolution
+ * preserves the exact same cache + circuit + provenance behavior while letting us
+ * flush each result the instant it lands.
+ */
+router.get("/stream", ipCeiling, sessionLimiter, async (req: Request, res: Response) => {
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return Errors.validationFailed(res, parsed.error.issues);
+  }
+
+  // SSE headers. `X-Accel-Buffering: no` defeats nginx/proxy buffering so each
+  // event flushes immediately. We never compress this stream.
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  // Flush headers so the browser opens the EventSource before the first source.
+  res.flushHeaders?.();
+
+  const send = (event: string, data: unknown) => {
+    if (res.writableEnded) return;
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // If the client disconnects mid-pull, stop resolving further sources.
+  let aborted = false;
+  req.on("close", () => {
+    aborted = true;
+  });
+
+  try {
+    const coords = await resolveCoordinates(parsed.data);
+    if (!coords.ok) {
+      send("unresolved", {
+        reason: coords.reason,
+        message: coords.message,
+        query: coords.query,
+      });
+      return res.end();
+    }
+
+    send("meta", {
+      coordinates: { lat: coords.lat, lng: coords.lng },
+      matchedAddress: coords.matchedAddress,
+      categories: PUBLIC_CATEGORIES,
+    });
+
+    const started = Date.now();
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const category of PUBLIC_CATEGORIES) {
+      if (aborted || res.writableEnded) break;
+      try {
+        // One category per resolveParcel call — same spine, same cache/circuit,
+        // flushed the instant it lands. A failing category degrades to an
+        // honest empty tile rather than aborting the whole stream.
+        const resolved = await resolveParcel(
+          { type: "coordinates", latitude: coords.lat, longitude: coords.lng },
+          { categories: [category], orgTier: "free", maxTier: "free" },
+        );
+        const result = toPublicResult(category, resolved.results[category]);
+        if (result.available) successCount += 1;
+        else failureCount += 1;
+        send("source", result);
+      } catch (error) {
+        logger.warn("[public-parcel-check] stream source failed", {
+          category,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        failureCount += 1;
+        // Honest: a source that throws streams an unavailable tile, never a fake.
+        send("source", toPublicResult(category, undefined));
+      }
+    }
+
+    if (!aborted && !res.writableEnded) {
+      send("done", {
+        successCount,
+        failureCount,
+        lookupTimeMs: Date.now() - started,
+      });
+    }
+    return res.end();
+  } catch (error) {
+    logger.error("[public-parcel-check] stream failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (!res.writableEnded) {
+      send("error", {
+        message: "Something went wrong running that check. Try again in a moment.",
+      });
+      return res.end();
+    }
+  }
+});
+
 router.get("/", ipCeiling, sessionLimiter, async (req: Request, res: Response) => {
   try {
     const parsed = querySchema.safeParse(req.query);
