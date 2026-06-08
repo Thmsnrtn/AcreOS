@@ -13,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { QueryErrorState } from "@/components/query-error-state";
+import { PullToRefresh } from "@/components/mobile/PullToRefresh";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
 import {
   Users,
   Map,
@@ -218,6 +220,19 @@ export default function TodayPage() {
     [resolveItem],
   );
 
+  // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
+  // A pull gesture at the top re-pulls the consolidated /api/today payload
+  // and invalidates the sibling caches Today renders (parcel alerts, the
+  // dashboard stats lede). No-ops on pointer/desktop (PullToRefresh gates on
+  // useIsMobile). Haptic fires inside PullToRefresh at the threshold commit.
+  const handlePullRefresh = React.useCallback(async () => {
+    await Promise.all([
+      refetchToday(),
+      queryClient.invalidateQueries({ queryKey: ["/api/parcel-alerts"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] }),
+    ]);
+  }, [refetchToday]);
+
   // ── Pax autonomy threshold (read-only on Today) ────────────────────────
   // Today only READS the saved threshold to inform the "Pax would handle"
   // visual in the Decision Queue. The slider that edits this value moved
@@ -366,6 +381,7 @@ export default function TodayPage() {
 
   return (
     <PageShell label="Today">
+      <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6 md:space-y-8">
       {/* ── Section 1: Hero greeting ─────────────────────────────────── */}
       <div className="acr-cc-hero">
         <div>
@@ -394,7 +410,9 @@ export default function TodayPage() {
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
               <span className="font-medium">Review now</span>
-              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
+              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">
+                <AnimatedCounter value={pendingDecisionCount} />
+              </Badge>
               <ArrowRight className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
             </Link>
           )}
@@ -588,6 +606,7 @@ export default function TodayPage() {
       {/* Kept as a standalone component — it owns its own infinite-scroll
           pagination, so it is intentionally not merged into /api/today. */}
       {!showEmptyState && !todayError && <TodayActivityFeed />}
+      </PullToRefresh>
     </PageShell>
   );
 }
