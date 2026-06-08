@@ -9,6 +9,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
+import { recordStripeWebhookFailure } from "./metrics";
+import { notifyOnCall } from "./services/oncall";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { metricsMiddleware, metricsHandler } from "./middleware/metrics";
@@ -217,6 +219,20 @@ app.post(
       res.status(200).json({ received: true });
     } catch (error: any) {
       log(`Webhook error: ${error.message}`, 'stripe');
+      // A failed webhook can mean a customer was charged but not provisioned —
+      // a true production P0. Record the metric and page on-call. Fire-and-forget
+      // so a slow alert delivery never holds the HTTP response (Stripe retries
+      // on non-2xx regardless).
+      recordStripeWebhookFailure();
+      void notifyOnCall(
+        "P0",
+        "Stripe webhook processing failed",
+        `A Stripe webhook failed to process and returned non-2xx (Stripe will retry).\n` +
+          `A customer may have been charged but not provisioned.\n\nError: ${error?.message ?? "unknown"}`,
+        { source: "stripe_webhook" },
+      ).catch((notifyErr) => {
+        logger.error("[StripeWebhook] notifyOnCall failed", notifyErr);
+      });
       res.status(400).json({ error: 'Webhook processing error' });
     }
   }

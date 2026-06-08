@@ -41,10 +41,10 @@ import {
   type IrSeverity,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sum, sql, lt } from "drizzle-orm";
-import { subHours, subDays, format } from "date-fns";
-import { emailService } from "../services/emailService";
+import { subHours, subDays } from "date-fns";
 import { clearAICache, getAICacheStats } from "../services/aiRouter";
 import { logger } from "../utils/logger";
+import { notifyOnCall } from "../services/oncall";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all limits are environment-variable controlled
@@ -63,9 +63,9 @@ const config = {
   // Auto-downgrade: if hourly spend exceeds this % of daily budget, force cheaper models
   AI_COST_THROTTLE_PCT: parseFloat(process.env.AI_COST_THROTTLE_PCT || "0.25"), // 25% hourly = throttle
 
-  // Notification settings
+  // Notification settings. Founder targeting (email + push user ids) is resolved
+  // by the on-call delivery service (services/oncall.ts), not here.
   NOTIFY_FOUNDER_ON_CRITICAL: process.env.HEALTH_NOTIFY_FOUNDER !== "false",
-  FOUNDER_EMAILS: (process.env.FOUNDER_EMAIL || "").split(",").map(e => e.trim()).filter(Boolean),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -498,46 +498,31 @@ async function checkRevenueHealth(): Promise<HealthCheckResult[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boolean> {
-  if (!config.NOTIFY_FOUNDER_ON_CRITICAL || config.FOUNDER_EMAILS.length === 0) return false;
+  if (!config.NOTIFY_FOUNDER_ON_CRITICAL) return false;
 
   const criticalChecks = checks.filter(c => c.status === "critical");
   if (criticalChecks.length === 0) return false;
 
-  const appUrl = process.env.APP_URL || "https://app.acreos.io";
-  const subject = `🔴 AcreOS Critical Alert — ${criticalChecks.length} issue(s) need attention`;
+  // Route through the single on-call delivery path so a critical finding reaches
+  // the founder's phone (VAPID push) — not just an unread email — and starts the
+  // ack-deadline timer. Health-monitor criticals are urgent-but-not-instant-page
+  // (a daily AI budget overrun, a stuck dunning org), so they raise as P1.
+  const title = criticalChecks.length === 1
+    ? criticalChecks[0].message
+    : `${criticalChecks.length} critical issues detected`;
 
-  const issueList = criticalChecks.map(c =>
+  const body = criticalChecks.map(c =>
     `• [${c.category}] ${c.message}${c.actionTaken ? `\n  Auto-action: ${c.actionTaken}` : ""}`
   ).join("\n");
 
-  const html = `
-<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:20px;">
-  <div style="background:#dc2626;padding:16px 20px;border-radius:8px;margin-bottom:16px;">
-    <h2 style="color:white;margin:0;font-size:18px;">🔴 AcreOS Critical Alert</h2>
-    <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">${format(new Date(), "MMMM d, yyyy 'at' h:mm a 'CT'")} · Autonomous Health Monitor</p>
-  </div>
-  <p style="color:#374151;font-size:14px;">The platform's autonomous health monitor detected ${criticalChecks.length} critical issue(s) that may need your attention:</p>
-  ${criticalChecks.map(c => `
-  <div style="border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:10px;background:#fef2f2;border-radius:0 6px 6px 0;">
-    <div style="font-size:11px;color:#dc2626;font-weight:700;text-transform:uppercase;">${c.category}</div>
-    <div style="font-size:14px;font-weight:600;color:#1a1a1a;margin-top:4px;">${c.message}</div>
-    ${c.actionTaken ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">Auto-action: ${c.actionTaken}</div>` : ""}
-  </div>`).join("")}
-  <div style="margin-top:20px;text-align:center;">
-    <a href="${appUrl}/founder/intelligence" style="background:#1e3a5f;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Open Founder Dashboard</a>
-  </div>
-  <p style="color:#9ca3af;font-size:11px;margin-top:16px;text-align:center;">
-    Sent by AcreOS Autonomous Health Monitor · You're receiving this because you're a verified founder.<br>
-    To disable these alerts, set HEALTH_NOTIFY_FOUNDER=false in environment variables.
-  </p>
-</div>`;
-
-  for (const email of config.FOUNDER_EMAILS) {
-    try {
-      await emailService.sendEmail({ to: email, subject, html, text: `Critical alert:\n\n${issueList}\n\nOpen dashboard: ${appUrl}/founder/intelligence` });
-    } catch (err: any) {
-      logger.warn(`[HealthMonitor] Failed to notify founder ${email}`, { metadata: { detail: err.message } });
-    }
+  try {
+    await notifyOnCall("P1", title, body, {
+      source: "autonomous_health_monitor",
+      categories: criticalChecks.map(c => c.category),
+    });
+  } catch (err: any) {
+    logger.warn("[HealthMonitor] notifyOnCall failed", { metadata: { detail: err.message } });
+    return false;
   }
 
   return true;
