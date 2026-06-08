@@ -5,7 +5,7 @@
 
 import { db } from "../db";
 import { notes, payments } from "@shared/schema";
-import { eq, and, sql, gte, lte, desc, count, sum } from "drizzle-orm";
+import { eq, and, sql, gte, lte } from "drizzle-orm";
 
 // Item 86: Payment calendar data
 export async function getPaymentCalendar(orgId: number, year: number, month: number): Promise<Array<{
@@ -27,12 +27,14 @@ export async function getPaymentCalendar(orgId: number, year: number, month: num
     // TODO(tsc): notes has no paymentDueDay column; derive the due day-of-month from firstPaymentDate.
     const dueDay = note.firstPaymentDate ? new Date(note.firstPaymentDate).getDate() : 1;
     if (dueDay >= 1 && dueDay <= endDate.getDate()) {
+      const status: "upcoming" | "received" | "late" =
+        new Date(year, month - 1, dueDay) < new Date() ? "late" : "upcoming";
       calendar.push({
         day: dueDay,
         noteId: note.id,
         borrowerName: (note as any).borrowerName || `Note #${note.id}`,
         amount: Number(note.monthlyPayment) || 0,
-        status: new Date(year, month - 1, dueDay) < new Date() ? "late" : "upcoming" as any,
+        status,
       });
     }
   }
@@ -89,12 +91,16 @@ export async function getCollectionRate(orgId: number, months: number = 6): Prom
         lte(payments.paymentDate, monthEnd),
       ));
 
-    // Estimate expected from active notes
-    const [noteCount] = await db.select({ count: count() })
+    // Expected = the actual sum of scheduled monthly payments across active
+    // notes (real contracted figures), not a fabricated per-note average.
+    // monthlyPayment is NOT NULL on the notes table, so this is sourced data.
+    const [expectedRow] = await db.select({
+      total: sql<number>`COALESCE(SUM(${notes.monthlyPayment}), 0)`,
+    })
       .from(notes)
       .where(and(eq(notes.organizationId, orgId), sql`${notes.status} = 'active'`));
 
-    const expected = (noteCount?.count || 0) * 500; // rough average
+    const expected = Number(expectedRow?.total || 0);
     const rate = expected > 0 ? Math.min(100, Math.round((Number(received?.total || 0) / expected) * 100)) : 0;
 
     monthlyRates.push({ month: monthLabel, rate });
@@ -114,18 +120,34 @@ export async function getNoteSeasoning(orgId: number): Promise<Array<{ noteId: n
     .where(and(eq(notes.organizationId, orgId), sql`${notes.status} = 'active'`))
     .limit(50);
 
-  return activeNotes.map(note => {
+  // Honesty: derive on-time / total counts from the ACTUAL payments table.
+  // The prior implementation asserted onTimePayments === monthsSeasoned,
+  // i.e. a perfect record for every note regardless of reality — a flattering
+  // fabrication. We instead count completed payments and the subset that
+  // posted on or before their due date.
+  return Promise.all(activeNotes.map(async (note) => {
     const created = note.createdAt ? new Date(note.createdAt) : new Date();
     const monthsSeasoned = Math.floor((Date.now() - created.getTime()) / (30 * 24 * 60 * 60 * 1000));
+
+    const [tally] = await db.select({
+      total: sql<number>`COUNT(*)`,
+      onTime: sql<number>`COUNT(*) FILTER (WHERE ${payments.paymentDate} <= ${payments.dueDate})`,
+    })
+      .from(payments)
+      .where(and(
+        eq(payments.organizationId, orgId),
+        eq(payments.noteId, note.id),
+        sql`${payments.status} = 'completed'`,
+      ));
 
     return {
       noteId: note.id,
       borrowerName: (note as any).borrowerName || `Note #${note.id}`,
       monthsSeasoned,
-      onTimePayments: monthsSeasoned, // Simplified — would query payment history
-      totalPayments: monthsSeasoned,
+      onTimePayments: Number(tally?.onTime || 0),
+      totalPayments: Number(tally?.total || 0),
     };
-  });
+  }));
 }
 
 // Item 100: Multi-note discount calculator
