@@ -12191,6 +12191,47 @@ export const insertWorkerHeartbeatSchema = createInsertSchema(workerHeartbeat).o
 export type InsertWorkerHeartbeat = z.infer<typeof insertWorkerHeartbeatSchema>;
 export type WorkerHeartbeat = typeof workerHeartbeat.$inferSelect;
 
+// ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
+// The /today Decision Queue is DERIVED — its items are computed each request
+// from leads / deals / observations / tasks (server/routes-today.ts). There is
+// no row to flip "done" on. This table is the durable resolution ledger: one
+// row per (org, synthetic item id) that the operator has acted on inline, so
+// the GET payload can subtract resolved/snoozed items and shrink the queue
+// toward the rewarding "you're clear for today" zero-state.
+//
+//   • status "done"      — handled in place; hide permanently.
+//   • status "dismissed" — not relevant; hide permanently.
+//   • status "snoozed"   — hide until snoozedUntil, then re-surface.
+//
+// The item id is the SAME synthetic string the queue builder emits
+// (e.g. "stale-lead-42", "priority-follow-up"). It is intentionally NOT a FK —
+// the underlying entity may be a lead, deal, observation, task, or a purely
+// computed priority with no row at all. Leading-org composite index keeps the
+// per-tenant subtract a single index probe (Tahoe shard-readiness).
+export const todayQueueState = pgTable("today_queue_state", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  // The synthetic decision-item id from the queue builder (not a FK).
+  itemId: text("item_id").notNull(),
+  // "done" | "dismissed" | "snoozed"
+  status: text("status").notNull(),
+  // When a snoozed item should re-surface (null for done/dismissed).
+  snoozedUntil: timestamp("snoozed_until"),
+  resolvedBy: text("resolved_by"), // user id that acted, for audit
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgItemIdx: uniqueIndex("today_queue_state_org_item_idx").on(table.organizationId, table.itemId),
+}));
+
+export const insertTodayQueueStateSchema = createInsertSchema(todayQueueState).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type TodayQueueState = typeof todayQueueState.$inferSelect;
+export type InsertTodayQueueState = z.infer<typeof insertTodayQueueStateSchema>;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),

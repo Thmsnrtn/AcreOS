@@ -1,6 +1,6 @@
 import React from "react";
 import { PageShell } from "@/components/page-shell";
-import { useTerm } from "@/hooks/use-persona";
+import { useTerm, usePersona } from "@/hooks/use-persona";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,11 +31,12 @@ import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { DecisionQueue, type DecisionItem } from "@/components/today/DecisionQueue";
+import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
+import { getTodayLayout } from "@/components/today/TodayLayout";
 import "./today.css";
 
 // Consolidated /api/today payload (server/routes-today.ts).
@@ -160,6 +161,63 @@ export default function TodayPage() {
   const decisionQueueLoading = todayLoading;
   const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
 
+  // ── Inline queue resolution (Maren CPO #2) ─────────────────────────────
+  // The habit-loop core: resolve a Decision Queue item in place (Done /
+  // Snooze 3d / Dismiss) so the queue shrinks toward the rewarding "you're
+  // clear for today" zero-state. We optimistically drop the row from the
+  // cached /api/today payload, then PATCH; on error we restore + toast. The
+  // server's resolution ledger keeps the item hidden on the next fetch.
+  const [resolvingIds, setResolvingIds] = React.useState<Set<string>>(() => new Set());
+  const resolveItem = useMutation<
+    unknown,
+    Error,
+    { itemId: string; action: ResolveAction },
+    { previous?: TodayPayload }
+  >({
+    mutationFn: async ({ itemId, action }) => {
+      const res = await apiRequest("PATCH", `/api/today/queue/${encodeURIComponent(itemId)}`, { action });
+      if (!res.ok) throw new Error("Failed to resolve item");
+      return res.json();
+    },
+    onMutate: async ({ itemId }) => {
+      setResolvingIds((prev) => new Set(prev).add(itemId));
+      await queryClient.cancelQueries({ queryKey: ["/api/today"] });
+      const previous = queryClient.getQueryData<TodayPayload>(["/api/today"]);
+      if (previous) {
+        queryClient.setQueryData<TodayPayload>(["/api/today"], {
+          ...previous,
+          queue: previous.queue.filter((q) => q.id !== itemId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/today"], context.previous);
+      }
+      toast({
+        variant: "destructive",
+        title: "Couldn't update that item",
+        description: "It's back in your queue — try again in a moment.",
+      });
+    },
+    onSettled: (_data, _err, vars) => {
+      setResolvingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(vars.itemId);
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
+    },
+  });
+
+  const handleResolve = React.useCallback(
+    (itemId: string, action: ResolveAction) => {
+      resolveItem.mutate({ itemId, action });
+    },
+    [resolveItem],
+  );
+
   // ── Pax autonomy threshold (read-only on Today) ────────────────────────
   // Today only READS the saved threshold to inform the "Pax would handle"
   // visual in the Decision Queue. The slider that edits this value moved
@@ -203,6 +261,14 @@ export default function TodayPage() {
 
   // Cash strip + pipeline aggregates now arrive pre-computed from /api/today.
   const cash = today?.cash;
+
+  // ── Vertical Today (Maren CPO #3) ──────────────────────────────────────
+  // The vertical's most fiduciary obligation leads the day: note investors see
+  // payments-due + delinquency, tax-lien operators see the redemption clock.
+  // Generic stays the default. The lede composes data the page already has —
+  // no extra fetch — and is rendered above the Decision Queue.
+  const persona = usePersona();
+  const todayLayout = getTodayLayout(persona);
 
   // ── Empty-state / welcome-back state machine (single pathway) ──────────
   const hasAnyData =
@@ -476,12 +542,27 @@ export default function TodayPage() {
           what happened overnight. The slider now lives at /settings/pax. */}
       {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
 
+      {/* ── Vertical lede (Maren CPO #3) ─────────────────────────────── */}
+      {/* The vertical's most fiduciary obligation, surfaced first: payments-
+          due/delinquency for note investors, the redemption clock for tax-
+          lien operators. Generic verticals render nothing here. */}
+      {!showEmptyState && !todayError && todayLayout.Lede && (
+        <todayLayout.Lede
+          data={{
+            pendingPayments30: cash?.pendingPayments30 ?? 0,
+            lateCount: cash?.lateCount ?? 0,
+          }}
+        />
+      )}
+
       {/* ── Section 2: Decision queue (merged) ───────────────────────── */}
       {!showEmptyState && !todayError && (
         <DecisionQueue
           items={decisionItems}
           isLoading={decisionQueueLoading}
           autoThreshold={autoThreshold}
+          onResolve={handleResolve}
+          resolvingIds={resolvingIds}
         />
       )}
 
