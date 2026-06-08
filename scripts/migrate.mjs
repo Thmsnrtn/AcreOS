@@ -1439,6 +1439,13 @@ const STATEMENTS = [
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature.autonomy-matrix', 'Autonomy matrix', 'Per-agent × per-action × thresholds permissions', false, 'founder-only', '{}'::jsonb, '["/settings"]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
+  // Andrei E5 (migration 0138) — Pax land-expertise retrieval rollout flag.
+  // founder-only until the retrieval-recall eval is green; runtime tool-list
+  // builder additionally gates on PAX_LAND_KNOWLEDGE_ENABLED env flag. Cards
+  // live in the existing solene_embedded_records registry (no new table).
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
+   VALUES ('feature.pax-land-knowledge', 'Pax land-knowledge retrieval', 'Lets Pax retrieve curated, cited land-domain knowledge cards (FEMA flood zones, USDA soils/perc, seller-finance/usury mechanics, diligence traps) for explanatory turns. Distinct from parcel-fact lookups; every card carries a citation.', false, 'founder-only', '{}'::jsonb, '[]'::jsonb)
+   ON CONFLICT ("key") DO NOTHING`,
 
   // ── Phase 3 Week 7-8 (P2-11): Postgres extensions. Migration 0044. ──────
   // pgvector for Sayuri-Vatanen embeddings, pg_trgm for Anaïs fuzzy search,

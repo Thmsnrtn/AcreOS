@@ -47,7 +47,7 @@ export const DEFAULT_PAX_PROMPT_VERSION: PaxPromptVersion = "v3";
  * Constraints honored: Beatrice immutable #1 (no lying-by-omission), #7 (AI
  * disclosure already handled in pax.tsx), #12 (no fiduciary "you should buy").
  */
-export const DATA_GROUNDING_VERSION = "dg-v1";
+export const DATA_GROUNDING_VERSION = "dg-v2";
 
 /**
  * Changelog for the DATA_GROUNDING block. Every edit appends an entry with the
@@ -69,6 +69,21 @@ export const DATA_GROUNDING_CHANGELOG: ReadonlyArray<{
       "recommendations stay informational with uncertainty bands, never 'you should buy'. " +
       "Seeded 15 data-grounding ai_test_cases (surface=pax_inbox) as the eval baseline.",
   },
+  {
+    version: "dg-v2",
+    date: "2026-06-08",
+    note:
+      "Added the KNOWLEDGE-CARD attribution clause for the retrieve_land_knowledge " +
+      "tool (Andrei E5): explanatory claims sourced from a land-knowledge card must " +
+      "attribute the card's citation, and a card's GENERAL statement must NEVER be " +
+      "blended into a PARCEL-SPECIFIC assertion (a parcel fact still requires a parcel " +
+      "lookup this turn). Covered by the land-knowledge retrieval-recall + citation-" +
+      "contract eval (server/services/pax/landKnowledge/recall.eval.test.ts), which " +
+      "gates the feature flag before it touches a customer: retrieval-recall@3 = " +
+      "96.2% (51/53 labeled query→card pairs) on a strict lexical lower bound " +
+      "(2026-06-08); production Voyage embeddings exceed this floor. Gated behind " +
+      "feature.pax-land-knowledge (founder-only) + PAX_LAND_KNOWLEDGE_ENABLED.",
+  },
 ];
 
 /**
@@ -80,7 +95,8 @@ export const PAX_DATA_GROUNDING_BLOCK = `DATA GROUNDING (mandatory — never vio
 - When you DO state a retrieved fact, cite its source and vintage in plain language, e.g. "FEMA Zone AE (FEMA NFHL, effective 2021-09)" or "~9.3 acres (County GIS, as of 2024)". Use the source and sourceAsOf the tool returned.
 - When a lookup MISSED or returned no value, say so plainly — "I don't have that for this parcel yet" — and never name a zone/soil/acreage/owner anyway. Then offer the paid-tier lookup path (e.g. "a paid lookup could pull this — want me to use a credit?"), rather than guessing.
 - Distinguish authoritative facts (county/federal systems of record) from estimates and modeled scores. Never present an estimate or a computed score as an authoritative fact.
-- Recommendations stay INFORMATIONAL with an uncertainty band ("comps suggest roughly $2,400-$3,800/acre; verify with local comps"). Never tell the customer "you should buy" / "you should pass" — surface the tradeoffs and let them decide.`;
+- Recommendations stay INFORMATIONAL with an uncertainty band ("comps suggest roughly $2,400-$3,800/acre; verify with local comps"). Never tell the customer "you should buy" / "you should pass" — surface the tradeoffs and let them decide.
+- KNOWLEDGE CARDS vs PARCEL FACTS: when you answer an explanatory question using a retrieve_land_knowledge card, attribute the explanation to that card's citation (e.g. "per FEMA's flood-zone definitions, Zone AE means…"). A card explains a GENERAL mechanism — it is NEVER evidence about the customer's specific parcel. Never blend a card's general statement into a parcel-specific assertion: do not say "your parcel is in Zone AE" (a parcel fact) on the strength of a card; that fact must come from a parcel lookup this turn. Keep the general explanation and the specific parcel fact in separate, clearly-sourced statements.`;
 
 /**
  * v3 response-shape rule — prepended to the system prompt.
