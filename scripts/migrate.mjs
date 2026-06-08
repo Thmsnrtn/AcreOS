@@ -6617,6 +6617,34 @@ const STATEMENTS = [
      "updated_at" timestamptz NOT NULL DEFAULT now()
    )`,
   `INSERT INTO "worker_heartbeat" ("id", "updated_at") VALUES (1, now()) ON CONFLICT ("id") DO NOTHING`,
+
+  // ── 0140 — Rafe — the Recourse Loop draft ledger ────────────────────────────
+  // Every negative customer signal (detractor NPS ≤6, low support rating ≤2/5,
+  // cancellation) becomes a drafted, personal, same-hour human reply in one
+  // founder queue, one-click to edit-and-send, with the sent reply persisted
+  // back so the loop is auditable.
+  // Mirrors shared/schema/recourse-drafts.ts + migrations/0140_recourse_drafts.sql.
+  `CREATE TABLE IF NOT EXISTS "recourse_drafts" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "signal_type" text NOT NULL,
+     "signal_ref_type" text NOT NULL,
+     "signal_ref_id" integer,
+     "recipient_user_id" text,
+     "recipient_email" text,
+     "customer_verbatim" text,
+     "context_summary" text,
+     "draft_body" text,
+     "draft_model" text,
+     "sent_body" text,
+     "status" text NOT NULL DEFAULT 'draft',
+     "sent_at" timestamptz,
+     "email_status" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "recourse_drafts_org_status_created_idx" ON "recourse_drafts" ("organization_id", "status", "created_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "recourse_drafts_signal_ref_idx" ON "recourse_drafts" ("signal_ref_type", "signal_ref_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

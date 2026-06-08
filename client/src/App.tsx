@@ -298,6 +298,9 @@ const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/reco
 const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
 // Quinn + Rafe — "appeal the AI" founder review surface. GET /api/founder/appeals.
 const FounderAppealsPage = React.lazy(() => import("@/pages/founder/appeals"));
+// Rafe — the Recourse Loop. Every negative customer signal → a drafted,
+// personal, same-hour human reply. GET /api/founder/recourse.
+const FounderRecoursePage = React.lazy(() => import("@/pages/founder/recourse"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 // L6.32 founder-collab UI — surface for /api/founder/asks (commit 05a2e122).
@@ -1152,6 +1155,9 @@ function Router() {
       </Route>
       <Route path="/founder/appeals">
         {() => <FounderProtectedRoute component={FounderAppealsPage} />}
+      </Route>
+      <Route path="/founder/recourse">
+        {() => <FounderProtectedRoute component={FounderRecoursePage} />}
       </Route>
       {/* Legacy binary-flag page consolidated to /founder/features per
           JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-

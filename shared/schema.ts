@@ -16906,6 +16906,12 @@ export * from "./schema/pax-refusal-payloads";
 export * from "./schema/pax-decision-appeals";
 
 // ============================================================================
+// RAFE — The Recourse Loop draft ledger (every negative customer signal →
+// a drafted, personal, same-hour human reply; one founder queue, auditable).
+// ============================================================================
+export * from "./schema/recourse-drafts";
+
+// ============================================================================
 // QUINN — Transparency report substrate (Tahoe wave E9 — rolling 90-day
 // aggregation; nightly job populates, /transparency surface ships later).
 // ============================================================================
