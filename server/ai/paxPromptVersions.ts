@@ -79,7 +79,9 @@ export const DATA_GROUNDING_CHANGELOG: ReadonlyArray<{
       "blended into a PARCEL-SPECIFIC assertion (a parcel fact still requires a parcel " +
       "lookup this turn). Covered by the land-knowledge retrieval-recall + citation-" +
       "contract eval (server/services/pax/landKnowledge/recall.eval.test.ts), which " +
-      "gates the feature flag before it touches a customer. Gated behind " +
+      "gates the feature flag before it touches a customer: retrieval-recall@3 = " +
+      "96.2% (51/53 labeled query→card pairs) on a strict lexical lower bound " +
+      "(2026-06-08); production Voyage embeddings exceed this floor. Gated behind " +
       "feature.pax-land-knowledge (founder-only) + PAX_LAND_KNOWLEDGE_ENABLED.",
   },
 ];
