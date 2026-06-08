@@ -34,16 +34,19 @@
 
 type StartViewTransition = (callback: () => void) => unknown;
 
-interface DocumentWithViewTransitions extends Document {
-  startViewTransition?: StartViewTransition;
-}
+// A structural view of `document` that does NOT extend `Document`. Extending it
+// would clash with the lib.dom `startViewTransition` declaration (non-optional,
+// different signature) on TS versions that ship it — TS2430. Accessing the
+// method through `document as unknown as DocumentWithViewTransitions` is
+// version-agnostic: it works whether or not the DOM lib declares the API.
+type DocumentWithViewTransitions = { startViewTransition?: StartViewTransition };
 
 /** True when the browser exposes the View Transitions API. */
 export function supportsViewTransitions(): boolean {
   return (
     typeof document !== "undefined" &&
-    typeof (document as DocumentWithViewTransitions).startViewTransition ===
-      "function"
+    typeof (document as unknown as DocumentWithViewTransitions)
+      .startViewTransition === "function"
   );
 }
 
@@ -64,7 +67,9 @@ export function withViewTransition(update: () => void): void {
     return;
   }
   try {
-    (document as DocumentWithViewTransitions).startViewTransition!(update);
+    (document as unknown as DocumentWithViewTransitions).startViewTransition!(
+      update,
+    );
   } catch {
     // Some engines throw if a transition is already in flight; fall back to a
     // plain synchronous update rather than dropping the navigation entirely.
