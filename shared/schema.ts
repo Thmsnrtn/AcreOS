@@ -12232,6 +12232,81 @@ export const insertTodayQueueStateSchema = createInsertSchema(todayQueueState).o
 export type TodayQueueState = typeof todayQueueState.$inferSelect;
 export type InsertTodayQueueState = z.infer<typeof insertTodayQueueStateSchema>;
 
+// ── 0142 — Beatrice (CRO) — OFAC/sanctions advisory screening results ───────
+// Records the outcome of an ADVISORY name-screen of a counterparty (a lead /
+// borrower / seller) against an OFAC SDN-style sanctions list. This is NOT a
+// legal determination and NOT a block — a `potential_match` raises a
+// founder-visible flag for MANUAL review; the originating action (e.g. lead
+// creation) always proceeds.
+//
+// One row per (counterparty × screen). The screen is fuzzy: `matchScore` is a
+// 0..1 normalized-name similarity; `result` is the bucketed decision. When
+// `result='potential_match'` we persist the matched SDN entry's display name +
+// program so a human can adjudicate without re-running the screen. We never
+// persist more counterparty PII than the screened name itself.
+//
+// Founder-visible flag = a row where `result='potential_match'` AND
+// `reviewedAt IS NULL`. Reviewing it (clearing / confirming) stamps
+// `reviewedAt` + `reviewedBy` + `reviewDisposition`.
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0142_sanctions_screenings.sql.
+export const sanctionsScreenings = pgTable("sanctions_screenings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // What kind of counterparty was screened + its id in its own table.
+  // Not a FK — the subject may be a lead, borrower, contact, or an ad-hoc
+  // name with no row at all (e.g. a deal counterparty typed by hand).
+  subjectType: text("subject_type").notNull(), // "lead" | "borrower" | "contact" | "ad_hoc"
+  subjectId: text("subject_id"), // string id of the subject row, or null for ad_hoc
+  // The screened name AS PRESENTED (display only). The match itself runs on a
+  // normalized form; we keep the raw name so a reviewer sees what was checked.
+  screenedName: text("screened_name").notNull(),
+  // Bucketed advisory outcome. NOT a legal determination.
+  //   "clear"           — no entry scored above the match threshold.
+  //   "potential_match" — at least one entry scored above the threshold;
+  //                       requires MANUAL human review.
+  //   "error"           — the screen could not complete (engine/data error).
+  result: text("result").notNull(),
+  // 0..1 best-match similarity score (highest across all candidate entries).
+  matchScore: real("match_score").notNull().default(0),
+  // The matched SDN-style entry, when result='potential_match'. Display name +
+  // program (e.g. "SDN", "SDGT") + the list source identifier.
+  matchedEntryName: text("matched_entry_name"),
+  matchedEntryProgram: text("matched_entry_program"),
+  listSource: text("list_source").notNull().default("bundled-fixture"),
+  // Snapshot of the engine for reproducibility / audit.
+  engineVersion: text("engine_version").notNull().default("v1"),
+  threshold: real("threshold").notNull(),
+  // Human review of a potential match. Null until a human acts.
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+  // "false_positive" | "confirmed_match" | "inconclusive"
+  reviewDisposition: text("review_disposition"),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Lead with organization_id (Tahoe shard-readiness — leading-org composite).
+  byOrgCreated: index("sanctions_screenings_org_created_idx").on(
+    table.organizationId,
+    table.createdAt,
+  ),
+  // Founder-flag lookup: open potential matches per org, newest first.
+  byOrgResult: index("sanctions_screenings_org_result_idx").on(
+    table.organizationId,
+    table.result,
+    table.reviewedAt,
+  ),
+}));
+
+export const insertSanctionsScreeningSchema = createInsertSchema(sanctionsScreenings).omit({
+  id: true,
+  createdAt: true,
+});
+export type SanctionsScreening = typeof sanctionsScreenings.$inferSelect;
+export type InsertSanctionsScreening = z.infer<typeof insertSanctionsScreeningSchema>;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),
