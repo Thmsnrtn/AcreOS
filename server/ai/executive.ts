@@ -26,6 +26,20 @@ import { pickPaxModelForOrg } from "../services/paxModelTier";
 // cheapest eval-green model for the turn type).
 import { routePaxModelForTurn } from "./paxModelTier";
 import { predictCostCents } from "../services/aiCostRates";
+import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
+
+// Tahoe Andrei (2026-06-07): live runtime eval gate. The critical `pax_inbox`
+// forbidden-trait cases + gateOutputOrThrow ran only in CI, never on the live
+// Pax turn — so a paraphrased hallucination ("minimal flood risk" after a
+// zoning/flood MISS) cleared the heuristic guard AND the substring eval and
+// reached the customer. `evaluateLivePaxOutput` runs those critical cases'
+// forbidden-trait assertions in-process (no network, no DB) on the assembled
+// response, and a hit folds into the existing correction/deflection path.
+//
+// Reversible kill switch, mirroring DATA_GROUNDING_EVAL_GREEN in paxModelTier.ts:
+// set to `false` and the live gate is fully bypassed (the heuristic guard still
+// runs). Keyed to the same eval set/version (dg-v1, surface=pax_inbox).
+export const PAX_LIVE_GATE_ENABLED = true;
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -1885,6 +1899,81 @@ export async function* processChatStream(
     }
   } catch {
     /* guard is advisory — never block reply persistence on its failure */
+  }
+
+  // Tahoe Andrei (2026-06-07): LIVE EVAL GATE — runtime critical-case gating.
+  // The hallucination guard above catches fabricated numbers/entities; this
+  // catches the forbidden SEMANTIC patterns the guard can't see — the
+  // paraphrased hallucination ("minimal flood risk" after a flood MISS,
+  // "you should buy", "guaranteed to double"). It runs the SAME critical
+  // `pax_inbox` forbidden-trait assertions our CI uses, in-process on the
+  // already-assembled `fullResponse` (off the streaming hot loop, no network,
+  // no DB). On a hit we DON'T throw — we fold into the same correction/
+  // deflection machinery the guard uses, so the unsafe text is never persisted.
+  if (PAX_LIVE_GATE_ENABLED) {
+    try {
+      let gate = evaluateLivePaxOutput(fullResponse);
+      if (!gate.clear) {
+        logger.warn("[pax] live eval gate tripped on assistant reply", {
+          source: "pax",
+          metadata: {
+            organizationId: org.id,
+            conversationId: conversation.id,
+            hits: gate.hits.map((h) => ({ caseId: h.caseId, trait: h.trait })),
+          },
+        });
+
+        const tripped = gate.hits
+          .map((h) => `"${h.trait}" (${h.caseName})`)
+          .join("; ");
+        const correctionInstruction =
+          `Your previous draft asserted a parcel fact or made a directive/guarantee ` +
+          `that is not allowed and was NOT sent. Disallowed patterns it contained: ${tripped}. ` +
+          `Rewrite your answer using ONLY facts present in this turn's tool results. ` +
+          `If a lookup returned no value (flood zone, soil class, acreage, zoning, owner), ` +
+          `say plainly that you don't have it and offer the paid lookup — never name or imply ` +
+          `a value. Never tell the customer to buy or pass, and never guarantee a future return. ` +
+          `Stay informational.`;
+
+        try {
+          const correctionResponse = await client.chat.completions.create({
+            model,
+            messages: [
+              ...chatMessages,
+              { role: "assistant", content: fullResponse },
+              { role: "user", content: correctionInstruction },
+            ],
+            max_tokens: 1024,
+          });
+          const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
+          if (corrected) {
+            const recheck = evaluateLivePaxOutput(corrected);
+            if (recheck.clear) {
+              fullResponse = corrected;
+              gate = recheck;
+              yield { type: "correction", content: corrected } as any;
+            }
+          }
+        } catch (retryErr) {
+          logger.warn("[pax] live eval gate corrective retry failed", {
+            source: "pax",
+            metadata: { organizationId: org.id, conversationId: conversation.id },
+          });
+        }
+
+        // Still tripped after the rewrite → honest deflection, never persist
+        // the disallowed text.
+        if (!gate.clear) {
+          const deflection =
+            "I don't have verified data to answer that confidently right now. " +
+            "I can pull the underlying records first — want me to run that lookup?";
+          fullResponse = deflection;
+          yield { type: "correction", content: deflection } as any;
+        }
+      }
+    } catch {
+      /* live gate is defense-in-depth — never block persistence on its failure */
+    }
   }
 
   await createMessage({
