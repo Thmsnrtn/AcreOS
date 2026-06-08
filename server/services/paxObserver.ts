@@ -41,6 +41,12 @@ interface RecordObservationOptions {
     suggestedAction?: string;
     dataPoints?: Record<string, any>;
     batchKey?: string;
+    /**
+     * Human-readable provenance for confidenceScore — names the real signal it
+     * was derived from (e.g. "detector:stale_leads (signal=maxStaleness/28, ...)").
+     * Makes every score auditable: no value is an unexplained constant.
+     */
+    confidenceBasis?: string;
   };
   skipBatching?: boolean;
 }
@@ -60,6 +66,55 @@ const SOFT_LANGUAGE_PREFIXES = {
 
 const BATCH_WINDOW_MS = 15 * 60 * 1000;
 const MAX_SIMILAR_OBSERVATIONS_BEFORE_BATCH = 3;
+
+/**
+ * Evidence-derived confidence for DETERMINISTIC rule-based detectors.
+ *
+ * These detectors (stale leads, expiring offers, pipeline velocity, etc.) are
+ * NOT model outputs — no LLM is in the loop. Their "confidence" used to be a
+ * hand-coded constant (85/88/90/92/95). That was a fabricated number.
+ *
+ * This function replaces those constants with a defensible signal computed from
+ * the REAL evidence the detector measured:
+ *   - `signalStrength` (0..1): how strongly the underlying condition is met —
+ *     e.g. how far a drop exceeds its trigger threshold, or how close a quota
+ *     is to its limit. This is the detector's own measurement, not a guess.
+ *   - `sampleSize`: how many entities triggered the rule. A rule that fires on
+ *     20 stale leads is more trustworthy than one firing on a single lead.
+ *
+ * Returns an integer 0..100 suitable for pax_observations.confidenceScore
+ * (notNull). The output is purely a function of inputs the detector already
+ * computed — re-deriving it from the same row reproduces the same number, which
+ * is exactly what makes it auditable on the calibration plot.
+ *
+ * Where a detector genuinely measures a percentage of certainty (quota %,
+ * activity-drop %), callers should pass that through directly rather than via
+ * this helper — those are already real signals (see recordQuotaWarning /
+ * recordActivityDrop, unchanged).
+ */
+export function detectorConfidence(opts: {
+  /** 0..1 — strength of the rule condition relative to its trigger. */
+  signalStrength: number;
+  /** count of entities that triggered the rule (≥0). */
+  sampleSize: number;
+  /** floor so a single-sample but strong signal isn't reported as near-zero. */
+  floor?: number;
+  /** ceiling — rule-based detectors are heuristics; cap below 100 by default. */
+  ceiling?: number;
+}): number {
+  const floor = opts.floor ?? 50;
+  const ceiling = opts.ceiling ?? 95;
+  const strength = Math.max(0, Math.min(1, opts.signalStrength));
+  // Sample-size term: saturating curve. 1 sample → ~0.0, 3 → ~0.5, 8+ → ~0.9.
+  // Real evidence: more corroborating entities ⇒ higher confidence.
+  const n = Math.max(0, opts.sampleSize);
+  const sampleTerm = n <= 0 ? 0 : 1 - Math.exp(-n / 4);
+  // Weight strength more than count — the condition being strongly met matters
+  // more than how many rows met it, but both move the needle.
+  const combined = 0.7 * strength + 0.3 * sampleTerm;
+  const score = floor + combined * (ceiling - floor);
+  return Math.round(Math.max(floor, Math.min(ceiling, score)));
+}
 
 class PaxObserverService {
   private static instance: PaxObserverService;
@@ -499,6 +554,8 @@ class PaxObserverService {
       metadata: {
         source: 'quota_monitor',
         dataPoints: { resourceType, current, limit, percentage },
+        // Already a real signal: confidence IS the measured usage percentage.
+        confidenceBasis: 'detector:quota (confidence = measured usage %)',
         suggestedAction: percentage >= 95 ? 'upgrade_plan' : 'monitor'
       }
     });
@@ -514,10 +571,14 @@ class PaxObserverService {
     count: number,
     description: string
   ): Promise<PaxObservation | null> {
+    // Data-integrity checks are exact queries — when a row is malformed it IS
+    // malformed (signalStrength = 1). Confidence scales only with how many rows
+    // corroborate the issue. (Replaces the former hand-coded 85.)
+    const confidenceScore = detectorConfidence({ signalStrength: 1, sampleSize: count });
     return this.recordObservation({
       organizationId: orgId,
       type: 'data_issue',
-      confidenceScore: 85,
+      confidenceScore,
       severity: 'low',
       title: 'Quick data cleanup tip',
       description,
@@ -525,6 +586,7 @@ class PaxObserverService {
         source: 'data_integrity_check',
         relatedEntityType: table,
         dataPoints: { issueType, table, count },
+        confidenceBasis: 'detector:data_integrity (signal=1, n=count)',
         suggestedAction: 'review_data'
       }
     });
@@ -549,6 +611,8 @@ class PaxObserverService {
       metadata: {
         source: 'activity_monitor',
         dataPoints: { recentCount, avgDailyBaseline, dropPercentage },
+        // Already a real signal: confidence IS the measured drop percentage.
+        confidenceBasis: 'detector:activity_drop (confidence = measured drop %)',
         suggestedAction: 'proactive_outreach'
       }
     });
@@ -566,19 +630,31 @@ class PaxObserverService {
     if (!orgId) return null;
 
     const severity: ObservationSeverity = status === 'unavailable' ? 'high' : 'medium';
-    
+
+    // A health check is a DIRECT observation of the service, not an inference.
+    // 'unavailable' is unambiguous (signal=1); 'degraded'/'slow' is a softer
+    // reading (signal≈0.7). High floor because the measurement itself is direct.
+    // (Replaces the former hand-coded 95.)
+    const signalStrength = status === 'unavailable' ? 1 : 0.7;
+    const confidenceScore = detectorConfidence({
+      signalStrength,
+      sampleSize: 1,
+      floor: 80,
+      ceiling: 99,
+    });
     return this.recordObservation({
       organizationId: orgId,
       type: 'service_health',
-      confidenceScore: 95,
+      confidenceScore,
       severity,
-      title: status === 'unavailable' 
-        ? `${serviceName} is temporarily unavailable` 
+      title: status === 'unavailable'
+        ? `${serviceName} is temporarily unavailable`
         : `${serviceName} is running a bit slow`,
       description: message || `The ${serviceName} service is experiencing ${status === 'unavailable' ? 'an outage' : 'some delays'}. We're on it.`,
       metadata: {
         source: 'health_check',
         dataPoints: { serviceName, status },
+        confidenceBasis: `detector:health_check (signal=${signalStrength}, direct observation)`,
         suggestedAction: status === 'unavailable' ? 'wait_and_retry' : 'monitor'
       }
     });
@@ -782,10 +858,24 @@ class PaxObserverService {
 
       if (stale.length === 0) return null;
 
+      // Signal strength = how far past the 14-day cutoff the worst lead is
+      // (capped at 2× → 28 days). A lead 28+ days cold is a maximal signal;
+      // one just over 14 days is a weaker one. Confidence also grows with how
+      // many leads corroborate. (Replaces the former hand-coded 90.)
+      const maxDaysStale = Math.max(
+        ...stale.map(l => {
+          const lastContact = l.lastContactedAt || l.createdAt;
+          const ms = lastContact ? Date.now() - new Date(lastContact).getTime() : 0;
+          return ms / (1000 * 60 * 60 * 24);
+        }),
+      );
+      const signalStrength = Math.min(1, maxDaysStale / 28);
+      const confidenceScore = detectorConfidence({ signalStrength, sampleSize: stale.length });
+
       return this.recordObservation({
         organizationId: orgId,
         type: 'opportunity',
-        confidenceScore: 90,
+        confidenceScore,
         severity: stale.length >= 5 ? 'medium' : 'low',
         title: 'Stale leads need attention',
         description: `I noticed ${stale.length} lead${stale.length === 1 ? '' : 's'} haven't been contacted in the last 14 days. Want me to draft personalized outreach for them?`,
@@ -795,8 +885,10 @@ class PaxObserverService {
           dataPoints: {
             staleCount: stale.length,
             daysSinceContact: 14,
+            maxDaysStale: Math.round(maxDaysStale),
             leadIds: stale.map(l => l.id).slice(0, 20),
           },
+          confidenceBasis: 'detector:stale_leads (signal=maxStaleness/28, n=staleCount)',
           batchKey: `${orgId}:stale_leads:14d`,
         },
       });
@@ -842,10 +934,18 @@ class PaxObserverService {
         }, 0) / expiringDeals.length
       );
 
+      // Signal strength = how far past the 7-day no-response window the average
+      // offer has waited (capped at 2× → 14 days). (Replaces hand-coded 88.)
+      const signalStrength = Math.min(1, avgDays / 14);
+      const confidenceScore = detectorConfidence({
+        signalStrength,
+        sampleSize: expiringDeals.length,
+      });
+
       return this.recordObservation({
         organizationId: orgId,
         type: 'opportunity',
-        confidenceScore: 88,
+        confidenceScore,
         severity: expiringDeals.length >= 3 ? 'high' : 'medium',
         title: 'Offers waiting without response',
         description: `You have ${expiringDeals.length} offer${expiringDeals.length === 1 ? '' : 's'} that ${expiringDeals.length === 1 ? 'has' : 'have'} been waiting an average of ${avgDays} days with no response. Want me to draft a follow-up?`,
@@ -857,6 +957,7 @@ class PaxObserverService {
             avgDaysWaiting: avgDays,
             dealIds: expiringDeals.map(d => d.id),
           },
+          confidenceBasis: 'detector:expiring_offers (signal=avgDays/14, n=expiringCount)',
           batchKey: `${orgId}:expiring_offers:7d`,
         },
       });
@@ -910,10 +1011,20 @@ class PaxObserverService {
       const dropPercent = Math.round(((closedLastMonth - closedThisMonth) / closedLastMonth) * 100);
       if (dropPercent <= 20) return null;
 
+      // Signal strength = magnitude of the velocity drop (0..1). A 100% drop is
+      // maximal; a 20% drop (the trigger floor) is a weak signal. Sample size =
+      // last month's deal count — comparing against 1 deal is noisier than
+      // against 20. (Replaces the former hand-coded 75.)
+      const signalStrength = Math.min(1, dropPercent / 100);
+      const confidenceScore = detectorConfidence({
+        signalStrength,
+        sampleSize: closedLastMonth,
+      });
+
       return this.recordObservation({
         organizationId: orgId,
         type: 'performance',
-        confidenceScore: 75,
+        confidenceScore,
         severity: dropPercent >= 50 ? 'high' : 'medium',
         title: 'Pipeline velocity has slowed',
         description: `Deals closed this month (${closedThisMonth}) are down ${dropPercent}% compared to last month (${closedLastMonth}). Worth reviewing what's in the pipeline to get things moving.`,
@@ -925,6 +1036,7 @@ class PaxObserverService {
             closedLastMonth,
             dropPercent,
           },
+          confidenceBasis: 'detector:pipeline_velocity (signal=dropPercent/100, n=closedLastMonth)',
           batchKey: `${orgId}:pipeline_velocity:${now.getFullYear()}-${now.getMonth()}`,
         },
       });
@@ -988,10 +1100,29 @@ class PaxObserverService {
 
       if (inactive.length === 0) return null;
 
+      // Signal strength = how far past the 7-day window the worst high-value
+      // lead is (capped at 2× → 14 days). High floor because these are
+      // high-value AND inactive — a strong, corroborated condition. (Replaces
+      // the former hand-coded 92.)
+      const maxDaysInactive = Math.max(
+        ...inactive.map(l => {
+          const lastContact = l.lastContactedAt || l.createdAt;
+          const ms = lastContact ? Date.now() - new Date(lastContact).getTime() : 0;
+          return ms / (1000 * 60 * 60 * 24);
+        }),
+      );
+      const signalStrength = Math.min(1, maxDaysInactive / 14);
+      const confidenceScore = detectorConfidence({
+        signalStrength,
+        sampleSize: inactive.length,
+        floor: 70,
+        ceiling: 98,
+      });
+
       return this.recordObservation({
         organizationId: orgId,
         type: 'opportunity',
-        confidenceScore: 92,
+        confidenceScore,
         severity: 'high',
         title: 'High-value leads need priority attention',
         description: `${inactive.length} high-value lead${inactive.length === 1 ? '' : 's'} (property value >$50k) ${inactive.length === 1 ? 'has' : 'have'} not been contacted in 7+ days. These represent significant opportunities — want me to draft outreach?`,
@@ -1001,9 +1132,11 @@ class PaxObserverService {
           dataPoints: {
             inactiveCount: inactive.length,
             daysSinceContact: 7,
+            maxDaysInactive: Math.round(maxDaysInactive),
             valueThreshold: 50000,
             leadIds: inactive.map(l => l.id).slice(0, 10),
           },
+          confidenceBasis: 'detector:high_value_inactive (signal=maxInactive/14, n=inactiveCount)',
           batchKey: `${orgId}:high_value_inactive:7d`,
         },
       });

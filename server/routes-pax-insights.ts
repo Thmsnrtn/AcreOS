@@ -390,13 +390,27 @@ router.get("/pax-suggestions", async (req, res) => {
       });
     }
 
-    // Fill remaining slots from stale leads (up to 3 total)
+    // Fill remaining slots from stale leads (up to 3 total).
+    //
+    // Confidence here is NOT a model output — this is a deterministic
+    // staleness rule. The former hand-coded 0.82 was fabricated. We now derive
+    // it from the REAL signal the rule measures: how far past the 21-day
+    // staleness cutoff the lead is. A lead 42+ days cold (2× the cutoff) is a
+    // maximal-confidence follow-up candidate; a lead just over 21 days is a
+    // weaker one; a lead never contacted is treated as maximally stale.
+    const STALE_CUTOFF_DAYS = 21;
     for (const lead of staleFiltered) {
       if (suggestions.length >= 3) break;
       const daysSince = lead.lastContactedAt
         ? Math.floor((now.getTime() - new Date(lead.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000))
         : null;
       const daysText = daysSince != null ? `${daysSince} days ago` : "never";
+      // Never-contacted ⇒ maximal staleness signal (1.0). Otherwise scale by how
+      // far past the cutoff, capped at 2× the cutoff. Floor at 0.5 so a
+      // just-triggered rule isn't reported as near-zero.
+      const stalenessSignal =
+        daysSince == null ? 1 : Math.min(1, daysSince / (STALE_CUTOFF_DAYS * 2));
+      const confidence = Math.round((0.5 + 0.45 * stalenessSignal) * 100) / 100;
       suggestions.push({
         id: `stale-${lead.id}`,
         suggestion: `Follow up with ${lead.firstName} ${lead.lastName}`,
@@ -406,7 +420,7 @@ router.get("/pax-suggestions", async (req, res) => {
         actionUrl: `/leads?highlight=${lead.id}`,
         entityId: lead.id,
         entityType: "lead",
-        confidence: 0.82,
+        confidence,
       });
     }
 

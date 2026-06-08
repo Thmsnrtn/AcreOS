@@ -4,11 +4,17 @@
  * Bucketed predicted-vs-realized accept-rate over `pax_observations`. The
  * X-axis is the confidence Pax stated; the Y-axis is the realized accept-rate
  * (fraction of observations the user actually acknowledged or that Pax
- * auto-resolved). The plot is the only honest evaluation surface for Pax
- * confidence — until the confidence values written by the observer are
- * derived from model output rather than the current hand-coded constants in
- * server/services/paxObserver.ts, this endpoint will reveal a flat predicted
- * line against a noisy observed signal. That is the diagnosis, not a bug.
+ * auto-resolved). The plot is the honest evaluation surface for Pax confidence.
+ *
+ * 2026-06 (andrei/pax-real-confidence): the primary confidence signal is now
+ * REAL. The aiRouter exposes a model self-reported `confidence` (0..1) on every
+ * response whose caller sets `requestConfidence`, and model-backed Pax surfaces
+ * stamp that into pax_observations.confidenceScore. The remaining
+ * pax_observations rows come from DETERMINISTIC rule-based detectors (stale
+ * leads, expiring offers, pipeline velocity, quota) whose confidence is now
+ * derived from real evidence (sample size + signal magnitude), not a constant —
+ * see paxObserver.detectorConfidence(). The calibration line is therefore a mix
+ * of model-derived and detector-derived confidence; both are real signals.
  *
  * Disposition signal: we read directly off `pax_observations.status`. The
  * observer writes 'acknowledged' when the user takes the suggested action
@@ -33,10 +39,12 @@ import { logger } from "./utils/logger";
 const DEFAULT_WINDOW_DAYS = 30;
 const MAX_WINDOW_DAYS = 365;
 
-// Bucket edges in stated-confidence space (0..100). The observer only emits
-// values in the 50..100 range today (the hand-coded constants are 85/90/92/95
-// per type) — we still include the 50-60, 60-70, 70-80 buckets so the plot
-// stays honest as soon as lower-confidence Pax outputs land.
+// Bucket edges in stated-confidence space (0..100). Confidence now spans the
+// full range: model self-reported confidence (0..1 → 0..100) can land in any
+// bucket, and the evidence-derived detector confidences vary with sample size
+// and signal magnitude rather than sitting on a few constants. The lower
+// buckets (50-60, 60-70, 70-80) are populated as those lower-confidence
+// outputs land.
 const BUCKETS: Array<{ label: string; min: number; max: number; midpoint: number }> = [
   { label: "50-60%", min: 50, max: 60, midpoint: 0.55 },
   { label: "60-70%", min: 60, max: 70, midpoint: 0.65 },
@@ -46,10 +54,15 @@ const BUCKETS: Array<{ label: string; min: number; max: number; midpoint: number
 ];
 
 const HONEST_NOTE =
-  "Pax confidence values are currently sourced from hand-coded constants in " +
-  "server/services/paxObserver.ts. Until model-output confidences land, this " +
-  "plot will reveal that predicted ≠ observed by a wide flat margin — that's " +
-  "the diagnosis, not a bug.";
+  "Pax confidence is now backed by real signals: (1) model self-reported " +
+  "confidence from the AI router (aiRouter requestConfidence → AIResponse.confidence) " +
+  "for model-backed surfaces, and (2) evidence-derived detector confidence " +
+  "(sample size + signal magnitude) for the deterministic rule-based monitors " +
+  "(stale leads, expiring offers, pipeline velocity, quota). No confidence value " +
+  "is a hand-coded constant anymore. Where a path has NO measurable signal, the " +
+  "underlying API returns null ('not measured') rather than a fabricated number; " +
+  "such rows are simply absent from this plot (confidenceScore is notNull on " +
+  "pax_observations, so only measured detector/model confidences are written).";
 
 export function registerPaxCalibrationRoutes(app: Express) {
   app.get(

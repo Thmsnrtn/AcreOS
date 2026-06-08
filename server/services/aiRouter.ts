@@ -182,8 +182,32 @@ export function clearAICache() {
 // but the calls that escalate would have required human re-work anyway.
 // ============================================
 
-const QUALITY_THRESHOLD = 6; // Score out of 10 below which we escalate
-const CASCADE_ENABLED = true; // Can be disabled for cost-sensitivity testing
+// ── Cost-control levers (default to CURRENT behavior; no-op unless set) ───────
+// AI_CASCADE_ENABLED  — when "false"/"0"/"off"/"no", disables the quality-cascade
+//                       escalation entirely. Default (unset) → true → today's
+//                       behavior, unchanged.
+// AI_QUALITY_THRESHOLD — integer 1-10; the cascade fires when the quality-check
+//                       score falls *below* this. Default (unset/invalid) → 6,
+//                       exactly today's constant. Pure lever, behavior identical
+//                       when unset.
+function isCascadeEnabled(): boolean {
+  const raw = (process.env.AI_CASCADE_ENABLED ?? "true").trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
+}
+
+function getQualityThreshold(): number {
+  const raw = process.env.AI_QUALITY_THRESHOLD;
+  if (raw !== undefined) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1 && n <= 10) return n;
+  }
+  return 6; // unchanged default
+}
+
+// NOTE: the cascade-enabled flag and quality threshold are now read LIVE via
+// isCascadeEnabled() / getQualityThreshold() so the AI_CASCADE_ENABLED and
+// AI_QUALITY_THRESHOLD env knobs take effect without a redeploy. Defaults are
+// true / 6 respectively — identical to the prior hard-coded behavior.
 
 interface QualityCheckResult {
   score: number;       // 1-10
@@ -226,7 +250,7 @@ Respond with JSON only: {"score": <1-10>, "reason": "<one sentence>"}`;
 
     const parsed = JSON.parse(check.choices[0]?.message?.content || '{"score":8,"reason":"ok"}');
     const score = Math.max(1, Math.min(10, parsed.score || 8));
-    return { score, reason: parsed.reason || "", shouldEscalate: score < QUALITY_THRESHOLD };
+    return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold() };
   } catch {
     // On quality-check failure, assume response is good (fail open)
     return { score: 8, reason: "quality check failed — assuming adequate", shouldEscalate: false };
@@ -397,6 +421,22 @@ export interface AITask {
   // Uses claude-sonnet-4-6 with thinking tokens. Best quality for valuation models.
   useExtendedThinking?: boolean;
   thinkingBudget?: number; // max thinking tokens, default 8000
+  /**
+   * Model self-reported confidence (PRIMARY confidence signal).
+   *
+   * When true, the router:
+   *   1. Forces JSON response mode and appends a schema instruction asking the
+   *      model to include a top-level `confidence` field (a number in 0..1)
+   *      reflecting how sure it is of its own answer, as part of generation.
+   *   2. Parses that field back out of the response and exposes it on
+   *      `AIResponse.confidence` (0..1). If the model omits or malforms it,
+   *      `confidence` is `null` — an honest "not measured", never a constant.
+   *
+   * This is the real, model-derived confidence signal that replaces the
+   * hand-coded Pax confidence constants. Callers that don't set this flag get
+   * `confidence: undefined` (feature off) — behavior unchanged.
+   */
+  requestConfidence?: boolean;
 }
 
 export interface AIRouterConfig {
@@ -879,6 +919,62 @@ export interface AIResponse {
    * served the request so A/B deltas can be computed.
    */
   promptVersion?: { promptName: string; version: string; hash: string; isCandidate: boolean };
+  /**
+   * Model self-reported confidence in its own answer, in [0, 1].
+   *
+   * - A `number` 0..1 means the model populated a real `confidence` field as
+   *   part of generation (requires the caller to set `task.requestConfidence`).
+   * - `null` means confidence was REQUESTED but the model omitted or malformed
+   *   it — an honest "not measured", never a fabricated constant.
+   * - `undefined` means the caller never requested it (feature off).
+   *
+   * This is the primary, model-derived confidence signal that replaces the
+   * hand-coded Pax confidence constants.
+   */
+  confidence?: number | null;
+}
+
+/**
+ * Instruction appended to the system prompt when a caller requests model
+ * self-reported confidence. Kept terse so it costs few tokens.
+ */
+export const CONFIDENCE_SCHEMA_INSTRUCTION =
+  "Return your answer as a single JSON object. In addition to your normal " +
+  "fields, include a top-level numeric field \"confidence\" in the range 0.0 to " +
+  "1.0 expressing how confident you are that your answer is correct and " +
+  "complete (1.0 = certain, 0.0 = pure guess). Base it on the strength of the " +
+  "evidence you actually used, not on politeness. Output JSON only.";
+
+/**
+ * Pure extraction of a model self-reported confidence value from a raw
+ * response body. Returns:
+ *   - a number in [0, 1] when the model emitted a valid `confidence` field,
+ *   - `null` when confidence was requested but is absent/malformed/out-of-range
+ *     (honest "not measured" — never a constant).
+ *
+ * Exported for direct unit testing of the parse contract.
+ */
+export function extractModelConfidence(content: string): number | null {
+  if (!content) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    // Tolerate a JSON object embedded in surrounding prose.
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      raw = JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const value = (raw as Record<string, unknown>).confidence;
+  const n = typeof value === "string" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+  if (n < 0 || n > 1) return null;
+  return n;
 }
 
 const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; cachedInput?: number }> = {
@@ -1019,7 +1115,7 @@ export async function routeAITask(
         latencyMs: cacheHitLatency,
         cacheHit: true,
       });
-      return { content: cached.content, provider: cached.provider, model: cached.model, usage: cached.usage, estimatedCost: 0 };
+      return { content: cached.content, provider: cached.provider, model: cached.model, usage: cached.usage, estimatedCost: 0, confidence: task.requestConfidence ? extractModelConfidence(cached.content) : undefined };
     }
 
     // ── Layer 2: Semantic dedup cache (catches paraphrased queries) ────────────
@@ -1041,7 +1137,7 @@ export async function routeAITask(
         latencyMs: semanticLatency,
         cacheHit: true,
       });
-      return { content: semanticHit.content, provider: semanticHit.provider, model: semanticHit.model, usage: semanticHit.usage, estimatedCost: 0 };
+      return { content: semanticHit.content, provider: semanticHit.provider, model: semanticHit.model, usage: semanticHit.usage, estimatedCost: 0, confidence: task.requestConfidence ? extractModelConfidence(semanticHit.content) : undefined };
     }
 
     cacheMisses++;
@@ -1084,6 +1180,10 @@ export async function routeAITask(
   let finalModel = model;
   let openrouterResponseId: string | null = null;
   let cachedInputTokens = 0;
+  // Tracks whether the caller asked for model self-reported confidence AND we
+  // were able to ask for it (extended thinking disables it). Confidence is
+  // extracted from the FINAL content (post-cascade) below.
+  let confidenceRequested = false;
 
   try {
     // ── Prompt caching: annotate system message with cache_control when eligible ─
@@ -1106,26 +1206,51 @@ export async function routeAITask(
       ? false
       : cacheEligible;
 
-    const messagesPayload = shouldCache
-      ? (task.messages ?? []).map(m =>
-          m.role === "system"
-            ? { ...m, cache_control: { type: "ephemeral" } }
-            : m
-        )
-      : (task.messages ?? []);
-
     // ── Extended thinking: for valuation/financial/legal reasoning ──────────────
     // Uses Sonnet 4.6's extended thinking mode for deeper chain-of-thought.
     // Only applies to Anthropic models that support it.
     const useThinking = task.useExtendedThinking && isAnthropicModel;
     const thinkingBudget = task.thinkingBudget || 8000;
 
+    // ── Model self-reported confidence (PRIMARY confidence signal) ──────────────
+    // When requested, append a schema instruction asking the model to emit a
+    // top-level `confidence` (0..1) as part of generation, and force JSON mode
+    // so it's parseable. Incompatible with extended thinking (no response_format
+    // there) — in that case we skip augmentation and surface honest-null below.
+    const wantsConfidence = task.requestConfidence === true && !useThinking;
+    confidenceRequested = task.requestConfidence === true;
+    let baseMessages = task.messages ?? [];
+    if (wantsConfidence) {
+      const sysIdx = baseMessages.findIndex(m => m.role === "system");
+      if (sysIdx >= 0) {
+        baseMessages = baseMessages.map((m, i) =>
+          i === sysIdx
+            ? { ...m, content: `${m.content}\n\n${CONFIDENCE_SCHEMA_INSTRUCTION}` }
+            : m,
+        );
+      } else {
+        baseMessages = [
+          { role: "system" as const, content: CONFIDENCE_SCHEMA_INSTRUCTION },
+          ...baseMessages,
+        ];
+      }
+    }
+
+    const messagesPayload = shouldCache
+      ? baseMessages.map(m =>
+          m.role === "system"
+            ? { ...m, cache_control: { type: "ephemeral" } }
+            : m
+        )
+      : baseMessages;
+
     const requestBody: any = {
       model,
       messages: messagesPayload,
       max_tokens: task.maxTokens || dbMaxTokens || (useThinking ? 16000 : 4096),
       temperature: useThinking ? 1 : (task.temperature ?? 0.7), // thinking requires temp=1
-      ...(task.responseFormat === "json" && !useThinking && { response_format: { type: "json_object" } }),
+      // Confidence requests force JSON mode so the `confidence` field is parseable.
+      ...((task.responseFormat === "json" || wantsConfidence) && !useThinking && { response_format: { type: "json_object" } }),
       ...(useThinking && { thinking: { type: "enabled", budget_tokens: thinkingBudget } }),
     };
 
@@ -1167,7 +1292,7 @@ export async function routeAITask(
   // Only cascade on non-complex tasks where we used a cheap model and the user
   // hasn't explicitly pinned a model.  Skipped when CASCADE_ENABLED = false.
   if (
-    CASCADE_ENABLED &&
+    isCascadeEnabled() &&
     task.complexity !== TaskComplexity.COMPLEX &&
     task.complexity !== TaskComplexity.CRITICAL && // already top tier
     !config.forceModel && !config.forcePremium && !config.useVision && !config.useReasoning && !config.useCritical &&
@@ -1186,12 +1311,27 @@ export async function routeAITask(
       if (escalatedModel) {
         logger.info(`[AIRouter] Cascade escalating ${task.taskType}: score=${quality.score}/10 "${quality.reason}" → ${escalatedModel}`);
         try {
+          // Re-augment with the confidence instruction so the escalated model
+          // also emits a `confidence` field when the caller requested it.
+          const escalatedMessages = (() => {
+            const base = task.messages ?? [];
+            if (!confidenceRequested) return base;
+            const sysIdx = base.findIndex(m => m.role === "system");
+            if (sysIdx >= 0) {
+              return base.map((m, i) =>
+                i === sysIdx
+                  ? { ...m, content: `${m.content}\n\n${CONFIDENCE_SCHEMA_INSTRUCTION}` }
+                  : m,
+              );
+            }
+            return [{ role: "system" as const, content: CONFIDENCE_SCHEMA_INSTRUCTION }, ...base];
+          })();
           const escalatedResponse = await client.chat.completions.create({
             model: escalatedModel,
-            messages: task.messages ?? [],
+            messages: escalatedMessages,
             max_tokens: task.maxTokens || dbMaxTokens || 4096,
             temperature: task.temperature ?? 0.7,
-            ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
+            ...((task.responseFormat === "json" || confidenceRequested) && { response_format: { type: "json_object" } }),
           });
           const escalatedContent = escalatedResponse.choices[0]?.message?.content || "";
           if (escalatedContent.length > content.length * 0.5) {
@@ -1211,6 +1351,13 @@ export async function routeAITask(
   const latencyMs = Date.now() - startTime;
   const costEstimate = usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens) : 0;
 
+  // Extract the model self-reported confidence from the FINAL content (after
+  // any cascade replacement). When requested but absent/malformed → honest null.
+  // When not requested → undefined (feature off).
+  const modelConfidence: number | null | undefined = confidenceRequested
+    ? extractModelConfidence(content)
+    : undefined;
+
   const result: AIResponse = {
     content,
     provider,
@@ -1221,6 +1368,7 @@ export async function routeAITask(
       totalTokens: usage.total_tokens,
     } : undefined,
     estimatedCost: costEstimate,
+    confidence: modelConfidence,
   };
 
   // ── Store in both cache layers ───────────────────────────────────────────────

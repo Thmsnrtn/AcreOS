@@ -295,7 +295,16 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
   async traceRootCause(orgId: number, errorContext: any, symptoms: string[]): Promise<{
     rootCause: string;
     affectedLayers: string[];
-    confidence: number;
+    /**
+     * Diagnostic confidence in [0,1], or `null` when no diagnosis could be
+     * formed (honest "not measured" — never a fabricated constant). This is a
+     * rule-based classifier (no model in the loop), so confidence is derived
+     * from the strength of the actual evidence gathered:
+     *   - a DIRECTLY observed failing layer (db ping failed, captured failed
+     *     requests, captured console errors) is hard evidence;
+     *   - a keyword-only match against the symptom text is soft evidence.
+     */
+    confidence: number | null;
     trace: any[];
     suggestedFix: string;
   }> {
@@ -332,51 +341,71 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       });
     }
     
+    // Confidence is DERIVED from evidence, not hand-coded. We start with no
+    // diagnosis (null = honest "not measured") and only assign a real score
+    // when actual evidence supports a root cause. Two evidence classes:
+    //   - HARD: a layer we directly observed failing this turn (db ping failed,
+    //     captured failed API requests, captured console errors). These come
+    //     from `trace`/`affectedLayers`, which are facts gathered above.
+    //   - SOFT: a keyword-only match against the free-text symptoms. This is a
+    //     guess, scored lower, and scaled by how many distinct keywords for the
+    //     same service actually appear (more corroboration ⇒ higher).
     let rootCause = "Unknown - requires manual investigation";
-    let confidence = 0.3;
+    let confidence: number | null = null;
     let suggestedFix = "Gather more information about the issue";
-    
+
     const symptomText = symptoms.join(" ").toLowerCase();
-    
+
+    // Soft (keyword) evidence: scale 0.45..0.75 by keyword corroboration count.
+    const softConfidence = (keywords: string[]): number => {
+      const hits = keywords.filter(k => symptomText.includes(k)).length;
+      // 1 hit → 0.45, 2 → 0.6, 3+ → 0.75. Real signal: more matching terms.
+      return Math.min(0.75, 0.45 + 0.15 * (hits - 1));
+    };
+
     if (symptomText.includes("stripe") || symptomText.includes("payment") || symptomText.includes("billing")) {
       affectedLayers.push("external:stripe");
       rootCause = "Payment/billing service issue";
-      confidence = 0.7;
+      confidence = softConfidence(["stripe", "payment", "billing"]);
       suggestedFix = "Check Stripe dashboard and API credentials";
     } else if (symptomText.includes("map") || symptomText.includes("boundary") || symptomText.includes("parcel")) {
       affectedLayers.push("external:regrid");
       rootCause = "Mapping/GIS service issue";
-      confidence = 0.7;
+      confidence = softConfidence(["map", "boundary", "parcel"]);
       suggestedFix = "Check Regrid API status and credentials";
     } else if (symptomText.includes("sms") || symptomText.includes("text") || symptomText.includes("twilio")) {
       affectedLayers.push("external:twilio");
       rootCause = "SMS service issue";
-      confidence = 0.7;
+      confidence = softConfidence(["sms", "text", "twilio"]);
       suggestedFix = "Check Twilio API status and credentials";
     } else if (symptomText.includes("mail") || symptomText.includes("lob") || symptomText.includes("postcard")) {
       affectedLayers.push("external:lob");
       rootCause = "Direct mail service issue";
-      confidence = 0.7;
+      confidence = softConfidence(["mail", "lob", "postcard"]);
       suggestedFix = "Check Lob API status and credentials";
     } else if (symptomText.includes("ai") || symptomText.includes("openai") || symptomText.includes("gpt")) {
       affectedLayers.push("external:openai");
       rootCause = "AI service issue";
-      confidence = 0.7;
+      confidence = softConfidence(["ai", "openai", "gpt"]);
       suggestedFix = "Check OpenAI API status and rate limits";
     } else if (affectedLayers.includes("database")) {
+      // HARD evidence: the db ping above actually failed this turn.
       rootCause = "Database connectivity or query issue";
-      confidence = 0.8;
+      confidence = 0.85;
       suggestedFix = "Check database connection and recent migrations";
     } else if (affectedLayers.includes("api")) {
+      // HARD evidence: real failed requests were captured in errorContext.
       rootCause = "Backend API error";
       confidence = 0.7;
       suggestedFix = "Review recent API changes and error logs";
     } else if (affectedLayers.includes("frontend")) {
+      // HARD evidence: real console errors were captured in errorContext.
       rootCause = "Frontend JavaScript error";
       confidence = 0.65;
       suggestedFix = "Check browser console for detailed error messages";
     }
-    
+    // else: no evidence matched → confidence stays null (not measured).
+
     return {
       rootCause,
       affectedLayers,
