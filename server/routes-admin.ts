@@ -3820,14 +3820,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
           await churnEngine.runForAllOrgs();
           actionTaken = "rescue_triggered";
         }
-      } else if (suggestedAction === "get_deals") {
-        const { dealHunterService } = await import("./services/dealHunter");
-        // DealHunterService has no per-org runner; scrapeAllActiveSources is
-        // the actual hunt trigger (org-agnostic). TODO(tsc): add runForOrg if
-        // per-org scoping becomes necessary.
-        dealHunterService.scrapeAllActiveSources().catch(() => {});
-        actionTaken = "deal_hunt_triggered";
       }
+      // "get_deals" action retired 2026-06-08 with Deal Hunter — the observation
+      // is still acknowledged below; deal sourcing now flows through dealFeedEngine.
 
       // Mark observation as acknowledged
       await db.update(paxObservations)

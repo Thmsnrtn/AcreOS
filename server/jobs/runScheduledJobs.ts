@@ -445,106 +445,10 @@ function startPaxNudgesJob() {
   }, SIX_HOURS_MS);
 }
 
-// Deal Hunter daily scraping job
-async function processDealHunterScraping() {
-  try {
-    const { dealHunterService } = await import("../services/dealHunter");
-
-    log('Starting daily deal scraping across all active sources', 'deal-hunter');
-
-    const results = await dealHunterService.scrapeAllActiveSources();
-    const totalDeals = results.reduce((sum, r) => sum + (r.dealsFound || 0), 0);
-    const succeeded = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-
-    log(
-      `Deal scraping complete: ${succeeded} sources succeeded, ${failed} failed, ${totalDeals} deals found`,
-      'deal-hunter'
-    );
-
-    // Sync newly found deal alerts to real-time notifications
-    try {
-      const pushed = await realtimeAlertsService.syncDealAlertsToWebSocket();
-      if (pushed > 0) {
-        log(`Pushed ${pushed} deal alerts to connected clients`, 'deal-hunter');
-      }
-    } catch (_) {}
-  } catch (err) {
-    log(`Deal hunter scraping job error: ${err}`, 'deal-hunter');
-  }
-}
-
-function startDealHunterScrapingJob() {
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
-
-  log('Starting deal hunter scraping job (daily at 2 AM)', 'deal-hunter');
-
-  // Calculate time until next 2 AM
-  const now = new Date();
-  const next2AM = new Date(now);
-  next2AM.setHours(2, 0, 0, 0);
-  if (next2AM <= now) {
-    next2AM.setDate(next2AM.getDate() + 1);
-  }
-  const msUntil2AM = next2AM.getTime() - now.getTime();
-
-  // Run at next 2 AM
-  setTimeout(() => {
-    withJobLock('deal_hunter_scraping', TTL_SECONDS, processDealHunterScraping).catch(err => {
-      log(`Deal hunter scraping run failed: ${err}`, 'deal-hunter');
-    });
-
-    // Then run daily
-    trackInterval(() => {
-      withJobLock('deal_hunter_scraping', TTL_SECONDS, processDealHunterScraping).catch(err => {
-        log(`Scheduled deal hunter scraping run failed: ${err}`, 'deal-hunter');
-      });
-    }, ONE_DAY);
-  }, msUntil2AM);
-}
-
-// Deal distress score recalculation job (hourly).
-// Prior implementation imported the module and looked for a `.dealHunter`
-// export that doesn't exist — falling through to the module namespace
-// object and calling .recalculateAllDistressScores() on the module itself,
-// which threw "is not a function" every hour. The real export is
-// `dealHunterService`.
-async function processDistressRecalculation() {
-  try {
-    const { dealHunterService } = await import("../services/dealHunter");
-    const result = await dealHunterService.recalculateAllDistressScores();
-    if (result.updated > 0) {
-      log(
-        `Recalculated distress scores: ${result.updated}/${result.scanned} deals updated`,
-        "deal-hunter",
-      );
-    }
-  } catch (err) {
-    log(`Distress recalculation job error: ${err}`, "deal-hunter");
-  }
-}
-
-function startDistressRecalculationJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 55 * 60; // Lock TTL slightly less than interval
-
-  log('Starting distress score recalculation job (every hour)', 'deal-hunter');
-
-  // Run after 5 minutes on startup
-  setTimeout(() => {
-    withJobLock('distress_recalculation', TTL_SECONDS, processDistressRecalculation).catch(err => {
-      log(`Initial distress recalculation run failed: ${err}`, 'deal-hunter');
-    });
-  }, 5 * 60 * 1000);
-
-  // Then run every hour
-  trackInterval(() => {
-    withJobLock('distress_recalculation', TTL_SECONDS, processDistressRecalculation).catch(err => {
-      log(`Scheduled distress recalculation run failed: ${err}`, 'deal-hunter');
-    });
-  }, ONE_HOUR);
-}
+// Deal Hunter retired 2026-06-08 — the daily scrape job and the hourly distress
+// recalculation job were removed along with the dealHunter service. Sourcing now
+// flows through dealFeedEngine (/deals/discover). tax_sale / deal-source scrape
+// tables are left orphaned for a later deliberate migration sweep.
 
 // Job queue worker
 function startJobQueueWorker() {
@@ -3822,9 +3726,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Start job queue worker (every 10 seconds)
   startJobQueueWorker();
 
-  // Start deal hunter background jobs
-  startDealHunterScrapingJob();
-  startDistressRecalculationJob();
+  // Deal Hunter background jobs (daily scrape + hourly distress recalc) retired 2026-06-08.
 
   // EPIC 1: County Assessor ingest pipeline — stub removed (was a no-op
   // log; the real BullMQ worker is registered separately when redis is

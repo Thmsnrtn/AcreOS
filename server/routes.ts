@@ -20,8 +20,8 @@ import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
 import avmRouter from "./routes-avm";
 import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
-import dealHunterRouter from "./routes-deal-hunter";
-import academyRouter from "./routes-academy";
+// Deal Hunter retired 2026-06-08 — sourcing role lives in /deals/discover (dealFeedEngine).
+// Academy retired 2026-06-08 — education + AI tutor module removed.
 import visionAIRouter from "./routes-vision-ai";
 import capitalMarketsRouter from "./routes-capital-markets";
 import documentIntelligenceRouter from "./routes-document-intelligence";
@@ -1334,8 +1334,8 @@ export async function registerRoutes(
   app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
   app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
-  app.use('/api/deal-hunter', isAuthenticated, getOrCreateOrg, dealHunterRouter);
-  app.use('/api/academy', isAuthenticated, getOrCreateOrg, featureGate("feature_academy"), academyRouter);
+  // /api/deal-hunter retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine).
+  // /api/academy retired 2026-06-08 — Academy module removed.
   app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, featureGate("feature_vision_ai"), visionAIRouter);
   app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, featureGate("feature_capital_markets"), capitalMarketsRouter);
   app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);

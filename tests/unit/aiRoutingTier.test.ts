@@ -112,7 +112,7 @@ describe("AI Routing — every named callsite passes a tier explicitly", () => {
     { file: "server/services/buyerQualificationBot.ts", expectedTier: "standard", context: "buyer-qualification" },
     { file: "server/services/taxOptimizer.ts", expectedTier: "standard", context: "tax-optimizer planning" },
     { file: "server/services/writingStyle.ts", expectedTier: "standard", context: "writing-style" },
-    { file: "server/routes-academy.ts", expectedTier: "critical", context: "academy_tutor" },
+    // routes-academy.ts (academy_tutor) retired 2026-06-08 — Academy module removed.
     { file: "server/routes-ai-draft.ts", expectedTier: "critical", context: "Pax inbox draft" },
     { file: "server/routes-founder-intelligence.ts", expectedTier: "background", context: "agent_routing" },
     { file: "server/routes-founder-intelligence.ts", expectedTier: "standard",  context: "agent_chat" },

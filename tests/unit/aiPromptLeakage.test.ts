@@ -127,9 +127,7 @@ const CUSTOMER_PROMPT_FILES: CustomerPromptSource[] = [
   {
     path: "server/services/leadNurturer.ts",
   },
-  {
-    path: "server/services/aiTutor.ts",
-  },
+  // aiTutor.ts retired 2026-06-08 — Academy module removed.
   {
     path: "server/services/onboardingAutonomy.ts",
     // Code-comment / docblock references describing internal agent routing
@@ -192,9 +190,7 @@ const CUSTOMER_PROMPT_FILES: CustomerPromptSource[] = [
   {
     path: "server/routes-customer-letter.ts",
   },
-  {
-    path: "server/routes-academy.ts",
-  },
+  // routes-academy.ts retired 2026-06-08 — Academy module removed.
   {
     path: "server/routes-deals.ts",
   },

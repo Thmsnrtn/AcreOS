@@ -35,7 +35,7 @@ export * from "../aiBriefingWriter";
 export * from "../aiContextAggregator";
 export * from "../aiOfferService";
 export * from "../aiRouter";
-export * from "../aiTutor";
+// aiTutor retired 2026-06-08 (Academy module removed).
 export * from "../autonomousAgentEngine";
 export * from "../companyAgents";
 export * from "../core-agents";
