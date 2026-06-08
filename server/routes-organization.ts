@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { insertOrganizationSchema, leads, deals, properties, npsResponses, npsPromptQueue, organizations, type InsertTeamMember } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -2276,6 +2276,23 @@ export function registerOrganizationRoutes(app: Express): void {
         logger.warn("NPS prompt queue consume failed", { metadata: { detail: String(queueErr) } });
       }
 
+      // RAFE (P0): a detractor (≤6) is a same-day-call trigger. Persisting the
+      // score isn't enough — it must REACH the founder. This is THE live path
+      // (the dialog POSTs /api/nps); the old /api/nps/submit had this wired but
+      // no client calls it. Drop a founder-visible system_alerts row with the
+      // VERBATIM feedback attached. Best-effort: never block the customer submit.
+      try {
+        const { notifyFounderOfDetractor } = await import("./services/supportNotifications");
+        await notifyFounderOfDetractor({
+          orgId,
+          score,
+          comment: feedback ?? null,
+          surveyTrigger: trigger,
+        });
+      } catch (notifyErr) {
+        logger.warn("NPS detractor founder notification failed", { metadata: { detail: String(notifyErr) } });
+      }
+
       logger.info("NPS response submitted", { orgId, userId, score, trigger });
       res.json({ success: true, id: inserted.id });
     } catch (err: any) {
@@ -2396,6 +2413,31 @@ export function registerOrganizationRoutes(app: Express): void {
       return res.json({ shouldShow: false, trigger: null });
     } catch (err: any) {
       logger.error("NPS pending check failed", { error: err.message });
+      return Errors.internal(res, err);
+    }
+  });
+
+  // POST /api/nps/dismiss — RAFE (P0): persist a dismiss on the queue row so it
+  // survives a browser-data clear (the client localStorage flag alone re-nags on
+  // a new device / after clearing). Marks any pending|shown queue row dismissed.
+  api.post("/api/nps/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const orgId = getOrganizationId(authReq);
+      const userId = String(authReq.user.id);
+
+      await db.update(npsPromptQueue)
+        .set({ status: "dismissed", consumedAt: new Date() })
+        .where(and(
+          eq(npsPromptQueue.organizationId, orgId),
+          eq(npsPromptQueue.userId, userId),
+          inArray(npsPromptQueue.status, ["pending", "shown"]),
+        ));
+
+      logger.info("NPS prompt dismissed", { orgId, userId });
+      res.json({ success: true });
+    } catch (err: any) {
+      logger.error("NPS dismiss failed", { error: err.message });
       return Errors.internal(res, err);
     }
   });

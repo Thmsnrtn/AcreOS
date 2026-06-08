@@ -70,42 +70,23 @@ export function registerLifecycleRoutes(app: Express): void {
           surveyTrigger: parsed.data.surveyTrigger ?? "d7",
         }).returning();
 
-        // RAFE (Tahoe Wave-2): at 1–5 customers an NPS number is meaningless,
-        // but a detractor score is a same-day-call trigger. Persisting the score
-        // isn't enough — it must REACH the founder. A detractor (≤6) drops a
-        // founder-visible system_alerts row so the founder can trigger a personal
-        // touch the day it lands. Best-effort; never block the customer's submit.
-        if (parsed.data.score <= 6) {
-          try {
-            const { systemAlerts, organizations } = await import("@shared/schema");
-            const [org] = await db
-              .select({ name: organizations.name })
-              .from(organizations)
-              .where(eq(organizations.id, orgId))
-              .limit(1);
-            const who = org?.name ? org.name : `org #${orgId}`;
-            await db.insert(systemAlerts).values({
-              type: "nps_detractor",
-              alertType: "high_churn",
-              severity: parsed.data.score <= 3 ? "critical" : "warning",
-              organizationId: orgId,
-              title: `Detractor NPS (${parsed.data.score}/10) — ${who}`,
-              message: `${who} scored ${parsed.data.score}/10${parsed.data.comment ? `: "${parsed.data.comment}"` : ""}. Trigger a same-day personal touch.`,
-              relatedEntityType: "organization",
-              relatedEntityId: orgId,
-              status: "new",
-              metadata: {
-                score: parsed.data.score,
-                comment: parsed.data.comment ?? null,
-                surveyTrigger: parsed.data.surveyTrigger ?? "d7",
-              },
-            });
-          } catch (notifyErr) {
-            logger.warn("[lifecycle] detractor NPS founder notification failed", {
-              orgId,
-              err: String(notifyErr),
-            });
-          }
+        // RAFE (P0): a detractor (≤6) is a same-day-call trigger. The detractor
+        // founder-alert now lives in the shared notifyFounderOfDetractor() helper
+        // so this endpoint and the LIVE /api/nps handler (routes-organization.ts)
+        // can never diverge. Best-effort; never block the customer's submit.
+        try {
+          const { notifyFounderOfDetractor } = await import("./services/supportNotifications");
+          await notifyFounderOfDetractor({
+            orgId,
+            score: parsed.data.score,
+            comment: parsed.data.comment ?? null,
+            surveyTrigger: parsed.data.surveyTrigger ?? "d7",
+          });
+        } catch (notifyErr) {
+          logger.warn("[lifecycle] detractor NPS founder notification failed", {
+            orgId,
+            err: String(notifyErr),
+          });
         }
 
         return res.json(row);
