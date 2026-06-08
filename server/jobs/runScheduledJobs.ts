@@ -305,10 +305,12 @@ function startDigestJob() {
 async function processDomainAudits() {
   try {
     const { runDomainAudits, staleFindings } = await import('../services/audit/domainAudit');
-    const { taxReserveDetector } = await import('../services/audit/detectors/taxReserveDetector');
+    // Lena (finance) — the full finance-audit loop: tax_reserve (exemplar) +
+    // envelope_overrun + runway_crunch, registered as one coherent set.
+    const { financeDetectors } = await import('../services/lena/financeAudit');
     const { observationRateDetector } = await import('../services/audit/detectors/observationRateDetector');
 
-    const result = await runDomainAudits([taxReserveDetector, observationRateDetector]);
+    const result = await runDomainAudits([...financeDetectors, observationRateDetector]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
 
