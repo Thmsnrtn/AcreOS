@@ -25,12 +25,17 @@
  *
  * Data source
  * ───────────
- * Ships with a SMALL BUNDLED FIXTURE list (a handful of well-known OFAC SDN
- * names, used so the engine works out of the box and is unit-testable). The
- * real SDN dataset is much larger; `loadSanctionsEntries()` is the clearly
- * marked extension point — wire it to a data file or the existing
- * server/services/sanctionsList.ts ingest (sanctions_list table) when a live
- * list is available. Until then it returns the fixture.
+ * In production this screens against the LIVE cached OFAC list in
+ * `sanctions_list_entries`, refreshed DAILY from the public U.S. Treasury data
+ * files (SDN + Consolidated) by server/services/compliance/sanctionsListSync.ts.
+ * `loadSanctionsEntries()` reads that table.
+ *
+ * It KEEPS a SMALL BUNDLED FIXTURE (a handful of well-known OFAC SDN names) as a
+ * deterministic FALLBACK: it is used when the live table is empty (e.g. the
+ * sync job hasn't run yet, or a fresh/empty DB) and is the default for unit
+ * tests, so the engine always works out of the box and stays testable without a
+ * live list. The matched result carries provenance: which list it came from and
+ * the list's `listPublishedAt` ("current as of") date when available.
  *
  * Privacy
  * ───────
@@ -41,7 +46,11 @@
 
 import { eq, and, desc, isNull } from "drizzle-orm";
 import { db } from "../../db";
-import { sanctionsScreenings, type SanctionsScreening } from "@shared/schema";
+import {
+  sanctionsScreenings,
+  sanctionsListEntries,
+  type SanctionsScreening,
+} from "@shared/schema";
 import { logger } from "../../utils/logger";
 
 export const OFAC_ENGINE_VERSION = "v1";
@@ -61,8 +70,15 @@ export interface SanctionsEntry {
   name: string;
   /** OFAC program code(s), e.g. "SDNTK", "SDGT", "IRAN". */
   program?: string;
-  /** List identifier, e.g. "ofac-sdn" or "bundled-fixture". */
+  /** List identifier, e.g. "SDN", "CONSOLIDATED", or "bundled-fixture". */
   source?: string;
+  /** AKA / alternate names — matched alongside the primary name. */
+  aliases?: string[];
+  /**
+   * When the source list version was published (provenance). Surfaced as
+   * "list current as of …" so a reviewer knows which list version matched.
+   */
+  listPublishedAt?: Date | null;
 }
 
 export interface ScreeningOutcome {
@@ -73,7 +89,14 @@ export interface ScreeningOutcome {
   /** The best-matching entry, when result === "potential_match". */
   matchedEntry: SanctionsEntry | null;
   engineVersion: string;
+  /** Which list the best match came from ("SDN" | "CONSOLIDATED" | fixture). */
   listSource: string;
+  /**
+   * Provenance: the matched list's published date, when known. Surface as
+   * "list current as of {listPublishedAt}". Null for the fixture or when the
+   * Treasury record carried no parseable date.
+   */
+  listPublishedAt: Date | null;
 }
 
 // ─── Bundled fixture list ─────────────────────────────────────────────────────
@@ -93,19 +116,53 @@ const BUNDLED_FIXTURE_ENTRIES: SanctionsEntry[] = [
 ];
 
 /**
- * EXTENSION POINT — load the candidate sanctions entries.
+ * Load the candidate sanctions entries the matcher screens against.
  *
- * Returns the bundled fixture today. To screen against the real SDN list,
- * replace the body with a loader that reads a bundled data file or pulls
- * de-hashed entries from a provider. (Note: the existing sanctions_list table
- * stores HASHES only, so it cannot back fuzzy name matching — a fuzzy engine
- * needs cleartext candidate names, which must come from a separately bundled
- * data file or a live API.)
+ * PRODUCTION: reads the LIVE cached OFAC list from `sanctions_list_entries`
+ * (refreshed daily from the public Treasury SDN + Consolidated data files by
+ * server/services/compliance/sanctionsListSync.ts). The hash-only
+ * `sanctions_list` table cannot back a fuzzy matcher — this cleartext reference
+ * table can.
  *
- * Kept async so a future implementation can do I/O without a signature change.
+ * FALLBACK: if the live table is empty (sync job hasn't run yet / fresh DB) or
+ * the read fails, returns the BUNDLED FIXTURE so the engine always works and
+ * stays unit-testable. The fixture is also what unit tests use by default.
+ *
+ * Logs only counts — never the candidate names.
  */
 export async function loadSanctionsEntries(): Promise<SanctionsEntry[]> {
-  return BUNDLED_FIXTURE_ENTRIES;
+  try {
+    const rows = await db
+      .select({
+        primaryName: sanctionsListEntries.primaryName,
+        programs: sanctionsListEntries.programs,
+        sourceList: sanctionsListEntries.sourceList,
+        aliases: sanctionsListEntries.aliases,
+        listPublishedAt: sanctionsListEntries.listPublishedAt,
+      })
+      .from(sanctionsListEntries);
+
+    if (rows.length === 0) {
+      logger.info("[ofacScreening] live sanctions_list_entries empty — using bundled fixture", {
+        metadata: { entries: BUNDLED_FIXTURE_ENTRIES.length },
+      });
+      return BUNDLED_FIXTURE_ENTRIES;
+    }
+
+    return rows.map((r) => ({
+      name: r.primaryName,
+      program: Array.isArray(r.programs) && r.programs.length > 0 ? r.programs.join(", ") : undefined,
+      source: r.sourceList,
+      aliases: Array.isArray(r.aliases) ? r.aliases : [],
+      listPublishedAt: r.listPublishedAt ?? null,
+    }));
+  } catch (err) {
+    // Never let a data-load error break a screen — fall back to the fixture.
+    logger.warn("[ofacScreening] live list load failed — using bundled fixture", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    return BUNDLED_FIXTURE_ENTRIES;
+  }
 }
 
 // ─── Name normalization + similarity ─────────────────────────────────────────
@@ -279,8 +336,26 @@ export interface ScreenNameOptions {
 }
 
 /**
- * Pure screening: score the name against every candidate entry and bucket the
- * best score. No DB I/O — unit-testable in isolation.
+ * Best similarity of `name` against an entry — scores the entry's PRIMARY name
+ * and every ALIAS, returning the max. An AKA match should flag just as a
+ * primary-name match would (advisory bias toward human review).
+ */
+function entrySimilarity(name: string, entry: SanctionsEntry): number {
+  let best = nameSimilarity(name, entry.name);
+  if (entry.aliases && entry.aliases.length > 0) {
+    for (const alias of entry.aliases) {
+      const s = nameSimilarity(name, alias);
+      if (s > best) best = s;
+    }
+  }
+  return best;
+}
+
+/**
+ * Pure screening: score the name against every candidate entry (primary name +
+ * aliases) and bucket the best score. No external I/O when `entries` is
+ * supplied — unit-testable in isolation. Provenance (which list + the list's
+ * published date) is taken from the BEST-matching entry.
  */
 export async function screenName(
   name: string,
@@ -288,7 +363,7 @@ export async function screenName(
 ): Promise<ScreeningOutcome> {
   const threshold = options.threshold ?? DEFAULT_MATCH_THRESHOLD;
   const entries = options.entries ?? (await loadSanctionsEntries());
-  const listSource = entries[0]?.source ?? "bundled-fixture";
+  const defaultSource = entries[0]?.source ?? "bundled-fixture";
 
   if (!name || normalizeTokens(name).length === 0) {
     return {
@@ -297,14 +372,15 @@ export async function screenName(
       threshold,
       matchedEntry: null,
       engineVersion: OFAC_ENGINE_VERSION,
-      listSource,
+      listSource: defaultSource,
+      listPublishedAt: null,
     };
   }
 
   let bestScore = 0;
   let bestEntry: SanctionsEntry | null = null;
   for (const entry of entries) {
-    const score = nameSimilarity(name, entry.name);
+    const score = entrySimilarity(name, entry);
     if (score > bestScore) {
       bestScore = score;
       bestEntry = entry;
@@ -318,7 +394,10 @@ export async function screenName(
     threshold,
     matchedEntry: isMatch ? bestEntry : null,
     engineVersion: OFAC_ENGINE_VERSION,
-    listSource,
+    // Provenance reflects the matched entry's own list; fall back to the
+    // dataset's default source when there's no match.
+    listSource: isMatch ? bestEntry?.source ?? defaultSource : defaultSource,
+    listPublishedAt: isMatch ? bestEntry?.listPublishedAt ?? null : null,
   };
 }
 
@@ -361,6 +440,7 @@ export async function screenAndPersist(
       matchedEntry: null,
       engineVersion: OFAC_ENGINE_VERSION,
       listSource: "bundled-fixture",
+      listPublishedAt: null,
     };
   }
 
@@ -449,4 +529,22 @@ export async function listOpenPotentialMatches(
  * advisory / non-legal framing is identical everywhere.
  */
 export const SCREENING_ADVISORY_COPY =
-  "Advisory screening, not a legal determination — review matches manually.";
+  "Advisory screening against the current OFAC list, not a legal determination — review matches manually.";
+
+/**
+ * Human-readable provenance line for a screening outcome — "list current as of
+ * {date}" — so a reviewer knows WHICH list version produced the match. Pair it
+ * with SCREENING_ADVISORY_COPY in the UI. Falls back gracefully when the list's
+ * published date is unknown (fixture or a date-less Treasury record).
+ */
+export function screeningProvenance(outcome: ScreeningOutcome): string {
+  const list =
+    outcome.listSource === "bundled-fixture"
+      ? "bundled reference fixture"
+      : `OFAC ${outcome.listSource} list`;
+  if (outcome.listPublishedAt) {
+    const asOf = outcome.listPublishedAt.toISOString().slice(0, 10);
+    return `Screened against the ${list}, current as of ${asOf}.`;
+  }
+  return `Screened against the ${list} (publication date unavailable).`;
+}

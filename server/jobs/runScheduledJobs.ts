@@ -2967,6 +2967,47 @@ function startOfacSdnRefreshJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Beatrice (CRO) — daily OFAC sanctions LIST ENTRIES sync ─────────────────
+// Fetches the public Treasury SDN + Consolidated data files (sdn.csv +
+// consolidated/cons_prim.csv, plus alt/add companions), parses them, and
+// UPSERTs the CLEARTEXT entries into sanctions_list_entries — the live cached
+// list that backs the ADVISORY fuzzy name-matcher
+// (server/services/compliance/ofacScreening.ts). Runs at ~04:00 UTC daily so it
+// staggers off the 03:30 hash-gate refresh above.
+//
+// Resilient: a fetch/parse failure for either list logs + skips that list and
+// leaves the existing cached rows intact — good data is never wiped. ADVISORY
+// only: a match is a founder-visible flag for MANUAL review, never a block.
+function startSanctionsListEntriesSyncJob() {
+  log('Registering OFAC sanctions list-entries sync job (daily ~04:00 UTC)', 'sanctions');
+  // 5-minute poll window so we don't miss the 04:00 hour due to drift.
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() !== 4 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    withJobLock("sanctions_list_entries_sync", 23 * 60 * 60, async () => {
+      const { syncSanctionsLists } = await import("../services/compliance/sanctionsListSync");
+      const summary = await syncSanctionsLists();
+      const anyError = summary.results.some((r) => r.error);
+      log(
+        `OFAC list-entries sync: upserted=${summary.totalUpserted} duration=${summary.durationMs}ms ` +
+          summary.results.map((r) => `${r.sourceList}=${r.upserted}${r.error ? "(err)" : ""}`).join(" "),
+        'sanctions',
+      );
+      jobSupervisor.notifyResult(
+        'sanctions_list_entries_sync',
+        24 * 60 * 60 * 1000,
+        !anyError,
+        undefined,
+        anyError ? summary.results.find((r) => r.error)?.error : undefined,
+      );
+    }).catch((err) => {
+      log(`OFAC list-entries sync lock error: ${err}`, 'sanctions');
+    });
+  }, 5 * 60 * 1000);
+}
+
 // ── Iris (CTO) — continuous p95 baseline sampler (every 30m) ────────────────
 // Drains the response-time ring buffer (server/middleware/responseTimeRing.ts)
 // per IRIS_TRACKED_ENDPOINTS, persists per-window p50/p95/p99 rows to
@@ -3663,6 +3704,13 @@ export async function runScheduledJobs(): Promise<void> {
   // Required before public acquisition opens; the signup-time hash check
   // (server/services/sanctionsList.ts → checkOfacSdn) reads from this table.
   startOfacSdnRefreshJob();
+
+  // Beatrice — daily OFAC sanctions LIST ENTRIES sync (~04:00 UTC). Fetches the
+  // public Treasury SDN + Consolidated data files and UPSERTs the cleartext
+  // entries into sanctions_list_entries, the live list backing the ADVISORY
+  // fuzzy name-matcher (server/services/compliance/ofacScreening.ts). Resilient:
+  // a failed fetch leaves the existing cached list intact.
+  startSanctionsListEntriesSyncJob();
 
   // Beatrice — Pax continuous-audit (daily 04:00 UTC). Samples 20 Pax
   // outputs per active org from the last 24h and runs six constitutional/

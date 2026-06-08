@@ -11,13 +11,32 @@
  * review, NOT that any name is conclusively sanctioned.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// loadSanctionsEntries() reads sanctions_list_entries from the DB. In unit
+// tests we DON'T have a live DB, so we mock it to return an EMPTY result — that
+// deterministically exercises the bundled-fixture FALLBACK path (and keeps
+// tests off any network/DB). Tests that supply explicit `entries` never touch
+// this. `db.select(...).from(...)` is awaited directly, so `from` must resolve
+// to an array.
+vi.mock("../../db", () => {
+  const fromArr: any[] = [];
+  return {
+    db: {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockResolvedValue(fromArr),
+      }),
+    },
+  };
+});
+
 import {
   normalizeName,
   normalizeTokens,
   jaroWinkler,
   nameSimilarity,
   screenName,
+  screeningProvenance,
   DEFAULT_MATCH_THRESHOLD,
   type SanctionsEntry,
 } from "./ofacScreening";
@@ -128,10 +147,107 @@ describe("screenName (advisory bucketing)", () => {
     expect(out.listSource).toBe("test-fixture");
   });
 
-  it("falls back to the bundled fixture when no entries supplied", async () => {
-    // Guzman Loera is in the bundled fixture.
+  it("falls back to the bundled fixture when the live table is empty", async () => {
+    // The db mock returns [] → loadSanctionsEntries() yields the bundled
+    // fixture. Guzman Loera is in that fixture.
     const out = await screenName("Joaquin Guzman Loera");
     expect(out.result).toBe("potential_match");
     expect(out.listSource).toBe("bundled-fixture");
+  });
+});
+
+// ── Live-data shape: aliases + provenance ────────────────────────────────────
+// Entries mirror what loadSanctionsEntries() builds from sanctions_list_entries:
+// a primary name, aliases (AKAs), a source LIST ("SDN"/"CONSOLIDATED"), and the
+// list's published date for "current as of" provenance.
+const LIVE_LIKE: SanctionsEntry[] = [
+  {
+    name: "Joaquin Archivaldo Guzman Loera",
+    program: "SDNTK",
+    source: "SDN",
+    aliases: ["El Chapo", "Guzman, Joaquin"],
+    listPublishedAt: new Date("2024-05-01T00:00:00Z"),
+  },
+  {
+    name: "Bank Melli Iran",
+    program: "IRAN, SDGT",
+    source: "CONSOLIDATED",
+    aliases: ["Melli Bank"],
+    listPublishedAt: new Date("2024-04-15T00:00:00Z"),
+  },
+];
+
+describe("screenName — alias matching", () => {
+  it("flags a screened name that matches an ALIAS, not the primary name", async () => {
+    const out = await screenName("El Chapo", { entries: LIVE_LIKE });
+    expect(out.result).toBe("potential_match");
+    expect(out.matchedEntry?.name).toBe("Joaquin Archivaldo Guzman Loera");
+  });
+
+  it("flags an order-flipped alias", async () => {
+    const out = await screenName("Joaquin Guzman", { entries: LIVE_LIKE });
+    expect(out.result).toBe("potential_match");
+  });
+});
+
+describe("screenName — provenance / as-of", () => {
+  it("surfaces the matched entry's list source + published date", async () => {
+    const out = await screenName("El Chapo", { entries: LIVE_LIKE });
+    expect(out.listSource).toBe("SDN");
+    expect(out.listPublishedAt?.toISOString().slice(0, 10)).toBe("2024-05-01");
+  });
+
+  it("provenance copy renders a 'current as of' line", async () => {
+    const out = await screenName("Bank Melli Iran", { entries: LIVE_LIKE });
+    expect(out.listSource).toBe("CONSOLIDATED");
+    expect(screeningProvenance(out)).toBe(
+      "Screened against the OFAC CONSOLIDATED list, current as of 2024-04-15.",
+    );
+  });
+
+  it("clears carry no list published date", async () => {
+    const out = await screenName("Completely Unrelated Person", { entries: LIVE_LIKE });
+    expect(out.result).toBe("clear");
+    expect(out.listPublishedAt).toBeNull();
+  });
+});
+
+// ── Matcher precision / recall on known names + known false-positive pairs ───
+describe("matcher precision / recall", () => {
+  // RECALL: each of these SHOULD flag against the entry it targets.
+  const trueMatches: Array<[string, string]> = [
+    ["Viktor Bout", "Viktor Anatolyevich Bout"], // subset / middle name
+    ["Bout, Viktor", "Viktor Bout"], // order flip
+    ["Viktor Buot", "Viktor Bout"], // single-char typo
+    ["Joaquín Guzmán Loera", "Joaquin Guzman Loera"], // diacritics
+  ];
+
+  // PRECISION: these are KNOWN FALSE-POSITIVE pairs that must NOT flag — common
+  // names that share a token or look superficially similar but are different
+  // people. A miss here is a wasted manual review; the advisory bias tolerates
+  // some, but these clearly-distinct pairs must clear.
+  const falsePositivePairs: Array<[string, string]> = [
+    ["John Smith", "Viktor Bout"],
+    ["Maria Garcia", "Bank Melli Iran"],
+    ["Robert Johnson", "Joaquin Guzman Loera"],
+    ["Viktor Petrov", "Viktor Bout"], // shared first name only
+  ];
+
+  it("RECALL — known matches all flag at the default threshold", () => {
+    for (const [screened, entry] of trueMatches) {
+      expect(
+        nameSimilarity(screened, entry),
+        `expected "${screened}" ~ "${entry}" to flag`,
+      ).toBeGreaterThanOrEqual(DEFAULT_MATCH_THRESHOLD);
+    }
+  });
+
+  it("PRECISION — known false-positive pairs all clear the default threshold", () => {
+    for (const [screened, entry] of falsePositivePairs) {
+      expect(
+        nameSimilarity(screened, entry),
+        `expected "${screened}" ≠ "${entry}" to clear`,
+      ).toBeLessThan(DEFAULT_MATCH_THRESHOLD);
+    }
   });
 });

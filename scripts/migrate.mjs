@@ -6694,6 +6694,36 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "sanctions_screenings_org_created_idx" ON "sanctions_screenings" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "sanctions_screenings_org_result_idx" ON "sanctions_screenings" ("organization_id", "result", "reviewed_at")`,
+
+  // ── 0144 — Beatrice (CRO) — OFAC sanctions LIST ENTRIES (live cached copy) ──
+  // The live, cleartext OFAC reference list backing the advisory fuzzy
+  // name-matcher (server/services/compliance/ofacScreening.ts). Refreshed daily
+  // from the public U.S. Treasury data files (SDN + Consolidated) by
+  // server/services/compliance/sanctionsListSync.ts.
+  //
+  // GLOBAL / company-wide reference table — intentionally NOT org-scoped (no
+  // organization_id). Same public Treasury list for every org, so it is exempt
+  // from the org-leading composite-index gate. Distinct from `sanctions_list`
+  // (the hash-only signup gate): a fuzzy matcher needs cleartext names.
+  //
+  // Mirrors shared/schema.ts (sanctionsListEntries) +
+  // migrations/0144_sanctions_list_entries.sql. Idempotent (IF NOT EXISTS).
+  `CREATE TABLE IF NOT EXISTS "sanctions_list_entries" (
+     "id" serial PRIMARY KEY,
+     "source_list" text NOT NULL,
+     "entity_type" text NOT NULL,
+     "primary_name" text NOT NULL,
+     "normalized_name" text NOT NULL,
+     "aliases" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "programs" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "addresses" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "remarks" text,
+     "ofac_uid" text NOT NULL,
+     "list_published_at" timestamp,
+     "fetched_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "sanctions_list_entries_normalized_name_idx" ON "sanctions_list_entries" ("normalized_name")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "sanctions_list_entries_source_uid_idx" ON "sanctions_list_entries" ("source_list", "ofac_uid")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

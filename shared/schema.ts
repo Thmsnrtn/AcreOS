@@ -12307,6 +12307,70 @@ export const insertSanctionsScreeningSchema = createInsertSchema(sanctionsScreen
 export type SanctionsScreening = typeof sanctionsScreenings.$inferSelect;
 export type InsertSanctionsScreening = z.infer<typeof insertSanctionsScreeningSchema>;
 
+// ── 0144 — Beatrice (CRO) — OFAC sanctions LIST ENTRIES (live cached copy) ───
+// The live, cleartext OFAC reference list that BACKS the advisory fuzzy
+// name-matcher (server/services/compliance/ofacScreening.ts). Refreshed daily
+// from the public U.S. Treasury data files (SDN + Consolidated) by
+// server/services/compliance/sanctionsListSync.ts.
+//
+// GLOBAL / COMPANY-WIDE reference table — intentionally NOT org-scoped (there
+// is NO organization_id). It is the same public Treasury list for every org,
+// so the check-org-leading-index gate exempts it (a reference/global table has
+// no tenant to lead a composite index with). This is distinct from
+// `sanctions_list` (the hash-only signup gate) — a fuzzy matcher needs the
+// cleartext names that this table stores.
+//
+// ADVISORY framing: a row here is a public Treasury list entry, not a legal
+// determination. The screener flags potential matches for MANUAL review and
+// surfaces "list current as of `listPublishedAt`" provenance; it never blocks.
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0144_sanctions_list_entries.sql.
+export const sanctionsListEntries = pgTable("sanctions_list_entries", {
+  id: serial("id").primaryKey(),
+  // Which Treasury list this row came from: "SDN" | "CONSOLIDATED".
+  sourceList: text("source_list").notNull(),
+  // OFAC entity classification: "individual" | "entity" | "vessel" | "aircraft".
+  entityType: text("entity_type").notNull(),
+  // Primary display name exactly as published by Treasury.
+  primaryName: text("primary_name").notNull(),
+  // Normalized form (NFKD + lowercase + sorted token set) used for matching.
+  // Mirrors normalizeName() in ofacScreening.ts so indexed lookups align.
+  normalizedName: text("normalized_name").notNull(),
+  // AKA / alternate names (jsonb array of strings).
+  aliases: jsonb("aliases").$type<string[]>().notNull().default([]),
+  // OFAC program code(s), e.g. ["SDNTK","IRAN"] (jsonb array of strings).
+  programs: jsonb("programs").$type<string[]>().notNull().default([]),
+  // Addresses / countries associated with the entry (jsonb array of objects).
+  addresses: jsonb("addresses").$type<Array<Record<string, string>>>().notNull().default([]),
+  // Free-text remarks from the Treasury record.
+  remarks: text("remarks"),
+  // Treasury's stable unique identifier for the entry (ent_num / uid).
+  ofacUid: text("ofac_uid").notNull(),
+  // When the Treasury list itself was published (provenance for "current as of").
+  listPublishedAt: timestamp("list_published_at"),
+  // When THIS row was last upserted from the live fetch.
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+}, (table) => ({
+  // GLOBAL reference table — no organization_id, so NO org-leading composite
+  // index here (exempt from scripts/check-org-leading-index.mjs by design).
+  // Match path: normalized_name lookup.
+  byNormalizedName: index("sanctions_list_entries_normalized_name_idx").on(
+    table.normalizedName,
+  ),
+  // Idempotent upsert key: one row per (list, OFAC uid).
+  bySourceUid: uniqueIndex("sanctions_list_entries_source_uid_idx").on(
+    table.sourceList,
+    table.ofacUid,
+  ),
+}));
+
+export const insertSanctionsListEntrySchema = createInsertSchema(sanctionsListEntries).omit({
+  id: true,
+  fetchedAt: true,
+});
+export type SanctionsListEntry = typeof sanctionsListEntries.$inferSelect;
+export type InsertSanctionsListEntry = z.infer<typeof insertSanctionsListEntrySchema>;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),
