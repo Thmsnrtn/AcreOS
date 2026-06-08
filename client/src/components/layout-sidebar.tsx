@@ -163,6 +163,8 @@ import {
   FOUNDER_NAV_SETTINGS_SHORTCUT,
   type FounderNavDoor,
 } from "@/lib/nav-items";
+import { motion } from "framer-motion";
+import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
 
 // ─────────────────────────────────────────────────────────────────────
 // Pax proactive notification badge
@@ -1140,11 +1142,9 @@ export function Sidebar() {
               {/* Module row */}
               <div
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
-                  active && !hasChildren
-                    ? "nav-item-active"
-                    : active
-                    ? "nav-item-active"
+                  "relative flex items-center gap-2 px-3 py-2 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
+                  active
+                    ? "nav-item-active nav-item-active--animated"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
                 onClick={() => {
@@ -1154,6 +1154,11 @@ export function Sidebar() {
                 data-testid={`module-${module.id}`}
                 data-tour-nav={module.id}
               >
+                {active && (
+                  <SidebarActivePip
+                    layoutId={NAV_INDICATOR_LAYOUT_IDS.customerSidebar}
+                  />
+                )}
                 {/* If no children, make the whole row a link */}
                 {!hasChildren ? (
                   <Link
@@ -1824,6 +1829,25 @@ function CollapsedModuleItem({
 // ─────────────────────────────────────────────────────────────────────
 // Simple desktop nav item helper (for founder link with custom accent)
 // ─────────────────────────────────────────────────────────────────────
+// Shared-element active pip for the desktop sidebar. A single `layoutId`
+// per surface means the brand-color marker SLIDES from the previously-active
+// row to the newly-active one when the route changes, rather than fading in
+// place. The host row must be `position: relative` (the `.nav-item-active`
+// class already is) and carry `nav-item-active--animated` so the static CSS
+// ::before pip is suppressed. Under prefers-reduced-motion the app-level
+// <MotionConfig reducedMotion="user"> disables the layout animation, so the
+// pip simply appears instantly — no extra gating needed here.
+function SidebarActivePip({ layoutId }: { layoutId: string }) {
+  return (
+    <motion.span
+      layoutId={layoutId}
+      className="absolute left-0 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-sm bg-[var(--acr-brand)]"
+      transition={navIndicatorSpring}
+      aria-hidden="true"
+    />
+  );
+}
+
 function DesktopNavItem({
   href,
   icon: Icon,
@@ -2081,13 +2105,18 @@ function FounderDoorItem({
             aria-label={door.label}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-card transition-colors min-h-[44px]",
+              "relative flex items-center justify-center w-full p-2.5 rounded-card transition-colors min-h-[44px]",
               isActive
-                ? "nav-item-active"
+                ? "nav-item-active nav-item-active--animated"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             )}
             data-testid={`founder-door-${door.label.toLowerCase()}`}
           >
+            {isActive && (
+              <SidebarActivePip
+                layoutId={NAV_INDICATOR_LAYOUT_IDS.founderSidebar}
+              />
+            )}
             <Icon
               className={cn(
                 "w-4 h-4 shrink-0",
@@ -2112,13 +2141,18 @@ function FounderDoorItem({
           href={door.href}
           aria-current={isActive ? "page" : undefined}
           className={cn(
-            "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors min-h-[44px]",
+            "relative flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors min-h-[44px]",
             isActive
-              ? "nav-item-active"
+              ? "nav-item-active nav-item-active--animated"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           )}
           data-testid={`founder-door-${door.label.toLowerCase()}`}
         >
+          {isActive && (
+            <SidebarActivePip
+              layoutId={NAV_INDICATOR_LAYOUT_IDS.founderSidebar}
+            />
+          )}
           <Icon
             className={cn(
               "w-4 h-4 shrink-0",

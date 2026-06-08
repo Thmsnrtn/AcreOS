@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { useLocation, Link } from "wouter";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
 import {
   Inbox,
   Compass,
@@ -139,13 +141,16 @@ export function FounderMobileBottomNav() {
                 )}
                 data-testid={`founder-mobile-nav-${item.id}`}
               >
-                <div
-                  className={cn(
-                    "flex items-center justify-center w-full h-8 rounded-full transition-colors",
-                    isActive && "bg-primary/15",
+                <div className="relative flex items-center justify-center w-full h-8 rounded-full">
+                  {isActive && (
+                    <motion.div
+                      layoutId={NAV_INDICATOR_LAYOUT_IDS.founderBottomNav}
+                      className="absolute inset-0 rounded-full bg-primary/15"
+                      transition={navIndicatorSpring}
+                      aria-hidden="true"
+                    />
                   )}
-                >
-                  <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
+                  <ItemIcon className={cn("relative w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
                 </div>
                 <span className={cn("text-caption font-medium truncate", isActive && "text-primary")}>
                   {item.label}

@@ -160,3 +160,21 @@ export const pulseAnimation = {
     ease: EASINGS.inOut,
   },
 };
+
+// ─── Shared-element nav active indicator ───────────────────────────────────
+// A single Framer Motion `layoutId` lets the active-state pill animate
+// (slide + resize) from the previously-active nav item to the newly-active
+// one as the route changes, instead of cross-fading in place. Each nav
+// surface (desktop sidebar, mobile bottom navs, founder bottom nav) gets its
+// OWN id so the indicator never tries to fly BETWEEN surfaces (e.g. from the
+// sidebar to the bottom nav on a viewport change).
+export const NAV_INDICATOR_LAYOUT_IDS = {
+  customerSidebar: "nav-indicator-customer-sidebar",
+  founderSidebar: "nav-indicator-founder-sidebar",
+  customerBottomNav: "nav-indicator-customer-bottom",
+  founderBottomNav: "nav-indicator-founder-bottom",
+} as const;
+
+// Spring for the sliding indicator. `smooth` lands softly without overshoot
+// that would read as bouncy on a small pill traveling a short distance.
+export const navIndicatorSpring: Transition = SPRINGS.smooth;

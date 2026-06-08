@@ -22,6 +22,7 @@ import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 import { variantPageFadeMobile } from "@/lib/motion-tokens";
+import { installViewTransitions } from "@/lib/view-transitions";
 import { useToast } from "@/hooks/use-toast";
 
 import { SidebarProvider } from "@/components/layout-sidebar";
@@ -2015,6 +2016,13 @@ function LocationAwareErrorBoundary({ children }: { children: React.ReactNode })
 }
 
 function App() {
+  // Patch the History API once on mount so every wouter navigation
+  // (Link clicks + setLocation) cross-fades via the View Transitions API.
+  // No-op on unsupported browsers and under prefers-reduced-motion.
+  React.useEffect(() => {
+    installViewTransitions();
+  }, []);
+
   return (
     <LocationAwareErrorBoundary>
       <MotionConfig reducedMotion="user">

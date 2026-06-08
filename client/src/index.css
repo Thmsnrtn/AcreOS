@@ -1522,6 +1522,12 @@ body[data-offline-banner="true"] [data-page-topbar] {
   background: var(--acr-surface);
   color: var(--acr-ink);
 }
+/* When the row renders the Framer Motion shared-element pip (it slides
+   between active rows on route change), suppress the static CSS ::before
+   pip so the brand marker isn't drawn twice. */
+.nav-item-active--animated::before {
+  display: none;
+}
 
 /* Sidebar collapse spring animation */
 .sidebar-spring {
@@ -1964,6 +1970,49 @@ textarea:focus-visible,
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
+  }
+}
+
+/* ─────────────── View Transitions (route cross-fade) ───────────────
+   The browser View Transitions API snapshots old + new DOM on navigation
+   (wired in client/src/lib/view-transitions.ts) and cross-fades between
+   them. We keep the root transition subtle + fast (~180ms) so it reads as
+   one motion with the per-page Framer Motion AnimatePresence, not two
+   competing animations. Unsupported browsers (Firefox / older Safari)
+   never run this — they hard-cut, exactly as before. */
+::view-transition-group(root) {
+  animation-duration: 180ms;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  /* easeOut-ish curve matched to EASINGS.linearExpo in motion-tokens.ts */
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(root) {
+  animation-name: acr-vt-fade-out;
+}
+::view-transition-new(root) {
+  animation-name: acr-vt-fade-in;
+}
+@keyframes acr-vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes acr-vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+/* Reduced motion: collapse the cross-fade to an instant cut. The JS layer
+   already skips startViewTransition under prefers-reduced-motion, but this
+   guards the case where a transition was started before the preference
+   flipped, and zeroes any in-flight animation. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
   }
 }
 
