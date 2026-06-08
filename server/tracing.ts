@@ -180,7 +180,30 @@ export function startSpan(
 }
 
 /**
- * Wrap an async function with a trace span.
+ * The build SHA the running process was deployed from. Tagged onto every span
+ * created via `traceAsync` / `tracedSpan` so a latency or error regression in a
+ * trace is one query away from "which deploy introduced it" — and aligns with
+ * the same `VITE_GIT_SHA` Sentry uses as its release tag
+ * (server/utils/sentry.ts) so traces and errors cross-reference cleanly.
+ * Evaluated lazily per-span so a late-set env still takes effect.
+ */
+function deployGitSha(): string {
+  return process.env.VITE_GIT_SHA || process.env.SENTRY_RELEASE || "unknown";
+}
+
+/**
+ * Standard attributes every span should carry. Centralised so the SHA tag
+ * (and any future cross-cutting tags) are applied uniformly.
+ */
+export function baseSpanAttributes(): Record<string, string> {
+  return { "git.sha": deployGitSha(), "service.name": SERVICE_NAME };
+}
+
+/**
+ * Wrap an async function with a trace span. Every span is auto-tagged with the
+ * deploy `git.sha` (merged under any caller-supplied attributes) so trace
+ * regressions are attributable to a release. No-op cost is negligible when
+ * tracing is disabled (the no-op tracer's setAttribute is a no-op).
  */
 export async function traceAsync<T>(
   name: string,
@@ -188,7 +211,8 @@ export async function traceAsync<T>(
   attributes?: Record<string, string | number | boolean>
 ): Promise<T> {
   const tracer = getTracer();
-  return tracer.startActiveSpan(name, { attributes: attributes ?? {} }, async (span: any) => {
+  const merged = { ...baseSpanAttributes(), ...(attributes ?? {}) };
+  return tracer.startActiveSpan(name, { attributes: merged }, async (span: any) => {
     try {
       const result = await fn();
       span.setStatus({ code: 1 }); // OK
