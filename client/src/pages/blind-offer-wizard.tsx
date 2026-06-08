@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { parseSnapshotPrefill, type SnapshotPrefill } from "@shared/blindOfferPrefill";
 import {
   ChevronRight, ChevronLeft, MapPin, BarChart2, Calculator, FileText,
   DollarSign, TrendingUp, AlertTriangle, CheckCircle, Star,
@@ -31,6 +32,15 @@ function fmt(n: number) {
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return usd(n, { noCents: true });
 }
+
+// ─── Land Snapshot → wizard prefill (Maren CPO #5) ────────────────────────────
+//
+// Close the "so what?": the Land Snapshot's confident, provenanced fields feed
+// the blind-offer wizard so the highest-friction step (data entry) is gone and
+// the operator goes parcel → offer in under a minute. The pure parse/build
+// mapping lives in @shared/blindOfferPrefill (shared with parcel-detail's
+// "Make an offer with these numbers" button + directly unit-tested). Honesty
+// contract: only real fields prefill — see that module.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1011,10 +1021,15 @@ Private Real Estate Investor`;
 export default function BlindOfferWizardPage() {
   useDocumentTitle("Blind offer wizard");
   const { toast } = useToast();
+  // Land Snapshot → wizard prefill (Maren CPO #5): seed step 1 from the
+  // confident, provenanced fields the parcel handed us via querystring. Parsed
+  // once on mount — only real fields prefill; everything else stays blank.
+  const search = useSearch();
+  const [prefill] = useState<SnapshotPrefill>(() => parseSnapshotPrefill(search));
   const [currentStep, setCurrentStep] = useState<Step>("county");
-  const [state, setState] = useState("");
-  const [county, setCounty] = useState("");
-  const [acres, setAcres] = useState(0);
+  const [state, setState] = useState(prefill.state ?? "");
+  const [county, setCounty] = useState(prefill.county ?? "");
+  const [acres, setAcres] = useState(prefill.acres ?? 0);
   const [comps, setComps] = useState<Comp[]>([]);
   const [sellerProfile, setSellerProfile] = useState({
     isTaxDelinquent: false,
@@ -1070,6 +1085,26 @@ export default function BlindOfferWizardPage() {
         <h1 className="text-2xl md:text-3xl font-bold">Blind offer wizard</h1>
         <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals.</p>
       </div>
+
+      {/* Land Snapshot → wizard prefill notice (Maren CPO #5). Honest: names
+          exactly which provenanced fields were carried over from the parcel. */}
+      {(prefill.state || prefill.county || prefill.acres) && (
+        <div
+          className="mb-6 rounded-card border border-acr-pos/40 bg-acr-pos-soft p-3 flex items-start gap-2.5"
+          role="status"
+          data-testid="blind-offer-prefill-notice"
+        >
+          <Sparkles className="w-4 h-4 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-sm text-acr-pos">
+            Pre-filled from this parcel's Land Snapshot:{" "}
+            {[
+              prefill.state ? `state ${prefill.state}` : null,
+              prefill.county ? `${prefill.county} County` : null,
+              prefill.acres ? `${prefill.acres} acres` : null,
+            ].filter(Boolean).join(" · ")}. Comps still pull live — review before you mail.
+          </p>
+        </div>
+      )}
 
       {/* Step progress */}
       <div className="mb-8">

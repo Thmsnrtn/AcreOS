@@ -6645,6 +6645,25 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "recourse_drafts_org_status_created_idx" ON "recourse_drafts" ("organization_id", "status", "created_at")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "recourse_drafts_signal_ref_idx" ON "recourse_drafts" ("signal_ref_type", "signal_ref_id")`,
+
+  // ── 0141 — Maren (CPO) #2 — Today decision-queue resolution ledger ──────────
+  // The /today Decision Queue is derived (synthetic item ids, no row to flip).
+  // This table records inline resolutions (done / dismissed / snoozed) so the
+  // GET payload can subtract them and shrink the queue toward "you're clear for
+  // today". Unique (organization_id, item_id) backs the PATCH upsert + the
+  // per-tenant GET subtract. Mirrors shared/schema.ts todayQueueState +
+  // migrations/0141_today_queue_state.sql.
+  `CREATE TABLE IF NOT EXISTS "today_queue_state" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "item_id" text NOT NULL,
+     "status" text NOT NULL,
+     "snoozed_until" timestamp,
+     "resolved_by" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "today_queue_state_org_item_idx" ON "today_queue_state" ("organization_id", "item_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

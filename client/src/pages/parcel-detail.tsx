@@ -65,6 +65,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { Property, LandStatus } from "@shared/schema";
+import { buildBlindOfferPrefillSearch } from "@shared/blindOfferPrefill";
 import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
 import { LandSnapshot } from "@/components/parcels/land-snapshot";
@@ -316,6 +317,39 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
             {/* Land Snapshot — the bundled, decision-grade view assembled from
                 free open data. Top of the overview: one answer, not nine cards. */}
             <LandSnapshot propertyId={property.id} />
+
+            {/* Snapshot → action (Maren CPO #5): turn the noun into a verb.
+                Carry the parcel's confident, provenanced fields (state, county,
+                acreage) straight into the blind-offer wizard so the operator
+                goes parcel → offer in under a minute. Only real fields ride in
+                the querystring — the wizard pulls live comps itself. */}
+            {(() => {
+              const acresNum = Number(property.sizeAcres);
+              const offerHref = `/blind-offer-wizard?${buildBlindOfferPrefillSearch({
+                state: property.state,
+                county: property.county,
+                acres: property.sizeAcres,
+              })}`;
+              return (
+                <Card>
+                  <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Ready to act on this parcel?</p>
+                      <p className="text-xs text-muted-foreground">
+                        Start a blind offer with {property.county} County, {property.state}
+                        {Number.isFinite(acresNum) && acresNum > 0 ? ` · ${acresNum} ac` : ""} already filled in.
+                      </p>
+                    </div>
+                    <Button asChild size="sm" className="shrink-0">
+                      <Link href={offerHref} data-testid="button-make-offer-with-numbers">
+                        <Sparkles className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                        Make an offer with these numbers
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Biography — the longitudinal story mined from parcel_observations
                 (Iyari #1): assessed-value sparkline, owner-tenure clock, tax

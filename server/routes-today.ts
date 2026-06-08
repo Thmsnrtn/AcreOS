@@ -29,14 +29,14 @@
  */
 
 import { Router, type Response } from "express";
-import { and, desc, eq, gte, gt, sql } from "drizzle-orm";
-import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable } from "@shared/schema";
+import { and, desc, eq, gte, gt, sql, inArray } from "drizzle-orm";
+import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
 import { routeAITask, TaskComplexity } from "./services/aiRouter";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganization } from "./types/request";
+import { getOrganization, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
@@ -51,6 +51,24 @@ type DecisionSource =
   | "ai-queue"
   | "portfolio-alert";
 
+// ── Inline action (Maren CPO #2) ────────────────────────────────────────────
+// The habit-loop upgrade: every queue item carries an `inlineAction` describing
+// what the operator can do WITHOUT leaving Today. `resolve` items can be
+// Done / Snoozed / Dismissed in place via PATCH /api/today/queue/:id. When a
+// `paxDraft` target is present, Today also offers "Pax, draft the follow-up"
+// (deep-link with a compose intent) — still resolving the row on use.
+//
+// Discriminated on `kind` so the client can render exactly the right controls:
+//   - "resolve"  : Done / Snooze 3d / Dismiss (always inline-resolvable)
+//   - "navigate" : link-out only (legacy behavior, no inline resolution)
+type InlineAction =
+  | {
+      kind: "resolve";
+      // Optional Pax-draft affordance for follow-up-shaped items.
+      paxDraft?: { entityType: "lead" | "deal"; entityId: number };
+    }
+  | { kind: "navigate" };
+
 interface DecisionItem {
   id: string;
   source: DecisionSource;
@@ -61,7 +79,11 @@ interface DecisionItem {
   actionUrl: string;
   rank: number;
   confidence?: number | null;
+  inlineAction?: InlineAction;
 }
+
+// Snooze duration for the "Snooze 3d" inline action (Maren CPO #2).
+const SNOOZE_DAYS = 3;
 
 const alertHrefByType: Record<string, string> = {
   note_overdue: "/money",
@@ -81,6 +103,67 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function daysAgo(days: number, from: Date) {
   return new Date(from.getTime() - days * DAY_MS);
 }
+
+// ── Inline-action derivation (Maren CPO #2) ─────────────────────────────────
+// Every queue item is now inline-resolvable (Done / Snooze / Dismiss). On TOP
+// of that, follow-up-shaped items get a "Pax, draft the follow-up" affordance
+// when we can extract the underlying lead/deal id from the synthetic item id.
+//
+// The synthetic ids the queue builder emits and the lead id they carry:
+//   stale-lead-<leadId>        (pax-noticed)
+//   ai-follow-up-<leadId>      (ai-queue)
+//   suggest-stale-<leadId>     (pax-suggests)
+//   suggest-obs-<obsId>        (observation — no direct lead id; resolve-only)
+// We parse a trailing integer ONLY for the known follow-up prefixes — never
+// fabricate a target for items whose id doesn't carry a real entity id.
+const FOLLOW_UP_LEAD_ID_PREFIXES = ["stale-lead-", "ai-follow-up-", "suggest-stale-"];
+
+export function deriveInlineAction(item: Pick<DecisionItem, "id">): InlineAction {
+  for (const prefix of FOLLOW_UP_LEAD_ID_PREFIXES) {
+    if (item.id.startsWith(prefix)) {
+      const raw = item.id.slice(prefix.length);
+      const leadId = Number.parseInt(raw, 10);
+      if (Number.isFinite(leadId) && leadId > 0) {
+        return { kind: "resolve", paxDraft: { entityType: "lead", entityId: leadId } };
+      }
+    }
+  }
+  // Everything else is still resolvable in place — just no Pax-draft shortcut.
+  return { kind: "resolve" };
+}
+
+// ── Inline-resolution state machine (Maren CPO #2) ──────────────────────────
+// The two pure halves of the resolver, extracted for direct unit testing:
+//   • resolveActionToState: the PATCH body's action → persisted (status,
+//     snoozedUntil). "snooze" hides for SNOOZE_DAYS; done/dismiss are permanent.
+//   • isQueueItemHidden: given a persisted state row + now, should the GET
+//     payload subtract this item? done/dismissed always; snoozed only while the
+//     snooze window is still in the future (so the item re-surfaces after).
+export type ResolveAction = "done" | "snooze" | "dismiss";
+export interface QueueResolveState {
+  status: string;
+  snoozedUntil: Date | null;
+}
+
+export function resolveActionToState(action: ResolveAction, now: Date): QueueResolveState {
+  if (action === "snooze") {
+    return { status: "snoozed", snoozedUntil: new Date(now.getTime() + SNOOZE_DAYS * DAY_MS) };
+  }
+  return { status: action === "done" ? "done" : "dismissed", snoozedUntil: null };
+}
+
+export function isQueueItemHidden(
+  state: { status: string; snoozedUntil: Date | string | null } | undefined,
+  now: Date,
+): boolean {
+  if (!state) return false;
+  if (state.status === "done" || state.status === "dismissed") return true;
+  if (state.status === "snoozed") {
+    return !!state.snoozedUntil && new Date(state.snoozedUntil).getTime() > now.getTime();
+  }
+  return false;
+}
+
 function isOverdue(due: Date, now: Date) {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return due < startOfToday;
@@ -834,7 +917,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 
     const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
 
-    const queue: DecisionItem[] = [
+    const mergedQueue: DecisionItem[] = [
       ...paxPriorities,
       ...taskItems,
       ...alertItems,
@@ -842,6 +925,41 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       ...paxSuggests,
       ...aiQueue,
     ].sort((a, b) => a.rank - b.rank);
+
+    // ── Subtract inline-resolved items (Maren CPO #2) ──────────────────────
+    // The queue is derived, so we hide anything the operator has already
+    // resolved in place: "done"/"dismissed" hide permanently; "snoozed" hides
+    // until snoozed_until passes (then the row re-surfaces naturally). We only
+    // look up state for ids actually present this request — keeps the read
+    // bounded to the live queue, and a single per-tenant index probe.
+    const presentIds = mergedQueue.map((q) => q.id);
+    let resolvedById = new Map<string, { status: string; snoozedUntil: Date | null }>();
+    if (presentIds.length > 0) {
+      try {
+        const rows = await db
+          .select({
+            itemId: todayQueueState.itemId,
+            status: todayQueueState.status,
+            snoozedUntil: todayQueueState.snoozedUntil,
+          })
+          .from(todayQueueState)
+          .where(and(
+            eq(todayQueueState.organizationId, orgId),
+            inArray(todayQueueState.itemId, presentIds),
+          ));
+        resolvedById = new Map(rows.map((r) => [r.itemId, { status: r.status, snoozedUntil: r.snoozedUntil }]));
+      } catch (e) {
+        // Non-fatal: if the resolution ledger read fails we show the full queue
+        // rather than break Today. Honest degradation.
+        logger.warn("Today: queue-state subtract failed — showing full queue", {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    const queue: DecisionItem[] = mergedQueue
+      .filter((item) => !isQueueItemHidden(resolvedById.get(item.id), now))
+      .map((item) => ({ ...item, inlineAction: deriveInlineAction(item) }));
 
     // ── Cash strip aggregates (mirrors today.tsx cashAggregates/pipeline) ──
     const activeDeals = allDeals.filter((d) => !["closed", "cancelled"].includes(d.status));
@@ -1017,6 +1135,64 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     });
   } catch (error) {
     logger.error("Today consolidated endpoint error", error instanceof Error ? error : undefined);
+    Errors.internal(res, error);
+  }
+});
+
+// ── PATCH /api/today/queue/:id — inline-resolve a decision item (Maren CPO #2)
+// Records the operator's in-place action on a (derived) queue item so the GET
+// payload can subtract it. Body: { action: "done" | "snooze" | "dismiss" }.
+//   • done / dismiss → permanent hide.
+//   • snooze         → hide for SNOOZE_DAYS, then the item re-surfaces.
+// Upserts on the (organization_id, item_id) unique index so repeated actions on
+// the same item just overwrite the prior resolution. The item id is the same
+// synthetic string the GET payload emits.
+const RESOLVE_ACTIONS = new Set(["done", "snooze", "dismiss"]);
+
+router.patch("/queue/:id", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const org = getOrganization(req);
+    const orgId = org.id;
+    const userId = getUserId(req);
+    const itemId = String(req.params.id ?? "").trim();
+    if (!itemId) {
+      return Errors.badRequest(res, "A queue item id is required");
+    }
+
+    const action = String((req.body as { action?: unknown })?.action ?? "").trim();
+    if (!RESOLVE_ACTIONS.has(action)) {
+      return Errors.badRequest(res, "Invalid action — expected one of: done, snooze, dismiss");
+    }
+
+    const now = new Date();
+    const { status, snoozedUntil } = resolveActionToState(action as ResolveAction, now);
+
+    await db
+      .insert(todayQueueState)
+      .values({
+        organizationId: orgId,
+        itemId,
+        status,
+        snoozedUntil,
+        resolvedBy: userId,
+      })
+      .onConflictDoUpdate({
+        target: [todayQueueState.organizationId, todayQueueState.itemId],
+        set: {
+          status,
+          snoozedUntil,
+          resolvedBy: userId,
+          updatedAt: now,
+        },
+      });
+
+    res.json({
+      id: itemId,
+      status,
+      snoozedUntil: snoozedUntil ? snoozedUntil.toISOString() : null,
+    });
+  } catch (error) {
+    logger.error("Today queue resolve error", error instanceof Error ? error : undefined);
     Errors.internal(res, error);
   }
 });

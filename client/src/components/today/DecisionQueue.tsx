@@ -22,6 +22,9 @@ import {
   RotateCcw,
   ArrowRightCircle,
   Clock,
+  Check,
+  CalendarClock,
+  X as XIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +67,23 @@ const priorityBorderColor: Record<DecisionItem["priority"], string> = {
   low: "var(--acr-brand-soft)",
 };
 
+// ── Inline action (Maren CPO #2) ────────────────────────────────────────────
+// Describes what the operator can do to a queue item WITHOUT leaving Today.
+// Discriminated on `kind` so the row renders exactly the right controls.
+//   - "resolve"  : Done / Snooze 3d / Dismiss in place (PATCH the item).
+//                  An optional `paxDraft` adds a "Pax, draft the follow-up" CTA.
+//   - "navigate" : link-out only (legacy behavior; no inline resolution).
+export type InlineAction =
+  | {
+      kind: "resolve";
+      paxDraft?: { entityType: "lead" | "deal"; entityId: number };
+    }
+  | { kind: "navigate" };
+
+// The inline-resolution verbs the queue supports. Mirrors the server's
+// PATCH /api/today/queue/:id body contract.
+export type ResolveAction = "done" | "snooze" | "dismiss";
+
 export interface DecisionItem {
   id: string;
   source: DecisionSource;
@@ -81,6 +101,8 @@ export interface DecisionItem {
   // item's class — fed into the sparkline. The server `/api/today` does
   // not populate this yet; Sparkline gracefully renders a flat baseline.
   confidenceHistory?: number[];
+  // What the operator can do in place. Absent → treated as "navigate".
+  inlineAction?: InlineAction;
 }
 
 interface DecisionQueueProps {
@@ -97,6 +119,14 @@ interface DecisionQueueProps {
    * Default 1.01 means "never auto" until a threshold is supplied.
    */
   autoThreshold?: number;
+  /**
+   * Inline-resolve a queue item in place (Maren CPO #2). The parent owns the
+   * PATCH mutation + query invalidation so this component stays presentational.
+   * When omitted, items fall back to navigate-only (legacy behavior).
+   */
+  onResolve?: (itemId: string, action: ResolveAction) => void;
+  /** Ids currently mid-resolve (pending PATCH) — disables their controls. */
+  resolvingIds?: ReadonlySet<string>;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -135,7 +165,13 @@ function persistSnoozed(map: Record<string, number>) {
 // Provenance-pill decision list. Replaces the old Start-here / Today's
 // actions / Pax suggests / Pax noticed / AI action queue / Portfolio
 // alerts stack — one prioritized list, source on a pill.
-export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: DecisionQueueProps) {
+export function DecisionQueue({
+  items,
+  isLoading,
+  autoThreshold = 1.01,
+  onResolve,
+  resolvingIds,
+}: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
   const [, setLocation] = useLocation();
 
@@ -268,6 +304,20 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
               // Swipe left (right action) — snooze, mirroring InboxTab's vocabulary.
               const swipeLeftLabel = auto ? "Override" : item.actionLabel;
               const swipeLeftTone = auto ? "pos" : "brand";
+              // Inline-resolve is available when the parent wired onResolve AND
+              // the server marked this item resolvable. Auto-handled Pax rows
+              // keep their Override-only treatment (Pax owns those).
+              const canResolveInline =
+                !!onResolve && !auto && item.inlineAction?.kind === "resolve";
+              const paxDraft =
+                item.inlineAction?.kind === "resolve" ? item.inlineAction.paxDraft : undefined;
+              const isResolving = resolvingIds?.has(item.id) ?? false;
+              // Swipe-snooze: prefer the server 3-day snooze when wired so the
+              // gesture and the inline button agree; else fall back to the local
+              // 24h hide.
+              const onSwipeSnooze = canResolveInline
+                ? () => { lightImpact(); onResolve!(item.id, "snooze"); }
+                : () => snoozeItem(item.id);
               return (
                 <motion.li key={item.id} role="listitem" variants={staggerItem}>
                   <SwipeableCard
@@ -279,9 +329,9 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
                     }}
                     rightAction={{
                       icon: Clock,
-                      label: "Snooze 24h",
+                      label: canResolveInline ? "Snooze 3d" : "Snooze 24h",
                       tone: "warn",
-                      onAction: () => snoozeItem(item.id),
+                      onAction: onSwipeSnooze,
                     }}
                   >
                   <Card
@@ -354,6 +404,70 @@ export function DecisionQueue({ items, isLoading, autoThreshold = 1.01 }: Decisi
                               history={item.confidenceHistory ?? []}
                               current={item.confidence as number}
                             />
+                          </div>
+                        )}
+
+                        {/* ── Inline resolution row (Maren CPO #2) ──────────
+                            Resolve the item WITHOUT leaving Today — the habit-
+                            loop core. Done / Snooze 3d / Dismiss shrink the
+                            queue toward zero; "Pax, draft the follow-up" deep-
+                            links the compose intent AND marks the row done. */}
+                        {canResolveInline && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs gap-1"
+                              disabled={isResolving}
+                              onClick={() => { lightImpact(); onResolve!(item.id, "done"); }}
+                              data-testid={`decision-resolve-done-${item.id}`}
+                              aria-label={`Mark "${item.title}" done`}
+                            >
+                              <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                              Done
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2.5 text-xs gap-1 text-muted-foreground"
+                              disabled={isResolving}
+                              onClick={() => { lightImpact(); onResolve!(item.id, "snooze"); }}
+                              data-testid={`decision-resolve-snooze-${item.id}`}
+                              aria-label={`Snooze "${item.title}" for 3 days`}
+                            >
+                              <CalendarClock className="w-3.5 h-3.5" aria-hidden="true" />
+                              Snooze 3d
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2.5 text-xs gap-1 text-muted-foreground"
+                              disabled={isResolving}
+                              onClick={() => { lightImpact(); onResolve!(item.id, "dismiss"); }}
+                              data-testid={`decision-resolve-dismiss-${item.id}`}
+                              aria-label={`Dismiss "${item.title}"`}
+                            >
+                              <XIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                              Dismiss
+                            </Button>
+                            {paxDraft && (
+                              <Button
+                                asChild
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 px-2.5 text-xs gap-1 text-acr-brand"
+                                onClick={() => { lightImpact(); onResolve!(item.id, "done"); }}
+                                data-testid={`decision-resolve-pax-draft-${item.id}`}
+                              >
+                                <Link
+                                  href={`/pax?intent=draft_follow_up&${paxDraft.entityType}Id=${paxDraft.entityId}`}
+                                  aria-label={`Ask Pax to draft the follow-up for "${item.title}"`}
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                                  Pax, draft the follow-up
+                                </Link>
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
