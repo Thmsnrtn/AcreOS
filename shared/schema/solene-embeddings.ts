@@ -185,6 +185,11 @@ export const EMBEDDING_NAMESPACES = [
   "decision_trace",
   "failure_mode",
   "audit_finding",
+  // Andrei E5 — Pax land-expertise corpus. Global (organization_id IS NULL)
+  // hand-curated, cited land-knowledge cards. DISTINCT from parcel-fact
+  // retrieval: these are general domain explanations, never per-parcel facts.
+  // See server/services/pax/landKnowledge/.
+  "land_knowledge",
 ] as const;
 export type EmbeddingNamespace = (typeof EMBEDDING_NAMESPACES)[number];
 
