@@ -19,8 +19,12 @@
  *     OTHER_INFRA_MONTHLY_USD) for non-AI burn
  *   - env-configurable cash position (FOUNDER_CASH_ON_HAND_USD)
  *
- * Phase 1 (Lena) replaces the env-configurable knobs with a real capital
- * ledger; until then, the env values let Tom self-report his runway.
+ * Honesty note (Lena): the summary endpoint does NOT present a runway
+ * *model*. It returns an explicitly-labeled single-point estimate
+ * (founder-declared cash ÷ trailing 30-day burn) and refuses to emit a
+ * runway number at all when cash is undeclared. The three-scenario
+ * runway engine (base/downside/upside) is a later elevation item; until
+ * it ships, nothing here may be dressed up as a computed forecast.
  */
 
 import type { Express, Response } from "express";
@@ -73,32 +77,58 @@ export function registerFounderMoneyRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        // 30d of AI capital events + infra burn = a believable monthly burn.
-        // Tom can override the infra knobs via env if his real numbers diverge.
+        // HONESTY CONTRACT (Lena, 2026-06-07):
+        // This is NOT a forecast model — it is a single-point estimate:
+        //   founder-declared cash ÷ trailing-30-day burn.
+        // The three-scenario runway engine (base/downside/upside) is a later
+        // elevation item. Until it ships we MUST NOT dress this estimate up as
+        // a computed model — we sell customers a provenance contract that
+        // refuses unsourced numbers, so our own surface must do the same.
+        // Therefore the response:
+        //   - labels the method explicitly (`method`, `basis`, `isModeled`)
+        //   - marks cash as founder-declared (an env override, not measured)
+        //   - returns `runwayMonths: null` when cash is unset, so the UI shows
+        //     "—" rather than a fabricated figure derived from a $0 assumption.
+        //
+        // Burn IS partly real: `aiBurnLast30dUsd` is the actual summed cost of
+        // logged capital events over the trailing 30 days. Infra lines are env
+        // knobs (Tom's self-reported fixed costs) and are flagged as such.
         const aiBurnLast30d = await sumCapitalSinceDays(30);
         const flyInfraUsd = envFloat("FLY_INFRA_MONTHLY_USD", 24);
         const otherInfraUsd = envFloat("OTHER_INFRA_MONTHLY_USD", 0);
         const monthlyBurnUsd = aiBurnLast30d + flyInfraUsd + otherInfraUsd;
 
+        const cashDeclared = !!process.env.FOUNDER_CASH_ON_HAND_USD;
         const cashOnHandUsd = envFloat("FOUNDER_CASH_ON_HAND_USD", 0);
 
+        // Only compute a runway figure when cash has actually been declared.
+        // Dividing an undeclared (defaulted-to-0) cash position by burn yields
+        // a misleading "0 months" — refuse to present that as a number.
         const runwayMonths =
-          monthlyBurnUsd > 0
+          cashDeclared && monthlyBurnUsd > 0
             ? cashOnHandUsd / monthlyBurnUsd
-            : Number.POSITIVE_INFINITY;
+            : null;
 
         return res.json({
           asOf: new Date().toISOString(),
           cashOnHandUsd,
           monthlyBurnUsd,
-          runwayMonths: Number.isFinite(runwayMonths) ? runwayMonths : null,
+          runwayMonths:
+            runwayMonths !== null && Number.isFinite(runwayMonths)
+              ? runwayMonths
+              : null,
+          // Explicit honesty metadata so the surface never implies a model.
+          method: "estimate",
+          basis: "founder-declared cash ÷ trailing 30-day burn",
+          isModeled: false,
+          cashDeclared,
           source: {
             aiBurnLast30dUsd: aiBurnLast30d,
             flyInfraMonthlyUsd: flyInfraUsd,
             otherInfraMonthlyUsd: otherInfraUsd,
-            cashSource: process.env.FOUNDER_CASH_ON_HAND_USD
-              ? "env"
-              : "unset",
+            // "founder-declared" when set via env, "unset" otherwise — never
+            // presented as a measured/computed cash balance.
+            cashSource: cashDeclared ? "founder-declared" : "unset",
           },
         });
       } catch (err) {

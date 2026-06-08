@@ -49,17 +49,27 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 // ─── API contracts (provisional — Lena's surfaces land in Phase 1) ────────
 
 /**
- * GET /api/founder/money/summary — Phase 1 (Lena).
- * Provisional shape:
- *   { asOf, cashOnHandUsd, monthlyBurnUsd, runwayMonths }
+ * GET /api/founder/money/summary (Lena).
  *
- * Currently returns 404 / 501. The page renders a placeholder when so.
+ * IMPORTANT — this is an honest single-point ESTIMATE, not a model.
+ * `runwayMonths` = founder-declared cash ÷ trailing 30-day burn, and is
+ * `null` whenever cash hasn't been declared (so we never show a fabricated
+ * "0 mo"). The three-scenario runway model is a later elevation item; this
+ * surface labels the estimate as such and never implies a forecast.
  */
 interface MoneySummary {
   asOf: string;
   cashOnHandUsd: number;
   monthlyBurnUsd: number;
-  runwayMonths: number;
+  runwayMonths: number | null;
+  /** "estimate" until the three-scenario model ships. */
+  method?: string;
+  /** Human-readable method, e.g. "founder-declared cash ÷ trailing 30-day burn". */
+  basis?: string;
+  /** False until the real runway model lands — never present as modeled. */
+  isModeled?: boolean;
+  /** True once cash on hand is declared; gates the runway figure. */
+  cashDeclared?: boolean;
 }
 
 /**
@@ -172,20 +182,30 @@ function RunwaySection() {
     >
       <Card>
         <CardContent className="p-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 inline-flex items-center gap-1">
             Runway
+            {/* Honesty marker: this is a single-point estimate, not a model. */}
+            <span className="normal-case tracking-normal text-[10px] font-medium text-muted-foreground/80 border border-border rounded px-1 py-0.5">
+              estimate
+            </span>
           </div>
           {isLoading ? (
             <Skeleton className="h-9 w-24" />
           ) : (
             <div className="text-3xl font-semibold tabular-nums text-foreground">
-              {data ? fmtMonths(data.runwayMonths) : "—"}
+              {data && data.runwayMonths != null
+                ? fmtMonths(data.runwayMonths)
+                : "—"}
             </div>
           )}
           <p className="text-xs text-muted-foreground mt-2">
-            {data
-              ? `at ${fmtUsd(data.monthlyBurnUsd)} / mo burn`
-              : "wired up in Phase 1"}
+            {!data
+              ? "wired up in Phase 1"
+              : data.runwayMonths != null
+                ? `${fmtUsd(data.monthlyBurnUsd)} / mo burn · ${
+                    data.basis ?? "founder-declared cash ÷ 30-day burn"
+                  }`
+                : "Declare cash on hand to estimate runway"}
           </p>
         </CardContent>
       </Card>
@@ -198,13 +218,17 @@ function RunwaySection() {
             <Skeleton className="h-9 w-24" />
           ) : (
             <div className="text-3xl font-semibold tabular-nums text-foreground">
-              {data ? fmtUsd(data.cashOnHandUsd) : "—"}
+              {data && data.cashDeclared ? fmtUsd(data.cashOnHandUsd) : "—"}
             </div>
           )}
           <p className="text-xs text-muted-foreground mt-2">
-            {data
-              ? `as of ${new Date(data.asOf).toLocaleDateString()}`
-              : "wired up in Phase 1"}
+            {!data
+              ? "wired up in Phase 1"
+              : data.cashDeclared
+                ? `founder-declared · as of ${new Date(
+                    data.asOf,
+                  ).toLocaleDateString()}`
+                : "Not declared yet"}
           </p>
         </CardContent>
       </Card>
