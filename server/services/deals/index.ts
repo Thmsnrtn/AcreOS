@@ -5,6 +5,6 @@
 export * from "../dealFeedEngine";
 export * from "../dealFeedEnhancements";
 export * from "../dealHandoffService";
-export * from "../dealHunter";
+// dealHunter retired 2026-06-08 — sourcing role lives in dealFeedEngine.
 export * from "../dealPatternCloning";
 export * from "../dealUnderwriting";
