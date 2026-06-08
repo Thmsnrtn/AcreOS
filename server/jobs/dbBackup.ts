@@ -144,3 +144,28 @@ export async function registerBackupCronJob(): Promise<void> {
     log(`Failed to register backup cron: ${err.message}`, "dbBackup");
   }
 }
+
+/**
+ * Worker-substrate entrypoint (no BullMQ / Redis required).
+ *
+ * The Postgres-job-lock scheduler in server/jobs/runScheduledJobs.ts calls
+ * this directly under withJobLock. Config-gated: a backup is only durable if
+ * it can be shipped off-box, so without an S3 destination (DB_BACKUP_S3_BUCKET)
+ * the job is wired but dormant — it logs a structured INFO and no-ops cleanly
+ * rather than writing a dump to ephemeral container /tmp that vanishes on the
+ * next deploy. Once the bucket + AWS creds land, the job activates with no
+ * further code change.
+ */
+export async function runDbBackupIfConfigured(): Promise<void> {
+  if (!process.env.DB_BACKUP_S3_BUCKET) {
+    log(
+      "skipped — backup destination (DB_BACKUP_S3_BUCKET) not configured; job wired but dormant until creds land",
+      "dbBackup",
+    );
+    return;
+  }
+  const result = await runDbBackup();
+  if (!result.success) {
+    log(`Scheduled DB backup failed: ${result.error}`, "dbBackup");
+  }
+}

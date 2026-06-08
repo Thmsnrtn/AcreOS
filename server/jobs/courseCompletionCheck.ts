@@ -307,3 +307,25 @@ export function courseCompletionCheckJob(redisConnection: any): Worker {
 
   return worker;
 }
+
+/**
+ * Worker-substrate entrypoint (no BullMQ / Redis required).
+ *
+ * The Postgres-job-lock scheduler in server/jobs/runScheduledJobs.ts calls
+ * this directly under withJobLock. The completion path sends a certificate
+ * email, so this is config-gated: if the outbound email sender is not
+ * configured (AWS_SES_FROM_EMAIL), the job is wired but dormant — it logs a
+ * structured INFO and no-ops cleanly rather than enrolling certificate state
+ * it can never notify on. Once SES creds land, the job activates with no
+ * further code change. processCourseCompletionJob only reads job.id for the
+ * backgroundJobs audit row, so we synthesize a stable id.
+ */
+export async function runCourseCompletionCheck(): Promise<void> {
+  if (!process.env.AWS_SES_FROM_EMAIL) {
+    logger.info(
+      "[CourseCompletion] skipped — email sender (AWS_SES_FROM_EMAIL) not configured; job wired but dormant until creds land",
+    );
+    return;
+  }
+  await processCourseCompletionJob({ id: `scheduler-${Date.now()}` } as Job);
+}
