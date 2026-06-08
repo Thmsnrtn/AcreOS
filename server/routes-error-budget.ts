@@ -16,128 +16,24 @@
  * Returns a per-SLO breakdown:
  *   { sloId, target, current, budgetConsumedPct, remainingBudget,
  *     status: "ok" | "warning" | "critical" }
+ *
+ * NOTE: the SLO math itself now lives in
+ * `server/services/reliability/sloCompute.ts` so the *push*-based burn-rate
+ * alerting worker shares one definition of "what is a breach" with this
+ * *pull*-based endpoint. This file is just the HTTP surface.
  */
 
 import type { Express, Response } from "express";
-import { db } from "./db";
-import { aiTelemetryEvents, jobHealthLogs, incidents } from "@shared/schema";
-import { and, gte, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-
-interface SloResult {
-  sloId: string;
-  target: number; // 0..1 (e.g. 0.999)
-  current: number; // 0..1
-  totalEvents: number;
-  failedEvents: number;
-  budgetConsumedPct: number; // 0..100; >100 means SLO broken
-  remainingBudgetEvents: number;
-  status: "ok" | "warning" | "critical";
-}
-
-function classify(consumedPct: number): SloResult["status"] {
-  if (consumedPct >= 100) return "critical";
-  if (consumedPct >= 80) return "warning";
-  return "ok";
-}
-
-function monthStart(): Date {
-  const d = new Date();
-  d.setUTCDate(1);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-async function aiSuccessSlo(): Promise<SloResult> {
-  const target = 0.999;
-  const start = monthStart();
-  const [row] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      failed: sql<number>`sum(case when ${aiTelemetryEvents.success} = false then 1 else 0 end)::int`,
-    })
-    .from(aiTelemetryEvents)
-    .where(gte(aiTelemetryEvents.createdAt, start));
-
-  const total = Number(row?.total ?? 0);
-  const failed = Number(row?.failed ?? 0);
-  const current = total > 0 ? 1 - failed / total : 1;
-  const budgetEvents = Math.floor(total * (1 - target)); // events we're allowed to fail this month
-  const consumedPct = budgetEvents > 0 ? (failed / budgetEvents) * 100 : failed > 0 ? 100 : 0;
-  const remainingBudgetEvents = Math.max(0, budgetEvents - failed);
-
-  return {
-    sloId: "ai_request_success",
-    target,
-    current,
-    totalEvents: total,
-    failedEvents: failed,
-    budgetConsumedPct: Math.round(consumedPct * 10) / 10,
-    remainingBudgetEvents,
-    status: classify(consumedPct),
-  };
-}
-
-async function jobSuccessSlo(): Promise<SloResult> {
-  const target = 0.99;
-  const start = monthStart();
-  const [row] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      failed: sql<number>`sum(case when ${jobHealthLogs.status} = 'failed' then 1 else 0 end)::int`,
-    })
-    .from(jobHealthLogs)
-    .where(gte(jobHealthLogs.runStartedAt, start));
-
-  const total = Number(row?.total ?? 0);
-  const failed = Number(row?.failed ?? 0);
-  const current = total > 0 ? 1 - failed / total : 1;
-  const budgetEvents = Math.floor(total * (1 - target));
-  const consumedPct = budgetEvents > 0 ? (failed / budgetEvents) * 100 : failed > 0 ? 100 : 0;
-  const remainingBudgetEvents = Math.max(0, budgetEvents - failed);
-
-  return {
-    sloId: "background_job_success",
-    target,
-    current,
-    totalEvents: total,
-    failedEvents: failed,
-    budgetConsumedPct: Math.round(consumedPct * 10) / 10,
-    remainingBudgetEvents,
-    status: classify(consumedPct),
-  };
-}
-
-async function sev1IncidentSlo(): Promise<SloResult> {
-  const target = 1.0; // zero SEV-1 incidents allowed
-  const start = monthStart();
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(incidents)
-    .where(
-      and(
-        gte(incidents.startedAt, start),
-        sql`${incidents.severity} = 'SEV-1'`,
-      ),
-    );
-
-  const sev1Count = Number(row?.count ?? 0);
-  const budgetConsumedPct = sev1Count > 0 ? 100 : 0; // single SEV-1 = exhausted
-
-  return {
-    sloId: "zero_sev1_per_month",
-    target,
-    current: sev1Count === 0 ? 1 : 0,
-    totalEvents: sev1Count,
-    failedEvents: sev1Count,
-    budgetConsumedPct,
-    remainingBudgetEvents: sev1Count === 0 ? 1 : 0,
-    status: sev1Count > 0 ? "critical" : "ok",
-  };
-}
+import {
+  aiSuccessSlo,
+  jobSuccessSlo,
+  sev1IncidentSlo,
+  monthStart,
+} from "./services/reliability/sloCompute";
 
 export function registerErrorBudgetRoute(app: Express): void {
   app.get(
