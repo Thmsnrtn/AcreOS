@@ -54,6 +54,11 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/legal/sub-processors", changefreq: "monthly", priority: 0.4, label: "Sub-processors", prerender: false },
   { path: "/terms", changefreq: "yearly", priority: 0.3, label: "Terms", prerender: false },
   { path: "/privacy", changefreq: "yearly", priority: 0.3, label: "Privacy", prerender: false },
+  // Free public tools — high-intent "free [x]" search traffic. These prove
+  // the data moat without auth, so they should be indexed. prerender:false
+  // because they mount interactive widgets that need the client app to boot.
+  { path: "/tools/parcel-check", changefreq: "monthly", priority: 0.8, label: "Free parcel check", prerender: false },
+  { path: "/tools/calculator", changefreq: "monthly", priority: 0.8, label: "Free land deal calculator", prerender: false },
 ];
 
 export const SITE_BASE_URL = "https://acreos.io";

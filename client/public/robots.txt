@@ -29,6 +29,9 @@ Allow: /status
 Allow: /legal/sub-processors
 Allow: /terms
 Allow: /privacy
+Allow: /tools/parcel-check
+Allow: /tools/calculator
+Allow: /learn/
 
 # Sitemap
 Sitemap: https://acreos.io/sitemap.xml
