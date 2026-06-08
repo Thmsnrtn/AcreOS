@@ -43,11 +43,12 @@
  */
 
 import { pool, db } from "./db";
-import { outbox, outboxDlq } from "@shared/schema";
+import { outbox, outboxDlq, workerHeartbeat } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
+import { instanceId } from "./utils/jobRuntime";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -416,7 +417,41 @@ async function processOne(row: {
   }
 }
 
+/**
+ * Tess #5 — worker liveness pulse. Bumps the single-row `worker_heartbeat`
+ * (id=1) on every poll loop so an EXTERNAL eye can detect "the worker — and
+ * therefore all of alerting — is down" via GET /api/health/worker-heartbeat.
+ * Best-effort: a failed heartbeat write must NEVER stop the worker draining
+ * the outbox (the inverse would be self-defeating). We log + continue.
+ */
+async function writeHeartbeat(): Promise<void> {
+  try {
+    await db
+      .insert(workerHeartbeat)
+      .values({
+        id: 1,
+        instanceId,
+        gitSha: process.env.VITE_GIT_SHA ?? process.env.SENTRY_RELEASE ?? null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: workerHeartbeat.id,
+        set: {
+          instanceId,
+          gitSha: process.env.VITE_GIT_SHA ?? process.env.SENTRY_RELEASE ?? null,
+          updatedAt: new Date(),
+        },
+      });
+  } catch (err) {
+    // Don't let an observability write break the work the worker exists to do.
+    logger.warn(`[worker] heartbeat write failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function pollOnce(): Promise<void> {
+  // Pulse first, every loop — independent of whether there is work to do, so a
+  // quiet-but-alive worker still proves liveness to the external probe.
+  await writeHeartbeat();
   const batch = await claimBatch();
   if (batch.length === 0) return;
   // Process serially within a tick — most handlers are CPU-bound (PDF

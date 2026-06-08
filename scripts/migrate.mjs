@@ -6598,6 +6598,18 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "domain_audit_findings_status_severity_domain_idx" ON "domain_audit_findings" ("status", "severity", "domain")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "domain_audit_findings_detector_dedupe_idx" ON "domain_audit_findings" ("detector", "dedupe_key")`,
+
+  // ── 0139 — Tess — worker liveness heartbeat (single-row) ────────────────────
+  // server/worker.ts UPSERTs id=1 every outbox poll loop; the external probe
+  // reads GET /api/health/worker-heartbeat to detect "alerting itself is down."
+  // Mirrors shared/schema.ts workerHeartbeat + migrations/0139_worker_heartbeat.sql.
+  `CREATE TABLE IF NOT EXISTS "worker_heartbeat" (
+     "id" integer PRIMARY KEY DEFAULT 1,
+     "instance_id" text,
+     "git_sha" text,
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `INSERT INTO "worker_heartbeat" ("id", "updated_at") VALUES (1, now()) ON CONFLICT ("id") DO NOTHING`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

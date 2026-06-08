@@ -63,6 +63,7 @@ import type {
 import type { LookupCategory } from "../data-source-broker";
 import { logShadowDiff } from "./resolveShadow";
 import { logger } from "../../utils/logger";
+import { traceAsync } from "../../tracing";
 
 // ── Public contract ───────────────────────────────────────────
 
@@ -197,12 +198,26 @@ export async function resolveParcel(
 
   // ── Primary: provider registry ──────────────────────────────
   if (registryCats.length > 0) {
-    const registryMap = await providerRegistry.enrichAll(
-      registryCats,
-      input,
-      tier,
-      creditBalance,
-      opts.organizationId,
+    // Tess #4 — explicit span around the highest-variance customer call so the
+    // waterfall shows whether a slow parcel lookup was the registry (county
+    // provider / cache miss / circuit) vs the broker fallback below. Auto-
+    // tagged with git.sha by traceAsync.
+    const registryMap = await traceAsync(
+      "resolveParcel.registry.enrichAll",
+      () =>
+        providerRegistry.enrichAll(
+          registryCats,
+          input,
+          tier,
+          creditBalance,
+          opts.organizationId,
+        ),
+      {
+        "parcel.categories": registryCats.join(","),
+        "parcel.category_count": registryCats.length,
+        "parcel.tier": tier,
+        "parcel.input_type": input.type,
+      },
     );
     for (const category of registryCats) {
       const r = registryMap.get(category);
@@ -229,12 +244,20 @@ export async function resolveParcel(
   if (brokerOnlyCats.length > 0) {
     const coords = toCoords(input);
     if (coords) {
-      const multi = await dataSourceBroker.lookupMultiple(
-        brokerOnlyCats as LookupCategory[],
+      // Tess #4 — span the broker fallback separately so a slow lookup is
+      // attributable to the registry span above vs this broker span.
+      const multi = await traceAsync(
+        "resolveParcel.broker.lookupMultiple",
+        () =>
+          dataSourceBroker.lookupMultiple(brokerOnlyCats as LookupCategory[], {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            maxTier: brokerMaxTier(opts.maxTier),
+          }),
         {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          maxTier: brokerMaxTier(opts.maxTier),
+          "parcel.categories": brokerOnlyCats.join(","),
+          "parcel.category_count": brokerOnlyCats.length,
+          "parcel.resolved_via": "broker",
         },
       );
       for (const category of brokerOnlyCats) {
