@@ -127,6 +127,15 @@ export interface EmailKindProps {
     decision: "upheld" | "reversed";
     outcomeMessage: string;
   };
+  // Rafe — the Recourse Loop. The founder's personal, same-hour reply to a
+  // negative customer signal (detractor NPS / low support rating /
+  // cancellation). Transactional: a direct human response to the customer's
+  // action, so it always sends. `body` is the founder's final (edited) words —
+  // we render them as-is in the AcreOS chrome, no template framing layered on.
+  recourse_reply: {
+    firstName?: string;
+    body: string;
+  };
 }
 
 export type EmailKind = keyof EmailKindProps;
@@ -179,6 +188,22 @@ export const EMAIL_KINDS: EmailKindRegistry = {
         }),
       };
     },
+  },
+
+  recourse_reply: {
+    category: "transactional",
+    render: (p) => ({
+      // Personal, low-key subject — this is a human reaching out, not a system
+      // notice. No "[AcreOS]" prefix, no marketing.
+      subject: "A note from AcreOS",
+      html: shell({
+        heading: p.firstName ? `Hi ${p.firstName},` : "Hi there,",
+        // Render the founder's exact words. paragraphs() escapes + splits on
+        // blank lines so the reply reads as written.
+        bodyHtml: paragraphs(p.body),
+        ctaColor: "#16a34a",
+      }),
+    }),
   },
 
   kb_reply: {

@@ -163,6 +163,7 @@ import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
 import { registerTransparencyRoutes } from "./routes-transparency";
 import { registerPaxAppealRoutes } from "./routes-pax-appeals";
 import { registerFounderAppealRoutes } from "./routes-founder-appeals";
+import { registerFounderRecourseRoutes } from "./routes-founder-recourse";
 import { registerOrganizationRoutes } from "./routes-organization";
 import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
@@ -2136,6 +2137,10 @@ export async function registerRoutes(
   // customer). EU AI Act Art. 86.
   registerPaxAppealRoutes(app);
   registerFounderAppealRoutes(app);
+  // Rafe — the Recourse Loop: every negative customer signal becomes a drafted,
+  // personal, same-hour human reply in one founder queue, edit-and-send,
+  // persisted back (auditable). Distinct from /founder/appeals.
+  registerFounderRecourseRoutes(app);
   registerOrganizationRoutes(app);
   // Phase 5 §5 — team-readiness endpoints (per-seat pricing, lead-assignment
   // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).
