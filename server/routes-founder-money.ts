@@ -19,12 +19,15 @@
  *     OTHER_INFRA_MONTHLY_USD) for non-AI burn
  *   - env-configurable cash position (FOUNDER_CASH_ON_HAND_USD)
  *
- * Honesty note (Lena): the summary endpoint does NOT present a runway
- * *model*. It returns an explicitly-labeled single-point estimate
- * (founder-declared cash ÷ trailing 30-day burn) and refuses to emit a
- * runway number at all when cash is undeclared. The three-scenario
- * runway engine (base/downside/upside) is a later elevation item; until
- * it ships, nothing here may be dressed up as a computed forecast.
+ * Honesty note (Lena, 2026-06-08): the summary endpoint now presents the REAL
+ * three-scenario runway model (`server/services/finance/runwayModel.ts`),
+ * replacing the honest-but-crude P0 placeholder (founder-declared cash ÷
+ * trailing 30-day burn). Cash is read off the real reserve buckets on the
+ * financial_ledger; burn off opex_spent rows + solene_capital_events; MRR off
+ * live paying orgs. The founder-declared env cash remains ONLY as a labeled
+ * override when it exceeds the ledger balance. The legacy single-point fields
+ * (`runwayMonths`, `method`, `basis`) are kept for UI back-compat, fed from the
+ * base scenario, and `isModeled` is now true.
  */
 
 import type { Express, Response } from "express";
@@ -40,6 +43,7 @@ import {
 } from "@shared/schema/solene-capital";
 import { and, desc, gte, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { computeRunway } from "./services/finance/runwayModel";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -77,58 +81,43 @@ export function registerFounderMoneyRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        // HONESTY CONTRACT (Lena, 2026-06-07):
-        // This is NOT a forecast model — it is a single-point estimate:
-        //   founder-declared cash ÷ trailing-30-day burn.
-        // The three-scenario runway engine (base/downside/upside) is a later
-        // elevation item. Until it ships we MUST NOT dress this estimate up as
-        // a computed model — we sell customers a provenance contract that
-        // refuses unsourced numbers, so our own surface must do the same.
-        // Therefore the response:
-        //   - labels the method explicitly (`method`, `basis`, `isModeled`)
-        //   - marks cash as founder-declared (an env override, not measured)
-        //   - returns `runwayMonths: null` when cash is unset, so the UI shows
-        //     "—" rather than a fabricated figure derived from a $0 assumption.
-        //
-        // Burn IS partly real: `aiBurnLast30dUsd` is the actual summed cost of
-        // logged capital events over the trailing 30 days. Infra lines are env
-        // knobs (Tom's self-reported fixed costs) and are flagged as such.
-        const aiBurnLast30d = await sumCapitalSinceDays(30);
-        const flyInfraUsd = envFloat("FLY_INFRA_MONTHLY_USD", 24);
-        const otherInfraUsd = envFloat("OTHER_INFRA_MONTHLY_USD", 0);
-        const monthlyBurnUsd = aiBurnLast30d + flyInfraUsd + otherInfraUsd;
+        // REAL three-scenario runway model (Lena #1). Reads cash off the
+        // reserve buckets, burn off the ledger + solene_capital_events, MRR off
+        // live paying orgs. The founder-declared env cash is a labeled override
+        // only (used when it exceeds the ledger). This IS a model now.
+        const runway = await computeRunway();
 
-        const cashDeclared = !!process.env.FOUNDER_CASH_ON_HAND_USD;
-        const cashOnHandUsd = envFloat("FOUNDER_CASH_ON_HAND_USD", 0);
-
-        // Only compute a runway figure when cash has actually been declared.
-        // Dividing an undeclared (defaulted-to-0) cash position by burn yields
-        // a misleading "0 months" — refuse to present that as a number.
-        const runwayMonths =
-          cashDeclared && monthlyBurnUsd > 0
-            ? cashOnHandUsd / monthlyBurnUsd
-            : null;
+        const base = runway.scenarios.base;
+        // Legacy single-point fields kept for UI back-compat — fed from base.
+        // monthlyBurnUsd is the GROSS base costs (pre-MRR-offset) so the old
+        // "$X / mo burn" label still reads as total spend.
+        const monthlyBurnUsd = base.monthlyCostsUsd;
+        // runwayMonths is the base scenario's months-to-zero; null only when
+        // there's no cash basis at all (so the UI shows "—", never a fake 0).
+        const runwayMonths = base.monthsToZero;
 
         return res.json({
-          asOf: new Date().toISOString(),
-          cashOnHandUsd,
+          asOf: runway.asOf,
+          cashOnHandUsd: runway.cashOnHandUsd,
           monthlyBurnUsd,
-          runwayMonths:
-            runwayMonths !== null && Number.isFinite(runwayMonths)
-              ? runwayMonths
-              : null,
-          // Explicit honesty metadata so the surface never implies a model.
-          method: "estimate",
-          basis: "founder-declared cash ÷ trailing 30-day burn",
-          isModeled: false,
-          cashDeclared,
+          runwayMonths,
+          // The model now stands behind these numbers.
+          method: "model",
+          basis: "three-scenario runway off the financial ledger (base shown)",
+          isModeled: true,
+          cashDeclared: runway.cashBasis === "founder-declared",
+          cashBasis: runway.cashBasis,
+          // The full three-scenario block + transparency inputs.
+          scenarios: runway.scenarios,
+          inputs: runway.inputs,
           source: {
-            aiBurnLast30dUsd: aiBurnLast30d,
-            flyInfraMonthlyUsd: flyInfraUsd,
-            otherInfraMonthlyUsd: otherInfraUsd,
-            // "founder-declared" when set via env, "unset" otherwise — never
-            // presented as a measured/computed cash balance.
-            cashSource: cashDeclared ? "founder-declared" : "unset",
+            ledgerCashUsd: runway.inputs.ledgerCashUsd,
+            founderDeclaredCashUsd: runway.inputs.founderDeclaredCashUsd,
+            monthlyOpexUsd: runway.inputs.monthlyOpexUsd,
+            monthlyAiBurnUsd: runway.inputs.monthlyAiBurnUsd,
+            fixedInfraMonthlyUsd: runway.inputs.fixedInfraMonthlyUsd,
+            mrrUsd: runway.inputs.mrrUsd,
+            cashSource: runway.cashBasis,
           },
         });
       } catch (err) {
