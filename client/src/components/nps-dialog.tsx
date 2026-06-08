@@ -63,6 +63,7 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
     setStep("feedback");
   };
 
+  // Submit the score with the typed comment.
   const handleSubmit = () => {
     if (selectedScore === null) return;
     submitMutation.mutate({
@@ -72,9 +73,24 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
     });
   };
 
+  // "Skip" on the feedback step = submit the score WITHOUT the comment. The
+  // score is the signal that matters (a detractor must still page the founder);
+  // the free-text is optional. Explicit so it can never silently send a half-
+  // typed comment the user chose not to keep.
+  const handleSkipComment = () => {
+    if (selectedScore === null) return;
+    submitMutation.mutate({ score: selectedScore, trigger });
+  };
+
   const handleDismiss = () => {
-    // Store dismiss timestamp in localStorage so we can suppress for 7 days
+    // Fast-path: localStorage suppresses the prompt for 7 days on THIS browser.
     localStorage.setItem("nps_dismissed_at", new Date().toISOString());
+    // Durable: persist the dismiss on the server queue row so clearing browser
+    // data (or switching devices) doesn't re-nag. Best-effort — never block close.
+    apiRequest("POST", "/api/nps/dismiss", {}).catch(() => {
+      // localStorage already suppressed it locally; a failed server write just
+      // means the prompt may reappear on another device. Acceptable; don't surface.
+    });
     onClose();
   };
 
@@ -153,8 +169,15 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
               aria-label="Additional feedback"
             />
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" size="sm" onClick={handleSubmit}>
-                Skip
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleSkipComment}
+                disabled={submitMutation.isPending}
+                aria-label="Submit score without a comment"
+              >
+                Skip comment
               </Button>
               <Button
                 type="button"
