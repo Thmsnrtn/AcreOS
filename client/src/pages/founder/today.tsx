@@ -36,6 +36,7 @@ import {
   ArrowRight,
   Sparkles,
   Loader2,
+  LayoutGrid,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -620,6 +621,36 @@ function ChatWithSoleneSection() {
 
 // ─── Page ────────────────────────────────────────────────────────────────
 
+// ─── Section: Command cockpit link ──────────────────────────────────────
+// Prominent entry to /founder/command — the "is the company green right now?"
+// synthesis surface aggregating every domain's continuous-audit findings.
+function CommandLink() {
+  return (
+    <Link
+      href="/founder/command"
+      className="group flex items-center gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-5"
+      data-testid="today-command-link"
+    >
+      <div className="rounded-card bg-primary/10 p-2.5 shrink-0">
+        <LayoutGrid className="h-5 w-5 text-primary" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground">
+          Command cockpit
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Is the company green right now? Every domain's continuous audit in one
+          glance.
+        </p>
+      </div>
+      <ArrowRight
+        className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </Link>
+  );
+}
+
 export default function FounderTodayPage() {
   useDocumentTitle("Today · Founder");
 
@@ -636,6 +667,8 @@ export default function FounderTodayPage() {
         </header>
 
         <MorningPulseBanner />
+
+        <CommandLink />
 
         <div className="grid gap-4 md:gap-6 md:grid-cols-2">
           <ActiveAsksSection />

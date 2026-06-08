@@ -274,6 +274,10 @@ const FounderLegalReadinessPage = React.lazy(() => import("@/pages/founder/legal
 const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
 const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
+// Command cockpit — one synthesis surface aggregating every domain's
+// continuous-audit findings into per-domain status tiles. Consumes
+// GET /api/founder/audit-findings (owned by the substrate agent).
+const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
 const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
@@ -1164,6 +1168,10 @@ function Router() {
       </Route>
       <Route path="/founder/telemetry">
         {() => <FounderProtectedRoute component={FounderTelemetryPage} />}
+      </Route>
+      {/* Command cockpit — "is the company green right now?" synthesis surface. */}
+      <Route path="/founder/command">
+        {() => <FounderProtectedRoute component={FounderCommandPage} />}
       </Route>
       <Route path="/founder/pax-traces">
         {() => <FounderProtectedRoute component={FounderPaxTracesPage} />}
