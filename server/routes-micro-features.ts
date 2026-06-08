@@ -13,7 +13,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage } from "./storage";
 import type { InsertLead } from "@shared/schema";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
 
@@ -281,18 +281,26 @@ export function registerMicroFeatureRoutes(app: Express): void {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         return Errors.badRequest(res, "lat and lng are required numeric query params");
       }
-      const token = process.env.VITE_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN;
+      // Accept all three accepted Mapbox token names. The client surfaces the
+      // token as VITE_MAPBOX_ACCESS_TOKEN; the server keeps backward-compat
+      // with the older VITE_MAPBOX_TOKEN + a server-only MAPBOX_TOKEN.
+      const token =
+        process.env.VITE_MAPBOX_ACCESS_TOKEN ||
+        process.env.VITE_MAPBOX_TOKEN ||
+        process.env.MAPBOX_TOKEN;
       if (!token) {
-        return res.status(503).json({
-          error: "service_unavailable",
-          message: "Reverse geocoding is not configured. Contact support.",
-        });
+        return sendError(
+          res,
+          503,
+          "SERVICE_UNAVAILABLE",
+          "Reverse geocoding isn't available yet — the map provider isn't configured. Address lookup will work once it's set up.",
+        );
       }
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${encodeURIComponent(token)}&types=address,place,postcode,region,country`;
       const resp = await fetch(url);
       if (!resp.ok) {
         logger.warn("[geocode/reverse] mapbox non-ok", { metadata: { status: resp.status } });
-        return res.status(502).json({ error: "upstream_error", message: "Geocoding service error" });
+        return sendError(res, 502, "UPSTREAM_ERROR", "The geocoding service is temporarily unavailable. Try again in a moment.");
       }
       const data = (await resp.json()) as any;
       const place = data?.features?.[0];
