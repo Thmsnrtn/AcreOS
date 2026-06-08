@@ -224,6 +224,7 @@ import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
 import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-eval";
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
+import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
 import { registerFounderFinancialsRoutes } from "./routes-founder-financials";
@@ -2257,6 +2258,10 @@ export async function registerRoutes(
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
+  // Domain-audit cockpit — /api/founder/audit-findings — the shared
+  // continuous-audit substrate's founder "is it green?" read surface +
+  // acknowledge/resolve. Founder-only. Company-level (no org scope).
+  registerFounderAuditRoutes(app);
   // Founder Life-Cockpit — /api/founder/life-cockpit/* — FOUNDER-SIDE personal
   // ops (taxes, encrypted document vault, income, obligations). Founder-only.
   registerFounderLifeCockpitRoutes(app);

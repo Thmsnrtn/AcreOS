@@ -298,6 +298,47 @@ function startDigestJob() {
   }, SIX_HOURS);
 }
 
+// ── Domain-audit substrate (Iris) — daily continuous-audit sweep ─────────────
+// Runs the shared domain-audit detectors (Lena/Iyari exemplars today; the
+// other domains register theirs over time) and then sweeps stale findings.
+// One bad detector never breaks the others (runDomainAudits isolates each).
+async function processDomainAudits() {
+  try {
+    const { runDomainAudits, staleFindings } = await import('../services/audit/domainAudit');
+    const { taxReserveDetector } = await import('../services/audit/detectors/taxReserveDetector');
+    const { observationRateDetector } = await import('../services/audit/detectors/observationRateDetector');
+
+    const result = await runDomainAudits([taxReserveDetector, observationRateDetector]);
+    // Auto-age open findings whose condition stopped firing >7d ago.
+    const staled = await staleFindings(7);
+
+    log(
+      `Domain audits: detectors=${result.detectorsRun}, failed=${result.detectorsFailed}, findings=${result.findingsRecorded}, staled=${staled}`,
+      'domain-audit',
+    );
+  } catch (err) {
+    log(`Domain audit job error: ${err}`, 'domain-audit');
+  }
+}
+
+function startDomainAuditJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+
+  log('Starting domain-audit background job (daily)', 'domain-audit');
+
+  // Run once shortly after boot so a fresh deploy seeds the cockpit, then daily.
+  trackInterval(() => {
+    withJobLock('domain_audit', TTL_SECONDS, processDomainAudits).catch(err => {
+      log(`Scheduled domain audit run failed: ${err}`, 'domain-audit');
+    });
+  }, ONE_DAY);
+
+  withJobLock('domain_audit', TTL_SECONDS, processDomainAudits).catch(err => {
+    log(`Initial domain audit run failed: ${err}`, 'domain-audit');
+  });
+}
+
 // Sequence processor background job
 function startSequenceProcessorJob() {
   log('Starting sequence processor background job (every 60 seconds)', 'sequences');
@@ -3468,6 +3509,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Start digest background job (every 6 hours)
   startDigestJob();
+
+  // Start domain-audit substrate sweep (daily — Iris shared continuous audit)
+  startDomainAuditJob();
 
   // Start sequence processor background job (every 60 seconds)
   startSequenceProcessorJob();
