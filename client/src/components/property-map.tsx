@@ -687,6 +687,52 @@ function saveLayerState(state: LayerState): void {
   }
 }
 
+// ── Boundary provenance / honesty signal ─────────────────────────────────────
+//
+// A parcel footprint can come from an AUTHORITATIVE surveyed/county-GIS polygon
+// or from a DERIVED/INFERRED shape (a paid-aggregator best-guess, a cached
+// snapshot of unknown vintage, or a synthetic box around a geocoded point).
+// Rendering both with the same solid outline would lie to the user — they must
+// be able to tell an inferred footprint from a real one at a glance.
+//
+// `boundarySource` mirrors the upstream parcel resolver's `source` field
+// (server/services/parcel.ts: "county_gis" | "regrid" | "rapidapi" | "cache").
+// Only "county_gis" is an authoritative surveyed/assessor boundary; everything
+// else — and anything unrecognized or absent — is treated as APPROXIMATE and
+// drawn dashed. Callers may also force the signal via `approximate` directly.
+//
+// Default posture is intentionally conservative: when provenance is UNKNOWN we
+// default to dashed + "approximate", never solid. Honesty over flattery.
+type BoundarySource =
+  | "county_gis"
+  | "regrid"
+  | "rapidapi"
+  | "cache"
+  | "unknown"
+  | (string & {});
+
+/** The single source of truth for "is this footprint authoritative?". */
+function isAuthoritativeBoundary(source: BoundarySource | undefined): boolean {
+  return source === "county_gis";
+}
+
+/**
+ * Resolve the honesty signal for a parcel. An explicit `approximate` flag wins;
+ * otherwise we derive it from provenance, defaulting to approximate (dashed)
+ * whenever the source is non-authoritative, unrecognized, or absent.
+ */
+function isApproximateBoundary(opts: {
+  approximate?: boolean;
+  boundarySource?: BoundarySource;
+}): boolean {
+  if (typeof opts.approximate === "boolean") return opts.approximate;
+  return !isAuthoritativeBoundary(opts.boundarySource);
+}
+
+// Dash pattern for inferred outlines (in line-widths). Distinct enough from the
+// solid authoritative outline to read instantly, subtle enough not to shout.
+const APPROXIMATE_DASH_ARRAY: [number, number] = [2, 1.5];
+
 interface PropertyBoundary {
   id: number;
   apn: string;
@@ -700,6 +746,10 @@ interface PropertyBoundary {
     lng: number;
   };
   status?: string;
+  /** Upstream parcel resolver provenance — drives the dashed "approximate" outline. */
+  boundarySource?: BoundarySource;
+  /** Explicit override of the approximate-extent honesty signal. */
+  approximate?: boolean;
 }
 
 interface PropertyMapProps {
@@ -1078,6 +1128,9 @@ export function PropertyMap({
     if (map.current.getLayer("property-outline")) {
       map.current.setLayoutProperty("property-outline", "visibility", visible ? "visible" : "none");
     }
+    if (map.current.getLayer("property-outline-approximate")) {
+      map.current.setLayoutProperty("property-outline-approximate", "visibility", visible ? "visible" : "none");
+    }
   }, []);
 
   const addZoningLayer = useCallback(() => {
@@ -1291,6 +1344,9 @@ export function PropertyMap({
       if (map.current.getLayer("property-fill")) map.current.setLayoutProperty("property-fill", "visibility", "none");
       if (map.current.getLayer("property-outline")) {
         map.current.setPaintProperty("property-outline", "line-width", 2);
+      }
+      if (map.current.getLayer("property-outline-approximate")) {
+        map.current.setPaintProperty("property-outline-approximate", "line-width", 2);
       }
       if (!map.current.getLayer("property-extrusion")) {
         map.current.addLayer({
@@ -1637,6 +1693,7 @@ export function PropertyMap({
     if (map.current.getSource("properties")) {
       if (map.current.getLayer("property-labels")) map.current.removeLayer("property-labels");
       if (map.current.getLayer("property-outline")) map.current.removeLayer("property-outline");
+      if (map.current.getLayer("property-outline-approximate")) map.current.removeLayer("property-outline-approximate");
       if (map.current.getLayer("property-fill")) map.current.removeLayer("property-fill");
       if (map.current.getSource("labels")) map.current.removeSource("labels");
       map.current.removeSource("properties");
@@ -1654,6 +1711,11 @@ export function PropertyMap({
             name: p.name,
             status: p.status || "default",
             color: STATUS_COLORS[p.status || "default"] || STATUS_COLORS.default,
+            // Honesty signal: true => inferred footprint (dashed outline).
+            approximate: isApproximateBoundary({
+              approximate: p.approximate,
+              boundarySource: p.boundarySource,
+            }),
           },
           geometry: p.boundary as GeoJSON.Geometry,
         })),
@@ -1677,14 +1739,34 @@ export function PropertyMap({
       }
     });
 
+    // Authoritative (surveyed/county-GIS) boundaries — solid outline.
     map.current.addLayer({
       id: "property-outline",
       type: "line",
       source: "properties",
+      filter: ["!=", ["get", "approximate"], true],
       paint: {
         "line-color": ["get", "color"],
         "line-width": 3,
         "line-opacity": 0.9,
+      },
+      layout: {
+        visibility: layerState.propertyHeatmap ? "visible" : "none"
+      }
+    });
+
+    // Approximate (derived/inferred) extents — DASHED outline. Honesty signal so
+    // an inferred footprint never reads as a surveyed one. See the legend caption.
+    map.current.addLayer({
+      id: "property-outline-approximate",
+      type: "line",
+      source: "properties",
+      filter: ["==", ["get", "approximate"], true],
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": 3,
+        "line-opacity": 0.9,
+        "line-dasharray": APPROXIMATE_DASH_ARRAY,
       },
       layout: {
         visibility: layerState.propertyHeatmap ? "visible" : "none"
@@ -2317,6 +2399,13 @@ export function PropertyMap({
     );
   }
 
+  // Whether any rendered parcel has an inferred (non-authoritative) footprint.
+  // Drives the "approximate extent" honesty caption so the dashed outline is
+  // never left unexplained.
+  const hasApproximateBoundary = properties.some(
+    (p) => p.boundary && isApproximateBoundary({ approximate: p.approximate, boundarySource: p.boundarySource }),
+  );
+
   return (
     <div 
       className={cn(
@@ -2684,7 +2773,34 @@ export function PropertyMap({
 
           {/* Overlay legend — only for layers that successfully loaded. Floats
               above the layer-panel toggle, bottom-left. */}
-          <div className="absolute bottom-16 left-3 z-10 max-w-[calc(100%-1.5rem)]">
+          <div className="absolute bottom-16 left-3 z-10 max-w-[calc(100%-1.5rem)] space-y-1.5">
+            {/* Approximate-extent honesty caption — explains the dashed outline so
+                an inferred footprint is never mistaken for a surveyed boundary. */}
+            {hasApproximateBoundary && layerState.propertyHeatmap && (
+              <div
+                className="flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg"
+                data-testid="legend-approximate-extent"
+              >
+                <svg
+                  width="20"
+                  height="6"
+                  viewBox="0 0 20 6"
+                  className="shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                >
+                  <line
+                    x1="0"
+                    y1="3"
+                    x2="20"
+                    y2="3"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="4 3"
+                  />
+                </svg>
+                <span className="text-micro text-muted-foreground">Approximate extent</span>
+              </div>
+            )}
             <OverlayLegend
               active={{
                 femaFloodZone: layerState.femaFloodZone && layerStatus["fema-flood"] === "ready",
@@ -3133,6 +3249,10 @@ interface SinglePropertyMapProps {
   state?: string;
   county?: string;
   showNearbyParcels?: boolean;
+  /** Upstream parcel resolver provenance — drives the dashed "approximate" outline. */
+  boundarySource?: BoundarySource;
+  /** Explicit override of the approximate-extent honesty signal. */
+  approximate?: boolean;
 }
 
 interface NearbyParcel {
@@ -3141,18 +3261,23 @@ interface NearbyParcel {
   centroid: { lat: number; lng: number };
 }
 
-export function SinglePropertyMap({ 
-  boundary, 
-  centroid, 
-  apn, 
-  height = "300px", 
+export function SinglePropertyMap({
+  boundary,
+  centroid,
+  apn,
+  height = "300px",
   enable3DTerrain = true,
   state,
   county,
-  showNearbyParcels = true
+  showNearbyParcels = true,
+  boundarySource,
+  approximate,
 }: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  // Honesty signal: is this single parcel's footprint inferred (dashed) vs.
+  // authoritative (solid)? Defaults to approximate when provenance is unknown.
+  const isApproximate = isApproximateBoundary({ approximate, boundarySource });
 
   useEffect(() => {
     if (!mapContainer.current || !isMapEngineConfigured() || !boundary || !centroid) return;
@@ -3259,7 +3384,8 @@ export function SinglePropertyMap({
         },
       });
 
-      // Sharp animated outline
+      // Sharp outline — solid for authoritative boundaries, DASHED for inferred
+      // ("approximate extent") so the two never read the same. See caption below.
       mapInstance.addLayer({
         id: "property-outline",
         type: "line",
@@ -3273,6 +3399,7 @@ export function SinglePropertyMap({
             20, 5,
           ],
           "line-opacity": 0.9,
+          ...(isApproximate ? { "line-dasharray": APPROXIMATE_DASH_ARRAY } : {}),
         },
       });
 
@@ -3357,7 +3484,7 @@ export function SinglePropertyMap({
       clearTimeout(timeoutId);
       map.current?.remove();
     };
-  }, [boundary, centroid, apn, enable3DTerrain, state, county, showNearbyParcels]);
+  }, [boundary, centroid, apn, enable3DTerrain, state, county, showNearbyParcels, isApproximate]);
 
   if (!isMapEngineConfigured()) {
     return (
@@ -3382,12 +3509,27 @@ export function SinglePropertyMap({
   }
 
   return (
-    <div 
-      ref={mapContainer} 
-      className="w-full h-full rounded-md overflow-hidden" 
-      style={{ height }}
-      data-testid="single-property-map"
-    />
+    <div className="relative w-full h-full" style={{ height }}>
+      <div
+        ref={mapContainer}
+        className="w-full h-full rounded-md overflow-hidden"
+        style={{ height }}
+        data-testid="single-property-map"
+      />
+      {/* Approximate-extent honesty caption — explains the dashed outline so an
+          inferred footprint is never mistaken for a surveyed boundary. */}
+      {isApproximate && (
+        <div
+          className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
+          data-testid="legend-approximate-extent"
+        >
+          <svg width="20" height="6" viewBox="0 0 20 6" className="shrink-0 text-muted-foreground" aria-hidden="true">
+            <line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3" />
+          </svg>
+          <span className="text-micro text-muted-foreground">Approximate extent</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3401,16 +3543,25 @@ interface StaticPropertyMapProps {
   width?: number;
   className?: string;
   onClick?: () => void;
+  /** Upstream parcel resolver provenance — drives the "approximate" honesty badge. */
+  boundarySource?: BoundarySource;
+  /** Explicit override of the approximate-extent honesty signal. */
+  approximate?: boolean;
 }
 
-export function StaticPropertyMap({ 
-  boundary, 
-  centroid, 
+export function StaticPropertyMap({
+  boundary,
+  centroid,
   height = "200px",
   width = 400,
   className = "",
-  onClick
+  onClick,
+  boundarySource,
+  approximate,
 }: StaticPropertyMapProps) {
+  // Honesty signal. The Mapbox Static Images API can't render a dashed stroke,
+  // so for the static fallback we surface the same truth as an explicit badge.
+  const isApproximate = isApproximateBoundary({ approximate, boundarySource });
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -3539,9 +3690,9 @@ export function StaticPropertyMap({
           <span className="sr-only">Loading…</span>
         </div>
       )}
-      <img 
+      <img
         src={staticMapUrl}
-        alt="Property boundary map"
+        alt={isApproximate ? "Property approximate-extent map" : "Property boundary map"}
         className="w-full h-full object-cover"
         loading="lazy"
         onLoad={() => setIsLoading(false)}
@@ -3551,6 +3702,18 @@ export function StaticPropertyMap({
           setIsLoading(false);
         }}
       />
+      {/* Approximate-extent honesty badge — the static image can't draw a dashed
+          stroke, so we say it plainly: this footprint is inferred, not surveyed. */}
+      {isApproximate && !isLoading && (
+        <Badge
+          variant="secondary"
+          className="absolute bottom-2 left-2 text-micro gap-1"
+          data-testid="legend-approximate-extent"
+        >
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          Approximate extent
+        </Badge>
+      )}
     </div>
   );
 }
