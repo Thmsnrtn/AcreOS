@@ -484,6 +484,12 @@ interface DeepToolLink {
 
 const DEEP_TOOLS: DeepToolLink[] = [
   {
+    label: "Command cockpit",
+    href: "/founder/command",
+    description: "Is the company green? Every domain's continuous audit in one glance",
+    icon: BarChart2,
+  },
+  {
     label: "Customers",
     href: "/founder/customers",
     description: "Paid / trial / churned counts + UTM sources",
