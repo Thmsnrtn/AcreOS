@@ -6567,6 +6567,32 @@ const STATEMENTS = [
   // migrations/0133_notes_originating_deal.sql.
   `ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "originating_deal_id" integer REFERENCES "deals" ("id") ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS "notes_org_originating_deal_idx" ON "notes" ("organization_id", "originating_deal_id")`,
+
+  // ── 0135 — Iris — shared continuous-audit substrate (domain_audit_findings) ──
+  // COMPANY/FOUNDER-LEVEL (NO organization_id). Six domains (Lena/Beatrice/
+  // Quinn/Andrei/Tess/Iyari) write findings; the founder Command cockpit reads
+  // them. Dedupe via UNIQUE(detector, dedupe_key) — recordFinding() upserts:
+  // insert once, bump last_seen_at on re-fire, never duplicate. Mirrors
+  // shared/schema/domain-audit-findings.ts + migrations/0135_domain_audit_findings.sql.
+  `CREATE TABLE IF NOT EXISTS "domain_audit_findings" (
+     "id" serial PRIMARY KEY,
+     "domain" text NOT NULL,
+     "detector" text NOT NULL,
+     "severity" text NOT NULL,
+     "title" text NOT NULL,
+     "detail" text NOT NULL,
+     "cited_reason" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "dedupe_key" text NOT NULL,
+     "subject_ref" text,
+     "metadata" jsonb,
+     "first_seen_at" timestamptz NOT NULL DEFAULT now(),
+     "last_seen_at" timestamptz NOT NULL DEFAULT now(),
+     "resolved_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "domain_audit_findings_status_severity_domain_idx" ON "domain_audit_findings" ("status", "severity", "domain")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "domain_audit_findings_detector_dedupe_idx" ON "domain_audit_findings" ("detector", "dedupe_key")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

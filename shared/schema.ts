@@ -16890,3 +16890,10 @@ export * from "./schema/transparency-reports";
 // personal-tax + income + obligations + document-vault substrate. Migration 0123.
 // ============================================================================
 export * from "./schema/founder-life-cockpit";
+
+// ============================================================================
+// IRIS — shared continuous-audit substrate (domain_audit_findings).
+// COMPANY/FOUNDER-LEVEL (no organization_id). Six domains write findings; the
+// founder Command cockpit renders "is it green?". Migration 0135.
+// ============================================================================
+export * from "./schema/domain-audit-findings";
