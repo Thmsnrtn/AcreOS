@@ -44,6 +44,36 @@ export function getPrimaryFounderEmail(): string | null {
 }
 
 /**
+ * Resolve the set of founder Clerk user IDs to target for direct delivery
+ * (e.g. VAPID push to the founder's locked phone). Combines the env-configured
+ * FOUNDER_USER_IDS with a DB lookup of users whose email matches a founder
+ * email — so push reaches the founder even if only the email var is set.
+ * Best-effort: a DB failure falls back to the env-only set rather than throwing,
+ * because this runs on the alert-delivery hot path and must never block an alert.
+ */
+export async function getFounderUserIds(): Promise<string[]> {
+  const ids = new Set<string>(FOUNDER_USER_IDS);
+  try {
+    const { db } = await import("../db");
+    const { users } = await import("@shared/schema");
+    const { inArray } = await import("drizzle-orm");
+    if (FOUNDER_EMAILS.length > 0) {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.email, FOUNDER_EMAILS))
+        .limit(10);
+      for (const r of rows) {
+        if (r.id) ids.add(r.id);
+      }
+    }
+  } catch {
+    /* env-only fallback */
+  }
+  return [...ids];
+}
+
+/**
  * Check if an email belongs to a founder account
  */
 export function isFounderEmail(email: string | undefined | null): boolean {
