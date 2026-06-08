@@ -109,42 +109,98 @@ export function Hero() {
   );
 }
 
+/**
+ * HERO_DEMO_FIXTURES — ILLUSTRATIVE, NOT REAL DATA.
+ *
+ * Every value below is a hand-authored example of the *shape* of Pax output,
+ * not a measurement, a real parcel, a real comp, or a real customer. The hero
+ * cards exist to show "this is what a Pax result looks like," so each card
+ * carries a visible "Example · representative output" chip and the whole visual
+ * is `aria-hidden` (it is decoration, never announced to assistive tech). These
+ * literals live here, clearly labeled, so no one mistakes them for live figures
+ * or copies them into product surfaces as truth.
+ */
+const HERO_DEMO_FIXTURES = {
+  comp: {
+    apn: "APN 304-12-456",
+    comparableSales: "14",
+    medianPerAcre: "$2,840",
+    confidence: "High · 87%",
+    confidenceWidth: "87%",
+  },
+  reply: {
+    to: "To: Janet Ruiz · Coconino County",
+    inbound: `"What's your best offer? I have another buyer."`,
+    draft: `"Hi Janet — I can do $14,200 cash, 14-day close. That's 12% above the median for parcels your size in Coconino. Happy to email a written offer."`,
+  },
+  servicing: {
+    note: "Note #2204-A",
+    paymentReceived: "$487.50",
+    receiptSent: "2 min ago",
+    nextDue: "Jun 1",
+  },
+} as const;
+
+/** Quiet "this is an example, not live data" chip for each hero card. */
+function HeroExampleChip() {
+  return (
+    <span
+      style={{
+        font: "600 9px/1 var(--font-sans)",
+        textTransform: "uppercase",
+        letterSpacing: "0.07em",
+        color: "var(--acr-ink-3)",
+        background: "var(--acr-line-soft)",
+        borderRadius: "999px",
+        padding: "3px 7px",
+        alignSelf: "flex-start",
+        marginBottom: "8px",
+      }}
+    >
+      Example · representative output
+    </span>
+  );
+}
+
 function HeroVisual() {
+  const f = HERO_DEMO_FIXTURES;
   return (
     <div className="lp-hero-visual" aria-hidden="true">
-      <div className="lp-hero-card lp-hv-atlas">
+      <div className="lp-hero-card lp-hv-atlas" style={{ display: "flex", flexDirection: "column" }}>
+        <HeroExampleChip />
         <div className="lp-hv-head">
           <div className="lp-hv-avatar lp-hv-pax-av">P</div>
           <div className="lp-hv-meta">
             <div className="lp-hv-name">Pax · Comp analysis</div>
-            <div className="lp-hv-role">APN 304-12-456</div>
+            <div className="lp-hv-role">{f.comp.apn}</div>
           </div>
           <span className="lp-hv-badge lp-hv-badge-running">
             <span className="lp-hv-spin" />
             Running
           </span>
         </div>
-        <div className="lp-hv-row"><span>Comparable sales found</span><b>14</b></div>
-        <div className="lp-hv-row"><span>Median $/acre</span><b>$2,840</b></div>
-        <div className="lp-hv-row"><span>Confidence</span><b className="lp-hv-conf-high">High · 87%</b></div>
-        <div className="lp-hv-bar"><div className="lp-hv-bar-fill" style={{ width: "87%" }} /></div>
+        <div className="lp-hv-row"><span>Comparable sales found</span><b>{f.comp.comparableSales}</b></div>
+        <div className="lp-hv-row"><span>Median $/acre</span><b>{f.comp.medianPerAcre}</b></div>
+        <div className="lp-hv-row"><span>Confidence</span><b className="lp-hv-conf-high">{f.comp.confidence}</b></div>
+        <div className="lp-hv-bar"><div className="lp-hv-bar-fill" style={{ width: f.comp.confidenceWidth }} /></div>
       </div>
 
-      <div className="lp-hero-card lp-hv-pax">
+      <div className="lp-hero-card lp-hv-pax" style={{ display: "flex", flexDirection: "column" }}>
+        <HeroExampleChip />
         <div className="lp-hv-head">
           <div className="lp-hv-avatar lp-hv-pax-av">P</div>
           <div className="lp-hv-meta">
             <div className="lp-hv-name">Pax · Drafted reply</div>
-            <div className="lp-hv-role">To: Janet Ruiz · Coconino County</div>
+            <div className="lp-hv-role">{f.reply.to}</div>
           </div>
         </div>
         <div className="lp-hv-msg">
           <span className="lp-hv-msg-from">Janet:</span>
-          {`"What's your best offer? I have another buyer."`}
+          {f.reply.inbound}
         </div>
         <div className="lp-hv-msg lp-hv-msg-out">
           <span className="lp-hv-msg-from">Pax draft:</span>
-          {`"Hi Janet — I can do $14,200 cash, 14-day close. That's 12% above the median for parcels your size in Coconino. Happy to email a written offer."`}
+          {f.reply.draft}
         </div>
         <div className="lp-hv-actions">
           <span className="lp-hv-action">Send as-is</span>
@@ -153,18 +209,19 @@ function HeroVisual() {
         </div>
       </div>
 
-      <div className="lp-hero-card lp-hv-sophie">
+      <div className="lp-hero-card lp-hv-sophie" style={{ display: "flex", flexDirection: "column" }}>
+        <HeroExampleChip />
         <div className="lp-hv-head">
           <div className="lp-hv-avatar lp-hv-pax-av">P</div>
           <div className="lp-hv-meta">
             <div className="lp-hv-name">Pax · Note serviced</div>
-            <div className="lp-hv-role">Note #2204-A</div>
+            <div className="lp-hv-role">{f.servicing.note}</div>
           </div>
           <span className="lp-hv-badge lp-hv-badge-done">Done</span>
         </div>
-        <div className="lp-hv-row"><span>Payment received</span><b>$487.50</b></div>
-        <div className="lp-hv-row"><span>Receipt sent</span><b>2 min ago</b></div>
-        <div className="lp-hv-row"><span>Next due</span><b>Jun 1</b></div>
+        <div className="lp-hv-row"><span>Payment received</span><b>{f.servicing.paymentReceived}</b></div>
+        <div className="lp-hv-row"><span>Receipt sent</span><b>{f.servicing.receiptSent}</b></div>
+        <div className="lp-hv-row"><span>Next due</span><b>{f.servicing.nextDue}</b></div>
       </div>
     </div>
   );
