@@ -459,6 +459,27 @@ export function registerLeadRoutes(app: Express): void {
         });
       } catch { /* non-fatal */ }
 
+      // Beatrice (CRO) — ADVISORY OFAC/sanctions screening of the counterparty
+      // name. Fire-and-forget: NEVER blocks lead creation and NEVER throws. A
+      // `potential_match` is recorded in sanctions_screenings and becomes a
+      // founder-visible flag for MANUAL review — it is an advisory screen, not
+      // a legal determination, and does not stop this action.
+      try {
+        const { screenCounterpartyAsync } = await import("./services/compliance/ofacScreening");
+        const counterpartyName = [lead.firstName, lead.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (counterpartyName) {
+          screenCounterpartyAsync({
+            organizationId: org.id,
+            subjectType: "lead",
+            subjectId: String(lead.id),
+            name: counterpartyName,
+          });
+        }
+      } catch { /* non-fatal — advisory only */ }
+
       // Magnus §1 — capture lead features at creation time. Outcome is paired
       // when (a) the lead's property closes a deal (converted) or (b) the
       // lead is dismissed via DELETE /api/leads/:id. Skip-trace and property

@@ -6664,6 +6664,36 @@ const STATEMENTS = [
      "updated_at" timestamp NOT NULL DEFAULT now()
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "today_queue_state_org_item_idx" ON "today_queue_state" ("organization_id", "item_id")`,
+
+  // ── 0142 — Beatrice (CRO) — OFAC/sanctions ADVISORY screening results ───────
+  // Org-scoped record of an advisory name-screen of a counterparty (lead /
+  // borrower / seller) against an OFAC SDN-style list. NOT a legal
+  // determination and NOT a block — a `potential_match` raises a
+  // founder-visible flag for MANUAL review; the originating action proceeds.
+  // We persist only the screened NAME (no other counterparty PII) plus the
+  // matched entry + score for human adjudication. Mirrors shared/schema.ts
+  // (sanctionsScreenings) + migrations/0142_sanctions_screenings.sql.
+  `CREATE TABLE IF NOT EXISTS "sanctions_screenings" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "subject_type" text NOT NULL,
+     "subject_id" text,
+     "screened_name" text NOT NULL,
+     "result" text NOT NULL,
+     "match_score" real NOT NULL DEFAULT 0,
+     "matched_entry_name" text,
+     "matched_entry_program" text,
+     "list_source" text NOT NULL DEFAULT 'bundled-fixture',
+     "engine_version" text NOT NULL DEFAULT 'v1',
+     "threshold" real NOT NULL,
+     "reviewed_at" timestamp,
+     "reviewed_by" text,
+     "review_disposition" text,
+     "review_notes" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "sanctions_screenings_org_created_idx" ON "sanctions_screenings" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "sanctions_screenings_org_result_idx" ON "sanctions_screenings" ("organization_id", "result", "reviewed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
