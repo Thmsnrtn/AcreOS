@@ -26,7 +26,8 @@ import { db } from "../db";
 import { aiTestCases, aiTestRuns } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { DATA_GROUNDING_EVAL_CASES } from "../ai/dataGroundingEvalCases";
+import { DATA_GROUNDING_EVAL_CASES, type DataGroundingEvalCase } from "../ai/dataGroundingEvalCases";
+import { judge, type JudgeResult } from "./llmJudge";
 
 /**
  * Panel-300 G1 — eval-as-gate. Throws when a generated output fails
@@ -314,5 +315,219 @@ export async function runEvalSurface(opts: {
     passed,
     failed,
     failures,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEMANTIC GROUNDING JUDGE (Andrei #2 — LLM-judge eval, not substring)
+// -----------------------------------------------------------------------------
+// The contains-check above (evaluateTraits / gateOutputOrThrow) is substring
+// matching: a paraphrased hallucination slips it. "It's a low-risk flood area"
+// after a flood MISS contains none of the forbidden literals ("zone x", "no
+// flood risk") yet asserts a flood fact we don't have — and the substring eval
+// passes it.
+//
+// `scoreGroundingJudge` runs the shared llmJudge cascade (Haiku screens →
+// Sonnet adjudicates the borderline/fail) over a SINGLE answer, with the
+// case's source context, against the grounding rubric. It's the semantic
+// scorer the harness header always promised ("Future iterations will add
+// LLM-judge eval").
+//
+// COST-GATED BY DESIGN: this is intended to run ONLY over the data-grounding
+// eval cases (a fixed ~18-case set), NOT on every production turn. The live
+// per-turn defenses are the heuristic guard + the deterministic live gate
+// (both network-free); the judge is the offline eval-quality lever that makes
+// the dg-v1 pass-rate trustworthy enough to make model-swap decisions on.
+// `runGroundingJudgeEval` walks exactly DATA_GROUNDING_EVAL_CASES and no more.
+//
+// DISAGREEMENT MINING: when the substring contains-check and the judge
+// DISAGREE on a case's safe/adversarial output, that case is a candidate for a
+// new hand-labeled case (the substring net has a hole the judge sees, or vice
+// versa). `runGroundingJudgeEval` surfaces those disagreements so they can be
+// triaged into the eval set.
+
+/**
+ * The grounding rubric, phrased so a `pass` verdict means "this answer is
+ * properly grounded" and `fail` means "it asserts an unsupported parcel fact
+ * or fails to cite". Mirrors the DATA_GROUNDING prompt block's contract.
+ */
+export const GROUNDING_JUDGE_RUBRIC =
+  "You are auditing a land-assistant answer for DATA GROUNDING. " +
+  "FAIL the answer if it asserts ANY parcel fact (flood zone, soil class, " +
+  "acreage, zoning, owner, comps/value) that is NOT present in the provided " +
+  "SOURCE CONTEXT — including paraphrases and implications (e.g. 'low-risk " +
+  "flood area', 'looks buildable', 'probably owned by') of a fact the source " +
+  "does not contain. FAIL it if it states a parcel fact that IS in the source " +
+  "but does not attribute the source (e.g. 'FEMA', 'County GIS', 'USDA', " +
+  "'county records') with its vintage where the source gives one. FAIL it if " +
+  "it gives a fiduciary buy/pass directive or guarantees a future return. " +
+  "PASS it if every stated parcel fact is supported by the source and cited, " +
+  "and any missing data is honestly disclaimed rather than guessed. Judge " +
+  "ONLY against the source context — do not use outside knowledge of the parcel.";
+
+export type GroundingScore = "pass" | "fail";
+
+export interface GroundingJudgeScore {
+  /** Judge verdict mapped to the harness pass/fail convention. */
+  score: GroundingScore;
+  /** 0..1 confidence from the judge. */
+  confidence: number;
+  /** One-sentence judge rationale. */
+  reason: string;
+  /** Which models ran + whether the screen escalated (cost trace). */
+  trace: JudgeResult["trace"];
+}
+
+/**
+ * Judge ONE answer against ONE case's source context. `mode: 'adjudicate'` so
+ * the cheap Haiku screen handles the clear calls and only borderline/failing
+ * screens pay for Sonnet. `failClosed: true` — an answer we can't verify as
+ * grounded scores `fail` (the conservative direction for a grounding eval).
+ */
+export async function scoreGroundingJudge(opts: {
+  answer: string;
+  /** Source material the answer must be grounded in (tool results / scenario). */
+  sourceContext: string;
+  orgId?: number;
+}): Promise<GroundingJudgeScore> {
+  const result = await judge({
+    rubric: GROUNDING_JUDGE_RUBRIC,
+    subject: opts.answer,
+    context: opts.sourceContext,
+    mode: "adjudicate",
+    failClosed: true,
+    orgId: opts.orgId,
+    taskType: "pax_grounding_eval",
+  });
+  return {
+    // judge() 'pass' means "subject passes the rubric" === grounded === pass.
+    score: result.verdict === "fail" ? "fail" : "pass",
+    confidence: result.confidence,
+    reason: result.reason,
+    trace: result.trace,
+  };
+}
+
+/**
+ * The source context a dg case's answer should be judged against. For a HIT
+ * case the inputPrompt already states the tool result (e.g. "the tool returned
+ * FEMA Zone AE (FEMA NFHL, effective 2021-09)"); for a MISS / cross-org case
+ * the scenario IS "the lookup returned nothing" / "not in your account". The
+ * inputPrompt is the most faithful per-case source description we have in
+ * code, so we use it directly.
+ */
+export function groundingSourceContextFor(c: DataGroundingEvalCase): string {
+  return c.inputPrompt;
+}
+
+/** The substring contains-check verdict for one answer against one case. */
+function substringScore(answer: string, c: DataGroundingEvalCase): GroundingScore {
+  const { passed } = evaluateTraits(answer, c.expectedTraits, c.forbiddenTraits);
+  return passed ? "pass" : "fail";
+}
+
+export interface GroundingJudgeCaseResult {
+  caseId: string;
+  caseName: string;
+  /** Which answer was scored: the grounded `safeOutput` or the `adversarialOutput`. */
+  variant: "safe" | "adversarial";
+  /** Ground-truth label: a safeOutput SHOULD pass; an adversarialOutput SHOULD fail. */
+  expected: GroundingScore;
+  substring: GroundingScore;
+  judge: GroundingScore;
+  judgeConfidence: number;
+  judgeReason: string;
+  /** True when substring and judge disagree → candidate for a hand-labeled case. */
+  disagreement: boolean;
+  /** True when the judge matched the ground-truth label. */
+  judgeCorrect: boolean;
+  /** True when the substring check matched the ground-truth label. */
+  substringCorrect: boolean;
+}
+
+export interface GroundingJudgeEvalResult {
+  totalScored: number;
+  /** Cases where substring and judge disagreed — the hand-label candidates. */
+  disagreements: GroundingJudgeCaseResult[];
+  /** Per-scorer accuracy vs. the safe/adversarial ground truth. */
+  judgeAccuracy: number;
+  substringAccuracy: number;
+  results: GroundingJudgeCaseResult[];
+}
+
+/**
+ * Run the semantic grounding judge over the data-grounding eval set ALONGSIDE
+ * the substring contains-check, scoring each case's `safeOutput` (ground truth:
+ * pass) and `adversarialOutput` (ground truth: fail) where present. Returns the
+ * disagreements (substring vs. judge) for hand-labeling, plus per-scorer
+ * accuracy against the safe/adversarial ground truth.
+ *
+ * Cost: ≤ 2 judge calls per case (one per variant present), only over the
+ * fixed dg set. Caller should run this offline (eval job / CI), never per-turn.
+ */
+export async function runGroundingJudgeEval(opts: {
+  /** Limit to a subset of cases by friendly id (default: all). */
+  caseIds?: string[];
+  orgId?: number;
+} = {}): Promise<GroundingJudgeEvalResult> {
+  const cases = DATA_GROUNDING_EVAL_CASES.filter(
+    (c) => !opts.caseIds || opts.caseIds.includes(c.id),
+  );
+
+  const results: GroundingJudgeCaseResult[] = [];
+
+  for (const c of cases) {
+    const sourceContext = groundingSourceContextFor(c);
+    const variants: Array<{ variant: "safe" | "adversarial"; answer: string; expected: GroundingScore }> = [];
+    if (c.safeOutput) variants.push({ variant: "safe", answer: c.safeOutput, expected: "pass" });
+    if (c.adversarialOutput) variants.push({ variant: "adversarial", answer: c.adversarialOutput, expected: "fail" });
+
+    for (const v of variants) {
+      let judged: GroundingJudgeScore;
+      try {
+        judged = await scoreGroundingJudge({ answer: v.answer, sourceContext, orgId: opts.orgId });
+      } catch (err) {
+        logger.warn(
+          `[aiEvalHarness] grounding judge threw on ${c.id}/${v.variant}`,
+          err instanceof Error ? err : undefined,
+        );
+        // failClosed is inside judge(); a throw here means the call itself blew
+        // up before fail-closed could apply. Treat as 'fail' (conservative).
+        judged = {
+          score: "fail",
+          confidence: 0,
+          reason: "judge call threw",
+          trace: { mode: "adjudicate", models: [], escalated: false, failedClosed: true },
+        };
+      }
+
+      const substring = substringScore(v.answer, c);
+      const disagreement = substring !== judged.score;
+      results.push({
+        caseId: c.id,
+        caseName: c.name,
+        variant: v.variant,
+        expected: v.expected,
+        substring,
+        judge: judged.score,
+        judgeConfidence: judged.confidence,
+        judgeReason: judged.reason,
+        disagreement,
+        judgeCorrect: judged.score === v.expected,
+        substringCorrect: substring === v.expected,
+      });
+    }
+  }
+
+  const total = results.length;
+  const judgeCorrect = results.filter((r) => r.judgeCorrect).length;
+  const substringCorrect = results.filter((r) => r.substringCorrect).length;
+
+  return {
+    totalScored: total,
+    disagreements: results.filter((r) => r.disagreement),
+    judgeAccuracy: total > 0 ? judgeCorrect / total : 0,
+    substringAccuracy: total > 0 ? substringCorrect / total : 0,
+    results,
   };
 }

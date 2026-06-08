@@ -309,8 +309,15 @@ async function processDomainAudits() {
     // envelope_overrun + runway_crunch, registered as one coherent set.
     const { financeDetectors } = await import('../services/lena/financeAudit');
     const { observationRateDetector } = await import('../services/audit/detectors/observationRateDetector');
+    // Andrei (domain "ai") — Pax quality-drift detectors: hallucination-flag-rate
+    // spike (load-bearing), eval-pass-rate regression, cost-per-interaction creep.
+    const { aiQualityDetectors } = await import('../services/andrei/aiQualityAudit');
 
-    const result = await runDomainAudits([...financeDetectors, observationRateDetector]);
+    const result = await runDomainAudits([
+      ...financeDetectors,
+      observationRateDetector,
+      ...aiQualityDetectors,
+    ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
 
