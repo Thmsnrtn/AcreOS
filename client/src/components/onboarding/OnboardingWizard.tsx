@@ -30,6 +30,8 @@ import {
   Warehouse,
   Truck,
   Users,
+  FileSignature,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -143,13 +145,34 @@ export function businessTypeToPersona(bt: BusinessType): Persona {
   return BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
 }
 
+// Note-role fork — the note vertical covers three distinct jobs, each its own
+// persona. Without this, every note person resolved to "note_investor" and the
+// originator + servicer surfaces (their actual jobs) were inert.
+type NoteRole = "invest" | "originate" | "service";
+
+const NOTE_ROLE_TO_PERSONA: Record<NoteRole, Persona> = {
+  invest: "note_investor",
+  originate: "note_originator",
+  service: "note_servicer",
+};
+
+const NOTE_ROLE_CHOICES: { value: NoteRole; label: string; description: string; icon: LucideIcon }[] = [
+  { value: "invest", label: "I buy notes", description: "Acquire existing notes for yield.", icon: FileText },
+  { value: "originate", label: "I create notes", description: "Seller-finance sales into new paper.", icon: FileSignature },
+  { value: "service", label: "I service notes", description: "Collect & service notes for others.", icon: ClipboardCheck },
+];
+
 function derivePersona(
   businessType: BusinessType,
   investorType: InvestorTypeChoice,
+  noteRole: NoteRole = "invest",
 ): Persona {
   // Note vertical first — investorType is the authoritative fork for
-  // 1099-INT batches and the lender/servicer modules.
-  if (investorType === "notes" && businessType === "note_investor") return "note_investor";
+  // 1099-INT batches and the lender/servicer modules. The note-role sub-fork
+  // then selects which of the three note personas applies.
+  if (investorType === "notes" || businessType === "note_investor") {
+    return NOTE_ROLE_TO_PERSONA[noteRole];
+  }
   return businessTypeToPersona(businessType);
 }
 
@@ -245,6 +268,10 @@ export function OnboardingWizard() {
   // mixed-strategy orgs (Hybrid + buying notes) can still get the note
   // sidebar / vocabulary while their businessType remains 'hybrid'.
   const [investorType, setInvestorType] = useState<InvestorTypeChoice>("land");
+  // Note-role sub-fork — only meaningful when investorType === "notes".
+  // Selects which of the three note personas (invest/originate/service) we
+  // persist so the originator + servicer surfaces aren't inert.
+  const [noteRole, setNoteRole] = useState<NoteRole>("invest");
   const [organizationName, setOrganizationName] = useState("");
 
   // Tax-identity capture was moved out of the signup wizard 2026-05-11.
@@ -426,7 +453,7 @@ export function OnboardingWizard() {
         // best-effort; the server-side /onboarding/complete derives
         // the same persona as a safety net so step-0 latency doesn't
         // strand a user without the persona set.
-        const persona = derivePersona(businessType, investorType);
+        const persona = derivePersona(businessType, investorType, noteRole);
         try {
           await apiRequest("PUT", "/api/me/persona", { persona });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -614,6 +641,40 @@ export function OnboardingWizard() {
                 streamlined setup that skips lead-import and campaign steps.
               </p>
             </div>
+
+            {/* Note-role sub-fork — the three note jobs each map to their own
+                persona. Only shown when the user is working with notes. */}
+            {(investorType === "notes" || investorType === "both") && (
+              <div className="ob-field" data-testid="note-role-fork">
+                <span className="ob-label">How do you work with notes?</span>
+                <RadioGroup
+                  value={noteRole}
+                  onValueChange={(value) => setNoteRole(value as NoteRole)}
+                  className="ob-cards"
+                >
+                  {NOTE_ROLE_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                    <label
+                      key={value}
+                      htmlFor={`note-role-${value}`}
+                      className={`ob-card ${noteRole === value ? "is-on" : ""}`}
+                      data-testid={`option-note-role-${value}`}
+                    >
+                      <RadioGroupItem value={value} id={`note-role-${value}`} className="sr-only" />
+                      <span className="ob-card-glyph">
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <span className="ob-card-title">{label}</span>
+                      <span className="ob-card-desc">{description}</span>
+                    </label>
+                  ))}
+                </RadioGroup>
+                <p className="ob-hint">
+                  Buyers import a portfolio, originators set rate &amp; term
+                  defaults, servicers set fee &amp; escrow. Changeable later in
+                  Settings.
+                </p>
+              </div>
+            )}
 
             <div className="ob-field">
               <span className="ob-label">What kind of investing do you do?</span>

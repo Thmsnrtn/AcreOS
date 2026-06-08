@@ -813,8 +813,15 @@ export default function MapsPage() {
   // the content behind the door changes.
   const persona = usePersona();
   const { isMobile } = useIsMobile();
+  // For the note roles the map is secondary — collateral, not parcels — so
+  // they land on the deals/portfolio view rather than parcel discovery. Land
+  // investors (and unmapped personas) keep parcel mode, where sourcing lives.
   const personaDefaultMode: "properties" | "deals" =
-    persona === "note_investor" || persona === "note_servicer" || persona === "fix_flipper" || persona === "subdivider"
+    persona === "note_investor" ||
+    persona === "note_originator" ||
+    persona === "note_servicer" ||
+    persona === "fix_flipper" ||
+    persona === "subdivider"
       ? "deals"
       : "properties";
   const [searchQuery, setSearchQuery] = useState("");
