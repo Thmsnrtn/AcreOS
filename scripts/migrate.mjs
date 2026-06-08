@@ -6134,10 +6134,15 @@ const STATEMENTS = [
      "status" text NOT NULL DEFAULT 'open',
      "reviewer_user_id" varchar,
      "review_notes" text,
+     "customer_message" text,
      "review_decision_at" timestamp with time zone,
      "created_at" timestamp with time zone NOT NULL DEFAULT now(),
      "updated_at" timestamp with time zone NOT NULL DEFAULT now()
    )`,
+  // Migration 0136 (Quinn + Rafe) — customer-facing outcome wording surfaced
+  // back to the customer on resolution. Distinct from internal review_notes.
+  // Additive + idempotent for existing DBs.
+  `ALTER TABLE "pax_decision_appeals" ADD COLUMN IF NOT EXISTS "customer_message" text`,
   `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_status_created_idx" ON "pax_decision_appeals" ("organization_id", "status", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_created_idx" ON "pax_decision_appeals" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_refusal_idx" ON "pax_decision_appeals" ("refusal_payload_id")`,

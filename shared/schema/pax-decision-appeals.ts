@@ -25,8 +25,17 @@
 //   status               enum: open | under_review | upheld | reversed
 //   reviewer_user_id     varchar nullable — the AcreOS staff user who
 //                          reviewed the appeal.
-//   review_notes         text nullable — internal review reasoning.
-//   review_decision_at   timestamptz nullable
+//   review_notes         text nullable — INTERNAL review reasoning (the
+//                          rationale the reviewer records; never shown to the
+//                          customer).
+//   customer_message     text nullable — the plain-language outcome message
+//                          surfaced back to the CUSTOMER on resolution (in
+//                          their Pax thread + the closing-the-loop email).
+//                          Kept distinct from review_notes so internal
+//                          reasoning and the customer-facing wording never
+//                          blur. Added in migration 0136 (appeal-loop close).
+//   review_decision_at   timestamptz nullable — when the appeal was resolved
+//                          (upheld | reversed); doubles as resolvedAt.
 //   created_at, updated_at
 //
 // Indexes (L3 lint compliant — leading on organization_id):
@@ -73,7 +82,11 @@ export const paxDecisionAppeals = pgTable(
     appellantUserId: varchar("appellant_user_id"),
     status: text("status").notNull().default("open"),
     reviewerUserId: varchar("reviewer_user_id"),
+    // INTERNAL review reasoning — never surfaced to the customer.
     reviewNotes: text("review_notes"),
+    // CUSTOMER-FACING outcome wording, shown in their Pax thread + the
+    // close-the-loop email. Distinct from reviewNotes (migration 0136).
+    customerMessage: text("customer_message"),
     reviewDecisionAt: timestamp("review_decision_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

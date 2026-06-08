@@ -24,6 +24,7 @@ import {
   Bot,
   Zap,
   Sparkles,
+  Scale,
   ArrowUpRight,
 } from "lucide-react";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
@@ -32,6 +33,13 @@ import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 // doesn't ship them in the parent chunk — each loads on demand when the
 // matching drawer opens.
 const ActivityPage = lazy(() => import("@/pages/activity"));
+// Quinn + Rafe — the customer recourse surface ("appeal the AI"). Lazy so it
+// only loads when the Appeals drawer opens.
+const PaxRecoursePanel = lazy(() =>
+  import("@/components/pax/pax-recourse-panel").then((m) => ({
+    default: m.PaxRecoursePanel,
+  })),
+);
 // AgentCommandCenterPage archived 2026-06-01 — agents drawer now deep-links
 // to /founder/agent-queue via the "Full page" button in the sheet header.
 
@@ -51,7 +59,7 @@ function DrawerFallback() {
   );
 }
 
-type SheetView = "activity" | "agents" | "insights" | null;
+type SheetView = "activity" | "agents" | "insights" | "appeals" | null;
 
 const SHEET_META: Record<
   Exclude<SheetView, null>,
@@ -74,6 +82,13 @@ const SHEET_META: Record<
     description: "What Pax is watching across your pipeline.",
     route: "/pipeline",
     routeLabel: "Go to pipeline",
+  },
+  appeals: {
+    title: "Appeals",
+    description:
+      "When Pax declines a request, see the rule it followed — and appeal it.",
+    route: "/pax",
+    routeLabel: "Stay on Pax",
   },
 };
 
@@ -139,6 +154,16 @@ export function PaxOverflowMenu({
             <Activity className="mr-2 h-4 w-4" aria-hidden="true" />
             What Pax did
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              requestAnimationFrame(() => setView("appeals"));
+            }}
+            data-testid="pax-menu-appeals"
+          >
+            <Scale className="mr-2 h-4 w-4" aria-hidden="true" />
+            Appeals
+          </DropdownMenuItem>
           {isFounder && (
             <DropdownMenuItem
               onSelect={(e) => {
@@ -173,12 +198,16 @@ export function PaxOverflowMenu({
               <SheetHeader className="px-6 pt-6 pb-4 border-b text-left space-y-1">
                 <div className="flex items-center justify-between gap-4 pr-8">
                   <SheetTitle>{meta.title}</SheetTitle>
-                  <Button variant="ghost" size="sm" className="gap-1 text-xs shrink-0" asChild>
-                    <Link href={meta.route} aria-label={meta.routeLabel}>
-                      Full page
-                      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Link>
-                  </Button>
+                  {/* Appeals live entirely in this drawer (no separate full
+                      page — it's already behind the Pax door), so no link. */}
+                  {view !== "appeals" && (
+                    <Button variant="ghost" size="sm" className="gap-1 text-xs shrink-0" asChild>
+                      <Link href={meta.route} aria-label={meta.routeLabel}>
+                        Full page
+                        <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
                 <SheetDescription>{meta.description}</SheetDescription>
               </SheetHeader>
@@ -187,6 +216,11 @@ export function PaxOverflowMenu({
                 {view === "activity" && (
                   <Suspense fallback={<DrawerFallback />}>
                     <ActivityPage />
+                  </Suspense>
+                )}
+                {view === "appeals" && (
+                  <Suspense fallback={<DrawerFallback />}>
+                    <PaxRecoursePanel />
                   </Suspense>
                 )}
                 {view === "agents" && isFounder && (

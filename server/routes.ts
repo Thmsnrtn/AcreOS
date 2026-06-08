@@ -161,6 +161,8 @@ import { registerAdminAuditLogRoutes } from "./routes-admin-audit";
 import { registerCustomerAuditRoutes } from "./routes-customer-audit";
 import { registerAdminComplianceRoutes } from "./routes-admin-compliance";
 import { registerTransparencyRoutes } from "./routes-transparency";
+import { registerPaxAppealRoutes } from "./routes-pax-appeals";
+import { registerFounderAppealRoutes } from "./routes-founder-appeals";
 import { registerOrganizationRoutes } from "./routes-organization";
 import { registerTeamReadinessRoutes } from "./routes-team-readiness";
 import { registerLeadRoutes } from "./routes-leads";
@@ -2127,6 +2129,12 @@ export async function registerRoutes(
   // Quinn (Chief of Alignment) — public /transparency stub + schema endpoint.
   // Tahoe wave E9. UI ships in a future wave; the substrate is live.
   registerTransparencyRoutes(app);
+  // Quinn + Rafe — "appeal the AI" recourse loop. Customer surface
+  // (see a refusal-with-reason + file an appeal) and the founder review
+  // surface (uphold/reverse with rationale, close the loop back to the
+  // customer). EU AI Act Art. 86.
+  registerPaxAppealRoutes(app);
+  registerFounderAppealRoutes(app);
   registerOrganizationRoutes(app);
   // Phase 5 §5 — team-readiness endpoints (per-seat pricing, lead-assignment
   // rules, manager dashboard, Slack/Teams webhooks, offer-approval queue).
