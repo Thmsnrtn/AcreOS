@@ -251,7 +251,7 @@ const DoddFrankCheckerPage = React.lazy(() => import("@/pages/dodd-frank-checker
 const RegulatoryIntelPage = React.lazy(() => import("@/pages/regulatory-intel"));
 // UsageQuotaPage archived 2026-06-01 — no nav entry, no callers.
 const GoalsPage = React.lazy(() => import("@/pages/goals"));
-const TaxResearcherPage = React.lazy(() => import("@/pages/tax-researcher"));
+// TaxResearcherPage retired 2026-06-08 — /tax-researcher redirects to /deals/discover.
 
 // Platform / Marketplace
 // AcademyPage removed — Academy feature deprecated
@@ -1290,7 +1290,11 @@ function Router() {
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}
       </Route>
-      {/* AcademyPage removed — Academy feature deprecated */}
+      {/* Academy retired 2026-06-08 — page + router + services removed.
+          Keep a redirect so the old /academy URL lands on Today, not a 404. */}
+      <Route path="/academy">
+        {() => <Redirect to="/today" />}
+      </Route>
       <Route path="/land-credit">
         {() => <FlaggedRoute route="/land-credit" component={LandCreditPage} />}
       </Route>
@@ -1333,7 +1337,10 @@ function Router() {
         {() => <FlaggedRoute route="/compliance" component={CompliancePage} />}
       </Route>
       <Route path="/tax-researcher">
-        {() => <FlaggedRoute route="/tax-researcher" component={TaxResearcherPage} />}
+        {/* Tax Researcher retired 2026-06-08 — page + service removed. County
+            Detail / Courthouse Mode / Auction Worksheet still serve the tax-sale
+            workflow; this top-level door redirects rather than 404s. */}
+        {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/document-intelligence">
         {() => <FlaggedRoute route="/document-intelligence" component={DocumentIntelligencePage} />}
