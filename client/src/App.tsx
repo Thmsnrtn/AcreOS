@@ -451,6 +451,10 @@ const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
+// Public Transparency Report (Quinn #4 / Beatrice #3). Renders the latest
+// published transparency_reports row. Public route + linked from Settings;
+// NOT a new customer door (respects the five-door nav model).
+const TransparencyPage = React.lazy(() => import("@/pages/transparency"));
 const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
 // GlossaryPage archived 2026-06-01 — public route but nothing links to it.
 
@@ -667,6 +671,9 @@ function Router() {
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
+      {/* Public Transparency Report — accountability artifact, no login.
+          Also reachable from Settings → Account. Not a customer door. */}
+      <Route path="/transparency" component={TransparencyPage} />
       {/* Public Land Deal Calculator — top-of-funnel + embed-friendly.
           Embed route mounted BEFORE the bare /tools/calculator so
           wouter's first-match Switch routes the more-specific URL first.

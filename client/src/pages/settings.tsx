@@ -2053,6 +2053,36 @@ export default function Settings() {
                 </Card>
               </div>
 
+              {/* Transparency Report (Quinn #4 / Beatrice #3 — public
+                  accountability surface). Linked here for logged-in
+                  customers; also public at /transparency. */}
+              <div className="pt-4 border-t" data-testid="tab-content-account-transparency">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="w-5 h-5" aria-hidden="true" />
+                      Transparency report
+                    </CardTitle>
+                    <CardDescription>
+                      See how Pax's rules play out each period — refusals by
+                      rule, appeal outcomes, founder overrides, and our drift
+                      and fairness checks. Published even when the numbers are
+                      unflattering.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      onClick={() => setLocation("/transparency")}
+                      data-testid="button-view-transparency"
+                    >
+                      View transparency report
+                      <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
               {/* Refer & earn */}
               <div className="pt-4 border-t" data-testid="tab-content-account-referral">
                 <ReferralSettings />
