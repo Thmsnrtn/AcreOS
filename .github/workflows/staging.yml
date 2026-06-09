@@ -47,8 +47,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript check
-        run: npx tsc --noEmit
+      # Unified gate — same `npm run check` as deploy.yml / ci.yml / test.yml.
+      # The previous bare `npx tsc --noEmit` ran without the 6144 heap ceiling
+      # and OOM-killed the runner (exit 134), making this red before the deploy
+      # step ever ran.
+      - name: TypeScript check + ratchets
+        run: npm run check
 
       - name: Run tests
         run: npx vitest run
@@ -56,9 +60,23 @@ jobs:
           CI: true
 
   # ── Deploy to Fly.io staging ────────────────────────────────────────────────
+  #
+  # 🔑 FOUNDER INFRA REQUIRED — this job (and the health-check / rollback /
+  # comment-pr jobs that depend on it) only runs once a staging Fly app
+  # exists. It is gated on the `FLY_STAGING_APP` repo VARIABLE so that, until
+  # the founder provisions one, the job SKIPS cleanly (amber-by-design) instead
+  # of failing red against a nonexistent app — a missing staging app is not a
+  # code defect, and shouldn't make the team's "Deploy to Staging" check red.
+  # The `test` job above still runs on every push and gates correctly.
+  #
+  # To enable staging deploys:
+  #   1. fly apps create acreos-staging   (or any name)
+  #   2. gh variable set FLY_STAGING_APP --body "acreos-staging"
+  #   3. ensure secrets.FLY_API_TOKEN is scoped to that app
   deploy-staging:
     name: Deploy to Staging (Fly.io)
     needs: test
+    if: vars.FLY_STAGING_APP != ''
     runs-on: ubuntu-latest
     environment: staging
     outputs:
